@@ -8,6 +8,7 @@ import type { PendingConfirmation } from '../../lib/kagentHitl';
 import type { TimelineItem } from '../../lib/kagentTimeline';
 import { connectorLabels, type ServerInfo } from '../../lib/toolset';
 import { MessageMarkdown } from '../SessionTimeline/MessageMarkdown';
+import { SignInRequestPanel } from '../SignInRequestPanel';
 import { ConnectorSignInLinks } from './ConnectorSignInLinks';
 
 const LINK = 'https://muster.example.com/oauth/proxy/start?state=abc123';
@@ -238,6 +239,61 @@ describe('ConnectorSignInLinks', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       "Answered the agent's question for you: “I've signed in”.",
     );
+  });
+
+  it('continues the agent once muster returned from the sign-in it asked for, for any server', async () => {
+    const SIGN_IN: PendingConfirmation = {
+      taskId: 'task-2',
+      asks: 'sign-in',
+      questions: [],
+      signIn: {
+        id: 'sign-in-1',
+        server: 'muster',
+        message: 'Sign in to github to continue.',
+        url: 'https://muster.example.com/oauth/proxy/start?state=elicited',
+      },
+      askedIn: 'status-2',
+    };
+    const onAnswer = jest.fn();
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <ConnectorSignInLinks
+        items={[]}
+        servers={SERVERS}
+        labels={connectorLabels(SERVERS)}
+        pending={SIGN_IN}
+        onAnswer={onAnswer}
+      >
+        <SignInRequestPanel
+          pending={SIGN_IN}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />
+      </ConnectorSignInLinks>,
+      { initialRouteEntries: ['/sessions/gazelle/s1'] },
+    );
+
+    expect(
+      screen.getByText('muster asks you to sign in so the agent can continue'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Sign in to github to continue.'),
+    ).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Sign in ↗' });
+    const href = link.getAttribute('href')!;
+    expect(returnPage(href).pathname).toBe('/sessions/gazelle/s1');
+    await user.click(link);
+    returned(href, 'github');
+    returned(href, 'github');
+
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(onAnswer).toHaveBeenCalledWith({
+      taskId: 'task-2',
+      decision: 'approve',
+      text: "I've signed in.",
+      askedIn: 'status-2',
+    });
+    expect(await screen.findByText('Signed in')).toBeInTheDocument();
   });
 
   it('answers nothing while no question is open to answer', async () => {

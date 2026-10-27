@@ -15,6 +15,7 @@ import { EgressRefusedEntry, EgressSettingsLink } from './EgressRefusedEntry';
 import { MessageMarkdown } from './MessageMarkdown';
 import { PayloadBlock } from './PayloadBlock';
 import { UserMessage } from './UserMessage';
+import { WorkspaceNoticeEntry } from './WorkspaceNoticeEntry';
 import {
   agentCallLabel,
   expandablePayloads,
@@ -401,6 +402,10 @@ export function TimelineEntry({
 
   if (item.kind === 'attachment') {
     return <AttachmentEntry item={item} />;
+  }
+
+  if (item.kind === 'workspace-notice') {
+    return <WorkspaceNoticeEntry notice={item.notice} />;
   }
 
   if (item.kind === 'egress-refused') {

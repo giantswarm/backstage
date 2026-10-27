@@ -59,6 +59,41 @@ const questionTask = (id: string) =>
   ]);
 
 describe('readPendingConfirmation', () => {
+  it('reads an MCP server sign-in the task waits on', () => {
+    const signIn = {
+      ...task('task-1', 'input-required', [
+        { kind: 'text', text: 'Sign in to github to continue.' },
+      ]),
+    } as unknown as { status: { message: Record<string, unknown> } };
+    signIn.status.message.messageId = 'status-1';
+    signIn.status.message.extensions = [
+      'https://kagent.dev/extensions/hitl/v1',
+    ];
+    signIn.status.message.metadata = {
+      'https://kagent.dev/extensions/hitl/v1': {
+        type: 'url_elicitation_request',
+        id: 'sign-in-1',
+        server: 'muster',
+        message: 'Sign in to github to continue.',
+        url: 'https://muster.example/oauth/proxy/start?state=abc',
+      },
+    };
+    expect(readPendingConfirmation([signIn as unknown as A2aTaskWire])).toEqual(
+      {
+        taskId: 'task-1',
+        asks: 'sign-in',
+        questions: [],
+        signIn: {
+          id: 'sign-in-1',
+          server: 'muster',
+          message: 'Sign in to github to continue.',
+          url: 'https://muster.example/oauth/proxy/start?state=abc',
+        },
+        askedIn: 'status-1',
+      },
+    );
+  });
+
   it('reads the question, its choices and the task to resume', () => {
     expect(readPendingConfirmation([questionTask('task-1')])).toEqual({
       taskId: 'task-1',

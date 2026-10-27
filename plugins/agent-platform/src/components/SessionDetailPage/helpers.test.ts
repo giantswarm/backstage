@@ -7,6 +7,8 @@ import {
   readUnansweredUserMessage,
   withFailedSend,
 } from './helpers';
+import { parseWorkspaceNotice } from '../../lib/workspaceNotice';
+import { NOTICE_STALE } from '../../lib/__fixtures__/workspaceNotice';
 
 describe('fresherStreamedCopy', () => {
   const call = (
@@ -353,5 +355,22 @@ describe('readUnansweredUserMessage', () => {
         { id: 'a', kind: 'agent-message', taskIndex: 0, text: 'Sure.' },
       ]),
     ).toBeUndefined();
+  });
+
+  it('is the newest message when only a workspace setup notice followed it', () => {
+    // The harness's notice comes before the turn starts: the agent has not
+    // answered anything yet.
+    expect(
+      readUnansweredUserMessage([
+        user,
+        {
+          id: 'n',
+          kind: 'workspace-notice',
+          taskIndex: 0,
+          notice: parseWorkspaceNotice(NOTICE_STALE),
+        },
+        { id: 'f', kind: 'turn-failed', taskIndex: 0, state: 'failed' },
+      ])?.text,
+    ).toBe('Plan a barbecue.');
   });
 });

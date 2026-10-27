@@ -42,6 +42,7 @@ import {
   sendEnterKeyHint,
 } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
+import { SignInRequestPanel } from '../SignInRequestPanel';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -292,7 +293,21 @@ export type PendingConfirmationPanelProps = {
  * Allow and Decline, and focusing either would let a stray Enter grant or refuse
  * a side-effecting tool call.
  */
-export function PendingConfirmationPanel({
+export function PendingConfirmationPanel(props: PendingConfirmationPanelProps) {
+  if (props.pending.asks === 'sign-in') {
+    return (
+      <SignInRequestPanel
+        pending={props.pending}
+        isAnswering={props.isAnswering}
+        error={props.error}
+        onAnswer={props.onAnswer}
+      />
+    );
+  }
+  return <ConfirmationPanel {...props} />;
+}
+
+function ConfirmationPanel({
   pending,
   isAnswering,
   error,

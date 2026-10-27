@@ -1602,6 +1602,47 @@ to 480 px high.
 that failed the schema (artifact and status updates excluded), and the warning
 renders even when every entry failed.
 
+#### Workspace setup notices
+
+Before a turn starts, kagent's harness can report on the session's directory
+(`Report.TurnNotice()` in kagent's `go/harness/workspace/workspace.go`). The
+report arrives as the turn's first `status-update`, an agent message of one
+text part, and stays in the task's history, but it is not the agent's reply:
+`lib/workspaceNotice.ts` recognises it and the timeline makes it a
+`workspace-notice` item, live and from history alike. It renders as an alert
+above the agent's name, one summary line per variant, with the per-repository
+reasons (git's output) folded under Technical details:
+
+| Notice text starts with                                      | Summary                                            | Severity |
+| ------------------------------------------------------------ | -------------------------------------------------- | -------- |
+| `Workspace setup failed:`                                    | Workspace setup failed                             | warning  |
+| `Workspace setup: this session's directory was set up again` | Workspace setup: directory set up again            | warning  |
+| `Workspace setup: these repositories stay at … last sync`    | Workspace setup: _n_ repositories not updated      | warning  |
+| `Workspace setup: … they are up to date now:`                | Workspace setup: _n_ repositories up to date again | info     |
+
+One notice can hold several variants, one per line; it is titled by its first
+warning, and text it does not recognise is kept and shown as kagent wrote it.
+Since it is its own kind, a notice never counts as a reply: not in a
+continuation's carried conversation, not as the answer that makes a message
+"answered", and not as the Create agent assist's proposal.
+
+kagent does not mark a notice on the wire: no metadata key or extension tells
+it from the agent's own status text. `isWorkspaceNotice` therefore recognises
+it by the `Workspace setup` prefix, and only on the message that opens the
+agent's side of its turn: an agent message of text alone, with nothing from the
+agent before it, recorded in history rather than read back from an output
+artifact or the completed task's status message. A reply that starts with the
+same words later in the turn stays a reply. One case is still misread: a model
+reply that is itself the turn's first agent message, is text alone and starts
+with `Workspace setup` renders as a notice.
+
+The code also accepts a mark, which kagent does not send today: message
+metadata `kagent.dev/notice: workspace-setup` (or the same value under
+`kagent.dev/a2a/notice`), read by `readKagentNotice` in agent-platform-common.
+A marked message is a notice wherever it sits in its turn. The key is the
+example giantswarm/giantswarm#38834 gives, not an agreed contract: if kagent
+adds a mark under another key or shape, `readKagentNotice` changes to match.
+
 #### Egress refusals
 
 A connection the egress gateway refused shows on the turn that met it, one
@@ -2484,10 +2525,15 @@ Human-in-the-loop is the negotiated A2A extension
 `https://kagent.dev/extensions/hitl/v1`. The backend requests it on every turn
 (gRPC metadata `a2a-extensions`). A suspended task's `status.message` then
 carries in its `metadata`, under the extension URI (also listed in
-`message.extensions`), either a `tool_approval_request` (`tools[]` with `id`,
-the proposed `call_id`, `name`, `args`) or an `ask_user_request` (`id`,
-`questions[]` with `question`, `choices`, `multiple`). Without the negotiation
-there is nothing to answer.
+`message.extensions`), a `tool_approval_request` (`tools[]` with `id`, the
+proposed `call_id`, `name`, `args`), an `ask_user_request` (`id`, `questions[]`
+with `question`, `choices`, `multiple`) or a `url_elicitation_request` (`id`,
+`server`, `message`, `url`). The last is an MCP server's URL elicitation, such as muster's sign-in
+link for a backend the person has not connected, from a runtime that relays MCP
+URL elicitations (the claude and codex Harnesses, the Go ADK). Its reply is a
+`url_elicitation_response` with `action` `accept` (an approval: the person
+signed in) or `decline` (a rejection). Without the negotiation there is nothing
+to answer.
 
 The reply names the task (`taskId`) and carries the typed response in the same
 place. The page sends it over `SendStreamingMessage`
@@ -2559,6 +2605,18 @@ Decline into an approval. In the decline reason box Enter confirms the decline.
 typed words reach the agent inside the `answer` array (only the message's text
 part is discarded). A question can be answered with a choice, text or both,
 sent choices first.
+
+A `url_elicitation_request` is read off the status message's metadata
+(`readUrlElicitationRequest` in `agent-platform-common`) and renders as the
+sign-in card (`SignInRequestPanel`) in place of the question card. `server` is
+the MCP server that asked, muster for every backend behind it, so the card
+attributes the request to it ("muster asks you to sign in so the agent can
+continue") and quotes its message, which names the backend ("Sign in to github
+to continue."). Inside a session the link is one of the session's connector
+sign-ins (below), returning to the page, and muster's return answers `accept`
+for the person, once, from the tab that started it; whatever server muster
+reports on the way back counts, since the card does not know the backend's
+name. _I've signed in_ answers it by hand, _Not now_ declines.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.

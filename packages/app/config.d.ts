@@ -282,6 +282,18 @@ export interface Config {
       appID?: string;
       /** @visibility frontend */
       salt?: string;
+      /**
+       * Sent as `deploymentID` with every signal: the ID of the deployment a
+       * tool set the portal up in (agentlab), whose own signals carry it too.
+       * @visibility frontend
+       */
+      deploymentID?: string;
+      /**
+       * Files the signals as test data, kept apart from the production
+       * numbers. Always on for localhost.
+       * @visibility frontend
+       */
+      testMode?: boolean;
     };
   };
 }
