@@ -150,7 +150,7 @@
     "@yarnpkg/core@npm:^4.9.1": "4.9.2",
     "@yarnpkg/core/got": "^11.7.0",
     "@yarnpkg/cli@npm:^4.7.0": "4.18.1",
-    "@backstage/backend-defaults@backstage:^": "patch:@backstage/backend-defaults@npm%3A0.18.0#~/.yarn/patches/@backstage-backend-defaults-npm-0.18.0-38f210e7c4.patch"
+    "@backstage/backend-defaults@backstage:^": "patch:@backstage/backend-defaults@npm%3A0.18.1#~/.yarn/patches/@backstage-backend-defaults-npm-0.18.1-924a47c398.patch"
   },
   "jest": {
     "cacheDirectory": "<rootDir>/../../../node_modules/.cache/jest",

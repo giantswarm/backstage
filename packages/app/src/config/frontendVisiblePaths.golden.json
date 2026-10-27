@@ -89,6 +89,7 @@
   "auth.autologout.useWorkerTimers",
   "auth.environment",
   "auth.providers.*",
+  "auth.providers.guest",
   "backend.baseUrl",
   "catalog.experimentalPagination",
   "catalog.experimentalPagination.limit",
