@@ -22,7 +22,7 @@ import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 /** What every notice text starts with, and each of its variants' lines. */
 const NOTICE_PREFIX = 'Workspace setup';
 
-/** The mark kagent is expected to put on a notice (`readKagentNotice`). */
+/** A notice's proposed mark, not sent by kagent yet (`readKagentNotice`). */
 const NOTICE_MARK = 'workspace-setup';
 
 /** One variant of a notice: one line, or a header line and its list. */

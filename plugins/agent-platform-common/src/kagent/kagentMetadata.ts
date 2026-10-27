@@ -14,9 +14,10 @@ const TIMELINE_POSITION_KEYS = [
 ];
 
 /**
- * Where kagent is expected to mark a message as a notice from the runtime
- * rather than the agent's words (giantswarm/giantswarm#38834): the key the
- * proposal names, and its spelling under the public contract's prefix.
+ * Where kagent could mark a message as a notice from the runtime rather than
+ * the agent's words: the key giantswarm/giantswarm#38834 gives as an example,
+ * and its spelling under the public contract's prefix. kagent sends neither
+ * today and has not agreed to either.
  */
 const NOTICE_KEYS = ['kagent.dev/notice', `${A2A_PREFIX}notice`];
 

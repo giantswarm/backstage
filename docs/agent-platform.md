@@ -1622,17 +1622,26 @@ reasons (git's output) folded under Technical details:
 
 One notice can hold several variants, one per line; it is titled by its first
 warning, and text it does not recognise is kept and shown as kagent wrote it.
-Nothing marks a notice on the wire yet, so `isWorkspaceNotice` recognises it by
-the `Workspace setup` prefix, and only on the message that opens the agent's
-side of its turn: an agent message of text alone, with nothing from the agent
-before it, recorded in history rather than read back from an output artifact
-or the completed task's status message. A reply that starts with the same
-words therefore stays a reply. A `kagent.dev/notice: workspace-setup` metadata
-key (or `kagent.dev/a2a/notice`, both read by `readKagentNotice` in
-agent-platform-common) marks a notice wherever it sits, so the switch to a
-marker needs no change here. Since it is its own kind, a notice never counts as
-a reply: not in a continuation's carried conversation, not as the answer that
-makes a message "answered", and not as the Create agent assist's proposal.
+Since it is its own kind, a notice never counts as a reply: not in a
+continuation's carried conversation, not as the answer that makes a message
+"answered", and not as the Create agent assist's proposal.
+
+kagent does not mark a notice on the wire: no metadata key or extension tells
+it from the agent's own status text. `isWorkspaceNotice` therefore recognises
+it by the `Workspace setup` prefix, and only on the message that opens the
+agent's side of its turn: an agent message of text alone, with nothing from the
+agent before it, recorded in history rather than read back from an output
+artifact or the completed task's status message. A reply that starts with the
+same words later in the turn stays a reply. One case is still misread: a model
+reply that is itself the turn's first agent message, is text alone and starts
+with `Workspace setup` renders as a notice.
+
+The code also accepts a mark, which kagent does not send today: message
+metadata `kagent.dev/notice: workspace-setup` (or the same value under
+`kagent.dev/a2a/notice`), read by `readKagentNotice` in agent-platform-common.
+A marked message is a notice wherever it sits in its turn. The key is the
+example giantswarm/giantswarm#38834 gives, not an agreed contract: if kagent
+adds a mark under another key or shape, `readKagentNotice` changes to match.
 
 #### Egress refusals
 
