@@ -15,6 +15,11 @@ const useStyles = makeStyles({
   entry: {
     minWidth: 0,
     overflowWrap: 'anywhere',
+    // bui's Alert sets the description right under the title; the fold-out
+    // and the lines under it need room to read as their own.
+    '& .bui-AlertTitle': {
+      marginBottom: 5,
+    },
   },
   list: {
     margin: 0,
