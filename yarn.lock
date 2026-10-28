@@ -2689,8 +2689,8 @@ __metadata:
   linkType: hard
 
 "@backstage-community/plugin-github-actions@npm:^1.0.0":
-  version: 1.5.0
-  resolution: "@backstage-community/plugin-github-actions@npm:1.5.0"
+  version: 1.5.1
+  resolution: "@backstage-community/plugin-github-actions@npm:1.5.1"
   dependencies:
     "@backstage/catalog-model": "npm:^1.10.1"
     "@backstage/core-compat-api": "npm:^0.5.15"
@@ -2704,7 +2704,7 @@ __metadata:
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
     "@octokit/rest": "npm:^19.0.3"
-    "@remixicon/react": "npm:^4.2.0"
+    "@remixicon/react": "npm:>=4.6.0 <4.9.0"
     "@types/react": "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
     git-url-parse: "npm:^14.0.0"
     luxon: "npm:^3.0.0"
@@ -2715,7 +2715,7 @@ __metadata:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/e3d1056a282fa644f4812a2f694a624597fd605ca5a9996d160576c8bd6eb855ccbd82cda3a2dd7f63d522b037a56c5ed8de9355520789209e4376afbdb460d0
+  checksum: 10c0/967df8873c6c059d53f98c9a4e81c83bb991594cb606797265ece4869ddeb7f1356345bae734ae8e2c9b3b7d97b0cafcf6bc1868a327e85df73ed56b2ccac3c2
   languageName: node
   linkType: hard
 
@@ -16849,7 +16849,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@remixicon/react@npm:^4.2.0, @remixicon/react@npm:^4.6.0, @remixicon/react@npm:^4.9.0":
+"@remixicon/react@npm:^4.6.0, @remixicon/react@npm:^4.9.0":
   version: 4.9.0
   resolution: "@remixicon/react@npm:4.9.0"
   peerDependencies:
