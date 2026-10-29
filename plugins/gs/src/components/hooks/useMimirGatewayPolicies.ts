@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
 import { sanitizePromQLValue } from './promql';
-import { buildGatewayPolicies, policyMetrics } from './gatewayPolicies';
+import { buildGatewayPolicies, policyMetrics } from '../utils/gatewayPolicies';
 import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
 
 /**

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
 import { sanitizePromQLValue } from './promql';
+import { MimirMetricSample } from '../../apis/mimir/types';
 import {
   GatewayApiGatewayInfo,
   GatewayApiGatewayListenerInfo,
@@ -12,18 +13,53 @@ import {
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentResolvedRefs,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { buildGatewayTopology } from './gatewayTopology';
-import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
+import {
+  GatewayTopologyInputs,
+  buildGatewayTopology,
+} from '../utils/gatewayTopology';
+import { blockingError, samplesOf } from './mimirSamples';
+
+/** The metric behind each input of the topology join. */
+const metricByInput: Record<keyof GatewayTopologyInputs, string> = {
+  gatewayInfo: GatewayApiGatewayInfo.name,
+  gatewayStatus: GatewayApiGatewayStatus.name,
+  listenerInfo: GatewayApiGatewayListenerInfo.name,
+  listenerAttachedRoutes: GatewayApiGatewayStatusListenerAttachedRoutes.name,
+  routeParentInfo: GatewayApiHttprouteParentInfo.name,
+  routeHostnameInfo: GatewayApiHttprouteHostnameInfo.name,
+  routeStatusParentInfo: GatewayApiHttprouteStatusParentInfo.name,
+  routeAccepted: GatewayApiHttprouteStatusParentAccepted.name,
+  routeResolvedRefs: GatewayApiHttprouteStatusParentResolvedRefs.name,
+};
+
+const inputKeys = Object.keys(metricByInput) as (keyof GatewayTopologyInputs)[];
+const metricNames = Object.values(metricByInput);
+
+/** Splits the samples of the combined query into the join's inputs. */
+export function toTopologyInputs(
+  samples: MimirMetricSample[],
+): GatewayTopologyInputs {
+  const inputs = Object.fromEntries(
+    inputKeys.map(key => [key, [] as MimirMetricSample[]]),
+  ) as Record<keyof GatewayTopologyInputs, MimirMetricSample[]>;
+  const keyByMetric = new Map(
+    inputKeys.map(key => [metricByInput[key], key] as const),
+  );
+  for (const sample of samples) {
+    const key = keyByMetric.get(sample.metric.__name__ ?? '');
+    if (key) inputs[key].push(sample);
+  }
+  return inputs;
+}
 
 /**
  * Fetches the Gateway API topology of one cluster from Mimir: Gateways with
  * their listeners, and HTTPRoutes with their parents and conditions.
  *
- * The Gateway and route structure is required; a failure there is the hook's
- * `error`. Everything else only enriches the result: if one of those queries
- * fails, what it would have shown is reported as not available instead of
- * blocking the page. All queries count towards `isLoading`, so a half-loaded
- * result is never rendered.
+ * One query covers every metric, split by name on the client, so a refresh is
+ * a single round trip and the parts can't be out of step with each other. A
+ * failure is the hook's `error` only until the first result; after that, a
+ * failed refetch keeps showing the last good result.
  */
 export function useMimirGatewayTopology(options: {
   installationName: string;
@@ -32,111 +68,23 @@ export function useMimirGatewayTopology(options: {
 }) {
   const { installationName, clusterName, refetchInterval } = options;
 
-  const enabled = Boolean(clusterName);
-  const selector = `{cluster_id="${sanitizePromQLValue(clusterName ?? '')}"}`;
-  const common = { installationName, enabled, refetchInterval };
-
-  const gatewayInfo = useMimirQuery({
-    ...common,
-    query: `${GatewayApiGatewayInfo.name}${selector}`,
+  const query = useMimirQuery({
+    installationName,
+    enabled: Boolean(clusterName),
+    refetchInterval,
+    query: `{__name__=~"${metricNames.join('|')}",cluster_id="${sanitizePromQLValue(
+      clusterName ?? '',
+    )}"}`,
   });
-  const gatewayStatus = useMimirQuery({
-    ...common,
-    query: `${GatewayApiGatewayStatus.name}${selector}`,
-  });
-  const listenerInfo = useMimirQuery({
-    ...common,
-    query: `${GatewayApiGatewayListenerInfo.name}${selector}`,
-  });
-  const listenerAttachedRoutes = useMimirQuery({
-    ...common,
-    query: `${GatewayApiGatewayStatusListenerAttachedRoutes.name}${selector}`,
-  });
-  const routeParentInfo = useMimirQuery({
-    ...common,
-    query: `${GatewayApiHttprouteParentInfo.name}${selector}`,
-  });
-  const routeHostnameInfo = useMimirQuery({
-    ...common,
-    query: `${GatewayApiHttprouteHostnameInfo.name}${selector}`,
-  });
-  const routeStatusParentInfo = useMimirQuery({
-    ...common,
-    query: `${GatewayApiHttprouteStatusParentInfo.name}${selector}`,
-  });
-  const routeAccepted = useMimirQuery({
-    ...common,
-    query: `${GatewayApiHttprouteStatusParentAccepted.name}${selector}`,
-  });
-  const routeResolvedRefs = useMimirQuery({
-    ...common,
-    query: `${GatewayApiHttprouteStatusParentResolvedRefs.name}${selector}`,
-  });
-
-  const isLoading =
-    gatewayInfo.isLoading ||
-    gatewayStatus.isLoading ||
-    listenerInfo.isLoading ||
-    listenerAttachedRoutes.isLoading ||
-    routeParentInfo.isLoading ||
-    routeHostnameInfo.isLoading ||
-    routeStatusParentInfo.isLoading ||
-    routeAccepted.isLoading ||
-    routeResolvedRefs.isLoading;
-  const error =
-    blockingError(gatewayInfo) ??
-    blockingError(listenerInfo) ??
-    blockingError(routeParentInfo);
 
   const topology = useMemo(
-    () =>
-      buildGatewayTopology({
-        gatewayInfo: samplesOf(gatewayInfo.data),
-        gatewayStatus: optionalSamplesOf(
-          gatewayStatus.data,
-          gatewayStatus.error,
-        ),
-        listenerInfo: samplesOf(listenerInfo.data),
-        listenerAttachedRoutes: optionalSamplesOf(
-          listenerAttachedRoutes.data,
-          listenerAttachedRoutes.error,
-        ),
-        routeParentInfo: samplesOf(routeParentInfo.data),
-        routeHostnameInfo: optionalSamplesOf(
-          routeHostnameInfo.data,
-          routeHostnameInfo.error,
-        ),
-        routeStatusParentInfo: optionalSamplesOf(
-          routeStatusParentInfo.data,
-          routeStatusParentInfo.error,
-        ),
-        routeAccepted: optionalSamplesOf(
-          routeAccepted.data,
-          routeAccepted.error,
-        ),
-        routeResolvedRefs: optionalSamplesOf(
-          routeResolvedRefs.data,
-          routeResolvedRefs.error,
-        ),
-      }),
-    [
-      gatewayInfo.data,
-      gatewayStatus.data,
-      gatewayStatus.error,
-      listenerInfo.data,
-      listenerAttachedRoutes.data,
-      listenerAttachedRoutes.error,
-      routeParentInfo.data,
-      routeHostnameInfo.data,
-      routeHostnameInfo.error,
-      routeStatusParentInfo.data,
-      routeStatusParentInfo.error,
-      routeAccepted.data,
-      routeAccepted.error,
-      routeResolvedRefs.data,
-      routeResolvedRefs.error,
-    ],
+    () => buildGatewayTopology(toTopologyInputs(samplesOf(query.data))),
+    [query.data],
   );
 
-  return { ...topology, isLoading, error };
+  return {
+    ...topology,
+    isLoading: query.isLoading,
+    error: blockingError(query),
+  };
 }

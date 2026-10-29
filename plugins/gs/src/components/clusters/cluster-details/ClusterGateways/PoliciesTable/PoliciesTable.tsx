@@ -13,7 +13,7 @@ import {
   GatewayPolicy,
   isPolicyBroken,
   isPolicyUnattached,
-} from '../../../../hooks/gatewayPolicies';
+} from '../../../../utils/gatewayPolicies';
 import { ConditionStatus } from '../ConditionStatus';
 
 type PolicyRow = GatewayPolicy;

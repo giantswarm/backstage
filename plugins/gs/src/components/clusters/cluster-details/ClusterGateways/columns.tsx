@@ -1,18 +1,14 @@
-import { Cell, CellText, ColumnConfig } from '@backstage/ui';
+import { Cell, CellText, ColumnConfig, Flex, Link, Text } from '@backstage/ui';
 import {
   ConditionState,
   Gateway,
   GatewayListener,
   HttpRoute,
   HttpRouteParent,
-} from '../../../hooks/gatewayTopology';
+} from '../../../utils/gatewayTopology';
 import { ConditionStatus } from './ConditionStatus';
 
-export type ListenerRow = {
-  id: string;
-  gateway: Gateway;
-  listener?: GatewayListener;
-};
+export type GatewayRow = Gateway;
 
 export type RouteParentRow = {
   id: string;
@@ -26,61 +22,89 @@ function conditionCell(condition: ConditionState | undefined) {
   );
 }
 
-function listenerAddress(listener: GatewayListener | undefined): string {
-  if (!listener) return '—';
+/** One line per listener: `https · HTTPS/443 · *.example.com · 4 routes`. */
+function listenerLine(listener: GatewayListener): string {
   const protocol = listener.protocol ?? '?';
-  return listener.port ? `${protocol}/${listener.port}` : protocol;
+  const address = listener.port ? `${protocol}/${listener.port}` : protocol;
+  const routes =
+    listener.attachedRoutes === undefined
+      ? undefined
+      : `${listener.attachedRoutes} ${
+          listener.attachedRoutes === 1 ? 'route' : 'routes'
+        }`;
+  return [listener.name, address, listener.hostname ?? 'any', routes]
+    .filter(Boolean)
+    .join(' · ');
 }
 
-export const listenerColumns: ColumnConfig<ListenerRow>[] = [
+export const gatewayColumns: ColumnConfig<GatewayRow>[] = [
   {
     id: 'gateway',
     label: 'Gateway',
     isRowHeader: true,
     cell: row => (
       <CellText
-        title={row.gateway.name}
-        description={[row.gateway.namespace, row.gateway.className]
-          .filter(Boolean)
-          .join(' · ')}
+        title={row.name}
+        description={[row.namespace, row.className].filter(Boolean).join(' · ')}
       />
     ),
   },
   {
     id: 'accepted',
     label: 'Accepted',
-    cell: row => conditionCell(row.gateway.accepted),
+    cell: row => conditionCell(row.accepted),
   },
   {
     id: 'programmed',
     label: 'Programmed',
-    cell: row => conditionCell(row.gateway.programmed),
+    cell: row => conditionCell(row.programmed),
   },
   {
-    id: 'listener',
-    label: 'Listener',
+    id: 'listeners',
+    label: 'Listeners',
     cell: row => (
-      <CellText
-        title={row.listener?.name ?? '—'}
-        description={listenerAddress(row.listener)}
-      />
-    ),
-  },
-  {
-    id: 'hostname',
-    label: 'Hostname',
-    cell: row => (
-      <CellText title={row.listener ? (row.listener.hostname ?? 'any') : '—'} />
-    ),
-  },
-  {
-    id: 'attachedRoutes',
-    label: 'Attached routes',
-    cell: row => (
-      <CellText title={String(row.listener?.attachedRoutes ?? '—')} />
+      <Cell>
+        {row.listeners.length ? (
+          <Flex direction="column" gap="1">
+            {row.listeners.map(listener => (
+              <Text key={listener.name} variant="body-medium">
+                {listenerLine(listener)}
+              </Text>
+            ))}
+          </Flex>
+        ) : (
+          '—'
+        )}
+      </Cell>
     ),
   },
 ];
+
+/** A wildcard has no single address to open, so only concrete names link. */
+function HostnameList({ hostnames }: { hostnames: string[] | undefined }) {
+  if (hostnames === undefined) return <>—</>;
+  if (hostnames.length === 0) return <>any</>;
+  return (
+    <Flex direction="column" gap="1">
+      {hostnames.map(hostname =>
+        hostname.includes('*') ? (
+          <Text key={hostname} variant="body-medium">
+            {hostname}
+          </Text>
+        ) : (
+          <Link
+            key={hostname}
+            href={`https://${hostname}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {hostname}
+          </Link>
+        ),
+      )}
+    </Flex>
+  );
+}
 
 export const routeColumns: ColumnConfig<RouteParentRow>[] = [
   {
@@ -95,13 +119,9 @@ export const routeColumns: ColumnConfig<RouteParentRow>[] = [
     id: 'hostnames',
     label: 'Hostnames',
     cell: row => (
-      <CellText
-        title={
-          row.route.hostnames === undefined
-            ? '—'
-            : row.route.hostnames.join(', ') || 'any'
-        }
-      />
+      <Cell>
+        <HostnameList hostnames={row.route.hostnames} />
+      </Cell>
     ),
   },
   {
