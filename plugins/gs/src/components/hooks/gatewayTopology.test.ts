@@ -129,8 +129,9 @@ describe('buildGatewayTopology', () => {
     ]);
     expect(routes[0].parents).toEqual([
       {
-        gatewayNamespace: 'envoy-gateway-system',
-        gatewayName: 'giantswarm-default',
+        kind: 'Gateway',
+        namespace: 'envoy-gateway-system',
+        name: 'giantswarm-default',
         sectionName: 'https',
         accepted: { status: 'true', reason: 'Accepted' },
         resolvedRefs: { status: 'false', reason: 'RefNotPermitted' },
@@ -155,7 +156,7 @@ describe('buildGatewayTopology', () => {
       }),
     );
     expect(routes[0].parents[0]).toMatchObject({
-      gatewayNamespace: 'team-a',
+      namespace: 'team-a',
       sectionName: '',
       accepted: { status: 'true', reason: 'Accepted' },
     });
@@ -266,7 +267,53 @@ describe('buildGatewayTopology', () => {
     expect(shop?.parents[0].accepted).toEqual({ status: 'not-reported' });
   });
 
-  it('ignores parents that are not Gateways and values that are not finite', () => {
+  it('joins conditions to a ListenerSet parent, apart from a Gateway of the same name', () => {
+    // As on cicdprod: the route's only parentRef is a ListenerSet in its own
+    // namespace, and the controller also reports the Gateway behind it.
+    const listenerSet = {
+      parent_kind: 'ListenerSet',
+      parent_name: 'shop',
+      parent_section_name: 'shop-https',
+    };
+    const sameNameGateway = {
+      parent_kind: 'Gateway',
+      parent_namespace: 'team-a',
+      parent_name: 'shop',
+      parent_section_name: 'shop-https',
+    };
+    const { routes } = buildGatewayTopology(
+      inputs({
+        routeParentInfo: [sample({ ...route, ...listenerSet })],
+        routeStatusParentInfo: [
+          sample({ ...route, ...listenerSet }),
+          sample({ ...route, ...sameNameGateway }),
+        ],
+        routeAccepted: [
+          sample(
+            { ...route, ...listenerSet, reason: 'NotAllowedByListeners' },
+            '0',
+          ),
+          sample({ ...route, ...sameNameGateway, reason: 'Accepted' }),
+        ],
+        routeResolvedRefs: [
+          sample({ ...route, ...listenerSet, reason: 'ResolvedRefs' }),
+        ],
+      }),
+    );
+    expect(routes[0].parents).toEqual([
+      {
+        kind: 'ListenerSet',
+        namespace: 'team-a',
+        name: 'shop',
+        sectionName: 'shop-https',
+        accepted: { status: 'false', reason: 'NotAllowedByListeners' },
+        resolvedRefs: { status: 'true', reason: 'ResolvedRefs' },
+      },
+    ]);
+    expect(isRouteBroken(routes[0])).toBe(true);
+  });
+
+  it('ignores parents that are not Gateways or ListenerSets and values that are not finite', () => {
     const { routes } = buildGatewayTopology(
       inputs({
         routeParentInfo: [

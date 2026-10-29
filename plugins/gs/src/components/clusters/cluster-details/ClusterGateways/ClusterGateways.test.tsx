@@ -4,8 +4,9 @@ import { HttpRoute } from '../../../hooks/gatewayTopology';
 import { ClusterGatewaysContent } from './ClusterGateways';
 
 const parent = {
-  gatewayNamespace: 'envoy-gateway-system',
-  gatewayName: 'giantswarm-default',
+  kind: 'Gateway' as const,
+  namespace: 'envoy-gateway-system',
+  name: 'giantswarm-default',
   sectionName: 'https',
 };
 

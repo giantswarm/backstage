@@ -37,10 +37,17 @@ export interface Gateway {
   listeners: GatewayListener[];
 }
 
+/**
+ * The parent kinds this view shows. A route attached through a ListenerSet
+ * reports its conditions against the ListenerSet, not the Gateway behind it.
+ */
+export type HttpRouteParentKind = 'Gateway' | 'ListenerSet';
+
 export interface HttpRouteParent {
-  gatewayNamespace: string;
-  gatewayName: string;
-  /** Empty when the parentRef attaches to the whole Gateway. */
+  kind: HttpRouteParentKind;
+  namespace: string;
+  name: string;
+  /** Empty when the parentRef attaches to the whole Gateway or ListenerSet. */
   sectionName: string;
   accepted: ConditionState;
   resolvedRefs: ConditionState;
@@ -91,19 +98,28 @@ function objectKey(namespace: string, name: string): string {
 }
 
 /**
- * A parentRef may omit its namespace, which then defaults to the route's own.
- * Normalising both the spec and the status side keeps them joinable.
+ * A parentRef may omit its kind, which then defaults to Gateway, and its
+ * namespace, which then defaults to the route's own. Normalising both the spec
+ * and the status side keeps them joinable.
  */
+function parentKind(labels: Record<string, string>): string {
+  return labels.parent_kind || 'Gateway';
+}
+
+function isShownParentKind(kind: string): kind is HttpRouteParentKind {
+  return kind === 'Gateway' || kind === 'ListenerSet';
+}
+
 function parentKey(
   routeNamespace: string,
   routeName: string,
   labels: Record<string, string>,
 ): string {
-  const gatewayNamespace = labels.parent_namespace || routeNamespace;
   return [
     routeNamespace,
     routeName,
-    gatewayNamespace,
+    parentKind(labels),
+    labels.parent_namespace || routeNamespace,
     labels.parent_name ?? '',
     labels.parent_section_name ?? '',
   ].join('/');
@@ -304,16 +320,17 @@ function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
   for (const sample of inputs.routeParentInfo) {
     const { namespace, name } = sample.metric;
     if (!namespace || !name || !sample.metric.parent_name) continue;
-    // Only Gateway parents are part of this view.
-    const kind = sample.metric.parent_kind;
-    if (kind && kind !== 'Gateway') continue;
+    // Only Gateway and ListenerSet parents are part of this view.
+    const kind = parentKind(sample.metric);
+    if (!isShownParentKind(kind)) continue;
     const entry = ensureRoute(namespace, name);
     const key = parentKey(namespace, name, sample.metric);
     if (entry.parentKeys.has(key)) continue;
     entry.parentKeys.add(key);
     entry.route.parents.push({
-      gatewayNamespace: sample.metric.parent_namespace || namespace,
-      gatewayName: sample.metric.parent_name,
+      kind,
+      namespace: sample.metric.parent_namespace || namespace,
+      name: sample.metric.parent_name,
       sectionName: sample.metric.parent_section_name ?? '',
       accepted: routeCondition(accepted, statusParents, key),
       resolvedRefs: routeCondition(resolvedRefs, statusParents, key),
@@ -333,8 +350,8 @@ function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
         ? Array.from(hostnames).sort()
         : undefined,
       parents: route.parents.sort((a, b) =>
-        `${a.gatewayNamespace}/${a.gatewayName}/${a.sectionName}`.localeCompare(
-          `${b.gatewayNamespace}/${b.gatewayName}/${b.sectionName}`,
+        `${a.kind}/${a.namespace}/${a.name}/${a.sectionName}`.localeCompare(
+          `${b.kind}/${b.namespace}/${b.name}/${b.sectionName}`,
         ),
       ),
     }))

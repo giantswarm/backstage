@@ -104,17 +104,17 @@ export const routeColumns: ColumnConfig<RouteParentRow>[] = [
   },
   {
     id: 'parent',
-    label: 'Gateway / listener',
+    label: 'Parent / listener',
     cell: row =>
       row.parent ? (
         <CellText
-          title={row.parent.gatewayName}
-          description={`${row.parent.gatewayNamespace} · ${
+          title={row.parent.name}
+          description={`${row.parent.kind} · ${row.parent.namespace} · ${
             row.parent.sectionName || 'all listeners'
           }`}
         />
       ) : (
-        <CellText title="No Gateway parent" />
+        <CellText title="No Gateway or ListenerSet parent" />
       ),
   },
   {

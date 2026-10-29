@@ -36,7 +36,7 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
   return ordered.flatMap(route =>
     route.parents.length
       ? route.parents.map(parent => ({
-          id: `${route.id}/${parent.gatewayNamespace}/${parent.gatewayName}/${parent.sectionName}`,
+          id: `${route.id}/${parent.kind}/${parent.namespace}/${parent.name}/${parent.sectionName}`,
           route,
           parent,
         }))
