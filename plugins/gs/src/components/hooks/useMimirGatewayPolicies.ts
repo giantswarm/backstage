@@ -1,21 +1,8 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
 import { sanitizePromQLValue } from './promql';
-import { MimirMetricSample, MimirQueryResponse } from '../../apis/mimir/types';
 import { buildGatewayPolicies, policyMetrics } from './gatewayPolicies';
-
-function samplesOf(
-  response: MimirQueryResponse | undefined,
-): MimirMetricSample[] {
-  return response?.data?.result ?? [];
-}
-
-function optionalSamplesOf(
-  data: MimirQueryResponse | undefined,
-  error: unknown,
-): MimirMetricSample[] | undefined {
-  return error ? undefined : samplesOf(data);
-}
+import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
 
 /**
  * One selector for a metric across all policy kinds. The names come from the
@@ -84,5 +71,5 @@ export function useMimirGatewayPolicies(options: {
     ],
   );
 
-  return { policies, isLoading, error: info.error };
+  return { policies, isLoading, error: blockingError(info) };
 }

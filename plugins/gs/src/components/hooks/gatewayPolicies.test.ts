@@ -4,7 +4,7 @@ import {
   EnvoyGatewaySecurityPolicyInfo,
   EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
   EnvoyGatewaySecurityPolicyTargetInfo,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   GatewayPoliciesInputs,
   buildGatewayPolicies,
@@ -177,7 +177,10 @@ describe('buildGatewayPolicies', () => {
     const [policy] = buildGatewayPolicies(
       inputs({ targetInfo: [], ancestorAccepted: [] }),
     );
-    expect(policy.status).toEqual({ status: 'not-available' });
+    expect(policy.status).toEqual({
+      status: 'not-available',
+      cause: 'not-exported',
+    });
     expect(isPolicyUnattached(policy)).toBe(false);
   });
 
@@ -193,7 +196,10 @@ describe('buildGatewayPolicies', () => {
         ancestorAccepted: undefined,
       }),
     );
-    expect(policy.status).toEqual({ status: 'not-available' });
+    expect(policy.status).toEqual({
+      status: 'not-available',
+      cause: 'load-failed',
+    });
   });
 
   it('keeps policies of different kinds with the same name apart', () => {

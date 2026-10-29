@@ -12,7 +12,7 @@ import {
   EnvoyGatewaySecurityPolicyInfo,
   EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
   EnvoyGatewaySecurityPolicyTargetInfo,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { ConditionState, setWorst, toCondition } from './gatewayTopology';
 
 export type PolicyKind =
@@ -207,9 +207,16 @@ export function buildGatewayPolicies(
             `${b.namespace}/${b.name}/${b.sectionName ?? ''}`,
           ),
         );
-      const status: ConditionState = statusExported
-        ? { status: 'not-reported' }
-        : { status: 'not-available' };
+      let status: ConditionState = { status: 'not-reported' };
+      if (!statusExported) {
+        status = {
+          status: 'not-available',
+          cause:
+            inputs.ancestorAccepted === undefined
+              ? 'load-failed'
+              : 'not-exported',
+        };
+      }
       return {
         ...policy,
         targets: Array.from(targets.values()).sort((a, b) =>
