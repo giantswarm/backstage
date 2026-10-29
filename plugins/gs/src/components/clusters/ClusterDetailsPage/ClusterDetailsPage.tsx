@@ -35,7 +35,12 @@ export const ClusterDetailsPage = ({ actions }: ClusterDetailsPageProps) => {
               <ClusterApps />
             </ClusterErrorsProvider>
           </ClusterLayout.Route>
-          <ClusterLayout.Route path="/gateways" title="Gateways">
+          <ClusterLayout.Route
+            path="/gateways"
+            title="Gateways"
+            // Everything on the tab comes from Mimir metrics.
+            if={({ mimirAvailable }) => mimirAvailable !== false}
+          >
             <ClusterErrorsProvider>
               <ClusterGateways />
             </ClusterErrorsProvider>

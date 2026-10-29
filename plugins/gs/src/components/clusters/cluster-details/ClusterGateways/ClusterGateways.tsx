@@ -1,38 +1,29 @@
 import { useMemo } from 'react';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { Alert, Flex, Table, Text } from '@backstage/ui';
+import { Alert, Flex, SearchField, Table, Text, useTable } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import { useMimirAvailable } from '../../../hooks/useMimirAvailable';
 import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology';
 import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
-import { GatewayPolicy } from '../../../hooks/gatewayPolicies';
+import { GatewayPolicy } from '../../../utils/gatewayPolicies';
 import { PoliciesTable } from './PoliciesTable';
 import {
   Gateway,
   HttpRoute,
   gatewayRank,
   routeRank,
-} from '../../../hooks/gatewayTopology';
+} from '../../../utils/gatewayTopology';
 import {
-  ListenerRow,
+  GatewayRow,
   RouteParentRow,
-  listenerColumns,
+  gatewayColumns,
   routeColumns,
 } from './columns';
 
-function toListenerRows(gateways: Gateway[]): ListenerRow[] {
+function toGatewayRows(gateways: Gateway[]): GatewayRow[] {
   // Failing Gateways first, then those without status. The sort is stable, so
   // each band keeps the name order.
-  const ordered = [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
-  return ordered.flatMap(gateway =>
-    gateway.listeners.length
-      ? gateway.listeners.map(listener => ({
-          id: `${gateway.id}/${listener.name}`,
-          gateway,
-          listener,
-        }))
-      : [{ id: gateway.id, gateway }],
-  );
+  return [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
 }
 
 function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
@@ -47,6 +38,23 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
           parent,
         }))
       : [{ id: route.id, route }],
+  );
+}
+
+/** Matches a route row by route name, namespace, hostname or parent name. */
+export function searchRouteRows(
+  rows: RouteParentRow[],
+  search: string,
+): RouteParentRow[] {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return rows;
+  return rows.filter(({ route, parent }) =>
+    [
+      route.name,
+      route.namespace,
+      ...(route.hostnames ?? []),
+      parent?.name ?? '',
+    ].some(value => value.toLowerCase().includes(needle)),
   );
 }
 
@@ -105,9 +113,17 @@ export const ClusterGatewaysContent = ({
   policiesLoading,
   policiesError,
 }: ClusterGatewaysContentProps) => {
-  const listenerRows = useMemo(() => toListenerRows(gateways), [gateways]);
+  const gatewayRows = useMemo(() => toGatewayRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
   const unavailable = useMemo(() => unavailableCause(routes), [routes]);
+  // No sortFn: the rows keep the problems-first order from toRouteRows.
+  const { tableProps: routeTableProps, search } = useTable<RouteParentRow>({
+    mode: 'complete',
+    data: isLoading ? undefined : routeRows,
+    searchFn: searchRouteRows,
+    searchDebounceMs: 150,
+    paginationOptions: { type: 'none' },
+  });
 
   if (mimirAvailable === false) {
     return (
@@ -137,9 +153,9 @@ export const ClusterGatewaysContent = ({
         appear.
       </Text>
       <InfoCard title="Gateways">
-        <Table<ListenerRow>
-          columnConfig={listenerColumns}
-          data={isLoading ? undefined : listenerRows}
+        <Table<GatewayRow>
+          columnConfig={gatewayColumns}
+          data={isLoading ? undefined : gatewayRows}
           isPending={isLoading}
           pagination={{ type: 'none' }}
           emptyState={
@@ -153,14 +169,26 @@ export const ClusterGatewaysContent = ({
         {!isLoading && unavailable ? (
           <Alert status="info" icon title={unavailableNotice[unavailable]} />
         ) : null}
+        <SearchField
+          aria-label="Search HTTPRoutes"
+          placeholder="Search by name, namespace, hostname or parent"
+          value={search.value}
+          onChange={search.onChange}
+          style={{ maxWidth: 420 }}
+        />
         <Table<RouteParentRow>
+          {...routeTableProps}
           columnConfig={routeColumns}
-          data={isLoading ? undefined : routeRows}
           isPending={isLoading}
-          pagination={{ type: 'none' }}
           emptyState={
             <Text variant="body-medium" color="secondary">
-              No HTTPRoutes found on cluster <code>{clusterName}</code>.
+              {search.value ? (
+                'No HTTPRoutes match the search.'
+              ) : (
+                <>
+                  No HTTPRoutes found on cluster <code>{clusterName}</code>.
+                </>
+              )}
             </Text>
           }
         />
