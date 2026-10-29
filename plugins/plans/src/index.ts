@@ -27,4 +27,5 @@ export type {
   PlansCommentsResponse,
   PlansReviewCommentsResponse,
   PlansEpicsResponse,
+  MagazineConfigResponse,
 } from './apis';

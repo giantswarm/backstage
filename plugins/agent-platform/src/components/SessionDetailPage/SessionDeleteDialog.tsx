@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -19,10 +20,34 @@ export function describeSessionDeleteFailure(
   error: Error,
   loss: RuntimeLoss | undefined,
 ): string {
-  if (!loss) {
+  // Sends that kept timing out say nothing about the runtime's node: the
+  // backend's message stands.
+  if (!loss || loss.source === 'send-timeouts') {
     return error.message;
   }
-  return `kagent could not delete this session because it suspends a session’s runtime before removing it, and this runtime cannot be reached — it was lost with the platform node it lived on. A kagent update that skips that step for a lost runtime is on its way; until it lands the session stays listed. Nothing else is affected. (${error.message})`;
+  return `kagent could not delete this session: it suspends the runtime first, and this runtime was lost with its platform node. A kagent fix is coming; until then the session stays listed. Nothing else is affected. (${error.message})`;
+}
+
+/**
+ * How long a delete runs before the dialog says what it is waiting for. Right
+ * after a turn ends kagent refuses the delete until the turn has settled, and
+ * the backend retries it for up to about 16 s; an ordinary delete answers well
+ * within this.
+ */
+export const SESSION_DELETE_SETTLING_HINT_MS = 2_000;
+
+/** Whether `isBusy` has been true for `afterMs` without a break. */
+function useBusyFor(isBusy: boolean, afterMs: number): boolean {
+  const [isLong, setLong] = useState(false);
+  useEffect(() => {
+    setLong(false);
+    if (!isBusy) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setLong(true), afterMs);
+    return () => clearTimeout(timer);
+  }, [isBusy, afterMs]);
+  return isBusy && isLong;
 }
 
 export type SessionDeleteDialogProps = {
@@ -48,10 +73,12 @@ export type SessionDeleteDialogProps = {
  * Two things, both of them things the reader cannot see for themselves.
  *
  * The first is what "deleted" means here, in both directions at once: kagent
- * soft-deletes, so the record survives on the server, while every read filters it
- * out — so for anyone using Backstage it is gone, and nothing in this UI can bring
- * it back. Saying only "permanently deleted" would be wrong about the retention;
- * saying only "hidden" would imply an undo that does not exist.
+ * soft-deletes — it shuts the runtime down and marks the session `DELETED`, but
+ * the row, its tasks and its events stay in the controller's database (checked on
+ * kagent 1.5.0, T62) — while every read answers 404 for it — so for anyone using
+ * Backstage it is gone, and nothing in this UI can bring it back. Saying only
+ * "permanently deleted" would be wrong about the retention; saying only "hidden"
+ * would imply an undo that does not exist.
  *
  * The second is conditional, and is the reason `isUserScoped` is a prop: on a
  * controller running in `unsecure` mode kagent ignores the forwarded identity and
@@ -69,6 +96,7 @@ export function SessionDeleteDialog({
   onConfirm,
   isUserScoped,
 }: SessionDeleteDialogProps) {
+  const isSettling = useBusyFor(isDeleting, SESSION_DELETE_SETTLING_HINT_MS);
   return (
     <ConfirmDialog
       isOpen={isOpen}
@@ -82,15 +110,23 @@ export function SessionDeleteDialog({
       onConfirm={onConfirm}
     >
       <Text variant="body-medium">
-        The session and its conversation stop being listed and cannot be opened
-        again. kagent keeps the record on its own server, but there is no way to
-        restore it from here.
+        The runtime shuts down, and the session can no longer be listed or
+        opened. kagent keeps it in its database, but it cannot be restored from
+        here.
       </Text>
       {isUserScoped === false && (
         <Text variant="body-medium">
-          This kagent deployment does not scope sessions to individual users, so
-          this session may have been started by somebody else.
+          This kagent does not scope sessions to users, so someone else may have
+          started this session.
         </Text>
+      )}
+      {isSettling && (
+        <div role="status">
+          <Text variant="body-medium">
+            Waiting for the session's last turn to settle; the delete goes
+            through as soon as kagent allows it.
+          </Text>
+        </div>
       )}
     </ConfirmDialog>
   );

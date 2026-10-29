@@ -1,4 +1,6 @@
 {{- if eq .Values.database.engine "postgresql" }}
+{{- include "backstage.validateDatabaseBudget" . }}
+{{- if and .Values.database.postgresql.podMonitor.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PodMonitor") }}
 ---
 # Pod monitor used to monitor the postgresql cluster. We cannot use .spec.enablePodMonitor because we cannot add the observability.giantswarm.io/tenant label
 apiVersion: monitoring.coreos.com/v1
@@ -15,6 +17,7 @@ spec:
       cnpg.io/cluster: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}
   podMetricsEndpoints:
   - port: metrics
+{{- end }}
 ---
 # Postgresql cluster
 apiVersion: postgresql.cnpg.io/v1
@@ -35,15 +38,12 @@ spec:
   affinity:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  postgresql:
+    parameters:
+      max_connections: {{ .Values.database.postgresql.maxConnections | quote }}
+      superuser_reserved_connections: {{ .Values.database.postgresql.superuserReservedConnections | quote }}
   storage:
     size: {{ .Values.database.postgresql.storageSize }}
   resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-      ephemeral-storage: 1Gi
-    limits:
-      cpu: 1000m
-      memory: 512Mi
-      ephemeral-storage: 2Gi
+    {{- toYaml .Values.database.postgresql.resources | nindent 4 }}
 {{- end }}

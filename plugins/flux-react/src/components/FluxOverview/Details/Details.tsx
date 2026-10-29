@@ -1,5 +1,7 @@
 import { Progress } from '@backstage/core-components';
 import {
+  FluxInstance,
+  FluxReport,
   GitRepository,
   HelmRelease,
   HelmRepository,
@@ -8,13 +10,23 @@ import {
   ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
+  ResourceSet,
+  ResourceSetInputProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  FLUX_RESOURCE_CLASSES,
+  FluxResource,
+  FluxResourceCollections,
+  findFluxResourceCollectionKey,
+} from '../../../utils/fluxResources';
 import { Box, Flex, Text } from '@backstage/ui';
 import { KustomizationDetails } from '../KustomizationDetails';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
 import { RepositoryDetails } from '../RepositoryDetails';
 import { ImageAutomationDetails } from '../ImageAutomationDetails';
+import { FluxOperatorDetails } from '../FluxOperatorDetails';
+import { ResourceManifestDialogProvider } from '../ResourceManifestDialogProvider';
 
 type DetailsProps = {
   resourceRef: {
@@ -23,38 +35,16 @@ type DetailsProps = {
     name: string;
     namespace?: string;
   };
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
-  allKustomizations: Kustomization[];
-  allHelmReleases: HelmRelease[];
-  allGitRepositories: GitRepository[];
-  allOCIRepositories: OCIRepository[];
-  allHelmRepositories: HelmRepository[];
-  allImagePolicies: ImagePolicy[];
-  allImageRepositories: ImageRepository[];
-  allImageUpdateAutomations: ImageUpdateAutomation[];
+  resource?: FluxResource;
+  resources: FluxResourceCollections;
   treeBuilder?: KustomizationTreeBuilder;
   isLoadingResources: boolean;
 };
 
-export const Details = ({
+const DetailsContent = ({
   resourceRef,
   resource,
-  allKustomizations,
-  allHelmReleases,
-  allGitRepositories,
-  allOCIRepositories,
-  allHelmRepositories,
-  allImagePolicies,
-  allImageRepositories,
-  allImageUpdateAutomations,
+  resources,
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
@@ -67,44 +57,10 @@ export const Details = ({
     let resourceKindName = resourceRef.kind;
     let resourcesInCluster = 0;
 
-    if (resourceRef.kind === Kustomization.kind.toLowerCase()) {
-      resourceKindName = 'Kustomization';
-      resourcesInCluster = allKustomizations.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === HelmRelease.kind.toLowerCase()) {
-      resourceKindName = 'HelmRelease';
-      resourcesInCluster = allHelmReleases.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === GitRepository.kind.toLowerCase()) {
-      resourceKindName = 'GitRepository';
-      resourcesInCluster = allGitRepositories.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === OCIRepository.kind.toLowerCase()) {
-      resourceKindName = 'OCIRepository';
-      resourcesInCluster = allOCIRepositories.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === HelmRepository.kind.toLowerCase()) {
-      resourceKindName = 'HelmRepository';
-      resourcesInCluster = allHelmRepositories.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === ImagePolicy.kind.toLowerCase()) {
-      resourceKindName = 'ImagePolicy';
-      resourcesInCluster = allImagePolicies.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === ImageRepository.kind.toLowerCase()) {
-      resourceKindName = 'ImageRepository';
-      resourcesInCluster = allImageRepositories.filter(
-        r => r.cluster === resourceRef.cluster,
-      ).length;
-    } else if (resourceRef.kind === ImageUpdateAutomation.kind.toLowerCase()) {
-      resourceKindName = 'ImageUpdateAutomation';
-      resourcesInCluster = allImageUpdateAutomations.filter(
+    const collectionKey = findFluxResourceCollectionKey(resourceRef.kind);
+    if (collectionKey) {
+      resourceKindName = FLUX_RESOURCE_CLASSES[collectionKey].kind;
+      resourcesInCluster = (resources[collectionKey] as FluxResource[]).filter(
         r => r.cluster === resourceRef.cluster,
       ).length;
     }
@@ -113,7 +69,7 @@ export const Details = ({
     const diagnosticMessage =
       resourcesInCluster === 0
         ? `No ${resourceKindName} resources were found in cluster ${resourceRef.cluster}. This could indicate a permissions issue or that this resource type is not available.`
-        : `This resource is referenced in a Kustomization inventory but could not be found. It may have been deleted or the inventory data may be stale.`;
+        : `This resource is referenced in an inventory but could not be found. It may have been deleted or the inventory data may be stale.`;
 
     return (
       <Flex direction="column" gap="2">
@@ -137,19 +93,19 @@ export const Details = ({
       {resource.getKind() === Kustomization.kind && (
         <KustomizationDetails
           kustomization={resource as Kustomization}
-          allKustomizations={allKustomizations}
-          allGitRepositories={allGitRepositories}
-          allOCIRepositories={allOCIRepositories}
+          allKustomizations={resources.kustomizations}
+          allGitRepositories={resources.gitRepositories}
+          allOCIRepositories={resources.ociRepositories}
           treeBuilder={treeBuilder}
         />
       )}
       {resource.getKind() === HelmRelease.kind && (
         <HelmReleaseDetails
           helmRelease={resource as HelmRelease}
-          allHelmReleases={allHelmReleases}
-          allGitRepositories={allGitRepositories}
-          allOCIRepositories={allOCIRepositories}
-          allHelmRepositories={allHelmRepositories}
+          allHelmReleases={resources.helmReleases}
+          allGitRepositories={resources.gitRepositories}
+          allOCIRepositories={resources.ociRepositories}
+          allHelmRepositories={resources.helmRepositories}
           treeBuilder={treeBuilder}
         />
       )}
@@ -160,8 +116,8 @@ export const Details = ({
           repository={
             resource as GitRepository | OCIRepository | HelmRepository
           }
-          allKustomizations={allKustomizations}
-          allHelmReleases={allHelmReleases}
+          allKustomizations={resources.kustomizations}
+          allHelmReleases={resources.helmReleases}
         />
       )}
       {(resource.getKind() === ImagePolicy.kind ||
@@ -171,12 +127,33 @@ export const Details = ({
           resource={
             resource as ImagePolicy | ImageRepository | ImageUpdateAutomation
           }
-          allImagePolicies={allImagePolicies}
-          allImageRepositories={allImageRepositories}
-          allGitRepositories={allGitRepositories}
+          allImagePolicies={resources.imagePolicies}
+          allImageRepositories={resources.imageRepositories}
+          allGitRepositories={resources.gitRepositories}
+          allOCIRepositories={resources.ociRepositories}
+          treeBuilder={treeBuilder}
+        />
+      )}
+      {(resource instanceof FluxInstance ||
+        resource instanceof ResourceSet ||
+        resource instanceof ResourceSetInputProvider ||
+        resource instanceof FluxReport) && (
+        <FluxOperatorDetails
+          resource={resource}
+          resources={resources}
           treeBuilder={treeBuilder}
         />
       )}
     </Box>
   );
 };
+
+/**
+ * The manifest dialog's provider wraps every state of the panel, so an open
+ * dialog stays open when its resource is selected away or disappears.
+ */
+export const Details = (props: DetailsProps) => (
+  <ResourceManifestDialogProvider>
+    <DetailsContent {...props} />
+  </ResourceManifestDialogProvider>
+);

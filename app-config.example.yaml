@@ -131,13 +131,6 @@ muster:
       # OAuth provider is registered for this name). Requests without a token
       # are rejected with 401.
       authProvider: oidc-main
-      # Read-only safety gate (the default). `call_tool` invocations whose
-      # tool name looks mutating -- apply/create/update/delete/patch/scale/
-      # restart/start/stop/exec/write/remove/set -- and workflow runs are
-      # blocked with 403 unless this is true. Leave unset for GitOps-managed
-      # installations; opt a single installation in only when you mean it.
-      # allowMutations: false
-      #
       # MCP server (as registered in muster) fronting this installation's own
       # Prometheus/Mimir, used by the "MCP usage" view. Defaults to the
       # `<name>-mcp-prometheus` naming convention, then to the only

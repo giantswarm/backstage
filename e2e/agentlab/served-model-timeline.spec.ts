@@ -4,6 +4,7 @@ import { lab } from './lab';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
   stubModelManagerTools,
   type ToolCall,
 } from './model-manager.fixture';
@@ -352,16 +353,19 @@ async function stageModelManager(page: Page): Promise<{
       await stub.unroute();
       await page.unroute('**/served-models/try', onTry);
       await dropPersistedQueriesOnNextLoad(page);
-      await page.goto('/agent-platform/models/serving');
+      await page.goto('/customize/models/hosting');
     },
   };
 }
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 /** One inventory poll while a served model is on its way (10 s) plus render. */
 const POLL_TIMEOUT = 30_000;
 
 test.describe('serving: the served model’s step timeline', () => {
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test('Serve opens the timeline; the steps turn done in order with the weights’ bytes, then cached; Ready shows the endpoint, the ModelConfig and Try it answering 401 without and 200 as the person', async ({
     admin,
   }) => {
@@ -371,12 +375,13 @@ test.describe('serving: the served model’s step timeline', () => {
       await open(admin, SERVING);
 
       await admin.getByRole('button', { name: /Serve model/ }).click();
-      const dialog = admin.getByRole('dialog', { name: 'Serve model' });
-      await expect(dialog.getByTestId('serve-fit-verdict')).toContainText(
+      await expect(admin).toHaveURL(/\/customize\/models\/hosting\/serve/);
+      await expect(admin.getByTestId('serve-fit-verdict')).toContainText(
         'Fits — the node comes as g6.xlarge',
       );
-      await dialog.getByRole('button', { name: 'Serve' }).click();
-      await expect(dialog).toBeHidden();
+      await admin.getByRole('button', { name: 'Serve', exact: true }).click();
+      // Accepted: back on Running models, the served model's steps open.
+      await expect(admin).toHaveURL(/\/customize\/models\/hosting\/?$/);
 
       const panel = admin.getByTestId('served-model-lifecycle');
       await expect(
@@ -410,7 +415,12 @@ test.describe('serving: the served model’s step timeline', () => {
         'pending',
       );
       await expect(step('pullingImage')).toContainText('typ. 4 min');
-      await expect(panel).toContainText('weights in the cache');
+      // The header reads as the row does (its status and the backend's
+      // reason), never a phase word of its own: the phase is the steps.
+      await expect(panel.getByText('Pending', { exact: true })).toBeVisible();
+      await expect(panel.getByTestId('served-readiness-reason')).toHaveText(
+        '· DownloadingWeights',
+      );
 
       // Stage 2 (the next poll, 10 s): weights cached, image pulled, vLLM loading.
       await expect(step('loading')).toHaveAttribute(
@@ -434,7 +444,7 @@ test.describe('serving: the served model’s step timeline', () => {
       await expect(step('ready')).toHaveAttribute('data-state', 'done', {
         timeout: POLL_TIMEOUT,
       });
-      await expect(panel).toContainText('· ready');
+      await expect(panel.getByText('Ready', { exact: true })).toBeVisible();
       await expect(panel.getByTestId('served-model-endpoint')).toHaveText(
         ENDPOINT,
       );
@@ -454,11 +464,17 @@ test.describe('serving: the served model’s step timeline', () => {
         staged.reads.slice(0, 3),
         'the inventory was read once per stage: the page polled at 10 s while the model was on its way',
       ).toEqual(['downloading', 'loading', 'ready']);
+      // The verdict's check, then one pinned to each node of the lab's
+      // inventory for Serve model's Nodes field.
+      const [verdict, ...perNode] = staged.callsOf('check_fit');
+      expect(verdict.arguments, 'the verdict judged the preset').toEqual({
+        model: 'qwen3-4b-instruct',
+      });
       expect(
-        [...staged.callsOf('check_fit'), ...staged.callsOf('load_model')].map(
-          call => call.name,
-        ),
-      ).toEqual(['x_model-manager_check_fit', 'x_model-manager_load_model']);
+        perNode.map(call => call.arguments.node),
+        'every further check is pinned to a node',
+      ).not.toContain(undefined);
+      expect(staged.callsOf('load_model'), 'Serve loads once').toHaveLength(1);
       expect(
         staged.tries,
         'the try named the installation, the model id the ModelConfig sends (not the serving object) and the endpoint model-manager reported',
@@ -491,7 +507,7 @@ test.describe('serving: the served model’s step timeline', () => {
         row.getByText('Stopping', { exact: true }),
         'the row reads Stopping while the object is deleted',
       ).toBeVisible({ timeout: POLL_TIMEOUT });
-      await expect(panel).toContainText('· stopping');
+      await expect(panel.getByText('Stopping', { exact: true })).toBeVisible();
       await expect(
         panel.getByTestId('served-model-gone'),
         'and the panel says so once model-manager no longer lists it',
@@ -544,7 +560,11 @@ test.describe('serving: the served model’s step timeline', () => {
         .getByRole('button', { name: 'Show steps of model qwen3-4b-instruct' })
         .click();
       const panel = admin.getByTestId('served-model-lifecycle');
-      await expect(panel).toContainText('· failed · ImagePullBackOff');
+      // The header is the row's status; the failed step below says it failed.
+      await expect(panel.getByText('Pending', { exact: true })).toBeVisible();
+      await expect(panel.getByTestId('served-readiness-reason')).toHaveText(
+        '· ImagePullBackOff',
+      );
       const pull = panel.locator(
         '[data-testid="lifecycle-step"][data-step="pullingImage"]',
       );

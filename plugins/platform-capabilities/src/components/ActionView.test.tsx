@@ -5,6 +5,7 @@ import {
   AGENT_PLATFORM_DEFINITION,
   DENIED_ACTION,
   installation,
+  READY_TO_MERGE_ACTION,
   REFUSED_ACTION,
   REMOVED_ACTION,
   REVERTED_ACTION,
@@ -135,9 +136,34 @@ describe('ActionView', () => {
     expect(record).not.toHaveTextContent(/unknown/i);
   });
 
+  it('a ready to merge action: its own word, the actor’s merge as the next step, no approval asked', async () => {
+    const record = await render(READY_TO_MERGE_ACTION);
+    expect(screen.getByTestId('action-line')).toHaveTextContent(
+      /^enable agent-platform by someone · Ready to merge · .+ ago$/,
+    );
+    expect(screen.getByTestId('action-state')).toHaveAttribute(
+      'data-state',
+      'ready to merge',
+    );
+    expect(within(record).getByTestId('action-next-step')).toHaveTextContent(
+      'No Team review needed: merge the pull requests once their checks are green.',
+    );
+    expect(within(record).getByTestId('action-approval')).toHaveTextContent(
+      'Approval: not required',
+    );
+    expect(
+      within(record).getByRole('link', { name: 'example/example-configs#7' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/example/example-configs/pull/7',
+    );
+    expect(record).not.toHaveTextContent(/unknown|pending/i);
+  });
+
   it('has a word of its own for every state an action can be in', () => {
     const states: ActionStateName[] = [
       'pending approval',
+      'ready to merge',
       'rolling out',
       'waiting for the customer',
       'enabled',

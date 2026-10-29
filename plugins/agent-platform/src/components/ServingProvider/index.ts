@@ -1,4 +1,5 @@
 export {
+  hasServingLayer,
   ServingProvider,
   useOptionalServing,
   useServing,

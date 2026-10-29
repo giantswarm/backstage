@@ -81,7 +81,7 @@ export const AppStatus = ({
     );
   }
 
-  const lastTransitionTime = app.getStatus()!.release.lastDeployed;
+  const lastTransitionTime = app.getStatus()!.release.lastDeployed ?? undefined;
   const reason = app.getStatus()!.release.reason;
 
   return (

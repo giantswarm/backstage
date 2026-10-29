@@ -1,13 +1,17 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   INITIAL_MODEL_CONFIG_FORM,
   ModelConfigFormValues,
+  PLACEHOLDER_API_KEY,
 } from '../lib/modelConfigs';
 import { useSaveModelConfig } from './useSaveModelConfig';
 
@@ -27,6 +31,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 const CLUSTER = 'gazelle';
 
+const analyticsApi = mockApis.analytics.mock();
+
 function values(
   overrides: Partial<ModelConfigFormValues> = {},
 ): ModelConfigFormValues {
@@ -39,23 +45,26 @@ function values(
   };
 }
 
-function makeModelConfig(
-  spec: crds.kagent.v1alpha3.ModelConfig['spec'],
-): ModelConfig {
+function makeModelConfig(spec: ModelConfigInterface['spec']): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: 'kagent' },
       spec,
-    } as crds.kagent.v1alpha3.ModelConfig,
+    } as ModelConfigInterface,
     CLUSTER,
   );
 }
 
 function setup() {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kubernetesApiRef, { proxy: jest.fn() }]]}>
+    <TestApiProvider
+      apis={[
+        [kubernetesApiRef, { proxy: jest.fn() }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -70,6 +79,7 @@ function setup() {
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   mockCreateResource.mockReset();
   mockCreateResource.mockResolvedValue(undefined);
   mockPatchResource.mockReset();
@@ -119,6 +129,14 @@ describe('useSaveModelConfig', () => {
       }),
     });
     expect(secretCall).toBeDefined();
+    // Reported without the model's name, provider or endpoint.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelCreated',
+        attributes: {},
+      }),
+    );
   });
 
   it('replaces an existing secret in place', async () => {
@@ -185,6 +203,56 @@ describe('useSaveModelConfig', () => {
         gvk: expect.objectContaining({ plural: 'modelconfigs' }),
         patch: expect.objectContaining({
           spec: expect.objectContaining({ model: 'qwen3-32b' }),
+        }),
+      }),
+    );
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelUpdated',
+        attributes: {},
+      }),
+    );
+  });
+
+  it('rewrites the secret for a new provider when no key was entered', async () => {
+    // The stored Secret holds the old provider's canonical key; with the key
+    // field left empty, the endpoint is taken to need none and the Secret
+    // gets the placeholder under the new provider's key.
+    const original = makeModelConfig({
+      provider: 'OpenAI',
+      model: 'qwen3-8-27b',
+      apiKeySecret: 'kagent-qwen3',
+      apiKeySecretKey: 'OPENAI_API_KEY',
+    });
+
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.save({
+        installation: CLUSTER,
+        values: values({ provider: 'Anthropic', apiKey: '' }),
+        original,
+      });
+    });
+
+    expect(mockPatchResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'kagent-qwen3',
+        patch: {
+          data: null,
+          stringData: { ANTHROPIC_API_KEY: PLACEHOLDER_API_KEY },
+        },
+      }),
+    );
+    expect(mockPatchResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gvk: expect.objectContaining({ plural: 'modelconfigs' }),
+        patch: expect.objectContaining({
+          spec: expect.objectContaining({
+            apiKeySecret: 'kagent-qwen3',
+            apiKeySecretKey: 'ANTHROPIC_API_KEY',
+          }),
         }),
       }),
     );
@@ -260,7 +328,7 @@ describe('useSaveModelConfig', () => {
       await expect(
         result.current.save({
           installation: CLUSTER,
-          values: values({ keyless: true, apiKey: '' }),
+          values: values({ apiKey: '' }),
         }),
       ).rejects.toThrow(/already exists/);
     });
@@ -268,5 +336,6 @@ describe('useSaveModelConfig', () => {
     // The mutation's error state reaches React on a later tick than the
     // rejection does, so poll for it instead of asserting right away.
     await waitFor(() => expect(result.current.error).toBe(conflict));
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 });

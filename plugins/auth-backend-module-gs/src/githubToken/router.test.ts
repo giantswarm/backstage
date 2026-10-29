@@ -6,7 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import { SUBJECT_TOKEN_HEADER } from '../clusterToken/router';
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 import { createGithubTokenRouter } from './router';
 
 const logger = {
@@ -23,7 +23,7 @@ const httpAuth = {
   }),
 } as unknown as HttpAuthService;
 
-class FakeGithub implements MusterServerGateway {
+class StubMusterGateway implements MusterServerGateway {
   readonly server = 'github';
   loginResult: AuthLoginResult = {
     status: 'auth_required',
@@ -62,7 +62,7 @@ const CONFIG = {
   },
 };
 
-function buildApp(github: FakeGithub, configData: object = CONFIG) {
+function buildApp(github: StubMusterGateway, configData: object = CONFIG) {
   const router = createGithubTokenRouter({
     config: new ConfigReader(configData),
     logger,
@@ -113,7 +113,7 @@ describe('createGithubTokenRouter', () => {
 
   it('returns undefined when gs.github is not configured', () => {
     expect(
-      buildApp(new FakeGithub(), {
+      buildApp(new StubMusterGateway(), {
         gs: { clusterTokenBroker: CONFIG.gs.clusterTokenBroker },
       }),
     ).toBeUndefined();
@@ -121,18 +121,18 @@ describe('createGithubTokenRouter', () => {
 
   it('refuses gs.github without the broker credentials', () => {
     expect(() =>
-      buildApp(new FakeGithub(), { gs: { github: CONFIG.gs.github } }),
+      buildApp(new StubMusterGateway(), { gs: { github: CONFIG.gs.github } }),
     ).toThrow(/gs.clusterTokenBroker/);
   });
 
   it('requires the subject token header', async () => {
-    const app = buildApp(new FakeGithub())!;
+    const app = buildApp(new StubMusterGateway())!;
     const response = await request(app).post('/github-token');
     expect(response.status).toBe(400);
   });
 
   it('exchanges the Dex ID token for the grant with the broker client and audience, and caches it', async () => {
-    const github = new FakeGithub();
+    const github = new StubMusterGateway();
     const app = buildApp(github)!;
     const fetchSpy = brokerAnswers({
       body: { access_token: 'ghu_live', expires_in: 27000 },
@@ -174,7 +174,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it("answers 401 no_grant with muster's connect URL when the person holds no grant", async () => {
-    const github = new FakeGithub();
+    const github = new StubMusterGateway();
     const app = buildApp(github)!;
     brokerAnswers({
       body: {
@@ -199,7 +199,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it('retries the exchange once when muster connects the server on login', async () => {
-    const github = new FakeGithub();
+    const github = new StubMusterGateway();
     github.loginResult = {
       status: 'connected',
       message: 'Successfully connected',
@@ -221,7 +221,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it('reports a misconfigured grant target when the broker still refuses after muster connected', async () => {
-    const github = new FakeGithub();
+    const github = new StubMusterGateway();
     github.loginResult = {
       status: 'connected',
       message: 'Successfully connected',
@@ -241,7 +241,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it('maps invalid_client to a broker fault, not to the person', async () => {
-    const app = buildApp(new FakeGithub())!;
+    const app = buildApp(new StubMusterGateway())!;
     brokerAnswers({ body: { error: 'invalid_client' }, status: 401 });
 
     const response = await request(app)
@@ -253,7 +253,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it('maps a rejected subject token to subject_invalid', async () => {
-    const app = buildApp(new FakeGithub())!;
+    const app = buildApp(new StubMusterGateway())!;
     brokerAnswers({ body: { error: 'invalid_grant' }, status: 400 });
 
     const response = await request(app)
@@ -265,7 +265,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it('answers 502 broker_unreachable when the broker cannot be reached', async () => {
-    const app = buildApp(new FakeGithub())!;
+    const app = buildApp(new StubMusterGateway())!;
     jest
       .spyOn(global, 'fetch')
       .mockRejectedValue(new TypeError('fetch failed'));
@@ -279,7 +279,7 @@ describe('createGithubTokenRouter', () => {
   });
 
   it('signs the person out in muster and drops the cached token', async () => {
-    const github = new FakeGithub();
+    const github = new StubMusterGateway();
     const app = buildApp(github)!;
     const fetchSpy = brokerAnswers(
       { body: { access_token: 'ghu_live', expires_in: 27000 } },

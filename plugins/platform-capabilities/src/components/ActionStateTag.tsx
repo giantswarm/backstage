@@ -1,26 +1,23 @@
-import { ComponentType, CSSProperties } from 'react';
-import Tooltip from '@material-ui/core/Tooltip';
-import { SvgIconProps } from '@material-ui/core/SvgIcon';
 import BlockIcon from '@material-ui/icons/Block';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import ThumbDownOutlinedIcon from '@material-ui/icons/ThumbDownOutlined';
 import UndoIcon from '@material-ui/icons/Undo';
-import {
-  StatusLabel,
-  StatusLabelIntent,
-  SyncMark,
-  SyncMarkLabel,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { SyncMark, SyncMarkLabel } from '@giantswarm/backstage-plugin-ui-react';
 import { ActionStateName, CapabilityStateName } from '../apis';
-import { STATE_WORDS, StateTag, under } from './StateTag';
+import {
+  Look,
+  LookLabel,
+  READY_TO_MERGE_STEP,
+  STATE_WORDS,
+  StateTag,
+  under,
+} from './StateTag';
 
 /** The states an action has and an installation has not. */
 type OwnState = Exclude<ActionStateName, CapabilityStateName>;
 
 /** How an own state looks: a tone and a glyph of its own, or one of the installation's marks. */
-type Look =
-  | { intent: StatusLabelIntent; icon: ComponentType<SvgIconProps> }
-  | { mark: SyncMark };
+type OwnLook = Look | { mark: SyncMark };
 
 /**
  * The page's word and look for each of the action's own states, with what
@@ -32,39 +29,41 @@ type Look =
  * barred circle, the thumb down, the sync with a bang, the minus in a
  * circle, the undo arrow -- so the state survives greyscale.
  */
-const OWN_STATES: Record<OwnState, Look & { words: string; gloss: string }> = {
-  refused: {
-    words: 'Refused',
-    intent: 'warning',
-    icon: BlockIcon,
-    gloss: 'The manager refused it before anything was written.',
-  },
-  denied: {
-    words: 'Denied',
-    intent: 'neutral',
-    icon: ThumbDownOutlinedIcon,
-    gloss: 'A member of the team denied it in the review; nothing was merged.',
-  },
-  reverted: {
-    words: 'Reverted',
-    mark: 'not in sync',
-    gloss:
-      'Its pull requests were reverted on the default branch: the capability stays on record, the change is gone. Its actor can withdraw it.',
-  },
-  withdrawn: {
-    words: 'Withdrawn',
-    intent: 'neutral',
-    icon: RemoveCircleOutlineIcon,
-    gloss:
-      'Its actor withdrew it after the merge; any pull request still open was closed.',
-  },
-  removed: {
-    words: 'Removed',
-    intent: 'neutral',
-    icon: UndoIcon,
-    gloss: "The files it wrote left the repositories' default branch again.",
-  },
-};
+const OWN_STATES: Record<OwnState, OwnLook & { words: string; gloss: string }> =
+  {
+    refused: {
+      words: 'Refused',
+      intent: 'warning',
+      icon: BlockIcon,
+      gloss: 'The manager refused it before anything was written.',
+    },
+    denied: {
+      words: 'Denied',
+      intent: 'neutral',
+      icon: ThumbDownOutlinedIcon,
+      gloss:
+        'A member of the team denied it in the review; nothing was merged.',
+    },
+    reverted: {
+      words: 'Reverted',
+      mark: 'not in sync',
+      gloss:
+        'Its pull requests were reverted on the default branch: the capability stays on record, the change is gone. Its actor can withdraw it.',
+    },
+    withdrawn: {
+      words: 'Withdrawn',
+      intent: 'neutral',
+      icon: RemoveCircleOutlineIcon,
+      gloss:
+        'Its actor withdrew it after the merge; any pull request still open was closed.',
+    },
+    removed: {
+      words: 'Removed',
+      intent: 'neutral',
+      icon: UndoIcon,
+      gloss: "The files it wrote left the repositories' default branch again.",
+    },
+  };
 
 /**
  * The mark of an action in one of the installation's states. The state is
@@ -75,6 +74,7 @@ const OWN_STATES: Record<OwnState, Look & { words: string; gloss: string }> = {
 const MARK: Record<CapabilityStateName, SyncMark> = {
   'not enabled': 'not installed',
   'pending approval': 'not reconciled',
+  'ready to merge': 'not reconciled',
   'rolling out': 'not reconciled',
   'waiting for the customer': 'not reconciled',
   enabled: 'in sync',
@@ -90,8 +90,6 @@ export const ACTION_STATE_WORDS: Record<ActionStateName, string> = {
     Object.entries(OWN_STATES).map(([state, { words }]) => [state, words]),
   ) as Record<OwnState, string>),
 };
-
-const INLINE: CSSProperties = { display: 'inline-flex' };
 
 function isOwn(state: ActionStateName): state is OwnState {
   return state in OWN_STATES;
@@ -130,22 +128,24 @@ export function ActionStateTag({
       );
     }
     return (
-      <Tooltip title={gloss} placement="top" arrow>
-        <span data-testid={testId} data-state={state} style={INLINE}>
-          <StatusLabel
-            label={own.words}
-            intent={own.intent}
-            icon={own.icon}
-            inline
-          />
-        </span>
-      </Tooltip>
+      <LookLabel
+        look={own}
+        words={own.words}
+        gloss={gloss}
+        state={state}
+        testId={testId}
+      />
     );
   }
+  const status = under(STATE_WORDS[state], MARK[state]);
   return (
     <StateTag
       state={state}
-      status={under(STATE_WORDS[state], MARK[state])}
+      status={
+        state === 'ready to merge'
+          ? { ...status, gloss: READY_TO_MERGE_STEP }
+          : status
+      }
       testId={testId}
     />
   );

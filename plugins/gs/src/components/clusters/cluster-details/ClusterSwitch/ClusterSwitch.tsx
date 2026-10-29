@@ -1,5 +1,6 @@
 import {
   AWSCluster,
+  AzureASOManagedCluster,
   AzureCluster,
   Cluster,
   VCDCluster,
@@ -21,6 +22,8 @@ type Render = (infrastructureRef: InfrastructureRef) => React.ReactNode;
 type ClusterSwitchProps = {
   renderAWS: Render;
   renderAzure: Render;
+  /** A CAPZ managed (AKS) cluster, whose infrastructure is an AzureASOManagedCluster. */
+  renderAzureManaged: Render;
   renderVSphere: Render;
   renderVCD: Render;
 };
@@ -28,6 +31,7 @@ type ClusterSwitchProps = {
 export const ClusterSwitch = ({
   renderAWS,
   renderAzure,
+  renderAzureManaged,
   renderVSphere,
   renderVCD,
 }: ClusterSwitchProps) => {
@@ -45,6 +49,8 @@ export const ClusterSwitch = ({
       return renderAWS(infrastructureRef);
     case kind === AzureCluster.kind:
       return renderAzure(infrastructureRef);
+    case kind === AzureASOManagedCluster.kind:
+      return renderAzureManaged(infrastructureRef);
     case kind === VSphereCluster.kind:
       return renderVSphere(infrastructureRef);
     case kind === VCDCluster.kind:

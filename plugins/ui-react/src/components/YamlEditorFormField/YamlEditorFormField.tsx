@@ -76,6 +76,7 @@ export const YamlEditorFormField = memo(
             error={error}
             readOnly={readOnly}
             language={language}
+            ariaLabel={label}
           />
         </Box>
       </FormControl>

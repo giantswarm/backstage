@@ -110,3 +110,92 @@ export function describeInstallationScopeOption(
   }
   return undefined;
 }
+
+/** Whether the inventory answered that the installation runs `component`. */
+function runsComponent(
+  entry: InstallationInventoryEntry,
+  component: PlatformComponent,
+): boolean {
+  return entry.probe === 'answered' && entry.components[component];
+}
+
+/**
+ * The installations a tab reads `component` from, in inventory order (home
+ * first): not switched off in the sidebar Cluster access widget, answered
+ * that they run it, and reachable. What the inventory's `installationsWith`
+ * answers.
+ */
+export function installationsWithComponent(
+  entries: InstallationInventoryEntry[],
+  component: PlatformComponent,
+): string[] {
+  return entries
+    .filter(
+      entry =>
+        !entry.muted &&
+        runsComponent(entry, component) &&
+        entry.accessState === 'healthy',
+    )
+    .map(entry => entry.installation);
+}
+
+/**
+ * Under "All installations", the installations switched off in the sidebar
+ * Cluster access widget that run `component`: switching one back on is the
+ * way to what it holds. Empty under a pinned scope. The counterpart of
+ * {@link installationsWithoutComponent}, which says nothing while this lists
+ * any.
+ */
+export function installationsSwitchedOffWithComponent(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+  component: PlatformComponent,
+): string[] {
+  if (scope !== ALL_INSTALLATIONS) {
+    return [];
+  }
+  return entries
+    .filter(entry => entry.muted && runsComponent(entry, component))
+    .map(entry => entry.installation);
+}
+
+/**
+ * The installations in scope when every one of them answered its inventory
+ * probe without `component`: the pinned one, or under "All installations"
+ * every one not switched off in the sidebar. `undefined` while any of them is
+ * still pending, failed or runs the component -- an installation that could
+ * not be asked is not one without the component -- and under "All
+ * installations" while a switched-off one runs it, since switching that one
+ * back on is the remedy, not installing the component. Also `undefined` for a
+ * pin the inventory does not know.
+ *
+ * The one rule behind "<component> is not installed on <installation>",
+ * wherever a tab says it.
+ */
+export function installationsWithoutComponent(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+  component: PlatformComponent,
+): string[] | undefined {
+  const runsIt = (entry: InstallationInventoryEntry) =>
+    runsComponent(entry, component);
+  let inScope: InstallationInventoryEntry[];
+  if (scope === ALL_INSTALLATIONS) {
+    if (
+      installationsSwitchedOffWithComponent(entries, scope, component).length >
+      0
+    ) {
+      return undefined;
+    }
+    inScope = entries.filter(entry => !entry.muted);
+  } else {
+    inScope = entries.filter(entry => entry.installation === scope);
+  }
+  if (
+    inScope.length === 0 ||
+    !inScope.every(entry => entry.probe === 'answered' && !runsIt(entry))
+  ) {
+    return undefined;
+  }
+  return inScope.map(entry => entry.installation);
+}

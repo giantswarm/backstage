@@ -23,10 +23,43 @@ import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
  * actionable, and its sessions silently vanishing from the fleet-merged list would
  * be the worse failure.
  */
-export function upstreamError(message: string): Error {
+export function upstreamError(
+  message: string,
+  reason: UpstreamReason = 'server-error',
+): Error {
   const error = new Error(message);
   error.name = 'UpstreamError';
+  // An own enumerable property, so Backstage's error serializer carries it to
+  // the browser beside the name: a timeout and a 5xx share the status.
+  (error as Error & { reason: UpstreamReason }).reason = reason;
   return error;
+}
+
+/**
+ * Why kagent, reachable, did not answer: what the portal tells a person whose
+ * installation it could not read. Authentication and permission need no
+ * reason; their statuses say it.
+ */
+export type UpstreamReason = 'timeout' | 'unavailable' | 'server-error';
+
+/** The HTTP status `MiddlewareFactory.error()` answers a mapped error with. */
+export function httpStatusOf(error: Error): number {
+  switch (error.name) {
+    case 'InputError':
+      return 400;
+    case 'AuthenticationError':
+      return 401;
+    case 'NotAllowedError':
+      return 403;
+    case 'NotFoundError':
+      return 404;
+    case 'ConflictError':
+      return 409;
+    case 'ServiceUnavailableError':
+      return 503;
+    default:
+      return 500;
+  }
 }
 
 export function isUpstreamError(error: unknown): boolean {
@@ -122,9 +155,11 @@ export interface ErrorContext {
   timeoutIsPending?: boolean;
   /** What a rejected request means for this call; the generic upstream failure otherwise. */
   invalidArgument?: (reason: string) => Error;
+  /** What a `FailedPrecondition` means for this call; a generic conflict otherwise. */
+  failedPrecondition?: (reason: string) => Error;
   /**
    * What an `Unimplemented`/`Unknown` failure carrying an A2A *unsupported
-   * operation* means for this call. The A2A gateway reports "the instance
+   * operation* means for this call. The A2A gateway reports "the session
    * already has an active task" that way; only the send paths care.
    */
   unsupportedOperation?: (reason: string) => Error;
@@ -211,8 +246,14 @@ export function mapConnectError(
         : upstreamError(
             `The kagent API for installation '${installationName}' rejected the request: ${reason}`,
           );
-    case Code.AlreadyExists:
     case Code.FailedPrecondition:
+      if (context.failedPrecondition) {
+        return context.failedPrecondition(reason);
+      }
+      return new ConflictError(
+        `The kagent API for installation '${installationName}' reported a conflict: ${reason}`,
+      );
+    case Code.AlreadyExists:
     case Code.Aborted:
       return new ConflictError(
         `The kagent API for installation '${installationName}' reported a conflict: ${reason}`,
@@ -230,6 +271,7 @@ export function mapConnectError(
       }
       return upstreamError(
         `The kagent API for installation '${installationName}' did not respond in time.`,
+        'timeout',
       );
     case Code.Unavailable:
       // A gateway or kagent answering 5xx: deployed and unwell, not absent.
@@ -239,6 +281,7 @@ export function mapConnectError(
       );
       return upstreamError(
         `The kagent API for installation '${installationName}' is unavailable: ${reason}`,
+        'unavailable',
       );
     default:
       if (context.unsupportedOperation && isUnsupportedOperation(reason)) {
@@ -292,9 +335,10 @@ function logDenial(
 }
 
 /**
- * Whether an A2A failure message is the gateway's "one active task per
- * instance" refusal, which a2a-go reports as an *unsupported operation*.
+ * Whether an A2A failure message is an *unsupported operation*, as a2a-go
+ * reports it: the gateway's "one active task per instance" refusal of a send,
+ * or a subscription to a task already over.
  */
-function isUnsupportedOperation(reason: string): boolean {
+export function isUnsupportedOperation(reason: string): boolean {
   return /already has an active task|unsupported operation/i.test(reason);
 }

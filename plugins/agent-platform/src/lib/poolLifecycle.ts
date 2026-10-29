@@ -45,7 +45,13 @@ export function poolPhase(pool: NodePool, cluster: ManagedCluster): PoolPhase {
   return pool.readyReplicas < pool.replicas ? 'scaling' : 'ready';
 }
 
-/** The phase word of the row: `creating`, `ready · 0 nodes`, `scaling`, `removing…`, `failed · <reason>`. */
+/**
+ * The phase word of the row: `creating`, `ready · 0 nodes`, `scaling`,
+ * `removing…`, `failed · <reason>`. The reason is the failed step's word for
+ * it (`InstallFailed` of `InstallFailed: chart not found`); a message without
+ * one is a sentence, which stays in the pool's lifecycle panel, so the row
+ * then reads `failed` (T104).
+ */
 export function poolPhaseLabel(
   pool: NodePool,
   cluster: ManagedCluster,
@@ -58,8 +64,10 @@ export function poolPhaseLabel(
     }
     case 'failed': {
       const failed = pool.steps?.find(step => step.state === 'failed');
-      const reason = failed?.message?.split(':')[0]?.trim();
-      return reason ? `failed · ${reason}` : 'failed';
+      const reason = failed?.message?.includes(':')
+        ? failed.message.split(':')[0].trim()
+        : undefined;
+      return reason && /^\S+$/.test(reason) ? `failed · ${reason}` : 'failed';
     }
     case 'removing':
       return 'removing…';

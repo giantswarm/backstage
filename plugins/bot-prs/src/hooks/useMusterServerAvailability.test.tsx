@@ -35,8 +35,8 @@ describe('useMusterServerAvailability', () => {
   it('matches the tool prefix, which is what the server is addressed by, not its name', async () => {
     listServers.mockResolvedValue({
       mcpServers: [
-        { name: 'gazelle-mcp-marge', toolPrefix: 'marge' },
-        { name: 'gazelle-mcp-pro', toolPrefix: 'pro' },
+        { name: 'mcp-marge', toolPrefix: 'marge' },
+        { name: 'mcp-pro', toolPrefix: 'pro' },
       ],
     });
 
@@ -74,15 +74,13 @@ describe('useMusterServerAvailability', () => {
 
   it('reports the registered name behind the exposed one, for the calls that name a server', async () => {
     listServers.mockResolvedValue({
-      mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+      mcpServers: [{ name: 'mcp-marge', toolPrefix: 'marge' }],
     });
 
     const { result } = render('marge', ['gazelle']);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.registeredNameOf('gazelle')).toBe(
-      'gazelle-mcp-marge',
-    );
+    expect(result.current.registeredNameOf('gazelle')).toBe('mcp-marge');
   });
 
   it('reports no registered name for an installation whose muster does not list the server', async () => {
@@ -96,7 +94,7 @@ describe('useMusterServerAvailability', () => {
 
   it('reports missing when no server exposes that name', async () => {
     listServers.mockResolvedValue({
-      mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+      mcpServers: [{ name: 'mcp-marge', toolPrefix: 'marge' }],
     });
 
     const { result } = render('github', ['gazelle']);
@@ -121,7 +119,7 @@ describe('useMusterServerAvailability', () => {
     listServers.mockImplementation((installation: string) =>
       installation === 'gazelle'
         ? Promise.resolve({
-            mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+            mcpServers: [{ name: 'mcp-marge', toolPrefix: 'marge' }],
           })
         : Promise.reject(new Error('muster answered 503')),
     );

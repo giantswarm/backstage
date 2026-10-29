@@ -2509,7 +2509,7 @@
                 },
                 "args": {
                     "type": "array",
-                    "description": "Additional command arguments passed to the Backstage container",
+                    "description": "Arguments passed to the Backstage container, the base layer of the backend's configuration: by default the image's bundled config files, as in the image's `CMD` (`command` replaces the `CMD`, so the chart restates them here). The chart's own `--config` flags (database, appConfig, extraAppConfig, branding) follow these, so they override the bundled values. An installation that sets `args` replaces this list and keeps the bundled files only if it names them",
                     "items": {
                         "type": "string"
                     }
@@ -2581,6 +2581,10 @@
                     "items": {
                         "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.Container"
                     }
+                },
+                "serverShutdownDelay": {
+                    "type": "string",
+                    "description": "How long the backend keeps serving after SIGTERM, with its readiness at 503, before it stops its server (`backend.lifecycle.serverShutdownDelay`). Covers the time the gateway takes to drop a terminating pod from its endpoints; without it every rollout answers requests still routed to the old pod with the gateway's \"upstream connect error\". Must stay below the pod's termination grace period (30 s)"
                 }
             }
         },
@@ -2677,7 +2681,7 @@
             "properties": {
                 "engine": {
                     "type": "string",
-                    "description": "Database engine to use. `postgresql` deploys a CNPG cluster and points the backend at it (`backend.database` with `client: pg`, schema division mode); a `backend.database` block in `backstage.appConfig` or `backstage.extraAppConfig` still overrides it",
+                    "description": "Database engine to use. `postgresql` deploys a CNPG cluster and points the backend at it (`backend.database` with `client: pg`, schema division mode, TLS verified against the cluster's CA mounted at `/app/database-ca-certificate/ca.crt`); a `backend.database` block in `backstage.appConfig` or `backstage.extraAppConfig` still overrides it and carries its own `connection.ssl` (`ca: {$file: /app/database-ca-certificate/ca.crt}`, `rejectUnauthorized: true`), since CNPG also accepts plaintext clients",
                     "enum": [
                         "sqlite",
                         "postgresql"
@@ -2713,13 +2717,107 @@
                             "description": "Number of PostgreSQL instances in the CNPG cluster",
                             "minimum": 1
                         },
+                        "maxConnections": {
+                            "type": "integer",
+                            "description": "PostgreSQL `max_connections` of the CNPG cluster. The backend pods that hold connections at once during a rollout (two per replica, the terminating ones included, plus the surge) share it less `superuserReservedConnections`, each with every plugin's pool plus two: the render fails when they do not fit. Every connection costs the instance memory: raise `resources` with it.",
+                            "minimum": 1
+                        },
                         "operatorNamespace": {
                             "type": "string",
                             "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
                         },
+                        "podMonitor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Render a Prometheus Operator `PodMonitor` for the CNPG cluster, with the `observability.giantswarm.io/tenant` label. It also renders only when the cluster serves `monitoring.coreos.com/v1/PodMonitor` (`helm template` needs `--api-versions monitoring.coreos.com/v1/PodMonitor`), so an install on a cluster without the Prometheus Operator CRDs succeeds; set `false` to drop it everywhere"
+                                }
+                            }
+                        },
+                        "pool": {
+                            "type": "object",
+                            "description": "The backend's database pools: every backend plugin holds its own, which releases idle connections (min 0).",
+                            "additionalProperties": false,
+                            "properties": {
+                                "max": {
+                                    "type": "integer",
+                                    "description": "Connections per plugin pool for the plugins without an entry in `plugins`: most open one only for their service-to-service keys.",
+                                    "minimum": 1
+                                },
+                                "plugins": {
+                                    "type": "object",
+                                    "description": "Connections per plugin pool by plugin id, for the busy plugins.",
+                                    "properties": {
+                                        "catalog": {
+                                            "type": "integer"
+                                        },
+                                        "scaffolder": {
+                                            "type": "integer"
+                                        },
+                                        "search": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "additionalProperties": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    }
+                                },
+                                "pluginsWithDatabase": {
+                                    "type": "integer",
+                                    "description": "Backend plugins in the image, each with a pool. The backend's tests check it against packages/backend/src/index.ts.",
+                                    "minimum": 1
+                                }
+                            }
+                        },
+                        "resources": {
+                            "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ResourceRequirements",
+                            "type": "object",
+                            "description": "Resources of each CNPG instance, sized for `maxConnections`.",
+                            "additionalProperties": true,
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "ephemeral-storage": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "ephemeral-storage": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         "storageSize": {
                             "type": "string",
                             "description": "Persistent volume size for the PostgreSQL CNPG cluster"
+                        },
+                        "superuserReservedConnections": {
+                            "type": "integer",
+                            "description": "PostgreSQL `superuser_reserved_connections` of the CNPG cluster: the slots kept for the operator's superuser, which the backend's `app` role never gets.",
+                            "minimum": 0
                         }
                     }
                 }
@@ -2898,6 +2996,9 @@
                             "type": "string"
                         },
                         "nginx.ingress.kubernetes.io/force-ssl-redirect": {
+                            "type": "string"
+                        },
+                        "nginx.ingress.kubernetes.io/proxy-body-size": {
                             "type": "string"
                         }
                     },
@@ -3079,7 +3180,7 @@
         },
         "probes": {
             "type": "object",
-            "description": "Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
+            "description": "Startup, liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`, startup on readiness); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
             "additionalProperties": false,
             "properties": {
                 "liveness": {
@@ -3132,6 +3233,28 @@
                         "timeoutSeconds": {
                             "type": "integer",
                             "description": "Number of seconds after which the readiness probe times out",
+                            "minimum": 1
+                        }
+                    }
+                },
+                "startup": {
+                    "type": "object",
+                    "description": "Startup probe timing, on the readiness endpoint: liveness and readiness wait until the backend has started. Sized for a backend that waits up to five minutes for its database (a CNPG primary coming up) plus its own start; one that has not started by then is restarted.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "failureThreshold": {
+                            "type": "integer",
+                            "description": "Consecutive failures before the container is restarted; with periodSeconds the time the backend has to start",
+                            "minimum": 1
+                        },
+                        "periodSeconds": {
+                            "type": "integer",
+                            "description": "How often (in seconds) to perform the startup probe",
+                            "minimum": 1
+                        },
+                        "timeoutSeconds": {
+                            "type": "integer",
+                            "description": "Number of seconds after which the startup probe times out",
                             "minimum": 1
                         }
                     }
@@ -3199,7 +3322,7 @@
                     "properties": {
                         "enabled": {
                             "type": "boolean",
-                            "description": "Enable the VerticalPodAutoscaler resource for automatic resource adjustment"
+                            "description": "Render a `VerticalPodAutoscaler` for automatic resource adjustment. It also renders only when the cluster serves `autoscaling.k8s.io/v1/VerticalPodAutoscaler` (`helm template` needs `--api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler`), so an install on a cluster without the VPA CRD succeeds; set `false` to drop it everywhere"
                         }
                     }
                 }

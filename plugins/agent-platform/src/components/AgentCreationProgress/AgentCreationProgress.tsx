@@ -9,9 +9,9 @@ import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { hasReachedWrittenRevision } from '../../lib/agentManager';
 import type { AgentStatus } from '../../lib/agentManager';
 
-/** The admitting Harness's entry, when the template has one. */
+/** The Harness the Agent names, once the release has rendered it. */
 function harnessOf(status: AgentStatus | undefined): string | undefined {
-  return status?.template?.harnesses?.[0]?.harness;
+  return status?.agent?.harness;
 }
 
 /**
@@ -41,12 +41,19 @@ const WORDING: Record<
     done: 'Skills updated',
     failedTitle: 'The agent did not become ready with its updated skills',
   },
+  'harness-changed': {
+    wrote: 'moved the agent to its new Harness',
+    doing: 'Changing the runtime…',
+    done: 'Runtime changed',
+    failedTitle: 'The agent did not become ready on its new Harness',
+  },
 };
 
 /**
  * The polling half, mounted only for the agent that was just written: the
  * verdict from agent-manager's `get_agent_status`, re-read until the platform
- * Harness reports `ready` or `failed`.
+ * Harness reports `ready`. A `failed` verdict is shown and still re-read in
+ * case it clears (see `useAgentStatus`).
  */
 function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   const {
@@ -58,7 +65,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     fromGeneration,
     watchId,
   } = handoff;
-  // Scoped to the write: the verdict counts once the template's generation has
+  // Scoped to the write: the verdict counts once the Agent's generation has
   // moved past what it was before it, so an agent that was already `ready` is
   // not reported as done before the Harness has compiled anything.
   const { status, isSettling, error } = useAgentStatus(
@@ -75,7 +82,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     return (
       <Alert
         status="warning"
-        title={`${wording.done}, but the readiness could not be read`}
+        title={`${wording.done}, but could not read the agent's readiness`}
         description={`agent-manager ${wording.wrote}${as}. ${error.message}`}
       />
     );
@@ -84,7 +91,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   if (isSettling) {
     // Only the summary of the revision being waited on is worth showing. While
     // the status still describes the one before the write, its summary is about
-    // something else: "The template is ready" under a "Saving…" title is the
+    // something else: "Agent is Ready" under a "Saving…" title is the
     // very message this is meant not to show yet, and a previous revision that
     // failed would put an unrelated failure reason under it for as long as the
     // new one takes to compile.
@@ -98,7 +105,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
         title={wording.doing}
         description={
           (describesThisWrite ? status?.summary : undefined) ??
-          `agent-manager ${wording.wrote}${as}; waiting for the platform Harness to compile the template.`
+          `agent-manager ${wording.wrote}${as}; waiting for its Harness to compile the agent.`
         }
       />
     );
@@ -111,7 +118,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
         status="success"
         title="Ready"
         description={`The agent is ready${
-          harness ? ` on Harness ${harness}` : ' on the platform Harness'
+          harness ? ` on Harness ${harness}` : ' on its Harness'
         }${requestedBy ? ` (${wording.done.toLowerCase()}${as})` : ''}.`}
       />
     );
@@ -123,7 +130,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
       title={wording.failedTitle}
       description={
         status?.summary ??
-        'agent-manager reports the template failed on the platform Harness.'
+        'agent-manager reports the agent failed on its Harness.'
       }
     />
   );
@@ -131,15 +138,16 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
 
 /**
  * The agent's readiness right after Deploy, from agent-manager's
- * `get_agent_status` polled until the platform Harness has a verdict.
+ * `get_agent_status` polled until the agent's Harness reports `ready`, a
+ * `failed` verdict included.
  *
  * Rendered only on the visit that follows a create (the review page hands the
  * agent over in the router state) and only for the agent the page shows;
- * otherwise nothing, and nothing is read. While the template compiles it says
+ * otherwise nothing, and nothing is read. While the agent compiles it says
  * so with agent-manager's summary; once the verdict is `ready` it names the
  * Harness the agent runs on, and a `failed` verdict carries agent-manager's
  * reason — the same verdict the page's own status card derives from
- * `status.harnesses[]`, so the two never disagree.
+ * `status.conditions`, so the two never disagree.
  */
 export function AgentCreationProgress({
   installation,

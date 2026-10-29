@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { modelManagerApiRef } from '../apis';
 import { ModelManagerToolsClient } from '../apis/ModelManagerToolsClient';
@@ -65,7 +67,7 @@ export function useRegisteredBackends(installations: string[]) {
   });
 
   const signature = queries
-    .map(query => `${query.dataUpdatedAt}:${query.isLoading ? 'l' : ''}`)
+    .map(query => `${query.dataUpdatedAt}:${isAwaitingData(query) ? 'l' : ''}`)
     .join('|');
 
   return useMemo(() => {
@@ -89,7 +91,7 @@ export function useRegisteredBackends(installations: string[]) {
           backend =>
             backend.installation === installation && backend.kind === kind,
         ),
-      isLoading: queries.some(query => query.isLoading),
+      isLoading: queries.some(query => isAwaitingData(query)),
     };
     // `installations` and `queries` are captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,6 +127,8 @@ export type BackendWriteState = {
   /** `remove_backend` as the person. */
   remove: (kind: BackendKind, mode: WriteMode) => Promise<RemoveBackendResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: BackendWriteFailure | undefined;
   reset: () => void;
 };
@@ -142,48 +146,54 @@ export function useBackendWrite(
 ): BackendWriteState {
   const client = useModelManagerToolsClient(installation);
   const queryClient = useQueryClient();
-  const [isBusy, setBusy] = useState(false);
   const [failure, setFailure] = useState<BackendWriteFailure>();
 
-  const run = useCallback(
-    async <T>(
-      write: (c: ModelManagerToolsClient) => Promise<T>,
-      invalidate: boolean,
-    ): Promise<T> => {
+  const { mutateAsync, isPending, variables } = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Backend writes are a follow-up; the model events cover the model form only.',
+    mutationFn: ({
+      write,
+    }: {
+      write: (c: ModelManagerToolsClient) => Promise<unknown>;
+      invalidate: boolean;
+    }) => {
       if (!client) {
         throw new Error(
           'model-manager is not reachable: muster is not installed',
         );
       }
-      setBusy(true);
-      setFailure(undefined);
-      try {
-        const result = await write(client);
-        if (invalidate) {
-          // Every `['agent-platform', 'model-manager', <read>, installation]`
-          // key — the prefix is shared, the installation is the last segment.
-          const invalidateReads = () =>
-            queryClient.invalidateQueries({
-              predicate: query =>
-                query.queryKey[0] === 'agent-platform' &&
-                query.queryKey[1] === 'model-manager' &&
-                query.queryKey[3] === client.installation,
-            });
-          await invalidateReads();
-          // model-manager's registry follows the backend document through a
-          // watch, so a read right after the write can still answer the old
-          // list; read once more when it has settled.
-          window.setTimeout(invalidateReads, REGISTRY_SETTLE_MS);
-        }
-        return result;
-      } catch (error) {
-        setFailure(classifyBackendWriteFailure(error));
-        throw error;
-      } finally {
-        setBusy(false);
-      }
+      return write(client);
     },
-    [client, queryClient],
+    onMutate: () => setFailure(undefined),
+    onSuccess: async (_result, { invalidate }) => {
+      if (!client || !invalidate) {
+        return;
+      }
+      // Every `['agent-platform', 'model-manager', <read>, installation]`
+      // key — the prefix is shared, the installation is the last segment.
+      const invalidateReads = () =>
+        queryClient.invalidateQueries({
+          predicate: query =>
+            query.queryKey[0] === 'agent-platform' &&
+            query.queryKey[1] === 'model-manager' &&
+            query.queryKey[3] === client.installation,
+        });
+      await invalidateReads();
+      // model-manager's registry follows the backend document through a
+      // watch, so a read right after the write can still answer the old
+      // list; read once more when it has settled.
+      window.setTimeout(invalidateReads, REGISTRY_SETTLE_MS);
+    },
+    onError: error => setFailure(classifyBackendWriteFailure(error)),
+  });
+
+  const run = useCallback(
+    <T>(
+      write: (c: ModelManagerToolsClient) => Promise<T>,
+      invalidate: boolean,
+    ): Promise<T> => mutateAsync({ write, invalidate }) as Promise<T>,
+    [mutateAsync],
   );
 
   const dryRunAdd = useCallback(
@@ -212,7 +222,9 @@ export function useBackendWrite(
     add,
     dryRunRemove,
     remove,
-    isBusy,
+    isBusy: isPending,
+    // Only a write invalidates the reads; a dry run does not.
+    isWriting: isPending && Boolean(variables?.invalidate),
     failure,
     reset: useCallback(() => setFailure(undefined), []),
   };

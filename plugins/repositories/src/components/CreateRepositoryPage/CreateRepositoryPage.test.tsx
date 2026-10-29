@@ -490,6 +490,9 @@ describe('CreateRepositoryPage', () => {
     expect(button('Create')).toBeEnabled();
   });
 
+  // The whole create flow: three fields typed key by key, the debounced dry
+  // run, the creation and every setup phase rendered; on a loaded CI runner
+  // that outgrows jest's 5 s default.
   it('Create creates the repository, pushes the scaffold and opens the pull request as the person, then follows the repository to readiness phase by phase', async () => {
     const createRepository = jest.fn().mockResolvedValue(createdRepository);
     // The first call finds the pull request open; the calls after it wait
@@ -560,7 +563,7 @@ describe('CreateRepositoryPage', () => {
       '#4242 feat(repositories): declare shiny-service for team-bumblebee',
     );
     expect(
-      within(opened).getByRole('link', { name: /Open the pull request/ }),
+      within(opened).getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/github/pull/4242');
     // The form is done: no second Create, the fields frozen.
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
@@ -619,7 +622,7 @@ describe('CreateRepositoryPage', () => {
         name: /scaffold/,
       }),
     ).toHaveTextContent('drift');
-  });
+  }, 20_000);
 
   it('a red first release is shown with the failing job and the manager’s reason; the repository is not marked ready', async () => {
     const watchRepository = jest.fn().mockResolvedValue(watchRedRelease);

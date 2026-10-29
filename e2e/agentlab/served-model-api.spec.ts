@@ -4,6 +4,7 @@ import { lab } from './lab';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
   stubModelManagerTools,
 } from './model-manager.fixture';
 
@@ -23,7 +24,7 @@ import {
  * the same shapes once that release runs there. Nothing is written.
  */
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 const GATEWAY = 'https://models.lab.example/model-serving/qwen-stub-api';
 const LLM_ENDPOINT = 'http://agentgateway.agent-platform.svc:8081';
 
@@ -127,6 +128,9 @@ const clipboard = (page: Page) =>
   page.evaluate(() => navigator.clipboard.readText());
 
 test.describe('serving: the APIs a served model answers', () => {
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test('a model on the models Gateway: an API chip per interface, the runtime version, and requests with the person’s token', async ({
     admin,
   }) => {

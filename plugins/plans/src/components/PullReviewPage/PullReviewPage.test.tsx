@@ -18,6 +18,7 @@ const CONTENT = '# Full screen\n\nFirst paragraph.\n\nSecond paragraph.\n';
 function createPlansApi(): jest.Mocked<PlansApi> {
   return {
     getConnection: jest.fn().mockResolvedValue({ connected: true }),
+    getMagazine: jest.fn().mockResolvedValue({ configured: false }),
     listRepos: jest.fn().mockResolvedValue({ repositories: [REPO] }),
     listPulls: jest.fn().mockResolvedValue({
       pulls: [
@@ -65,7 +66,7 @@ async function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  await renderInTestApp(
+  const result = await renderInTestApp(
     <QueryClientProvider client={queryClient}>
       <TestApiProvider apis={[[plansApiRef, plansApi]]}>
         <PullReviewPage />
@@ -87,6 +88,7 @@ async function renderPage() {
       screen.getByRole('button', { name: 'Full screen' }),
     ).toBeInTheDocument(),
   );
+  return result;
 }
 
 describe('PullReviewPage', () => {
@@ -118,6 +120,17 @@ describe('PullReviewPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('stops the page underneath from scrolling while in full screen', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Full screen' }));
+    expect(document.documentElement.style.overflow).toBe('hidden');
+
+    await user.click(screen.getByRole('button', { name: 'Exit full screen' }));
+    expect(document.documentElement.style.overflow).toBe('');
+  });
+
   it('leaves full screen on Escape', async () => {
     const user = userEvent.setup();
     await renderPage();
@@ -132,6 +145,18 @@ describe('PullReviewPage', () => {
     expect(
       screen.getByRole('button', { name: 'Full screen' }),
     ).toBeInTheDocument();
+    expect(document.documentElement.style.overflow).toBe('');
+  });
+
+  it('lets the page scroll again when the panel unmounts in full screen', async () => {
+    const user = userEvent.setup();
+    const { unmount } = await renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Full screen' }));
+    expect(document.documentElement.style.overflow).toBe('hidden');
+
+    unmount();
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('keeps the reader mounted, so an open comment draft survives entering and leaving full screen', async () => {

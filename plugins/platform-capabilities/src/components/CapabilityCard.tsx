@@ -40,7 +40,7 @@ import { ComparisonView } from './ComparisonView';
 import { ErrorAlert } from './ErrorAlert';
 import { Loading } from './Loading';
 import { useActions, useComparison, useRefreshComparison } from './queries';
-import { StateTag, Status, statusOf } from './StateTag';
+import { READY_TO_MERGE_STEP, StateTag, Status, statusOf } from './StateTag';
 import { ActionStateTag } from './ActionStateTag';
 
 /** The header's rows wrap under each other on a narrow screen instead of squeezing. */
@@ -308,6 +308,7 @@ export function CapabilityCard({
   const stateId = useId();
   const reasonId = useId();
   const comparingId = useId();
+  const nextStepId = useId();
   const comparison = useComparison(installation.name, capability.name);
   const refresh = useRefreshComparison(installation.name, capability.name);
   // In flight -- the first run and every refresh -- the card holds the record
@@ -316,8 +317,10 @@ export function CapabilityCard({
   const result = comparing ? undefined : comparison.data;
   const schema = definition?.inputSchema;
   const fields = useMemo(() => fieldsOf(formOf(schema ?? {})), [schema]);
+  const readyToMerge = capability.state === 'ready to merge';
   const inFlight =
     capability.state === 'pending approval' ||
+    readyToMerge ||
     capability.state === 'rolling out';
   const refused = result?.refused;
   const commitRefused = result?.commitRefused;
@@ -329,10 +332,13 @@ export function CapabilityCard({
   const refusedForNow = refusal === 'warning';
   const { installed, button, ...status } = cardStatusOf(capability, result);
   // Why the button is disabled, by the id of the element saying so: the
-  // phase in flight in the header, the manager's reason under the button,
-  // the comparison still running.
+  // actor's merge an action ready to merge waits for, the phase in flight in
+  // the header, the manager's reason under the button, the comparison still
+  // running.
   let disabledBy: string | undefined;
-  if (inFlight) {
+  if (readyToMerge) {
+    disabledBy = nextStepId;
+  } else if (inFlight) {
     disabledBy = stateId;
   } else if (refusedForNow) {
     disabledBy = reasonId;
@@ -392,6 +398,11 @@ export function CapabilityCard({
       </CardHeader>
       <CardBody>
         <Flex direction="column" gap="4">
+          {readyToMerge && (
+            <Text id={nextStepId} variant="body-medium" data-testid="next-step">
+              {READY_TO_MERGE_STEP}
+            </Text>
+          )}
           {refused && refusal && (
             <Alert
               id={reasonId}

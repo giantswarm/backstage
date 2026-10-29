@@ -3,7 +3,8 @@ import { Content, Link } from '@backstage/core-components';
 import { Box, Grid, Paper, Typography } from '@material-ui/core';
 import { Button, Flex, Text } from '@backstage/ui';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
-import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { Problem, repositoriesApiRef } from '../../apis';
 import {
@@ -72,7 +73,9 @@ export function CreateRepositoryPage() {
   const vocabulary = useVocabulary();
   const declarable = vocabulary.status === 'ready';
 
-  const create = useMutation({
+  const create = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Repository creation is not a tracked portal action yet.',
     mutationFn: () => api.createRepository(toInput(form), { mode: 'commit' }),
   });
   const created = create.data;

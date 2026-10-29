@@ -20,8 +20,17 @@ const state: NewAgentFormState = {
   installation: 'gazelle',
   modelConfigName: 'opus-4-7',
   modelConfigNamespace: 'kagent',
+  modelDisplayName: 'Opus 4.7',
+  harness: undefined,
+  droppedHarness: undefined,
   systemMessage: 'You review pull requests.',
+  egressText: '',
+  egressPolicyRefs: [],
+  defaultWorkspace: '',
   selectedSkills: [skill],
+  keptSkills: [],
+  selectedPlugins: [],
+  keptPlugins: [],
   toolset: ['preset:read-only'],
 };
 
@@ -41,6 +50,99 @@ describe('skillEntryOf', () => {
 });
 
 describe('agentSpecOf', () => {
+  it('sends the default workspace in the agent namespace, and none when unset', () => {
+    expect(
+      agentSpecOf(
+        { ...state, defaultWorkspace: 'platform' },
+        { toolset: ['preset:read-only'] },
+      ).defaultWorkspace,
+    ).toBe(`${state.modelConfigNamespace}/platform`);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('defaultWorkspace');
+  });
+
+  it('sends the extra egress origins as typed, one per line, and none when empty', () => {
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          egressText:
+            ' https://github.com:443 \n\nhttps://*.githubusercontent.com\n',
+        },
+        { toolset: ['preset:read-only'] },
+      ).egress,
+    ).toEqual(['https://github.com:443', 'https://*.githubusercontent.com']);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('egress');
+  });
+
+  it('sends the picked EgressPolicies by name, and none when nothing is picked', () => {
+    expect(
+      agentSpecOf(
+        { ...state, egressPolicyRefs: ['github', 'go-modules'] },
+        { toolset: ['preset:read-only'] },
+      ).egressPolicyRefs,
+    ).toEqual(['github', 'go-modules']);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('egressPolicyRefs');
+  });
+
+  it('sends the picked plugins pinned, with their selections, and none when empty', () => {
+    const plugin = {
+      name: 'review',
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      path: 'plugins/review',
+      ref: 'main',
+      commit: HEAD,
+      format: 'agent-plugins' as const,
+      skills: [{ name: 'go-review', description: '' }],
+    };
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          selectedPlugins: [
+            { plugin, skills: ['go-review'] },
+            {
+              plugin: {
+                ...plugin,
+                path: 'plugins/commits',
+                format: 'claude-code',
+                skills: [],
+              },
+              skills: [],
+            },
+          ],
+        },
+        { toolset: [] },
+      ).plugins,
+    ).toEqual([
+      {
+        path: 'plugins/review',
+        git: { url: plugin.repoUrl, commit: HEAD },
+        skills: ['go-review'],
+      },
+      { path: 'plugins/commits', git: { url: plugin.repoUrl, commit: HEAD } },
+    ]);
+    expect(agentSpecOf(state, { toolset: [] })).not.toHaveProperty('plugins');
+  });
+
+  it('names the Harness picked, and none for the platform Harness', () => {
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          harness: { name: 'claude-go', runtime: 'claude' },
+        },
+        { toolset: [] },
+      ).harness,
+    ).toBe('claude-go');
+    expect(agentSpecOf(state, { toolset: [] })).not.toHaveProperty('harness');
+  });
+
   it("is agent-manager's create contract: the slug as the name, the ModelConfig's namespace, the declared toolset", () => {
     expect(
       agentSpecOf(state, {

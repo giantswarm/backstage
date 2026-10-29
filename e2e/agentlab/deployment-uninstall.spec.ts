@@ -1,18 +1,17 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { expect, test } from './fixtures';
 import { lab } from './lab';
+import {
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+  PLATFORM_NAMESPACE,
+} from './kubectl';
 
-const run = promisify(execFile);
+// This spec also needs `kubectl`, because the portal has no create flow for a
+// plain HelmRelease — the deploy template that would make one lives outside
+// this repo and is not installed in the lab.
 
-/**
- * The lab's kind context. The suite's other specs reach the platform only
- * through the portal; this one also needs `kubectl`, because the portal has no
- * create flow for a plain HelmRelease — the deploy template that would make one
- * lives outside this repo and is not installed in the lab.
- */
-const CONTEXT = process.env.AGENTLAB_KUBE_CONTEXT ?? 'kind-agentlab';
-const NAMESPACE = 'agent-platform';
+const NAMESPACE = PLATFORM_NAMESPACE;
 const NAME = 'uninstall-test';
 
 /**
@@ -49,16 +48,6 @@ spec:
     namespace: ${NAMESPACE}
 `;
 
-async function kubectl(args: string[], input?: string) {
-  const child = run('kubectl', ['--context', CONTEXT, ...args], {
-    encoding: 'utf8',
-  });
-  if (input !== undefined) {
-    child.child.stdin?.end(input);
-  }
-  return child;
-}
-
 async function exists(plural: string, name: string): Promise<boolean> {
   try {
     await kubectl(['-n', NAMESPACE, 'get', plural, name]);
@@ -73,6 +62,8 @@ function deploymentPath(namespace: string, name: string) {
 }
 
 test.describe('uninstalling an app deployment', () => {
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+
   test.beforeEach(async () => {
     await kubectl(['apply', '-f', '-'], FIXTURE);
   });

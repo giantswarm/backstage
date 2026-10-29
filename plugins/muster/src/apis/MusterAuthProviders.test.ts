@@ -47,6 +47,34 @@ describe('MusterAuthProviders', () => {
     await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({});
   });
 
+  it('asks the main auth API for its optional token only, when asked for one', async () => {
+    const main = oidcApi('main-id-token');
+    const providers = new MusterAuthProviders({}, main);
+
+    await expect(
+      providers.getCredentials('mcp-muster', { optional: true }),
+    ).resolves.toEqual({ token: 'main-id-token' });
+    expect(main.getIdToken).toHaveBeenCalledWith({ optional: true });
+  });
+
+  it('asks a dedicated provider for its optional token only, when asked for one', async () => {
+    const dedicated = oauthApi('access-token');
+    const providers = new MusterAuthProviders({ 'mcp-muster': dedicated });
+
+    await providers.getCredentials('mcp-muster', { optional: true });
+    expect(dedicated.getAccessToken).toHaveBeenCalledWith(undefined, {
+      optional: true,
+    });
+  });
+
+  it('returns empty credentials when an optional read finds no session', async () => {
+    const providers = new MusterAuthProviders({}, oidcApi(''));
+
+    await expect(
+      providers.getCredentials('mcp-muster', { optional: true }),
+    ).resolves.toEqual({});
+  });
+
   it('returns empty credentials when the main auth fallback fails', async () => {
     const providers = new MusterAuthProviders(
       {},
@@ -54,5 +82,30 @@ describe('MusterAuthProviders', () => {
     );
 
     await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({});
+  });
+
+  it('asks the main auth API for a lasting token when one has to last', async () => {
+    const main = {
+      getIdToken: jest.fn().mockResolvedValue('main-id-token'),
+      getLastingIdToken: jest.fn().mockResolvedValue('lasting-id-token'),
+    };
+    const providers = new MusterAuthProviders({}, main);
+
+    await expect(
+      providers.getCredentials('mcp-muster', { minLifetimeLeft: 0.5 }),
+    ).resolves.toEqual({ token: 'lasting-id-token' });
+    expect(main.getLastingIdToken).toHaveBeenCalledWith(0.5, {
+      optional: undefined,
+    });
+    expect(main.getIdToken).not.toHaveBeenCalled();
+  });
+
+  it("answers the main auth API's token where it cannot make one last", async () => {
+    const main = oidcApi('main-id-token');
+    const providers = new MusterAuthProviders({}, main);
+
+    await expect(
+      providers.getCredentials('mcp-muster', { minLifetimeLeft: 0.5 }),
+    ).resolves.toEqual({ token: 'main-id-token' });
   });
 });

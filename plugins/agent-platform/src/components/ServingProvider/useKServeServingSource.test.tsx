@@ -259,6 +259,7 @@ describe('useKServeServingSource', () => {
 
     expect(result.current).toEqual({
       isLoading: false,
+      isLoadingServedModels: false,
       installations: [],
       backends: {},
       capabilities: {},
@@ -636,5 +637,21 @@ describe('useKServeServingSource', () => {
     mockResources({});
     mockPods([], true);
     expect(render().result.current.isLoading).toBe(true);
+  });
+
+  it('has its served models once their own reads are done, the GPU nodes and pods still in flight', () => {
+    kserveInstallations.mockReturnValue({
+      installations: ['alpha'],
+      isProbing: false,
+      errors: [],
+    });
+    mockResources({ objects: { isLoading: true } });
+    expect(render().result.current.isLoadingServedModels).toBe(true);
+
+    mockResources({ nodes: { isLoading: true } });
+    mockPods([], true);
+    const { result } = render();
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isLoadingServedModels).toBe(false);
   });
 });

@@ -1,18 +1,46 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { Alert, Card, CardBody, Flex, Link, Select, Text } from '@backstage/ui';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  Flex,
+  Select,
+  Text,
+} from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  joinNames,
+  NAMED_IN_SENTENCE,
+  ExternalLink,
+  searchableIf,
+  SectionHeader,
+  ShowMore,
+  useSelectFieldError,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import { withQuery } from '@giantswarm/backstage-plugin-muster';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import { musterServersExternalRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { SharedIdentityNote } from '../SharedIdentityNote';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 const DESCRIPTION =
-  'The management cluster this agent runs on. Determines which models are available and where the agent is deployed.';
+  'Choose the management cluster the agent runs on; it decides which models are available.';
+
+/** How many installations a note names, and links to, before the rest are a count. */
+const NAMED_INSTALLATIONS = NAMED_IN_SENTENCE;
 
 /**
  * Card shell, so every branch below gets the same heading and description. The
@@ -23,7 +51,11 @@ function InstallationCard({ children }: { children: ReactNode }) {
   return (
     <Card>
       <CardBody>
-        <SectionHeader title="Installation" description={DESCRIPTION} />
+        <SectionHeader
+          variant="title-x-small"
+          title="Environment"
+          description={DESCRIPTION}
+        />
         {children}
       </CardBody>
     </Card>
@@ -38,16 +70,16 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
   if (installations.length === 0) {
     return null;
   }
-  const list = installations.join(', ');
+  const list = joinNames(installations);
   return (
     <Alert
       status="info"
       title={
         installations.length === 1
           ? `No agent-manager on ${list}`
-          : 'No agent-manager on some installations'
+          : 'No agent-manager on some environments'
       }
-      description={`Agents are created through agent-manager, reached through muster as you. muster on ${list} lists no agent-manager MCPServer, so agents cannot be created there. A platform admin enables the agent-manager component of the Agent Platform.`}
+      description={`muster on ${list} lists no agent-manager, so agents cannot be created there. A platform admin can enable the Agent Platform's agent-manager component.`}
     />
   );
 }
@@ -55,51 +87,84 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
 /**
  * Why an installation with models is not offered although it may have
  * agent-manager: its muster's server list couldn't be read (no muster session
- * there, or the read failed), so there is no answer either way. Links to
- * muster's MCP Servers tab scoped to the installation, whose session gate is
- * where one signs in to that installation's muster.
+ * there, or the read failed), so there is no answer either way. Says what that
+ * means for the agent being created, and links to muster's MCP Servers tab
+ * scoped to the installation, whose session gate is where one signs in to that
+ * installation's muster: in a new tab, so the form stays as it is, and "Check
+ * again" reads the lists anew once the person is back.
  */
 function AgentManagerUnknownNote({
   installations,
+  isChecking,
+  onRecheck,
 }: {
   installations: string[];
+  /** A Check again is reading the lists: the note stays, its button busy. */
+  isChecking: boolean;
+  onRecheck: () => void;
 }) {
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
   const signInHref = serversRoute
-    ? (installation: string) =>
-        `${serversRoute()}?installation=${encodeURIComponent(installation)}`
+    ? (installation: string) => withQuery(serversRoute(), { installation })
     : undefined;
   if (installations.length === 0) {
     return null;
   }
-  const list = installations.join(', ');
+  const list = joinNames(installations);
+  const isOne = installations.length === 1;
   // `info`, not `warning`: not being signed in to some installations' muster
   // is an expected state, not something broken.
   return (
     <Alert
       status="info"
       title={
-        installations.length === 1
-          ? `Couldn't check ${list} for agent-manager`
-          : "Couldn't check some installations for agent-manager"
+        isOne
+          ? `Could not check ${list} for agent-manager`
+          : 'Could not check some environments for agent-manager'
       }
       description={
-        <Flex direction="column" gap="1">
+        <Flex direction="column" gap="2" align="start">
           <Text variant="body-small">
+            {isOne
+              ? `${list} is not offered for this agent until it is checked.`
+              : 'They are not offered for this agent until they are checked.'}{' '}
             Sign in to muster on {list} to check whether agents can be created
-            there.
+            there, then check again. What you entered here stays.
           </Text>
+          {/* One link per installation, wrapping, the first few shown: on a
+              fleet of 50 where signed-out is the norm, a row of every link
+              would run off the card. */}
           {signInHref && (
-            <Flex gap="3">
-              {installations.map(installation => (
-                <Link key={installation} href={signInHref(installation)}>
-                  {installations.length === 1
-                    ? 'Sign in to muster'
-                    : `Sign in to muster on ${installation}`}
-                </Link>
-              ))}
-            </Flex>
+            <ShowMore
+              items={installations}
+              initial={NAMED_INSTALLATIONS}
+              noun="environment"
+              revealAll
+            >
+              {visible => (
+                <Flex gap="3" style={{ flexWrap: 'wrap' }}>
+                  {visible.map(installation => (
+                    <ExternalLink
+                      key={installation}
+                      href={signInHref(installation)}
+                    >
+                      {isOne
+                        ? 'Sign in to muster'
+                        : `Sign in to muster on ${installation}`}
+                    </ExternalLink>
+                  ))}
+                </Flex>
+              )}
+            </ShowMore>
           )}
+          <Button
+            size="small"
+            variant="secondary"
+            isPending={isChecking}
+            onPress={onRecheck}
+          >
+            Check again
+          </Button>
         </Flex>
       }
     />
@@ -118,22 +183,34 @@ function InaccessibleInstallationsNote({
   if (installations.length === 0) {
     return null;
   }
-  const list = installations.join(', ');
+  const list = joinNames(installations);
   return (
     <Alert
       status="warning"
       title={
         installations.length === 1
-          ? `Couldn't check ${list}`
-          : `Couldn't check ${installations.length} installations`
+          ? `Could not check ${list}`
+          : `Could not check ${installations.length} environments`
       }
-      description={`Cluster access to ${list} isn't healthy (session expired, unreachable, or not signed in), so whether agents can be created there is unknown. The Cluster access status in the sidebar shows why.`}
+      description={`Cluster access to ${list} is not healthy (session expired, unreachable or not signed in), so it's unknown whether agents can be created there, and ${
+        installations.length === 1 ? 'it is' : 'they are'
+      } not offered for this agent. See Cluster access in the sidebar.`}
     />
   );
 }
 
-export function InstallationSelect() {
+export type InstallationSelectProps = {
+  /**
+   * The field's validation problem, shown on the dropdown once the form wants
+   * it seen. Where no dropdown renders (one installation, or none usable) the
+   * notes on the card already say why nothing is picked.
+   */
+  error?: string;
+};
+
+export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   const { state, setInstallation } = useNewAgentForm();
+  const selectError = useSelectFieldError(error);
   const { installations, isLoading: isLoadingInstallations } =
     useInstallations();
   const {
@@ -157,10 +234,11 @@ export function InstallationSelect() {
     [availableInstallations, agentManager],
   );
   const withoutAgentManager = agentManager.missing;
+  const withSharedIdentity = agentManager.sharedIdentity;
   // Installations whose server list read failed: no answer either way, so they
   // are neither offered nor covered by the no-agent-manager note. Only known
   // once the reads have settled (a read in flight is `unknown` too).
-  const agentManagerUnknown = useMemo(
+  const settledUnknown = useMemo(
     () =>
       agentManager.isLoading || agentManager.isUnavailable
         ? []
@@ -169,6 +247,17 @@ export function InstallationSelect() {
           ),
     [availableInstallations, agentManager],
   );
+  // The installations a Check again is reading anew. A failed read refetched
+  // is pending again (it has no data to keep), so without this the note --
+  // with the button just pressed -- and the card's settled state would drop
+  // out until the reads answer; the note stays as it was instead.
+  const [rechecking, setRechecking] = useState<string[]>();
+  const agentManagerUnknown = rechecking ?? settledUnknown;
+  const { recheck } = agentManager;
+  const recheckUnknown = useCallback(() => {
+    setRechecking(settledUnknown);
+    recheck().finally(() => setRechecking(undefined));
+  }, [recheck, settledUnknown]);
 
   // The sole installation on a single-management-cluster instance: there is
   // nothing to choose, so pick it for the user instead of offering a one-option
@@ -178,7 +267,7 @@ export function InstallationSelect() {
     !isLoadingInstallations && installations.length === 1
       ? installations[0].name
       : undefined;
-  const isSettling = isLoading || agentManager.isLoading;
+  const isSettling = isLoading || (agentManager.isLoading && !rechecking);
   // Latched: `isLoading` includes the inventory's probing, which turns true
   // again on a cluster-access reconnect, and the sole-option line must not
   // flip back to a dropdown and forth each time.
@@ -193,11 +282,23 @@ export function InstallationSelect() {
   const singleUsable =
     hasSettled.current &&
     usableInstallations.length === 1 &&
-    usableInstallations.length + withoutAgentManager.length ===
+    usableInstallations.length +
+      withoutAgentManager.length +
+      withSharedIdentity.length ===
       availableInstallations.length
       ? usableInstallations[0]
       : undefined;
-  const singleInstallation = singleConfigured ?? singleUsable;
+  // Muster answered that agents cannot be created there: never picked, not
+  // even as the sole installation, so the form cannot go on to a Deploy that
+  // agent-manager would refuse.
+  const isWithheld = (installation: string) => {
+    const presence = agentManager.presenceOf(installation);
+    return presence === 'missing' || presence === 'sharedIdentity';
+  };
+  const singleInstallation =
+    singleConfigured && !isWithheld(singleConfigured)
+      ? singleConfigured
+      : singleUsable;
 
   useEffect(() => {
     if (singleInstallation && state.installation !== singleInstallation) {
@@ -205,16 +306,20 @@ export function InstallationSelect() {
     }
   }, [singleInstallation, state.installation, setInstallation]);
 
-  // A pick that turned out not to have agent-manager (the server list answered
-  // after the selection) is withdrawn: the review page could not deploy it.
+  // A pick that turned out not to be usable (the server list or the
+  // installations answered after the selection) is withdrawn: the review page
+  // could not deploy it.
+  // A usable sole installation replaces it instead (the effect above).
   useEffect(() => {
     if (
       state.installation &&
       !singleInstallation &&
-      agentManager.presenceOf(state.installation) === 'missing'
+      isWithheld(state.installation)
     ) {
       setInstallation(undefined);
     }
+    // `isWithheld` reads `agentManager`, which is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.installation, singleInstallation, agentManager, setInstallation]);
 
   // Until the installations config resolves we don't know whether this field
@@ -228,6 +333,7 @@ export function InstallationSelect() {
   const hasNotes =
     unreachableInstallations.length > 0 ||
     withoutAgentManager.length > 0 ||
+    withSharedIdentity.length > 0 ||
     agentManagerUnknown.length > 0 ||
     inaccessibleInstallations.length > 0;
 
@@ -249,7 +355,12 @@ export function InstallationSelect() {
   const unreachableNote = (
     <UnreachableInstallationsAlert
       installations={unreachableInstallations}
-      resourceName="ModelConfigs"
+      resourceName="model configs"
+      consequence={
+        unreachableInstallations.length === 1
+          ? 'It is not offered for this agent.'
+          : 'They are not offered for this agent.'
+      }
     />
   );
   const notes = (
@@ -259,7 +370,16 @@ export function InstallationSelect() {
         installations={inaccessibleInstallations}
       />
       <NoAgentManagerNote installations={withoutAgentManager} />
-      <AgentManagerUnknownNote installations={agentManagerUnknown} />
+      <SharedIdentityNote
+        installations={withSharedIdentity}
+        blocked="Agents cannot be created"
+        via="Agents are created through agent-manager"
+      />
+      <AgentManagerUnknownNote
+        installations={agentManagerUnknown}
+        isChecking={rechecking !== undefined}
+        onRecheck={recheckUnknown}
+      />
     </>
   );
 
@@ -269,7 +389,7 @@ export function InstallationSelect() {
         <Alert
           status="warning"
           title="The muster plugin is required"
-          description="Agents are created through agent-manager's tools over muster as the signed-in person, and this portal has no muster plugin installed. Nothing can be created from here."
+          description="Agents are created through agent-manager over muster, and this portal has no muster plugin installed."
         />
       </InstallationCard>
     );
@@ -284,14 +404,21 @@ export function InstallationSelect() {
         <InstallationCard>
           <Flex direction="column" gap="2">
             <Select
-              aria-label="Installation"
+              aria-label="Environment"
               isRequired
               isDisabled
               icon={<CircularProgress size={16} color="inherit" />}
               options={[]}
-              placeholder="Finding installations with models and agent-manager…"
+              placeholder="Finding environments with models and agent-manager…"
+              {...selectError.selectProps}
             />
+            {selectError.message}
             <NoAgentManagerNote installations={withoutAgentManager} />
+            <SharedIdentityNote
+              installations={withSharedIdentity}
+              blocked="Agents cannot be created"
+              via="Agents are created through agent-manager"
+            />
           </Flex>
         </InstallationCard>
       );
@@ -307,8 +434,8 @@ export function InstallationSelect() {
             {!hasNotes && (
               <Alert
                 status="info"
-                title="No installations with models"
-                description="None of the reachable installations have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
+                title="No environments with models"
+                description="No reachable environment has a kagent ModelConfig yet. A platform admin must add one before agents can be created."
               />
             )}
           </Flex>
@@ -326,7 +453,7 @@ export function InstallationSelect() {
       <InstallationCard>
         <Flex direction="column" gap="2">
           <Text>
-            Runs on <strong>{singleUsable}</strong>, the only installation with
+            Runs on <strong>{singleUsable}</strong>, the only environment with
             models and agent-manager.
           </Text>
           {notes}
@@ -339,8 +466,9 @@ export function InstallationSelect() {
     <InstallationCard>
       <Flex direction="column" gap="2">
         <Select
-          aria-label="Installation"
+          aria-label="Environment"
           isRequired
+          searchable={searchableIf(usableInstallations)}
           options={usableInstallations.map(name => ({
             id: name,
             label: name,
@@ -349,12 +477,14 @@ export function InstallationSelect() {
           onSelectionChange={key =>
             setInstallation(key ? String(key) : undefined)
           }
+          {...selectError.selectProps}
         />
+        {selectError.message}
         {/* The list grows as slower installations respond, so say so rather than
             letting a short list look complete. */}
         {isSettling && (
           <Text variant="body-small" color="secondary">
-            Still checking the remaining installations…
+            Still checking the remaining environments…
           </Text>
         )}
         {notes}

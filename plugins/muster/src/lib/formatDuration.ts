@@ -1,6 +1,10 @@
+import { formatSeconds } from '@giantswarm/backstage-plugin-agent-platform-common';
+
+/**
+ * A duration in milliseconds, as the platform writes every duration
+ * ("274 ms", "1.2 s", "18 s") — the shared `formatSeconds`, for muster's
+ * millisecond figures.
+ */
 export function formatDuration(durationMs: number): string {
-  // Whole milliseconds: an average over runs is rarely one.
-  const ms = Math.round(durationMs);
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
+  return formatSeconds(durationMs / 1000);
 }

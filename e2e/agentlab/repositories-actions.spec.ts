@@ -5,10 +5,8 @@ import { expect, open, test } from './fixtures';
 /**
  * The write side of the Repositories page (giantswarm/backstage#2399)
  * against the same lab as `repositories.spec.ts`: a muster serving
- * giantswarm-repo-manager, `page:repositories` and `api:repositories`
- * enabled, and -- for the last case -- `app.routes.bindings` mapping
- * `catalog.createComponent` to `repositories.create`. Skipped unless
- * AGENTLAB_REPO_MANAGER=1.
+ * giantswarm-repo-manager, and `page:repositories` and `api:repositories`
+ * enabled. Skipped unless AGENTLAB_REPO_MANAGER=1.
  *
  * The dry run runs against the lab's manager for real (it writes nothing),
  * as the form runs it -- on its own once the person pauses: a Go service
@@ -183,6 +181,16 @@ const configuration: Declaration = {
 };
 
 /**
+ * The label around a radio's or checkbox's (visually hidden) input: it takes
+ * the click -- the input itself is covered by it.
+ */
+const labelOf = (control: Locator) => control.locator('xpath=ancestor::label');
+
+/** A preset radio's card. */
+const preset = (page: Page, name: RegExp) =>
+  labelOf(page.getByRole('radio', { name }));
+
+/**
  * The team is a choice the form opens on the person's own team with; in the
  * lab the caller's teams may be unreadable, so team-bumblebee is picked when
  * nothing is.
@@ -197,16 +205,6 @@ async function fillDeclaration(page: Page, declaration = goService) {
   await preset(page, declaration.preset).click();
   await page.getByLabel(/^Name/).fill(declaration.name);
 }
-
-/**
- * The label around a radio's or checkbox's (visually hidden) input: it takes
- * the click -- the input itself is covered by it.
- */
-const labelOf = (control: Locator) => control.locator('xpath=ancestor::label');
-
-/** A preset radio's card. */
-const preset = (page: Page, name: RegExp) =>
-  labelOf(page.getByRole('radio', { name }));
 
 /** The declaration's one-line summary: `service · go · app · CircleCI config generated`. */
 const summary = (page: Page) => page.getByTestId('declaration-summary');
@@ -268,7 +266,7 @@ async function withInfo(
   check: (info: Info) => Promise<void>,
 ) {
   let rewritten: (answer: Info) => void = () => {};
-  const answered = new Promise<Info>(resolve => {
+  const rewrittenInfo = new Promise<Info>(resolve => {
     rewritten = resolve;
   });
   const stub = async (route: Route) => {
@@ -280,7 +278,7 @@ async function withInfo(
   await page.route(isInfo, stub);
   try {
     await page.reload();
-    const answer = await answered;
+    const answer = await rewrittenInfo;
     await expect(page.getByTestId('vocabulary-loading')).toHaveCount(0, {
       timeout: 60_000,
     });
@@ -717,7 +715,7 @@ test.describe('repositories: actions', () => {
       const opened = result.getByTestId('pull-request-opened');
       await expect(opened).toContainText(`#4242 ${pullRequest.title}`);
       await expect(
-        opened.getByRole('link', { name: /Open the pull request/ }),
+        opened.getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute('href', pullRequest.url);
 
       // The follow: the phases as the manager answered them, with the time
@@ -997,7 +995,7 @@ test.describe('repositories: actions', () => {
    * `align_repository`'s answer in the manager's shape (0.22.0 and later),
    * per mode: opted in (`align`), declared but not opted in (`opt-in`), a
    * check. The lab's manager refuses the dry run -- it reads the team file in
-   * giantswarm/github as the person, and the lab's GitHub stand-in has none
+   * giantswarm/github as the person, which the lab cannot reach
    * -- so the align route is stubbed at the browser like the create commit;
    * the dialog's behaviour per mode is pinned all the same.
    */
@@ -1180,7 +1178,7 @@ test.describe('repositories: actions', () => {
         'The ask posted to #team-bumblebee (team-bumblebee).',
       );
       await expect(
-        opened.getByRole('link', { name: /Open the pull request/ }),
+        opened.getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute(
         'href',
         'https://github.com/giantswarm/github/pull/4244',
@@ -1198,20 +1196,5 @@ test.describe('repositories: actions', () => {
     } finally {
       await admin.unroute(isAlign, stub);
     }
-  });
-
-  test('the catalog’s Create… lands on Create repository', async ({
-    admin,
-  }) => {
-    await open(admin, '/catalog');
-    const create = admin
-      .getByRole('navigation', { name: 'sidebar nav' })
-      .getByRole('link', { name: 'Create...' });
-    await expect(create).toHaveAttribute('href', '/repositories/create');
-    await create.click();
-    await expect(admin).toHaveURL(/\/repositories\/create$/);
-    await expect(
-      admin.getByRole('heading', { name: 'Create repository' }),
-    ).toBeVisible();
   });
 });

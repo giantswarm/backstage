@@ -17,7 +17,7 @@ type Call = { tool: string; args: Record<string, unknown>; authToken: string };
 
 /** pro-through-muster stand-in: answers keyed by tool, every call recorded. */
 class FakePro implements MusterServerGateway {
-  readonly server = 'gazelle-mcp-pro';
+  readonly server = 'mcp-pro';
   calls: Call[] = [];
   answers = new Map<
     string,
@@ -152,14 +152,14 @@ describe('createRouter', () => {
       pro.loginResult = {
         status: 'auth_required',
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
-        message: 'Authentication required for gazelle-mcp-pro.',
+        message: 'Authentication required for mcp-pro.',
       };
       const res = await request(app).get('/connection');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         connected: false,
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
-        message: 'Authentication required for gazelle-mcp-pro.',
+        message: 'Authentication required for mcp-pro.',
       });
     });
   });
@@ -193,8 +193,8 @@ describe('createRouter', () => {
       expect(res.status).toBe(401);
       expect(res.body.error).toEqual({
         name: 'MusterServerNotConnectedError',
-        message: expect.stringContaining("Connect 'gazelle-mcp-pro'"),
-        server: 'gazelle-mcp-pro',
+        message: expect.stringContaining("Connect 'mcp-pro'"),
+        server: 'mcp-pro',
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
       });
     });
@@ -262,6 +262,7 @@ describe('createRouter', () => {
         args: {
           board: 'roadmap',
           filters: { Team: 'Bumblebee🐝', Status: 'In Progress ⛏️' },
+          limit: 0,
           assignee: 'teemow',
           state: 'open',
         },
@@ -282,6 +283,87 @@ describe('createRouter', () => {
       await request(app).get('/items').query({ team: 'Bumblebee🐝' });
       await request(app).get('/items').query({ team: 'Bumblebee🐝' });
       expect(pro.calls).toHaveLength(1);
+    });
+
+    it('asks pro for the items without a status', async () => {
+      pro.answers.set('list_issues', { issues: [] });
+      const res = await request(app)
+        .get('/items')
+        .query({ team: 'Bumblebee🐝', empty: 'status' });
+      expect(res.status).toBe(200);
+      expect(pro.calls[0].args).toEqual({
+        board: 'roadmap',
+        filters: { Team: 'Bumblebee🐝' },
+        limit: 0,
+        emptyFields: ['Status'],
+      });
+    });
+
+    it('reads every item of a column, not the first page', async () => {
+      const items = Array.from({ length: 120 }, (_, i) => ({
+        ...ITEM,
+        id: `PVTI_${i}`,
+      }));
+      pro.answers.set('list_issues', {
+        count: 120,
+        totalCount: 120,
+        issues: items,
+        truncated: false,
+      });
+      const res = await request(app)
+        .get('/items')
+        .query({ team: 'Bumblebee🐝', status: 'Done ✅' });
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(120);
+      expect(pro.calls[0].args.limit).toBe(0);
+    });
+
+    it('fails a read pro cut short instead of showing part of a column', async () => {
+      pro.answers.set('list_issues', {
+        count: 50,
+        totalCount: 1200,
+        issues: [ITEM],
+        truncated: true,
+        nextCursor: 'abc',
+      });
+      const res = await request(app).get('/items').query({ status: 'Done ✅' });
+      expect(res.status).toBe(500);
+    });
+
+    it('rejects an empty filter on an unknown field', async () => {
+      for (const empty of ['nope', 'constructor']) {
+        const res = await request(app).get('/items').query({ empty });
+        expect(res.status).toBe(400);
+      }
+      expect(pro.calls).toHaveLength(0);
+    });
+
+    it('logs how long a board read took, once per read', async () => {
+      const logger = mockServices.logger.mock();
+      app = await buildApp(undefined, { logger });
+      pro.answers.set('list_issues', {
+        issues: [ITEM],
+        totalCount: 2,
+        hidden: 1,
+      });
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+
+      const reads = logger.info.mock.calls.filter(
+        ([message]) => message === 'Read the roadmap board',
+      );
+      expect(reads).toEqual([
+        [
+          'Read the roadmap board',
+          {
+            durationMs: expect.any(Number),
+            items: 1,
+            totalCount: 2,
+            hidden: 1,
+            filters: JSON.stringify({ Team: 'Bumblebee🐝' }),
+          },
+        ],
+      ]);
     });
 
     it('rejects repeated query parameters', async () => {
@@ -322,6 +404,7 @@ describe('createRouter', () => {
       expect(pro.calls[0].args).toEqual({
         board: 'roadmap',
         filters: { Team: 'Bumblebee🐝' },
+        limit: 0,
       });
     });
   });

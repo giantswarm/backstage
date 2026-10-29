@@ -6,6 +6,7 @@ import {
   createPluginQueryPersister,
   shouldPersistQuery,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { shouldRetryMusterQuery } from '@giantswarm/backstage-plugin-muster';
 
 // Keep entries in cache for an hour and persist them to localStorage, mirroring
 // the gs fleet-list client (Clusters/Deployments). Together with a non-zero
@@ -47,14 +48,14 @@ export const AGENT_PLATFORM_PERSISTER_KEY = 'agent-platform-react-query-cache';
  *
  * `PersistQueryClientProvider` compares it with the `buster` stored in the
  * blob on restore and discards the whole blob when they differ, so a release
- * that changes the CR schema the readers understand — kagent 0.10's
- * `v1alpha2 Agent` to API v2's `v1alpha3 AgentTemplate` — starts from an empty
+ * that changes the CR schema the readers understand — `kagent.dev/v1alpha3
+ * AgentTemplate` to `api.kagent.dev/v1alpha3 Agent` — starts from an empty
  * cache instead of rehydrating rows written by the previous portal. The query
  * keys carry group, version and plural too, which keeps an old entry from ever
  * being *read* as the new shape; the buster is what stops it being kept and
  * rewritten for the rest of its `maxAge`. Bump it with the next schema change.
  */
-export const AGENT_PLATFORM_CACHE_BUSTER = 'kagent.dev/v1alpha3';
+export const AGENT_PLATFORM_CACHE_BUSTER = 'api.kagent.dev/v1alpha3';
 
 /**
  * Query keys whose data belongs to one *user* rather than to the fleet, and which
@@ -91,6 +92,12 @@ const USER_SCOPED_RESOURCES = new Set([
   // sharpest reason to hold it: it is a behavioural profile, and small enough
   // that nothing but the rule keeps it off the disk.
   'session-usage',
+  // One person's model spend, in total and per agent: the backend answers it
+  // `no-store`, and a shared workstation must not rehydrate it for the next
+  // person.
+  'model-cost',
+  // The namespaces of the Agents one person may list: their tenants.
+  'agent-namespaces',
 ]);
 
 function isUserScopedQueryKey(queryKey: QueryKey): boolean {
@@ -118,6 +125,20 @@ export function shouldDehydrateAgentPlatformQuery(queryKey: QueryKey): boolean {
   return !isUserScopedQueryKey(queryKey);
 }
 
+/**
+ * Whether a failed read is tried again: the muster plugin's rule
+ * (`shouldRetryMusterQuery`, which never retries a muster auth failure, a
+ * missing object, a refusal or an unavailable dependency, and reads through
+ * the `cause` the plugin's own errors keep), and never a write kagent
+ * rejected (`RejectedError`).
+ */
+export function shouldRetryQuery(failureCount: number, error: unknown) {
+  return (
+    (error as Error | null)?.name !== 'RejectedError' &&
+    shouldRetryMusterQuery(failureCount, error)
+  );
+}
+
 const queryClientConfig: QueryClientConfig = {
   defaultOptions: {
     queries: {
@@ -127,19 +148,7 @@ const queryClientConfig: QueryClientConfig = {
       // or remounting reuses it without an immediate background refetch (the
       // refetch is what could error on a single cluster and drop its rows).
       staleTime: 60_000,
-      retry: (failureCount, error) => {
-        const name = (error as Error).name;
-        if (
-          name === 'RejectedError' ||
-          name === 'NotFoundError' ||
-          name === 'UnauthorizedError' ||
-          name === 'ForbiddenError' ||
-          name === 'ServiceUnavailableError'
-        ) {
-          return false;
-        }
-        return failureCount <= 2;
-      },
+      retry: shouldRetryQuery,
       // Capped exponential backoff so a persistently failing cluster (e.g. an
       // unreachable MC) is retried with increasing spacing instead of
       // hammered, and never waits longer than 30s between attempts.
@@ -161,6 +170,44 @@ const queryClientConfig: QueryClientConfig = {
  */
 const queryClient = new QueryClient(queryClientConfig);
 
+/**
+ * Reads the restored Kubernetes lists (Agents, ModelConfigs and the rest, all
+ * keyed `['cluster', …]`) again as soon as each is used. The blob is written
+ * at most every `PERSIST_THROTTLE_MS`, while `staleTime` trusts an entry for a
+ * minute: a load shortly after a list changed would otherwise restore the list
+ * as it was before the change and show it without a read -- "No agents yet"
+ * for an agent that is Ready.
+ *
+ * A restored list with rows still shows at once, marked stale, and the read
+ * replaces it. A restored empty list is reset to loading instead: shown, it is
+ * the one claim the read most often overturns ("nothing here").
+ */
+export async function markRestoredListsStale(
+  client: QueryClient,
+): Promise<void> {
+  const isList = (queryKey: QueryKey) => queryKey[0] === 'cluster';
+  const isEmpty = (data: unknown) => Array.isArray(data) && data.length === 0;
+  await Promise.all([
+    client.resetQueries({
+      predicate: query => isList(query.queryKey) && isEmpty(query.state.data),
+    }),
+    client.invalidateQueries({
+      predicate: query => isList(query.queryKey) && !isEmpty(query.state.data),
+    }),
+  ]);
+}
+
+// Once per page load: every mount of the provider restores, but only the
+// first restore comes from a blob older than this page's own reads.
+let restoredListsMarkedStale = false;
+function onRestored() {
+  if (restoredListsMarkedStale) {
+    return;
+  }
+  restoredListsMarkedStale = true;
+  markRestoredListsStale(queryClient);
+}
+
 export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const persister = useMemo(
     () =>
@@ -174,6 +221,7 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   return (
     <PersistQueryClientProvider
       client={queryClient}
+      onSuccess={onRestored}
       persistOptions={{
         persister,
         maxAge,

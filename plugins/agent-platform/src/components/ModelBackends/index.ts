@@ -1,6 +1,12 @@
-export { AddModelBackendDialog } from './AddModelBackendDialog';
-export type { AddModelBackendDialogProps } from './AddModelBackendDialog';
+export { AddModelBackendPage } from './AddModelBackendPage';
+export type { AddModelBackendPageProps } from './AddModelBackendPage';
 export { RemoveModelBackendDialog } from './RemoveModelBackendDialog';
 export type { RemoveModelBackendDialogProps } from './RemoveModelBackendDialog';
-export { useModelBackendControls } from './useModelBackendControls';
-export type { ModelBackendControls } from './useModelBackendControls';
+export {
+  useModelBackendControls,
+  useModelBackendTargets,
+} from './useModelBackendControls';
+export type {
+  ModelBackendControls,
+  ModelBackendTargets,
+} from './useModelBackendControls';

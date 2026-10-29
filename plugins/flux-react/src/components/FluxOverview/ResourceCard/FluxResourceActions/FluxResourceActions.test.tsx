@@ -2,13 +2,15 @@ import { ReactNode } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
-import { alertApiRef } from '@backstage/core-plugin-api';
+import { alertApiRef, identityApiRef } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ConfigMap,
+  FluxReport,
   ImagePolicy,
   Kustomization,
+  ResourceSet,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { FluxResourceActions } from './FluxResourceActions';
 
@@ -61,6 +63,28 @@ function createImagePolicy(options: { suspend?: boolean } = {}): ImagePolicy {
   return new ImagePolicy(json as any, 'test-installation');
 }
 
+function createResourceSet(
+  options: { suspended?: boolean; managedFields?: unknown[] } = {},
+): ResourceSet {
+  const json = {
+    apiVersion: 'fluxcd.controlplane.io/v1',
+    kind: 'ResourceSet',
+    metadata: {
+      name: 'apps',
+      namespace: 'flux-system',
+      annotations: options.suspended
+        ? { 'fluxcd.controlplane.io/reconcile': 'disabled' }
+        : undefined,
+      managedFields: options.managedFields,
+    },
+    spec: {},
+    status: {},
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new ResourceSet(json as any, 'test-installation');
+}
+
 /** A non-Flux resource, to exercise the kind guard. */
 function createConfigMap(): ConfigMap {
   const json = {
@@ -109,7 +133,7 @@ function createAlertApi() {
 }
 
 async function renderActions(
-  resource: Kustomization | ImagePolicy | ConfigMap,
+  resource: Kustomization | ImagePolicy | ResourceSet | FluxReport | ConfigMap,
   {
     kubernetesApi = createMockKubernetesApi(),
     alertApi = createAlertApi(),
@@ -125,6 +149,10 @@ async function renderActions(
         apis={[
           [kubernetesApiRef, kubernetesApi],
           [alertApiRef, alertApi],
+          [
+            identityApiRef,
+            { getProfileInfo: async () => ({ email: 'jane@example.com' }) },
+          ],
         ]}
       >
         {children}
@@ -391,6 +419,81 @@ describe('FluxResourceActions', () => {
           'You are not allowed to suspend Kustomization flux-system/my-app on cluster test-installation.',
       }),
     );
+  });
+});
+
+describe('FluxResourceActions for Flux Operator kinds', () => {
+  it('suspends a ResourceSet through its reconcile annotation', async () => {
+    const { kubernetesApi } = await renderActions(createResourceSet());
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Suspend' }),
+    );
+
+    await waitFor(() =>
+      expect(findPatchBody(kubernetesApi)).toEqual({
+        metadata: {
+          annotations: {
+            'fluxcd.controlplane.io/reconcile': 'disabled',
+            'fluxcd.controlplane.io/suspendedBy': 'jane@example.com',
+          },
+        },
+      }),
+    );
+  });
+
+  it('offers Resume for a ResourceSet with reconciliation disabled', async () => {
+    await renderActions(createResourceSet({ suspended: true }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Resume' }),
+    ).toBeInTheDocument();
+  });
+
+  it('names the reconcile annotation when GitOps applies it', async () => {
+    await renderActions(
+      createResourceSet({
+        managedFields: [
+          {
+            manager: 'kustomize-controller',
+            operation: 'Apply',
+            fieldsV1: {
+              'f:metadata': {
+                'f:annotations': { 'f:fluxcd.controlplane.io/reconcile': {} },
+              },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Suspend' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByTitle(
+        'fluxcd.controlplane.io/reconcile is applied by kustomize-controller, so a change made here would be reverted on the next reconciliation. Change it at the source that applies it.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no actions for a FluxReport, which the operator regenerates', async () => {
+    const report = new FluxReport(
+      {
+        apiVersion: 'fluxcd.controlplane.io/v1',
+        kind: 'FluxReport',
+        metadata: { name: 'flux', namespace: 'flux-system' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+
+    const { kubernetesApi } = await renderActions(report);
+
+    expect(
+      screen.queryByRole('button', { name: 'Reconcile' }),
+    ).not.toBeInTheDocument();
+    expect(kubernetesApi.proxy).not.toHaveBeenCalled();
   });
 });
 

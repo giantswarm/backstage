@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentManagerModelConfig } from '../lib/agentManager';
 import { musterAgentManagerModelConfigsQueryKey } from '../lib/queryKeys';
@@ -27,7 +28,7 @@ export function useAgentManagerModelConfigs(
   const client = useAgentManagerClient(installation);
   const enabled = Boolean(client) && Boolean(namespace);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterAgentManagerModelConfigsQueryKey(
       installation ?? '',
       namespace,
@@ -37,6 +38,7 @@ export function useAgentManagerModelConfigs(
     retry: false,
     staleTime: 60_000,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return {
     modelConfigs: data ?? [],

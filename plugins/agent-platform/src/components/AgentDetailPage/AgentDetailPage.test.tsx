@@ -3,26 +3,51 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
-  AgentHarnessCondition,
-  AgentHarnessStatus,
-  AgentTemplateInterface,
+  AgentCondition,
+  AgentInterface,
+  AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { agentsRouteRef, modelsRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  agentsRouteRef,
+  modelsRouteRef,
+  skillsRouteRef,
+  usageRouteRef,
+} from '../../routes';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
-
-type AgentInterface = AgentTemplateInterface;
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
 // is mocked — so the page is exercised against the actual getters, readiness
 // derivation and provenance helpers rather than a duck-typed stand-in.
 const mockUseResource = jest.fn();
 
+/** The HelmRelease verbs the person may not use on the agent's release. */
+let mockDeniedVerbs = new Set<string>();
+afterEach(() => {
+  mockDeniedVerbs = new Set();
+});
+// The sessions here start without a workspace: nothing to name, nothing read.
+const mockNoWorkspaceName = () => undefined;
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: () => mockNoWorkspaceName,
+}));
+
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResource: (...args: unknown[]) => mockUseResource(...args),
+  useSelfSubjectAccessReview: (
+    _cluster: string,
+    attributes: { verb: string },
+  ) => ({ allowed: !mockDeniedVerbs.has(attributes.verb), isLoading: false }),
 }));
 
 // `GitOpsCard` is deliberately *not* mocked: it reports its Flux lookups through
@@ -40,6 +65,29 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   useProvidePageHeaderActions: jest.fn(),
+}));
+
+// The shell's Sessions tab is the Sessions page's list (T46b), whose rows
+// carry rename and delete; their writes are that list's own tests' concern.
+jest.mock('../../hooks/useDeleteSession', () => ({
+  useDeleteSession: () => ({
+    deleteSession: jest.fn(),
+    isDeleting: false,
+    isDeleted: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+jest.mock('../../hooks/useRenameSession', () => ({
+  useRenameSession: () => ({
+    renameSession: jest.fn(),
+    isRenaming: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+jest.mock('../../hooks/useKagentCapabilities', () => ({
+  useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
 const mockUseAgentSessions = jest.fn<AgentSessionsView, unknown[]>();
@@ -76,6 +124,11 @@ jest.mock('../../hooks/useAgentDeletion', () => ({
     reset: jest.fn(),
   }),
 }));
+// The Delete dialog's pull-request check, a dry run through the same client;
+// AgentDeleteDialog.test covers it.
+jest.mock('../../hooks/useAgentCommitCheck', () => ({
+  useAgentCommitCheck: () => ({ status: 'off' }),
+}));
 jest.mock('../../hooks/useUpdateAgent', () => ({
   useUpdateAgent: () => ({
     update: jest.fn(),
@@ -91,6 +144,11 @@ jest.mock('../../hooks/useUpdateAgent', () => ({
 // affordance offered — which is what most of this file's tests want.
 let agentManagerPresence: 'available' | 'missing' | 'unknown' = 'unknown';
 let isMusterUnavailable = true;
+// `get_info`'s `capabilities.commit`: whether agent-manager can open a pull
+// request in the repository that owns a release applied from git.
+let canCommit = false;
+// `get_info`'s platform Harness; unset, it names none, as before it answers.
+let managerHarness: string | undefined;
 
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
@@ -101,7 +159,13 @@ jest.mock('../../hooks/useAgentManager', () => ({
     isUnavailable: isMusterUnavailable,
   }),
   useAgentManagerInfo: () => ({
-    info: undefined,
+    info:
+      canCommit || managerHarness
+        ? {
+            ...(canCommit && { capabilities: { commit: true } }),
+            ...(managerHarness && { harness: { name: managerHarness } }),
+          }
+        : undefined,
     isLoading: false,
     error: null,
   }),
@@ -149,24 +213,29 @@ jest.mock('../../hooks/useAgentStatus', () => ({
 const UPDATED_FROM_GENERATION = 4;
 jest.mock('./AgentUpdateSkillsDialog', () => ({
   AgentUpdateSkillsDialog: ({
+    mode,
     onUpdated,
   }: {
+    mode?: string;
     onUpdated: (
       skills: unknown,
       requestedBy?: string,
       fromGeneration?: number,
     ) => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => onUpdated(undefined, 'marian', UPDATED_FROM_GENERATION)}
-    >
-      stub: Update skills landed
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => onUpdated(undefined, 'marian', UPDATED_FROM_GENERATION)}
+      >
+        stub: Update skills landed
+      </button>
+      <output aria-label="stub: Update skills mode">{mode}</output>
+    </>
   ),
 }));
 
-// Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and
+// Stubbed for the same reason: it reads the muster API, and this page's APIs and
 // react-query client are not part of the test. What it drives — the "Start a
 // session" button and its dialog — is covered by `NewSessionComposer`'s own tests
 // and end to end.
@@ -186,6 +255,86 @@ jest.mock('../../hooks/useCreateSession', () => ({
 // the page is asserted.
 jest.mock('./AgentToolsetCard', () => ({
   AgentToolsetCard: () => <div data-testid="agent-toolset-card" />,
+}));
+
+// The carrier read behind the Overview's toolset line: a namespaced
+// RemoteMCPServer list through `useResources`, which the page's fetch stub does
+// not cover. Driven per case; the default is the toolset the Agents list would
+// summarise as one labelled preset.
+const mockUseAgentToolset = jest.fn();
+jest.mock('../../hooks/useAgentToolset', () => ({
+  useAgentToolset: (...args: unknown[]) => mockUseAgentToolset(...args),
+}));
+// The catalogue that names individually picked tools by connector (T103);
+// `lib/toolsetReach` covers the words.
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: () => undefined,
+}));
+const READ_ONLY_TOOLSET = {
+  declared: {
+    state: 'declared',
+    carrier: 'pr-reviewer',
+    selectors: ['preset:read-only'],
+  },
+  isReading: false,
+  isUnreadable: false,
+};
+/** A chat-only agent: no binding reaches the gateway. */
+const NO_GATEWAY_TOOLSET = {
+  declared: { state: 'no-gateway' },
+  isReading: false,
+  isUnreadable: false,
+};
+/** Bound to the gateway, but its carrier declares no tools. */
+const NONE_TOOLSET = {
+  declared: {
+    state: 'declared',
+    carrier: 'pr-reviewer',
+    selectors: ['preset:none'],
+  },
+  isReading: false,
+  isUnreadable: false,
+};
+
+// The shell's plain Overview names skills the way the skill catalog does,
+// when it has them. Driven per case; empty by default.
+const mockSkillCatalog: { skills: unknown[] } = { skills: [] };
+jest.mock('../../hooks/useSkillCatalog', () => ({
+  useSkillCatalog: () => ({
+    skills: mockSkillCatalog.skills,
+    isLoading: false,
+    error: null,
+    hasRepositories: true,
+    failedRepositories: [],
+    truncated: false,
+  }),
+}));
+
+// The shell's Usage tab reads the Usage screen's two sources — the gateway's
+// reduction and kagent's session summary — through their hooks, which are
+// covered with the Usage screen; here only what the tab makes of them is.
+const mockUseLlmUsage = jest.fn();
+jest.mock('../../hooks/useLlmUsage', () => ({
+  useLlmUsage: (...args: unknown[]) => mockUseLlmUsage(...args),
+}));
+const mockUseSessionUsage = jest.fn();
+jest.mock('../../hooks/useSessionUsage', () => ({
+  useSessionUsage: (...args: unknown[]) => mockUseSessionUsage(...args),
+}));
+jest.mock('../../lib/formatNumbers', () => ({
+  ...jest.requireActual('../../lib/formatNumbers'),
+  useCurrency: () => ({ code: 'USD' }),
+}));
+jest.mock('../ModelConfigsProvider', () => ({
+  ModelConfigsProvider: ({ children }: { children: ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+jest.mock('../AgentsDataProvider', () => ({
+  ...jest.requireActual('../AgentsDataProvider'),
+  AgentsDataProvider: ({ children }: { children: ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 // The serving layer's word on the model behind the agent is driven per case;
@@ -216,12 +365,16 @@ const mockParams: {
   name: 'pr-reviewer',
 };
 
-const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
-  jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
+const {
+  Agent,
+  GitRepository,
+  Harness,
+  HelmRelease,
+  Kustomization,
+  ModelConfig,
+} = jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
 
-const HARNESS_LABEL = 'agent-platform.giantswarm.io/harness';
-
-const READY_CONDITIONS: AgentHarnessCondition[] = [
+const READY_CONDITIONS: AgentCondition[] = [
   {
     type: 'Accepted',
     status: 'True',
@@ -238,17 +391,17 @@ const READY_CONDITIONS: AgentHarnessCondition[] = [
   },
 ];
 
-/** One Harness entry of `status.harnesses[]`, the platform Harness by default. */
-function harness(
-  conditions: AgentHarnessCondition[],
-  extra: Partial<AgentHarnessStatus> = {},
-): AgentHarnessStatus {
+/** The verdict the controller wrote, `desiredRevision` defaulting to a compiled-and-current one. */
+function reported(
+  conditions: AgentCondition[],
+  extra: Omit<AgentStatus, 'conditions'> = {},
+): AgentStatus {
   return {
-    harness: 'kagent',
+    observedGeneration: 1,
     desiredRevision: 'rev-1',
     latestSuccessfulRevision: 'rev-1',
     ...extra,
-    conditions: conditions as AgentHarnessStatus['conditions'],
+    conditions,
   };
 }
 
@@ -257,8 +410,8 @@ const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 function makeAgent(overrides: Partial<AgentInterface> = {}) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
@@ -266,40 +419,69 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
         creationTimestamp: '2026-07-21T09:00:00Z',
         annotations: { 'ui.giantswarm.io/display-name': 'PR reviewer' },
         labels: {
-          [HARNESS_LABEL]: 'kagent',
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
           'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
         ...(overrides.metadata as object),
       },
       spec: {
-        description: 'Reviews pull requests in depth.',
-        modelConfig: { name: 'opus-4-7' },
-        systemPrompt: 'You review pull requests.',
-        tools: [
-          // The gateway carrier the chart renders, named after the agent.
-          { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
-        ],
-        skills: [
-          {
-            name: 'PR review conventions',
-            source: {
-              git: {
-                url: 'https://github.com/giantswarm/skills',
-                commit: COMMIT,
-              },
-              path: 'pr-review',
+        harnessRef: { name: 'kagent' },
+        template: {
+          description: 'Reviews pull requests in depth.',
+          modelConfig: { name: 'opus-4-7' },
+          systemPrompt: 'You review pull requests.',
+          tools: [
+            // The gateway carrier the chart renders, named after the agent.
+            {
+              mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } },
             },
-          },
-        ],
-        ...(overrides.spec as object),
+          ],
+          skills: [
+            {
+              name: 'PR review conventions',
+              source: {
+                git: {
+                  url: 'https://github.com/giantswarm/skills',
+                  commit: COMMIT,
+                },
+                path: 'pr-review',
+              },
+            },
+          ],
+          ...(overrides.spec as object),
+        },
       },
       status: {
-        observedGeneration: 1,
-        harnesses: [harness(READY_CONDITIONS)],
+        ...reported(READY_CONDITIONS),
         ...(overrides.status as object),
       },
     },
+    'gazelle',
+  );
+}
+
+/** A Harness of the fixture agent's namespace, as an admin may label it. */
+function makeHarness({
+  name = 'kagent',
+  runtime = 'kagent',
+  displayName,
+}: { name?: string; runtime?: string; displayName?: string } = {}) {
+  return new Harness(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Harness',
+      metadata: {
+        name,
+        namespace: 'agent-platform',
+        ...(displayName && {
+          annotations: { 'ui.giantswarm.io/display-name': displayName },
+        }),
+      },
+      spec: {
+        [runtime]: {},
+        workload: { image: `registry.example/${name}-harness@sha256:0123` },
+      },
+    } as never,
     'gazelle',
   );
 }
@@ -310,7 +492,7 @@ function makeModelConfig({
 }: { displayName?: string | null } = {}) {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'opus-4-7',
@@ -333,6 +515,22 @@ const NO_SESSIONS: AgentSessionsView = {
   isUnavailable: false,
 };
 
+const ONE_SESSION: AgentSessionsView = {
+  ...NO_SESSIONS,
+  rows: [
+    {
+      id: 'gazelle/abc',
+      sessionId: 'abc',
+      installation: 'gazelle',
+      title: 'Review #2705',
+      agentName: 'PR reviewer',
+      agentTechnicalName: 'pr-reviewer',
+      agentNamespace: 'agent-platform',
+      createdAt: '2026-07-23T16:04:28Z',
+    },
+  ],
+};
+
 /** Every `useResource` outcome the page can see, per resource class. */
 type ResourceOutcome = {
   resource?: unknown;
@@ -350,6 +548,8 @@ type FluxChain = {
   helmRelease?: unknown;
   kustomization?: unknown;
   gitRepository?: unknown;
+  /** Not Flux, but read beside it: the Harness the agent names. */
+  harness?: ResourceOutcome;
 };
 
 function stubResources(
@@ -383,6 +583,8 @@ function stubResources(
           return fill({ resource: flux.kustomization });
         case GitRepository:
           return fill({ resource: flux.gitRepository });
+        case Harness:
+          return fill(flux.harness);
         default:
           return fill();
       }
@@ -452,12 +654,18 @@ function makeGitRepository() {
  * AgentsRouter mounts this page at, so the page's own `<Routes>` sees the tab
  * segment and `useSplatBasePath` can strip it back off.
  */
-const AGENT_PATH = `/agent-platform/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
+const AGENT_PATH = `/customize/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
 
-const renderPage = (tab: 'tools' | 'skills' | 'sessions' | '' = '') =>
+const renderPage = (tab: string = '') =>
   renderInTestApp(<AgentDetailPage />, {
-    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
-    mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+    mountedRoutes: {
+      '/customize/agents': agentsRouteRef,
+      '/customize/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+      '/customize/skills': skillsRouteRef,
+      '/usage': usageRouteRef,
+    },
+    mountPath: '/customize/agents/:installation/:namespace/:name/*',
     initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
 
@@ -475,6 +683,26 @@ function expectHeaderReadiness(label: string) {
 /** An InfoCard title, which renders as a heading. */
 const sectionTitle = (name: string) => screen.getByRole('heading', { name });
 
+/**
+ * Opens the Overview's "Technical details" fold-out, where the configuration,
+ * status and provenance cards live. It starts open for an agent that is not
+ * ready.
+ */
+async function openTechnicalDetails() {
+  const foldOut = screen.getByRole('button', { name: 'Technical details' });
+  if (foldOut.getAttribute('aria-expanded') !== 'true') {
+    await userEvent.click(foldOut);
+  }
+}
+
+/** What the configuration's Model row says, beside the facts' own Model. */
+function configurationModelRow(): string {
+  return Array.from(document.querySelectorAll('dt'))
+    .filter(term => term.textContent === 'Model')
+    .map(term => term.nextElementSibling?.textContent ?? '')
+    .join(' | ');
+}
+
 describe('AgentDetailPage', () => {
   beforeEach(() => {
     mockUseResource.mockReset();
@@ -483,43 +711,46 @@ describe('AgentDetailPage', () => {
     mockServingStateFor.mockReset();
     mockUseAgentStatus.mockReset();
     mockUseAgentStatus.mockReturnValue(NO_STATUS);
+    mockUseAgentToolset.mockReset();
+    mockUseAgentToolset.mockReturnValue(READ_ONLY_TOOLSET);
     agentManagerPresence = 'unknown';
     isMusterUnavailable = true;
     managerAgent = undefined;
     isReadingManagerAgent = false;
+    canCommit = false;
+    managerHarness = undefined;
   });
 
-  it('renders every section for a ready agent', async () => {
-    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+  it('lists the extra egress origins the Agent declares, and no row without them', async () => {
+    const base = makeAgent();
+    const withEgress = new Agent(
+      {
+        ...base.jsonData,
+        spec: {
+          ...base.jsonData.spec,
+          egress: [
+            'https://github.com:443',
+            'https://*.githubusercontent.com',
+            'tls://db.example.com:5432',
+          ],
+        },
+      },
+      'gazelle',
+    );
+    stubResources({ resource: withEgress }, { resource: makeModelConfig() });
 
     await renderPage();
+    await openTechnicalDetails();
 
-    // Header
-    expect(screen.getByText('PR reviewer')).toBeInTheDocument();
-    expectHeaderReadiness('Ready');
+    const terms = Array.from(document.querySelectorAll('dt')).map(
+      term => term.textContent,
+    );
+    expect(terms).toContain('Extra egress');
+    expect(screen.getByText('https://github.com:443')).toBeInTheDocument();
     expect(
-      screen.getByText('Reviews pull requests in depth.'),
+      screen.getByText('https://*.githubusercontent.com'),
     ).toBeInTheDocument();
-
-    // The Overview tab's sections. Tools, Skills and Sessions have tabs of
-    // their own and are asserted there.
-    expect(sectionTitle('Status')).toBeInTheDocument();
-    expect(sectionTitle('Configuration')).toBeInTheDocument();
-    expect(sectionTitle('System prompt')).toBeInTheDocument();
-    expect(screen.queryByTestId('agent-toolset-card')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /^Skills/ })).toBeNull();
-
-    // Resolved model, from the targeted ModelConfig read
-    expect(screen.getByText('Claude Opus 4.7')).toBeInTheDocument();
-    expect(screen.getByText('claude-opus-4-7 · Anthropic')).toBeInTheDocument();
-
-    expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
-
-    // The admitting Harness, in the configuration and in the status.
-    expect(screen.getByText(/From the label/)).toHaveTextContent(HARNESS_LABEL);
-    expect(
-      screen.getByRole('list', { name: 'Admitting Harnesses' }),
-    ).toHaveTextContent(/kagent.*Ready.*sessions run here/);
+    expect(screen.getByText('tls://db.example.com:5432')).toBeInTheDocument();
   });
 
   // Update skills runs from this page and navigates to the URL it is already
@@ -576,65 +807,8 @@ describe('AgentDetailPage', () => {
     });
   });
 
-  describe('tabs', () => {
-    it('offers the four tabs, each at its own URL', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderPage();
-
-      const tabs = screen.getAllByRole('tab');
-      expect(tabs.map(tab => tab.textContent)).toEqual([
-        'Overview',
-        'Tools',
-        'Skills',
-        'Sessions',
-      ]);
-      expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
-        AGENT_PATH,
-        `${AGENT_PATH}/tools`,
-        `${AGENT_PATH}/skills`,
-        `${AGENT_PATH}/sessions`,
-      ]);
-    });
-
-    // `aria-selected` alone is not the affordance: bui draws the active
-    // underline from the selected key, and skips it entirely for an empty one
-    // (TabsIndicators guards on `selectedKey !== ''`), so a tab whose id came
-    // from its path would be selected and yet visibly unmarked on Overview.
-    it.each([
-      ['', 'Overview'],
-      ['tools', 'Tools'],
-    ] as const)(
-      'marks the open tab with the active indicator (%s)',
-      async (tab, _label) => {
-        stubResources({ resource: makeAgent() });
-
-        const { container } = await renderPage(tab);
-
-        const strip = container.querySelector('.bui-Tabs');
-        expect(strip).toHaveStyle({ '--active-tab-opacity': '1' });
-      },
-    );
-
-    // Overview's href is a prefix of every other tab's, so a 'prefix' match
-    // strategy would leave it selected on all four.
-    it('selects only the open tab', async () => {
-      stubResources({ resource: makeAgent() });
-
-      const { unmount } = await renderPage();
-      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Overview',
-      );
-      unmount();
-
-      stubResources({ resource: makeAgent() });
-      await renderPage('tools');
-      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Tools',
-      );
-    });
-
-    it('renders the toolset on the Tools tab', async () => {
+  describe('tools', () => {
+    it('renders the toolset under the Tools tab', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage('tools');
@@ -645,49 +819,72 @@ describe('AgentDetailPage', () => {
         screen.queryByRole('heading', { name: 'Configuration' }),
       ).toBeNull();
     });
-
-    // A retired or mistyped tab is not a missing agent.
-    it('sends an unknown sub-path back to Overview', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderInTestApp(<AgentDetailPage />, {
-        mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
-        mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
-        initialRouteEntries: [`${AGENT_PATH}/gitops`],
-      });
-
-      expect(sectionTitle('Configuration')).toBeInTheDocument();
-      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Overview',
-      );
-    });
   });
 
   describe('skills', () => {
-    it('shows each mounted skill as a card', async () => {
-      stubResources({ resource: makeAgent() });
+    // Update skills only moves the pins of skills already mounted, so an agent
+    // without any is pointed at the edit page, where skills are added.
+    describe('without any', () => {
+      const withoutSkills = () =>
+        makeAgent({ spec: { skills: [] } } as Partial<AgentInterface>);
 
-      await renderPage('skills');
+      it('offers Add skills to whoever may edit the agent', async () => {
+        withAgentManager('helmrelease');
+        stubResources({ resource: withoutSkills() });
 
-      expect(sectionTitle('Skills (1)')).toBeInTheDocument();
-      // One skill card: the label, its repo as a link, and the commit it is
-      // pinned to — short on the card, full in the tooltip.
-      expect(screen.getByText('PR review conventions')).toBeInTheDocument();
-      expect(
-        screen.getByRole('link', { name: 'giantswarm/skills' }),
-      ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
-      expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
-        'title',
-        COMMIT,
-      );
-      // Read-only: the picker's checkbox affordance must not come along.
-      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        await renderPage('skills');
+
+        expect(screen.getByText(/^No skills yet/)).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Add skills' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', {
+            name: 'Update all skills to latest…',
+          }),
+        ).toBeNull();
+      });
+
+      it('offers nothing to a viewer who cannot edit the agent', async () => {
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(screen.getByText(/^No skills yet/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Add skills' })).toBeNull();
+      });
+
+      it('says where the skills of an agent applied from git are added', async () => {
+        withAgentManager('gitops');
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(screen.getByText(/so add skills there/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Add skills' })).toBeNull();
+      });
+
+      it('offers Add skills for an agent applied from git when agent-manager can commit', async () => {
+        // The edit page then opens a pull request in the GitOps repository.
+        withAgentManager('gitops');
+        canCommit = true;
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(
+          screen.getByText(/so adding skills opens a pull request there/),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Add skills' }),
+        ).toBeInTheDocument();
+      });
     });
 
     // The exact label, because the stubbed dialog's own button says
     // "stub: Update skills landed" and would match a looser query.
     const updateSkills = () =>
-      screen.queryByRole('button', { name: 'Update skills\u2026' });
+      screen.queryByRole('button', { name: 'Update all skills to latest…' });
 
     it('offers Update skills when agent-manager can write to the agent', async () => {
       withAgentManager('helmrelease');
@@ -698,7 +895,7 @@ describe('AgentDetailPage', () => {
       expect(updateSkills()).toBeInTheDocument();
     });
 
-    it('withholds Update skills for an agent applied from git', async () => {
+    it('withholds Update skills for an agent applied from git that agent-manager cannot commit to', async () => {
       // agent-manager refuses every live write to it: its desired state lives in
       // the GitOps repository, so pressing the button could only ever end in the
       // refusal the dialog used to show after the fact.
@@ -708,6 +905,34 @@ describe('AgentDetailPage', () => {
       await renderPage('skills');
 
       expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it('offers Update skills for an agent applied from git when agent-manager can commit, and opens the dialog in commit mode', async () => {
+      // A pull request in the GitOps repository, as Edit and Delete do.
+      withAgentManager('gitops');
+      canCommit = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).toBeInTheDocument();
+      await userEvent.click(updateSkills()!);
+      expect(
+        screen.getByLabelText('stub: Update skills mode'),
+      ).toHaveTextContent('commit');
+    });
+
+    it('opens the dialog live for an agent agent-manager writes live', async () => {
+      withAgentManager('helmrelease');
+      canCommit = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      await userEvent.click(updateSkills()!);
+      expect(
+        screen.getByLabelText('stub: Update skills mode'),
+      ).toHaveTextContent('apply');
     });
 
     it("withholds Update skills while agent-manager's verdict is in flight", async () => {
@@ -756,9 +981,8 @@ describe('AgentDetailPage', () => {
 
     expect(screen.getByText('runbooks')).toBeInTheDocument();
     expect(
-      screen.getByText('gsoci.azurecr.io/giantswarm/skills'),
+      screen.getByText(/^From gsoci\.azurecr\.io\/giantswarm\/skills/),
     ).toBeInTheDocument();
-    expect(screen.getByText(`sha256:${'f'.repeat(12)}`)).toBeInTheDocument();
   });
 
   it('names the agent in the document title and as the page heading', async () => {
@@ -767,11 +991,9 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     // The app layout appends " | <app title>"; the page sets the rest.
-    await waitFor(() =>
-      expect(document.title).toBe('PR reviewer · Agents · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('PR reviewer · Agents'));
     expect(
-      screen.getByRole('heading', { level: 2, name: 'PR reviewer' }),
+      screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
     ).toBeInTheDocument();
   });
 
@@ -783,31 +1005,44 @@ describe('AgentDetailPage', () => {
 
     await renderPage();
 
-    await waitFor(() =>
-      expect(document.title).toBe('pr-reviewer · Agents · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('pr-reviewer · Agents'));
   });
 
   it('lists the configuration as terms and descriptions, not headings', async () => {
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
     await renderPage();
+    await openTechnicalDetails();
 
     const terms = Array.from(document.querySelectorAll('dt')).map(
       term => term.textContent,
     );
-    expect(terms).toEqual(expect.arrayContaining(['Harness', 'Model']));
+    expect(terms).toEqual(expect.arrayContaining(['Model', 'Tools']));
     expect(screen.queryByRole('heading', { name: 'Model' })).toBeNull();
   });
 
-  it('heads each condition one level below the Status card', async () => {
+  // A ready agent's conditions all read healthy: one closed disclosure below
+  // the Status card's heading, each condition a level below that once opened.
+  it('keeps a ready agent’s conditions behind one disclosure', async () => {
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
     await renderPage();
+    await openTechnicalDetails();
+
+    const disclosure = screen.getByRole('button', { name: 'Conditions (2)' });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getByRole('heading', { level: 4, name: 'Conditions (2)' }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(disclosure);
 
     expect(
-      screen.getByRole('heading', { level: 4, name: /^Accepted/ }),
+      screen.getByRole('heading', { level: 5, name: /^Accepted/ }),
     ).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Revision').map(term => term.textContent),
+    ).toContain('Revision rev-1');
   });
 
   it.each([
@@ -822,13 +1057,16 @@ describe('AgentDetailPage', () => {
       );
 
       await renderPage();
+      await openTechnicalDetails();
 
-      // The first line is the model, not the resource name the ModelConfig
-      // line already shows, and in monospace like the other identifiers.
-      const modelLine = screen.getByText('claude-opus-4-7 · Anthropic');
-      expect(modelLine).toHaveAttribute('data-variant', 'body-medium');
+      // The configuration card's first line is the model, not the resource
+      // name, and in monospace like the other identifiers. (The overview's
+      // facts name the ModelConfig too; see the plain Overview's tests.)
+      const modelLine = screen
+        .getAllByText('claude-opus-4-7 · Anthropic')
+        .find(line => line.getAttribute('data-variant') === 'body-medium');
+      expect(modelLine).toBeDefined();
       expect(modelLine).toHaveStyle({ fontFamily: 'monospace' });
-      expect(screen.queryByText('opus-4-7')).toBeNull();
     },
   );
 
@@ -839,30 +1077,61 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(screen.getByText('opus-4-7')).toBeInTheDocument();
+    // No link to a page that could only say it cannot load the model.
+    await openTechnicalDetails();
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+  });
+
+  it("links the ModelConfig in Technical details to the model's page", async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // Named alone: the agent references a ModelConfig in its own namespace,
+    // which the Resource card states.
+    expect(screen.getByRole('link', { name: 'opus-4-7' })).toHaveAttribute(
+      'href',
+      '/customize/models/gazelle/agent-platform/opus-4-7',
+    );
+    // Sized and coloured as the "ModelConfig" line it sits in.
+    expect(screen.getByRole('link', { name: 'opus-4-7' })).toHaveAttribute(
+      'data-variant',
+      'body-small',
+    );
+  });
+
+  it('keeps the model as text where the agent has no namespace to resolve it in', async () => {
+    const agent = makeAgent();
+    delete agent.jsonData.metadata!.namespace;
+    stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // Neither the configuration's ModelConfig nor the facts' model name.
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Claude Opus 4.7' })).toBeNull();
+    expect(screen.getAllByText('opus-4-7').length).toBeGreaterThan(0);
   });
 
   describe('status', () => {
     it('surfaces the Ready condition message for a compiling agent, expanded', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness(
-                [
-                  READY_CONDITIONS[0],
-                  {
-                    type: 'Ready',
-                    status: 'False',
-                    reason: 'Compiling',
-                    message: 'Compiling revision rev-2',
-                    lastTransitionTime: '2026-07-31T10:05:00Z',
-                  },
-                ],
-                { desiredRevision: 'rev-2' },
-              ),
+          status: reported(
+            [
+              READY_CONDITIONS[0],
+              {
+                type: 'Ready',
+                status: 'False',
+                reason: 'Compiling',
+                message: 'Compiling revision rev-2',
+                lastTransitionTime: '2026-07-31T10:05:00Z',
+              },
             ],
-          },
+            { observedGeneration: 1, desiredRevision: 'rev-2' },
+          ),
         } as Partial<AgentInterface>),
       });
 
@@ -874,86 +1143,240 @@ describe('AgentDetailPage', () => {
         screen.getAllByText('Compiling revision rev-2').length,
       ).toBeGreaterThan(0);
       expect(screen.getByText('Compiling')).toBeInTheDocument();
-      // The Harness row says which revision it is working on.
+      // Listed open, not behind the disclosure a ready agent gets.
       expect(
-        screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).toHaveTextContent(
-        /kagent.*Progressing.*compiling rev-2, last successful rev-1/,
-      );
+        screen.getByRole('heading', { level: 4, name: /^Ready/ }),
+      ).toBeInTheDocument();
+      // The one moment the revision explains something.
+      expect(
+        screen
+          .getAllByText(/^Compiling/)
+          .some(
+            element => element.textContent === 'Compiling rev-2, running rev-1',
+          ),
+      ).toBe(true);
+      // The page says why sessions cannot start yet.
+      expect(
+        screen.getByText('Sessions can start once the agent is ready'),
+      ).toBeInTheDocument();
     });
 
-    it('reports a rejected template as not accepted, with the Harness’s reason', async () => {
+    it('reports an incompatible template as failed, with the Harness’s reason', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness([
-                READY_CONDITIONS[0],
-                {
-                  type: 'Compatible',
-                  status: 'False',
-                  reason: 'Incompatible',
-                  message:
-                    'Dedicated sub-agents are not supported by this Harness',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-              ]),
-            ],
-          },
+          status: reported([
+            READY_CONDITIONS[0],
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Incompatible',
+              message: 'Dedicated sub-agents are not supported by this Harness',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ]),
         } as Partial<AgentInterface>),
       });
 
       await renderPage();
 
-      expectHeaderReadiness('Not accepted');
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
       expect(
         screen.getAllByText(
           'Dedicated sub-agents are not supported by this Harness',
         ).length,
       ).toBeGreaterThan(0);
-      expect(
-        screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).toHaveTextContent(/kagent.*Failed/);
+      // A configuration problem names no field to mark.
+      expect(screen.queryByText('Cannot be resolved')).toBeNull();
     });
 
-    // The state of its own: no Harness will ever run this agent until its labels
-    // change, so it must not read as a pending that will resolve.
-    it('reports a template no Harness admits as not admitted, with the missing label', async () => {
+    // What kagent writes for a missing ModelConfig: Accepted stays True, the
+    // reference check fails, and every later stage reads Blocked — all at one
+    // timestamp.
+    const unresolvedModelAgent = () =>
+      makeAgent({
+        status: reported(
+          [
+            {
+              type: 'Accepted',
+              status: 'True',
+              reason: 'Accepted',
+              message: 'Harness "kagent" runs this template',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'Ready',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'ResolvedRefs',
+              status: 'False',
+              reason: 'ReferenceResolutionFailed',
+              message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ],
+          { observedGeneration: 1, latestSuccessfulRevision: undefined },
+        ),
+      } as Partial<AgentInterface>);
+
+    it('leads a failed agent with its root cause and marks the field it is about', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
+      expect(
+        screen.getAllByText(
+          'resolve ModelConfig "qwen3-4b-instruct": not found',
+        ).length,
+      ).toBeGreaterThan(0);
+
+      // The Model row, not the Accepted condition, is where to look.
+      expect(configurationModelRow()).toContain('Cannot be resolved');
+
+      // Conditions in the order kagent evaluates them: the failed stage
+      // before the stages it blocks, and the one open.
+      const headings = screen
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent ?? '');
+      expect(
+        headings.filter(text =>
+          /^(Accepted|ResolvedRefs|Compatible|Ready)/.test(text),
+        ),
+      ).toEqual([
+        expect.stringMatching(/^Accepted/),
+        expect.stringMatching(/^ResolvedRefs/),
+        expect.stringMatching(/^Compatible/),
+        expect.stringMatching(/^Ready/),
+      ]);
+      expect(
+        screen.getByRole('button', { name: /^ResolvedRefs/ }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      expect(
+        screen.getByRole('button', { name: /^Compatible/ }),
+      ).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('marks the Model row even when the template names no ModelConfig', async () => {
+      const { jsonData } = unresolvedModelAgent();
+      stubResources({
+        resource: new Agent(
+          {
+            ...jsonData,
+            spec: { ...jsonData.spec, modelConfig: undefined },
+          } as AgentInterface,
+          'gazelle',
+        ),
+      });
+
+      await renderPage();
+
+      expect(configurationModelRow()).toContain('Cannot be resolved');
+    });
+
+    it('offers Edit agent beside the cause to whoever may edit the agent', async () => {
+      withAgentManager();
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByRole('button', { name: 'Edit agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('says where a failed agent applied from git is fixed', async () => {
+      withAgentManager('gitops');
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(/deployed from GitOps, so fix it there/),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
+    it('offers Edit agent for a failed agent applied from git when agent-manager can commit', async () => {
+      withAgentManager('gitops');
+      canCommit = true;
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          /deployed from GitOps, so a fix opens a pull request there/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Edit agent' }),
+      ).toBeInTheDocument();
+    });
+
+    // The Harness is named, but no claim that sessions run on it.
+    it('names the Harness of a failed agent without saying sessions run there', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(screen.getByText(/^Runs on/)).toHaveTextContent('Runs on kagent');
+      expect(screen.queryByText(/Sessions run on/)).toBeNull();
+    });
+
+    it('offers no fix to a viewer who cannot edit the agent', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
+    it('sends a platform cause to a platform admin rather than to the edit page', async () => {
+      withAgentManager();
       stubResources({
         resource: makeAgent({
-          metadata: {
-            name: 'pr-reviewer',
-            namespace: 'agent-platform',
-            generation: 1,
-            labels: {},
-          },
-          status: { observedGeneration: 1, harnesses: [] },
+          status: reported([
+            READY_CONDITIONS[0],
+            {
+              type: 'ResolvedRefs',
+              status: 'False',
+              reason: 'WorkerPoolNotFound',
+              message: 'WorkerPool "kagent/default" not found',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ]),
         } as Partial<AgentInterface>),
       });
 
       await renderPage();
 
-      expectHeaderReadiness('Not admitted');
       expect(
         screen.getByText(
-          `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`,
+          'WorkerPool "kagent/default" not found. This is a platform problem, not the agent\'s, and a platform admin has to fix it.',
         ),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText(/No Harness admits this agent, so none has written/),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('list', { name: 'Admitting Harnesses' }),
-      ).not.toBeInTheDocument();
-      // The configuration says the label is missing, too.
-      expect(
-        screen.getByText(/Not labelled for any Harness/),
-      ).toBeInTheDocument();
-      // No session can start on it.
-      expect(
-        screen.queryByRole('button', { name: 'Start a session' }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+      expect(screen.queryByText('Cannot be resolved')).toBeNull();
     });
 
     it('explains a stale status by naming both generations', async () => {
@@ -964,10 +1387,7 @@ describe('AgentDetailPage', () => {
             namespace: 'agent-platform',
             generation: 5,
           },
-          status: {
-            observedGeneration: 4,
-            harnesses: [harness(READY_CONDITIONS)],
-          },
+          status: reported(READY_CONDITIONS, { observedGeneration: 4 }),
         } as Partial<AgentInterface>),
       });
 
@@ -981,8 +1401,8 @@ describe('AgentDetailPage', () => {
     it('explains an agent no Harness has reported on yet', async () => {
       stubResources({
         resource: makeAgent({
-          // The controller has not looked at it: no observedGeneration yet.
-          status: { observedGeneration: undefined, harnesses: [] },
+          // The controller has not looked at it: no status yet.
+          status: { observedGeneration: undefined, conditions: [] },
         } as Partial<AgentInterface>),
       });
 
@@ -990,7 +1410,7 @@ describe('AgentDetailPage', () => {
 
       expectHeaderReadiness('Pending');
       expect(
-        screen.getByText(/No Harness has reported on this agent yet/),
+        screen.getByText(/The controller has not reported on this agent yet/),
       ).toBeInTheDocument();
     });
 
@@ -998,18 +1418,15 @@ describe('AgentDetailPage', () => {
     it('shows the Harness warnings separately from readiness', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
+          status: reported(READY_CONDITIONS, {
             observedGeneration: 1,
-            harnesses: [
-              harness(READY_CONDITIONS, {
-                warnings: ['memory tools are not supported by this Harness'],
-              }),
-            ],
-          },
+            warnings: ['memory tools are not supported by this Harness'],
+          }),
         } as Partial<AgentInterface>),
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expectHeaderReadiness('Ready');
       expect(
@@ -1022,61 +1439,36 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('lists every admitting Harness, the deciding one first', async () => {
-      stubResources({
-        resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness(READY_CONDITIONS, { harness: 'claude' }),
-              harness(
-                [
-                  READY_CONDITIONS[0],
-                  {
-                    type: 'Ready',
-                    status: 'False',
-                    reason: 'Compiling',
-                    message: 'compiling',
-                    lastTransitionTime: '2026-07-31T10:05:00Z',
-                  },
-                ],
-                { desiredRevision: 'rev-2' },
-              ),
-            ],
-          },
-        } as Partial<AgentInterface>),
+    // The read answered and the carrier is not there: not a permission problem.
+    it('says the gateway server is missing when the read finds none', async () => {
+      mockUseAgentToolset.mockReturnValue({
+        declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+        isReading: false,
+        isUnreadable: false,
       });
-
-      await renderPage();
-
-      // The labelled platform Harness decides, even though claude is ready.
-      expectHeaderReadiness('Not ready');
-      const rows = within(
-        screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).getAllByRole('listitem');
-      expect(rows.map(row => row.textContent)).toEqual([
-        expect.stringMatching(/^kagent.*Progressing.*sessions run here/),
-        expect.stringMatching(/^claude.*Ready/),
-      ]);
-    });
-  });
-
-  describe('tools', () => {
-    it('names the muster gateway, whose link leads to the MCP servers, installation preselected', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage();
+      await openTechnicalDetails();
 
-      // Unbound external route in the test app, so assert the reference is named
-      // and that a non-gateway server gets no link (below) — the binding itself is
-      // muster's to provide. The gateway is the carrier named after the agent.
+      expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
       expect(
-        screen.getByText('RemoteMCPServer pr-reviewer'),
+        screen.getByText('pr-reviewer does not exist'),
       ).toBeInTheDocument();
-      // The gateway row defers to the toolset rather than claiming "all tools":
-      // which of the gateway's tools the agent can use is its toolset, which
-      // lives on the Tools tab ('tabs' above asserts it renders there).
-      expect(screen.getByText(/see the Tools tab/)).toBeInTheDocument();
+    });
+
+    it('waits for the toolset read instead of guessing', async () => {
+      mockUseAgentToolset.mockReturnValue({
+        declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+        isReading: true,
+        isUnreadable: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+      await openTechnicalDetails();
+
+      expect(screen.getByText('Reading the toolset…')).toBeInTheDocument();
     });
 
     it('describes a restricted server by its allowlist', async () => {
@@ -1096,11 +1488,12 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('RemoteMCPServer grafana')).toBeInTheDocument();
       expect(
-        screen.getByText('2 tools: query, dashboards'),
-      ).toBeInTheDocument();
+        screen.getAllByText('2 tools: query, dashboards').length,
+      ).toBeGreaterThan(0);
     });
 
     // Two entries may reference the same server with different scopes — that is
@@ -1117,14 +1510,14 @@ describe('AgentDetailPage', () => {
             tools: [
               {
                 mcp: {
-                  server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' },
-                  tools: ['list_tools'],
+                  server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                  tools: ['query'],
                 },
               },
               {
                 mcp: {
-                  server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' },
-                  tools: ['call_tool'],
+                  server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                  tools: ['annotate'],
                   requireApproval: true,
                 },
               },
@@ -1134,11 +1527,10 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
-      expect(
-        screen.getByText(/1 meta-tool \(list_tools\)/),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/1 meta-tool \(call_tool\)/)).toBeInTheDocument();
+      expect(screen.getAllByText('1 tool: query').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('1 tool: annotate').length).toBeGreaterThan(0);
       expect(
         screen.getByText('Requires approval before every call'),
       ).toBeInTheDocument();
@@ -1160,17 +1552,21 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
-      expect(screen.getByText(/declares no tool servers/)).toBeInTheDocument();
+      expect(screen.getByText('No tools')).toBeInTheDocument();
+      expect(
+        screen.getByText('It relies on its own reasoning alone.'),
+      ).toBeInTheDocument();
     });
 
-    it('links another template invoked as a tool, by the template behind it', async () => {
+    it('names a sub-agent by the template behind it', async () => {
       stubResources({
         resource: makeAgent({
           spec: {
             tools: [
               {
-                agent: {
+                subAgent: {
                   name: 'escalate',
                   description: 'Escalate to the SRE agent',
                   templateRef: { name: 'sre-agent' },
@@ -1182,13 +1578,13 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
-      expect(
-        screen.getByRole('link', { name: 'agent-platform/sre-agent' }),
-      ).toHaveAttribute(
-        'href',
-        '/agent-platform/agents/gazelle/agent-platform/sre-agent',
+      // A same-namespace template, so named alone.
+      expect(screen.getByText(/^Sub-agent/)).toHaveTextContent(
+        /^Sub-agent sre-agent$/,
       );
+      expect(screen.queryByText('agent-platform/sre-agent')).toBeNull();
       expect(screen.getByText(/Called as the tool/)).toHaveTextContent(
         'escalate',
       );
@@ -1199,10 +1595,78 @@ describe('AgentDetailPage', () => {
     stubResources({ resource: makeAgent() });
 
     await renderPage();
+    await openTechnicalDetails();
 
+    // In the agent's own namespace, so named alone.
+    expect(screen.getByText('HelmRelease pr-reviewer')).toBeInTheDocument();
+    expect(screen.queryByText(/^Namespace /)).toBeNull();
+  });
+
+  it('names the namespace of an owning HelmRelease in another one', async () => {
+    stubResources({
+      resource: makeAgent({
+        metadata: {
+          labels: {
+            'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
+            'helm.toolkit.fluxcd.io/namespace': 'flux-giantswarm',
+          },
+        },
+      } as Partial<AgentInterface>),
+    });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    expect(screen.getByText('HelmRelease pr-reviewer')).toBeInTheDocument();
+    expect(screen.getByText('flux-giantswarm').parentElement).toHaveTextContent(
+      /^Namespace flux-giantswarm$/,
+    );
+  });
+
+  it('shows the agent’s namespace and name as two facts', async () => {
+    stubResources({ resource: makeAgent() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    const resource = screen.getByRole('heading', { name: 'Resource' });
+    const card = resource.closest('article')!;
+    const valueOf = (label: string) =>
+      within(card).getByText(label).closest('dt')?.nextElementSibling;
+    expect(valueOf('Namespace')).toHaveTextContent(/^agent-platform$/);
+    expect(valueOf('Name')).toHaveTextContent(/^pr-reviewer$/);
+    expect(within(card).queryByText('agent-platform/pr-reviewer')).toBeNull();
+    // The system prompt is the overview's Instructions section, not a copy
+    // button on the card.
     expect(
-      screen.getByText('HelmRelease agent-platform/pr-reviewer'),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Copy system prompt' }),
+    ).toBeNull();
+  });
+
+  it('links each skill version to its skill’s page, at its short commit', async () => {
+    stubResources({ resource: makeAgent() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    const resource = screen.getByRole('heading', { name: 'Resource' });
+    const card = resource.closest('article')!;
+    expect(
+      within(card).getByRole('link', { name: 'PR review conventions' }),
+    ).toHaveAttribute('href', '/customize/skills/giantswarm/skills/pr-review');
+    expect(within(card).getByTitle(COMMIT)).toHaveTextContent(/^0123456$/);
+  });
+
+  it('makes See tools a link that reads as one on the card', async () => {
+    stubResources({ resource: makeAgent() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // bui's link, which the shell's stylesheet underlines on a tinted card.
+    expect(screen.getByRole('link', { name: 'See tools' })).toHaveClass(
+      'bui-Link',
+    );
   });
 
   describe('GitOps provenance', () => {
@@ -1219,6 +1683,7 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
       expect(screen.getByRole('link', { name: /Source/ })).toHaveAttribute(
@@ -1238,14 +1703,13 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(
         screen.queryByText('Managed through GitOps'),
       ).not.toBeInTheDocument();
       // The honest statement about where it came from stays.
-      expect(
-        screen.getByText('HelmRelease agent-platform/pr-reviewer'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('HelmRelease pr-reviewer')).toBeInTheDocument();
     });
 
     it('makes no GitOps claim for an agent no reconciler owns', async () => {
@@ -1278,7 +1742,7 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(
-      screen.getByText('Not set on the AgentTemplate.'),
+      screen.getByText("Nothing is set, so the runtime's defaults apply."),
     ).toBeInTheDocument();
   });
 
@@ -1294,13 +1758,14 @@ describe('AgentDetailPage', () => {
     });
 
     await renderPage();
+    await openTechnicalDetails();
 
     expect(
-      screen.getByText('Read from the ConfigMap prompts, key reviewer.md.'),
+      screen.getByText('ConfigMap prompts, key reviewer.md'),
     ).toBeInTheDocument();
   });
 
-  it('renders the system prompt as Markdown, with a button that copies its source', async () => {
+  it('renders the system prompt as Markdown', async () => {
     stubResources({
       resource: makeAgent({
         spec: {
@@ -1311,41 +1776,81 @@ describe('AgentDetailPage', () => {
     });
 
     await renderPage();
+    await openTechnicalDetails();
 
     expect(
       screen.getByRole('heading', { name: 'How you work' }),
     ).toBeInTheDocument();
     expect(screen.getByText('before').tagName).toBe('STRONG');
-    expect(
-      screen.getByRole('button', { name: 'Copy system prompt' }),
-    ).toBeInTheDocument();
   });
 
   describe('sessions', () => {
-    it('describes the list as the user’s own', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderPage('sessions');
-
-      expect(
-        screen.getByText(/Your own sessions with this agent/),
-      ).toBeInTheDocument();
-    });
-
     // An installation running kagent in `unsecure` mode returns everyone's
     // sessions — calling those "yours" would be a lie in the other direction.
     it('stops claiming the sessions are yours when kagent is not user-scoped', async () => {
       stubResources({ resource: makeAgent() });
       mockUseAgentSessions.mockReturnValue({
-        ...NO_SESSIONS,
+        ...ONE_SESSION,
         isNotUserScoped: true,
       });
 
       await renderPage('sessions');
 
       expect(
-        screen.getByText(/does not scope sessions to a user/),
+        screen.getByText(/does not scope sessions to users/),
       ).toBeInTheDocument();
+    });
+
+    // Nothing to search, sort or page: the table gives way to the next step.
+    it('offers to start the first session instead of an empty table', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('sessions');
+
+      expect(
+        screen.getByText('You have no sessions with this agent.'),
+      ).toBeInTheDocument();
+      // The header's and the empty list's own.
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Start a session' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(screen.queryByText(/not a usage total/)).toBeNull();
+    });
+
+    it('offers no session on an agent that cannot run one', async () => {
+      stubResources({
+        resource: makeAgent({
+          status: reported([
+            READY_CONDITIONS[0],
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'UnsupportedConfiguration',
+              message: 'nope',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ]),
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage('sessions');
+
+      expect(
+        screen.getByText('You have no sessions with this agent.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Start a session' }),
+      ).toBeNull();
+      // The banner above the tabs says why, on this tab too.
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
     });
 
     it('distinguishes unreadable sessions from no sessions', async () => {
@@ -1358,7 +1863,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText('Sessions could not be read from this installation.'),
+        screen.getByText('Sessions could not be read from this environment.'),
       ).toBeInTheDocument();
     });
   });
@@ -1440,8 +1945,9 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText('PR reviewer')).toBeInTheDocument();
-      expect(sectionTitle('Status')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
+      ).toBeInTheDocument();
       expect(
         screen.queryByText('Could not load this agent'),
       ).not.toBeInTheDocument();
@@ -1465,16 +1971,18 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText('PR reviewer')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
+      ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
   });
 
   // Right after Deploy: agent-manager's `create_agent` applied the HelmRelease
   // and the create flow navigated here before helm-controller rendered the
-  // AgentTemplate, so the template read 404s. The page must tell that "not yet"
+  // Agent, so the Agent read 404s. The page must tell that "not yet"
   // from "not there" — by asking agent-manager, whose `get_agent_status` answers
-  // `not_found` only when neither the template nor the HelmRelease exists.
+  // `not_found` only when neither the Agent nor the HelmRelease exists.
   describe('deploying', () => {
     const templateNotFound = () =>
       stubResources({
@@ -1498,7 +2006,13 @@ describe('AgentDetailPage', () => {
         namespace: mockParams.namespace,
         verdict: 'progressing',
         summary: 'HelmRelease created; Flux has not reconciled it yet',
-        template: { exists: false, harnesses: [] },
+        agent: {
+          exists: false,
+          ready: null,
+          accepted: null,
+          resolvedRefs: null,
+          compatible: null,
+        },
         helmRelease: {
           exists: true,
           ready: null,
@@ -1537,7 +2051,7 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Start a session' }),
+        screen.queryByRole('button', { name: 'Use this agent' }),
       ).not.toBeInTheDocument();
 
       // Asked only because the template read came back empty …
@@ -1630,10 +2144,11 @@ describe('AgentDetailPage: the model behind the agent', () => {
   const renderPageWithModels = () =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
       },
-      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
     });
 
@@ -1695,7 +2210,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
   });
 
@@ -1709,5 +2224,911 @@ describe('AgentDetailPage: the model behind the agent', () => {
     expect(
       screen.queryByTestId('model-serving-readiness'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('AgentDetailPage: the frame and the plain Overview', () => {
+  const renderShell = (tab: string = '', path: string = AGENT_PATH) =>
+    renderInTestApp(<AgentDetailPage />, {
+      mountedRoutes: {
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/usage': usageRouteRef,
+      },
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
+      initialRouteEntries: [tab ? `${path}/${tab}` : path],
+    });
+
+  beforeEach(() => {
+    mockUseResource.mockReset();
+    mockUseAgentSessions.mockReset();
+    mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
+    mockServingStateFor.mockReset();
+    mockUseAgentStatus.mockReset();
+    mockUseAgentStatus.mockReturnValue(NO_STATUS);
+    mockUseAgentToolset.mockReset();
+    mockUseAgentToolset.mockReturnValue(READ_ONLY_TOOLSET);
+    mockUseLlmUsage.mockReset();
+    mockUseSessionUsage.mockReset();
+    mockSkillCatalog.skills = [];
+    agentManagerPresence = 'unknown';
+    isMusterUnavailable = true;
+    managerAgent = undefined;
+    isReadingManagerAgent = false;
+    canCommit = false;
+    managerHarness = undefined;
+  });
+
+  describe('the frame', () => {
+    it('heads the page with the platform-standard frame, once', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      // One h1, the agent's name, at the ShellPage scale — no "Agents" page
+      // title above a second, agent-sized heading.
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'PR reviewer',
+      );
+      expectHeaderReadiness('Ready');
+
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Customize' }),
+      ).toHaveAttribute('href', '/customize');
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Agents' }),
+      ).toHaveAttribute('href', '/customize/agents');
+      expect(within(breadcrumbs).getByText('PR reviewer')).toBeInTheDocument();
+
+      // The classic header's back link and identifier are gone from the
+      // plain page; the identifier waits behind the technical details.
+      expect(screen.queryByText('← Agents')).toBeNull();
+      expect(screen.queryByText('agent-platform/pr-reviewer')).toBeNull();
+    });
+
+    it('offers Overview, Sessions, Tools and Usage, each at its own URL', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Tools',
+        'Usage',
+      ]);
+      expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
+        AGENT_PATH,
+        `${AGENT_PATH}/sessions`,
+        `${AGENT_PATH}/tools`,
+        `${AGENT_PATH}/usage`,
+      ]);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+    });
+
+    it('leaves the Tools tab out for an agent without the gateway', async () => {
+      mockUseAgentToolset.mockReturnValue(NO_GATEWAY_TOOLSET);
+      stubResources({
+        resource: makeAgent({ spec: { tools: [] } } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('leaves the Tools tab out for a gateway-bound agent declaring preset:none', async () => {
+      mockUseAgentToolset.mockReturnValue(NONE_TOOLSET);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('draws the Tools tab while loading only on a deep link to it', async () => {
+      stubResources({ isLoading: true });
+
+      const { unmount } = await renderShell('tools');
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Tools',
+        'Usage',
+      ]);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+      unmount();
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('puts Edit beside "Use this agent", with the rest in the menu', async () => {
+      withAgentManager();
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Agent actions' }),
+      ).toBeInTheDocument();
+    });
+
+    it('offers a user of the agent’s namespace no Edit, and says whose editors may change the agent', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['update', 'delete']);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        await screen.findByText('You can use this agent, not change it'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /agents of namespace agent-platform needs the agent-platform:editor role/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('says which one write the person may not make', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['delete']);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        await screen.findByText('You cannot delete this agent'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    });
+
+    it('offers no Edit to a viewer who cannot write the agent', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the frame on a missing agent', async () => {
+      stubResources({
+        error: new Error('not found'),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('not found'), {
+              name: 'NotFoundError',
+            }),
+          },
+        ],
+      });
+
+      await renderShell();
+
+      expect(screen.getByText('Agent not found')).toBeInTheDocument();
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Agent',
+      );
+      expect(
+        screen.getByRole('navigation', { name: 'Breadcrumb' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('the plain Overview', () => {
+    it('leads with what the agent does, its instructions, skills and reach', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('heading', { name: 'What it’s for' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Reviews pull requests in depth.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Instructions' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Skills' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Connectors' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Can use read-only tools.')).toBeInTheDocument();
+      // The exact tools are the Tools tab, not a link from the section.
+      expect(
+        screen.queryByRole('link', { name: 'See which tools' }),
+      ).toBeNull();
+
+      // The Kubernetes-resource cards wait behind the technical details.
+      expect(
+        screen.queryByRole('heading', { name: 'Configuration' }),
+      ).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Status' })).toBeNull();
+      expect(screen.queryByText('System prompt')).toBeNull();
+    });
+
+    it('shows each skill as a readable card that opens its page', async () => {
+      mockSkillCatalog.skills = [
+        {
+          repoUrl: 'https://github.com/giantswarm/skills',
+          path: 'pr-review',
+          ref: 'main',
+          commit: COMMIT,
+          name: 'PR review conventions',
+          description: 'How we review pull requests at Giant Swarm.',
+        },
+      ];
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      const skills = screen.getByRole('list', { name: 'Skills' });
+      expect(
+        within(skills).getByRole('link', { name: 'PR review conventions' }),
+      ).toHaveAttribute(
+        'href',
+        '/customize/skills/giantswarm/skills/pr-review',
+      );
+      expect(
+        within(skills).getByText('How we review pull requests at Giant Swarm.'),
+      ).toBeInTheDocument();
+      expect(
+        within(skills).getByText('From giantswarm/skills'),
+      ).toBeInTheDocument();
+      // The pin is a technical detail.
+      expect(within(skills).queryByText(/0123456789ab/)).toBeNull();
+      // At the catalog's head: nothing to update.
+      expect(within(skills).queryByText('Update available')).toBeNull();
+    });
+
+    it("marks a skill pinned behind the catalog's head, from the catalog alone", async () => {
+      mockSkillCatalog.skills = [
+        {
+          repoUrl: 'https://github.com/giantswarm/skills',
+          path: 'pr-review',
+          ref: 'main',
+          commit: 'fedcba9876543210fedcba9876543210fedcba98',
+          name: 'PR review conventions',
+          description: 'How we review pull requests at Giant Swarm.',
+        },
+      ];
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      const skills = screen.getByRole('list', { name: 'Skills' });
+      expect(within(skills).getByText('Update available')).toBeInTheDocument();
+    });
+
+    it('keeps Update all skills to latest reachable for an agent agent-manager can write', async () => {
+      withAgentManager();
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('button', { name: 'Update all skills to latest…' }),
+      ).toBeInTheDocument();
+    });
+
+    it('names the model beside the overview, linked to its page', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByRole('link', { name: 'Claude Opus 4.7' }),
+      ).toHaveAttribute(
+        'href',
+        '/customize/models/gazelle/agent-platform/opus-4-7',
+      );
+      // The model it runs, as the secondary line under the name (PO L6).
+      expect(
+        within(facts).getByText('claude-opus-4-7 · Anthropic'),
+      ).toBeInTheDocument();
+      expect(within(facts).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    it('names the runtime beside the overview as the create form does', async () => {
+      managerHarness = 'kagent';
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig() },
+        { harness: { resource: makeHarness() } },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      // The runtime card's title, mark and Harness line, from lib/harnesses.
+      expect(within(facts).getByText('Runtime')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('Declarative (Go ADK)'),
+      ).toBeInTheDocument();
+      expect(within(facts).getByText('Platform default')).toBeInTheDocument();
+      expect(
+        within(facts).getByText(
+          (_, element) =>
+            element?.textContent === 'Harness kagent · kagent-harness',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(facts).getByRole('button', { name: 'What the runtime is' }),
+      ).toBeInTheDocument();
+    });
+
+    it('names a coding runtime by its display name, without the default mark', async () => {
+      const agent = makeAgent();
+      agent.jsonData.spec!.harnessRef = { name: 'claude' };
+      stubResources(
+        { resource: agent },
+        { resource: makeModelConfig() },
+        {
+          harness: {
+            resource: makeHarness({
+              name: 'claude',
+              runtime: 'claude',
+              displayName: 'Claude Code (Go toolchain)',
+            }),
+          },
+        },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('Claude Code (Go toolchain)'),
+      ).toBeInTheDocument();
+      expect(within(facts).queryByText('Platform default')).toBeNull();
+    });
+
+    it('names an unreadable Harness by its name and says its runtime is not known', async () => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig() },
+        { harness: { errors: [new Error('forbidden')] } },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('kagent')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('Its runtime could not be read.'),
+      ).toBeInTheDocument();
+    });
+
+    it('marks no Harness as the platform default before get_info names it', async () => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig() },
+        { harness: { resource: makeHarness() } },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('Declarative (Go ADK)'),
+      ).toBeInTheDocument();
+      // Not on the guess that the platform's is `kagent`.
+      expect(within(facts).queryByText('Platform default')).toBeNull();
+    });
+
+    it('says the runtime of an inline Harness is not known when this client does not know it', async () => {
+      const agent = makeAgent();
+      delete agent.jsonData.spec!.harnessRef;
+      agent.jsonData.spec!.harness = {
+        workload: { image: 'registry.example/new-harness@sha256:0123' },
+      } as never;
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Unknown runtime')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('Its runtime is not known.'),
+      ).toBeInTheDocument();
+      expect(
+        within(facts).queryByText('The agent names no Harness.'),
+      ).toBeNull();
+    });
+
+    it('says so plainly when the agent names no Harness', async () => {
+      const agent = makeAgent();
+      delete agent.jsonData.spec!.harnessRef;
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Unknown runtime')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('The agent names no Harness.'),
+      ).toBeInTheDocument();
+    });
+
+    it('names the organization of an agent in an organization, under Organization', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell(
+        '',
+        AGENT_PATH.replace('/agent-platform/', '/org-acme/'),
+      );
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).queryByText('Tenant')).toBeNull();
+      expect(within(facts).getByText('acme')).toBeInTheDocument();
+      expect(within(facts).queryByText('organization acme')).toBeNull();
+      expect(within(facts).queryByRole('button', { name: /None/ })).toBeNull();
+    });
+
+    it('says an agent of the platform belongs to no organization, and is available to all', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'kagent' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell('', AGENT_PATH.replace('/agent-platform/', '/kagent/'));
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).getByText(/^None/)).toBeInTheDocument();
+      // Nothing about the platform in its organization; the Runtime fact's
+      // "Platform default" is about the Harness, so the check stays on the
+      // Organization fact's value.
+      const organization = within(facts)
+        .getByText('Organization')
+        .closest('dt')?.nextElementSibling;
+      expect(organization?.tagName).toBe('DD');
+      expect(organization).not.toHaveTextContent(/Platform/);
+      const hint = within(facts).getByRole('button', {
+        name: 'What None means',
+      });
+      // In the tab order; its text is `OrganizationValue`'s own test.
+      expect(hint.tabIndex).toBeGreaterThanOrEqual(0);
+    });
+
+    it('offers an organization’s user no Edit, and names the organization whose editors may change the agent', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['update', 'delete']);
+      stubResources({
+        resource: makeAgent({
+          metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+        }),
+      });
+
+      await renderShell(
+        '',
+        AGENT_PATH.replace('/agent-platform/', '/org-acme/'),
+      );
+
+      expect(
+        await screen.findByText(
+          /Editing and deleting the agents of the acme organization needs the agent-platform:editor role/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('names the agent’s organization and its creator beside the overview', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('namespace agent-platform'),
+      ).toBeInTheDocument();
+      expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
+    });
+
+    it('keeps the ModelConfig name without a display name, the model below it', async () => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig({ displayName: null }) },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      // An admin may abstract the model behind the name: the name leads, the
+      // model never replaces it.
+      expect(
+        within(facts).getByRole('link', { name: 'opus-4-7' }),
+      ).toBeInTheDocument();
+      expect(
+        within(facts).getByText('claude-opus-4-7 · Anthropic'),
+      ).toBeInTheDocument();
+    });
+
+    it('folds the Kubernetes detail into a "Technical details" fold-out, not a switch', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      // In place, like the create flow's review step — never a page-wide
+      // toggle.
+      expect(screen.queryByRole('switch')).toBeNull();
+      const foldOut = screen.getByRole('button', {
+        name: 'Technical details',
+      });
+      expect(foldOut).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('heading', { name: 'Status' })).toBeNull();
+
+      await userEvent.click(foldOut);
+
+      expect(foldOut).toHaveAttribute('aria-expanded', 'true');
+
+      expect(sectionTitle('Configuration')).toBeInTheDocument();
+      expect(sectionTitle('Status')).toBeInTheDocument();
+      // The resource's name, once, as the Resource card's Name fact.
+      const resource = screen
+        .getByRole('heading', { name: 'Resource' })
+        .closest('article')!;
+      expect(
+        within(resource).getByText('Name').closest('dt')?.nextElementSibling,
+      ).toHaveTextContent(/^pr-reviewer$/);
+      expect(within(resource).getAllByText('pr-reviewer')).toHaveLength(1);
+      // Which version of each skill it is pinned to, short with the full pin
+      // on hover.
+      expect(screen.getByTitle(COMMIT)).toHaveTextContent('0123456');
+    });
+
+    it('starts with the technical details open for an agent that is not ready', async () => {
+      stubResources({
+        resource: makeAgent({
+          status: reported(
+            [
+              READY_CONDITIONS[0],
+              {
+                type: 'Ready',
+                status: 'False',
+                reason: 'Compiling',
+                message: 'Compiling revision rev-2',
+                lastTransitionTime: '2026-07-31T10:05:00Z',
+              },
+            ],
+            { observedGeneration: 1, desiredRevision: 'rev-2' },
+          ),
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      expect(sectionTitle('Status')).toBeInTheDocument();
+      // Nothing to start a session with yet.
+      expect(
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
+    });
+
+    it('sends the retired Skills tab to the Overview that now shows them', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('skills?installation=gazelle');
+
+      expect(
+        screen.getByRole('heading', { name: 'Skills' }),
+      ).toBeInTheDocument();
+      // The query string survives the redirect: the tabs carry it.
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+      expect(screen.getByRole('tab', { selected: true })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}?installation=gazelle`,
+      );
+    });
+
+    it('opens the exact tools under the Tools tab', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('tools');
+
+      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+      // The agent's trail and title, as on every tab.
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(within(breadcrumbs).getByText('PR reviewer')).toBeInTheDocument();
+      expect(
+        within(breadcrumbs).queryByRole('link', { name: 'PR reviewer' }),
+      ).toBeNull();
+      expect(within(breadcrumbs).queryByText('Tools')).toBeNull();
+      await waitFor(() => expect(document.title).toBe('PR reviewer · Agents'));
+      // The facts belong to the Overview.
+      expect(
+        screen.queryByRole('complementary', { name: 'About this agent' }),
+      ).toBeNull();
+    });
+
+    it('sends the tools of an agent without the gateway to the Overview', async () => {
+      mockUseAgentToolset.mockReturnValue(NO_GATEWAY_TOOLSET);
+      stubResources({
+        resource: makeAgent({ spec: { tools: [] } } as Partial<AgentInterface>),
+      });
+
+      await renderShell('tools?installation=gazelle');
+
+      expect(screen.queryByTestId('agent-toolset-card')).toBeNull();
+      expect(
+        screen.getByRole('heading', { name: 'Connectors' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+      // The query string survives the redirect, as from `skills`.
+      expect(screen.getByRole('tab', { selected: true })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}?installation=gazelle`,
+      );
+    });
+  });
+
+  describe('Sessions', () => {
+    it('lists your sessions under the tab, without a second heading', async () => {
+      mockUseAgentSessions.mockReturnValue(ONE_SESSION);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('sessions');
+
+      expect(
+        screen.getByText('These are your sessions with PR reviewer.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Review #2705')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Sessions' })).toBeNull();
+    });
+  });
+
+  describe('Usage', () => {
+    const AGENT_ID = 'agent_platform__NS__pr_reviewer';
+
+    it("shows the agent's slice of the Usage screen", async () => {
+      mockUseLlmUsage.mockReturnValue({
+        usage: {
+          byAgent: [
+            {
+              id: 'agent-platform|pr-reviewer',
+              namespace: 'agent-platform',
+              agent: 'pr-reviewer',
+              kind: 'agent',
+              label: 'PR reviewer',
+              tokens: 1_500_000,
+              calls: 321,
+              costUsd: 12.5,
+              sharePct: 40,
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        isAvailable: true,
+      });
+      mockUseSessionUsage.mockReturnValue({
+        usage: {
+          windowDays: 30,
+          byAgent: [
+            {
+              agentId: AGENT_ID,
+              sessions: 4,
+              turns: 9,
+              inputTokens: 1,
+              outputTokens: 1,
+              costUsd: 1.25,
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        isNotDeployed: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('usage');
+
+      expect(mockUseLlmUsage).toHaveBeenCalledWith('gazelle', { days: 30 });
+      expect(screen.getByText('$12.50')).toBeInTheDocument();
+      expect(screen.getByText('1.5M')).toBeInTheDocument();
+      expect(screen.getByText('321')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('$1.25')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Open in Usage' }),
+      ).toHaveAttribute('href', '/usage/cost');
+    });
+
+    it('says why the gateway figures are missing, and keeps your own', async () => {
+      mockUseLlmUsage.mockReturnValue({
+        usage: undefined,
+        isLoading: false,
+        isError: false,
+        isAvailable: false,
+      });
+      mockUseSessionUsage.mockReturnValue({
+        usage: { windowDays: 30, byAgent: [] },
+        isLoading: false,
+        isError: false,
+        isNotDeployed: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('usage');
+
+      expect(
+        screen.getByText(/need the gateway's metrics, which gazelle/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Spend')).toBeNull();
+      expect(screen.getByText('Your sessions')).toBeInTheDocument();
+      // No runtime reported a cost, so none is shown — not "$0.00".
+      expect(screen.queryByText('Reported cost')).toBeNull();
+    });
+  });
+
+  describe('at phone width', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('puts the facts first, folded under Details, under a header that fits', async () => {
+      withAgentManager();
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      // Edit, the primary action and the ⋯: no fourth button to wrap.
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Agent actions' }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('tab')).toHaveLength(4);
+
+      const details = screen.getByRole('button', { name: 'Details' });
+      expect(details).toHaveAttribute('aria-expanded', 'false');
+      expect(
+        details.compareDocumentPosition(
+          screen.getByRole('button', { name: 'Technical details' }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('complementary', { name: 'About this agent' }),
+      ).toBeNull();
+      await userEvent.click(details);
+      expect(
+        screen.getByRole('complementary', { name: 'About this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('offers a skill’s pinned commit to copy whole, where no hover can show it', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+
+      expect(await screen.findByText(COMMIT.slice(0, 7))).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Copy 0123456 in full' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('on a desktop', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockDesktopLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('shortens a skill’s pinned commit, the whole of it on hover', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+
+      expect(await screen.findByText(COMMIT.slice(0, 7))).toHaveAttribute(
+        'title',
+        COMMIT,
+      );
+    });
   });
 });

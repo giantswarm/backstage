@@ -7,7 +7,8 @@ import { defaultShouldDehydrateQuery, Query } from '@tanstack/react-query';
  * signed-in identity or to a permission grant: the persisted cache outlives the
  * session (nothing calls `persister.removeClient()`, including on sign-out), so a
  * rehydrated answer can belong to a *different* user on a shared browser, or to a
- * grant that has since been revoked.
+ * grant that has since been revoked. Use it as well for answers too large for
+ * the localStorage quota, such as a bundled multi-megabyte dataset.
  */
 export const NON_PERSISTED_QUERY_META = { persist: false } as const;
 

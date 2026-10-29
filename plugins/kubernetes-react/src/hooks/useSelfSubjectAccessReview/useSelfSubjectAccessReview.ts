@@ -1,6 +1,7 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   createSelfSubjectAccessReview,
   ResourceAttributes,
@@ -64,6 +65,6 @@ export function useSelfSubjectAccessReview(
 
   return {
     allowed: queryInfo.data === true,
-    isLoading: queryInfo.isLoading,
+    isLoading: isAwaitingData(queryInfo),
   };
 }

@@ -1,10 +1,13 @@
 import { ReactNode } from 'react';
 import { TestApiProvider } from '@backstage/frontend-test-utils';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { identityApiRef } from '@backstage/core-plugin-api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { RECONCILE_REQUESTED_AT_ANNOTATION } from '../../lib/k8s/FluxObject';
+import { FluxObject } from '../../lib/k8s/FluxObject';
 import { Kustomization } from '../../lib/k8s/Kustomization';
+import { ResourceSet } from '../../lib/k8s/ResourceSet';
 import { useFluxResourceActions } from './useFluxResourceActions';
 
 const SSAR_PATH = '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews';
@@ -58,17 +61,35 @@ function createMockKubernetesApi({ allowed = true } = {}) {
   };
 }
 
-function renderActions(
-  resource: Kustomization,
-  api = createMockKubernetesApi(),
-) {
+function createResourceSet(): ResourceSet {
+  const json = {
+    apiVersion: 'fluxcd.controlplane.io/v1',
+    kind: 'ResourceSet',
+    metadata: { name: 'apps', namespace: 'flux-system' },
+    spec: {},
+    status: {},
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new ResourceSet(json as any, 'test-installation');
+}
+
+function renderActions(resource: FluxObject, api = createMockKubernetesApi()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
 
   const Wrapper = ({ children }: { children?: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TestApiProvider apis={[[kubernetesApiRef, api]]}>
+      <TestApiProvider
+        apis={[
+          [kubernetesApiRef, api],
+          [
+            identityApiRef,
+            { getProfileInfo: async () => ({ email: 'jane@example.com' }) },
+          ],
+        ]}
+      >
         {children}
       </TestApiProvider>
     </QueryClientProvider>
@@ -163,6 +184,40 @@ describe('useFluxResourceActions', () => {
 
     expect(JSON.parse(findPatchCall(api)!.init!.body!)).toEqual({
       spec: { suspend: false },
+    });
+  });
+
+  it('suspends a Flux Operator object by annotating it as the signed-in user, in its own API group', async () => {
+    const { result, api } = renderActions(createResourceSet());
+
+    await result.current.setSuspended(true);
+
+    const call = findPatchCall(api)!;
+    expect(call.path).toBe(
+      '/apis/fluxcd.controlplane.io/v1/namespaces/flux-system/resourcesets/apps?fieldManager=giantswarm-backstage',
+    );
+    expect(JSON.parse(call.init!.body!)).toEqual({
+      metadata: {
+        annotations: {
+          'fluxcd.controlplane.io/reconcile': 'disabled',
+          'fluxcd.controlplane.io/suspendedBy': 'jane@example.com',
+        },
+      },
+    });
+  });
+
+  it('resumes a Flux Operator object by enabling its reconcile annotation', async () => {
+    const { result, api } = renderActions(createResourceSet());
+
+    await result.current.setSuspended(false);
+
+    expect(JSON.parse(findPatchCall(api)!.init!.body!)).toEqual({
+      metadata: {
+        annotations: {
+          'fluxcd.controlplane.io/reconcile': 'enabled',
+          'fluxcd.controlplane.io/suspendedBy': null,
+        },
+      },
     });
   });
 

@@ -40,14 +40,16 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
 }));
 
-// The CRD reads are somebody else's question here.
+// The CRD reads are somebody else's question here, beyond which kinds
+// (`MCPServer`, `Workflow`) are still being read.
+let mockLoadingKinds: string[] = [];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({
+  useResources: (_clusters: string[], resource: { kind: string }) => ({
     resources: [],
     errors: [],
     queries: [],
-    isLoading: false,
+    isLoading: mockLoadingKinds.includes(resource.kind),
     retry: jest.fn(),
   }),
   useShowErrors: () => undefined,
@@ -137,6 +139,7 @@ function renderInstance() {
 
 describe('MusterInstanceProvider installations', () => {
   beforeEach(() => {
+    mockLoadingKinds = [];
     window.localStorage.clear();
     mockScope = 'all';
     mockSetScope.mockClear();
@@ -411,5 +414,23 @@ describe('MusterInstanceProvider installations', () => {
       'snail',
     ]);
     expect(result.current.activeInstallation).toBe('golem');
+  });
+
+  // The Customize strip counts the workflows from their own read, which can
+  // land after the servers' and is not part of `isLoading`.
+  it('reports the workflows still loading once the servers have landed', async () => {
+    mockInventory = inventory([entry('gazelle')]);
+    mockLoadingKinds = ['Workflow'];
+
+    const { result, rerender } = renderInstance();
+    await waitFor(() =>
+      expect(result.current.activeInstallation).toBe('gazelle'),
+    );
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isLoadingWorkflows).toBe(true);
+
+    mockLoadingKinds = [];
+    rerender();
+    expect(result.current.isLoadingWorkflows).toBe(false);
   });
 });

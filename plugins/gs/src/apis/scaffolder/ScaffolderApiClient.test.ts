@@ -1,0 +1,186 @@
+import { ScaffolderClient } from '@backstage/plugin-scaffolder';
+import type { TemplateParameterSchema } from '@backstage/plugin-scaffolder-common';
+import type {
+  KubernetesApi,
+  KubernetesAuthProvidersApi,
+} from '@backstage/plugin-kubernetes-react';
+import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { ScaffolderApiClient } from './ScaffolderApiClient';
+
+const manifest = {
+  title: 'Template',
+  steps: [
+    {
+      title: 'Details',
+      schema: {
+        type: 'object',
+        properties: {
+          mode: { type: 'string', enum: ['apply', 'commit'] },
+        },
+        dependencies: {
+          mode: {
+            oneOf: [
+              {
+                properties: {
+                  mode: { const: 'apply' },
+                  token: {
+                    type: 'object',
+                    'ui:field': 'GSOIDCToken',
+                    'ui:options': { secretsKey: 'USER_OIDC_TOKEN' },
+                  },
+                },
+              },
+              { properties: { mode: { const: 'commit' } } },
+            ],
+          },
+        },
+      },
+    },
+  ],
+} as unknown as TemplateParameterSchema;
+
+describe('ScaffolderApiClient.scaffold', () => {
+  const getCredentials = jest.fn();
+  const kubernetesApi = {
+    getCluster: jest.fn(async (name: string) => ({
+      authProvider: 'oidc',
+      oidcTokenProvider: `oidc-${name}`,
+    })),
+  } as unknown as KubernetesApi;
+  const kubernetesAuthProvidersApi = {
+    getCredentials,
+  } as unknown as KubernetesAuthProvidersApi;
+
+  let superScaffold: jest.SpyInstance;
+  let setInstallation: jest.SpyInstance;
+  let client: ScaffolderApiClient;
+
+  beforeEach(() => {
+    getCredentials.mockReset();
+    jest
+      .spyOn(ScaffolderClient.prototype, 'getTemplateParameterSchema')
+      .mockResolvedValue(manifest);
+    superScaffold = jest
+      .spyOn(ScaffolderClient.prototype, 'scaffold')
+      .mockResolvedValue({ taskId: 'task-1' });
+    setInstallation = jest
+      .spyOn(DiscoveryApiClient, 'setInstallation')
+      .mockReturnValue(() => {});
+    client = new ScaffolderApiClient({
+      discoveryApi: {} as any,
+      identityApi: {} as any,
+      scmIntegrationsApi: {} as any,
+      fetchApi: {} as any,
+      kubernetesApi,
+      kubernetesAuthProvidersApi,
+    });
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('routes the task to the field’s installation with a token minted now', async () => {
+    getCredentials.mockResolvedValue({ token: 'fresh' });
+
+    await client.scaffold({
+      templateRef: 'template:default/app',
+      values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      secrets: { GITHUB_TOKEN: 'gh' },
+    });
+
+    expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-golem');
+    expect(setInstallation).toHaveBeenCalledWith('golem');
+    expect(superScaffold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        secrets: { GITHUB_TOKEN: 'gh', USER_OIDC_TOKEN: 'fresh' },
+      }),
+    );
+  });
+
+  it('neither mints for nor routes to a value left over from another branch', async () => {
+    await client.scaffold({
+      templateRef: 'template:default/app',
+      values: { mode: 'commit', token: { oidcTokenInstallation: 'golem' } },
+    });
+
+    expect(getCredentials).not.toHaveBeenCalled();
+    expect(setInstallation).not.toHaveBeenCalled();
+    expect(superScaffold).toHaveBeenCalledWith(
+      expect.objectContaining({ secrets: {} }),
+    );
+  });
+
+  it('starts nothing when a sign-in did not complete', async () => {
+    getCredentials.mockRejectedValue(rejectedLogin());
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toMatchObject({
+      name: 'TemplateSignInError',
+      reason: 'declined',
+      installations: ['golem'],
+    });
+    expect(superScaffold).not.toHaveBeenCalled();
+  });
+
+  it('reports the expired portal session when its sign-in for the template read is declined', async () => {
+    jest
+      .spyOn(ScaffolderClient.prototype, 'getTemplateParameterSchema')
+      .mockRejectedValue(rejectedLogin());
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toMatchObject({
+      name: 'TemplateSignInError',
+      reason: 'session-expired',
+    });
+    expect(getCredentials).not.toHaveBeenCalled();
+    expect(superScaffold).not.toHaveBeenCalled();
+  });
+
+  it('reports the expired portal session when its sign-in popup for the task creation is closed', async () => {
+    getCredentials.mockResolvedValue({ token: 'fresh' });
+    superScaffold.mockRejectedValue(
+      Object.assign(new Error('Login failed, popup was closed'), {
+        name: 'PopupRejectedError',
+      }),
+    );
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toMatchObject({
+      name: 'TemplateSignInError',
+      reason: 'session-expired',
+    });
+  });
+
+  it('passes any other failure of the template read through', async () => {
+    const failure = new Error('Request failed with 500 Internal Server Error');
+    jest
+      .spyOn(ScaffolderClient.prototype, 'getTemplateParameterSchema')
+      .mockRejectedValue(failure);
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toBe(failure);
+    expect(superScaffold).not.toHaveBeenCalled();
+  });
+});
+
+/** Backstage's rejection of a declined Login Required prompt. */
+function rejectedLogin(): Error {
+  return Object.assign(new Error('Login failed, rejected by user'), {
+    name: 'RejectedError',
+  });
+}

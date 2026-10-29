@@ -22,6 +22,10 @@ export const ClusterPickerFieldSchema = makeFieldSchema({
         .string()
         .optional()
         .describe('Field name that, when truthy, disables this picker'),
+      excludeManagementClusters: z
+        .boolean()
+        .optional()
+        .describe('Offer only workload clusters, not the management cluster'),
     }),
 });
 

@@ -1,5 +1,8 @@
 import type { AgentSkillEntry, AgentSpec } from './agentManager';
 import type { DiscoveredSkill } from './skills';
+import { parseEgressText } from './egress';
+import { pluginEntryOf } from './plugins';
+import { qualifiedDefaultWorkspace } from './defaultWorkspace';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -42,11 +45,30 @@ export function agentSpecOf(
   if (state.systemMessage.trim()) {
     spec.systemMessage = state.systemMessage;
   }
+  if (state.harness) {
+    spec.harness = state.harness.name;
+  }
   if (options.iconUrl) {
     spec.iconUrl = options.iconUrl;
   }
   if (state.selectedSkills.length > 0) {
     spec.skills = state.selectedSkills.map(skillEntryOf);
+  }
+  if (state.selectedPlugins.length > 0) {
+    spec.plugins = state.selectedPlugins.map(pluginEntryOf);
+  }
+  const egress = parseEgressText(state.egressText);
+  if (egress.length > 0) {
+    spec.egress = egress;
+  }
+  if (state.egressPolicyRefs.length > 0) {
+    spec.egressPolicyRefs = [...state.egressPolicyRefs];
+  }
+  if (state.defaultWorkspace) {
+    spec.defaultWorkspace = qualifiedDefaultWorkspace(
+      spec.namespace,
+      state.defaultWorkspace,
+    );
   }
   return spec;
 }

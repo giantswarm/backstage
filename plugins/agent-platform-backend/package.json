@@ -1,6 +1,6 @@
 {
   "name": "@giantswarm/backstage-plugin-agent-platform-backend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "Apache-2.0",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -32,10 +32,11 @@
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
-    "@bufbuild/protobuf": "2.14.1",
+    "@bufbuild/protobuf": "2.16.0",
     "@connectrpc/connect": "2.2.0",
     "@connectrpc/connect-node": "2.2.0",
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^",
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^",
     "@giantswarm/backstage-plugin-gs-node": "workspace:^",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0"

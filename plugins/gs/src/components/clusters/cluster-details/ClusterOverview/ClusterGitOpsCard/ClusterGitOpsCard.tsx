@@ -5,14 +5,14 @@ import {
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
 export const ClusterGitOpsCard = () => {
-  const { clusterApp, installationName } = useCurrentCluster();
+  const { clusterApp, clusterRelease, installationName } = useCurrentCluster();
+  const installer = clusterApp ?? clusterRelease;
 
-  const isGitOpsManaged = isManagedByFlux(clusterApp);
-  if (!isGitOpsManaged) {
+  if (!installer || !isManagedByFlux(installer)) {
     return null;
   }
 
   return (
-    <GitOpsCard resource={clusterApp} installationName={installationName} />
+    <GitOpsCard resource={installer} installationName={installationName} />
   );
 };

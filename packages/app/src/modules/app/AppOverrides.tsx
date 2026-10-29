@@ -23,27 +23,25 @@ import LightIcon from '@material-ui/icons/WbSunny';
 import {
   configApiRef,
   discoveryApiRef,
+  errorApiRef,
   fetchApiRef,
   githubAuthApiRef,
   identityApiRef,
   oauthRequestApiRef,
-  useApi,
+  storageApiRef,
 } from '@backstage/core-plugin-api';
 import {
   ScmAuth,
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
 } from '@backstage/integration-react';
-import {
-  createFetchApi,
-  FetchMiddlewares,
-  GithubAuth,
-} from '@backstage/core-app-api';
+import { GithubAuth } from '@backstage/core-app-api';
 import {
   GSDiscoveryApiClient,
   gsAuthProvidersApiRef,
   SignedInConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
+import { signalApiRef } from '@backstage/plugin-signals-react';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { grafanaPlugin } from '@backstage-community/plugin-grafana';
 import { SentryErrorReporter } from '../../apis/errorReporter';
@@ -57,7 +55,9 @@ import {
 import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
-import { signInProviders } from './signInProviders';
+import { ScopedStorageApi } from './scopedStorageApi';
+import { getOptionalMainAuthApi } from '../auth/getOptionalMainAuthApi';
+import { createBackstageFetchApi } from './backstageFetch';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -112,28 +112,60 @@ export const appOverrides = createFrontendModule({
             configApi: configApiRef,
             identityApi: identityApiRef,
             discoveryApi: discoveryApiRef,
+            gsAuthProvidersApi: gsAuthProvidersApiRef,
           },
-          factory: ({ configApi, identityApi, discoveryApi }) =>
-            createFetchApi({
-              middleware: [
-                FetchMiddlewares.resolvePluginProtocol({ discoveryApi }),
-                FetchMiddlewares.injectIdentityAuth({
-                  identityApi,
-                  config: configApi,
-                  // Per-request matcher (not a static allowlist): the
-                  // per-installation `backendUrl` overrides are loaded from the
-                  // backend after sign-in, so the set of URLs needing the
-                  // Backstage token grows after app boot.
-                  allowUrl:
-                    GSDiscoveryApiClient.createUrlPrefixAllowlistMatcher(
-                      configApi,
-                    ),
-                  header: {
-                    name: 'X-Backstage-Token',
-                    value: (token: string) => `Bearer ${token}`,
-                  },
-                }),
-              ],
+          factory: ({
+            configApi,
+            identityApi,
+            discoveryApi,
+            gsAuthProvidersApi,
+          }) =>
+            createBackstageFetchApi({
+              configApi,
+              discoveryApi,
+              identityApi,
+              mainAuthApi: getOptionalMainAuthApi(
+                gsAuthProvidersApi,
+                'portal-fetch',
+              ),
+            }),
+        }),
+    }),
+    /**
+     * StorageApi scoped by bucket: the agent platform's own bucket (pinned
+     * sessions, favorite agents, dismissed hints) is kept per user in the
+     * backend database via `@backstage/plugin-user-settings-backend`, so it
+     * roams across browsers and devices; every other bucket (the classic
+     * portal's starred entities, home visits, …) stays in WebStorage
+     * (localStorage) exactly as the upstream default. With the signals API, a
+     * change written in one tab reaches the person's other tabs. See
+     * `ScopedStorageApi`.
+     */
+    ApiBlueprint.make({
+      name: 'storage',
+      params: defineParams =>
+        defineParams({
+          api: storageApiRef,
+          deps: {
+            discoveryApi: discoveryApiRef,
+            errorApi: errorApiRef,
+            fetchApi: fetchApiRef,
+            identityApi: identityApiRef,
+            signalApi: signalApiRef,
+          },
+          factory: ({
+            discoveryApi,
+            errorApi,
+            fetchApi,
+            identityApi,
+            signalApi,
+          }) =>
+            ScopedStorageApi.create({
+              discoveryApi,
+              errorApi,
+              fetchApi,
+              identityApi,
+              signalApi,
             }),
         }),
     }),
@@ -161,8 +193,9 @@ export const appOverrides = createFrontendModule({
      * come from the auth backend's github-token route through muster's token
      * broker, a missing grant bounces once through muster's connect, and
      * signing out revokes the grant in muster. Without it the upstream
-     * provider (`auth.providers.github`) is used as before -- customer
-     * portals are unchanged. `scm-auth` above consumes whichever it is.
+     * provider (`auth.providers.github`) is used. A portal with neither
+     * does not offer the GitHub Actions and Pull Requests tabs
+     * (`hasGithubLogin`). `scm-auth` above consumes whichever it is.
      */
     ApiBlueprint.make({
       name: 'github-auth',
@@ -271,30 +304,9 @@ export const appOverrides = createFrontendModule({
     }),
     SignInPageBlueprint.make({
       params: {
-        loader: async () => {
-          const { SignInPage, ProxiedSignInPage } =
-            await import('@backstage/core-components');
-          const CustomSignInPage = (props: {
-            onSignInSuccess: (identityApi: any) => void;
-          }) => {
-            const configApi = useApi(configApiRef);
-            if (configApi.has('gs.authProvider')) {
-              const providers = signInProviders(configApi);
-              // One option signs in automatically (existing session, else
-              // an instant popup). Several show the chooser; an existing
-              // session with any of them is still picked up silently.
-              return (
-                <SignInPage
-                  {...props}
-                  auto={providers.length === 1}
-                  providers={providers}
-                />
-              );
-            }
-            return <ProxiedSignInPage {...props} provider="guest" />;
-          };
-          return CustomSignInPage;
-        },
+        // Shell-styled where the deployment serves the Agent Platform,
+        // upstream's classic page otherwise (see AppSignInPage).
+        loader: async () => (await import('./AppSignInPage')).AppSignInPage,
       },
     }),
   ],

@@ -1,0 +1,1 @@
+export { HiveHistoryTab } from './HiveHistoryTab';

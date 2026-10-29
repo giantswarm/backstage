@@ -39,8 +39,24 @@ import {
   CONNECTOR_ID_PARAM,
   SignInConnectorMemory,
 } from './signInConnectorMemory';
+import {
+  ClusterTokenError,
+  type ClusterTokenErrorReason,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+
+import {
+  ProviderCookieQueue,
+  providerCookieQueue,
+} from './providerCookieQueue';
 
 let warned = false;
+
+/**
+ * How long a `/refresh` or `/logout` may take: the provider's other cookie
+ * requests wait for it (see {@link ProviderCookieQueue}), so one that stalls
+ * fails instead of holding them for the rest of the page's life.
+ */
+const COOKIE_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Short-lived cluster token minted by the cluster token broker.
@@ -51,42 +67,23 @@ export type ClusterToken = {
 };
 
 /**
- * Coarse, UI-facing reason why a broker-backed cluster token could not be
- * obtained. `session-expired` means the main Dex session is gone (and the
- * single SSO re-login was declined or failed); the others mirror the backend
- * cluster-token router's failure modes.
+ * What a cluster token mint may ask for: `minLifetimeLeft`, the share of its
+ * lifetime (0 to 1) the token must still have, so a token the broker cached
+ * with less is exchanged anew.
  */
-export type ClusterTokenErrorReason =
-  | 'session-expired'
-  | 'broker_unreachable'
-  | 'broker_unavailable'
-  | 'exchange_failed'
-  | 'subject_invalid'
-  | 'unknown';
+export type ClusterTokenRequest = {
+  minLifetimeLeft?: number;
+};
 
 /**
- * Typed error thrown by a broker-backed `clusterTokenProvider`/refresh. Carries
- * the affected installation and a coarse reason so the cluster-access status
- * UI can show what went wrong without per-cluster login popups.
+ * {@link DefaultAuthConnector.refreshSession}'s options: Backstage's, plus
+ * {@link ClusterTokenRequest.minLifetimeLeft} for a broker-backed cluster. A
+ * cookie refresh always comes back with a new token.
  */
-export class ClusterTokenError extends Error {
-  readonly installation: string;
-  readonly reason: ClusterTokenErrorReason;
+export type RefreshSessionOptions = AuthConnectorRefreshSessionOptions &
+  ClusterTokenRequest;
 
-  constructor(
-    installation: string,
-    reason: ClusterTokenErrorReason,
-    message?: string,
-  ) {
-    super(
-      message ??
-        `Cluster token request for installation "${installation}" failed: ${reason}`,
-    );
-    this.name = 'ClusterTokenError';
-    this.installation = installation;
-    this.reason = reason;
-  }
-}
+export { ClusterTokenError, type ClusterTokenErrorReason };
 
 type Options<AuthSession> = {
   /**
@@ -128,7 +125,9 @@ type Options<AuthSession> = {
    * cookie-based refresh, so broker-covered clusters never trigger a login
    * popup. Returning undefined or throwing falls back to the legacy flow.
    */
-  clusterTokenProvider?: () => Promise<ClusterToken | undefined>;
+  clusterTokenProvider?: (
+    request?: ClusterTokenRequest,
+  ) => Promise<ClusterToken | undefined>;
   /**
    * True for the main sign-in provider (the one whose id equals
    * `gs.authProvider`). Its id may follow the `oidc-<name>` shape, but it is
@@ -154,6 +153,11 @@ type Options<AuthSession> = {
    * page's own card being picked), forgets it.
    */
   signInConnectorMemory?: SignInConnectorMemory;
+  /**
+   * Where the provider's cookie requests wait their turn; the page's shared
+   * queue unless a test brings its own.
+   */
+  cookieQueue?: ProviderCookieQueue;
 };
 
 function defaultJoinScopes(scopes: Set<string>) {
@@ -176,12 +180,13 @@ export class DefaultAuthConnector<
   private readonly sessionTransform: (response: any) => Promise<AuthSession>;
   private readonly enableExperimentalRedirectFlow: boolean;
   private readonly popupOptions: PopupOptions | undefined;
-  private readonly clusterTokenProvider?: () => Promise<
-    ClusterToken | undefined
-  >;
+  private readonly clusterTokenProvider?: (
+    request?: ClusterTokenRequest,
+  ) => Promise<ClusterToken | undefined>;
   private readonly isMainProvider: boolean;
   private readonly startParams: Record<string, string>;
   private readonly signInConnectorMemory?: SignInConnectorMemory;
+  private readonly cookieQueue: ProviderCookieQueue;
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -196,6 +201,7 @@ export class DefaultAuthConnector<
       isMainProvider = false,
       startParams = {},
       signInConnectorMemory,
+      cookieQueue = providerCookieQueue,
     } = options;
 
     if (!warned && !configApi) {
@@ -231,6 +237,7 @@ export class DefaultAuthConnector<
     this.isMainProvider = isMainProvider;
     this.startParams = startParams;
     this.signInConnectorMemory = signInConnectorMemory;
+    this.cookieQueue = cookieQueue;
   }
 
   async createSession(
@@ -258,26 +265,36 @@ export class DefaultAuthConnector<
     return this.authRequester(options.scopes);
   }
 
-  async refreshSession(
-    options?: AuthConnectorRefreshSessionOptions,
-  ): Promise<any> {
+  async refreshSession(options?: RefreshSessionOptions): Promise<any> {
     // Broker-backed clusters are broker-only: no cookie `/refresh`, no popup.
     // A failure surfaces as a typed ClusterTokenError instead of silently
     // falling back to a legacy flow that 404s for private clusters.
     if (this.clusterTokenProvider) {
-      return this.mintBrokerSession(options?.scopes);
+      return this.mintBrokerSession(options?.scopes, {
+        minLifetimeLeft: options?.minLifetimeLeft,
+      });
     }
 
+    const authInfo = await this.cookieQueue.refresh(
+      this.provider.id,
+      options?.scopes,
+      () => this.fetchRefresh(options?.scopes),
+    );
+    return await this.sessionTransform(authInfo);
+  }
+
+  private async fetchRefresh(scopes?: Set<string>): Promise<unknown> {
     const res = await fetch(
       await this.buildUrl('/refresh', {
         optional: true,
-        ...(options && { scope: this.joinScopesFunc(options.scopes) }),
+        ...(scopes && { scope: this.joinScopesFunc(scopes) }),
       }),
       {
         headers: {
           'x-requested-with': 'XMLHttpRequest',
         },
         credentials: 'include',
+        signal: AbortSignal.timeout(COOKIE_REQUEST_TIMEOUT_MS),
       },
     ).catch(error => {
       throw new Error(`Auth refresh request failed, ${error}`);
@@ -300,7 +317,7 @@ export class DefaultAuthConnector<
       }
       throw error;
     }
-    return await this.sessionTransform(authInfo);
+    return authInfo;
   }
 
   /**
@@ -310,8 +327,11 @@ export class DefaultAuthConnector<
    * on a real broker failure -- both propagate to the caller unchanged so the
    * cluster-access status UI can react. No cookie refresh, no per-cluster popup.
    */
-  private async mintBrokerSession(scopes?: Set<string>): Promise<AuthSession> {
-    const clusterToken = await this.clusterTokenProvider!();
+  private async mintBrokerSession(
+    scopes?: Set<string>,
+    request?: ClusterTokenRequest,
+  ): Promise<AuthSession> {
+    const clusterToken = await this.clusterTokenProvider!(request);
     if (!clusterToken) {
       throw new ClusterTokenError(
         this.installationId() ?? this.provider.id,
@@ -329,15 +349,21 @@ export class DefaultAuthConnector<
   }
 
   async removeSession(): Promise<void> {
-    const res = await fetch(await this.buildUrl('/logout'), {
-      method: 'POST',
-      headers: {
-        'x-requested-with': 'XMLHttpRequest',
-      },
-      credentials: 'include',
-    }).catch(error => {
-      throw new Error(`Logout request failed, ${error}`);
-    });
+    const logoutUrl = await this.buildUrl('/logout');
+    const res = await this.cookieQueue
+      .endSession(this.provider.id, () =>
+        fetch(logoutUrl, {
+          method: 'POST',
+          headers: {
+            'x-requested-with': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          signal: AbortSignal.timeout(COOKIE_REQUEST_TIMEOUT_MS),
+        }),
+      )
+      .catch(error => {
+        throw new Error(`Logout request failed, ${error}`);
+      });
 
     if (!res.ok) {
       const error: any = new Error(`Logout request failed, ${res.statusText}`);
@@ -404,6 +430,9 @@ export class DefaultAuthConnector<
     // Only a completed login counts: a closed or failed popup leaves the
     // memory as it was.
     this.rememberConnector(startParams);
+    // The popup set a new session cookie: no refresh sent for the previous
+    // session is joined or sent for this one.
+    this.cookieQueue.sessionChanged(this.provider.id);
     return await this.sessionTransform(payload);
   }
 

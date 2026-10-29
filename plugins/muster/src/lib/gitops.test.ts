@@ -2,7 +2,9 @@ import { MCPServer, MusterWorkflow } from './k8s';
 import {
   gitOpsManagerDescription,
   isChartRendered,
+  isFluxReconciled,
   qualifiedName,
+  resourceKind,
   toManifestYaml,
   toMcpServerDefinition,
   toWorkflowDefinition,
@@ -91,6 +93,28 @@ describe('workflow definitions (gitops.ts)', () => {
 });
 
 describe('GitOps display helpers', () => {
+  it("falls back to the class's kind for an item listed without one", () => {
+    const workflow = new MusterWorkflow(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        metadata: { name: 'deploy', namespace: 'agent-platform' },
+        spec: { steps: [] },
+      } as never,
+      'gazelle',
+    );
+    expect(resourceKind(workflow)).toBe('Workflow');
+    expect(resourceKind(makeMcpServer({}))).toBe('MCPServer');
+    expect(toManifestYaml(workflow)).toContain('kind: Workflow');
+  });
+
+  it('tells a Flux-reconciled object from one installed by hand with Helm', () => {
+    expect(isFluxReconciled({ fluxKustomization: 'flux-extras' })).toBe(true);
+    expect(isFluxReconciled({ fluxHelmRelease: 'agent-platform' })).toBe(true);
+    expect(
+      isFluxReconciled({ managedBy: 'Helm', helmRelease: 'agent-platform' }),
+    ).toBe(false);
+  });
+
   it('qualifies a name with its namespace, if any', () => {
     expect(qualifiedName('flux-extras', 'flux-giantswarm')).toBe(
       'flux-giantswarm/flux-extras',
@@ -116,13 +140,20 @@ describe('GitOps display helpers', () => {
     ).toEqual({
       kind: 'HelmRelease',
       id: 'agent-platform/agent-platform-mcps',
+      name: 'agent-platform-mcps',
+      namespace: 'agent-platform',
     });
     expect(
       gitOpsManagerDescription({
         fluxKustomization: 'flux-extras',
         fluxKustomizationNamespace: 'flux-giantswarm',
       }),
-    ).toEqual({ kind: 'Kustomization', id: 'flux-giantswarm/flux-extras' });
+    ).toEqual({
+      kind: 'Kustomization',
+      id: 'flux-giantswarm/flux-extras',
+      name: 'flux-extras',
+      namespace: 'flux-giantswarm',
+    });
     expect(gitOpsManagerDescription({ managedBy: 'flux' })).toBeUndefined();
   });
 });

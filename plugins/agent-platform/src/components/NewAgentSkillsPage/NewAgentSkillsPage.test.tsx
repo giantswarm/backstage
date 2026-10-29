@@ -1,12 +1,13 @@
 import { ReactNode, useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent, {
   PointerEventsCheckLevel,
 } from '@testing-library/user-event';
 
 import { agentsRouteRef } from '../../routes';
-import type { DiscoveredSkill } from '../../lib/skills';
+import { canonicalSkillId, type DiscoveredSkill } from '../../lib/skills';
+import { pluginEntryOf, type DiscoveredPlugin } from '../../lib/plugins';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentSkillsPage } from './NewAgentSkillsPage';
 
@@ -39,8 +40,33 @@ const SKILLS: DiscoveredSkill[] = [
   },
 ];
 
+const PLUGINS: DiscoveredPlugin[] = [
+  {
+    name: 'review',
+    repoUrl: 'https://github.com/giantswarm/agent-skills',
+    path: 'plugins/review',
+    ref: 'main',
+    commit: HEAD,
+    format: 'agent-plugins',
+    skills: [
+      { name: 'go-review', description: 'Reviews Go.' },
+      { name: 'Incident responder', description: '' },
+    ],
+  },
+  {
+    name: 'commits',
+    repoUrl: 'https://github.com/giantswarm/claude-code',
+    path: 'plugins/commits',
+    ref: 'master',
+    commit: OTHER,
+    format: 'claude-code',
+    skills: [],
+  },
+];
+
 const RESOLVED = {
   skills: SKILLS,
+  plugins: [] as DiscoveredPlugin[],
   isLoading: false,
   error: null,
   hasRepositories: true,
@@ -56,9 +82,53 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => mockCatalog,
 }));
 
+// The agents the Usage filter reads: rows carry the canonical ids of the
+// skills they mount. Loaded and empty unless a test says otherwise.
+const mockAgents: {
+  rows: { skillIds?: string[] }[];
+  isLoading: boolean;
+} = { rows: [], isLoading: false };
+
+jest.mock('../AgentsDataProvider', () => ({
+  ...jest.requireActual('../AgentsDataProvider'),
+  AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
+  useAgents: () => mockAgents,
+}));
+
+jest.mock('../ModelConfigsProvider', () => ({
+  ...jest.requireActual('../ModelConfigsProvider'),
+  ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
 beforeEach(() => {
   Object.assign(mockCatalog, RESOLVED);
+  Object.assign(mockAgents, { rows: [], isLoading: false });
 });
+
+/** A filter's dropdown; `hidden` keeps it readable while its list is open. */
+function filterDropdown(field: string) {
+  return screen.getByRole('button', {
+    name: new RegExp(`Filter by ${field}`),
+    hidden: true,
+  });
+}
+
+/** A filter dropdown's options, as "label count", read and closed again. */
+async function filterOptions(field: string) {
+  await userEvent.click(filterDropdown(field));
+  const options = within(await screen.findByRole('listbox'))
+    .getAllByRole('option')
+    .map(option => option.textContent);
+  await userEvent.keyboard('{Escape}');
+  return options;
+}
+
+/** Toggles one option of a filter dropdown. */
+async function pickFilter(field: string, option: string) {
+  await userEvent.click(filterDropdown(field));
+  await userEvent.click(await screen.findByRole('option', { name: option }));
+  await userEvent.keyboard('{Escape}');
+}
 
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
@@ -85,15 +155,26 @@ function SelectionProbe() {
   );
 }
 
+/** Exposes the picked plugins as agent-manager receives them. */
+function PluginProbe() {
+  const { state } = useNewAgentForm();
+  return (
+    <output data-testid="plugins">
+      {JSON.stringify(state.selectedPlugins.map(pluginEntryOf))}
+    </output>
+  );
+}
+
 async function renderStep() {
   return renderInTestApp(
     <NewAgentFormProvider>
       <Seed>
         <NewAgentSkillsPage />
         <SelectionProbe />
+        <PluginProbe />
       </Seed>
     </NewAgentFormProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 
@@ -126,7 +207,11 @@ describe('NewAgentSkillsPage', () => {
     );
     // A branch name is never what is selected.
     expect(screen.getByTestId('selection')).not.toHaveTextContent('main');
-    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    // At two skills every card shows its own state; no count above them.
+    expect(
+      screen.getByRole('checkbox', { name: 'Skill Incident responder' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
   });
 
   it('shows a progress bar while the catalogue is being discovered', async () => {
@@ -155,16 +240,20 @@ describe('NewAgentSkillsPage', () => {
     // The shim in setupTests is a no-op, so nothing would ever be re-measured.
     // A controllable one lets a test do what a browser does when the clamp is
     // lifted and the paragraph changes height.
-    const resizeCallbacks = new Set<() => void>();
+    const resizeCallbacks = new Set<(entries: ResizeObserverEntry[]) => void>();
+    // With an (empty) entry list, as a browser calls them: react-aria's own
+    // observers (the filter dropdowns') read it.
     const flushResizeObservers = () =>
       act(() => {
-        resizeCallbacks.forEach(callback => callback());
+        resizeCallbacks.forEach(callback => callback([]));
       });
     const RealResizeObserver = globalThis.ResizeObserver;
 
     beforeEach(() => {
       globalThis.ResizeObserver = class {
-        constructor(private readonly callback: () => void) {}
+        constructor(
+          private readonly callback: (entries: ResizeObserverEntry[]) => void,
+        ) {}
         observe() {
           resizeCallbacks.add(this.callback);
         }
@@ -259,6 +348,388 @@ describe('NewAgentSkillsPage', () => {
       expect(document.getElementById(describedBy!)).toHaveTextContent(
         'Triage an incident.',
       );
+    });
+  });
+
+  describe('at the scale of the catalogue', () => {
+    const REPO_A = 'https://github.com/giantswarm/agent-skills';
+    const REPO_B = 'https://github.com/giantswarm/claude-code';
+    const REPO_C = 'https://github.com/giantswarm/more-skills';
+
+    /** `count` loose skills in `repoUrl`, named `<prefix> 001` and on. */
+    const skillsIn = (repoUrl: string, count: number, prefix: string) =>
+      Array.from({ length: count }, (_, i): DiscoveredSkill => ({
+        name: `${prefix} ${String(i + 1).padStart(3, '0')}`,
+        description: `Skill number ${i + 1}.`,
+        repoUrl,
+        path: `${prefix.toLowerCase()}-${i + 1}`,
+        ref: 'main',
+        commit: HEAD,
+      }));
+
+    it('shows three skills of one repository as a plain grid', async () => {
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+      await renderStep();
+
+      expect(
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(3);
+      // No search, no count, no accordion around the only repository, and
+      // no paging chrome.
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /agent-skills/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/skills shown/)).not.toBeInTheDocument();
+    });
+
+    it('opens every repository of a short catalogue', async () => {
+      await renderStep();
+
+      // Two repositories, two skills: both open, both cards on screen.
+      expect(
+        await screen.findByRole('checkbox', {
+          name: 'Skill Incident responder',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('checkbox', { name: 'Skill PR review' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('windows 300 skills of one repository, with search', async () => {
+      const user = userEvent.setup();
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 300, 'Alpha') });
+      await renderStep();
+
+      expect(
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(20);
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
+      expect(screen.getByText('0 selected')).toBeInTheDocument();
+      // Still flat: one repository needs no accordion, however long.
+      expect(
+        screen.queryByRole('button', { name: /agent-skills/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('20 skills shown, 280 more')).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Show 20 more skills' }),
+      );
+      expect(
+        screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(40);
+
+      // A search starts the matches at their first page.
+      await user.type(screen.getByRole('searchbox'), 'Alpha 25');
+      expect(
+        screen.getByRole('checkbox', { name: 'Skill Alpha 250' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: 'Skill Alpha 001' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens 300 skills across repositories as their counts', async () => {
+      const user = userEvent.setup();
+      Object.assign(mockCatalog, {
+        skills: [
+          ...skillsIn(REPO_A, 100, 'Alpha'),
+          ...skillsIn(REPO_B, 100, 'Beta'),
+          ...skillsIn(REPO_C, 100, 'Gamma'),
+        ],
+      });
+      await renderStep();
+
+      const alpha = await screen.findByRole('button', {
+        name: /giantswarm\/agent-skills \(100\)/,
+      });
+      expect(
+        screen.getByRole('button', { name: /giantswarm\/claude-code \(100\)/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /giantswarm\/more-skills \(100\)/ }),
+      ).toBeInTheDocument();
+      // Collapsed, and a collapsed repository mounts none of its cards.
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
+
+      // Opening one shows its first page only.
+      await user.click(alpha);
+      expect(
+        screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(20);
+      expect(
+        screen.getByRole('button', { name: 'Show 20 more skills' }),
+      ).toBeInTheDocument();
+
+      // A pick is counted on the repository's trigger, so a collapsed one
+      // still says it holds part of the selection.
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
+      );
+      expect(screen.getByText('1 selected')).toBeInTheDocument();
+      await user.click(alpha);
+      expect(
+        screen.getByRole('button', {
+          name: /giantswarm\/agent-skills \(100 · 1 selected\)/,
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+      // A search opens every repository it matched in.
+      await user.type(screen.getByRole('searchbox'), 'Gamma 042');
+      expect(
+        await screen.findByRole('checkbox', { name: 'Skill Gamma 042' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /agent-skills/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    describe('filters, as on Customize → Skills (T49, T64)', () => {
+      it('offers Source and Usage dropdowns over three unused skills of one repository', async () => {
+        Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+        await renderStep();
+
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        // Always there, one option each (T64).
+        expect(await filterOptions('source')).toEqual([
+          'giantswarm/agent-skills 3',
+        ]);
+        expect(await filterOptions('usage')).toEqual(['Not used 3']);
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+        ).toHaveLength(3);
+      });
+
+      it('filters three skills by usage, without a search, and clears', async () => {
+        const user = userEvent.setup();
+        const skills = skillsIn(REPO_A, 3, 'Alpha');
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
+        });
+        await renderStep();
+
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        expect(await filterOptions('usage')).toEqual([
+          'Used by agents 1',
+          'Not used 2',
+        ]);
+        // One repository: a Source dropdown of one option.
+        expect(await filterOptions('source')).toEqual([
+          'giantswarm/agent-skills 3',
+        ]);
+        expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+
+        await user.click(
+          screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
+        );
+        await pickFilter('usage', 'Not used 2');
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+        ).toHaveLength(2);
+        // The pick is out of sight now, so the step says it is still there.
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+        expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
+
+        await user.click(
+          within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+            'button',
+            { name: 'Clear filters' },
+          ),
+        );
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+        ).toHaveLength(3);
+        expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
+      });
+
+      it('holds the Usage dropdown back while the agents load', async () => {
+        Object.assign(mockAgents, { isLoading: true });
+        await renderStep();
+
+        await screen.findByRole('checkbox', { name: 'Skill PR review' });
+        expect(await filterOptions('source')).toEqual([
+          'giantswarm/agent-skills 1',
+          'giantswarm/claude-code 1',
+        ]);
+        expect(
+          screen.queryByRole('button', { name: /Filter by usage/ }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('narrows 300 skills across repositories by source and usage', async () => {
+        const user = userEvent.setup();
+        const skills = [
+          ...skillsIn(REPO_A, 100, 'Alpha'),
+          ...skillsIn(REPO_B, 100, 'Beta'),
+          ...skillsIn(REPO_C, 100, 'Gamma'),
+        ];
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: skills.slice(100, 130).map(canonicalSkillId) }],
+        });
+        await renderStep();
+
+        await screen.findByRole('button', {
+          name: /giantswarm\/agent-skills \(100\)/,
+        });
+        expect(await filterOptions('usage')).toEqual([
+          'Used by agents 30',
+          'Not used 270',
+        ]);
+        expect(await filterOptions('source')).toEqual([
+          'giantswarm/agent-skills 100',
+          'giantswarm/claude-code 100',
+          'giantswarm/more-skills 100',
+        ]);
+        // Collapsed until something narrows the list.
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+        // A pick opens the repositories that hold a match, windowed.
+        await pickFilter('usage', 'Used by agents 30');
+        expect(
+          screen.getByRole('button', {
+            name: /giantswarm\/claude-code \(30\)/,
+          }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: /agent-skills \(/ }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Beta/ }),
+        ).toHaveLength(20);
+        expect(
+          screen.getByRole('button', { name: 'Show 10 more skills' }),
+        ).toBeInTheDocument();
+        // The source counts follow the usage pick.
+        expect(await filterOptions('source')).toEqual([
+          'giantswarm/agent-skills 0',
+          'giantswarm/claude-code 30',
+          'giantswarm/more-skills 0',
+        ]);
+
+        // Unused skills from two of the sources: any of them.
+        await pickFilter('usage', 'Used by agents 30');
+        await pickFilter('usage', 'Not used 270');
+        await pickFilter('source', 'giantswarm/agent-skills 100');
+        await pickFilter('source', 'giantswarm/more-skills 100');
+        expect(
+          screen.getByRole('button', {
+            name: /giantswarm\/agent-skills \(100\)/,
+          }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', {
+            name: /giantswarm\/more-skills \(100\)/,
+          }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: /claude-code \(/ }),
+        ).not.toBeInTheDocument();
+
+        // Search and filter together can empty the list; the way back is
+        // offered.
+        await user.type(screen.getByRole('searchbox'), 'Beta');
+        expect(
+          screen.getByText('No skills match “Beta” with these filters.'),
+        ).toBeInTheDocument();
+        const [, emptyStateClear] = screen.getAllByRole('button', {
+          name: 'Clear filters',
+        });
+        await user.click(emptyStateClear);
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Beta/ }),
+        ).toHaveLength(20);
+      });
+    });
+  });
+
+  describe('plugins', () => {
+    beforeEach(() => {
+      mockCatalog.plugins = PLUGINS;
+    });
+
+    it('picks a Claude Code plugin whole and an Agent Plugins package by its skills', async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Select skills and plugins',
+        }),
+      ).toBeInTheDocument();
+      const commits = screen.getByRole('checkbox', { name: 'Plugin commits' });
+      expect(commits).toHaveTextContent('master @9f2c1a7');
+      await user.click(commits);
+      const review = screen.getByRole('group', {
+        name: 'Skills of plugin review',
+      });
+      await user.click(
+        within(review).getByRole('checkbox', { name: /go-review/ }),
+      );
+
+      expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+        {
+          path: 'plugins/commits',
+          git: {
+            url: 'https://github.com/giantswarm/claude-code',
+            commit: OTHER,
+          },
+        },
+        {
+          path: 'plugins/review',
+          git: {
+            url: 'https://github.com/giantswarm/agent-skills',
+            commit: HEAD,
+          },
+          skills: ['go-review'],
+        },
+      ]);
+
+      // A package with nothing enabled loads nothing: unpicking its last skill
+      // unpicks it.
+      await user.click(
+        within(review).getByRole('checkbox', { name: /go-review/ }),
+      );
+      expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+        expect.objectContaining({ path: 'plugins/commits' }),
+      ]);
+    });
+
+    it('warns when a skill name is picked twice', async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', {
+          name: 'Skill Incident responder',
+        }),
+      );
+      await user.click(
+        within(
+          screen.getByRole('group', { name: 'Skills of plugin review' }),
+        ).getByRole('checkbox', { name: 'Incident responder' }),
+      );
+      expect(
+        screen.getByText('A skill name is used twice'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the plain title without plugins', async () => {
+      mockCatalog.plugins = [];
+      await renderStep();
+      expect(
+        await screen.findByRole('heading', { name: 'Select skills' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Plugins')).not.toBeInTheDocument();
     });
   });
 

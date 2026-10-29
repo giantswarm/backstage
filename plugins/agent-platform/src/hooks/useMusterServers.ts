@@ -2,17 +2,32 @@ import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
-import type { ServerInfo } from '../lib/toolset';
+import { ORGANIZATION_PREFIX } from '../lib/tenants';
+import { connectorLabels, type ServerInfo } from '../lib/toolset';
 
-/** The grouping's view of one MCPServer CR. */
+/**
+ * The grouping's view of one MCPServer CR. muster keys a server of an
+ * organization's namespace `<namespace>/<name>` (its tools' `server`, what
+ * `server:` selects) and prefixes its tools `x_<namespace>_<segment>`; a
+ * server of muster's own namespace keeps its name.
+ */
 export function serverInfoOf(server: MCPServer): ServerInfo {
+  const displayName = server.getDisplayNameAnnotation();
+  const namespace = server.getNamespace();
+  const tenant = namespace?.startsWith(ORGANIZATION_PREFIX) ? namespace : '';
+  const prefix = server.getToolNamePrefix();
   return {
-    name: server.getName(),
+    name: tenant ? `${tenant}/${server.getName()}` : server.getName(),
     family: server.getFamily(),
     group: server.getToolGroupKey(),
-    toolNamePrefix: server.getToolNamePrefix(),
+    toolNamePrefix: tenant
+      ? `x_${tenant}_${prefix.slice('x_'.length)}`
+      : prefix,
     state: server.getState(),
     oauth: server.getAuth()?.type === 'oauth',
+    signInTool:
+      server.getAuth()?.type === 'oauth' && !server.isServedPerSession(),
+    ...(displayName ? { displayName } : {}),
   };
 }
 
@@ -21,6 +36,11 @@ export type MusterServers = {
   servers: ServerInfo[];
   /** The same CRs, for muster's own helpers (`serverPageResolver`). */
   resources: MCPServer[];
+  /**
+   * What people call each connector, by surface name ({@link connectorLabels}):
+   * built once per list, for the many lookups a page makes.
+   */
+  labels: ReadonlyMap<string, string>;
   isLoading: boolean;
   /** True when the CRs could not be read (no muster, no access). */
   isUnavailable: boolean;
@@ -46,10 +66,12 @@ export function useMusterServers(
   );
 
   const servers = useMemo(() => resources.map(serverInfoOf), [resources]);
+  const labels = useMemo(() => connectorLabels(servers), [servers]);
 
   return {
     servers,
     resources,
+    labels,
     isLoading: Boolean(installation) && isLoading,
     isUnavailable: errors.length > 0 && resources.length === 0,
   };

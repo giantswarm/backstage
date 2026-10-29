@@ -17,7 +17,7 @@ import { expect, open, test } from './fixtures';
 
 const MODEL = 'lab-model';
 
-/** An agent no `AgentTemplate` of the lab is named after. */
+/** An agent no `Agent` of the lab is named after. */
 const REMOVED = { agent_namespace: 'kagent', agent: 'lab-removed-agent' };
 /** The gateway's own value for a call it could attribute to no caller. */
 const UNKNOWN = { agent_namespace: 'kagent', agent: 'unknown' };
@@ -87,12 +87,20 @@ test.describe('Usage → Cost, by agent', () => {
   }) => {
     await answerGatewayVectors(admin);
     try {
-      await open(admin, '/agent-platform/usage/cost');
+      await open(admin, '/usage/cost');
 
+      // The portal queries the lab's Prometheus only where the lab runs one
+      // (`platform.observability`); without it the page says so instead.
+      const byAgent = admin.getByText('By agent', { exact: true });
+      const noObservability = admin.getByText(/has no observability stack/);
       await expect(
-        admin.getByText('By agent', { exact: true }),
-        'the by-agent table renders (the lab has observability on, so the portal queries its Prometheus)',
+        byAgent.or(noObservability).first(),
+        'the Cost page renders the by-agent table or says there is nothing to query',
       ).toBeVisible();
+      test.skip(
+        await noObservability.isVisible(),
+        'the lab has no observability stack (platform.observability: false)',
+      );
 
       const removed = rowWith(admin, 'kagent/lab-removed-agent');
       await expect(
@@ -116,9 +124,7 @@ test.describe('Usage → Cost, by agent', () => {
       await expect(unattributed.getByRole('link')).toHaveCount(0);
 
       await expect(
-        admin.getByText(
-          /An agent marked as removed matches none this portal knows/,
-        ),
+        admin.getByText(/Removed marks an agent this portal no longer knows/),
         'the note under the table explains the mark',
       ).toBeVisible();
     } finally {

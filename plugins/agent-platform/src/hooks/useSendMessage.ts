@@ -1,8 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation } from '@tanstack/react-query';
-import { kagentApiRef } from '../apis';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  A2aTaskWire,
+  countSendTimeout,
+  SendTimeouts,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import { isFirstEventTimeout, kagentApiRef } from '../apis';
 import { useStreamedTurn } from './useStreamedTurn';
+import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
+import { ComposerImage, toMessageImages } from '../lib/messageImages';
 
 /** A message submitted locally, before kagent's copy of it has been read back. */
 export type PendingMessage = {
@@ -13,6 +21,11 @@ export type PendingMessage = {
    */
   messageId: string;
   text: string;
+  /**
+   * The images attached to it, shown with the stand-in and handed back to the
+   * composer with the text when the send fails.
+   */
+  images?: ComposerImage[];
 };
 
 /**
@@ -30,8 +43,10 @@ export type PendingMessage = {
  *
  * How a lost stream is classified — verified against the history, or reported
  * as a decision — is `useStreamedTurn`'s, shared with the answer path. So is
- * noticing that the stream ended before the turn did (`isStreamLost`), which the
- * page says in place of "Working…" while the poll takes over.
+ * picking a cut stream up again by resubscribing to the turn
+ * (`isReconnecting` meanwhile), and noticing that it could not be
+ * (`isStreamLost`), which the page says in place of "Working…" while the poll
+ * takes over.
  *
  * Shaped like `useRenameSession` beyond that — the mutation does its own
  * invalidation so `isPending` covers it — with the message the user just sent
@@ -49,6 +64,15 @@ export type PendingMessage = {
  * a poll may well deliver kagent's copy first; recognising it by `messageId` and
  * dropping the stand-in is the caller's job, because only the caller can see the
  * timeline.
+ *
+ * **Sends that keep timing out are counted** ({@link SendTimeouts}): a send the
+ * backend gave up on before kagent's first event, whose message the session
+ * history confirms did not land, adds one; any other outcome ends the run. A
+ * runtime that crashes on every restore shows nowhere else — the session stays
+ * ready and the sends never become turns — so the page reads the run
+ * (`readSendTimeoutRuntimeLoss`). Each such failure also re-reads the session,
+ * so a `RUNTIME_LOST` kagent has recorded since takes the reported path. The
+ * run reads as nothing while a send is in flight.
  */
 export function useSendMessage(
   installation: string,
@@ -56,12 +80,44 @@ export function useSendMessage(
   agent: { namespace: string; name: string } | undefined,
 ) {
   const kagentApi = useApi(kagentApiRef);
-  const turn = useStreamedTurn(installation, sessionId);
+  const queryClient = useQueryClient();
+  const turn = useStreamedTurn(installation, sessionId, agent);
   const [pending, setPending] = useState<PendingMessage | null>(null);
   const [failed, setFailed] = useState<PendingMessage | null>(null);
+  const [timeouts, setTimeouts] = useState<SendTimeouts | undefined>(undefined);
 
   const { run, clear } = turn;
-  const mutation = useMutation({
+
+  /**
+   * Count a failed send into the run of timeouts, or end the run. Only a
+   * timeout the history confirmed did not land counts: a history read that
+   * failed too says nothing about the runtime. Counted against that read —
+   * a turn created since the run began ends it — which also goes into the
+   * conversation's cache in place of a second read; the session is re-read
+   * for a `RUNTIME_LOST` kagent may have recorded since.
+   */
+  const noteFailure = useCallback(
+    (error: unknown, missing: A2aTaskWire[] | undefined) => {
+      if (!isFirstEventTimeout(error) || !missing) {
+        setTimeouts(undefined);
+        return;
+      }
+      queryClient.setQueryData(
+        sessionTasksQueryKey(installation, sessionId),
+        missing,
+      );
+      setTimeouts(previous => countSendTimeout(previous, missing));
+      queryClient
+        .invalidateQueries({
+          queryKey: sessionQueryKey(installation, sessionId),
+        })
+        .catch(() => {});
+    },
+    [queryClient, installation, sessionId],
+  );
+  const mutation = useTrackedMutation({
+    // Neither the text nor its images: only that a message went.
+    event: () => ({ name: 'AgentPlatform.messageSent', attributes: {} }),
     mutationFn: async (message: PendingMessage) => {
       if (!agent) {
         // Not a user-facing path: the composer is withheld when the session's
@@ -72,27 +128,47 @@ export function useSendMessage(
           'Cannot send a message: the agent for this session is unknown.',
         );
       }
-      await run(message.messageId, (onEvent, signal) =>
-        kagentApi.streamMessage(
-          installation,
-          sessionId,
-          agent,
-          message,
-          onEvent,
-          signal,
-        ),
-      );
+      // The history read that found the message missing, when one did.
+      let missing: A2aTaskWire[] | undefined;
+      try {
+        await run(
+          message.messageId,
+          (onEvent, signal) =>
+            kagentApi.streamMessage(
+              installation,
+              sessionId,
+              agent,
+              {
+                messageId: message.messageId,
+                text: message.text,
+                ...(message.images?.length
+                  ? { images: toMessageImages(message.images) }
+                  : {}),
+              },
+              onEvent,
+              signal,
+            ),
+          tasks => {
+            missing = tasks;
+          },
+        );
+      } catch (error) {
+        noteFailure(error, missing);
+        throw error;
+      }
     },
     onSuccess: () => {
       setPending(null);
       setFailed(null);
+      setTimeouts(undefined);
       // The reconciled conversation is on screen by now; keeping the preview
       // would double whatever the turn produced.
       clear();
     },
     // The stand-in goes — nothing was recorded, so the transcript must not keep
     // showing a message that was never sent — but the *text* is handed back, because
-    // the composer cleared itself on submit and this is the only remaining copy.
+    // the composer cleared itself on submit and this is the only remaining copy
+    // (of the images too).
     // Losing a pasted manifest to a 502 is exactly what the generous length limit
     // exists to permit.
     onError: (_error, message) => {
@@ -105,10 +181,11 @@ export function useSendMessage(
   const { mutateAsync, reset } = mutation;
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, images?: ComposerImage[]) => {
       const message: PendingMessage = {
         messageId: crypto.randomUUID(),
         text,
+        ...(images?.length ? { images } : {}),
       };
       setPending(message);
       setFailed(null);
@@ -117,7 +194,7 @@ export function useSendMessage(
     [mutateAsync],
   );
 
-  const { stream, isStreamLost } = turn;
+  const { stream, isReconnecting, isStreamLost } = turn;
   return useMemo(
     () => ({
       sendMessage,
@@ -130,8 +207,14 @@ export function useSendMessage(
        */
       stream,
       /**
-       * The stream ended before the turn did, and the poll has not yet shown
-       * that turn over. What the page says instead of "Working…" meanwhile.
+       * The stream ended before the turn did and is being picked up again:
+       * between the cut and the resubscription's first event.
+       */
+      isReconnecting,
+      /**
+       * The stream ended before the turn did, could not be picked up again,
+       * and the poll has not yet shown that turn over. What the page says
+       * instead of "Working…" meanwhile.
        */
       isStreamLost,
       /**
@@ -141,6 +224,13 @@ export function useSendMessage(
        */
       failed,
       error: mutation.error as Error | null,
+      /**
+       * The sends in a row that timed out before kagent's first event and did
+       * not land; undefined once one lands or fails otherwise, and while a
+       * send is in flight — the retry may yet land, and the message it carries
+       * is in no failed send to take along.
+       */
+      timeouts: mutation.isPending ? undefined : timeouts,
       reset,
     }),
     [
@@ -148,9 +238,11 @@ export function useSendMessage(
       mutation.isPending,
       pending,
       stream,
+      isReconnecting,
       isStreamLost,
       failed,
       mutation.error,
+      timeouts,
       reset,
     ],
   );

@@ -1,0 +1,285 @@
+import type { Locator, Page } from '@playwright/test';
+import {
+  completeDexLogin,
+  connectToMuster,
+  expect,
+  expectWizardStep,
+  fillAgentDetails,
+  open,
+  signIn,
+  test,
+} from './fixtures';
+import { contextOptionsFor, lab } from './lab';
+import { idleTab, touch } from './userActivation';
+
+/**
+ * The Notification inbox's MCP sign-in row, and muster's sign-in dialog it
+ * opens, on the lab's `lab-oauth-fixture`: an OAuth-protected server whose
+ * authorization server is muster itself, so the sign-in through the dialog
+ * runs the real challenge chain (proxy start → muster → Dex).
+ */
+
+const FIXTURE = 'lab-oauth-fixture';
+const fixturePath = `/customize/connectors/${lab.installation}/${FIXTURE}`;
+
+/**
+ * Leaves the fixture signed out for the admin, as the lab ships it: from its
+ * connector page, as a person does (`mcp-servers.spec.ts` does the same).
+ * Resolves what the portal calls it (the page's title): the row and the
+ * dialog name it so, its display name if it has one.
+ */
+async function signOutOfFixture(page: Page): Promise<string> {
+  await open(page, fixturePath);
+  const heading = page.getByRole('heading', { level: 1 });
+  await connectToMuster(page, heading);
+  const label = (await heading.innerText()).trim();
+  await page.getByRole('tab', { name: /^Tools/ }).click();
+  const fixtureSignIn = page.getByRole('button', { name: 'Sign in' }).first();
+  await expect(
+    fixtureSignIn.or(page.getByRole('tab', { name: /^Tools \([1-9]/ })).first(),
+    'the fixture offers Sign in, or its tools once signed in',
+  ).toBeVisible({ timeout: 120_000 });
+  if (!(await fixtureSignIn.isVisible())) {
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+    await expect(fixtureSignIn).toBeVisible({ timeout: 60_000 });
+  }
+  return label;
+}
+
+/**
+ * Opens the bell's overlay on the rail's Profile row, or takes it as it is
+ * when it is open already (its underlay then takes a click on the bell).
+ */
+async function openInbox(page: Page): Promise<Locator> {
+  const overlay = page.getByRole('dialog', { name: 'Notifications' });
+  if (!(await overlay.isVisible())) {
+    await page.getByRole('button', { name: /^Notifications/ }).click();
+  }
+  await expect(overlay).toBeVisible();
+  return overlay;
+}
+
+/** The overlay's MCP sign-in row, naming the fixture by `label`. */
+function fixtureRow(overlay: Locator, label: string): Locator {
+  return overlay
+    .getByRole('listitem')
+    .filter({ hasText: /MCP servers? needs? your sign-in/ })
+    .filter({ hasText: label });
+}
+
+test('the inbox names a server waiting for the sign-in, and its Sign in signs in to it', async ({
+  admin,
+}) => {
+  test.setTimeout(240_000);
+  const label = await signOutOfFixture(admin);
+
+  // A page with nothing to do with MCP servers: the row is shell-wide.
+  await open(admin, '/sessions');
+  const overlay = await openInbox(admin);
+  const row = fixtureRow(overlay, label);
+  await expect(row, 'the row names the fixture').toBeVisible({
+    timeout: 60_000,
+  });
+
+  await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
+  await expect(overlay, 'Sign in closes the overlay').toBeHidden();
+  await expect(admin, 'the page stays where it was').toHaveURL(/\/sessions$/);
+  const dialog = admin.getByRole('dialog', { name: 'Sign in to MCP servers' });
+  await expect(dialog).toBeVisible();
+  const server = dialog.getByRole('listitem').filter({ hasText: label });
+  await expect(server).toBeVisible();
+
+  const popup = admin.waitForEvent('popup');
+  await server.getByRole('button', { name: 'Sign in' }).click();
+  await completeDexLogin(await popup, lab.users.admin);
+
+  await expect(
+    server,
+    'the server turns Connected without a reload',
+  ).toContainText('Connected', { timeout: 60_000 });
+  // Other servers may wait for the admin's sign-in too (one pinned to a
+  // provider App, for one): the footer reads Done only once none does. The
+  // footer's button carries its label as text; the header's × only as
+  // aria-label.
+  const stillWaiting = await dialog
+    .getByRole('list', { name: 'MCP servers' })
+    .getByRole('listitem')
+    .filter({ hasNotText: 'Connected' })
+    .count();
+  const footerButton = dialog
+    .getByRole('button')
+    .filter({ hasText: /^(Done|Close)$/ });
+  await expect(footerButton).toHaveText(stillWaiting === 0 ? 'Done' : 'Close');
+  await footerButton.click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    fixtureRow(await openInbox(admin), label),
+    'the fixture no longer waits',
+  ).toHaveCount(0);
+
+  await signOutOfFixture(admin);
+});
+
+test('marking the row read puts it aside on every page, and it stays in the overlay', async ({
+  admin,
+}) => {
+  test.setTimeout(180_000);
+  const label = await signOutOfFixture(admin);
+
+  await open(admin, '/sessions');
+  const overlay = await openInbox(admin);
+  const row = fixtureRow(overlay, label);
+  await expect(row).toBeVisible({ timeout: 60_000 });
+  // Other rows of the shared admin may come and go: only this row is read.
+  if ((await row.getAttribute('data-unread')) === 'true') {
+    await overlay.getByRole('button', { name: 'Mark all read' }).click();
+  }
+  await expect(row, 'the row is read').not.toHaveAttribute(
+    'data-unread',
+    'true',
+  );
+
+  // Another page: still read, and still there while the fixture waits.
+  await open(admin, '/customize/agents');
+  const again = fixtureRow(await openInbox(admin), label);
+  await expect(again).toBeVisible({ timeout: 60_000 });
+  await expect(again).not.toHaveAttribute('data-unread', 'true');
+});
+
+test("the inbox's toasts stand clear of the wizard footer: Continue takes the click while one shows", async ({
+  admin,
+}) => {
+  test.setTimeout(240_000);
+  await admin.setViewportSize({ width: 1440, height: 900 });
+  await signOutOfFixture(admin);
+
+  // Nothing seen yet, in a fresh tab: the waiting fixture is catch-up, with
+  // one summary toast.
+  await admin.route('**/api/user-settings/**/notificationSeenMarks', route =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ status: 404 })
+      : route.fallback(),
+  );
+  await admin.evaluate(
+    key => window.sessionStorage.removeItem(key),
+    'agentPlatform.notificationInbox.tab',
+  );
+  await open(admin, '/customize/agents/new');
+  // The footer first: the toast stands on it, so it moves while the footer
+  // mounts.
+  await expectWizardStep(admin, 'Details');
+  const toast = admin
+    .getByRole('alertdialog')
+    .filter({ hasText: /needs? your attention/ });
+  await expect(toast).toBeVisible({ timeout: 60_000 });
+  // It goes on its own after a few seconds, but not while the pointer rests
+  // on it: held there while the details are filled (a fill moves no pointer).
+  await toast.hover();
+
+  await fillAgentDetails(admin, {
+    name: 'Toast clearance probe',
+    description: 'Never created: the run only steps through the wizard.',
+    instructions: 'You are a probe.',
+  });
+
+  // The wizard's footer: inside the shell's <main>, so no contentinfo landmark.
+  const footer = admin
+    .locator('footer')
+    .filter({ has: admin.getByRole('button', { name: 'Continue' }) });
+  await toast.hover();
+  const toastBox = await toast.boundingBox();
+  const footerBox = await footer.boundingBox();
+  expect(toastBox, 'the toast still shows, held by the pointer').not.toBeNull();
+  expect(
+    toastBox!.y + toastBox!.height,
+    'the toast ends above the wizard footer',
+  ).toBeLessThanOrEqual(footerBox!.y + 0.5);
+
+  // Not forced: Playwright's own actionability check fails a click that
+  // another element (the toast) would receive. The pointer leaving the toast
+  // for Continue starts its time again; the click comes first.
+  await expect(toast).toBeVisible();
+  await footer.getByRole('button', { name: 'Continue' }).click();
+  await expectWizardStep(admin, 'Skills');
+});
+
+test('the sign-in status read never asks for the sign-in once the portal session has expired', async ({
+  admin,
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const label = await signOutOfFixture(admin);
+  const context = await browser.newContext(contextOptionsFor('desktop'));
+  try {
+    const page = await context.newPage();
+    await page.clock.install();
+    await idleTab(page);
+    await signIn(page, lab.users.admin);
+    // A shell page that reads nothing of its own (Profile shows the identity
+    // the app already holds): whatever asks for the sign-in after the jump is
+    // the shell's doing. A path outside the agent area would render the
+    // classic chrome, which has no rail and so no bell.
+    await open(page, '/profile');
+    // The overlay stays open: the reads below run with the row on screen.
+    await expect(fixtureRow(await openInbox(page), label)).toBeVisible({
+      timeout: 60_000,
+    });
+
+    // What the page itself has queued (a catalog lookup batches on a timer)
+    // runs while the session is still good.
+    await page.clock.runFor(5_000);
+    await page.waitForLoadState('networkidle');
+
+    // The portal session is gone: its refresh is refused, as Dex's would be.
+    await page.route('**/api/auth/*/refresh**', route =>
+      route.fulfill({
+        status: 401,
+        json: { error: { name: 'AuthenticationError' } },
+      }),
+    );
+    const statusReads: string[] = [];
+    page.on('request', request => {
+      if (request.url().includes('/api/muster/auth/status')) {
+        statusReads.push(request.url());
+      }
+    });
+    const refreshed = page.waitForRequest(request =>
+      /\/api\/auth\/[^/]+\/refresh/.test(request.url()),
+    );
+    // Past the ID token's lifetime and several of the read's intervals.
+    await page.clock.fastForward('02:00:00');
+    await refreshed;
+
+    const login = page.getByRole('dialog', { name: 'Login Required' });
+    const prompted = await login
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    expect(prompted, 'the background reads opened no Login Required').toBe(
+      false,
+    );
+    expect(statusReads, 'no status read is sent without a session').toEqual([]);
+
+    // A person's own action still asks for the session: Sign in on the row,
+    // then on the server's row in the dialog.
+    await touch(page);
+    const row = fixtureRow(await openInbox(page), label);
+    await expect(row, 'the row stays as it was').toBeVisible();
+    await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Sign in to MCP servers' });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('listitem')
+      .filter({ hasText: label })
+      .getByRole('button', { name: 'Sign in' })
+      .click();
+    await expect(login, 'the action asks for the sign-in').toBeVisible({
+      timeout: 60_000,
+    });
+  } finally {
+    await context.close();
+  }
+});

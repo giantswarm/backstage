@@ -1,10 +1,30 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
-import { Box, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
+import {
+  Box,
+  Flex,
+  Link,
+  SearchField,
+  Tag,
+  TagGroup,
+  Text,
+} from '@backstage/ui';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FactList,
+  type Fact,
+  INITIAL_ROWS,
+  isAwaitingData,
+  CatalogNoMatch,
+  matchesQuery,
+  Mono,
+  useFactTextVariant,
+  ShowMore,
+  StackedRowList,
+  type StackedRowItem,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
@@ -18,19 +38,20 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
-import { serverAuthMode } from '../../lib/serverAuthMode';
+import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
+import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
   formatTimestamp,
 } from '../../lib/formatRelativeTime';
-import { StateBadge, severityTone, useServerPageLinks } from '../shared';
+import {
+  StateBadge,
+  severityTone,
+  TruncatedListNote,
+  useServerPageLinks,
+} from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  mono: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    wordBreak: 'break-all',
-  },
   block: {
     marginBottom: theme.spacing(2),
   },
@@ -58,13 +79,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     margin: '0 calc(-1 * var(--bui-space-2))',
     padding: '0 var(--bui-space-2)',
   },
-  capabilityList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
-    fontSize: 13,
-  },
   errorPre: {
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
@@ -78,19 +92,17 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-/** A note in the secondary voice the detail blocks use for their asides. */
+/**
+ * A note in the secondary voice the detail blocks use for their asides, at
+ * the size of the fact list it is a value in.
+ */
 function Note({ children }: { children: ReactNode }) {
+  const variant = useFactTextVariant();
   return (
-    <Text variant="body-small" color="secondary">
+    <Text variant={variant} color="secondary">
       {children}
     </Text>
   );
-}
-
-/** Monospace for an identifier the reader may need to copy or compare. */
-function Mono({ children }: { children: ReactNode }) {
-  const classes = useStyles();
-  return <span className={classes.mono}>{children}</span>;
 }
 
 /** A small captioned sub-section inside a disclosure body. */
@@ -121,7 +133,7 @@ export function DetailBlock({
 function activateHint(server: MCPServer): string {
   return isGitOpsManaged(server)
     ? ''
-    : ' Use “Activate” in the server’s actions.';
+    : ' Use “Turn on” in the connector’s menu.';
 }
 
 /** CRD-sourced configuration (always available, no muster session needed). */
@@ -134,9 +146,7 @@ export function ServerConfig({ server }: { server: MCPServer }) {
   if (server.getSuspended()) {
     facts.push({
       label: DEACTIVATED_LABEL,
-      value: `yes — muster keeps it disconnected until it is activated.${activateHint(
-        server,
-      )}`,
+      value: `yes — disconnected until activated.${activateHint(server)}`,
     });
   }
   facts.push({ label: 'Type', value: server.getType() ?? '—' });
@@ -144,8 +154,9 @@ export function ServerConfig({ server }: { server: MCPServer }) {
   if (server.getManagementCluster()) {
     facts.push({ label: 'Target MC', value: server.getManagementCluster() });
   }
-  if (server.getUrl()) {
-    facts.push({ label: 'URL', value: <Mono>{server.getUrl()}</Mono> });
+  const url = server.getUrl();
+  if (url) {
+    facts.push({ label: 'URL', value: <Mono>{url}</Mono> });
   }
   if (server.getTimeout() !== undefined) {
     facts.push({ label: 'Timeout', value: `${server.getTimeout()}s` });
@@ -183,6 +194,20 @@ function authTypeLabel(auth: MCPServerAuth): string {
 }
 
 /**
+ * Whether `spec.auth` says more than "no authentication": anonymous with
+ * nothing else set reads as one line, which a page with a sign-in fact
+ * already says.
+ */
+export function hasAuthChain(server: MCPServer): boolean {
+  const auth = server.getAuth();
+  return Boolean(
+    auth &&
+    (serverAuthMode(server) !== 'anonymous' ||
+      Object.keys(withoutCrdDefaults(auth)).length > 0),
+  );
+}
+
+/**
  * The per-server auth/token chain recovered from `spec.auth`.
  *
  * The sign-in/sign-out affordance deliberately lives in the disclosures'
@@ -194,14 +219,20 @@ function authTypeLabel(auth: MCPServerAuth): string {
  */
 export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
+  const mode = serverAuthMode(server);
 
-  if (!auth || serverAuthMode(server) === 'anonymous') {
-    return <Note>No authentication configured (anonymous).</Note>;
+  // Anonymous with nothing else set reads as one line; any other key of
+  // `spec.auth` is shown, since the wizard's edit gate reports it too.
+  if (!auth || !hasAuthChain(server)) {
+    return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [{ label: 'Type', value: authTypeLabel(auth) }];
+  const facts: Fact[] = [
+    { label: 'Mode', value: AUTH_MODE_LABELS[mode] },
+    { label: 'Type', value: authTypeLabel(auth) },
+  ];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },
@@ -289,13 +320,27 @@ export function AuthChain({ server }: { server: MCPServer }) {
           answer. */}
       {sigv4 && (
         <Note>
-          Requests are signed with muster's own AWS machine identity, not the
-          calling user's. All users share this identity, and CloudTrail
-          attributes their actions to muster. There is no user sign-in.
+          Requests are signed with muster's own AWS identity: all users share
+          it, CloudTrail attributes their actions to muster, and there is no
+          user sign-in.
         </Note>
       )}
       <FactList facts={facts} maxWidth={null} />
     </>
+  );
+}
+
+/**
+ * Whether {@link HealthDetails} has anything to show: muster's status says
+ * more about the server than its state. Kept beside it, row for row.
+ */
+export function hasHealthDetails(server: MCPServer): boolean {
+  return Boolean(
+    server.getReadyCondition()?.message ||
+    server.getLastConnected() ||
+    (server.getConsecutiveFailures() ?? 0) > 0 ||
+    server.getNextRetryAfter() ||
+    server.getLastError(),
   );
 }
 
@@ -378,10 +423,11 @@ export function RuntimeState({ server }: { server: MCPServer }) {
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -394,7 +440,7 @@ export function RuntimeState({ server }: { server: MCPServer }) {
 
   const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
   if (!runtime) {
-    return <Note>Server not present in the aggregator's runtime list.</Note>;
+    return <Note>Connector not present in the aggregator's runtime list.</Note>;
   }
 
   // The session rows describe this user's session, not the server: on a
@@ -485,8 +531,8 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       {staleSessionNote && (
         <Text variant="body-small" color="secondary">
           {DEACTIVATED_LABEL} — the Session, Tools, Resources and Prompts rows
-          are your session's last connection to this server, not a working
-          server.
+          are your session's last connection to this connector, not a working
+          connector.
         </Text>
       )}
       <FactList facts={facts} maxWidth={null} />
@@ -511,24 +557,24 @@ export function RuntimeState({ server }: { server: MCPServer }) {
  */
 export function noToolsExplanation(server: MCPServer): string {
   if (server.getSuspended()) {
-    return `No tools exposed — this server is deactivated.${activateHint(
+    return `No tools exposed — this connector is deactivated.${activateHint(
       server,
     )}`;
   }
   const state = server.getState();
   if (state === 'Awaiting Session') {
-    return 'No tools exposed yet — this server connects per session with your own identity; its tools appear here once your muster session has connected to it.';
+    return 'No tools exposed yet — this connector connects per session with your identity; its tools appear once muster has connected it for you.';
   }
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
   if (authGated) {
-    return 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the server’s actions.';
+    return 'No tools exposed — you are not signed in to this connector. Use “Sign in” in its actions.';
   }
   const explanation = server.getStateExplanation();
   if (state === 'Failed' && explanation) {
     return `No tools exposed — ${explanation}`;
   }
-  return 'No tools exposed (the server may be down or unreachable).';
+  return 'No tools exposed (the connector may be down or unreachable).';
 }
 
 /**
@@ -553,10 +599,11 @@ export function ServerTools({
   const prefix = prefixOverride ?? server.getToolNamePrefix();
   const pattern = `${prefix}_*`;
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-tools', installation, pattern],
     queryFn: () => musterApi.filterTools({ installation, pattern, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -650,6 +697,80 @@ export function useServerCapabilityCounts(
 }
 
 /**
+ * A server's resources or prompts as stacked rows, a name over its
+ * description: a page of {@link INITIAL_ROWS} at a time, and a search over them
+ * once there are more than a page — a server's handful is read, not searched.
+ * The search starts the paging over. The tab carries the count, so the list
+ * states none of its own.
+ */
+function CapabilityList<T>({
+  items,
+  noun,
+  label,
+  truncated,
+  total,
+  searchText,
+  row,
+}: {
+  items: T[];
+  noun: string;
+  /** The list's accessible name, e.g. "Prompts". */
+  label: string;
+  /** muster flagged the list as cut at its limit. */
+  truncated?: boolean;
+  /** How many muster says exist; the tab's count is read elsewhere. */
+  total?: number;
+  searchText: (item: T) => string;
+  row: (item: T) => StackedRowItem;
+}) {
+  const [query, setQuery] = useState('');
+  const searchable = items.length > INITIAL_ROWS;
+  const shown = searchable
+    ? items.filter(item => matchesQuery(query, searchText(item)))
+    : items;
+
+  return (
+    <Flex direction="column" gap="2">
+      {searchable && (
+        <Box style={{ maxWidth: 360 }}>
+          <SearchField
+            aria-label={`Search ${noun}s`}
+            placeholder={`Search ${items.length} ${noun}s`}
+            size="small"
+            value={query}
+            onChange={setQuery}
+          />
+        </Box>
+      )}
+      <TruncatedListNote
+        plural={`${noun}s`}
+        truncated={truncated}
+        shown={items.length}
+        total={total}
+      />
+      {shown.length === 0 ? (
+        <CatalogNoMatch plural={`${noun}s`} search={query} />
+      ) : (
+        <ShowMore key={query} items={shown} noun={noun}>
+          {visible => (
+            <StackedRowList aria-label={label} rows={visible.map(row)} />
+          )}
+        </ShowMore>
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * A short title for a resource the server gives no name: the URI's last path
+ * segment, so the full URI can sit on the row's unclamped second line.
+ */
+export function resourceUriLabel(uri: string): string {
+  const path = uri.replace(/^[a-z][a-z0-9+.-]*:\/*/i, '').replace(/\/+$/, '');
+  return path.slice(path.lastIndexOf('/') + 1) || uri;
+}
+
+/**
  * Resources this server contributes to the aggregated catalogue.
  *
  * Unlike tools, resources cannot be discovered by name prefix: a resource URI
@@ -666,16 +787,16 @@ export function ServerResources({
   /** What an empty list says, where the caller knows more than this block. */
   emptyText?: string;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-resources', installation, name],
     queryFn: () =>
       musterApi.filterResources({ installation, server: name, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -689,31 +810,35 @@ export function ServerResources({
     return (
       <Note>
         {emptyText ??
-          'No resources exposed (server may be down or require authentication).'}
+          'No resources exposed (connector may be down or require authentication).'}
       </Note>
     );
   }
 
   return (
-    <Box>
-      <Note>
-        {data?.total ?? resources.length} resource(s)
-        {data?.truncated ? ' (first page)' : ''}
-      </Note>
-      <Box className={classes.capabilityList}>
-        {resources.map(resource => (
-          <Box key={`${resource.server}:${resource.uri}`}>
-            <Mono>{resource.uri}</Mono>
-            {resource.name ? ` — ${resource.name}` : ''}
-            {resource.description && (
-              <Text as="p" variant="body-small" color="secondary">
-                {resource.description}
-              </Text>
-            )}
-          </Box>
-        ))}
-      </Box>
-    </Box>
+    <CapabilityList
+      items={resources}
+      noun="resource"
+      label="Resources"
+      truncated={data?.truncated}
+      total={data?.total}
+      searchText={resource =>
+        [resource.uri, resource.name, resource.description]
+          .filter(Boolean)
+          .join(' ')
+      }
+      // The title is clamped to two lines, so it is the name, or a short
+      // label for a nameless resource. The URI is what an agent asks for: it
+      // sits in full on the second line, which wraps instead.
+      row={resource => ({
+        id: `${resource.server}:${resource.uri}`,
+        title: resource.name || resourceUriLabel(resource.uri),
+        facts: [<Mono key="uri">{resource.uri}</Mono>],
+        details: resource.description ? (
+          <Note>{resource.description}</Note>
+        ) : undefined,
+      })}
+    />
   );
 }
 
@@ -731,16 +856,16 @@ export function ServerPrompts({
   /** What an empty list says, where the caller knows more than this block. */
   emptyText?: string;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-prompts', installation, name],
     queryFn: () =>
       musterApi.filterPrompts({ installation, server: name, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -754,37 +879,36 @@ export function ServerPrompts({
     return (
       <Note>
         {emptyText ??
-          'No prompts exposed (server may be down or require authentication).'}
+          'No prompts exposed (connector may be down or require authentication).'}
       </Note>
     );
   }
 
   // Prompts are never family-grouped, so this is not getToolNamePrefix().
   const prefix = server.getPromptNamePrefix();
+  const shortName = (promptName: string) =>
+    promptName.startsWith(`${prefix}_`)
+      ? promptName.slice(prefix.length + 1)
+      : promptName;
 
   return (
-    <Box>
-      <Note>
-        {data?.total ?? prompts.length} prompt(s)
-        {data?.truncated ? ' (first page)' : ''}
-      </Note>
-      <Box className={classes.capabilityList}>
-        {prompts.map(prompt => (
-          <Box key={prompt.name}>
-            <Mono>
-              {prompt.name.startsWith(`${prefix}_`)
-                ? prompt.name.slice(prefix.length + 1)
-                : prompt.name}
-            </Mono>
-            {prompt.description && (
-              <Text as="p" variant="body-small" color="secondary">
-                {prompt.description}
-              </Text>
-            )}
-          </Box>
-        ))}
-      </Box>
-    </Box>
+    <CapabilityList
+      items={prompts}
+      noun="prompt"
+      label="Prompts"
+      truncated={data?.truncated}
+      total={data?.total}
+      searchText={prompt =>
+        [shortName(prompt.name), prompt.description].filter(Boolean).join(' ')
+      }
+      row={prompt => ({
+        id: prompt.name,
+        title: shortName(prompt.name),
+        details: prompt.description ? (
+          <Note>{prompt.description}</Note>
+        ) : undefined,
+      })}
+    />
   );
 }
 
@@ -806,7 +930,7 @@ export function Provenance({ server }: { server: MCPServer }) {
   if (p.managedBy) {
     facts.push({ label: 'Managed by', value: p.managedBy });
   }
-  if (p.helmRelease ?? p.fluxHelmRelease) {
+  if (releaseId && (p.helmRelease ?? p.fluxHelmRelease)) {
     facts.push({ label: 'HelmRelease', value: <Mono>{releaseId}</Mono> });
   }
   if (p.fluxKustomization) {

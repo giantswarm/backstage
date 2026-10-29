@@ -1,0 +1,1 @@
+export { InPageAnchors } from './InPageAnchors';

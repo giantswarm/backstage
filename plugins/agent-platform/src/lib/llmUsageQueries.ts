@@ -6,13 +6,26 @@ import {
   AgentgatewayGenAiServerTimePerOutputToken as TimePerOutputToken,
   AgentgatewayRequestsTotal as Requests,
 } from '@giantswarm/backstage-plugin-gs';
+import {
+  counterIncrease,
+  durationSeconds,
+  formatDuration,
+  promqlString,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
- * Every PromQL query the LLM usage views run, in one place.
+ * Every PromQL query the LLM usage views run, in one place. Built by
+ * functions, never at module load: the metric definitions come from gs, and a
+ * module that merely imports this file (the plugin's index, through the model
+ * page) must not need them to be there.
  *
  * Built from the constants in the gs plugin's central metric registry rather
  * than from metric-name strings, which is what makes the dependency visible
  * from that registry — see the `mimir-metrics` skill.
+ *
+ * **Every counter goes through {@link counterIncrease}**, never a bare
+ * `increase()`/`rate()`: those drop the first sample of every series, which
+ * on a young installation is most of its usage.
  *
  * **Nothing here filters by `gateway`.** An installation's gateways all serve
  * the same platform, so summing across them is the figure a reader wants; the
@@ -47,53 +60,152 @@ const BY_AGENT_MODEL_TYPE =
 /** The duration metric carries no token type, so calls group one level up. */
 const BY_AGENT_MODEL = 'agent_namespace, agent, gen_ai_response_model';
 
-export const llmUsageQueries = {
-  /** Priced spend, split every way the page needs it. */
-  cost: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${Cost.name}[${WINDOW}]))`,
-  /** Tokens, same grouping — needs no price catalogue, so always trustworthy. */
-  tokens: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${TokenUsage.name}_sum[${WINDOW}]))`,
-  /** Model calls, from the duration histogram's count. */
-  calls: `sum by (${BY_AGENT_MODEL}) (increase(${RequestDuration.name}_count[${WINDOW}]))`,
+/** What the usage queries cover. */
+export type LlmUsageQueryOptions = {
+  /** The window, in whole days. Defaults to {@link WINDOW_DAYS}. */
+  days?: number;
   /**
-   * Output speed of the **median** streamed call, as tokens per second.
-   *
-   * The histogram observes one value per streamed call — that call's own mean
-   * seconds per output token — so the window's mean (`_count / _sum`) weights
-   * a three-token reply exactly like a three-thousand-token one, and a reply
-   * that emitted a handful of tokens after a long wait is seconds *per token*.
-   * On `graveler` that put ~1% of calls at ≥ 2.5 s/token, which alone dragged
-   * the mean from the median's 16 ms to 461 ms: 63 tok/s reported as 2 tok/s.
-   * The median is the speed a call actually runs at, and it is the same idiom
-   * as the two duration quantiles beside it on the strip.
-   *
-   * Inverted in PromQL rather than in the reducer so the metric and its unit
-   * stay in one place. Both failure modes stay honest: an empty histogram
-   * quantile is `NaN`, a zero quantile makes this `+Inf`, and `sampleValue`
-   * rejects either, so the figure degrades to "—".
-   *
-   * Ungrouped, because it is one figure about the platform rather than a
-   * breakdown. A call that was not streamed observes nothing, so this
-   * describes the streamed subset of {@link llmUsageQueries.calls}.
+   * Only the traffic of agents in this organization, the Kubernetes namespace
+   * an agent runs in (`agent_namespace`). All agents when absent.
    */
-  outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) (rate(${TimePerOutputToken.name}_bucket[${WINDOW}])))`,
-  durationP50: `histogram_quantile(0.50, sum by (le) (rate(${RequestDuration.name}_bucket[${WINDOW}])))`,
-  durationP95: `histogram_quantile(0.95, sum by (le) (rate(${RequestDuration.name}_bucket[${WINDOW}])))`,
-  requestsByStatus: `sum by (status) (increase(${Requests.name}{listener="${LLM_LISTENER}"}[${WINDOW}]))`,
-  /**
-   * Every model whose price lookup did not resolve. Empty is the healthy
-   * state, and `> 0` keeps stale zero-valued series out of the table.
-   */
-  unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) (increase(${CatalogLookups.name}{status!="Exact"}[${WINDOW}])) > 0`,
-} as const;
+  org?: string;
+};
+
+/** A positive whole number of days; anything else is the default window. */
+export function windowDaysOf(days: number | undefined): number {
+  if (days === undefined || !Number.isFinite(days)) {
+    return WINDOW_DAYS;
+  }
+  return Math.max(1, Math.round(days));
+}
 
 /**
- * The two range queries. `[1d]` rather than `[$WINDOW]`: each evaluation point
- * totals the day it closes, which is what a daily bar means.
+ * The label matcher restricting a gen_ai metric to one organization, or the
+ * empty string. The value is escaped, so a namespace read from the URL cannot
+ * change the query's shape.
  */
-export const llmUsageRangeQueries = {
-  costPerDayByModel: `sum by (gen_ai_response_model) (increase(${Cost.name}[1d]))`,
-  tokensPerDayByType: `sum by (gen_ai_token_type) (increase(${TokenUsage.name}_sum[1d]))`,
-} as const;
+function orgSelector(org: string | undefined): string {
+  return org ? `{agent_namespace="${promqlString(org)}"}` : '';
+}
+
+/**
+ * How far before a point {@link dataBefore} looks for a sample.
+ *
+ * A gateway series exists only from its label set's first call since its pod
+ * started, so a restart followed by a quiet spell (a weekend) leaves no series
+ * at all — a day's lookback mistook that for data not reaching back. A week
+ * is still a small read beside the window-long queries the page already runs.
+ */
+export const DATA_START_LOOKBACK = '7d';
+
+/**
+ * Whether any token series has a sample in the {@link DATA_START_LOOKBACK}
+ * before `secondsAgo`: one sample, or an empty vector. The one definition of
+ * "the data reaches back to here" behind both the data-start note and the
+ * spend change.
+ *
+ * Tokens rather than cost: every model call records them, priced or not, so a
+ * window of unpriced calls still counts as recorded.
+ */
+function dataBefore(only: string, secondsAgo: number): string {
+  return `count(last_over_time(${TokenUsage.name}_sum${only}[${DATA_START_LOOKBACK}] offset ${formatDuration(secondsAgo)}))`;
+}
+
+/**
+ * The LLM usage queries for a window and, optionally, one organization.
+ *
+ * `previousCost` is the same spend over the window just before this one
+ * (`offset`), for the change against the previous period.
+ *
+ * `requestsByStatus` and `unpricedLookups` stay installation-wide: their
+ * metrics carry no `agent_namespace` label.
+ */
+export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
+  const window = `${windowDaysOf(days)}d`;
+  const only = orgSelector(org);
+  return {
+    /** Priced spend, split every way the page needs it. */
+    cost: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, window)}`,
+    /** Tokens, same grouping — needs no price catalogue, so always trustworthy. */
+    tokens: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${TokenUsage.name}_sum${only}`, window)}`,
+    /** Model calls, from the duration histogram's count. */
+    calls: `sum by (${BY_AGENT_MODEL}) ${counterIncrease(`${RequestDuration.name}_count${only}`, window)}`,
+    /**
+     * Output speed of the **median** streamed call, as tokens per second.
+     *
+     * The histogram observes one value per streamed call — that call's own mean
+     * seconds per output token — so the window's mean (`_count / _sum`) weights
+     * a three-token reply exactly like a three-thousand-token one, and a reply
+     * that emitted a handful of tokens after a long wait is seconds *per token*.
+     * On `graveler` that put ~1% of calls at ≥ 2.5 s/token, which alone dragged
+     * the mean from the median's 16 ms to 461 ms: 63 tok/s reported as 2 tok/s.
+     * The median is the speed a call actually runs at, and it is the same idiom
+     * as the two duration quantiles beside it on the strip.
+     *
+     * Inverted in PromQL rather than in the reducer so the metric and its unit
+     * stay in one place. Both failure modes stay honest: an empty histogram
+     * quantile is `NaN`, a zero quantile makes this `+Inf`, and `sampleValue`
+     * rejects either, so the figure degrades to "—".
+     *
+     * Ungrouped, because it is one figure about the platform rather than a
+     * breakdown. A call that was not streamed observes nothing, so this
+     * describes the streamed subset of `calls`.
+     *
+     * The buckets' growth comes from {@link counterIncrease}, not `rate()`: a
+     * quantile is the same whether the buckets hold rates or increases over
+     * one window (`rate` is every bucket divided by the same range), so the
+     * only difference is that a newborn series' first observations count —
+     * the same for the two duration quantiles below.
+     */
+    outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) ${counterIncrease(`${TimePerOutputToken.name}_bucket${only}`, window)})`,
+    durationP50: `histogram_quantile(0.50, sum by (le) ${counterIncrease(`${RequestDuration.name}_bucket${only}`, window)})`,
+    durationP95: `histogram_quantile(0.95, sum by (le) ${counterIncrease(`${RequestDuration.name}_bucket${only}`, window)})`,
+    requestsByStatus: `sum by (status) ${counterIncrease(`${Requests.name}{listener="${LLM_LISTENER}"}`, window)}`,
+    /**
+     * Every model whose price lookup did not resolve. Empty is the healthy
+     * state, and `> 0` keeps stale zero-valued series out of the table.
+     */
+    unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) ${counterIncrease(`${CatalogLookups.name}{status!="Exact"}`, window)} > 0`,
+    /** {@link cost} over the window before this one. */
+    previousCost: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, window, window)}`,
+    /**
+     * Whether the gateway recorded anything in the
+     * {@link DATA_START_LOOKBACK} before this window starts: one sample, or
+     * none. Gates the "data starts on …" note, so a window whose first days
+     * merely had no calls does not read as one the data does not reach.
+     */
+    dataBeforeWindow: dataBefore(only, durationSeconds(window)),
+    /**
+     * The same check before the *previous* window starts. Without data
+     * there, {@link previousCost} covers only part of its window and the
+     * change against it overstates growth — on a gateway whose metrics began
+     * mid-window it read "▲ 330%".
+     */
+    dataBeforePreviousWindow: dataBefore(only, 2 * durationSeconds(window)),
+  };
+}
+
+/**
+ * The daily range queries, optionally for one organization. `[1d]` rather than
+ * the window: each evaluation point totals the day it closes, which is what a
+ * daily bar means.
+ */
+export function llmUsageRangeQueriesFor({
+  org,
+}: Pick<LlmUsageQueryOptions, 'org'> = {}) {
+  const only = orgSelector(org);
+  return {
+    costPerDayByModel: `sum by (gen_ai_response_model) ${counterIncrease(`${Cost.name}${only}`, '1d')}`,
+    tokensPerDayByType: `sum by (gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum${only}`, '1d')}`,
+    /**
+     * Model calls per day, for the Overview's activity heatmap: the same
+     * duration-histogram count `calls` totals over the window, one day at a
+     * time and ungrouped — the heatmap is one figure per day. Only run when a
+     * view asks for it (`dailyCalls`), so the Cost tab does not pay for it.
+     */
+    callsPerDay: `sum ${counterIncrease(`${RequestDuration.name}_count${only}`, '1d')}`,
+  };
+}
 
 const DAY_SECONDS = 86400;
 
@@ -119,11 +231,26 @@ function todayMidnight(now: number): number {
  * — which it has to be, since `start`/`end`/`step` are part of
  * `useMimirRangeQuery`'s query key and a moving key refetches forever.
  */
-export function dailyRangeWindow(now: number = Date.now()): RangeWindow {
+export function dailyRangeWindow(
+  now: number = Date.now(),
+  days: number = WINDOW_DAYS,
+): RangeWindow {
   const end = todayMidnight(now);
-  const start = end - (WINDOW_DAYS - 2) * DAY_SECONDS;
+  const completeDays = windowDaysOf(days) - 1;
+  // A one-day window has no complete day: `start` lands one step past `end`,
+  // so the window holds no point and {@link hasCompleteDays} is false.
+  const start = end - (completeDays - 1) * DAY_SECONDS;
 
   return { start: String(start), end: String(end), step: String(DAY_SECONDS) };
+}
+
+/**
+ * Whether the range holds at least one evaluation point. A range without one
+ * is not a valid range query, so the caller skips the query and the chart is
+ * today's partial row alone.
+ */
+export function hasCompleteDays(range: RangeWindow): boolean {
+  return Number(range.start) <= Number(range.end);
 }
 
 /** How coarsely {@link todayPartialRange} is snapped. See its docblock. */
@@ -210,10 +337,16 @@ function dayKey(epochSeconds: number): string {
  * Same grouping as the corresponding range query, so the values land in the
  * same series keys and the appended row stacks like every other.
  */
-export function todayPartialQueries(range: string) {
+export function todayPartialQueries(
+  range: string,
+  { org }: Pick<LlmUsageQueryOptions, 'org'> = {},
+) {
+  const only = orgSelector(org);
   return {
-    costByModel: `sum by (gen_ai_response_model) (increase(${Cost.name}[${range}]))`,
-    tokensByType: `sum by (gen_ai_token_type) (increase(${TokenUsage.name}_sum[${range}]))`,
+    costByModel: `sum by (gen_ai_response_model) ${counterIncrease(`${Cost.name}${only}`, range)}`,
+    tokensByType: `sum by (gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum${only}`, range)}`,
+    /** Today's cell of the activity heatmap — see `callsPerDay`. */
+    calls: `sum ${counterIncrease(`${RequestDuration.name}_count${only}`, range)}`,
   };
 }
 
@@ -221,7 +354,7 @@ export function todayPartialQueries(range: string) {
  * The window the $/token rate is averaged over, for the session detail strip
  * and the sessions tab.
  *
- * Shorter than the page's 30 days on purpose: a rate is applied to individual
+ * Shorter than the usage pages' window on purpose: a rate is applied to individual
  * sessions, so it should reflect the model mix in use now rather than one a
  * month of history has flattened.
  */
@@ -240,7 +373,9 @@ export const RATE_WINDOW = '7d';
  * The extra label costs nothing in practice: the cardinality is agents ×
  * models × token types on one installation.
  */
-export const tokenRateQueries = {
-  cost: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(${Cost.name}[${RATE_WINDOW}]))`,
-  tokens: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(${TokenUsage.name}_sum[${RATE_WINDOW}]))`,
-} as const;
+export function tokenRateQueries() {
+  return {
+    cost: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(Cost.name, RATE_WINDOW)}`,
+    tokens: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum`, RATE_WINDOW)}`,
+  } as const;
+}

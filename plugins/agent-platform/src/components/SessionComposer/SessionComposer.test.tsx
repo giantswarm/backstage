@@ -1,6 +1,24 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { sendKeyCaption } from '../../lib/sendKey';
+import {
+  mockImageEncoding,
+  pngFile,
+  TINY_PNG_BASE64,
+} from '../../lib/__fixtures__/images';
 import { MESSAGE_TEXT_MAX_LENGTH, SessionComposer } from './SessionComposer';
 
 const onSubmit = jest.fn();
@@ -26,13 +44,34 @@ beforeEach(() => {
 });
 
 describe('SessionComposer', () => {
+  it('carries an attached card directly above the box, under its notices', () => {
+    // T40: the agent's pending question docks with the box as one control.
+    renderComposer({
+      attachment: <div data-testid="attached-card">Which cluster?</div>,
+      disabledReason: 'Answer the question above to continue.',
+      error: 'boom',
+    });
+
+    const card = screen.getByTestId('attached-card');
+    const box = screen.getByTestId('composer-card');
+    const notice = screen.getByText('Message not sent');
+    // eslint-disable-next-line no-bitwise
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(notice, card)).toBe(true);
+    expect(follows(card, box)).toBe(true);
+    // Outside the box's own form: the real card is a form, and forms do not nest.
+    expect(card.closest('form')).toBeNull();
+    expect(field()).toBeDisabled();
+  });
+
   it('submits the trimmed message', async () => {
     renderComposer();
 
     await userEvent.type(field(), '  why is the ingress failing?  ');
     await userEvent.click(sendButton());
 
-    expect(onSubmit).toHaveBeenCalledWith('why is the ingress failing?');
+    expect(onSubmit).toHaveBeenCalledWith('why is the ingress failing?', []);
   });
 
   it('clears the field on submit', async () => {
@@ -53,7 +92,7 @@ describe('SessionComposer', () => {
     await userEvent.type(field(), 'line one{Shift>}{Enter}{/Shift}line two');
     await userEvent.click(sendButton());
 
-    expect(onSubmit).toHaveBeenCalledWith('line one\nline two');
+    expect(onSubmit).toHaveBeenCalledWith('line one\nline two', []);
   });
 
   it('will not submit an empty or whitespace-only message', async () => {
@@ -79,7 +118,7 @@ describe('SessionComposer', () => {
 
     await userEvent.keyboard('{Enter}');
 
-    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line');
+    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line', []);
     expect(field()).toHaveValue('');
   });
 
@@ -89,7 +128,7 @@ describe('SessionComposer', () => {
     await userEvent.type(field(), 'hello');
     await userEvent.keyboard('{Control>}{Enter}{/Control}');
 
-    expect(onSubmit).toHaveBeenCalledWith('hello');
+    expect(onSubmit).toHaveBeenCalledWith('hello', []);
   });
 
   it('does nothing on Enter with nothing to send — no newline either', async () => {
@@ -140,7 +179,7 @@ describe('SessionComposer', () => {
     const { rerender } = renderComposer();
 
     await userEvent.type(field(), 'first{Enter}');
-    expect(onSubmit).toHaveBeenCalledWith('first');
+    expect(onSubmit).toHaveBeenCalledWith('first', []);
     rerender(
       <SessionComposer isAgentWorking isFinished={false} onSubmit={onSubmit} />,
     );
@@ -230,26 +269,38 @@ describe('SessionComposer', () => {
     });
   });
 
-  it('says that sending resumes a finished session', () => {
-    renderComposer({ isFinished: true });
+  it('invites a reply to the agent once its turn ended, never to "resume"', () => {
+    renderComposer({ isFinished: true, agentName: 'Lab Helper' });
 
     expect(
-      screen.getByPlaceholderText('Send a message to resume this session…'),
+      screen.getByPlaceholderText('Reply to Lab Helper…'),
     ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/resume/)).not.toBeInTheDocument();
+    // Between turns is the usual state of a session, so the caption is the
+    // prototype's disclaimer there too; the placeholder says what Send does.
     expect(
-      screen.getByText('Sending a message resumes this finished session.'),
+      screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
   });
 
-  it('describes an ongoing session as a conversation to add to', () => {
+  it('carries the prototype’s disclaimer under an idle box', () => {
     renderComposer();
 
     expect(
       screen.getByPlaceholderText('Send a message to this session…'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Your reply is added to the conversation/),
+      screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
+  });
+
+  it('gives the disclaimer way to what is happening while the agent works', () => {
+    renderComposer({ isAgentWorking: true });
+
+    expect(
+      screen.queryByText('Agents can make mistakes. Check important results.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/The agent is working/)).toBeInTheDocument();
   });
 
   it('refuses an over-long message and says how long it is', async () => {
@@ -338,6 +389,16 @@ describe('SessionComposer', () => {
     expect(field()).toHaveValue('something else entirely');
   });
 
+  it('renders the details slot inside the box, next to the action', async () => {
+    // The cost/context chip docks here so it stays on screen with the composer.
+    // It must survive every trailing state: beside Send and beside Stop.
+    renderComposer({ details: <span data-testid="details-chip" /> });
+
+    const box = screen.getByTestId('composer-card');
+    expect(box).toContainElement(screen.getByTestId('details-chip'));
+    expect(sendButton()).toBeInTheDocument();
+  });
+
   it('shows why a send failed', () => {
     renderComposer({ error: 'kagent said no' });
 
@@ -347,7 +408,8 @@ describe('SessionComposer', () => {
 });
 
 describe('SessionComposer — Stop', () => {
-  const stopButton = () => screen.getByRole('button', { name: 'Stop' });
+  const stopButton = () =>
+    screen.getByRole('button', { name: 'Stop the turn' });
 
   it('offers Stop in place of Send while the agent works and the turn is known', async () => {
     const onStop = jest.fn();
@@ -358,7 +420,7 @@ describe('SessionComposer — Stop', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /The agent is working\. Stop it, or reply once this turn finishes\./,
+        /The agent is working\. Stop the turn, or reply once it finishes\./,
       ),
     ).toBeInTheDocument();
 
@@ -375,7 +437,7 @@ describe('SessionComposer — Stop', () => {
     renderComposer({ isAgentWorking: true });
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     expect(
@@ -394,7 +456,7 @@ describe('SessionComposer — Stop', () => {
     });
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
   });
 
@@ -410,7 +472,7 @@ describe('SessionComposer — Stop', () => {
       'aria-disabled',
       'true',
     );
-    expect(screen.getByText('Stopping the agent…')).toBeInTheDocument();
+    expect(screen.getByText('Stopping the turn…')).toBeInTheDocument();
   });
 
   it('goes back to Send once the turn has ended', () => {
@@ -418,14 +480,16 @@ describe('SessionComposer — Stop', () => {
       isAgentWorking: true,
       onStop: jest.fn(),
     });
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    ).toBeInTheDocument();
 
     rerender(
       <SessionComposer isAgentWorking={false} isFinished onSubmit={onSubmit} />,
     );
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
@@ -440,7 +504,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 
     expect(
       screen.getByText(
-        'The agent has stopped reporting progress. Cancel the turn to send again.',
+        'The agent has stopped reporting progress. Stop the turn to send again.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -448,7 +512,9 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    );
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
@@ -461,7 +527,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
   });
 
@@ -472,13 +538,15 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
       stopError: 'Failed user token verification',
     });
 
-    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
     expect(
       screen.getByText('Failed user token verification'),
     ).toBeInTheDocument();
     expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
     // The turn is still running: Stop stays offered for another try.
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps a failed send and a failed Stop apart', () => {
@@ -489,114 +557,419 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 
     expect(screen.getByText('Message not sent')).toBeInTheDocument();
     expect(screen.getByText('kagent said no')).toBeInTheDocument();
-    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
     expect(screen.getByText('the cancel was refused')).toBeInTheDocument();
   });
 });
 
-describe('SessionComposer — the way out of a lost runtime', () => {
-  const onStart = jest.fn();
-  const newSession = {
-    label: 'Start a new session with Grill master',
-    onStart,
-    caption: 'Sending again retries the runtime.',
+describe('SessionComposer on a phone (T22)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const waiting = {
+    attachment: <div data-testid="attached-card">Which cluster?</div>,
+    disabledReason:
+      'Issue tracker is waiting for your answer. Answer the question above to continue.',
+    details: <button type="button">Session cost</button>,
   };
-  const startButton = () =>
-    screen.getByRole('button', {
-      name: 'Start a new session with Grill master',
-    });
 
-  beforeEach(() => {
-    onStart.mockReset();
-  });
+  it('folds the disabled box to its caption while a card is attached', () => {
+    layout = mockPhoneLayout();
+    renderComposer(waiting);
 
-  it('offers the new session under the box while the loss is only suspected', async () => {
-    // A cold worker can time out once, so sending again stays the honest retry
-    // and the way out waits below it.
-    renderComposer({ newSession, isFinished: true });
-
-    expect(sendButton()).toBeInTheDocument();
-    expect(startButton()).toBeEnabled();
+    expect(screen.getByTestId('attached-card')).toBeInTheDocument();
     expect(
-      screen.getByText('Sending again retries the runtime.'),
+      screen.queryByRole('textbox', { name: 'Message' }),
+    ).not.toBeInTheDocument();
+    const folded = screen.getByTestId('composer-folded');
+    expect(folded).toHaveTextContent(waiting.disabledReason);
+    // The cost chip stays in reach while the box is folded.
+    expect(
+      screen.getByRole('button', { name: 'Session cost' }),
     ).toBeInTheDocument();
   });
 
-  it('keeps the way out outside the box, not among its controls', () => {
-    // It leaves this session; reading as one of the message box's own controls
-    // was the confusion worth a test.
-    renderComposer({ newSession, isFinished: true });
+  it('brings the box back, with its draft and the focus, when the card goes', async () => {
+    layout = mockPhoneLayout();
+    const { rerender } = renderComposer();
+    await userEvent.type(field(), 'half a thought');
 
-    expect(screen.getByTestId('composer-card')).not.toContainElement(
-      startButton(),
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        {...waiting}
+      />,
     );
-  });
-
-  it('hands the box’s text to the new session and keeps it in the box', async () => {
-    renderComposer({ newSession, isFinished: true });
-
-    await userEvent.type(field(), '  six of them are vegetarian  ');
-    await userEvent.click(startButton());
-
-    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian');
-    // Not cleared: the create can fail, and the box is where the words are.
-    expect(field()).toHaveValue('  six of them are vegetarian  ');
-    expect(onSubmit).not.toHaveBeenCalled();
-  });
-
-  it('starts with an empty box too — the caller carries the unanswered message', async () => {
-    renderComposer({ newSession, isFinished: true });
-
-    await userEvent.click(startButton());
-
-    expect(onStart).toHaveBeenCalledWith('');
-  });
-
-  it('keeps Enter sending while Send is still offered', async () => {
-    renderComposer({ newSession, isFinished: true });
-
-    await userEvent.type(field(), 'try once more{Enter}');
-
-    expect(onSubmit).toHaveBeenCalledWith('try once more');
-    expect(onStart).not.toHaveBeenCalled();
-  });
-
-  it('takes Send’s place, and Enter, once the loss is reported', async () => {
-    // A send then fails the same way every time; the one thing that works is
-    // what the primary control and Enter should do.
-    renderComposer({
-      newSession: { ...newSession, replacesSend: true },
-      isFinished: true,
-    });
-
     expect(
-      screen.queryByRole('button', { name: 'Send' }),
+      screen.queryByRole('textbox', { name: 'Message' }),
     ).not.toBeInTheDocument();
-    expect(field()).toHaveAttribute(
-      'placeholder',
-      'Start a new session with this message…',
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+      />,
     );
+    expect(field()).toHaveValue('half a thought');
+    expect(field()).toHaveFocus();
+  });
 
-    await userEvent.type(field(), 'six of them are vegetarian{Enter}');
+  it('keeps the disabled box under the card on a desktop', () => {
+    layout = mockDesktopLayout();
+    renderComposer(waiting);
 
-    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian');
+    expect(field()).toBeDisabled();
+    expect(screen.queryByTestId('composer-folded')).not.toBeInTheDocument();
+  });
+
+  it('breaks the line on Enter with touch input, and sends from the button', async () => {
+    layout = mockPhoneLayout();
+    renderComposer();
+
+    await userEvent.type(field(), 'first line{Enter}second line');
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('first line\nsecond line');
+    // The soft keyboard's Enter key says it breaks the line.
+    expect(field()).toHaveAttribute('enterkeyhint', 'enter');
+
+    await userEvent.click(sendButton());
+    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line', []);
   });
 
-  it('withholds the action while the new session is being created', () => {
-    renderComposer({
-      newSession: { ...newSession, isStarting: true },
-      isFinished: true,
-    });
+  it('labels the Enter key "send" with a keyboard', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
 
-    expect(startButton()).toBeDisabled();
+    expect(field()).toHaveAttribute('enterkeyhint', 'send');
   });
+});
 
-  it('is not offered at all without the prop', () => {
+describe('SessionComposer send-key hint', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const hint = () => screen.queryByTestId('send-key-hint');
+
+  it('says how the box sends beside the disclaimer, with key caps', () => {
+    layout = mockDesktopLayout();
     renderComposer();
 
     expect(
-      screen.queryByRole('button', { name: /Start a new session/ }),
+      screen.getByText('Agents can make mistakes. Check important results.'),
+    ).toBeInTheDocument();
+    // The same words as the other composers' caption.
+    expect(hint()).toBeVisible();
+    expect(hint()?.textContent).toBe(sendKeyCaption({}, false));
+    expect(hint()?.querySelectorAll('kbd')).toHaveLength(3);
+  });
+
+  it('says to tap Send on touch input', () => {
+    layout = mockPhoneLayout();
+    renderComposer();
+
+    expect(hint()).toBeVisible();
+    expect(hint()?.textContent).toBe('Tap Send to send.');
+    expect(hint()?.querySelector('kbd')).toBeNull();
+  });
+
+  it.each([
+    ['the agent works', { isAgentWorking: true }],
+    ['a confirmation is open', { disabledReason: 'Answer the question.' }],
+  ])('hides the keys while %s, keeping their room', (_, props) => {
+    layout = mockDesktopLayout();
+    renderComposer(props);
+
+    // Hidden rather than removed, so the docked composer keeps its height
+    // from turn to turn.
+    expect(hint()).toBeInTheDocument();
+    expect(hint()).not.toBeVisible();
+  });
+
+  it('gives way to the length error', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    fireEvent.change(field(), {
+      target: { value: 'x'.repeat(MESSAGE_TEXT_MAX_LENGTH + 1) },
+    });
+
+    expect(screen.getByText(/the limit is/)).toBeInTheDocument();
+    expect(hint()).not.toBeVisible();
+  });
+});
+
+describe('SessionComposer — images', () => {
+  let encoding: ReturnType<typeof mockImageEncoding>;
+  beforeEach(() => {
+    encoding = mockImageEncoding();
+  });
+  afterEach(() => {
+    encoding.restore();
+  });
+
+  const attachedList = () =>
+    screen.queryByRole('list', { name: 'Attached images' });
+
+  /** Paste into the box as a clipboard holding `files` and these types. */
+  function paste(files: File[], types: string[] = ['Files']) {
+    fireEvent.paste(field(), {
+      clipboardData: { files, types, getData: () => '' },
+    });
+  }
+
+  function dataTransfer(files: File[]) {
+    return { files, types: ['Files'], dropEffect: 'none' };
+  }
+
+  const pdf = () =>
+    new File(['%PDF-1.7'], 'report.pdf', { type: 'application/pdf' });
+
+  const image = (name: string, byteSize = 70) => ({
+    id: `image-${name}`,
+    name,
+    mediaType: 'image/png' as const,
+    byteSize,
+    previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+  });
+
+  it('attaches a pasted image instead of inserting anything', async () => {
+    renderComposer({ images: {} });
+
+    paste([pngFile('image.png')]);
+
+    // Not the browser's `image.png`, which every pasted image is called.
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
+    expect(attachedList()).toBeInTheDocument();
+    expect(screen.getByText(/^PNG · /)).toBeInTheDocument();
+    expect(field()).toHaveValue('');
+  });
+
+  it('names each pasted image apart, so each remove control is announced apart', async () => {
+    renderComposer({ images: {} });
+
+    paste([pngFile('image.png')]);
+    await screen.findByText('Pasted image.png');
+    paste([pngFile('image.png')]);
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Remove Pasted image (2).png',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves a paste of rich text to the box, picture and all', async () => {
+    // A spreadsheet copies an image of the cells beside their text.
+    renderComposer({ images: {} });
+
+    paste([pngFile()], ['text/plain', 'text/html', 'Files']);
+
+    await act(async () => {});
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('leaves pasted images alone without the images option', async () => {
+    renderComposer();
+
+    paste([pngFile()]);
+
+    await act(async () => {});
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('sends the images with the text, and empties the box of both', async () => {
+    renderComposer({ images: {} });
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
+
+    await userEvent.type(field(), 'what is wrong here?');
+    await userEvent.click(sendButton());
+
+    expect(onSubmit).toHaveBeenCalledWith('what is wrong here?', [
+      expect.objectContaining({
+        name: 'Pasted image.png',
+        mediaType: 'image/png',
+        previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+      }),
+    ]);
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('removes an image by its named control, and gives the box the focus back', async () => {
+    renderComposer({ images: {} });
+    paste([pngFile()]);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Remove Pasted image.png' }),
+    );
+
+    expect(attachedList()).not.toBeInTheDocument();
+    expect(field()).toHaveFocus();
+  });
+
+  it('takes images dropped on the box, with a drop state while they are over it', async () => {
+    renderComposer({ images: {} });
+    const box = screen.getByTestId('composer-card');
+    const files = [pngFile('dropped.png')];
+
+    fireEvent.dragEnter(box, { dataTransfer: dataTransfer(files) });
+    expect(box).toHaveAttribute('data-drop-target');
+    expect(screen.getByText('Drop images to attach them')).toBeInTheDocument();
+
+    fireEvent.drop(box, { dataTransfer: dataTransfer(files) });
+
+    expect(await screen.findByText('dropped.png')).toBeInTheDocument();
+    expect(box).not.toHaveAttribute('data-drop-target');
+  });
+
+  it('refuses a dropped file that is not an image, saying what it takes', async () => {
+    renderComposer({ images: {} });
+
+    fireEvent.drop(screen.getByTestId('composer-card'), {
+      dataTransfer: dataTransfer([pdf()]),
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'report.pdf is not an image the agent can take. Attach a PNG, JPEG, GIF or WebP image.',
+    );
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('keeps a refusal that a slower image finishing later would otherwise wipe', async () => {
+    let decoded: () => void = () => {};
+    encoding.createImageBitmap.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          decoded = () => resolve({ width: 1, height: 1, close: jest.fn() });
+        }),
+    );
+    renderComposer({ images: {} });
+
+    paste([pngFile()]);
+    fireEvent.drop(screen.getByTestId('composer-card'), {
+      dataTransfer: dataTransfer([pdf()]),
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf');
+
+    await waitFor(() => expect(encoding.createImageBitmap).toHaveBeenCalled());
+    await act(async () => decoded());
+
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('report.pdf');
+  });
+
+  it('takes nothing while the box is disabled, but still keeps a dropped file from opening', () => {
+    renderComposer({
+      images: {},
+      disabledReason: 'Answer the question above to continue.',
+    });
+
+    const drop = createEvent.drop(screen.getByTestId('composer-card'), {
+      dataTransfer: dataTransfer([pngFile()]),
+    });
+    fireEvent(screen.getByTestId('composer-card'), drop);
+    const elsewhere = createEvent.drop(document.body, {
+      dataTransfer: dataTransfer([pngFile()]),
+    });
+    fireEvent(document.body, elsewhere);
+
+    expect(drop.defaultPrevented).toBe(true);
+    expect(elsewhere.defaultPrevented).toBe(true);
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('says why an agent that cannot take images takes none', async () => {
+    const reason =
+      'Coder cannot take images: its Claude Code runtime accepts text only.';
+    renderComposer({ images: { unsupportedReason: reason } });
+
+    paste([pngFile()]);
+    expect(await screen.findByRole('alert')).toHaveTextContent(reason);
+    expect(attachedList()).not.toBeInTheDocument();
+
+    // There is no button to attach images with: paste and drop only.
+    expect(
+      screen.queryByRole('button', { name: 'Attach images' }),
     ).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('stops at the bytes the session can still carry', async () => {
+    renderComposer({
+      images: { session: { bytes: 16 * 1024 * 1024, count: 1 } },
+    });
+
+    paste([pngFile()]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Start a new session to send more images.',
+    );
+  });
+
+  it('stops at the number of images the session can still carry', async () => {
+    renderComposer({ images: { session: { bytes: 0, count: 50 } } });
+
+    paste([pngFile()]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This session already carries 50 images',
+    );
+  });
+
+  it('puts a failed message’s images back with its text', async () => {
+    const { rerender } = renderComposer({ images: {} });
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        images={{}}
+        restore={{
+          messageId: 'm1',
+          text: 'look',
+          images: [image('restored.png')],
+        }}
+      />,
+    );
+
+    expect(field()).toHaveValue('look');
+    expect(screen.getByText('restored.png')).toBeInTheDocument();
+  });
+
+  it('holds the send while restored and newer images are more than a message carries, and says so', async () => {
+    const { rerender } = renderComposer({ images: {} });
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        images={{}}
+        restore={{
+          messageId: 'm1',
+          text: 'look',
+          images: [image('big.png', 3 * 1024 * 1024)],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('big.png')).toBeInTheDocument();
+    expect(screen.getByText('Pasted image.png')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'a message can carry 3 MiB. Remove one, and send it with the next message.',
+    );
+    expect(sendButton()).toBeDisabled();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Pasted image.png' }),
+    );
+    expect(sendButton()).toBeEnabled();
   });
 });

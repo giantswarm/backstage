@@ -1,21 +1,23 @@
 import { useMemo } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import CloseIcon from '@material-ui/icons/Close';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { useMutation } from '@tanstack/react-query';
 
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
 import { formatSeconds } from '../../lib/lifecycle';
-import { modelLifecycleSteps, modelPhaseLabel } from '../../lib/modelLifecycle';
+import { modelLifecycleSteps } from '../../lib/modelLifecycle';
 import {
   requestAuthOf,
   requestExamples,
   requestModelOf,
 } from '../../lib/servedModelApi';
 import { LifecycleSteps } from '../LifecycleSteps';
-import { CopyEndpointButton, CopyTextButton } from './ServedModelsGroupHeader';
+import { ServedReadinessLabel } from '../ModelServingStatus';
+import { CopyButton } from '@giantswarm/backstage-plugin-ui-react';
+import { CopyEndpointButton } from './ServedModelsGroupHeader';
 import type { ServedModelRow } from './ServedModelsTable';
 
 /** The served model whose step timeline is open: Serve's answer, or a row's chevron. */
@@ -143,10 +145,9 @@ function RequestExamples({
             <Text as="span" variant="body-small">
               {example.label}
             </Text>
-            <CopyTextButton
+            <CopyButton
               text={example.command}
               label={`Copy the ${example.label} request`}
-              copiedLabel={`${example.label} request copied`}
             />
           </Flex>
           <pre
@@ -181,7 +182,10 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
     (row.usedBy[0]
       ? { name: row.usedBy[0].name, namespace: row.usedBy[0].namespace }
       : undefined);
-  const attempt = useMutation({
+  const attempt = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'A trial prompt against a served model, not a change to the platform.',
     mutationFn: () =>
       modelManagerApi.tryModel(row.installation, {
         model: requestModelOf(row),
@@ -238,7 +242,7 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
                 ? `it reaches the model on the LLM endpoint as ${row.publicName}, metered with the provider models.`
                 : 'the models Gateway checks the person’s token on every call.'
             }`
-          : 'No ModelConfig yet — model-manager wires one for the served model.'}
+          : 'This model has no model config yet; model-manager wires one once it serves.'}
       </Text>
       <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
         <Button
@@ -301,7 +305,6 @@ export function ServedModelLifecyclePanel({
   onClose,
 }: ServedModelLifecyclePanelProps) {
   const steps = useMemo(() => (row ? modelLifecycleSteps(row) : []), [row]);
-  const phase = row ? modelPhaseLabel(row) : undefined;
   const isReady = row?.phase === 'ready' || row?.readiness === 'ready';
 
   let body;
@@ -349,8 +352,17 @@ export function ServedModelLifecyclePanel({
           </Text>
           <Text as="span" variant="body-small" color="secondary">
             {opened.installation}
-            {phase ? ` · ${phase}` : ''}
           </Text>
+          {/* The row's own status, not the backend's phase word: one served
+              model reads the same in the table and here (UX review M14). The
+              phase is the step list below. */}
+          {row && (
+            <ServedReadinessLabel
+              readiness={row.readiness}
+              reason={row.readinessReason}
+              title={row.readinessMessage}
+            />
+          )}
         </Flex>
         <ButtonIcon
           size="small"

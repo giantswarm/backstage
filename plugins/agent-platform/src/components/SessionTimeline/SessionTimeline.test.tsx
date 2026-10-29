@@ -1,12 +1,24 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-import { buildTimeline } from '../../lib/kagentTimeline';
-import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { SessionTimeline } from './SessionTimeline';
+import { useState } from 'react';
 
 import {
+  buildTimeline,
+  SessionTimeline as Timeline,
+  TimelineItem,
+} from '../../lib/kagentTimeline';
+import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import { applyStreamEvent, createStreamTurn } from '../../lib/kagentStreamTurn';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from '../../lib/__fixtures__/workspaceNotice';
+import { TimelineEntry } from './TimelineEntry';
+
+import {
+  attachmentPngV2,
   tasksApproval,
   tasksAskUser,
   tasksAskUserPending,
@@ -15,6 +27,10 @@ import {
   tasksRuntimeLost,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import {
+  mockCollapsibleLayout,
+  type MockedCollapsibleLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -39,6 +55,11 @@ function toolTrigger(): HTMLElement {
   return screen.getByRole('button', { name: /github_search_issues/ });
 }
 
+/** The fixture's first turn folds its two tool calls under one summary. */
+function workSummary(): HTMLElement {
+  return screen.getByRole('button', { name: /Used 2 tools/ });
+}
+
 /**
  * The disclosure panel a trigger controls, found through `aria-controls` — the
  * same association assistive tech follows.
@@ -53,6 +74,10 @@ function panelFor(trigger: HTMLElement): HTMLElement {
 }
 
 describe('SessionTimeline', () => {
+  // The technical-details preference persists through the StorageApi, which the
+  // test app backs with localStorage — shared across tests in this file.
+  beforeEach(() => window.localStorage.clear());
+
   it('renders the conversation', async () => {
     await render(tasksV099);
 
@@ -60,6 +85,24 @@ describe('SessionTimeline', () => {
       screen.getByText(/Which GitHub issues are assigned to me/),
     ).toBeInTheDocument();
     expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+  });
+
+  it('captions only the first user message when the portal prepared it', async () => {
+    const timeline = timelineFor(tasksV099);
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline}
+        agentName="Issue tracker"
+        firstMessageCaption="Prepared by the portal"
+      />,
+    );
+
+    const captions = screen.getAllByTestId('timeline-user-message-caption');
+    expect(captions).toHaveLength(1);
+    expect(captions[0]).toHaveTextContent('Prepared by the portal');
+    expect(screen.getAllByTestId('timeline-user-message')[0]).toContainElement(
+      captions[0],
+    );
   });
 
   it('labels the user and the resolved agent', async () => {
@@ -70,21 +113,43 @@ describe('SessionTimeline', () => {
     expect(screen.getAllByText('Issue tracker').length).toBeGreaterThan(0);
   });
 
-  it('collapses the agent’s internal activity by default', async () => {
-    // The working is why this screen is worth opening, but a wall of expanded tool
-    // payloads is unreadable — so it starts collapsed and is one click away.
-    //
-    // Asserted on `aria-expanded`, not absence from the DOM: react-aria renders a
-    // collapsed disclosure panel and hides it, so its text is present throughout.
+  it('folds a turn’s work into one summary line, collapsed once the turn is done', async () => {
+    // The prototype's "✓ Used 3 tools ›": the turn's calls stand behind one
+    // line, and the reply is what the reader sees first.
     await render(tasksV099);
 
-    expect(toolTrigger()).toHaveAttribute('aria-expanded', 'false');
-    expect(panelFor(toolTrigger())).not.toBeVisible();
+    expect(workSummary()).toHaveAttribute('aria-expanded', 'false');
+    // Folded means not mounted (T39): a long session's folded traces were most
+    // of the page's DOM. The trigger points at no panel while there is none.
+    expect(workSummary()).not.toHaveAttribute('aria-controls');
+    expect(
+      screen.queryByRole('button', { name: /github_search_issues/ }),
+    ).not.toBeInTheDocument();
+    // The conversation around the work stays where it was said.
+    expect(screen.getByText(/You have two open issues/)).toBeVisible();
   });
 
-  it('shows a tool call’s arguments and result when expanded', async () => {
+  it('opens the summary straight onto the technical trace', async () => {
+    // Clicking "Used N tools" is the decision to learn more, so there is no
+    // second "show technical details" step: the exact names and the argument
+    // summary are right there, each call folding out its payloads.
     await render(tasksV099);
 
+    await userEvent.click(workSummary());
+
+    expect(workSummary()).toHaveAttribute('aria-expanded', 'true');
+    const work = panelFor(workSummary());
+    expect(work).toBeVisible();
+    expect(work).toHaveTextContent('2 steps · 2 tool calls');
+    expect(toolTrigger()).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /technical details/i }),
+    ).not.toBeInTheDocument();
+
+    // Each call's payloads are its own fold-out — a wall of expanded payloads
+    // is unreadable. Asserted on `aria-expanded`, not absence from the DOM: a
+    // collapsed panel is rendered and hidden, so its text is present throughout.
+    expect(toolTrigger()).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(toolTrigger());
 
     expect(toolTrigger()).toHaveAttribute('aria-expanded', 'true');
@@ -94,79 +159,119 @@ describe('SessionTimeline', () => {
     expect(panel).toHaveTextContent('Result');
   });
 
-  it('expands everything when asked, and hides it when asked', async () => {
+  it('folds the summary away again', async () => {
     await render(tasksV099);
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Expanded' }));
-    expect(toolTrigger()).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(workSummary());
+    await userEvent.click(workSummary());
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
-    expect(
-      screen.queryByRole('button', { name: /github_search_issues/ }),
-    ).not.toBeInTheDocument();
-    // The conversation itself is never hidden — only the agent's working.
-    expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    expect(workSummary()).toHaveAttribute('aria-expanded', 'false');
+    // And unmounts the trace once the fold-away animation has run.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /github_search_issues/ }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
-  it('keeps an approval visible even when activity is hidden', async () => {
-    // An approval records the *user's* decision, so hiding it would remove the
-    // trace of their own action rather than the agent's working.
-    //
-    // The approval fixture on its own has no activity items — which is why the
-    // control isn't offered for it at all — so the two timelines are combined here
-    // to get a session that has both.
-    const combined = timelineFor(tasksV099);
-    const approval = timelineFor(tasksApproval);
+  it('has no view-wide technical switch', async () => {
+    // Technical detail is a fold-out in place, never a page-level toggle.
+    await render(tasksV099);
+
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeline')).not.toBeInTheDocument();
+  });
+
+  it('folds a lone call like many: summary, then a list of one, then its details', async () => {
+    // T40: no lone-call special case. "Asked 1 agent" behaves exactly like
+    // "Used 2 tools" — folded once the turn is done, opening onto the list.
+    await render(tasksV099);
+
+    const summary = screen.getByRole('button', { name: /Asked 1 agent/ });
+    expect(summary).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.queryByRole('button', { name: /Delegated to sre-agent/ }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(summary);
+
+    expect(summary).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(summary)).toHaveTextContent('1 step · 1 tool call');
+    const delegation = screen.getByRole('button', {
+      name: /Delegated to sre-agent/,
+    });
+    expect(delegation).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(delegation);
+
+    expect(delegation).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(delegation)).toBeVisible();
+  });
+
+  it('folds a lone skill load under "Loaded 1 skill", one click from its call', async () => {
+    const base = timelineFor(tasksV099);
+    const items: TimelineItem[] = [
+      { kind: 'user-message', id: 'u', taskIndex: 0, text: 'Triage it' },
+      {
+        kind: 'tool-call',
+        id: 's',
+        taskIndex: 0,
+        toolName: 'load_skill',
+        args: { name: 'cluster-triage' },
+        result: '# Cluster triage',
+        isPending: false,
+      },
+      { kind: 'agent-message', id: 'm', taskIndex: 0, text: 'Done.' },
+    ] as TimelineItem[];
+    await renderInTestApp(
+      <SessionTimeline timeline={{ ...base, items }} agentName="SRE" />,
+    );
+
+    const summary = screen.getByRole('button', { name: /Loaded 1 skill/ });
+    expect(summary).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(summary);
+
+    const call = screen.getByRole('button', { name: /load_skill/ });
+    await userEvent.click(call);
+    expect(panelFor(call)).toHaveTextContent('cluster-triage');
+  });
+
+  it('starts the summary open while the agent is still working on it', async () => {
+    // Progress is what the reader is watching for; the run folds when the
+    // turn ends.
+    const timeline = timelineFor(tasksV099);
+    const firstTurn = {
+      ...timeline,
+      items: timeline.items.filter(
+        item => item.taskIndex === 0 && item.id !== '0:6:5',
+      ),
+    };
     await renderInTestApp(
       <SessionTimeline
-        timeline={{
-          ...combined,
-          items: [...combined.items, ...approval.items],
-        }}
+        timeline={firstTurn}
         agentName="Issue tracker"
+        isAgentWorking
       />,
     );
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
-
     expect(
-      screen.getByRole('button', { name: /Approval requested/ }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Approved')).toBeInTheDocument();
-  });
-
-  it('offers the control when the only collapsible entry is an approval', async () => {
-    // This fixture has no reasoning, tool calls or delegations — just an approval.
-    // Keying the control on *activity* left such sessions with a collapsed panel
-    // and no way to open it, which is what happens on a real ask_user session.
-    await render(tasksApproval);
-
-    expect(
-      screen.getByRole('radio', { name: 'Collapsed' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Expanded' })).toBeInTheDocument();
-  });
-
-  it('omits Hidden when there is no agent activity to hide', async () => {
-    // `hidden` removes the agent's working, and an approval is not that — it is the
-    // record of the user's own decision. With nothing else to hide, the option
-    // would do nothing.
-    await render(tasksApproval);
-
-    expect(
-      screen.queryByRole('radio', { name: 'Hidden' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('expands an approval through the control', async () => {
-    await render(tasksApproval);
-
-    await userEvent.click(screen.getByRole('radio', { name: 'Expanded' }));
-
-    expect(
-      screen.getByRole('button', { name: /Approval requested/ }),
+      screen.getByRole('button', { name: /Used 2 tools/ }),
     ).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Proposed arguments')).toBeInTheDocument();
+    // Open means mounted: the live run's calls are on the page as they land.
+    expect(toolTrigger()).toBeVisible();
+  });
+
+  it('renders an approval readably, with its proposed call one fold-out away', async () => {
+    await render(tasksApproval);
+
+    // The proposed tool as words, and the user's decision.
+    expect(screen.getByText('Approval requested')).toBeInTheDocument();
+    expect(screen.getByText('Flux reconcile')).toBeInTheDocument();
+    expect(screen.getByText('Approved')).toBeInTheDocument();
+    // The raw payload is a disclosure on the row, collapsed.
+    expect(
+      screen.getByRole('button', { name: /Approval requested/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
   });
 
   describe('ask_user, which ADK wraps like an approval', () => {
@@ -322,11 +427,13 @@ describe('SessionTimeline', () => {
       expect(screen.getAllByText('gpt6').length).toBeGreaterThan(0);
     });
 
-    it('is not activity, so there is nothing to hide or expand', async () => {
+    it('is not trace, so there is nothing to fold away or expand', async () => {
+      // A failed turn is the turn's outcome: always in view, never behind a
+      // summary or an expander.
       await render(tasksFailed);
 
       expect(
-        screen.queryByRole('radio', { name: 'Hidden' }),
+        screen.queryByTestId('timeline-work-summary'),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /This turn failed/ }),
@@ -335,9 +442,10 @@ describe('SessionTimeline', () => {
   });
 
   it('offers no expander for an entry with nothing behind it', async () => {
-    // The approval in this fixture carries proposed arguments, so it *is*
-    // expandable. Strip them and it must render as a plain row: an accordion that
-    // opens onto an empty panel invites a click and answers with nothing.
+    // The approval in this fixture carries proposed arguments, so in the
+    // technical register it *is* expandable. Strip them and it must render as a
+    // plain row even there: an accordion that opens onto an empty panel invites
+    // a click and answers with nothing.
     const timeline = timelineFor(tasksApproval);
     const stripped = {
       ...timeline,
@@ -359,20 +467,28 @@ describe('SessionTimeline', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows an approval’s proposed arguments when it has them', async () => {
+  it('folds out an approval’s exact proposed call in place', async () => {
     await render(tasksApproval);
 
     const trigger = screen.getByRole('button', { name: /Approval requested/ });
     await userEvent.click(trigger);
 
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const panel = panelFor(trigger);
+    // The exact identifier the plain header put in words.
+    expect(panel).toHaveTextContent('flux_reconcile');
     // Labelled "proposed", because these are arguments the agent asked to run —
     // not something it did.
-    expect(screen.getByText('Proposed arguments')).toBeInTheDocument();
-    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(panel).toHaveTextContent('Proposed arguments');
   });
 
   it('names a delegation and its token cost', async () => {
     await render(tasksV099);
+
+    // The lone delegation folds under its summary (T40); the row is inside.
+    await userEvent.click(
+      screen.getByRole('button', { name: /Asked 1 agent/ }),
+    );
 
     expect(screen.getByText('Delegated to sre-agent')).toBeInTheDocument();
     expect(screen.getByText('3.1k tokens')).toBeInTheDocument();
@@ -392,6 +508,12 @@ describe('SessionTimeline', () => {
     expect(markers.map(m => m.textContent)).toEqual([
       '23 Jul 2026, 16:05 UTC',
       '23 Jul 2026, 16:09 UTC',
+    ]);
+    // Labelled, so the first one under the header's "Started …" does not read
+    // as an unexplained second timestamp.
+    expect(markers.map(m => m.parentElement?.textContent)).toEqual([
+      'Turn 1 · 23 Jul 2026, 16:05 UTC',
+      'Turn 2 · 23 Jul 2026, 16:09 UTC',
     ]);
   });
 
@@ -422,7 +544,7 @@ describe('SessionTimeline', () => {
       ).toBeInTheDocument();
 
       await userEvent.click(
-        screen.getByRole('button', { name: 'Cancel the turn' }),
+        screen.getByRole('button', { name: 'Stop the turn' }),
       );
       expect(onCancelTurn).toHaveBeenCalledTimes(1);
     });
@@ -438,7 +560,7 @@ describe('SessionTimeline', () => {
 
       expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Cancel the turn' }),
+        screen.queryByRole('button', { name: 'Stop the turn' }),
       ).not.toBeInTheDocument();
     });
 
@@ -456,7 +578,7 @@ describe('SessionTimeline', () => {
 
       expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Cancel the turn' }),
+        screen.getByRole('button', { name: 'Stop the turn' }),
       ).toBeInTheDocument();
     });
   });
@@ -481,7 +603,7 @@ describe('SessionTimeline', () => {
     );
 
     expect(
-      screen.getByText('Some messages could not be read'),
+      screen.getByText('Could not read some messages'),
     ).toBeInTheDocument();
     expect(screen.getByText(/2 messages/)).toBeInTheDocument();
   });
@@ -501,7 +623,7 @@ describe('SessionTimeline', () => {
     );
 
     expect(
-      screen.getByText('Some messages could not be read'),
+      screen.getByText('Could not read some messages'),
     ).toBeInTheDocument();
     expect(screen.getByText(/3 messages/)).toBeInTheDocument();
     // And it must not claim there were none.
@@ -591,7 +713,233 @@ describe('SessionTimeline', () => {
   });
 });
 
+describe('SessionTimeline — with tool activity hidden (S9)', () => {
+  function timelineOf(items: TimelineItem[]): Timeline {
+    return {
+      items,
+      tokens: { total: 0, prompt: 0, completion: 0 },
+      skippedMessages: 0,
+    };
+  }
+
+  const turn = [
+    { kind: 'user-message', id: 'u', taskIndex: 0, text: 'Reconcile it' },
+    { kind: 'reasoning', id: 'r', taskIndex: 0, text: 'Thinking it over' },
+    {
+      kind: 'tool-call',
+      id: 't',
+      taskIndex: 0,
+      toolName: 'flux_reconcile',
+      isPending: false,
+    },
+    {
+      kind: 'agent-call',
+      id: 'd',
+      taskIndex: 0,
+      agentId: 'sre_agent',
+      isPending: false,
+    },
+    {
+      kind: 'approval',
+      id: 'a1',
+      taskIndex: 0,
+      asks: 'approval',
+      toolName: 'flux_suspend',
+      verdict: 'approved',
+    },
+    { kind: 'agent-message', id: 'm', taskIndex: 0, text: 'Reconciled.' },
+  ] as TimelineItem[];
+
+  it('leaves only the conversation', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf(turn)}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('Reconcile it')).toBeInTheDocument();
+    expect(screen.getByText('Reconciled.')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-work-summary'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Reasoning')).not.toBeInTheDocument();
+    // A permission already decided is how the work went, not conversation.
+    expect(screen.queryByText('Approval requested')).not.toBeInTheDocument();
+    // The agent still speaks under its name.
+    expect(screen.getByText('SRE')).toBeInTheDocument();
+  });
+
+  it('shows everything when on, as before', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={timelineOf(turn)} agentName="SRE" />,
+    );
+
+    expect(screen.getByTestId('timeline-work-summary')).toBeInTheDocument();
+    expect(screen.getByText('Approval requested')).toBeInTheDocument();
+  });
+
+  const unanswered = {
+    kind: 'approval',
+    id: 'a2',
+    taskIndex: 0,
+    asks: 'approval',
+    toolName: 'flux_suspend',
+  } as TimelineItem;
+
+  it('keeps the request the session waits on the person for', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([turn[0], turn[2], unanswered])}
+        agentName="SRE"
+        showToolActivity={false}
+        isAwaitingPerson
+      />,
+    );
+
+    expect(screen.getByText('Approval requested')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting a decision')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-work-summary'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides an unanswered request the session no longer waits on', async () => {
+    // A verdict in words the parser does not know, or a turn that failed or
+    // was canceled after the request, leaves no verdict; it waits on nobody.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          unanswered,
+          { kind: 'agent-message', id: 'm2', taskIndex: 0, text: 'Done.' },
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.queryByText('Approval requested')).not.toBeInTheDocument();
+    expect(screen.getByText('Done.')).toBeInTheDocument();
+  });
+
+  it('keeps only the newest unanswered request while the person is asked', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...unanswered, id: 'stale' } as TimelineItem,
+          { kind: 'user-message', id: 'u2', taskIndex: 1, text: 'Go on' },
+          { ...unanswered, id: 'open', taskIndex: 1 } as TimelineItem,
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+        isAwaitingPerson
+      />,
+    );
+
+    expect(screen.getAllByText('Approval requested')).toHaveLength(1);
+    expect(screen.getAllByTestId('timeline-approval')).toHaveLength(1);
+  });
+
+  it('leaves no marker over a turn of nothing but work', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...turn[2], id: 't2', taskIndex: 1 } as TimelineItem,
+          { kind: 'user-message', id: 'u3', taskIndex: 2, text: 'Thanks' },
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText(/^Turn 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Turn 2/)).not.toBeInTheDocument();
+    // The turns around it keep their numbers.
+    expect(screen.getByText(/^Turn 3/)).toBeInTheDocument();
+  });
+
+  it('keeps a question the person answered, so the reply answers something', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksAskUser)}
+        agentName="SRE Agent"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(
+      screen.getByText('Which management cluster should I look at?'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Responded')).toBeInTheDocument();
+  });
+
+  it('keeps a pending question', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksAskUserPending)}
+        agentName="SRE Agent"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('User input requested')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting a reply')).toBeInTheDocument();
+  });
+
+  it('names no agent over a turn whose agent side is all activity', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf(turn.slice(0, 4))}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('Reconcile it')).toBeInTheDocument();
+    expect(screen.queryByText('SRE')).not.toBeInTheDocument();
+  });
+
+  it('still says the agent is working', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...turn[2], isPending: true } as TimelineItem,
+        ])}
+        agentName="SRE"
+        isAgentWorking
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('Working…')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-work-summary'),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('a lost stream', () => {
+  it('says the stream is being picked up again, in place of Working…', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        isAgentWorking
+        streamLost="reconnecting"
+      />,
+    );
+
+    expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('The live view was interrupted. Reconnecting…'),
+    ).toBeInTheDocument();
+  });
+
   it('says the result is being checked, in place of Working…', async () => {
     await renderInTestApp(
       <SessionTimeline
@@ -604,7 +952,7 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     expect(
-      screen.getByText('The live stream was lost. Checking the result…'),
+      screen.getByText('Could not restore the live view. Checking the result…'),
     ).toBeInTheDocument();
   });
 
@@ -620,7 +968,9 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/The live stream was lost. Still working/),
+      screen.getByText(
+        /Could not restore the live view. The agent is still working/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -635,7 +985,7 @@ describe('a lost stream', () => {
       />,
     );
 
-    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
   });
 
   it('yields to a stall', async () => {
@@ -651,7 +1001,7 @@ describe('a lost stream', () => {
       />,
     );
 
-    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
     expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
   });
 });
@@ -669,7 +1019,7 @@ describe('SessionTimeline — a turn the runtime failed', () => {
     );
 
     expect(
-      screen.getAllByText('The agent’s runtime could not be reached'),
+      screen.getAllByText('Could not reach the agent’s runtime'),
     ).toHaveLength(2);
     expect(
       screen.getAllByText(
@@ -801,11 +1151,9 @@ describe('SessionTimeline — a turn the person canceled', () => {
     expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
   });
 
-  it('keeps the entry when the agent’s working is hidden', async () => {
-    // `hidden` removes the agent's working, not how the turn ended — otherwise
-    // the page is back to a message that went unanswered for no visible reason.
-    // Combined with a fixture that *has* activity, since the control is only
-    // offered when there is something to hide.
+  it('stays in view beside folded work — it is the turn’s outcome, not trace', async () => {
+    // How the turn ended must never disappear behind a summary — otherwise the
+    // page is back to a message that went unanswered for no visible reason.
     const working = timelineFor(tasksV099);
     const canceled = timelineFor(canceledTasks);
     await renderInTestApp(
@@ -818,8 +1166,748 @@ describe('SessionTimeline — a turn the person canceled', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
+    expect(screen.getByTestId('timeline-turn-canceled')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /Used 2 tools/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
+  });
+});
 
-    expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
+describe('SessionTimeline — an attached file', () => {
+  // A real 1×1 PNG: the preview reads its header for the dimensions.
+  const PNG_BYTES = (attachmentPngV2.part as { file: { bytes: string } }).file
+    .bytes;
+
+  function withAttachment(file: Record<string, unknown>) {
+    return {
+      data: [
+        {
+          id: 'task-1',
+          status: { state: 'completed', timestamp: '2026-09-15T10:00:00Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'message-1',
+              role: 'user',
+              parts: [
+                { kind: 'text', text: 'Look at this' },
+                { kind: 'file', file },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('shows an image the bytes say is one', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    const image = screen.getByRole('img', { name: 'shot.png' });
+    expect(image).toHaveAttribute('src', `data:image/png;base64,${PNG_BYTES}`);
+  });
+
+  it('never renders an SVG as an image, even when it claims to be a PNG', async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await render(
+      withAttachment({
+        name: 'harmless.png',
+        mimeType: 'image/png',
+        bytes: svg.toString('base64'),
+      }),
+    );
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/only PNG, JPEG, GIF and WebP images are shown/),
+    ).toBeInTheDocument();
+  });
+
+  it('says what it cannot show, rather than dropping it silently', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: 'not base64!',
+      }),
+    );
+
+    expect(screen.getByText('shot.png')).toBeInTheDocument();
+    expect(screen.getByText(/contents could not be read/)).toBeInTheDocument();
+    // Nothing to click: an untrusted file is not offered for download.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('is conversation, so opening the work does not disturb it', async () => {
+    // The file someone attached is part of what was said, not part of the
+    // agent's trace — it never folds under a work summary.
+    const conversation = timelineFor(tasksV099);
+    const attachment = timelineFor(
+      withAttachment({ name: 'shot.png', bytes: PNG_BYTES }),
+    );
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...conversation,
+          items: [...conversation.items, ...attachment.items],
+        }}
+        agentName="Issue tracker"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Used 2 tools/ }));
+
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+
+  it('captions an image with the type its bytes carry, not the declared one', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'application/octet-stream',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    const caption = screen.getByTestId('timeline-attachment');
+    expect(caption).toHaveTextContent('image/png');
+    expect(caption).not.toHaveTextContent('application/octet-stream');
+  });
+
+  it("marks the type on a file with no preview as the sender's claim", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await render(
+      withAttachment({
+        name: 'harmless.png',
+        mimeType: 'image/png',
+        bytes: svg.toString('base64'),
+      }),
+    );
+
+    expect(screen.getByText(/declared as image\/png/)).toBeInTheDocument();
+  });
+
+  it("keeps the user's file on the user's side and the agent's name on its reply", async () => {
+    const fixture = withAttachment({ name: 'shot.png', bytes: PNG_BYTES });
+    fixture.data[0].history.push({
+      kind: 'message',
+      messageId: 'message-2',
+      role: 'agent',
+      parts: [{ kind: 'text', text: 'That is a screenshot.' }],
+    } as never);
+
+    await render(fixture);
+
+    const order = [
+      ...document.querySelectorAll(
+        '[data-testid^="timeline-"], [class*="authorHeader"]',
+      ),
+    ].map(el => el.getAttribute('data-testid') ?? 'agent-header');
+    expect(order).toEqual([
+      'timeline-user-message',
+      'timeline-attachment',
+      'agent-header',
+      'timeline-agent-message',
+    ]);
+  });
+
+  it('shows a file sent with an ask_user reply that has no text part', async () => {
+    const structuredOnly = structuredClone(tasksAskUser) as typeof tasksAskUser;
+    const decision = structuredOnly.data[0].history.find(
+      item => item.messageId === 'm-decision-1',
+    ) as { parts: unknown[] };
+    decision.parts = [
+      ...decision.parts.filter(
+        part => (part as { kind?: string }).kind !== 'text',
+      ),
+      { kind: 'file', file: { name: 'shot.png', bytes: PNG_BYTES } },
+    ];
+
+    await render(structuredOnly, 'SRE Agent');
+
+    expect(
+      screen.getByText(/Still no reply to messages with image/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+
+  it('enlarges an image in the page and returns focus to it on close', async () => {
+    await render(withAttachment({ name: 'shot.png', bytes: PNG_BYTES }));
+
+    const enlarge = screen.getByRole('button', { name: 'Enlarge shot.png' });
+    await userEvent.click(enlarge);
+
+    const dialog = await screen.findByRole('dialog');
+    const fullSize = within(dialog).getByRole('img', { name: 'shot.png' });
+    expect(fullSize).toHaveAttribute(
+      'src',
+      `data:image/png;base64,${PNG_BYTES}`,
+    );
+    // Nothing leaves the page: no new tab, no download.
+    expect(within(dialog).queryByRole('link')).not.toBeInTheDocument();
+    // Focus stays inside while it is open.
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(enlarge).toHaveFocus();
+
+    await userEvent.click(enlarge);
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Close',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(enlarge).toHaveFocus();
+  });
+});
+
+describe('SessionTimeline — at 3 turns and at 300 (T39)', () => {
+  /**
+   * A session of `turnCount` turns, each a question, a run of two tool calls
+   * folded under a summary, and a reply — the shape of a long agentic session.
+   */
+  function sessionOf(turnCount: number): Timeline {
+    const items: TimelineItem[] = [];
+    for (let turn = 0; turn < turnCount; turn++) {
+      const at = new Date(
+        Date.UTC(2026, 6, 23, 16, 0) + turn * 60_000,
+      ).toISOString();
+      const base = { at, taskIndex: turn };
+      items.push(
+        { ...base, kind: 'user-message', id: `${turn}:u`, text: `Q${turn}?` },
+        {
+          ...base,
+          kind: 'tool-call',
+          id: `${turn}:c1`,
+          toolName: 'kubectl_get_pods',
+          args: { namespace: 'default' },
+          result: 'ok',
+          isPending: false,
+        },
+        {
+          ...base,
+          kind: 'tool-call',
+          id: `${turn}:c2`,
+          toolName: 'kubectl_describe_pod',
+          args: { name: 'web' },
+          result: 'ok',
+          isPending: false,
+        },
+        { ...base, kind: 'agent-message', id: `${turn}:a`, text: `A${turn}.` },
+      );
+    }
+    return {
+      items,
+      tokens: { total: 0, prompt: 0, completion: 0 },
+      skippedMessages: 0,
+    };
+  }
+
+  const renderedTurns = () =>
+    document.querySelectorAll('[data-turn-index]').length;
+
+  it('renders a short session whole, with no paging chrome', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={sessionOf(3)} agentName="sre-agent" />,
+    );
+
+    expect(renderedTurns()).toBe(3);
+    expect(screen.getByText('Q0?')).toBeInTheDocument();
+    expect(screen.getByText('A2.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Show earlier activity/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-earlier-activity'),
+    ).not.toBeInTheDocument();
+    // Each turn's work is one folded line, its calls not mounted.
+    expect(
+      screen.getAllByRole('button', { name: /Used 2 tools/ }),
+    ).toHaveLength(3);
+    expect(
+      screen.queryByRole('button', { name: /kubectl_get_pods/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders only the newest turns of a long session, and pages back on request', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={sessionOf(300)} agentName="sre-agent" />,
+    );
+
+    // The newest RECENT_TURNS, ending at the latest reply.
+    expect(renderedTurns()).toBe(RECENT_TURNS);
+    expect(screen.getByText('A299.')).toBeInTheDocument();
+    expect(screen.getByText(`Q${300 - RECENT_TURNS}?`)).toBeInTheDocument();
+    expect(
+      screen.queryByText(`Q${299 - RECENT_TURNS}?`),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Q0?')).not.toBeInTheDocument();
+    // No folded trace is mounted: 600 tool calls, zero call rows.
+    expect(
+      screen.queryByRole('button', { name: /kubectl_get_pods/ }),
+    ).not.toBeInTheDocument();
+
+    // The control sits above the turns and says what it hides.
+    const control = screen.getByTestId('timeline-earlier-activity');
+    expect(control).toHaveTextContent(
+      `${300 - RECENT_TURNS} earlier turns not shown`,
+    );
+    expect(
+      control.compareDocumentPosition(
+        document.querySelector('[data-turn-index]') as Node,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show earlier activity' }),
+    );
+
+    // One page more, not the whole history.
+    expect(renderedTurns()).toBe(2 * RECENT_TURNS);
+    expect(screen.getByText(`Q${300 - 2 * RECENT_TURNS}?`)).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-earlier-activity')).toHaveTextContent(
+      `${300 - 2 * RECENT_TURNS} earlier turns not shown`,
+    );
+  });
+
+  it('keeps the newest turn live when the window hides older ones', async () => {
+    // The newest run is found by its place in the whole session, not in the
+    // window, so a working agent's progress still starts open.
+    const timeline = sessionOf(300);
+    const working = {
+      ...timeline,
+      items: timeline.items.filter(item => item.id !== '299:a'),
+    };
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={working}
+        agentName="sre-agent"
+        isAgentWorking
+      />,
+    );
+
+    const summaries = screen.getAllByRole('button', { name: /Used 2 tools/ });
+    expect(summaries).toHaveLength(RECENT_TURNS);
+    expect(summaries[summaries.length - 1]).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(summaries[0]).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('TimelineEntry — the connector of a tool call (UX review M2)', () => {
+  const call = {
+    kind: 'tool-call',
+    id: 'c',
+    taskIndex: 0,
+    toolName: 'x_agentlab-mcp-kubernetes_get_pods',
+    args: { namespace: 'default' },
+    result: 'ok',
+    isPending: false,
+    via: 'Muster',
+  } as TimelineItem;
+  const connectorOf = (name: string) =>
+    name.startsWith('x_agentlab-mcp-kubernetes_')
+      ? {
+          connector: 'kubernetes',
+          tool: name.slice('x_agentlab-mcp-kubernetes_'.length),
+        }
+      : undefined;
+
+  it('names the connector as Customize does in a plain row, never the gateway', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={call} connectorOf={connectorOf} />,
+    );
+
+    const row = screen.getByRole('button', { name: /Get pods/ });
+    expect(row).toHaveTextContent('kubernetes');
+    expect(row).not.toHaveTextContent('via Muster');
+    expect(row).not.toHaveTextContent('agentlab-mcp');
+  });
+
+  it('keeps the exact name and the proxy in a technical row', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={call} connectorOf={connectorOf} technical />,
+    );
+
+    const row = screen.getByRole('button', {
+      name: /x_agentlab-mcp-kubernetes_get_pods/,
+    });
+    expect(row).toHaveTextContent('via Muster');
+  });
+});
+
+describe('SessionTimeline — a long user message', () => {
+  // jsdom lays nothing out: one line of the bubble's text per line of the
+  // message, and the cut's ten `lh` as ten of them.
+  let layout: MockedCollapsibleLayout;
+  beforeEach(() => {
+    layout = mockCollapsibleLayout();
+  });
+  afterEach(() => layout.restore());
+
+  const lines = (count: number, prefix = 'line') =>
+    Array.from({ length: count }, (_, i) => `${prefix} ${i + 1}`).join('\n');
+  const base = { taskIndex: 0, at: '2026-10-16T10:00:00Z' };
+  const timeline = (items: TimelineItem[]): Timeline => ({
+    items,
+    tokens: { total: 0, prompt: 0, completion: 0 },
+    skippedMessages: 0,
+  });
+
+  async function renderItems(items: TimelineItem[]) {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline(items)}
+        agentName="Issue tracker"
+        isAgentWorking={false}
+      />,
+    );
+  }
+
+  /** A timeline the test can replace, as a poll does. */
+  async function renderChanging(first: TimelineItem[]) {
+    let replace: (items: TimelineItem[]) => void = () => {};
+    function Harness() {
+      const [items, setItems] = useState(first);
+      replace = setItems;
+      return (
+        <SessionTimeline
+          timeline={timeline(items)}
+          agentName="Issue tracker"
+          isAgentWorking={false}
+        />
+      );
+    }
+    await renderInTestApp(<Harness />);
+    return (items: TimelineItem[]) => act(() => replace(items));
+  }
+
+  it('cuts it to ten lines behind Show more, and opens and closes it in place', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    const toggle = screen.getByRole('button', { name: 'Show more' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const region = panelFor(toggle);
+    // Ten lines of the bubble's own text, at whatever size the browser sets.
+    expect(region.style.maxHeight).toBe('10lh');
+    // Cut, not removed: the whole message stays in the page for a screen
+    // reader and for copying.
+    expect(region).toHaveTextContent('line 40');
+    // In the bubble, under the cut: after it, never over it.
+    const bubble = screen.getByTestId('user-message-bubble');
+    expect(bubble).toContainElement(toggle);
+    expect(region).not.toContainElement(toggle);
+    expect(
+      region.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await userEvent.click(toggle);
+    const less = screen.getByRole('button', { name: 'Show less' });
+    expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(less).style.maxHeight).toBe('');
+    // At the end of the opened text, in the bubble still.
+    expect(bubble).toContainElement(less);
+    expect(panelFor(less)).not.toContainElement(less);
+
+    await userEvent.click(less);
+    expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('opens from the keyboard', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    screen.getByRole('button', { name: 'Show more' }).focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('shows a message that fits whole, with no control', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(10) },
+    ]);
+
+    expect(screen.getByText(/line 10/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows whole a message only a line or two past the cut', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(12) },
+    ]);
+
+    expect(screen.getByText(/line 12/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps each message open or closed on its own', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u1', text: lines(40, 'first') },
+      { ...base, kind: 'agent-message', id: 'a1', text: 'Noted.' },
+      {
+        ...base,
+        taskIndex: 1,
+        kind: 'user-message',
+        id: 'u2',
+        text: lines(40, 'second'),
+      },
+    ]);
+
+    const [first, second] = screen.getAllByRole('button', {
+      name: 'Show more',
+    });
+    await userEvent.click(second);
+
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('stays open when kagent’s copy of a sent message replaces the optimistic one', async () => {
+    const text = lines(40);
+    const replace = await renderChanging([
+      {
+        ...base,
+        kind: 'user-message',
+        id: 'pending:m1',
+        messageId: 'm1',
+        text,
+      },
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // The poll's item: the same message under a positional key.
+    replace([
+      { ...base, kind: 'user-message', id: '0:0:0', messageId: 'm1', text },
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('stays open while its turn is out of the window and back', async () => {
+    const turn = (index: number): TimelineItem[] => [
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'user-message',
+        id: `${index}:u`,
+        messageId: `m${index}`,
+        text: index === 0 ? lines(40, 'opener') : `Q${index}?`,
+      },
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'agent-message',
+        id: `${index}:a`,
+        text: `A${index}.`,
+      },
+    ];
+    const turns = (count: number) =>
+      Array.from({ length: count }, (_, i) => turn(i)).flat();
+    const replace = await renderChanging(turns(RECENT_TURNS));
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // A new turn pushes the opener's out of the window, unmounting it.
+    replace(turns(RECENT_TURNS + 1));
+    expect(screen.queryByText(/opener 1/)).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show earlier activity' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('leaves the agent’s messages whole', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: 'Summarize it' },
+      { ...base, kind: 'agent-message', id: 'a', text: lines(40) },
+    ]);
+
+    expect(screen.queryByRole('button', { name: /Show more/ })).toBeNull();
+  });
+});
+
+describe('egress refusals', () => {
+  const at = '2026-10-19T10:42:00Z';
+  const timeline = (refusal: Partial<TimelineItem>): Timeline => ({
+    ...timelineFor(tasksEmpty),
+    items: [
+      { kind: 'user-message', id: 'u', taskIndex: 0, at, text: 'update' },
+      {
+        kind: 'egress-refused',
+        id: 'r',
+        taskIndex: 0,
+        at,
+        scheme: 'https',
+        host: 'proxy.golang.org',
+        port: 443,
+        count: 3,
+        ...refusal,
+      } as TimelineItem,
+      { kind: 'agent-message', id: 'a', taskIndex: 0, at, text: 'no' },
+    ],
+  });
+
+  it('names the host, the agent and the count, with the remedy it is given', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({})}
+        agentName="otter-coder"
+        egressRemedy={{
+          kind: 'edit',
+          editHref: '/customize/agents/lab/agents/otter-coder/edit',
+        }}
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        'Outgoing connection to proxy.golang.org blocked',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /otter-coder is not allowed to reach this address · .* · 3 attempts/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /add https:\/\/proxy\.golang\.org to otter-coder’s Extra egress origins/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByRole('link', { name: 'Edit otter-coder' }),
+    ).toHaveAttribute('href', '/customize/agents/lab/agents/otter-coder/edit');
+  });
+
+  it('says raw TCP is not available, with no origin to add', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({
+          scheme: 'tcp',
+          host: '10.0.0.7',
+          port: 22,
+          count: 1,
+        })}
+        agentName="otter-coder"
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        /Raw TCP connections are not available to agents · .* · 1 attempt$/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
+  });
+});
+
+describe('workspace setup notices', () => {
+  it('shows a notice as a status of its turn, above the agent’s name and reply', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(sessionWithNotices)}
+        agentName="Claude Code"
+      />,
+    );
+
+    const notices = screen.getAllByTestId('timeline-workspace-notice');
+    expect(notices.map(notice => notice.dataset.severity)).toEqual([
+      'warning',
+      'info',
+    ]);
+    const replies = screen.getAllByTestId('timeline-agent-message');
+    expect(replies.map(reply => reply.textContent)).toEqual([
+      'No, the gh CLI is not installed here.',
+      "I'm Claude.",
+    ]);
+    const [firstName] = screen.getAllByText('Claude Code');
+    // Notice, then the agent's name, then its reply.
+    expect(
+      notices[0].compareDocumentPosition(firstName) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      firstName.compareDocumentPosition(replies[0]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders the streamed notice as the polled one', async () => {
+    const streamed = applyStreamEvent(createStreamTurn('user-1'), {
+      statusUpdate: {
+        taskId: 'task-1',
+        contextId: 'ctx-1',
+        status: {
+          state: 'TASK_STATE_WORKING',
+          message: {
+            messageId: 'notice-1',
+            role: 'ROLE_AGENT',
+            parts: [{ text: NOTICE_STALE }],
+          },
+        },
+      },
+    });
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...timelineFor(tasksEmpty),
+          items: [
+            { kind: 'user-message', id: 'u', taskIndex: 0, text: 'hi' },
+            ...streamed.items,
+          ],
+        }}
+        agentName="Claude Code"
+        isAgentWorking
+      />,
+    );
+
+    expect(
+      within(screen.getByTestId('timeline-workspace-notice')).getByText(
+        'Workspace setup: 3 repositories not updated',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-agent-message'),
+    ).not.toBeInTheDocument();
   });
 });

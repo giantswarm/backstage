@@ -88,3 +88,6 @@ storybook-static/
 # core dumps a killed node process leaves in the checkout
 core
 core.[0-9]*
+
+# Python bytecode (tests/ats)
+__pycache__/

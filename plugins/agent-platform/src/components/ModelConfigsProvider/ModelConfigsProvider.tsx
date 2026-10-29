@@ -18,6 +18,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 
 export type ModelConfigsContextValue = {
   /** Discovery/list still in flight across the fleet. */
@@ -75,7 +76,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query installations whose inventory has the `kagent.dev` API group and
+  // Only query installations whose inventory has the `api.kagent.dev` API group and
   // whose access is healthy, home first (gs `useInstallationInventory`),
   // narrowed to the section's scope: the fleet-wide query fans out neither to
   // clusters without kagent (a 404 per installation per tab before) nor to
@@ -126,11 +127,19 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   // We type against a single ModelConfig version (v1alpha3), so skip API
   // version discovery: it adds two round-trips per cluster plus its own retry
   // storm for no benefit here.
-  const { resources, clustersData, isLoading, errors } = useResources(
+  const listed = useResources(
     queriedInstallations,
     ModelConfig,
     {},
     { enableDiscovery: false },
+  );
+  // A person whose kagent reads come from a namespaced RoleBinding may not
+  // list ModelConfigs cluster-wide: those installations are read again,
+  // namespace by namespace, and answer once all their namespaces have, so the
+  // home's namespaces land before the rest is asked.
+  const { resources, clustersData, isLoading, errors } = useNamespacedFallback(
+    listed,
+    ModelConfig,
   );
 
   const answeredKey = [
@@ -156,10 +165,10 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ModelConfigsContextValue>(() => {
     const withModels = new Set(resources.map(mc => mc.cluster));
 
-    // A 404 means the kagent.dev API group has gone since the (hour-long)
+    // A 404 means the api.kagent.dev API group has gone since the (hour-long)
     // inventory answered, so the cluster simply has no ModelConfigs — not a
-    // "couldn't read" failure. Only genuine failures (403 forbidden,
-    // unreachable) that produced no models are surfaced.
+    // "couldn't read" failure. Only genuine failures (unreachable, or refused
+    // in every namespace) that produced no models are surfaced.
     const unreachableInstallations = Array.from(
       new Set(errors.filter(e => !isNotFoundError(e)).map(e => e.cluster)),
     ).filter(name => !withModels.has(name));

@@ -10,6 +10,7 @@ describe('markOf', () => {
     ['enabled', 'denied', 'not reconciled'],
     ['drifted', 'drifted', 'not in sync'],
     ['pending approval', 'pending approval', 'not reconciled'],
+    ['ready to merge', 'ready to merge', 'not reconciled'],
     ['rolling out', 'rolling out', 'not reconciled'],
     ['waiting for the customer', 'waiting for the customer', 'not reconciled'],
     ['not enabled', undefined, 'not installed'],
@@ -34,5 +35,20 @@ describe('StateIcon', () => {
     expect(cell).toHaveAttribute('data-mark', 'not reconciled');
     expect(cell).toHaveAccessibleName('Installed');
     expect(cell).toHaveTextContent('');
+  });
+
+  it('names ready to merge as such, apart from pending approval', () => {
+    render(
+      <StateIcon
+        capability={{
+          state: 'ready to merge',
+          lastAction: { name: 'enable-agent-platform-ash-1' },
+        }}
+        testId="cell"
+      />,
+    );
+    const cell = screen.getByTestId('cell');
+    expect(cell).toHaveAttribute('data-state', 'ready to merge');
+    expect(cell).toHaveAccessibleName('Enabling · ready to merge');
   });
 });

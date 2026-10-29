@@ -413,7 +413,7 @@ describe('RowActions', () => {
       'The ask posted to #team-bumblebee (team-bumblebee).',
     );
     expect(
-      within(opened).getByRole('link', { name: /Open the pull request/ }),
+      within(opened).getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/github/pull/4243');
     expect(
       screen.getByText('Pull request opened as alice'),
@@ -907,7 +907,7 @@ describe('RowActions', () => {
       'The ask posted to #team-bumblebee (team-bumblebee).',
     );
     expect(
-      within(opened).getByRole('link', { name: /Open the pull request/ }),
+      within(opened).getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/github/pull/4244');
     expect(
       screen.getByText('Pull request opened as alice'),

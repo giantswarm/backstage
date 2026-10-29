@@ -5,6 +5,8 @@ export { gsPlugin } from './plugin';
 // Raw StepLayout component for scaffolder page override
 export { StepLayout } from './components/scaffolder/StepLayout/StepLayout';
 export { ReviewStep } from './components/scaffolder/ReviewStep';
+export { useStartTemplateTask } from './components/scaffolder/hooks/useStartTemplateTask';
+export { TemplateSignInError } from './apis/scaffolder/TemplateSignInError';
 
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
@@ -20,8 +22,15 @@ export {
   type SignInConnectorMemory,
 } from './apis/auth/signInConnectorMemory';
 export {
+  asLoginRequestCaller,
+  asLoginRequestCallerApi,
+  LOGIN_REQUESTED_BY_ATTRIBUTE,
+  type LoginRequestCaller,
+} from './apis/auth/loginRequestCaller';
+export {
   useInstallations,
   type InstallationConfig,
+  type InstallationCurrency,
   type UseInstallationsResult,
 } from './apis/installations';
 export { SignedInConfigLoader } from './components/SignedInConfigLoader';
@@ -77,6 +86,9 @@ export {
   useInstallationScopeUrlSync,
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsSwitchedOffWithComponent,
+  installationsWithComponent,
+  installationsWithoutComponent,
   isPlatformInstallation,
   selectPlatformInstallations,
   setInstallationScope,
@@ -113,6 +125,12 @@ export {
   ClusterAccessConnector,
 } from './components/ClusterAccessStatus';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
+// The cluster of a cluster page, for the actions other plugins attach to
+// `page:gs/clusters` (input `clusterActions`).
+export {
+  useClusterPageTarget,
+  type ClusterPageTarget,
+} from './components/clusters/ClusterDetailsPage/useClusterPageTarget';
 export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
 export { ResourcesCard as GSHomePageResources } from './components/home/ResourcesCard';
@@ -126,7 +144,7 @@ export { useHelmChartValuesYaml } from './components/hooks/useHelmChartValuesYam
 // usage views. The hooks own the `mimirEnabled` gate and the per-installation
 // OIDC token, so a consumer only supplies an installation and a query; the
 // metric constants come with them because the central registry
-// (`apis/mimir/metrics.ts`) is where a queried metric must be declared.
+// (`mimirMetrics.ts` in gs-common) is where a queried metric must be declared.
 export { useMimirQuery } from './components/hooks/useMimirQuery';
 export { useMimirRangeQuery } from './components/hooks/useMimirRangeQuery';
 export { useMimirAvailable } from './components/hooks/useMimirAvailable';
@@ -138,7 +156,7 @@ export {
   AgentgatewayGenAiServerTimePerOutputToken,
   AgentgatewayRequestsTotal,
   AgentgatewayCostCatalogLookupsTotal,
-} from './apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 export type {
   MimirMetricSample,
   MimirMatrixSample,

@@ -1,3 +1,4 @@
+import { ReactElement } from 'react';
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
 import { ClusterApps } from '../cluster-details/ClusterApps';
@@ -8,26 +9,31 @@ import { ClusterRBAC } from '../cluster-details/ClusterRBAC';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
 import { isManagementCluster } from '../utils';
 import { QueryClientProvider } from '../../QueryClientProvider';
+import { ClusterErrorsProvider } from './ClusterErrorsProvider';
 import {
   AWSCluster,
   AzureCluster,
-  ErrorsProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-export const ClusterDetailsPage = () => {
+export type ClusterDetailsPageProps = {
+  /** Header actions other plugins attach (Delete); they read the cluster with `useClusterPageTarget`. */
+  actions?: ReactElement[];
+};
+
+export const ClusterDetailsPage = ({ actions }: ClusterDetailsPageProps) => {
   return (
     <QueryClientProvider>
       <AsyncClusterProvider>
-        <ClusterLayout>
+        <ClusterLayout actions={actions}>
           <ClusterLayout.Route path="/" title="Overview">
-            <ErrorsProvider>
+            <ClusterErrorsProvider>
               <ClusterOverview />
-            </ErrorsProvider>
+            </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route path="/deployments" title="Deployments">
-            <ErrorsProvider>
+            <ClusterErrorsProvider>
               <ClusterApps />
-            </ErrorsProvider>
+            </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route path="/gateways" title="Gateways">
             <ErrorsProvider>
@@ -46,27 +52,27 @@ export const ClusterDetailsPage = () => {
               );
             }}
           >
-            <ErrorsProvider>
+            <ClusterErrorsProvider>
               <ClusterNodePools />
-            </ErrorsProvider>
+            </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route
             path="/rbac"
             title="RBAC"
             if={({ cluster }) => isManagementCluster(cluster)}
           >
-            <ErrorsProvider>
+            <ClusterErrorsProvider>
               <ClusterRBAC />
-            </ErrorsProvider>
+            </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route
             path="/ssh-access"
             title="SSH access"
             if={({ isGSUser }) => isGSUser}
           >
-            <ErrorsProvider>
+            <ClusterErrorsProvider>
               <ClusterSSHAccess />
-            </ErrorsProvider>
+            </ClusterErrorsProvider>
           </ClusterLayout.Route>
         </ClusterLayout>
       </AsyncClusterProvider>

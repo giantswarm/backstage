@@ -14,6 +14,11 @@ import {
   Typography,
 } from '@material-ui/core';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import {
+  ConnectorSignInAction,
+  useConnectorSignInLink,
+} from '../ConnectorSignInLinks';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -86,6 +91,9 @@ const useStyles = makeStyles(theme => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
     lineHeight: 1.6,
     wordBreak: 'initial',
+    // The root's `overflow-wrap: anywhere` would shrink a cell's min-content
+    // width and break words mid-word; reset, a wide table scrolls instead.
+    overflowWrap: 'normal',
     padding: theme.spacing(1, 1),
   },
   list: {
@@ -132,7 +140,8 @@ const useStyles = makeStyles(theme => ({
  *
  * Same routing the AI chat makes: another origin opens externally with the
  * usual warning affordance, a catalog path becomes an entity link, and any
- * other same-origin path navigates within the app.
+ * other same-origin path navigates within the app. A connector sign-in muster
+ * issued in the session is the exception: a sign-in action.
  */
 function MarkdownLink({
   href,
@@ -141,6 +150,12 @@ function MarkdownLink({
   href?: string;
   children?: React.ReactNode;
 }) {
+  // A connector sign-in muster issued in this session is shown as the action
+  // it is, not as the opaque URL (giantswarm/giantswarm#38774).
+  const signIn = useConnectorSignInLink(href);
+  if (signIn) {
+    return <ConnectorSignInAction link={signIn} />;
+  }
   if (!href) {
     return <>{children}</>;
   }
@@ -179,7 +194,15 @@ function MarkdownLink({
   );
 }
 
-function useMarkdownComponents(): Components {
+/**
+ * The prose styles and element mapping of agent messages, for other Markdown
+ * the platform renders in the same visual language (a skill's instructions).
+ * Raw HTML is the caller's decision: `MessageMarkdown` allows it, a document
+ * read from a repository should not.
+ */
+export const useMarkdownStyles = useStyles;
+
+export function useMarkdownComponents(): Components {
   const classes = useStyles();
   return {
     h1: ({ children }) => (
@@ -288,7 +311,7 @@ function MessageMarkdownImpl({ text }: { text: string }) {
   const classes = useStyles();
   const components = useMarkdownComponents();
   return (
-    <div className={classes.root}>
+    <div className={`${STABLE_CLASS_NAMES.message} ${classes.root}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}

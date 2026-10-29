@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
+import type { ModelCostView } from '../../hooks/useModelCost';
 import { AgentUsageSection } from './AgentUsageSection';
 
 const state = {
@@ -15,6 +17,8 @@ const state = {
   isError: false,
   isNotDeployed: false,
   probedInstallations: [] as string[],
+  /** The screen-level time window (useUsageWindow), 30 by default. */
+  selectedDays: 30,
 };
 
 const DEFAULTS = { ...state };
@@ -44,15 +48,46 @@ jest.mock('../../hooks/useSessionUsage', () => ({
 // app here provides — and this file is about which state renders, not about
 // pricing. `costEstimate.test.ts` covers the arithmetic; an empty `rates` here
 // makes every cost read "—", which the assertions below never look at.
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: [],
+    resources: [],
+    labels: new Map(),
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+
+// A test that needs a priced estimate, to read the basis line, sets
+// `mockPricedRate`; `beforeEach` clears it.
+let mockPricedRate: number | undefined;
 jest.mock('../../hooks/useTokenRates', () => ({
   useTokenRates: () => ({
-    rates: {},
-    tier: 'none',
+    rates: mockPricedRate === undefined ? {} : { blended: mockPricedRate },
+    tier: mockPricedRate === undefined ? 'none' : 'installation',
     model: undefined,
     isLoading: false,
     isAvailable: true,
     window: '7d',
   }),
+}));
+
+// The person's actual cost. Defaults to a failed read, so every test that is
+// not about it sees the estimate the page fell back to before; `modelCostCalls`
+// records the windows it was asked for.
+let mockModelCost: ModelCostView;
+const modelCostCalls: Array<{ installation?: string; days: number }> = [];
+jest.mock('../../hooks/useModelCost', () => ({
+  useModelCost: (installation: string | undefined, days: number) => {
+    modelCostCalls.push({ installation, days });
+    return mockModelCost;
+  },
+}));
+
+// The screen's time-window control is URL state; mocking it keeps the test
+// free of a router while the narrowing behaviour stays real.
+jest.mock('../../hooks/useUsageWindow', () => ({
+  useUsageWindow: () => ({ days: state.selectedDays, setDays: () => {} }),
 }));
 
 jest.mock('../../hooks/useKagentCapabilities', () => ({
@@ -110,7 +145,9 @@ function usage(overrides: Partial<SessionUsageResponse> = {}) {
     ],
     byAgent: [],
     topTools: [],
+    otherTools: { count: 0, calls: 0 },
     topMcpServers: [],
+    otherMcpServers: { count: 0, calls: 0 },
     undatedTurns: 0,
     unreadable: [],
     skipped: 0,
@@ -120,7 +157,22 @@ function usage(overrides: Partial<SessionUsageResponse> = {}) {
 
 beforeEach(() => {
   Object.assign(state, DEFAULTS);
+  mockPricedRate = undefined;
+  mockModelCost = { state: 'fallback', reason: 'error' };
+  modelCostCalls.length = 0;
 });
+
+/** The text of the hint behind a cost stat, once its tooltip opens. */
+async function costBasisText(label = 'Est. cost') {
+  const user = userEvent.setup();
+  // react-aria opens a tooltip on hover only once it has seen the pointer
+  // move, so the pointer enters the page before it reaches the button.
+  await user.hover(document.body);
+  await user.hover(
+    screen.getByRole('button', { name: `How ${label} is calculated` }),
+  );
+  return (await screen.findByRole('tooltip')).textContent ?? '';
+}
 
 describe('AgentUsageSection', () => {
   it('renders the totals and both charts once there is usage', () => {
@@ -131,6 +183,109 @@ describe('AgentUsageSection', () => {
     expect(screen.getByText('8.4M')).toBeInTheDocument();
     expect(screen.getByText('Input tokens per day')).toBeInTheDocument();
     expect(screen.getByText('Output tokens per day')).toBeInTheDocument();
+  });
+
+  it('names the full-window totals behind the estimate, and what it leaves unpriced', async () => {
+    mockPricedRate = 0.000003;
+    state.usage = usage({
+      totals: {
+        sessions: 2,
+        turns: 5,
+        inputTokens: 8_400_000,
+        outputTokens: 104_000,
+        totalTokens: 8_524_000,
+        toolCalls: 231,
+      },
+    });
+    render(<AgentUsageSection />);
+
+    const basis = await costBasisText();
+    expect(basis).toContain(
+      'applied to the 8.4M input and 104.0k output tokens',
+    );
+    expect(basis).toContain('kagent also counted 20.0k other tokens');
+  });
+
+  it('no longer claims the other tabs cover every user', () => {
+    state.usage = usage();
+    render(<AgentUsageSection />);
+
+    expect(
+      screen.getByText(/from kagent's stored conversations — Slack included\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/every user's model calls/),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('cost', () => {
+    it('shows the actual cost, and says it covers every call made as you', async () => {
+      mockPricedRate = 0.000003;
+      mockModelCost = {
+        state: 'actual',
+        totalUsd: 12.5,
+        byAgent: new Map(),
+        partial: false,
+      };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('$12.50')).toBeInTheDocument();
+      expect(screen.getByText('All your model calls')).toBeInTheDocument();
+      expect(screen.queryByText('Est. cost')).not.toBeInTheDocument();
+      const hint = await costBasisText('Cost');
+      expect(hint).toContain('every model call made as you on gazelle');
+      expect(hint).toContain('includes calls outside these sessions');
+      expect(hint).not.toContain('may be low');
+    });
+
+    it('says a window partly recorded without users may be low', async () => {
+      mockModelCost = {
+        state: 'actual',
+        totalUsd: 1,
+        byAgent: new Map(),
+        partial: true,
+      };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(await costBasisText('Cost')).toContain('may be low');
+    });
+
+    it('falls back to the labelled estimate, led by why', async () => {
+      mockPricedRate = 0.000003;
+      mockModelCost = { state: 'fallback', reason: 'not-recorded' };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('Est. cost')).toBeInTheDocument();
+      const basis = await costBasisText();
+      expect(basis).toMatch(
+        /^No actual cost: the gateway on gazelle does not record who made each model call\. Estimated:/,
+      );
+    });
+
+    it('holds a skeleton, not a fallback, while the actual cost is in flight', () => {
+      mockPricedRate = 0.000003;
+      mockModelCost = { state: 'loading' };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('Cost')).toBeInTheDocument();
+      expect(screen.queryByText('Est. cost')).not.toBeInTheDocument();
+    });
+
+    it('reads the strip’s window and the table’s full window', () => {
+      state.selectedDays = 7;
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      const days = new Set(modelCostCalls.map(call => call.days));
+      expect(days).toEqual(new Set([7, 30]));
+      for (const call of modelCostCalls) {
+        expect(call.installation).toBe('gazelle');
+      }
+    });
   });
 
   it('says so when the window is empty, rather than showing zeros', () => {
@@ -203,7 +358,7 @@ describe('AgentUsageSection', () => {
     state.isError = true;
     render(<AgentUsageSection />);
 
-    expect(screen.getByText(/Couldn't read/i)).toBeInTheDocument();
+    expect(screen.getByText(/Could not read/i)).toBeInTheDocument();
   });
 
   it('says nothing runs kagent when nothing does', () => {
@@ -211,7 +366,7 @@ describe('AgentUsageSection', () => {
     state.installation = undefined;
     render(<AgentUsageSection />);
 
-    expect(screen.getByText(/none of the installations/i)).toBeInTheDocument();
+    expect(screen.getByText(/none of the environments/i)).toBeInTheDocument();
   });
 
   it('reports a portal that knows no installations', () => {
@@ -220,7 +375,7 @@ describe('AgentUsageSection', () => {
     state.installation = undefined;
     render(<AgentUsageSection />);
 
-    expect(screen.getByText(/knows no installations/i)).toBeInTheDocument();
+    expect(screen.getByText(/knows no environments/i)).toBeInTheDocument();
   });
 
   it('names the installation it chose under the "all" scope', () => {
@@ -345,5 +500,104 @@ describe('AgentUsageSection', () => {
 
     expect(screen.getByText(/were not read/i)).toBeInTheDocument();
     expect(screen.getByText(/could not be read at all/i)).toBeInTheDocument();
+  });
+
+  describe('the screen-level time window', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const dayKey = (daysAgo: number) =>
+      new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10);
+
+    it('narrows the totals to the daily buckets inside the window', () => {
+      // Selected 7 against a 30-day backend window: turns and tokens re-total
+      // from the buckets the window keeps; sessions and tool calls exist only
+      // over the full window, so they read `—` rather than full-window numbers
+      // under a 7-day label.
+      state.selectedDays = 7;
+      state.usage = usage({
+        daily: [
+          // Outside the 7 days: must not count.
+          {
+            day: dayKey(20),
+            inputTokens: 1_000_000,
+            outputTokens: 100,
+            turns: 2,
+          },
+          // Inside: the narrowed totals.
+          {
+            day: dayKey(1),
+            inputTokens: 8_400_000,
+            outputTokens: 50,
+            turns: 3,
+          },
+        ],
+      });
+      render(<AgentUsageSection />);
+
+      // The narrowed input-token total — 8.4M, not 9.4M.
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      // Sessions and tool calls cannot be re-cut (est. cost reads `—` too,
+      // since this suite mocks the rates away).
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+      // And the tables below keep the full window, said plainly.
+      expect(screen.getByText(/window, not 7\s+days/i)).toBeInTheDocument();
+    });
+
+    it('names the narrowed totals behind the estimate, as the strip shows them', async () => {
+      // The basis line names the counts the stats beside it show: in a
+      // narrowed window those are the re-totalled buckets, not the backend's
+      // full-window totals, and the buckets carry no total to say what else
+      // kagent counted.
+      mockPricedRate = 0.000003;
+      state.selectedDays = 7;
+      state.usage = usage({
+        daily: [
+          {
+            day: dayKey(20),
+            inputTokens: 1_000_000,
+            outputTokens: 100,
+            turns: 2,
+          },
+          { day: dayKey(1), inputTokens: 48_012, outputTokens: 466, turns: 3 },
+        ],
+      });
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('48.0k')).toBeInTheDocument();
+      expect(screen.getByText('466')).toBeInTheDocument();
+      const basis = await costBasisText();
+      expect(basis).toContain(
+        'applied to the 48.0k input and 466 output tokens',
+      );
+      expect(basis).not.toContain('other tokens');
+    });
+
+    it('says a wider selection shows the same backend window', () => {
+      // 90 selected against a 30-day fan-out: the backend's window is a
+      // caching contract, so nothing widens — the section says so instead of
+      // claiming 90 days it never read.
+      state.selectedDays = 90;
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(
+        screen.getByText(/computes session usage over its own 30-day window/i),
+      ).toBeInTheDocument();
+      // The totals stay the full window's, un-dashed.
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+    });
+
+    it('changes nothing when the selection equals the backend window', () => {
+      state.selectedDays = 30;
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      expect(screen.queryByText(/cannot be re-cut/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/over its own 30-day window/i),
+      ).not.toBeInTheDocument();
+    });
   });
 });

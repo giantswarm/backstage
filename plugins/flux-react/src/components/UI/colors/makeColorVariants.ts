@@ -12,6 +12,10 @@ const availableVariants = [
   'purple',
   'pink',
   'brown',
+  'indigo',
+  'cyan',
+  'lime',
+  'slate',
 ] as const;
 
 export type ColorVariant = (typeof availableVariants)[number];

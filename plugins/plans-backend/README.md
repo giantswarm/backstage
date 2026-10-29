@@ -1,7 +1,7 @@
 # @giantswarm/backstage-plugin-plans-backend
 
 Backend plugin (`pluginId: plans`) that exposes a small REST API over the
-GitHub API for plan repositories (e.g. `giantswarm/bumblebee-plans`). It is
+GitHub API for plan repositories (e.g. `<owner>/<plans-repo>`). It is
 consumed by the `@giantswarm/backstage-plugin-plans` frontend plugin to render
 proposed (open PR) and merged plan documents.
 
@@ -36,18 +36,28 @@ parameter can be omitted.
 | `GET /api/plans/pulls/:number/comments`           | PR discussion comments; `POST` adds one as the caller                                                                                   |
 | `GET /api/plans/pulls/:number/review-comments`    | Inline review comments; `POST` adds one as the caller                                                                                   |
 | `GET /api/plans/epics`                            | Epic references of merged and proposed plans                                                                                            |
+| `GET /api/plans/magazine`                         | The magazine repository and its data and knowledge refs, or `{ configured: false }`                                                     |
 
 ## Configuration
 
 ```yaml
 plans:
   repositories:
-    - giantswarm/bumblebee-plans
+    - <owner>/<plans-repo>
   muster:
     installation: golem # a name from muster.installations
     server: github # the GitHub MCPServer in that muster
     # toolPrefix: github  # default: the server name; tools are x_<prefix>_<tool>
+  magazine: # optional, the Magazine page (/product)
+    repository: giantswarm/team-magazine
+    # ref: data         # generated magazine/*.json, default data
+    # knowledgeRef: main # knowledge/** documents, default main
 ```
+
+The magazine repository is no plan repository: it stays out of `/repos`, the
+plan picker and `/epics`, the pull request routes refuse it, and `/tree` and
+`/content` read it at its two configured refs only (`?repo=<magazine>`,
+`ref` defaults to the data ref).
 
 Without `plans.repositories` or `plans.muster`, the endpoints return 503 --
 the plugin is effectively disabled. Callers need read access to the listed

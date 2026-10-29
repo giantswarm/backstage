@@ -1,7 +1,9 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
-import { ConflictError, InputError } from '@backstage/errors';
+import { ConflictError, InputError, NotFoundError } from '@backstage/errors';
 import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
+import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
+import type { MessageImagePart } from './messageImages';
 import {
   Code,
   ConnectError,
@@ -22,23 +24,27 @@ import {
   type Task,
 } from './kagent/gen/a2a_pb';
 import {
-  AgentInstanceService,
-  CreateAgentInstanceResponseSchema,
-  DeleteAgentInstanceResponseSchema,
-  GetAgentInstanceResponseSchema,
-  ListAgentInstancesResponseSchema,
-  UpdateAgentInstanceNameResponseSchema,
-  type AgentInstance,
-} from './kagent/gen/kagent/api/v1alpha1/agent_instances_pb';
-import {
-  AgentTemplateService,
-  type AgentTemplate,
-} from './kagent/gen/kagent/api/v1alpha1/agent_templates_pb';
+  CreateSessionShareResponseSchema,
+  DeleteSessionResponseSchema,
+  GetSessionResponseSchema,
+  ListSessionSharesResponseSchema,
+  ListSessionsResponseSchema,
+  RevokeSessionShareResponseSchema,
+  SessionService,
+  SessionSharePermission,
+  UpdateSessionNameResponseSchema,
+  type Session,
+  type SessionShare,
+} from './kagent/gen/kagent/api/v1alpha1/sessions_pb';
 import { SystemService } from './kagent/gen/kagent/api/v1alpha1/system_pb';
+import { AgentService } from './kagent/gen/kagent/api/v1alpha1/agents_pb';
 import {
   ErrorContext,
+  httpStatusOf,
   isTransportFailure,
   isTurnPendingError,
+  isSocketFailure,
+  isUnsupportedOperation,
   isUpstreamError,
   mapConnectError,
   turnPendingError,
@@ -101,8 +107,8 @@ export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 /**
  * Longest session name this proxy will store.
  *
- * The controller caps an AgentInstance name at 200 characters
- * (`CreateAgentInstanceRequest.name` / `UpdateAgentInstanceNameRequest.name`,
+ * The controller caps a Session name at 200 characters
+ * (`CreateSessionRequest.name` / `UpdateSessionNameRequest.name`,
  * `max_len: 200`) and refuses control characters and surrounding whitespace.
  * Enforced here as well as in the dialog, because a client-side `maxLength` is a
  * nicety and not a guard. Reads stay unbounded: a longer name set by kagent's own
@@ -113,46 +119,161 @@ export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 export const SESSION_NAME_MAX_LENGTH = 200;
 
 /**
- * Longest message this proxy will forward to an agent.
- *
- * Ours, not kagent's — nothing upstream validates the text. Generous on purpose,
- * because pasting logs or a manifest into a prompt is a normal thing to do; it
- * exists to keep an absurd payload from becoming an agent's whole context window.
- *
- * Counts UTF-16 code units (JavaScript's `String.length`), so a character
- * outside the BMP costs two. The router raises its JSON body limit to keep this
+ * Longest message this proxy will forward to an agent: the one bound the
+ * frontend's composers and hand-offs stop before too, shared through
+ * agent-platform-common. The router raises its JSON body limit to keep this
  * the bound a caller actually meets, rather than the body parser's.
- *
- * Must match MESSAGE_TEXT_MAX_LENGTH in plugins/agent-platform.
  */
-export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
+export { MESSAGE_TEXT_MAX_LENGTH };
 
 /**
- * Bounds of the controller's `request_id` (`CreateAgentInstanceRequest`,
- * `min_len: 1, max_len: 128`), which the browser supplies so a retried create
- * is idempotent. Checked here so a bad one is a 400 with our words rather than
- * an `InvalidArgument` with the controller's.
+ * Longest lifetime this proxy will request for a session share, in seconds.
+ *
+ * Ours, not the controller's: the `CreateSessionShareRequest.ttl` field is an
+ * unbounded Duration, and the controller may cap it with its own maximum share
+ * lifetime. A year is far beyond any TTL the dialog offers; the bound exists so
+ * a hand-made request cannot ask for a share that effectively never expires
+ * while claiming a TTL.
  */
-export const REQUEST_ID_MAX_LENGTH = 128;
+export const SESSION_SHARE_MAX_TTL_SECONDS = 365 * 24 * 60 * 60;
 
-/** The gRPC metadata key that selects the AgentInstance an A2A call belongs to. */
-export const AGENT_INSTANCE_HEADER = 'x-kagent-agent-instance-id';
+/**
+ * How a share grants access, as the routes take it. Maps onto the controller's
+ * `SessionSharePermission`: read-only is A2A get/list/subscribe, read-write
+ * adds send and cancel.
+ */
+export type SessionSharePermissionInput = 'read-only' | 'read-write';
+
+/** An Agent as the A2A gateway routes by: the `tenant` of every A2A request. */
+export type AgentRef = { namespace: string; name: string };
+
+/** The `tenant` the A2A gateway resolves an Agent from: `<namespace>/<name>`. */
+export function agentTenant(agent: AgentRef): string {
+  return `${agent.namespace}/${agent.name}`;
+}
+
+/** Sessions whose Agent this client has learned, so a task read need not re-read the Session. */
+const MAX_REMEMBERED_AGENTS = 1_000;
 
 /**
  * Page size for the paged listings. The controller caps `ListTasks` at 100 and
- * `ListAgentInstances` at 100; both are walked to the end below, so this only
+ * `ListSessions` at 100; both are walked to the end below, so this only
  * sets how many round trips a long list costs.
  */
 const PAGE_SIZE = 100;
 
 /**
  * How many pages a listing is followed for before it is cut. A thousand turns
- * or two thousand instances is far beyond any conversation or account this
+ * or two thousand sessions is far beyond any conversation or account this
  * plugin renders; the bound exists so a misbehaving `next_page_token` cannot
  * loop forever.
  */
 const MAX_TASK_PAGES = 10;
-const MAX_INSTANCE_PAGES = 20;
+
+/**
+ * The most `ListTasks` calls one read makes, retries at a smaller page
+ * included. A conversation whose pages had to shrink is read as far as this
+ * goes rather than in hundreds of calls that would outlast the poll.
+ */
+const MAX_TASK_REQUESTS = 100;
+/**
+ * How many `ListSessions` pages a listing follows. A listing cut here says so
+ * (`truncated: true`), so a caller never takes it for every session there is.
+ */
+const MAX_SESSION_PAGES = 20;
+// A session has a handful of shares at most; the bound only guards the loop.
+const MAX_SHARE_PAGES = 5;
+
+/**
+ * The header a request id travels in toward the controller route, and back to
+ * the browser: the id a failed read is logged with, so it can be matched with
+ * the gateway's and the controller's logs.
+ */
+export const REQUEST_ID_HEADER = 'x-request-id';
+
+const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
+
+/** One SSE event carrying `payload` as its JSON `data:`. */
+function sseFrame(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+/**
+ * The in-band `{error}` frame a relayed stream ends with, or a subscription
+ * that could not open answers: the gRPC code and the controller's words.
+ */
+function errorFrame(error: ConnectError) {
+  return { error: { code: Code[error.code], message: error.rawMessage } };
+}
+
+/** An A2A server stream opened as far as its first event. */
+type OpenedStream = {
+  iterator: AsyncIterator<StreamResponse>;
+  first: IteratorResult<StreamResponse>;
+};
+
+/** The A2A context (the session) one stream event names, when it names one. */
+function streamContextId(event: StreamResponse): string | undefined {
+  const { payload } = event;
+  switch (payload.case) {
+    case 'task':
+    case 'statusUpdate':
+    case 'artifactUpdate':
+    case 'message':
+      return payload.value.contextId || undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The codes on which a task subscription that failed to open is a decision no
+ * retry changes: the person may not read the task, it does not exist (or is
+ * somebody else's), the request is malformed, the controller predates the
+ * call or refuses it for the task's state. Everything else — unavailable,
+ * timed out, cancelled, internal — is what a rollout looks like.
+ */
+const SUBSCRIBE_DECISION_CODES = new Set<Code>([
+  Code.Unauthenticated,
+  Code.PermissionDenied,
+  Code.NotFound,
+  Code.InvalidArgument,
+  Code.Unimplemented,
+  Code.FailedPrecondition,
+]);
+
+/** Longest upstream message carried into a failed-read log line. */
+const MAX_LOGGED_ERROR = 300;
+
+/**
+ * How long a session delete waits, between attempts, for the session's last
+ * turn to settle.
+ *
+ * Right after a turn ends the controller still runs the turn's runtime cleanup
+ * and refuses to begin the delete (`FailedPrecondition`, "not yet settled");
+ * a moment later the same delete goes through. The person pressed Delete once,
+ * so the backend retries that one refusal with a doubling backoff. The waits
+ * add up to about 16 s, which keeps the attempts and their own request
+ * timeouts inside the front door's 60 s. Each wait is logged at `info`; a
+ * session still unsettled after them answers the 409 with kagent's reason.
+ */
+export const DELETE_SETTLE_RETRY_DELAYS_MS: readonly number[] = [
+  250, 500, 1_000, 2_000, 4_000, 4_000, 4_000,
+];
+
+/** Whether a `FailedPrecondition` reason is the controller waiting for a turn to settle. */
+function isNotYetSettledReason(reason: string): boolean {
+  return reason.includes('not yet settled');
+}
+
+/** The controller's refusal to begin a Session operation while a turn settles. */
+function isNotYetSettled(error: unknown): boolean {
+  const connectError = ConnectError.from(error);
+  return (
+    connectError.code === Code.FailedPrecondition &&
+    isNotYetSettledReason(connectError.rawMessage)
+  );
+}
 
 /** Who a call is made as. */
 export interface KagentRequestOptions {
@@ -160,9 +281,15 @@ export interface KagentRequestOptions {
    * The user's Dex ID token, forwarded as `authorization: Bearer` toward the
    * controller route. Optional because `GetCurrentUser` is useful even when no
    * token could be minted — it then reports what the route makes of a missing
-   * one; everything touching an AgentInstance requires one.
+   * one; everything touching a Session requires one.
    */
   userToken?: string;
+  /**
+   * Sent as {@link REQUEST_ID_HEADER} and logged with a failure. Only the
+   * session list carries one so far: its failures are what the Sessions page
+   * reports as an installation it could not read.
+   */
+  requestId?: string;
 }
 
 /** What one `ListTasks` read asks the controller to shape each task like. */
@@ -251,7 +378,31 @@ export function readKagentInstallationsFromConfig(
 }
 
 /** A `Part` as `create(SendMessageRequestSchema, …)` accepts it. */
-type PartInit = Pick<Part, 'content'>;
+type PartInit = Pick<Part, 'content'> &
+  Partial<Pick<Part, 'mediaType' | 'filename'>>;
+
+/** A message the person typed: its text, and the images attached to it. */
+export type OutboundUserMessage = {
+  messageId: string;
+  text: string;
+  images?: readonly MessageImagePart[];
+};
+
+/**
+ * The parts of a message the person typed: the text first, then each image as
+ * a `raw` part with its type and name, which kagent's Go ADK runtime hands the
+ * model as inline image data.
+ */
+function userMessageParts(message: OutboundUserMessage): PartInit[] {
+  return [
+    { content: { case: 'text', value: message.text } },
+    ...(message.images ?? []).map(image => ({
+      content: { case: 'raw' as const, value: image.bytes },
+      mediaType: image.mediaType,
+      ...(image.name ? { filename: image.name } : {}),
+    })),
+  ];
+}
 
 /** A message as {@link KagentClient.dispatch} sends it. */
 type OutboundMessage = {
@@ -263,22 +414,28 @@ type OutboundMessage = {
   metadata?: JsonObject;
 };
 
+/** Where an A2A call goes: the Agent (the gateway's `tenant`) and the session's A2A context. */
+type Target = { tenant: string; contextId: string };
+
 /**
  * Client for one installation's kagent API v2 controller, over native gRPC.
  *
- * Speaks the control plane (`AgentInstanceService`, `AgentTemplateService`,
+ * Speaks the control plane (`SessionService`,
  * `SystemService`) and the A2A v1 service (`A2AService`), and answers with the
- * **proto3 JSON** of the controller's responses — `{agentInstances: […]}`,
+ * **proto3 JSON** of the controller's responses — `{sessions: […]}`,
  * `{tasks: […]}`, a `Task`, a `StreamResponse` per SSE frame. Nothing is
  * reshaped here: the split is the one it always was, backend = transport,
  * frontend = schema, and the schema tolerance for these shapes lives in
  * `agent-platform-common`.
  *
- * A "session" in the method names is an AgentInstance: one conversation of one
- * person with one AgentTemplate on one Harness (plan decision D10). Its id is
- * the instance id, and every A2A call names it in the
- * `x-kagent-agent-instance-id` metadata — exactly once; the gateway refuses a
- * missing or doubled header.
+ * A "session" in the method names is the controller's Session record: one
+ * conversation of one person with one Agent (plan decision D10). The A2A
+ * gateway reads no session header: it resolves the Agent from the request's
+ * `tenant` (`<namespace>/<name>`) and the session from `message.contextId`
+ * (the session's A2A context, which the controller keeps equal to the session
+ * id) or from the task named. A send with neither would start a new session,
+ * so every A2A call here carries both. The Agent is the caller's when the
+ * route has it, else read once off the Session and remembered.
  *
  * **Identity is the bearer and nothing else.** Every call carries
  * `authorization: Bearer <the person's Dex ID token>`; agentgateway validates
@@ -289,10 +446,18 @@ type OutboundMessage = {
  */
 export class KagentClient {
   private readonly transport: Transport;
-  private instances?: Client<typeof AgentInstanceService>;
-  private templates?: Client<typeof AgentTemplateService>;
+  private sessions?: Client<typeof SessionService>;
   private a2a?: Client<typeof A2AService>;
   private system?: Client<typeof SystemService>;
+  private agentsService?: Client<typeof AgentService>;
+  /** The Agent of each session this client has seen, by session id. */
+  private readonly agents = new Map<string, AgentRef>();
+  /**
+   * The `ListTasks` page size that fitted, for each session whose task list
+   * did not fit pages of {@link PAGE_SIZE}: what its next read starts at,
+   * instead of being refused again on every poll.
+   */
+  private readonly taskPageSizes = new Map<string, number>();
 
   constructor(
     private readonly installation: KagentInstallationConfig,
@@ -302,23 +467,25 @@ export class KagentClient {
     private readonly timeoutMs: number = DEFAULT_KAGENT_TIMEOUT_MS,
     /** Separate budget for {@link sendMessage}, which waits out a whole turn. */
     private readonly turnTimeoutMs: number = DEFAULT_KAGENT_TURN_TIMEOUT_MS,
+    /** Overridable for tests; see {@link DELETE_SETTLE_RETRY_DELAYS_MS}. */
+    private readonly deleteRetryDelaysMs: readonly number[] = DELETE_SETTLE_RETRY_DELAYS_MS,
   ) {
     this.transport = transport ?? createKagentTransport(installation);
   }
 
-  private get instanceService() {
-    this.instances ??= createClient(AgentInstanceService, this.transport);
-    return this.instances;
-  }
-
-  private get templateService() {
-    this.templates ??= createClient(AgentTemplateService, this.transport);
-    return this.templates;
+  private get sessionService() {
+    this.sessions ??= createClient(SessionService, this.transport);
+    return this.sessions;
   }
 
   private get a2aService() {
     this.a2a ??= createClient(A2AService, this.transport);
     return this.a2a;
+  }
+
+  private get agentService() {
+    this.agentsService ??= createClient(AgentService, this.transport);
+    return this.agentsService;
   }
 
   private get systemService() {
@@ -327,105 +494,62 @@ export class KagentClient {
   }
 
   /**
-   * `AgentInstanceService/ListAgentInstances` — the caller's instances, walked
-   * to the end of the listing, as `{agentInstances: […]}`.
+   * `SessionService/ListSessions` — the caller's sessions, walked to the end
+   * of the listing, as `{sessions: […]}`. A listing longer than
+   * `MAX_SESSION_PAGES` pages is cut there and adds `truncated: true`: the
+   * sessions it leaves out still exist.
    *
    * **For the caller only, never `all_creators`.** The controller scopes the
    * list to the identity agentgateway derived from the bearer; the cross-user
    * flag needs a separate authorization this plugin has no business asking for.
    *
-   * `agentTemplate` narrows the listing to one agent's instances server-side —
-   * what an agent page's "Recent sessions" asks.
+   * `agent` narrows the listing to one agent's sessions server-side — what an
+   * agent page's "Recent sessions" asks.
    */
   async listSessions(
     options: KagentRequestOptions,
-    filter: { agentTemplate?: { namespace: string; name: string } } = {},
+    filter: { agent?: { namespace: string; name: string } } = {},
   ): Promise<unknown> {
     const context: ErrorContext = {
-      endpoint: 'instance list',
-      missingResource: `The kagent API for installation '${this.installation.name}' has no AgentInstances for this agent.`,
+      endpoint: 'session list',
+      missingResource: `The kagent API for installation '${this.installation.name}' has no Sessions for this agent.`,
     };
-    const instances: AgentInstance[] = [];
+    const sessions: Session[] = [];
     let pageToken = '';
-    for (let page = 0; page < MAX_INSTANCE_PAGES; page += 1) {
+    for (let page = 0; page < MAX_SESSION_PAGES; page += 1) {
       // A per-iteration copy: the RPC closure must not capture the variable
       // the loop rewrites.
       const token = pageToken;
       const response = await this.call(
         () =>
-          this.instanceService.listAgentInstances(
+          this.sessionService.listSessions(
             {
               page: { limit: PAGE_SIZE, pageToken: token },
-              ...(filter.agentTemplate && {
-                agentTemplate: filter.agentTemplate,
-              }),
+              ...(filter.agent && { agent: filter.agent }),
             },
             this.callOptions(options),
           ),
         context,
+        { call: 'SessionService/ListSessions', requestId: options.requestId },
       );
-      instances.push(...response.agentInstances);
+      sessions.push(...response.sessions);
+      for (const session of response.sessions) {
+        this.remember(session);
+      }
       pageToken = response.page?.nextPageToken ?? '';
       if (!pageToken) {
         break;
       }
     }
-    return toJson(
-      ListAgentInstancesResponseSchema,
-      create(ListAgentInstancesResponseSchema, { agentInstances: instances }),
-    );
+    const listing = toJson(
+      ListSessionsResponseSchema,
+      create(ListSessionsResponseSchema, { sessions }),
+    ) as Record<string, unknown>;
+    return pageToken ? { ...listing, truncated: true } : listing;
   }
 
   /**
-   * `AgentInstanceService/CreateAgentInstance` — start a conversation with one
-   * agent: one AgentTemplate on one Harness.
-   *
-   * The Harness is the platform's: the one whose `Ready` condition the
-   * template's `status.harnesses[]` reports `True`, read through
-   * `AgentTemplateService/GetAgentTemplate` (which also lists the harnesses
-   * that admit the template), so the backend depends on nothing the browser
-   * read. A template no Harness admits cannot be instantiated; that is a stale
-   * picker or a platform state, not a fault, so it is a 409 naming the agent.
-   *
-   * `requestId` is the browser's, one per submission and reused on a retry:
-   * the controller keys idempotency on `(creator, request_id)` and answers the
-   * existing instance for a repeat with the same parameters, `AlreadyExists`
-   * (409) for a repeat with different ones.
-   */
-  async createSession(
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    const agentRef = `${agent.namespace}/${agent.name}`;
-    const harness = await this.pickHarness(agent, options);
-
-    const response = await this.call(
-      () =>
-        this.instanceService.createAgentInstance(
-          {
-            harness: { namespace: agent.namespace, name: harness },
-            agentTemplate: { namespace: agent.namespace, name: agent.name },
-            requestId,
-            name,
-          },
-          this.callOptions(options),
-        ),
-      {
-        endpoint: 'instance create',
-        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}' on harness '${harness}'.`,
-        invalidArgument: reason =>
-          new InputError(
-            `kagent on installation '${this.installation.name}' did not accept the new session: ${reason}`,
-          ),
-      },
-    );
-    return toJson(CreateAgentInstanceResponseSchema, response);
-  }
-
-  /**
-   * `AgentInstanceService/GetAgentInstance` — one session, as `{agentInstance}`.
+   * `SessionService/GetSession` — one session, as `{session}`.
    *
    * The controller scopes this by the caller, so a session belonging to
    * somebody else is indistinguishable from one that does not exist: both
@@ -438,59 +562,99 @@ export class KagentClient {
   ): Promise<unknown> {
     const response = await this.call(
       () =>
-        this.instanceService.getAgentInstance(
-          { agentInstanceId: sessionId },
+        this.sessionService.getSession(
+          { sessionId },
           this.callOptions(options),
         ),
       {
-        endpoint: 'instance detail',
+        endpoint: 'session detail',
         // The id is left out on purpose: it is opaque and high-cardinality, and
         // the user already has it in the URL they followed.
         missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
         invalidArgument: () =>
-          new InputError('The session id is not an AgentInstance id.'),
+          new InputError('The session id is not a Session id.'),
       },
     );
-    return toJson(GetAgentInstanceResponseSchema, response);
+    this.remember(response.session);
+    return toJson(GetSessionResponseSchema, response);
   }
 
   /**
-   * `A2AService/ListTasks` for one instance — the conversation, its state and
+   * The images the person's messages in a session already carry: the bytes
+   * and the number of the image parts in the user messages of its tasks,
+   * which every turn sends the model again. Read before a message with images
+   * is sent, to hold the session to `SESSION_IMAGES_MAX_BYTES` and
+   * `SESSION_IMAGES_MAX_COUNT`.
+   */
+  async readSessionImageUsage(
+    sessionId: string,
+    agent: AgentRef,
+    options: KagentRequestOptions,
+  ): Promise<{ bytes: number; count: number }> {
+    const { tasks } = await this.readTasks(
+      this.targetOf(sessionId, agent),
+      options,
+      { includeArtifacts: false },
+    );
+    const usage = { bytes: 0, count: 0 };
+    for (const task of tasks) {
+      for (const message of task.history) {
+        if (message.role !== Role.USER) {
+          continue;
+        }
+        for (const part of message.parts) {
+          if (
+            part.content.case === 'raw' &&
+            part.mediaType.startsWith('image/')
+          ) {
+            usage.bytes += part.content.value.length;
+            usage.count += 1;
+          }
+        }
+      }
+    }
+    return usage;
+  }
+
+  /**
+   * `A2AService/ListTasks` for one session — the conversation, its state and
    * per-message token usage — walked to the end, as `{tasks: […], totalSize}`.
+   * A read cut by the page or request bound keeps the `nextPageToken` it did
+   * not follow, so a caller that needs every task (a Session export) can tell.
    *
-   * The instance is named by the `x-kagent-agent-instance-id` metadata; the
-   * gateway scopes the listing to that instance, so no `context_id` needs
-   * reading first (a `context_id` that does not match the instance's would
-   * answer an empty list, not an error). Tasks come back oldest first.
+   * The call is addressed to the session's Agent (`tenant`) and filtered by
+   * the session's A2A context, which the gateway scopes the listing to. Tasks
+   * come back oldest first.
    */
   async listSessionTasks(
     sessionId: string,
     options: KagentRequestOptions,
     extra: ListSessionTasksOptions = {},
   ): Promise<unknown> {
-    const { tasks, totalSize } = await this.readTasks(
-      sessionId,
+    const { tasks, totalSize, nextPageToken } = await this.readTasks(
+      await this.target(sessionId, options),
       options,
       extra,
     );
     return toJson(
       ListTasksResponseSchema,
-      create(ListTasksResponseSchema, { tasks, totalSize }),
+      create(ListTasksResponseSchema, { tasks, totalSize, nextPageToken }),
     );
   }
 
-  /** `A2AService/GetTask` for one turn of an instance, as a `Task`. */
+  /** `A2AService/GetTask` for one turn of a session, as a `Task`. */
   async getTask(
     sessionId: string,
     taskId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    const { tenant } = await this.target(sessionId, options);
     const task = await this.call(
       () =>
         this.a2aService.getTask(
-          { id: taskId },
+          { tenant, id: taskId },
           {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             timeoutMs: this.timeoutMs,
           },
         ),
@@ -503,32 +667,32 @@ export class KagentClient {
   }
 
   /**
-   * Send one message to an instance's agent, as a turn of the conversation, and
-   * wait for the turn — `A2AService/SendMessage` with the instance in metadata
-   * and the HITL extension requested, answering the `SendMessageResponse` as
-   * JSON (`{task}`; a bare `{message}` for an agent that answered without a
-   * task).
+   * Send one message to a session's agent, as a turn of the conversation, and
+   * wait for the turn — `A2AService/SendMessage` addressed to the Agent
+   * (`tenant`) with the session's context on the message and the HITL
+   * extension requested, answering the `SendMessageResponse` as JSON (`{task}`;
+   * a bare `{message}` for an agent that answered without a task).
    *
-   * The agent's namespace and name are accepted for the route's sake, but the
-   * instance already binds the template, so they are not sent anywhere.
+   * The agent's namespace and name are the gateway's route: a message without
+   * them, or without the session's context, would start a new session.
    *
    * **It answers with the finished task**, not an acknowledgement, and a failed
    * turn is still a success at the transport: `status.state` carries the
    * outcome. Waiting a turn out is usually impossible — see the gateway note on
    * {@link DEFAULT_KAGENT_TURN_TIMEOUT_MS} — so a lost connection is verified
-   * against the instance's tasks rather than reported as a failed message.
+   * against the session's tasks rather than reported as a failed message.
    */
   async sendMessage(
     sessionId: string,
-    _agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    agent: AgentRef,
+    message: OutboundUserMessage,
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.dispatch(
-      sessionId,
+      this.targetOf(sessionId, agent),
       {
         messageId: message.messageId,
-        parts: [{ content: { case: 'text', value: message.text } }],
+        parts: userMessageParts(message),
       },
       options,
     );
@@ -538,8 +702,8 @@ export class KagentClient {
    * Send one message, **streaming** the turn's events as the agent produces
    * them.
    *
-   * `A2AService/SendStreamingMessage` (server-streaming gRPC) with the instance
-   * header and the HITL extension requested on every turn — a confirmation that
+   * `A2AService/SendStreamingMessage` (server-streaming gRPC) addressed like
+   * {@link sendMessage}, with the HITL extension requested on every turn — a confirmation that
    * arrives on this turn is then a typed request the answer panel can render.
    * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
    * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
@@ -557,8 +721,8 @@ export class KagentClient {
    */
   async streamMessage(
     sessionId: string,
-    _agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    agent: AgentRef,
+    message: OutboundUserMessage,
     options: KagentRequestOptions,
     /**
      * Aborts the upstream stream — wired by the router to the client connection,
@@ -567,10 +731,10 @@ export class KagentClient {
     signal: AbortSignal,
   ): Promise<Response> {
     return this.openStream(
-      sessionId,
+      this.targetOf(sessionId, agent),
       {
         messageId: message.messageId,
-        parts: [{ content: { case: 'text', value: message.text } }],
+        parts: userMessageParts(message),
       },
       options,
       signal,
@@ -592,7 +756,7 @@ export class KagentClient {
    */
   async streamAnswer(
     sessionId: string,
-    _agent: { namespace: string; name: string },
+    agent: AgentRef,
     answer: HitlAnswer & {
       messageId: string;
       taskId: string;
@@ -601,8 +765,9 @@ export class KagentClient {
     options: KagentRequestOptions,
     signal: AbortSignal,
   ): Promise<Response> {
-    const message = await this.buildAnswerMessage(sessionId, answer, options);
-    return this.openStream(sessionId, message, options, signal);
+    const target = this.targetOf(sessionId, agent);
+    const message = await this.buildAnswerMessage(target, answer, options);
+    return this.openStream(target, message, options, signal);
   }
 
   /**
@@ -612,24 +777,21 @@ export class KagentClient {
    * opened, bounded and ended.
    */
   private async openStream(
-    sessionId: string,
+    target: Target,
     message: OutboundMessage,
     options: KagentRequestOptions,
     signal: AbortSignal,
   ): Promise<Response> {
-    const request = this.buildRequest(message);
-    const stream = this.a2aService
-      .sendStreamingMessage(request, {
-        headers: this.turnHeaders(sessionId, options),
-        signal,
-      })
-      [Symbol.asyncIterator]();
-
-    // The first event is awaited under the ordinary request timeout: a slow
-    // start means kagent is unwell, not that the agent is thinking.
-    let first: IteratorResult<StreamResponse>;
+    const request = this.buildRequest(target, message);
+    let opened: OpenedStream;
     try {
-      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
+      opened = await this.openFirst(
+        this.a2aService.sendStreamingMessage(request, {
+          headers: this.turnHeaders(options),
+          signal,
+        }),
+        signal,
+      );
     } catch (error) {
       if (signal.aborted) {
         // The caller hung up before kagent answered. Nothing to report to
@@ -639,25 +801,153 @@ export class KagentClient {
       throw this.mapError(error, this.sendContext(true));
     }
 
-    const encoder = new TextEncoder();
-    const frame = (payload: unknown) =>
-      encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+    return this.relayAsSse(opened, signal);
+  }
+
+  /**
+   * Follow a turn already running, **resubscribing** to its task: what the
+   * page asks for when the stream of the turn ended before the turn did — a
+   * controller rollout cuts every stream in flight, while the turn itself runs
+   * on.
+   *
+   * `A2AService/SubscribeToTask`, addressed and authorized like the stream it
+   * stands in for: to the session's Agent (`tenant`), as the person (their
+   * token, with HITL requested so a question the turn reaches arrives typed).
+   * The Agent the caller names is used for this call only and never
+   * remembered as the session's: unlike a send, a subscription carries no
+   * context the gateway checks, so the caller's word for it proves nothing.
+   * What does is the task itself: a first event whose context is another
+   * session's is refused as a turn this session does not have.
+   * The controller answers the task's current snapshot first and the turn's
+   * events from then on, relayed exactly as {@link streamMessage} relays them;
+   * a task already over yields its final event.
+   *
+   * **The subscription failing to open is answered in-band, not thrown**,
+   * whenever a retry could succeed — the controller unavailable, slow or gone
+   * mid-rollout: one `{error}` frame, the same frame a stream that dies
+   * mid-turn ends with. The page retries that with a short backoff and then
+   * falls back to the poll, so it is an expected, handled outcome, and as a
+   * 5xx it would reach Sentry once per running turn per rollout. A **decision**
+   * — the person may not read the task, it does not exist, the controller
+   * predates the call — is thrown and mapped as on every other route, because
+   * no retry changes it.
+   */
+  async subscribeToTask(
+    sessionId: string,
+    agent: AgentRef,
+    taskId: string,
+    options: KagentRequestOptions,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const missingResource = `That turn does not exist in this session on installation '${this.installation.name}'.`;
+    let opened: OpenedStream;
+    try {
+      opened = await this.openFirst(
+        this.a2aService.subscribeToTask(
+          { tenant: agentTenant(agent), id: taskId },
+          { headers: this.turnHeaders(options), signal },
+        ),
+        signal,
+      );
+    } catch (error) {
+      if (signal.aborted) {
+        throw error;
+      }
+      const connectError = ConnectError.from(error);
+      const isDecision =
+        (SUBSCRIBE_DECISION_CODES.has(connectError.code) ||
+          isUnsupportedOperation(connectError.rawMessage)) &&
+        !isSocketFailure(connectError);
+      if (isDecision) {
+        throw this.mapError(error, {
+          endpoint: 'task subscription',
+          missingResource,
+          invalidArgument: reason =>
+            new InputError(
+              `kagent on installation '${this.installation.name}' did not accept the subscription: ${reason}`,
+            ),
+          // A task already over: there is nothing left to follow.
+          unsupportedOperation: reason =>
+            new ConflictError(
+              `That turn on installation '${this.installation.name}' cannot be followed any more: ${reason}`,
+            ),
+        });
+      }
+      // `info`, not `warn`: the page retries and then follows the poll.
+      this.logger.info(
+        'A kagent task subscription could not be opened; the client retries or falls back to polling',
+        {
+          installation: this.installation.name,
+          code: Code[connectError.code],
+        },
+      );
+      return new Response(sseFrame(errorFrame(connectError)), {
+        status: 200,
+        headers: { 'content-type': SSE_CONTENT_TYPE },
+      });
+    }
+
+    const contextId = opened.first.done
+      ? undefined
+      : streamContextId(opened.first.value);
+    if (contextId && contextId !== sessionId) {
+      void opened.iterator.return?.(undefined);
+      throw new NotFoundError(missingResource);
+    }
+    return this.relayAsSse(opened, signal);
+  }
+
+  /**
+   * Open an A2A server stream as far as its first event, awaited under the
+   * ordinary request timeout: a slow start means kagent is unwell, not that
+   * the agent is thinking. Rejects as the stream does; each caller reads the
+   * failure its own way.
+   */
+  private async openFirst(
+    stream: AsyncIterable<StreamResponse>,
+    signal: AbortSignal,
+  ): Promise<OpenedStream> {
+    const iterator = stream[Symbol.asyncIterator]();
+    const first = await this.withTimeout(
+      iterator.next(),
+      this.timeoutMs,
+      signal,
+    );
+    return { iterator, first };
+  }
+
+  /**
+   * Relay an opened A2A stream as an SSE {@link Response}: each
+   * `StreamResponse` as one `data:` frame of its JSON, and a stream that dies
+   * mid-turn ended with one `{error}` frame. Shared by every streamed call, so
+   * a turn's stream reads the same whatever opened it.
+   */
+  private relayAsSse(
+    { iterator: stream, first }: OpenedStream,
+    signal: AbortSignal,
+  ): Response {
     const logger = this.logger;
     const installationName = this.installation.name;
+    const encoder = new TextEncoder();
 
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
           let next = first;
           while (!next.done) {
-            controller.enqueue(frame(toJson(StreamResponseSchema, next.value)));
+            controller.enqueue(
+              encoder.encode(
+                sseFrame(toJson(StreamResponseSchema, next.value)),
+              ),
+            );
             next = await stream.next();
           }
         } catch (error) {
           // The stream died mid-turn (a gateway's request timeout, an Envoy
-          // drain, a runtime failure the gateway reports in-band). One error
-          // frame says so; the turn keeps running regardless, and an
-          // unterminated stream is the frontend's cue to fall back to the poll.
+          // drain, a controller rollout, a runtime failure the gateway reports
+          // in-band). One error frame says so; the turn keeps running
+          // regardless, and an unterminated stream is the frontend's cue to
+          // resubscribe, then to fall back to the poll.
           const connectError = ConnectError.from(error);
           logger.debug(
             `A kagent event stream for installation '${installationName}' ended before the turn did`,
@@ -665,12 +955,7 @@ export class KagentClient {
           );
           if (!signal.aborted) {
             controller.enqueue(
-              frame({
-                error: {
-                  code: Code[connectError.code],
-                  message: connectError.rawMessage,
-                },
-              }),
+              encoder.encode(sseFrame(errorFrame(connectError))),
             );
           }
         } finally {
@@ -684,7 +969,7 @@ export class KagentClient {
 
     return new Response(body, {
       status: 200,
-      headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      headers: { 'content-type': SSE_CONTENT_TYPE },
     });
   }
 
@@ -708,7 +993,7 @@ export class KagentClient {
    */
   async answerConfirmation(
     sessionId: string,
-    _agent: { namespace: string; name: string },
+    agent: AgentRef,
     answer: HitlAnswer & {
       messageId: string;
       taskId: string;
@@ -717,8 +1002,9 @@ export class KagentClient {
     },
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    const message = await this.buildAnswerMessage(sessionId, answer, options);
-    return this.dispatch(sessionId, message, options);
+    const target = this.targetOf(sessionId, agent);
+    const message = await this.buildAnswerMessage(target, answer, options);
+    return this.dispatch(target, message, options);
   }
 
   /**
@@ -728,7 +1014,7 @@ export class KagentClient {
    * with the same payload.
    */
   private async buildAnswerMessage(
-    sessionId: string,
+    target: Target,
     answer: HitlAnswer & {
       messageId: string;
       taskId: string;
@@ -739,9 +1025,9 @@ export class KagentClient {
     const task = await this.call(
       () =>
         this.a2aService.getTask(
-          { id: answer.taskId, historyLength: 0 },
+          { tenant: target.tenant, id: answer.taskId, historyLength: 0 },
           {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             timeoutMs: this.timeoutMs,
           },
         ),
@@ -786,12 +1072,13 @@ export class KagentClient {
     taskId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    const { tenant } = await this.target(sessionId, options);
     const task = await this.call(
       () =>
         this.a2aService.cancelTask(
-          { id: taskId },
+          { tenant, id: taskId },
           {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             // Cancelling waits for the ingester to drain and the actor to
             // quiesce; give it the turn's budget rather than a read's.
             timeoutMs: this.turnTimeoutMs,
@@ -810,32 +1097,60 @@ export class KagentClient {
   }
 
   /**
-   * `AgentInstanceService/DeleteAgentInstance` — scoped to the caller, like the
-   * reads. The controller answers the instance as it moves to `DELETING`, passed
-   * through as `{agentInstance}`.
+   * `SessionService/DeleteSession` — scoped to the caller, like the reads. The
+   * controller answers the session as it moves to `DELETING`, passed through
+   * as `{session}`. A refusal because the last turn has not yet settled is
+   * retried; see {@link DELETE_SETTLE_RETRY_DELAYS_MS}.
    */
   async deleteSession(
     sessionId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
     const response = await this.call(
-      () =>
-        this.instanceService.deleteAgentInstance(
-          { agentInstanceId: sessionId },
-          this.callOptions(options),
-        ),
+      async () => {
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            return await this.sessionService.deleteSession(
+              { sessionId },
+              this.callOptions(options),
+            );
+          } catch (error) {
+            const delayMs = this.deleteRetryDelaysMs[attempt];
+            if (delayMs === undefined || !isNotYetSettled(error)) {
+              throw error;
+            }
+            // `info`: an expected refusal the retry recovers from, not a fault.
+            this.logger.info(
+              'kagent session delete waits for the last turn to settle',
+              {
+                installation: this.installation.name,
+                attempt: attempt + 1,
+                delayMs,
+                requestId: options.requestId,
+              },
+            );
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+      },
       {
-        endpoint: 'instance delete',
+        endpoint: 'session delete',
         missingResource: `That session does not exist on installation '${this.installation.name}'.`,
         invalidArgument: () =>
-          new InputError('The session id is not an AgentInstance id.'),
+          new InputError('The session id is not a Session id.'),
+        failedPrecondition: reason =>
+          new ConflictError(
+            isNotYetSettledReason(reason)
+              ? `The session on installation '${this.installation.name}' is still settling its last turn; try deleting it again in a moment. (${reason})`
+              : `The kagent API for installation '${this.installation.name}' reported a conflict: ${reason}`,
+          ),
       },
     );
-    return toJson(DeleteAgentInstanceResponseSchema, response);
+    return toJson(DeleteSessionResponseSchema, response);
   }
 
   /**
-   * `AgentInstanceService/UpdateAgentInstanceName` — rename one session.
+   * `SessionService/UpdateSessionName` — rename one session.
    *
    * The controller validates the name itself (200 characters, no control
    * characters, no leading or trailing whitespace); a rejected name is the
@@ -848,12 +1163,12 @@ export class KagentClient {
   ): Promise<unknown> {
     const response = await this.call(
       () =>
-        this.instanceService.updateAgentInstanceName(
-          { agentInstanceId: sessionId, name },
+        this.sessionService.updateSessionName(
+          { sessionId, name },
           this.callOptions(options),
         ),
       {
-        endpoint: 'instance rename',
+        endpoint: 'session rename',
         missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
         invalidArgument: reason =>
           new InputError(
@@ -861,7 +1176,162 @@ export class KagentClient {
           ),
       },
     );
-    return toJson(UpdateAgentInstanceNameResponseSchema, response);
+    return toJson(UpdateSessionNameResponseSchema, response);
+  }
+
+  /**
+   * `SessionService/CreateSessionShare` — mint a share for one session.
+   *
+   * The answer carries the share's metadata and, **only on this answer**, the
+   * token that grants the access: the controller stores a hash of it, so
+   * nothing can read the token back later. Passed through as `{share, token}`
+   * for the dialog to show exactly once.
+   *
+   * `ttlSeconds` becomes the share's lifetime, counted from its creation. Left
+   * unset, the controller applies its own maximum share lifetime — or, where
+   * none is configured, the share lasts until it is revoked or the session
+   * deleted.
+   *
+   * The caller must own the session: the controller scopes the create exactly
+   * as it scopes the reads, so sharing somebody else's session answers
+   * `NotFound` like reading it would.
+   */
+  async createSessionShare(
+    sessionId: string,
+    share: { permission: SessionSharePermissionInput; ttlSeconds?: number },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.sessionService.createSessionShare(
+          {
+            sessionId,
+            permission:
+              share.permission === 'read-write'
+                ? SessionSharePermission.READ_WRITE
+                : SessionSharePermission.READ_ONLY,
+            ...(share.ttlSeconds !== undefined && {
+              ttl: { seconds: BigInt(share.ttlSeconds) },
+            }),
+          },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session share create',
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: reason =>
+          new InputError(
+            `kagent on installation '${this.installation.name}' did not accept the share: ${reason}`,
+          ),
+      },
+    );
+    return toJson(CreateSessionShareResponseSchema, response);
+  }
+
+  /**
+   * `SessionService/ListSessionShares` — the shares that exist for one
+   * session, walked to the end of the listing, as `{shares: […]}`.
+   *
+   * No token is ever in here: the controller keeps only a hash, so a listed
+   * share can be revoked but never re-copied.
+   */
+  async listSessionShares(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const context: ErrorContext = {
+      endpoint: 'session share list',
+      missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+      invalidArgument: () =>
+        new InputError('The session id is not a Session id.'),
+    };
+    const shares: SessionShare[] = [];
+    let pageToken = '';
+    for (let page = 0; page < MAX_SHARE_PAGES; page += 1) {
+      // A per-iteration copy: the RPC closure must not capture the variable
+      // the loop rewrites.
+      const token = pageToken;
+      const response = await this.call(
+        () =>
+          this.sessionService.listSessionShares(
+            { sessionId, page: { limit: PAGE_SIZE, pageToken: token } },
+            this.callOptions(options),
+          ),
+        context,
+      );
+      shares.push(...response.shares);
+      pageToken = response.page?.nextPageToken ?? '';
+      if (!pageToken) {
+        break;
+      }
+    }
+    return toJson(
+      ListSessionSharesResponseSchema,
+      create(ListSessionSharesResponseSchema, { shares }),
+    );
+  }
+
+  /**
+   * `SessionService/RevokeSessionShare` — end one share now. The token stops
+   * granting access as soon as the controller answers; the answer itself is
+   * empty, passed through as `{}`.
+   */
+  async revokeSessionShare(
+    shareId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.sessionService.revokeSessionShare(
+          { shareId },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session share revoke',
+        missingResource: `That share does not exist on installation '${this.installation.name}'. It may already have been revoked.`,
+        invalidArgument: () =>
+          new InputError('The share id is not a share id.'),
+      },
+    );
+    return toJson(RevokeSessionShareResponseSchema, response);
+  }
+
+  /**
+   * `AgentService/ListAgents` with no namespace — the namespaces of the
+   * Agents the caller may list, as `{namespaces: […]}`, sorted.
+   *
+   * With the controller's Kubernetes authorizer, a collection read answers
+   * the Agents of the namespaces in which the caller may `list` them, so this
+   * names the caller's tenants that hold an agent. The roster still reads the
+   * Agents themselves through the Kubernetes API as the person: this only
+   * tells it where to look when the person may not list Agents
+   * cluster-wide. Only the namespaces leave the backend.
+   */
+  async listAgentNamespaces(
+    options: KagentRequestOptions,
+  ): Promise<{ namespaces: string[] }> {
+    const response = await this.call(
+      () =>
+        this.agentService.listAgents(
+          { namespace: '' },
+          this.callOptions(options),
+        ),
+      // Untraced: a refusal or a controller without the RPC is an answer the
+      // roster expects and reads past, not a fault to report (a traced call
+      // logs it at `warn`, which reaches Sentry).
+      {
+        endpoint: 'agent list',
+        missingResource: `The kagent API for installation '${this.installation.name}' has no agent list.`,
+      },
+    );
+    const namespaces = new Set<string>();
+    for (const agent of response.agents) {
+      const namespace = agent.ref?.namespace;
+      if (namespace) {
+        namespaces.add(namespace);
+      }
+    }
+    return { namespaces: [...namespaces].sort() };
   }
 
   /**
@@ -887,18 +1357,18 @@ export class KagentClient {
    * transport.
    */
   private async dispatch(
-    sessionId: string,
+    target: Target,
     message: OutboundMessage,
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    const request = this.buildRequest(message);
+    const request = this.buildRequest(target, message);
 
     let response;
     try {
       response = await this.call(
         () =>
           this.a2aService.sendMessage(request, {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             timeoutMs: this.turnTimeoutMs,
           }),
         this.sendContext(false),
@@ -907,10 +1377,10 @@ export class KagentClient {
       // A lost connection is not a failed message. The gateway in front of the
       // controller cuts the request off long before an agent is done, and the
       // turn keeps running regardless. So the only honest way to report this is
-      // to go and look: if the message reached the instance's tasks, it was
+      // to go and look: if the message reached the session's tasks, it was
       // dispatched and the conversation poll will show it finish; if it did
       // not, the failure was real. A decision — a 401, a 403, a rejected
-      // request, an unknown instance — is not verified.
+      // request, an unknown session — is not verified.
       if (
         !isUpstreamError(error) &&
         !isTurnPendingError(error) &&
@@ -918,9 +1388,7 @@ export class KagentClient {
       ) {
         throw error;
       }
-      if (
-        !(await this.hasMessageLanded(sessionId, message.messageId, options))
-      ) {
+      if (!(await this.hasMessageLanded(target, message.messageId, options))) {
         throw error;
       }
       this.logger.debug(
@@ -936,12 +1404,15 @@ export class KagentClient {
 
   /**
    * The `SendMessageRequest` for one outbound message — the same request
-   * whether it goes out unary or streaming.
+   * whether it goes out unary or streaming: the Agent as `tenant`, the
+   * session's context on the message.
    */
-  private buildRequest(message: OutboundMessage) {
+  private buildRequest(target: Target, message: OutboundMessage) {
     return create(SendMessageRequestSchema, {
+      tenant: target.tenant,
       message: {
         messageId: message.messageId,
+        contextId: target.contextId,
         role: Role.USER,
         parts: message.parts,
         // Set means "resume this task"; empty means "start a new one". Naming a
@@ -953,7 +1424,7 @@ export class KagentClient {
     });
   }
 
-  /** How a send's failures read: the instance is gone, or busy, or refused it. */
+  /** How a send's failures read: the session is gone, or busy, or refused it. */
   private sendContext(pending: boolean): ErrorContext {
     return {
       endpoint: 'agent messaging',
@@ -963,7 +1434,7 @@ export class KagentClient {
         new InputError(
           `The agent on installation '${this.installation.name}' did not accept the message: ${reason}`,
         ),
-      // One active task per instance: a second message during a turn is not a
+      // One active task per session: a second message during a turn is not a
       // queued reply but a competing one, and the gateway refuses it. A 409 the
       // composer already explains ("the agent is working").
       unsupportedOperation: reason =>
@@ -974,7 +1445,7 @@ export class KagentClient {
   }
 
   /**
-   * Whether a message we sent is in the instance's tasks.
+   * Whether a message we sent is in the session's tasks.
    *
    * Only asked after the send's transport failed, so there has been ample time
    * for the gateway to have written it — and a read failure here answers
@@ -982,12 +1453,12 @@ export class KagentClient {
    * second one.
    */
   private async hasMessageLanded(
-    sessionId: string,
+    target: Target,
     messageId: string,
     options: KagentRequestOptions,
   ): Promise<boolean> {
     try {
-      const { tasks } = await this.readTasks(sessionId, options, {
+      const { tasks } = await this.readTasks(target, options, {
         includeArtifacts: false,
       });
       return tasks.some(task =>
@@ -1003,10 +1474,10 @@ export class KagentClient {
   }
 
   private async readTasks(
-    sessionId: string,
+    target: Target,
     options: KagentRequestOptions,
     extra: ListSessionTasksOptions,
-  ): Promise<{ tasks: Task[]; totalSize: number }> {
+  ): Promise<{ tasks: Task[]; totalSize: number; nextPageToken: string }> {
     const context: ErrorContext = {
       endpoint: 'task list',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
@@ -1014,27 +1485,32 @@ export class KagentClient {
     const tasks: Task[] = [];
     let totalSize = 0;
     let pageToken = '';
-    for (let page = 0; page < MAX_TASK_PAGES; page += 1) {
-      // A per-iteration copy, as in `listSessions`.
+    // Halved when a page is too large to answer: the controller answers at
+    // most 16 MiB at once, and a task carries the images of its message, up
+    // to `MESSAGE_IMAGES_MAX_TOTAL_BYTES` each. A conversation of a handful
+    // of turns with images fills a page of 100. Kept for the session's next
+    // reads, so a poll is not refused before every answer.
+    let pageSize = this.taskPageSizes.get(target.contextId) ?? PAGE_SIZE;
+    let requests = 0;
+    // The page bound, counted in tasks asked for so smaller pages read as far.
+    for (
+      let budget = MAX_TASK_PAGES * PAGE_SIZE;
+      budget > 0 && requests < MAX_TASK_REQUESTS;
+      budget -= pageSize
+    ) {
+      // Per-iteration copies, as in `listSessions`.
       const token = pageToken;
-      const response = await this.call(
-        () =>
-          this.a2aService.listTasks(
-            {
-              pageSize: PAGE_SIZE,
-              pageToken: token,
-              includeArtifacts: extra.includeArtifacts ?? true,
-              ...(extra.historyLength !== undefined && {
-                historyLength: extra.historyLength,
-              }),
-            },
-            {
-              headers: this.turnHeaders(sessionId, options),
-              timeoutMs: extra.timeoutMs ?? this.timeoutMs,
-            },
-          ),
+      const size = pageSize;
+      const read = await this.call(
+        () => this.listTasksPage(target, options, extra, token, size),
         context,
       );
+      requests += read.requests;
+      if (read.pageSize < pageSize) {
+        pageSize = read.pageSize;
+        this.rememberTaskPageSize(target.contextId, pageSize);
+      }
+      const { response } = read;
       tasks.push(...response.tasks);
       totalSize = response.totalSize;
       pageToken = response.nextPageToken;
@@ -1042,44 +1518,58 @@ export class KagentClient {
         break;
       }
     }
-    return { tasks, totalSize: Math.max(totalSize, tasks.length) };
+    // The token not followed, when a bound cut the read: the one sign of a
+    // cut that does not depend on the controller filling `total_size`.
+    return {
+      tasks,
+      totalSize: Math.max(totalSize, tasks.length),
+      nextPageToken: pageToken,
+    };
   }
 
   /**
-   * The Harness a new instance of this template runs on: the first one whose
-   * `Ready` condition on the template is `True`, else the first that admits the
-   * template at all. None is a 409 — the template exists but nothing can run
-   * it, which is a platform state the user cannot fix from a session composer.
+   * One page of `ListTasks`, asked again at half the size for as long as the
+   * controller answers that it is too large to send (`ResourceExhausted`), down
+   * to a page of one. Answers the page and the size that fitted, which the
+   * rest of the read keeps.
    */
-  private async pickHarness(
-    agent: { namespace: string; name: string },
+  private async listTasksPage(
+    target: Target,
     options: KagentRequestOptions,
-  ): Promise<string> {
-    const response = await this.call(
-      () =>
-        this.templateService.getAgentTemplate(
-          { ref: { namespace: agent.namespace, name: agent.name } },
-          this.callOptions(options),
-        ),
-      {
-        endpoint: 'template detail',
-        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agent.namespace}/${agent.name}'.`,
-      },
-    );
-    const template = response.agentTemplate;
-    const harnesses = template ? harnessesOf(template) : [];
-    const pick = harnesses[0];
-    if (!pick) {
-      throw new ConflictError(
-        `No Harness admits the agent '${agent.namespace}/${agent.name}' on installation '${this.installation.name}', so no session can be started for it.`,
-      );
+    extra: ListSessionTasksOptions,
+    pageToken: string,
+    initialPageSize: number,
+  ) {
+    let pageSize = initialPageSize;
+    for (let requests = 1; ; requests += 1) {
+      try {
+        const response = await this.a2aService.listTasks(
+          {
+            tenant: target.tenant,
+            contextId: target.contextId,
+            pageSize,
+            pageToken,
+            includeArtifacts: extra.includeArtifacts ?? true,
+            ...(extra.historyLength !== undefined && {
+              historyLength: extra.historyLength,
+            }),
+          },
+          {
+            headers: this.turnHeaders(options),
+            timeoutMs: extra.timeoutMs ?? this.timeoutMs,
+          },
+        );
+        return { response, pageSize, requests };
+      } catch (error) {
+        if (
+          pageSize === 1 ||
+          ConnectError.from(error).code !== Code.ResourceExhausted
+        ) {
+          throw error;
+        }
+        pageSize = Math.ceil(pageSize / 2);
+      }
     }
-    if (!pick.ready) {
-      this.logger.debug(
-        `No Harness reports the agent '${agent.namespace}/${agent.name}' Ready on installation '${this.installation.name}'; starting on '${pick.name}' anyway`,
-      );
-    }
-    return pick.name;
   }
 
   /**
@@ -1094,30 +1584,162 @@ export class KagentClient {
   }
 
   /**
-   * The metadata of an A2A call: the bearer, the instance the call belongs to
-   * (exactly once), and the HITL extension requested so a confirmation on this
-   * turn arrives typed.
+   * The metadata of an A2A call: the bearer and the HITL extension requested
+   * so a confirmation on this turn arrives typed. The session is addressed in
+   * the request, not in metadata.
    */
-  private turnHeaders(
-    sessionId: string,
-    options: KagentRequestOptions,
-  ): Record<string, string> {
+  private turnHeaders(options: KagentRequestOptions): Record<string, string> {
     return {
       ...bearerHeaders(options),
-      [AGENT_INSTANCE_HEADER]: sessionId,
       [A2A_EXTENSIONS_HEADER]: HITL_EXTENSION_URI,
     };
+  }
+
+  /**
+   * Where a call on `sessionId` goes when the caller names the Agent: the
+   * session's A2A context is its id.
+   *
+   * **Why the session id is the right `contextId` (T62).** On the controller this
+   * client targets, a Session's `context_id` is not a separate value that has to
+   * be read back: the proto documents it as "Output only. A2A conversation ID,
+   * equal to this session's ID", and the controller's own schema enforces it —
+   * its `session` table carries `CHECK (context_id = id)` (seen on kagent
+   * controller 1.5.0 in agentlab, where every stored session satisfies it). The
+   * gateway resolves the session from `tenant` + `message.contextId` and refuses
+   * a context id that names another session, so a mismatch fails loudly with an
+   * error; it never opens or misroutes to a second context. klaus-gateway relies
+   * on the same equality and refuses a created Session that breaks it.
+   *
+   * The recorded fixtures `sessions.kagent-a8353a0.json` /
+   * `tasks.kagent-4a91c273.json` show `contextId != id`: those were recorded
+   * (2026-09) on earlier controller builds that predate the equality, and are
+   * kept for their shapes, not as a version this client supports. Should a future controller
+   * decouple the two again, read `session.contextId` off the Session (as
+   * agentlab's driver does) instead of reusing the id here and in
+   * {@link target}.
+   */
+  private targetOf(sessionId: string, agent: AgentRef): Target {
+    this.agents.set(sessionId, agent);
+    return { tenant: agentTenant(agent), contextId: sessionId };
+  }
+
+  /**
+   * Where a call on `sessionId` goes when the caller names no Agent: the one
+   * remembered from a list or a read of the session, else read off
+   * the Session now. The context is the session id, as in {@link targetOf} —
+   * see there for why that is correct rather than a shortcut.
+   */
+  private async target(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<Target> {
+    const known = this.agents.get(sessionId);
+    if (known) {
+      return { tenant: agentTenant(known), contextId: sessionId };
+    }
+    const response = await this.call(
+      () =>
+        this.sessionService.getSession(
+          { sessionId },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session detail',
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: () =>
+          new InputError('The session id is not a Session id.'),
+      },
+    );
+    const agent = this.remember(response.session);
+    if (!agent) {
+      throw new ConflictError(
+        `Session '${sessionId}' on installation '${this.installation.name}' names no Agent, so no call can be addressed to it.`,
+      );
+    }
+    return { tenant: agentTenant(agent), contextId: sessionId };
+  }
+
+  /** Remember a session's Agent for the task reads that follow. */
+  private rememberTaskPageSize(sessionId: string, pageSize: number): void {
+    this.taskPageSizes.delete(sessionId);
+    if (this.taskPageSizes.size >= MAX_REMEMBERED_AGENTS) {
+      const oldest = this.taskPageSizes.keys().next().value;
+      if (oldest !== undefined) {
+        this.taskPageSizes.delete(oldest);
+      }
+    }
+    this.taskPageSizes.set(sessionId, pageSize);
+  }
+
+  private remember(session: Session | undefined): AgentRef | undefined {
+    const agent = session?.agent;
+    if (!session?.id || !agent?.namespace || !agent.name) {
+      return undefined;
+    }
+    if (this.agents.size >= MAX_REMEMBERED_AGENTS) {
+      const oldest = this.agents.keys().next().value;
+      if (oldest !== undefined) {
+        this.agents.delete(oldest);
+      }
+    }
+    this.agents.set(session.id, {
+      namespace: agent.namespace,
+      name: agent.name,
+    });
+    return this.agents.get(session.id);
   }
 
   /** Run one RPC and translate its failure into the error the caller should see. */
   private async call<T>(
     rpc: () => Promise<T>,
     context: ErrorContext,
+    trace?: { call: string; requestId?: string },
   ): Promise<T> {
     try {
       return await rpc();
     } catch (error) {
-      throw this.mapError(error, context);
+      const mapped = this.mapError(error, context);
+      if (trace) {
+        this.logFailedCall(trace.call, trace.requestId, error, mapped);
+      }
+      throw mapped;
+    }
+  }
+
+  /**
+   * One line per failed traced call: the call, the status the browser gets,
+   * the controller's code and message, and the request id it was sent with.
+   *
+   * A 404 is kagent absent or the resource gone, the expected answer on most
+   * installations, so it stays at `debug`; everything else is a read the page
+   * reports as failed and is logged at `warn`, where it can be attributed
+   * afterwards.
+   */
+  private logFailedCall(
+    call: string,
+    requestId: string | undefined,
+    error: unknown,
+    mapped: Error,
+  ) {
+    const connectError = ConnectError.from(error);
+    const message = connectError.rawMessage || connectError.message;
+    const status = httpStatusOf(mapped);
+    const fields = {
+      installation: this.installation.name,
+      call,
+      status,
+      code: Code[connectError.code],
+      requestId,
+      error:
+        message.length > MAX_LOGGED_ERROR
+          ? `${message.slice(0, MAX_LOGGED_ERROR)}…`
+          : message,
+    };
+    const line = `kagent ${call} failed for installation '${this.installation.name}' with status ${status}`;
+    if (status === 404) {
+      this.logger.debug(line, fields);
+    } else {
+      this.logger.warn(line, fields);
     }
   }
 
@@ -1180,49 +1802,8 @@ function renderDecision(answer: HitlAnswer): string {
  * property of one function rather than of every call site.
  */
 function bearerHeaders(options: KagentRequestOptions): Record<string, string> {
-  return options.userToken
-    ? { authorization: `Bearer ${options.userToken}` }
-    : {};
-}
-
-type HarnessStatus = {
-  harness?: string;
-  conditions?: Array<{ type?: string; status?: string }>;
-};
-
-/**
- * The harnesses that admit a template, readiest first: the ones whose `Ready`
- * condition is `True` lead, then the rest of `status.harnesses[]`, then anything
- * the controller lists in `admitting_harnesses` that carries no status yet.
- * Empty when nothing admits the template — a session cannot be started then.
- *
- * Read off the template's Kubernetes object, which the controller returns whole
- * (`status.harnesses[]` included) under `resource.value`.
- */
-export function harnessesOf(template: AgentTemplate): {
-  name: string;
-  ready: boolean;
-}[] {
-  const resource = template.resource?.value as
-    { status?: { harnesses?: HarnessStatus[] } } | undefined;
-  const seen = new Map<string, boolean>();
-  for (const entry of resource?.status?.harnesses ?? []) {
-    if (!entry?.harness) {
-      continue;
-    }
-    const ready =
-      entry.conditions?.some(
-        condition =>
-          condition?.type === 'Ready' && condition?.status === 'True',
-      ) ?? false;
-    seen.set(entry.harness, ready);
-  }
-  for (const name of template.admittingHarnesses) {
-    if (!seen.has(name)) {
-      seen.set(name, false);
-    }
-  }
-  return [...seen.entries()]
-    .map(([name, ready]) => ({ name, ready }))
-    .sort((a, b) => Number(b.ready) - Number(a.ready));
+  return {
+    ...(options.userToken && { authorization: `Bearer ${options.userToken}` }),
+    ...(options.requestId && { [REQUEST_ID_HEADER]: options.requestId }),
+  };
 }

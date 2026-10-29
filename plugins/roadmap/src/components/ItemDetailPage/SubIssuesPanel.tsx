@@ -17,7 +17,9 @@ import { Alert } from '@material-ui/lab';
 import LinkOffIcon from '@material-ui/icons/LinkOff';
 import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { roadmapApiRef } from '../../apis';
 import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
@@ -59,14 +61,17 @@ export function SubIssuesPanel(props: {
   const [child, setChild] = useState('');
 
   const queryKey = ['roadmap', 'sub-issues', owner, repo, issueNumber];
-  const { data, isLoading, error } = useQuery({
+  const subIssuesQuery = useQuery({
     queryKey,
     queryFn: () => roadmapApi.listSubIssues(owner, repo, issueNumber),
   });
+  const { data, error } = subIssuesQuery;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
-  const addSubIssue = useMutation({
+  const addSubIssue = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal roadmap tooling, not a customer portal action.',
     mutationFn: (reference: string) =>
       roadmapApi.addSubIssue(owner, repo, issueNumber, reference),
     onSuccess: () => {
@@ -75,7 +80,9 @@ export function SubIssuesPanel(props: {
     },
   });
 
-  const removeSubIssue = useMutation({
+  const removeSubIssue = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal roadmap tooling, not a customer portal action.',
     mutationFn: (subIssueId: number) =>
       roadmapApi.removeSubIssue(owner, repo, issueNumber, subIssueId),
     onSuccess: invalidate,
@@ -89,7 +96,7 @@ export function SubIssuesPanel(props: {
     }
   };
 
-  if (isLoading) {
+  if (isAwaitingData(subIssuesQuery)) {
     return <Progress />;
   }
   if (error) {

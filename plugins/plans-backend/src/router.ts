@@ -16,7 +16,7 @@ import {
 import express from 'express';
 import Router from 'express-promise-router';
 
-/** `owner/repo` slug, e.g. `giantswarm/bumblebee-plans`. */
+/** `owner/repo` slug, e.g. `<owner>/<plans-repo>`. */
 const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 
 /**
@@ -33,6 +33,42 @@ const EPICS_TTL_MS = 5 * 60_000;
  * kept as long as the frontend keeps its copy fresh.
  */
 const TREE_TTL_MS = 60_000;
+
+/**
+ * A file read at a ref is one GitHub call through muster, about 3 s, and the
+ * Magazine and plan pages read the same files on every load. Each person's
+ * reads are kept this long: a ref that moves on is seen within this window.
+ */
+const CONTENT_TTL_MS = 60_000;
+
+/**
+ * Reads shared per key within `ttlMs`, the concurrent ones included. A failed
+ * read is not kept: the next request asks again. Expired entries are dropped
+ * on the next miss.
+ */
+function ttlCache<T>(ttlMs: number) {
+  const entries = new Map<string, { expires: number; value: Promise<T> }>();
+  return (key: string, read: () => Promise<T>): Promise<T> => {
+    const now = Date.now();
+    const hit = entries.get(key);
+    if (hit && hit.expires > now) {
+      return hit.value;
+    }
+    for (const [cached, entry] of entries) {
+      if (entry.expires <= now) {
+        entries.delete(cached);
+      }
+    }
+    const value = read();
+    entries.set(key, { expires: now + ttlMs, value });
+    value.catch(() => {
+      if (entries.get(key)?.value === value) {
+        entries.delete(key);
+      }
+    });
+    return value;
+  };
+}
 
 /** Roadmap epic referenced by a plan's `**Epic:** [owner/repo#N](url)` header. */
 interface EpicRef {
@@ -211,6 +247,31 @@ function gitRef(ref: string): string | undefined {
   return `refs/heads/${ref}`;
 }
 
+interface MagazineConfig {
+  repository: string;
+  ref: string;
+  knowledgeRef: string;
+}
+
+/** `plans.magazine`, validated, with its ref defaults; undefined when unset. */
+function readMagazineConfig(config: Config): MagazineConfig | undefined {
+  const section = config.getOptionalConfig('plans.magazine');
+  if (!section) {
+    return undefined;
+  }
+  const repository = section.getString('repository');
+  if (!REPO_SLUG_PATTERN.test(repository)) {
+    throw new Error(
+      `Invalid plans.magazine.repository '${repository}'; expected an owner/repo slug`,
+    );
+  }
+  return {
+    repository,
+    ref: section.getOptionalString('ref') ?? 'data',
+    knowledgeRef: section.getOptionalString('knowledgeRef') ?? 'main',
+  };
+}
+
 function splitRepo(repo: string): { owner: string; repo: string } {
   const [owner, name] = repo.split('/');
   return { owner, repo: name };
@@ -232,6 +293,8 @@ export async function createRouter(
     return repo;
   });
 
+  const magazine = readMagazineConfig(config);
+
   if (repositories.length === 0) {
     logger.info(
       'No plan repositories configured (set plans.repositories); plans endpoints will return 503.',
@@ -250,12 +313,17 @@ export async function createRouter(
    * instead of being a general GitHub relay.
    */
   const resolveRepo = (req: express.Request): string => {
+    const requested = singleQueryValue(req.query.repo, 'repo');
+    if (magazine && requested === magazine.repository) {
+      throw new InputError(
+        `The magazine repository '${requested}' is only readable through /tree and /content.`,
+      );
+    }
     if (repositories.length === 0) {
       throw new ServiceUnavailableError(
         'No plan repository is configured. Set plans.repositories.',
       );
     }
-    const requested = singleQueryValue(req.query.repo, 'repo');
     if (!requested) {
       if (repositories.length > 1) {
         throw new InputError(
@@ -270,6 +338,28 @@ export async function createRouter(
       );
     }
     return requested;
+  };
+
+  /**
+   * Repository and ref of a read (`/tree`, `/content`): a plan repository at
+   * any ref, or the magazine repository at one of its two configured refs
+   * (default: the data ref). The magazine stays a read-only source of two
+   * branches, never a general relay to its repository.
+   */
+  const resolveRead = (req: express.Request): { repo: string; ref: string } => {
+    const requested = singleQueryValue(req.query.repo, 'repo');
+    const ref = singleQueryValue(req.query.ref, 'ref');
+    if (magazine && requested === magazine.repository) {
+      const allowed = [magazine.ref, magazine.knowledgeRef];
+      if (ref !== undefined && !allowed.includes(ref)) {
+        throw new InputError(
+          `Unknown ref '${ref}' for the magazine repository; allowed: ${allowed.join(', ')}`,
+        );
+      }
+      return { repo: requested, ref: ref ?? magazine.ref };
+    }
+    // HEAD resolves to the repository's default branch on the GitHub side.
+    return { repo: resolveRepo(req), ref: ref ?? 'HEAD' };
   };
 
   const gateway = (): MusterServerGateway => {
@@ -442,40 +532,38 @@ export async function createRouter(
     return { truncated: Boolean(result?.truncated), tree };
   };
 
-  const treeCache = new Map<
-    string,
-    { expires: number; tree: Promise<RepositoryTree> }
-  >();
+  const treeCache = ttlCache<RepositoryTree>(TREE_TTL_MS);
 
   /**
    * The tree of a ref, fetched once per repository and ref within
-   * TREE_TTL_MS and shared by every caller in that window, the concurrent
-   * ones included. A failed fetch is not kept: the next request asks again.
+   * TREE_TTL_MS and shared by every caller in that window.
    */
   const getTree = (
     gh: GithubSession,
     repo: string,
     ref: string,
-  ): Promise<RepositoryTree> => {
-    const now = Date.now();
-    const key = `${repo}@${ref}`;
-    const hit = treeCache.get(key);
-    if (hit && hit.expires > now) {
-      return hit.tree;
-    }
-    for (const [cached, entry] of treeCache) {
-      if (entry.expires <= now) {
-        treeCache.delete(cached);
-      }
-    }
-    const tree = fetchTree(gh, repo, ref);
-    treeCache.set(key, { expires: now + TREE_TTL_MS, tree });
-    tree.catch(() => {
-      if (treeCache.get(key)?.tree === tree) {
-        treeCache.delete(key);
-      }
-    });
-    return tree;
+  ): Promise<RepositoryTree> =>
+    treeCache(`${repo}@${ref}`, () => fetchTree(gh, repo, ref));
+
+  const contentCache = ttlCache<string>(CONTENT_TTL_MS);
+
+  /**
+   * A file at a ref, read once per person, repository, ref and path within
+   * CONTENT_TTL_MS. Kept per person, since each read runs with the person's
+   * own GitHub grant: no one is served a file their grant could not read.
+   */
+  const getCachedFileContent = async (
+    req: express.Request,
+    repo: string,
+    path: string,
+    ref: string,
+  ): Promise<string> => {
+    const { principal } = await httpAuth.credentials(req, { allow: ['user'] });
+    const gh = githubFor(req);
+    return contentCache(
+      JSON.stringify([principal.userEntityRef, repo, ref, path]),
+      () => getFileContent(gh, repo, path, ref),
+    );
   };
 
   const parsePullNumber = (raw: string): number => {
@@ -505,6 +593,17 @@ export async function createRouter(
 
   router.get('/repos', (_, res) => {
     res.json({ repositories });
+  });
+
+  /**
+   * Where the Magazine page reads from: the repository and its data and
+   * knowledge refs, or `configured: false`. Served to signed-in users only,
+   * so the repository name stays out of the frontend config.
+   */
+  router.get('/magazine', (_, res) => {
+    res.json(
+      magazine ? { configured: true, ...magazine } : { configured: false },
+    );
   });
 
   /**
@@ -688,15 +787,12 @@ export async function createRouter(
   });
 
   router.get('/tree', async (req, res) => {
-    const repo = resolveRepo(req);
-    // HEAD resolves to the repository's default branch on the GitHub side.
-    const ref = singleQueryValue(req.query.ref, 'ref') ?? 'HEAD';
+    const { repo, ref } = resolveRead(req);
     res.json(await getTree(githubFor(req), repo, ref));
   });
 
   router.get('/content', async (req, res) => {
-    const repo = resolveRepo(req);
-    const ref = singleQueryValue(req.query.ref, 'ref') ?? 'HEAD';
+    const { repo, ref } = resolveRead(req);
     const path = singleQueryValue(req.query.path, 'path');
     if (!path) {
       throw new InputError('path query parameter is required');
@@ -704,7 +800,7 @@ export async function createRouter(
     res.json({
       path,
       ref,
-      content: await getFileContent(githubFor(req), repo, path, ref),
+      content: await getCachedFileContent(req, repo, path, ref),
     });
   });
 

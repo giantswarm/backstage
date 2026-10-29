@@ -20,12 +20,18 @@ import type {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  connectorDisplayNames,
   TOOL_GROUPS,
   type FilterToolsResponse,
   type ToolGroupKey,
   type ToolSummary,
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
+import {
+  countNoun,
+  INITIAL_ROWS,
+  SEARCH_MIN,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -39,7 +45,10 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
  */
 export const MUSTER_MCP_SERVER_NAME = 'muster';
 
-/** Inline selectors are capped; beyond this, the platform admin defines a preset. */
+/**
+ * Inline selectors are capped platform-wide (muster, the agent chart and
+ * agent-manager each refuse more); this mirrors that cap, it does not set it.
+ */
 export const MAX_INLINE_SELECTORS = 32;
 
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
@@ -60,7 +69,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'read-only',
     description:
-      "Every tool whose server marks it read-only, and every workflow whose steps only use such tools. Evaluated live, so it follows the servers' own annotations.",
+      "Includes every tool whose connector marks it read-only and every workflow whose steps only use such tools. It is evaluated live, so it follows the connectors' own annotations.",
     built_in: true,
   },
   {
@@ -72,7 +81,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'full',
     description:
-      "Everything the gateway exposes to whoever invokes the agent, including the platform administration tools. Today's unbounded behaviour, made explicit.",
+      "Includes everything the gateway exposes to whoever invokes the agent, platform tools included. This makes today's unbounded behaviour explicit.",
     built_in: true,
   },
 ];
@@ -103,7 +112,7 @@ export function formatSelector(selector: Selector): string {
 export function selectorProblem(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (trimmed === '') {
-    return 'A selector cannot be empty.';
+    return 'Enter a selector, e.g. server:pro.';
   }
   if (trimmed.startsWith('toolset:')) {
     return `"${trimmed}" is reserved for shared toolsets, which do not exist yet.`;
@@ -120,15 +129,20 @@ export function selectorProblem(raw: string): string | undefined {
 /**
  * Everything wrong with a whole toolset, for the step to block Continue on.
  * Empty when the toolset is acceptable. An empty list is not reported here:
- * the step reads "nothing chosen yet" as its own state.
+ * the step reads "nothing chosen yet" as its own state. `describeCap` words
+ * the cap problem where the catalogue can say what to reduce.
  */
-export function toolsetProblems(selectors: string[]): string[] {
+export function toolsetProblems(
+  selectors: string[],
+  describeCap?: (selectors: string[]) => string,
+): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
   if (selectors.length > MAX_INLINE_SELECTORS) {
     problems.push(
-      `${selectors.length} selectors is more than the ${MAX_INLINE_SELECTORS} a toolset may list inline. Define a preset for this selection and reference it instead.`,
+      describeCap?.(selectors) ??
+        `This toolset needs ${selectors.length} selectors but may list at most ${MAX_INLINE_SELECTORS}, so choose fewer connectors or tools.`,
     );
   }
   return problems;
@@ -358,6 +372,18 @@ export function gatewayBindings(
 }
 
 /**
+ * Whether the agent binds the gateway at all: what `toolsetOfAgent` reads as
+ * anything but `no-gateway`. Known from the agent alone, before its carrier is
+ * read.
+ */
+export function bindsGateway(
+  agent: Pick<Agent, 'getName' | 'getMcpBindings'>,
+  gatewayName: string = MUSTER_MCP_SERVER_NAME,
+): boolean {
+  return gatewayBindings(agent, gatewayName).length > 0;
+}
+
+/**
  * The toolset an agent declares: its gateway bindings, joined with the
  * `RemoteMCPServer`s of its namespace to read the `X-Muster-Toolset` header
  * off the carrier each binding names. `carriers` undefined means the servers
@@ -397,6 +423,24 @@ export function toolsetOfAgent(
   return unresolved !== undefined
     ? { state: 'unresolved', carrier: unresolved }
     : { state: 'implicit-full', carrier: bindings[0].server.name };
+}
+
+/**
+ * Whether a declared toolset gives the agent tools, which is when its page
+ * has a Tools tab: it binds the gateway and does not declare `preset:none`.
+ * An `unresolved` toolset counts: while its carrier is read, the tab stays
+ * rather than flicker, and an unreadable or missing carrier is explained on
+ * the tab.
+ */
+export function toolsetHasTools(toolset: DeclaredToolset): boolean {
+  switch (toolset.state) {
+    case 'no-gateway':
+      return false;
+    case 'declared':
+      return toolsetShape(toolset.selectors) !== 'none';
+    default:
+      return true;
+  }
 }
 
 /**
@@ -451,7 +495,11 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
  * without building CRs.
  */
 export interface ServerInfo {
-  /** The CR name — what `server:<name>` selects for a single server. */
+  /**
+   * muster's key for the server — the CR name, `<namespace>/<name>` for a
+   * server of an organization's namespace: what `server:<name>` selects for a
+   * single server.
+   */
   name: string;
   /**
    * The family name, for a federated family whose members share one tool
@@ -466,11 +514,33 @@ export interface ServerInfo {
   state?: string;
   /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
   oauth: boolean;
+  /**
+   * Whether a session signs in to it through muster's `core_auth_login`: per
+   * session, or once per person with a `subject` grant. Not for a server muster
+   * connects with the caller's own token (`forwardToken`, `tokenExchange`),
+   * which refuses that tool, nor for a server signing as muster (sigv4).
+   */
+  signInTool?: boolean;
+  /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
+  displayName?: string;
 }
 
 /** The name a server surface goes by: the family for a family member, else the CR name. */
 export function surfaceName(server: ServerInfo): string {
   return server.family ?? server.name;
+}
+
+/**
+ * What people call each server surface, keyed by its surface name: the
+ * muster plugin's one rule (`connectorDisplayNames`) — the display name its
+ * CRs agree on, unless another connector would read the same, else the
+ * surface name itself, which `server:` selectors, tool prefixes and URLs keep
+ * using. Built once per server list; look names up in it.
+ */
+export function connectorLabels(
+  servers: readonly ServerInfo[],
+): ReadonlyMap<string, string> {
+  return connectorDisplayNames(servers);
 }
 
 /**
@@ -495,6 +565,58 @@ export function serverOfTool(
     }
   }
   return best ? surfaceName(best) : undefined;
+}
+
+/**
+ * The connector an `x_*` tool name belongs to, by its longest matching
+ * prefix, with the tool's own part: `x_agentlab-mcp-kubernetes_get_pods` →
+ * `{ connector: 'kubernetes', tool: 'get_pods' }` for a server of the
+ * kubernetes family. The connector is named as Customize names it (the family
+ * for a family member, by its display name where it has one). `undefined` for a name no server's prefix matches.
+ */
+export function connectorOfTool(
+  name: string,
+  servers: ServerInfo[],
+  labels: ReadonlyMap<string, string> = connectorLabels(servers),
+): { connector: string; tool: string } | undefined {
+  let best: ServerInfo | undefined;
+  for (const server of servers) {
+    const prefix = server.toolNamePrefix;
+    if (
+      prefix &&
+      name.startsWith(`${prefix}_`) &&
+      (!best || prefix.length > best.toolNamePrefix.length)
+    ) {
+      best = server;
+    }
+  }
+  return best
+    ? {
+        connector: labels.get(surfaceName(best)) ?? surfaceName(best),
+        tool: name.slice(best.toolNamePrefix.length + 1),
+      }
+    : undefined;
+}
+
+/**
+ * A muster server as Customize names it — the family for a family member, by
+ * its display name where it has one — from its CR name or its tool-name
+ * segment (`agentlab-mcp-kubernetes` → `kubernetes`); the name itself when no
+ * server matches.
+ */
+export function connectorName(
+  server: string,
+  servers: ServerInfo[],
+  labels: ReadonlyMap<string, string> = connectorLabels(servers),
+): string {
+  const match = servers.find(
+    candidate =>
+      candidate.name === server || candidate.toolNamePrefix === `x_${server}`,
+  );
+  if (!match) {
+    return server;
+  }
+  return labels.get(surfaceName(match)) ?? surfaceName(match);
 }
 
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
@@ -558,6 +680,11 @@ export function toolGroupTitle(key: PickerGroupKey): string {
 export interface ServerBucket {
   /** The surface name — `server:<name>` selects it. */
   name: string;
+  /**
+   * What people call it ({@link connectorLabels}); absent where it is
+   * {@link name}. Read it through {@link bucketLabel}.
+   */
+  displayName?: string;
   /** Whether this is a federated family (several CRs, one surface). */
   isFamily: boolean;
   tools: ToolSummary[];
@@ -569,6 +696,13 @@ export interface ServerBucket {
   state?: string;
   /** Present when muster listed tools for a server no CR describes. */
   unknownServer: boolean;
+}
+
+/** A bucket's name as people read it: its display name, else its name. */
+export function bucketLabel(
+  bucket: Pick<ServerBucket, 'name' | 'displayName'>,
+) {
+  return bucket.displayName ?? bucket.name;
 }
 
 export interface CatalogueGroup {
@@ -607,7 +741,7 @@ export function hasEntries(group: CatalogueGroup): boolean {
  * installation has is listed — as an empty, sign-in-gated bucket when the
  * caller's session cannot see its tools — so an author can pick a whole server
  * they cannot browse themselves. Tools muster attributes to a server no CR
- * describes still appear (under Registered servers) so nothing is hidden.
+ * describes still appear (under Registered connectors) so nothing is hidden.
  * Empty groups are dropped.
  */
 export function buildCatalogue(
@@ -640,6 +774,7 @@ export function buildCatalogue(
   const surfaceOfCr = new Map(
     servers.map(server => [server.name, surfaceName(server)] as const),
   );
+  const labels = connectorLabels(servers);
   for (const server of servers) {
     const name = surfaceName(server);
     const existing = buckets.get(name);
@@ -654,8 +789,10 @@ export function buildCatalogue(
       existing.state = worstState(existing.state, server.state);
       continue;
     }
+    const displayName = labels.get(name) ?? name;
     buckets.set(name, {
       name,
+      ...(displayName !== name ? { displayName } : {}),
       isFamily: server.family !== undefined,
       tools: [],
       needsSignIn,
@@ -717,7 +854,12 @@ export function buildCatalogue(
   }
 
   for (const entry of groups.values()) {
-    entry.servers.sort((a, b) => a.name.localeCompare(b.name));
+    // By what people read, as the Customize list and the rail sort.
+    entry.servers.sort(
+      (a, b) =>
+        bucketLabel(a).localeCompare(bucketLabel(b)) ||
+        a.name.localeCompare(b.name),
+    );
     for (const bucket of entry.servers) {
       bucket.tools.sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -794,12 +936,11 @@ export function serverSelector(name: string): string {
   return `server:${name}`;
 }
 
-/**
- * How many rows a list on the Tools step (and a section of the resolved list)
- * shows before asking for a click: a gateway lists hundreds of tools, and a
- * page that renders every one of them at once is the page nobody scrolls.
- */
-export const INITIAL_ROWS = 20;
+// The list-scale constants and `countNoun` live in ui-react beside `ShowMore`
+// (muster uses them too); re-exported here for this plugin's existing imports.
+// Lists behind disclosures use the higher `AUTO_EXPAND_MAX` (20) instead of
+// `SEARCH_MIN`.
+export { countNoun, INITIAL_ROWS, SEARCH_MIN };
 
 /**
  * Below this many workflows there is nothing to group — one short list reads
@@ -940,13 +1081,4 @@ export function catalogueInventory(
     inventory.workflows += group.workflows.length;
   }
   return inventory;
-}
-
-/** `1 tool` / `3 tools`. */
-export function countNoun(
-  count: number,
-  noun: string,
-  plural = `${noun}s`,
-): string {
-  return `${count} ${count === 1 ? noun : plural}`;
 }

@@ -3,9 +3,21 @@ import {
   A2aTaskWire,
   KagentSession,
   KagentSessionDetail,
+  MessageImage,
+  ModelCostResponse,
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+
+/**
+ * A message the person sends: its id (minted by the caller), its text, and
+ * the images attached to it.
+ */
+export type OutboundMessage = {
+  messageId: string;
+  text: string;
+  images?: readonly MessageImage[];
+};
 
 export type { KagentInstallation } from '../lib/kagentInstallations';
 
@@ -17,6 +29,22 @@ export type { KagentInstallation } from '../lib/kagentInstallations';
  * Must match KAGENT_AUTH_HEADER in plugins/agent-platform-backend.
  */
 export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
+
+/**
+ * Response header carrying the request id the backend sent toward kagent, on
+ * an error too.
+ *
+ * Must match REQUEST_ID_HEADER in plugins/agent-platform-backend.
+ */
+export const REQUEST_ID_HEADER = 'x-request-id';
+
+/**
+ * How a stream that delivered events ended. `error` is the message of the
+ * in-band `{error}` frame it ended with, when it ended with one — a controller
+ * shutting down, a gateway cut, a runtime that could not be reached — and
+ * undefined for a stream that simply closed.
+ */
+export type StreamEnd = { error?: string };
 
 /** The answer to a confirmation, as the answer routes take it. */
 export type ConfirmationAnswerRequest = {
@@ -32,6 +60,16 @@ export type ConfirmationAnswerRequest = {
 export type KagentIdentity = {
   /** The `sub` kagent used to scope the session query, when it reported one. */
   sub?: string;
+  /** The token's `email` claim, when kagent reported one. */
+  email?: string;
+};
+
+/** {@link KagentApi.getRawSession}'s answer: two route bodies, as they came. */
+export type RawSessionBodies = {
+  /** `GET /kagent/sessions/:id`: kagent's `GetSessionResponse`, `{session}`. */
+  sessionBody: unknown;
+  /** `GET /kagent/sessions/:id/tasks`: `{tasks, totalSize}`. */
+  tasksBody: unknown;
 };
 
 export interface KagentApi {
@@ -56,6 +94,18 @@ export interface KagentApi {
    * isn't deployed here" from "we couldn't read it".
    */
   listSessions(installation: string): Promise<KagentSession[]>;
+
+  /**
+   * The signed-in user's sessions on one installation, but only when the
+   * read is known to be complete: every row parsed, and the listing not cut
+   * at the backend's page limit. Undefined otherwise. Throws as
+   * {@link listSessions} does. For a caller that acts on a session's
+   * *absence* (dropping what is stored about deleted sessions); a list shown
+   * to the person uses {@link listSessions}, which keeps partial data.
+   */
+  listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined>;
 
   /**
    * One session's metadata, plus the message timestamps recovered from its
@@ -84,8 +134,22 @@ export interface KagentApi {
   ): Promise<A2aTaskWire[]>;
 
   /**
-   * Derived state for this installation's sessions — what the switcher rail
-   * groups by. Computed by the backend, because a session's state lives in its
+   * The session route's and the tasks route's bodies, untouched, for a
+   * Session export: nothing normalized, no row dropped, `totalSize` kept.
+   *
+   * The session is read first and the tasks only once it answered, so a
+   * session that is not the caller's, or no longer exists, fails as the
+   * session read's `NotFoundError` — never as the `ForbiddenError` kagent's
+   * task listing answers for the same cases.
+   */
+  getRawSession(
+    installation: string,
+    sessionId: string,
+  ): Promise<RawSessionBodies>;
+
+  /**
+   * Derived state for this installation's sessions — what the session lists
+   * group by. Computed by the backend, because a session's state lives in its
    * whole conversation and reading every one of them in the browser is not
    * affordable.
    */
@@ -108,35 +172,11 @@ export interface KagentApi {
   getSessionUsage(installation: string): Promise<SessionUsageResponse>;
 
   /**
-   * Start a session with one agent — create its AgentInstance — and return
-   * its id.
-   *
-   * Creating the instance says nothing to the agent yet. Talking happens
-   * through {@link sendMessage} / {@link streamMessage} with the returned id,
-   * which every turn is routed by.
-   *
-   * `name` is required even though the controller treats it as optional,
-   * because it does not auto-title: an instance created without one has no
-   * title at all. Derive it with `deriveSessionTitle`.
-   *
-   * `requestId` is this submission's idempotency key: the controller keys
-   * creates on it, so a retry with the same id yields the same instance rather
-   * than a second one. One per submission, reused across its retries.
-   *
-   * The agent's namespace and name are its **real** ones, as read from its
-   * `AgentTemplate` — never decoded from a session's `agent_id`, whose encoding
-   * is lossy.
-   *
-   * As with {@link renameSession}, a 400 here does **not** mean "kagent isn't
-   * available on this installation": it is how the backend reports a rejected
-   * body; an agent no Harness admits is a 409.
+   * The caller's own model cost on one installation over the last `days`
+   * days, as the gateway priced it. The backend takes the person from kagent
+   * and builds the query itself, so nothing here names whose cost it is.
    */
-  createSession(
-    installation: string,
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-  ): Promise<{ sessionId: string }>;
+  getModelCost(installation: string, days: number): Promise<ModelCostResponse>;
 
   /**
    * Stop the turn a session is running: cancel its task on the server.
@@ -155,14 +195,14 @@ export interface KagentApi {
   /**
    * Delete one session.
    *
-   * kagent scopes this by the forwarded token's user id and deletes **softly**:
-   * the row keeps its events and tasks, but every read filters it out, so the
+   * kagent scopes this to the caller and deletes **softly**: it tears the
+   * session's runtime down and marks it deleted, but its record, tasks and events
+   * stay in kagent's database. Every read answers 404 for it from then on, so the
    * session is gone as far as this plugin can tell.
    *
-   * Resolves for anything kagent accepts, which includes deleting a session that
-   * was already deleted or belongs to somebody else — its statement simply matches
-   * no rows and still answers 200. So a resolved promise means "kagent accepted
-   * this", not "a session was definitely removed".
+   * A session kagent does not find for the caller — never existed, somebody
+   * else's, already deleted — rejects with a `NotFoundError` (a gRPC `NotFound`,
+   * a 404 from the backend), not a silent success.
    */
   deleteSession(installation: string, sessionId: string): Promise<void>;
 
@@ -208,7 +248,7 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
   ): Promise<void>;
 
   /**
@@ -241,15 +281,19 @@ export interface KagentApi {
    * when the conversation poll shows the turn over while the stream is still
    * open, which is how a stream that hangs without ending is recognised; the
    * abort then surfaces exactly like any other cut.
+   *
+   * Resolves with how the stream ended ({@link StreamEnd}): the words of an
+   * in-band error after events, which is what tells a lost runtime from a cut
+   * that the turn survived.
    */
   streamMessage(
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<StreamEnd>;
 
   /**
    * Answer the confirmation a session is suspended on, resuming the same task.
@@ -295,8 +339,37 @@ export interface KagentApi {
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<StreamEnd>;
+
+  /**
+   * Follow a running turn again: A2A `SubscribeToTask` on the turn's task,
+   * relayed as {@link streamMessage} relays a turn — the task's snapshot
+   * first, then its events from now on, or the final event of a task already
+   * over. What a page does when a turn's stream ended before the turn did: a
+   * controller rollout cuts every stream in flight, and the turns run on.
+   *
+   * Rejects as {@link streamMessage} does, and a retry is worth it exactly
+   * when it rejects with a `StreamTransportError` or an `UpstreamError` (the
+   * controller unavailable or slow while it rolls, said in-band); any other
+   * error is a decision — not the person's turn, no such turn, one already
+   * over — that no retry changes.
+   */
+  subscribeToTask(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    taskId: string,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<StreamEnd>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;
+
+  /**
+   * The namespaces of the Agents the person may list on the installation
+   * (`ListAgents` with no namespace, as the person): with the controller's
+   * Kubernetes authorizer, their tenants that hold an agent.
+   */
+  listAgentNamespaces(installation: string): Promise<string[]>;
 }

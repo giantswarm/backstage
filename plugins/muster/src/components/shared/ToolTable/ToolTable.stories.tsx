@@ -115,7 +115,7 @@ export const Links: Story = {
       toolTableItem(tool, {
         mode: {
           kind: 'link',
-          href: `/agent-platform/mcp-servers/kubernetes/tools/${tool.name}`,
+          href: `/customize/connectors/gazelle/kubernetes/tools/${tool.name}`,
         },
       }),
     ),

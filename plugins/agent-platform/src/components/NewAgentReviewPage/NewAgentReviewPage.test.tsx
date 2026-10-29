@@ -5,9 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  MCPServer,
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -15,17 +18,12 @@ import type {
   AgentSpec,
   ValidateAgentResult,
 } from '../../lib/agentManager';
+import type { HarnessChoice } from '../../lib/harnesses';
 import type { DiscoveredSkill } from '../../lib/skills';
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
-
-// Header actions land in the shared plugin header, outside this tree; the page
-// renders the same Deploy in its own card, which is what is driven.
-jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  useProvidePageHeaderActions: jest.fn(),
-}));
+import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -44,10 +42,31 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
-// The MCPServer CRs the toolset section groups by; nothing here is under test.
+// The MCPServer CRs the toolset section groups by list nothing, unless a
+// test says otherwise.
+let mockServerCrs: unknown[] = [];
+/** Whether the MCPServer CRs are still being read. */
+let mockServersLoading = false;
+// The Harnesses the runtime field lists; none read unless a test says so.
+let mockHarnesses: unknown[] = [];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
+    resources:
+      (resourceClass?.kind === 'MCPServer' && mockServerCrs) ||
+      (resourceClass?.kind === 'Harness' && mockHarnesses) ||
+      [],
+    isLoading: resourceClass?.kind === 'MCPServer' && mockServersLoading,
+    errors: [],
+  }),
+}));
+
+// The targeted ModelConfig read behind the fold-out's "Underlying model";
+// unread (undefined) unless a test says what the ModelConfig runs.
+const mockUseUnderlyingModel = jest.fn();
+jest.mock('../../hooks/useUnderlyingModel', () => ({
+  ...jest.requireActual('../../hooks/useUnderlyingModel'),
+  useUnderlyingModel: (...args: unknown[]) => mockUseUnderlyingModel(...args),
 }));
 
 jest.mock('../../hooks/useAgentIconUrl', () => ({
@@ -91,10 +110,11 @@ const INFO: AgentManagerInfo = {
   capabilities: { create: true, validate: true, commit: false },
   identity: 'caller',
   apiVersions: {
-    agentTemplate: 'kagent.dev/v1alpha3',
-    harness: 'kagent.dev/v1alpha3',
-    remoteMcpServer: 'kagent.dev/v1alpha3',
-    modelConfig: 'kagent.dev/v1alpha3',
+    agent: 'api.kagent.dev/v1alpha3',
+    agentTemplate: 'api.kagent.dev/v1alpha3',
+    harness: 'api.kagent.dev/v1alpha3',
+    remoteMcpServer: 'api.kagent.dev/v1alpha3',
+    modelConfig: 'api.kagent.dev/v1alpha3',
     helmRelease: 'helm.toolkit.fluxcd.io/v2',
     ociRepository: 'source.toolkit.fluxcd.io/v1',
   },
@@ -149,6 +169,8 @@ function dryRunOf(spec: AgentSpec): ValidateAgentResult {
 }
 
 type Scenario = {
+  /** Extra egress origins typed on the first step, one per line. */
+  egressText?: string;
   info?: Partial<AgentManagerInfo>;
   /** Violations the dry run reports instead of a clean result. */
   violations?: string[];
@@ -158,6 +180,10 @@ type Scenario = {
   createError?: Error;
   /** The dry run itself is refused (thrown), e.g. a not-connected session. */
   validateError?: Error;
+  /** The Harness picked on the details step; none is the platform Harness. */
+  harness?: HarnessChoice;
+  /** The toolset picked on the Tools step; `preset:read-only` by default. */
+  toolset?: string[];
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -188,7 +214,7 @@ function makeMusterApi(scenario: Scenario = {}) {
             created: { ociRepository: true, helmRelease: true },
             requestedBy: 'admin@lab.local',
             ...(args.mode === 'commit'
-              ? { pullRequestUrl: 'https://github.com/org/gitops/pull/7' }
+              ? committedTo('https://github.com/org/gitops/pull/7')
               : {}),
           };
         }
@@ -230,16 +256,24 @@ function makeMusterApi(scenario: Scenario = {}) {
 function Seed({
   children,
   withSkill = true,
+  harness,
+  egressText,
+  toolset = ['preset:read-only'],
 }: {
   children: ReactNode;
   withSkill?: boolean;
+  harness?: HarnessChoice;
+  egressText?: string;
+  toolset?: string[];
 }) {
   const {
     setName,
     setDescription,
     setSystemMessage,
+    setEgressText,
     setInstallation,
     selectModelConfig,
+    selectHarness,
     toggleSkill,
     setToolset,
     isComplete,
@@ -248,18 +282,26 @@ function Seed({
     setName('Go service reviewer');
     setDescription('Reviews pull requests.');
     setSystemMessage('You review pull requests.');
+    if (egressText) {
+      setEgressText(egressText);
+    }
     setInstallation('gazelle');
     selectModelConfig('opus-4-7', 'kagent');
+    selectHarness(harness);
     if (withSkill) {
       toggleSkill(SKILL);
     }
-    setToolset(['preset:read-only']);
+    setToolset(toolset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
 }
 
-async function renderReview(scenario: Scenario = {}, withSkill = true) {
+async function renderReview(
+  scenario: Scenario = {},
+  withSkill = true,
+  persistDraft = false,
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -270,23 +312,44 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <NewAgentFormProvider>
-          <Seed withSkill={withSkill}>
-            <NewAgentReviewPage />
-          </Seed>
-        </NewAgentFormProvider>
+        {/* The step's actions land in the wizard frame's footer through the
+            page-header slot, which is what is driven. */}
+        <PageHeaderActionsProvider>
+          <NewAgentFormProvider persistDraft={persistDraft}>
+            <Seed
+              withSkill={withSkill}
+              harness={scenario.harness}
+              egressText={scenario.egressText}
+              toolset={scenario.toolset}
+            >
+              <NewAgentReviewPage />
+            </Seed>
+          </NewAgentFormProvider>
+        </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
   return { callTool };
 }
 
+/** The drafts kept in the tab (its other entries are not the form's). */
+const draftCount = () =>
+  Object.keys(window.sessionStorage).filter(key => key.startsWith('gs-draft:'))
+    .length;
+
+/** The review step's refusal, by its title. */
+async function refusalAlert(title: string): Promise<HTMLElement> {
+  const heading = await screen.findByText(title);
+  return heading.closest('.bui-Alert') as HTMLElement;
+}
+
 const deployButton = () =>
-  within(
-    screen.getByRole('heading', { name: 'Deploy' })
-      .parentElement as HTMLElement,
-  ).getByRole('button', { name: /Deploy agent|Deploying…/ });
+  screen.getByRole('button', { name: /^(Create agent|Creating…)$/ });
+
+/** The plain summary's answer for `label`. */
+const plainRow = (label: string) =>
+  screen.getByText(label, { selector: 'dt' }).nextElementSibling as HTMLElement;
 
 function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
   const call = callTool.mock.calls.find(([name]) => name === tool);
@@ -296,9 +359,154 @@ function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockUseUnderlyingModel.mockReset();
+  mockServerCrs = [];
+  mockServersLoading = false;
+  mockHarnesses = [];
+  window.sessionStorage.clear();
 });
 
+/** A connector muster signs in to per session, as `grafana-cloud` is. */
+function grafanaCloud() {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name: 'grafana-cloud',
+        namespace: 'muster',
+        annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
+      },
+      spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+    } as never,
+    'gazelle',
+  );
+}
+
 describe('NewAgentReviewPage', () => {
+  it('leads with the plain summary and keeps the manifests under Technical details', async () => {
+    await renderReview();
+
+    expect(
+      screen.getByRole('heading', { name: 'Check and create' }),
+    ).toBeInTheDocument();
+    expect(plainRow('Name')).toHaveTextContent('Go service reviewer');
+    expect(plainRow("What it's for")).toHaveTextContent(
+      'Reviews pull requests.',
+    );
+    // No display name was handed over, so the ModelConfig's name stands in.
+    expect(plainRow('Model')).toHaveTextContent('opus-4-7');
+    // The runtime field's mark; its title too, once the Harness is read.
+    expect(plainRow('Runtime')).toHaveTextContent('Platform default');
+    expect(plainRow('Skills')).toHaveTextContent('Incident responder');
+    expect(plainRow('Tools')).toHaveTextContent('Read-only tools');
+
+    // The release and its manifests sit in a collapsed disclosure.
+    const release = await screen.findByTestId('code-go-service-reviewer.yaml');
+    const technical = release.closest('details') as HTMLDetailsElement;
+    expect(technical).not.toBeNull();
+    expect(technical.open).toBe(false);
+    expect(
+      within(technical).getByText('Technical details'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    // Nothing read about the ModelConfig: no underlying-model line.
+    expect(within(technical).queryByText('Underlying model')).toBeNull();
+  });
+
+  it('keeps the ModelConfig name and names the model it runs under Technical details', async () => {
+    mockUseUnderlyingModel.mockReturnValue('claude-sonnet-4-6 · Anthropic');
+
+    await renderReview();
+
+    // The plain summary keeps the ModelConfig's name (PO decision L6).
+    expect(plainRow('Model')).toHaveTextContent('opus-4-7');
+    expect(plainRow('Model')).not.toHaveTextContent('claude-sonnet-4-6');
+    // The model is one disclosure away, beside the ModelConfig it belongs to.
+    const release = await screen.findByTestId('code-go-service-reviewer.yaml');
+    const technical = release.closest('details') as HTMLDetailsElement;
+    const item = within(technical).getByText('Underlying model').parentElement;
+    expect(item).toHaveTextContent('claude-sonnet-4-6 · Anthropic');
+    expect(mockUseUnderlyingModel).toHaveBeenCalledWith(
+      'gazelle',
+      'opus-4-7',
+      'kagent',
+    );
+  });
+
+  it('sends the extra egress origins and names them in the summary', async () => {
+    const { callTool } = await renderReview({
+      egressText: 'https://github.com:443\nhttps://*.githubusercontent.com',
+    });
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_validate_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').egress,
+    ).toEqual(['https://github.com:443', 'https://*.githubusercontent.com']);
+    expect(screen.getByText('Extra egress')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'https://github.com:443, https://*.githubusercontent.com',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('creates an agent with a connector that needs a sign-in able to start it', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['server:grafana-cloud', 'tool:x_docs_search'],
+    });
+
+    expect(plainRow('Tools')).toHaveTextContent(
+      'Adds core_auth_login, which lets the agent start the sign-in to Grafana Cloud.',
+    );
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').toolset,
+    ).toEqual([
+      'server:grafana-cloud',
+      'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
+
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_create_agent').toolset,
+    ).toEqual([
+      'server:grafana-cloud',
+      'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
+  });
+
+  it('holds Create while it is still read whether a connector needs the sign-in tool', async () => {
+    mockServerCrs = [grafanaCloud()];
+    mockServersLoading = true;
+    const { callTool } = await renderReview({
+      toolset: ['server:grafana-cloud'],
+    });
+
+    expect(deployButton()).toBeDisabled();
+    expect(
+      callTool.mock.calls.filter(
+        ([name]) => name === 'x_agent-manager_validate_agent',
+      ),
+    ).toHaveLength(0);
+  });
+
   it("renders agent-manager's dry run: the 1.x OCIRepository, the HelmRelease with the pinned skill, the chart and the Harness", async () => {
     const { callTool } = await renderReview();
 
@@ -332,6 +540,8 @@ describe('NewAgentReviewPage', () => {
       toolset: ['preset:read-only'],
     });
     expect(spec).not.toHaveProperty('runtime');
+    expect(spec).not.toHaveProperty('harness');
+    expect(spec).not.toHaveProperty('egress');
 
     // What agent-manager rendered is what is shown, verbatim.
     const oci = await screen.findByTestId('code-agent.yaml');
@@ -349,10 +559,11 @@ describe('NewAgentReviewPage', () => {
     expect(screen.getByText('Harness').parentElement).toHaveTextContent(
       'kagent',
     );
-    // The skills summary names the pin.
-    expect(screen.getByText('@cb1fb76')).toBeInTheDocument();
-    // The Tools summary names the preset by its label, the selector below it.
-    expect(screen.getByText('Read-only tools').parentElement).toHaveTextContent(
+    // The technical summary names the skill's pin and the selectors.
+    expect(screen.getByText('cb1fb76').parentElement).toHaveTextContent(
+      /^@cb1fb76$/,
+    );
+    expect(screen.getByText('Toolset').parentElement).toHaveTextContent(
       'preset:read-only',
     );
     // Validated against the chart schema agent-manager named.
@@ -361,7 +572,74 @@ describe('NewAgentReviewPage', () => {
     ).toHaveTextContent('1.0.0 (registry)');
   });
 
-  it("shows the dry run's violations inline and withholds Deploy", async () => {
+  it('names the platform Harness as the runtime field does, once it is read', async () => {
+    const { Harness } = jest.requireActual(
+      '@giantswarm/backstage-plugin-kubernetes-react',
+    );
+    mockHarnesses = [
+      new Harness(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'Harness',
+          metadata: { name: 'kagent', namespace: 'kagent' },
+          spec: {
+            kagent: {},
+            workload: { image: 'registry.example/kagent-harness@sha256:0123' },
+          },
+        },
+        'gazelle',
+      ),
+    ];
+    await renderReview();
+
+    expect(
+      await screen.findByText('Declarative (Go ADK) · Platform default'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no limits for a Claude Code Harness', async () => {
+    await renderReview({ harness: { name: 'claude', runtime: 'claude' } });
+
+    await screen.findByText('Claude Code');
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
+    expect(screen.queryByText(/per turn/)).toBeNull();
+  });
+
+  it('validates and creates on the Harness picked, and names it in the review', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      harness: {
+        name: 'claude',
+        runtime: 'claude',
+        imageName: 'claude-harness',
+      },
+    });
+
+    await waitFor(() =>
+      expect(
+        specSentTo(callTool, 'x_agent-manager_validate_agent'),
+      ).toMatchObject({ harness: 'claude' }),
+    );
+    // The plain summary names the runtime, the technical one the Harness.
+    expect(plainRow('Runtime')).toHaveTextContent('Claude Code');
+    expect(screen.getByText('Harness').parentElement).toHaveTextContent(
+      'claude',
+    );
+    expect(
+      screen.getByText(/the agent runs on the Harness/),
+    ).toBeInTheDocument();
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(
+        specSentTo(callTool, 'x_agent-manager_create_agent'),
+      ).toMatchObject({ harness: 'claude' }),
+    );
+  });
+
+  it("leads a refusal it does not recognise plainly, with the dry run's violations folded, and withholds Deploy", async () => {
     await renderReview({
       violations: [
         'modelConfig "opus-4-7" not found in namespace kagent; valid: default-model-config',
@@ -369,13 +647,67 @@ describe('NewAgentReviewPage', () => {
       ],
     });
 
-    const list = await screen.findByRole('list', { name: 'Violations' });
+    const alert = await refusalAlert('This agent cannot be created');
+    expect(
+      within(alert).getByText(
+        'The platform’s checks refused this configuration. Change what the technical details name, or ask your platform team for help.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(alert).getByRole('button', { name: 'Technical details' }),
+    );
+    const list = within(alert).getByRole('list', { name: 'Violations' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(list).toHaveTextContent('valid: default-model-config');
-    expect(
-      screen.getByText('agent-manager refuses this configuration'),
-    ).toBeInTheDocument();
     expect(deployButton()).toBeDisabled();
+  });
+
+  it('words an egress origin refused on a coding Harness, agent-manager’s text folded', async () => {
+    const refusal =
+      'invalid request: egress origin "https://registry.npmjs.org" is not one of Harness claude\'s origins (https://github.com, https://api.github.com): a coding agent reaches its Harness\'s origins only, which the platform sets';
+    await renderReview({
+      harness: { name: 'claude', runtime: 'claude' },
+      violations: [refusal],
+    });
+
+    const alert = await refusalAlert('This agent cannot be created');
+    expect(
+      within(alert).getByText(
+        'Claude Code agents can only reach addresses the platform allows. Remove https://registry.npmjs.org, or ask your platform team to allow it.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(alert).queryByText(/checks refused/)).toBeNull();
+    await userEvent.click(
+      within(alert).getByRole('button', { name: 'Technical details' }),
+    );
+    expect(
+      within(within(alert).getByRole('list', { name: 'Violations' })).getByText(
+        refusal,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('words a recognised refusal beside one it does not recognise', async () => {
+    await renderReview({
+      harness: { name: 'claude', runtime: 'claude' },
+      violations: [
+        'egress origin "https://registry.npmjs.org" is not one of Harness claude\'s origins (none): a coding agent reaches its Harness\'s origins only, which the platform sets',
+        'egress origin "https://proxy.golang.org" is not one of Harness claude\'s origins (none): a coding agent reaches its Harness\'s origins only, which the platform sets',
+        'skills[0].git.commit: must be a full commit id',
+      ],
+    });
+
+    const alert = await refusalAlert('This agent cannot be created');
+    expect(
+      within(alert).getByText(
+        'Claude Code agents can only reach addresses the platform allows. Remove https://registry.npmjs.org and https://proxy.golang.org, or ask your platform team to allow them.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(alert).getByText(
+        'The platform’s checks refused more of it. Change what the technical details name, or ask your platform team for help.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows the dry run's notes beside a valid result and keeps Deploy", async () => {
@@ -428,7 +760,7 @@ describe('NewAgentReviewPage', () => {
 
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/agents/gazelle/kagent/go-service-reviewer',
+        '/customize/agents/gazelle/kagent/go-service-reviewer',
         {
           state: {
             [AGENT_CREATED_STATE_KEY]: {
@@ -441,6 +773,35 @@ describe('NewAgentReviewPage', () => {
         },
       ),
     );
+  });
+
+  it('drops the kept draft once the agent is created', async () => {
+    const user = userEvent.setup();
+    await renderReview({}, true, true);
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(draftCount()).toBe(1));
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+    expect(draftCount()).toBe(0);
+  });
+
+  it('keeps the draft when the create is refused', async () => {
+    const user = userEvent.setup();
+    await renderReview(
+      { createError: new Error('conflict: agent already exists') },
+      true,
+      true,
+    );
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    expect(await screen.findByText('Refused')).toBeInTheDocument();
+    expect(draftCount()).toBe(1);
   });
 
   it("shows a viewer's Forbidden in agent-manager's words and stays on the page", async () => {
@@ -494,22 +855,24 @@ describe('NewAgentReviewPage', () => {
     expect(deployButton()).toBeDisabled();
   });
 
-  it('hides Commit while agent-manager does not report the capability', async () => {
+  it('hides the pull-request alternative while agent-manager does not report the capability', async () => {
     await renderReview();
     await screen.findByTestId('code-agent.yaml');
     expect(
-      screen.queryByRole('button', { name: /Commit/ }),
+      screen.queryByRole('button', { name: /Propose as pull request/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('offers Commit once agent-manager reports it, and shows the pull request it opened', async () => {
+  it('offers the pull-request alternative once agent-manager reports it, and shows the pull request it opened', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderReview({
       info: { capabilities: { ...INFO.capabilities, commit: true } },
     });
 
     await screen.findByTestId('code-agent.yaml');
-    const commit = await screen.findByRole('button', { name: 'Commit' });
+    const commit = await screen.findByRole('button', {
+      name: 'Propose as pull request instead',
+    });
     await waitFor(() => expect(commit).toBeEnabled());
     await user.click(commit);
 
@@ -520,11 +883,74 @@ describe('NewAgentReviewPage', () => {
         'gazelle',
       ),
     );
-    expect(await screen.findByText('Pull request opened')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Open the pull request ↗' }),
+      await screen.findByText(/Pull request #7 opened/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Review pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('drops the kept draft once the pull request is open, and keeps showing the form', async () => {
+    const user = userEvent.setup();
+    await renderReview(
+      { info: { capabilities: { ...INFO.capabilities, commit: true } } },
+      true,
+      true,
+    );
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(draftCount()).toBe(1));
+    const commit = await screen.findByRole('button', {
+      name: 'Propose as pull request instead',
+    });
+    await waitFor(() => expect(commit).toBeEnabled());
+    await user.click(commit);
+
+    expect(
+      await screen.findByText(/Pull request #7 opened/),
+    ).toBeInTheDocument();
+    expect(draftCount()).toBe(0);
+    expect(plainRow('Name')).toHaveTextContent('Go service reviewer');
+  });
+
+  it('moves the pull-request alternative out of the footer at phone width', async () => {
+    const layout = mockPhoneLayout();
+    try {
+      const user = userEvent.setup();
+      const { callTool } = await renderReview({
+        info: { capabilities: { ...INFO.capabilities, commit: true } },
+      });
+
+      await screen.findByTestId('code-agent.yaml');
+      const commit = await screen.findByRole('button', {
+        name: 'Propose as pull request instead',
+      });
+      // One row in the footer: Back (an icon) and Create; the alternative is
+      // on the page, above the technical details.
+      const footer = screen.getByRole('contentinfo');
+      expect(footer).not.toContainElement(commit);
+      expect(
+        within(footer)
+          .getAllByRole('button')
+          .map(
+            button => button.getAttribute('aria-label') ?? button.textContent,
+          ),
+      ).toEqual(['Back', 'Create agent']);
+
+      await waitFor(() => expect(commit).toBeEnabled());
+      await user.click(commit);
+      await waitFor(() =>
+        expect(callTool).toHaveBeenCalledWith(
+          'x_agent-manager_create_agent',
+          expect.objectContaining({ mode: 'commit' }),
+          'gazelle',
+        ),
+      );
+    } finally {
+      layout.restore();
+    }
   });
 
   it("renders the manual fallback from agent-manager's values and chart", async () => {

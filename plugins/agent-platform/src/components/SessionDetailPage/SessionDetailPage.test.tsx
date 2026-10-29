@@ -1,23 +1,49 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  storageApiRef,
+  toastApiRef,
+  type StorageApi,
+} from '@backstage/frontend-plugin-api';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 
-import { agentsRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  sessionsRouteRef,
+  workspacesRouteRef,
+} from '../../routes';
+import type { SessionWorkspaceName } from '../../hooks/useWorkspaceNames';
+import type { Workspace, WorkspaceDetail } from '../../lib/workspaceManager';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
-import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
+import type {
+  PendingAnswer,
+  UseAnswerConfirmationResult,
+} from '../../hooks/useAnswerConfirmation';
 import type { UseCancelTaskResult } from '../../hooks/useCancelTask';
 import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
-import { buildTimeline } from '../../lib/kagentTimeline';
+import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
+import type { EgressRefusal } from '../../lib/egressRefusals';
+import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
+  formatBytes,
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { buildContinuationPrompt } from '../../lib/continuationPrompt';
 import { SessionDetailPage } from './SessionDetailPage';
+import {
+  mockCollapsibleLayout,
+  mockDesktopLayout,
+  mockIntersectionObserver,
+  mockPhoneLayout,
+  type MockedCollapsibleLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import {
   sessionDetailV099 as detailV099,
@@ -36,6 +62,24 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
+// The workspace's name as the list resolves it; a session without a
+// workspace gets none, whatever a test sets.
+const mockWorkspaceInstallations = jest.fn<void, [string[]]>();
+let mockWorkspaceName: SessionWorkspaceName = { status: 'unnamed' };
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: (installations: string[]) => {
+    mockWorkspaceInstallations(installations);
+    return (session: { workspace?: unknown }) =>
+      session.workspace ? mockWorkspaceName : undefined;
+  },
+}));
+const mockUseWorkspaceDetail = jest.fn();
+jest.mock('../../hooks/useWorkspaceActions', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceActions'),
+  useWorkspaceDetail: (...args: unknown[]) => mockUseWorkspaceDetail(...args),
+}));
+
 const mockUseSessionDetail = jest.fn<SessionDetailView, []>();
 jest.mock('../../hooks/useSessionDetail', () => ({
   useSessionDetail: () => mockUseSessionDetail(),
@@ -51,37 +95,6 @@ jest.mock('../AgentsDataProvider', () => ({
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
-}));
-
-// The rail runs its own queries and this test mounts no query client, so it is
-// stubbed — its own suite covers what it renders. What matters here is *where*
-// the page puts it, and that it survives every one of the page's exits.
-jest.mock('../SessionSwitcherRail', () => ({
-  SessionSwitcherRail: ({
-    installation,
-    currentSessionId,
-    currentSessionState,
-  }: {
-    installation: string;
-    currentSessionId?: string;
-    currentSessionState?: { state: string | null };
-  }) => (
-    <div
-      data-testid="session-switcher-rail"
-      data-current-state={currentSessionState?.state ?? ''}
-    >
-      {installation}/{currentSessionId}
-    </div>
-  ),
-}));
-
-// jsdom implements no matchMedia, so MUI's useMediaQuery answers false and the
-// rail would never render. Driven explicitly instead, so both branches are real
-// tests rather than an accident of the environment.
-const mockMatchesUpSm = jest.fn(() => true);
-jest.mock('@material-ui/core', () => ({
-  ...jest.requireActual('@material-ui/core'),
-  useMediaQuery: () => mockMatchesUpSm(),
 }));
 
 // The page calls all of these on the menu's behalf, because the menu renders in
@@ -107,23 +120,103 @@ jest.mock('../../hooks/useRenameSession', () => ({
   }),
 }));
 
+/** The installation's connectors, as `serverInfoOf` reads them; none unless set. */
+let mockMusterServers: unknown[] = [];
+let mockConnectorLabels = new Map<string, string>();
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: mockMusterServers,
+    resources: [],
+    labels: mockConnectorLabels,
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
 // Stubbed for the same reason as the write hooks below: it reaches Mimir
 // through the gs plugin's api ref, and this test mounts no APIs. An empty
-// `rates` makes the Est. cost stat read "—", which is asserted explicitly in
-// one test rather than assumed away here.
+// `rates` makes the estimated cost read "—", which is asserted explicitly in
+// one test rather than assumed away here. A test that needs a priced estimate
+// sets `mockPricedRate`; `beforeEach` clears it.
+let mockPricedRate: number | undefined;
 jest.mock('../../hooks/useTokenRates', () => ({
   useTokenRates: () => ({
-    rates: {},
-    tier: 'none',
+    rates: mockPricedRate === undefined ? {} : { blended: mockPricedRate },
+    tier: mockPricedRate === undefined ? 'none' : 'installation',
     model: undefined,
     isLoading: false,
     isAvailable: true,
     window: '7d',
   }),
+}));
+
+// Stubbed like `useTokenRates`: it reads Mimir through the gs plugin's api ref.
+// The refusals on a timeline are covered in SessionTimeline's tests; a test
+// sets `mockEgressRefusals` for one, and `beforeEach` clears it.
+let mockEgressRefusals: EgressRefusal[] = [];
+jest.mock('../../hooks/useSessionEgressRefusals', () => ({
+  useSessionEgressRefusals: () => mockEgressRefusals,
+}));
+
+// The remedy reads agent-manager, the Harnesses and the person's access; its
+// cases are covered by `egressRemedyKind`'s and EgressRefusedEntry's tests.
+const mockUseEgressRemedy = jest.fn();
+jest.mock('../../hooks/useEgressRemedy', () => ({
+  useEgressRemedy: (options: unknown) => mockUseEgressRemedy(options),
+}));
+
+// The person's ChatGPT connection: it reads a ModelConfig and muster, neither
+// mounted here. Idle (no ChatGPT model) unless a test says otherwise.
+// A store, so a test can connect the person while the page is mounted.
+const mockUseChatGptConnection = jest.fn();
+const mockChatGptListeners = new Set<() => void>();
+function setChatGpt(value: unknown) {
+  mockUseChatGptConnection.mockReturnValue(value);
+  act(() => mockChatGptListeners.forEach(listener => listener()));
+}
+jest.mock('../../hooks/useChatGptConnection', () => {
+  const { useSyncExternalStore } = jest.requireActual('react');
+  return {
+    ...jest.requireActual('../../hooks/useChatGptConnection'),
+    useChatGptConnection: () =>
+      useSyncExternalStore(
+        (listener: () => void) => {
+          mockChatGptListeners.add(listener);
+          return () => mockChatGptListeners.delete(listener);
+        },
+        () => mockUseChatGptConnection(),
+      ),
+  };
+});
+const NO_CHATGPT = {
+  isPersonalModel: false,
+  blocksTurn: false,
+  isLoading: false,
+};
+const CHATGPT_NOT_CONNECTED = {
+  isPersonalModel: true,
+  blocksTurn: true,
+  isLoading: false,
+};
+const CHATGPT_CONNECTED = {
+  isPersonalModel: true,
+  blocksTurn: false,
+  isLoading: false,
+};
+
+// The ChatGPT row's dialog reads muster, which is not mounted: its props are
+// what matters here.
+const mockChatGptDialog = jest.fn();
+jest.mock('../ChatGptConnectPrompt', () => ({
+  ...jest.requireActual('../ChatGptConnectPrompt'),
+  ChatGptConnectDialog: (props: unknown) => {
+    mockChatGptDialog(props);
+    return null;
+  },
 }));
 
 // Stubbed for the same reason as the mutations above: no query client is mounted.
@@ -138,7 +231,20 @@ jest.mock('../../hooks/useSendMessage', () => ({
 const mockAnswer = jest.fn();
 const mockUseAnswerConfirmation = jest.fn<UseAnswerConfirmationResult, []>();
 jest.mock('../../hooks/useAnswerConfirmation', () => ({
+  // The real error classifier, so the page reads the hook's errors as it will.
+  ...jest.requireActual('../../hooks/useAnswerConfirmation'),
   useAnswerConfirmation: () => mockUseAnswerConfirmation(),
+}));
+
+// Stubbed: it reads `kagentApiRef`, and this test mounts no APIs. The export
+// itself is covered by SessionActionsMenu.test.tsx.
+const mockExportSession = jest.fn();
+const mockUseExportSession = jest.fn();
+jest.mock('../../hooks/useExportSession', () => ({
+  useExportSession: (target: unknown) => {
+    mockUseExportSession(target);
+    return mockExportSession;
+  },
 }));
 
 // Stubbed like the other write hooks: it reads `kagentApiRef`, and this test mounts
@@ -191,6 +297,7 @@ function idleConfirmation(
     isAnswering: false,
     pending: null,
     stream: null,
+    isReconnecting: false,
     isStreamLost: false,
     failed: null,
     error: null,
@@ -203,12 +310,63 @@ function idleConfirmation(
 // through router state, because the hook's own contract — read once, then clear the
 // state — has its own tests; what matters here is that the page dispatches it.
 const mockUseNewSessionHandoff = jest.fn();
-jest.mock('../../hooks/useNewSessionHandoff', () => ({
-  ...jest.requireActual('../../hooks/useNewSessionHandoff'),
-  useNewSessionHandoff: () => mockUseNewSessionHandoff(),
-}));
+// The images a new session is opened with, as the page hands them over.
+const mockStashHandoffImages = jest.fn();
+jest.mock('../../hooks/useNewSessionHandoff', () => {
+  const actual = jest.requireActual('../../hooks/useNewSessionHandoff');
+  return {
+    ...actual,
+    useNewSessionHandoff: () => mockUseNewSessionHandoff(),
+    stashHandoffImages: (images: unknown) => {
+      mockStashHandoffImages(images);
+      return actual.stashHandoffImages(images);
+    },
+  };
+});
 
 /** The hook's idle state, which most tests want. */
+/** An image of a message in flight, as the composer prepared it. */
+const PENDING_IMAGE = {
+  id: 'image-1',
+  name: 'shot.png',
+  mediaType: 'image/png' as const,
+  byteSize: 70,
+  previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+};
+
+/**
+ * The timeline with an image attached to the last message the person sent,
+ * as the poll reads one back.
+ */
+function withImageOnLastMessage(view: SessionDetailView): SessionDetailView {
+  const last = [...view.timeline.items]
+    .reverse()
+    .find(item => item.kind === 'user-message')!;
+  return {
+    ...view,
+    timeline: {
+      ...view.timeline,
+      items: [
+        ...view.timeline.items,
+        {
+          kind: 'attachment',
+          id: 'sent-image',
+          taskIndex: last.taskIndex,
+          messageId: last.messageId,
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+      ],
+    },
+  };
+}
+
 function idleSend(
   overrides: Partial<UseSendMessageResult> = {},
 ): UseSendMessageResult {
@@ -217,9 +375,11 @@ function idleSend(
     isSending: false,
     pending: null,
     stream: null,
+    isReconnecting: false,
     isStreamLost: false,
     failed: null,
     error: null,
+    timeouts: undefined,
     reset: jest.fn(),
     ...overrides,
   };
@@ -255,7 +415,7 @@ const loadedView: SessionDetailView = {
 const awaitingInput = {
   raw: 'input-required',
   key: 'input-required',
-  label: 'Waiting for input',
+  label: 'Waiting for you',
   tone: 'warning' as const,
   isActive: true,
 };
@@ -266,14 +426,17 @@ const emptyTimeline = {
   skippedMessages: 0,
 };
 
-async function render() {
-  await renderInTestApp(<SessionDetailPage />, {
+async function render(
+  apis?: NonNullable<Parameters<typeof renderInTestApp>[1]>['apis'],
+) {
+  return renderInTestApp(<SessionDetailPage />, {
+    apis,
     // `agentsRouteRef` is here for the link on the agent's name, which resolves
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
     mountedRoutes: {
-      '/agent-platform/sessions': sessionsRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/sessions': sessionsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -286,12 +449,18 @@ function lastProvidedActions() {
 
 describe('SessionDetailPage', () => {
   beforeEach(() => {
+    mockPricedRate = undefined;
+    mockEgressRefusals = [];
+    mockUseEgressRemedy.mockReset();
+    mockUseEgressRemedy.mockReturnValue({ kind: 'pending' });
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
     mockSendMessage.mockResolvedValue(undefined);
     mockUseSendMessage.mockReturnValue(idleSend());
     mockUseNewSessionHandoff.mockReturnValue(undefined);
+    mockUseChatGptConnection.mockReturnValue(NO_CHATGPT);
+    mockStashHandoffImages.mockReset();
     mockAnswer.mockReset();
     mockAnswer.mockResolvedValue(undefined);
     mockUseAnswerConfirmation.mockReturnValue(idleConfirmation());
@@ -335,6 +504,16 @@ describe('SessionDetailPage', () => {
     );
   });
 
+  it('offers no share — shared sessions have no UI surface yet', async () => {
+    // The backend's share routes exist for kagent-compatible clients, but the
+    // portal cannot open a session from a token, so the UI offers no share.
+    await render();
+
+    expect(
+      screen.queryByRole('button', { name: /share/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('links the agent name to the agent, so a session is a way in to it', async () => {
     await render();
 
@@ -342,7 +521,7 @@ describe('SessionDetailPage', () => {
     // agent sent — as text, so only the header one is a link.
     expect(screen.getByRole('link', { name: 'Issue tracker' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/issue-tracker',
+      '/customize/agents/gazelle/kagent/issue-tracker',
     );
   });
 
@@ -366,6 +545,17 @@ describe('SessionDetailPage', () => {
     await render();
 
     expect(lastProvidedActions()).not.toBeNull();
+  });
+
+  it('hands the menu an export of this session, named after its agent', async () => {
+    await render();
+
+    expect(lastProvidedActions().props.onExport).toBe(mockExportSession);
+    expect(mockUseExportSession).toHaveBeenLastCalledWith({
+      installation: 'gazelle',
+      sessionId: 'abc',
+      agentName: 'issue-tracker',
+    });
   });
 
   it.each([
@@ -394,17 +584,40 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
-  it('labels token totals as billed, since the raw number is startling', async () => {
-    // Every model call re-sends the whole context, so a short session can total
-    // millions of prompt tokens. Genuine billed usage, but it reads as a bug
-    // without the label. Shortened from "(billed, cumulative)" when the label
-    // started rendering uppercase; the full reasoning is in the component and
-    // in docs/agent-platform.md.
+  it('puts the session totals behind the composer’s chip', async () => {
+    // The prototype's cost + context popover: tokens, turns and costs live
+    // behind one chip in the composer's controls — always on screen with the
+    // docked box — rather than in the page header, which scrolls away.
     await render();
 
-    expect(screen.getByText('Input tokens (billed)')).toBeInTheDocument();
+    const chip = screen.getByRole('button', {
+      name: /Session cost and context/,
+    });
+    expect(
+      within(screen.getByTestId('composer-card')).getByRole('button', {
+        name: /Session cost and context/,
+      }),
+    ).toBe(chip);
+    await userEvent.click(chip);
+
+    expect(screen.getByText('Tokens in / out')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
-    expect(screen.getByText('Output tokens')).toBeInTheDocument();
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    expect(screen.getByText('Context used')).toBeInTheDocument();
+  });
+
+  it('keeps the chip in reach when the composer is withheld', async () => {
+    // A read-only share has no box to carry the chip, but its cost is still
+    // worth seeing — the chip docks beside the withheld reason instead.
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      detail: { ...detail, readOnly: true },
+    });
+    await render();
+
+    expect(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    ).toBeInTheDocument();
   });
 
   it('shows the cost a claude Harness turn reported beside the estimate', async () => {
@@ -416,13 +629,78 @@ describe('SessionDetailPage', () => {
     });
     await render();
 
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    );
+
     expect(screen.getByText('Est. cost')).toBeInTheDocument();
     expect(screen.getByText('Reported cost')).toBeInTheDocument();
-    expect(screen.getByText('$0.131')).toBeInTheDocument();
+    // Twice on purpose: the chip leads with the reported figure, and the
+    // popover row repeats it beside its label.
+    expect(screen.getAllByText('$0.131').length).toBeGreaterThan(0);
+  });
+
+  it('names the tokens the estimate priced as the rows above it show them', async () => {
+    // The reported session: kagent's total of 48,478 tokens, in exact digits
+    // in the basis line, sat under an input count reading 48.0k and looked
+    // like a rounding error. The basis now names the counts the rows show.
+    mockPricedRate = 0.000003;
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: {
+        ...timeline,
+        tokens: { total: 48_478, prompt: 48_012, completion: 466 },
+      },
+    });
+    await render();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Session cost and context',
+    });
+    expect(within(dialog).getByText('48.0k / 466')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /applied to the 48\.0k input and 466 output tokens/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/48,478/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/other tokens/)).not.toBeInTheDocument();
+  });
+
+  it('says how many tokens the estimate leaves unpriced', async () => {
+    // Thinking a model reports apart from its output is in kagent's total and
+    // in neither part, so the estimate does not price it, and the line says so.
+    mockPricedRate = 0.000003;
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: {
+        ...timeline,
+        tokens: { total: 68_478, prompt: 48_012, completion: 466 },
+      },
+    });
+    await render();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    );
+
+    expect(
+      within(
+        screen.getByRole('dialog', { name: 'Session cost and context' }),
+      ).getByText(/kagent also counted 20\.0k other tokens, such as thinking/),
+    ).toBeInTheDocument();
   });
 
   it('shows no reported cost when the runtime reports none', async () => {
     await render();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    );
 
     expect(screen.getByText('Est. cost')).toBeInTheDocument();
     expect(screen.queryByText('Reported cost')).not.toBeInTheDocument();
@@ -442,6 +720,47 @@ describe('SessionDetailPage', () => {
     await render();
 
     expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+  });
+
+  it('reads the remedy for an egress refusal only once the timeline shows one', async () => {
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(screen.queryByTestId('timeline-egress-refused')).toBeNull();
+  });
+
+  it('shows the remedy for the session’s agent under its egress refusal', async () => {
+    mockEgressRefusals = [
+      {
+        scheme: 'https',
+        host: 'registry.npmjs.org',
+        port: 443,
+        at: new Date().toISOString(),
+        count: 2,
+      },
+    ];
+    mockUseEgressRemedy.mockReturnValue({
+      kind: 'platform',
+      runtime: 'Claude Code',
+    });
+
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        installation: 'gazelle',
+        enabled: true,
+        agent: { namespace: 'kagent', name: 'issue-tracker' },
+      }),
+    );
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        /can only reach the addresses the platform allows for Claude Code\. Ask your platform team to allow registry\.npmjs\.org\./,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows a not-found state rather than an error for a missing session', async () => {
@@ -528,7 +847,7 @@ describe('SessionDetailPage', () => {
 
     expect(screen.getByText('Could not load this session')).toBeInTheDocument();
     expect(screen.getByText(/kagent is unavailable/)).toBeInTheDocument();
-    expect(screen.queryByText('no activity')).not.toBeInTheDocument();
+    expect(screen.queryByText('No activity yet')).not.toBeInTheDocument();
     expect(screen.queryByText('Turns')).not.toBeInTheDocument();
   });
 
@@ -557,14 +876,82 @@ describe('SessionDetailPage', () => {
       timeline: emptyTimeline,
       state: undefined,
       taskCount: 0,
+      isAgentWorking: false,
     });
 
     await render();
 
-    expect(screen.getByText('no activity')).toBeInTheDocument();
+    expect(screen.getByText('No activity yet')).toBeInTheDocument();
     expect(
       screen.getByText('This session has no messages yet.'),
     ).toBeInTheDocument();
+  });
+
+  it('says Working in the header from the moment a message is sent (T100 H4)', async () => {
+    // The first beat of a session started from the home composer: no poll has
+    // seen a task yet, so the conversation alone would say "no activity" while
+    // the body already says "Working…". The header follows the body.
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: emptyTimeline,
+      state: undefined,
+      taskCount: 0,
+      isAgentWorking: false,
+    });
+    mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+
+    await render();
+
+    expect(screen.getByText('Working')).toBeInTheDocument();
+    expect(screen.queryByText('No activity yet')).not.toBeInTheDocument();
+  });
+
+  describe('opening', () => {
+    // Live round 2 (R8): a long session opened at its top (scrollTop 0 of
+    // 6148). The PO's model is a desktop chat app, which opens at the newest
+    // message.
+    let scrollTop = 0;
+    let spies: jest.SpyInstance[] = [];
+    beforeEach(() => {
+      scrollTop = 0;
+      const root = document.documentElement;
+      spies = [
+        jest.spyOn(root, 'scrollHeight', 'get').mockReturnValue(6148),
+        jest
+          .spyOn(root, 'scrollTop', 'get')
+          .mockImplementation(() => scrollTop),
+        jest.spyOn(root, 'scrollTop', 'set').mockImplementation(value => {
+          scrollTop = value;
+        }),
+      ];
+    });
+    afterEach(() => spies.forEach(spy => spy.mockRestore()));
+
+    it('opens at the newest turn', async () => {
+      await render();
+
+      await screen.findByTestId('session-dock');
+      expect(scrollTop).toBe(6148);
+    });
+
+    it('leaves the reader where they scrolled once it has opened', async () => {
+      await render();
+      await screen.findByTestId('session-dock');
+      // The open settles: its second scroll lands a frame later.
+      await act(
+        () =>
+          new Promise<void>(resolve => requestAnimationFrame(() => resolve())),
+      );
+
+      // Scrolled up to read; the page renders again (here: typing a reply).
+      scrollTop = 120;
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /message/i }),
+        'x',
+      );
+
+      expect(scrollTop).toBe(120);
+    });
   });
 
   describe('renaming', () => {
@@ -591,13 +978,12 @@ describe('SessionDetailPage', () => {
       // findable by clicking a heading on the off chance.
       await render();
 
-      await userEvent.hover(
+      // A native title, as DateComponent's: no MUI tooltip and its findDOMNode.
+      expect(
         screen.getByRole('button', {
           name: 'Rename session "Which GitHub issues..."',
         }),
-      );
-
-      expect(await screen.findByText('Rename session')).toBeInTheDocument();
+      ).toHaveAttribute('title', 'Rename session');
     });
 
     it('submits the new name and closes', async () => {
@@ -658,11 +1044,22 @@ describe('SessionDetailPage', () => {
       state: {
         raw: 'completed',
         key: 'completed',
-        label: 'Completed',
+        label: 'Idle',
         tone: 'success' as const,
         isActive: false,
       },
     };
+
+    it('invites a reply on an idle session, never to "resume" it (T100 H4)', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(screen.getByText('Idle')).toBeInTheDocument();
+      expect(composer()).toHaveAttribute(
+        'placeholder',
+        expect.stringMatching(/^Reply to .+…$/),
+      );
+    });
 
     it('is offered on a session whose agent can be addressed', async () => {
       mockUseSessionDetail.mockReturnValue(settledView);
@@ -681,6 +1078,7 @@ describe('SessionDetailPage', () => {
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'why is the ingress failing?',
+        [],
       );
     });
 
@@ -716,7 +1114,9 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByRole('button', { name: 'Send' }),
       ).not.toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop the turn' }),
+      );
 
       // Server-side: the task the badge describes, not the stream.
       expect(mockCancelTask).toHaveBeenCalledWith('task-9');
@@ -741,7 +1141,9 @@ describe('SessionDetailPage', () => {
       );
       await render();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop the turn' }),
+      );
 
       expect(mockCancelTask).toHaveBeenCalledWith('task-new');
     });
@@ -792,10 +1194,10 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('is replaced by the answer panel while the agent is waiting', async () => {
-      // Replaced, not shown alongside: a plain message cannot answer a pending
+    it('is disabled under the question card while the agent is waiting', async () => {
+      // Disabled, not offered alongside: a plain message cannot answer a pending
       // confirmation. kagent would open a new task and leave the question waiting
-      // forever, so offering the box would quietly strand the conversation.
+      // forever, so a live box would quietly strand the conversation.
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
         isAgentWorking: false,
@@ -809,8 +1211,10 @@ describe('SessionDetailPage', () => {
       });
       await render();
 
-      // The question itself is rendered by the timeline above, not repeated here —
-      // what the panel adds is the way to answer it.
+      // The card in the chat bar prints the question it asks (T40) — the
+      // timeline's copy is the record, often scrolled away — and the way to
+      // answer it.
+      expect(screen.getByText('Which cluster?')).toBeInTheDocument();
       expect(
         screen.getByRole('textbox', { name: 'Answer' }),
       ).toBeInTheDocument();
@@ -822,8 +1226,94 @@ describe('SessionDetailPage', () => {
       // open a new task and strand this one, yet removing the box entirely reads
       // as the reply feature being missing rather than blocked.
       expect(composer()).toBeDisabled();
+      // The prototype's waiting caption, naming who waits on what.
       expect(
-        screen.getByText(/would start a new turn instead of answering it/),
+        screen.getByText('Issue tracker is waiting for your answer above.'),
+      ).toBeInTheDocument();
+    });
+
+    it('attaches the question card to the docked composer, above the box', async () => {
+      // T40: the escalation is answered in the chat bar, like a chat app's
+      // agent question — one docked element holding the card and the box,
+      // pinned to the view's bottom while the conversation scrolls behind it.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [
+            { question: 'Which cluster?', choices: ['a'], multiple: false },
+            { question: 'Which namespace?', choices: ['b'], multiple: false },
+          ],
+        },
+      });
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      const card = within(dock).getByRole('form', {
+        name: 'Question from the agent',
+      });
+      const box = within(dock).getByTestId('composer-card');
+      expect(
+        // eslint-disable-next-line no-bitwise
+        card.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // Several questions page in the card.
+      expect(within(card).getByText('Question 1 of 2')).toBeInTheDocument();
+      // Docked while the question is open too — it used to unpin then.
+      expect(getComputedStyle(dock).position).toBe('sticky');
+    });
+
+    it('docks the composer and sizes the column to the view', async () => {
+      // The layout hook measured the chrome around the column, so a short
+      // session's composer sits at the bottom of the view.
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      expect(getComputedStyle(dock).position).toBe('sticky');
+      const column = dock.parentElement!;
+      expect(column.style.getPropertyValue('--session-column-reserve')).toMatch(
+        /^\d+px$/,
+      );
+      expect(column.style.getPropertyValue('--session-dock-height')).toMatch(
+        /^\d+px$/,
+      );
+    });
+
+    it('rests the docked bar where it sticks, pulled into all of the page’s bottom padding', async () => {
+      // Live round 2 (R7): a fixed -16px left 24px of ShellPage's 40px under
+      // the bar, so it lifted 24px as the scroll reached the end. ShellPage
+      // publishes its padding; 16px where no ShellPage wraps the page.
+      await render();
+
+      expect(
+        getComputedStyle(screen.getByTestId('session-dock')).marginBottom,
+      ).toBe('calc(-1 * var(--shell-page-padding-bottom, 16px))');
+    });
+
+    it('says a permission request waits for a decision', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'approval',
+          toolName: 'flux_reconcile',
+          args: { name: 'demo' },
+          questions: [],
+        },
+      });
+      await render();
+
+      expect(
+        screen.getByText('Issue tracker is waiting for your decision above.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Nothing is sent until you allow it.'),
       ).toBeInTheDocument();
     });
 
@@ -879,6 +1369,36 @@ describe('SessionDetailPage', () => {
       });
     });
 
+    it('ties the answer to the status message that asked', async () => {
+      // So a not-taken verdict cannot be pinned on a follow-up question in the
+      // same task.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [{ question: 'Which cluster?', multiple: false }],
+          askedIn: 'status-1',
+        },
+      });
+      await render();
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Answer' }),
+        'golem',
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Send answer' }),
+      );
+
+      expect(mockAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task-1', askedIn: 'status-1' }),
+      );
+    });
+
     it('says the agent is working while a turn is in flight', async () => {
       // The fixture's newest task is `working`.
       await render();
@@ -906,7 +1426,7 @@ describe('SessionDetailPage', () => {
         state: {
           raw: 'input-required',
           key: 'input-required',
-          label: 'Waiting for input',
+          label: 'Waiting for you',
           tone: 'warning',
           isActive: true,
         },
@@ -928,6 +1448,32 @@ describe('SessionDetailPage', () => {
         taskId: 'task-new',
       };
 
+      it('says the stream is being picked up again, keeping the preview', async () => {
+        // A controller rollout cut the stream; the send resubscribes to the
+        // turn. What was streamed so far stays on screen meanwhile.
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            isReconnecting: true,
+            stream: {
+              ...cutStream,
+              live: { kind: 'agent-message', text: 'Checking the nodes' },
+            },
+          }),
+        );
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText('The live view was interrupted. Reconnecting…'),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Checking the nodes')).toBeInTheDocument();
+        expect(
+          screen.queryByText(/restore the live view/),
+        ).not.toBeInTheDocument();
+      });
+
       it('says the result is being checked while the send re-reads the conversation', async () => {
         // The stream is gone and the send is awaiting the conversation; the
         // poll's copy still shows the previous, finished turn.
@@ -939,7 +1485,9 @@ describe('SessionDetailPage', () => {
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
         expect(
-          screen.getByText('The live stream was lost. Checking the result…'),
+          screen.getByText(
+            'Could not restore the live view. Checking the result…',
+          ),
         ).toBeInTheDocument();
       });
 
@@ -950,7 +1498,9 @@ describe('SessionDetailPage', () => {
         );
         await render();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Stop the turn' }),
+        );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-new');
       });
@@ -968,14 +1518,16 @@ describe('SessionDetailPage', () => {
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
         expect(
-          screen.getByText(/The live stream was lost. Still working/),
+          screen.getByText(
+            /Could not restore the live view. The agent is still working/,
+          ),
         ).toBeInTheDocument();
         // Still a running turn: the composer withholds Send and offers Stop.
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
         expect(
-          screen.getByRole('button', { name: 'Stop' }),
+          screen.getByRole('button', { name: 'Stop the turn' }),
         ).toBeInTheDocument();
       });
 
@@ -987,10 +1539,8 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.queryByText(/live stream was lost/),
-        ).not.toBeInTheDocument();
-        expect(screen.getByText('Completed')).toBeInTheDocument();
+        expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
+        expect(screen.getByText('Idle')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Send' }),
         ).toBeInTheDocument();
@@ -1008,7 +1558,9 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(
-          screen.getByText('The live stream was lost. Checking the result…'),
+          screen.getByText(
+            'Could not restore the live view. Checking the result…',
+          ),
         ).toBeInTheDocument();
       });
     });
@@ -1043,6 +1595,25 @@ describe('SessionDetailPage', () => {
         ).toBeInTheDocument();
       });
 
+      it('names the stall in the state too, not Working (R2-4)', async () => {
+        // The poll still reads the stalled task as working; the header must
+        // not say so beside a row that says it stopped reporting progress.
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        expect(screen.getByText('Not responding')).toBeInTheDocument();
+        expect(screen.queryByText('Working')).not.toBeInTheDocument();
+      });
+
+      it('names the stall over an open but silent stream as well', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+        await render();
+
+        expect(screen.getByText('Not responding')).toBeInTheDocument();
+        expect(screen.queryByText('Working')).not.toBeInTheDocument();
+      });
+
       it('keeps Send withheld — the session is still busy — and says why', async () => {
         mockUseSessionDetail.mockReturnValue(stalledView);
         await render();
@@ -1052,7 +1623,7 @@ describe('SessionDetailPage', () => {
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
         expect(
-          screen.getByText(/stopped reporting progress. Cancel the turn/),
+          screen.getByText(/stopped reporting progress. Stop the turn/),
         ).toBeInTheDocument();
       });
 
@@ -1075,7 +1646,8 @@ describe('SessionDetailPage', () => {
         await render();
 
         await userEvent.click(
-          screen.getByRole('button', { name: 'Cancel the turn' }),
+          // The labelled button, not the composer's icon of the same name.
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
         );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-9');
@@ -1092,6 +1664,21 @@ describe('SessionDetailPage', () => {
         );
       });
 
+      it('puts the unanswered message’s images back with its text', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          withImageOnLastMessage(stalledView),
+        );
+        await render();
+
+        await userEvent.click(
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
+        );
+
+        expect(
+          await screen.findByRole('button', { name: 'Remove shot.png' }),
+        ).toBeInTheDocument();
+      });
+
       it('does not offer the cancel when the task is not known', async () => {
         mockUseSessionDetail.mockReturnValue({
           ...stalledView,
@@ -1100,7 +1687,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(
-          screen.queryByRole('button', { name: 'Cancel the turn' }),
+          screen.queryByRole('button', { name: 'Stop the turn' }),
         ).not.toBeInTheDocument();
         expect(
           screen.getByText(/has not reported progress/),
@@ -1141,10 +1728,13 @@ describe('SessionDetailPage', () => {
         ).not.toBeInTheDocument();
         expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
         expect(
-          screen.getByText(/stopped reporting progress. Cancel the turn/),
+          screen.getByText(/stopped reporting progress. Stop the turn/),
         ).toBeInTheDocument();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        // The composer's and the stalled row's: one action, one name.
+        await userEvent.click(
+          screen.getAllByRole('button', { name: 'Stop the turn' })[0],
+        );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
       });
@@ -1172,11 +1762,11 @@ describe('SessionDetailPage', () => {
           );
         }
         await renderInTestApp(<Harness />, {
-          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          mountedRoutes: { '/sessions': sessionsRouteRef },
         });
 
         expect(
-          screen.getByRole('button', { name: 'Stop' }),
+          screen.getByRole('button', { name: 'Stop the turn' }),
         ).toBeInTheDocument();
         expect(screen.getByText('Working…')).toBeInTheDocument();
 
@@ -1191,19 +1781,22 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        // The composer's and the stalled row's: one action, one name.
+        await userEvent.click(
+          screen.getAllByRole('button', { name: 'Stop the turn' })[0],
+        );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
       });
 
-      it('reports a failed Stop as "Stop failed" with the backend’s message', async () => {
+      it('reports a failed Stop as "Could not stop the turn" with the backend’s message', async () => {
         mockUseSessionDetail.mockReturnValue(workingView);
         mockUseCancelTask.mockReturnValue(
           idleCancel({ error: new Error('kagent is unavailable') }),
         );
         await render();
 
-        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
         expect(screen.getByText('kagent is unavailable')).toBeInTheDocument();
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
         // Nothing was sent, so nothing is put back into the box.
@@ -1219,10 +1812,10 @@ describe('SessionDetailPage', () => {
         mockUseCancelTask.mockReturnValue(idleCancel({ error: unauthorized }));
         await render();
 
-        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
         expect(
           screen.getByText(
-            /Failed user token verification\. Your sign-in expired while this page was open — reload the page and stop the turn again\./,
+            /Failed user token verification\. Your sign-in expired — reload the page and stop the turn again\./,
           ),
         ).toBeInTheDocument();
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
@@ -1259,7 +1852,8 @@ describe('SessionDetailPage', () => {
         expect(composer()).toHaveValue('the refused message');
 
         await userEvent.click(
-          screen.getByRole('button', { name: 'Cancel the turn' }),
+          // The labelled button, not the composer's icon of the same name.
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
         );
         expect(mockCancelTask).toHaveBeenCalledWith('task-9');
       });
@@ -1330,7 +1924,9 @@ describe('SessionDetailPage', () => {
         expect(composer()).toBeEnabled();
 
         // Stop aims at the task the answer resumed.
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Stop the turn' }),
+        );
         expect(mockCancelTask).toHaveBeenCalledWith('task-1');
       });
 
@@ -1381,6 +1977,26 @@ describe('SessionDetailPage', () => {
       expect(screen.getByText('a message in flight')).toBeInTheDocument();
     });
 
+    it('shows the images of the message in flight with it', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: {
+            messageId: 'pending-1',
+            text: 'what is wrong here?',
+            images: [PENDING_IMAGE],
+          },
+        }),
+      );
+      await render();
+
+      expect(screen.getByRole('img', { name: 'shot.png' })).toHaveAttribute(
+        'src',
+        PENDING_IMAGE.previewUrl,
+      );
+    });
+
     it('stops showing the pending copy once kagent returns the real one', async () => {
       // Recognised by `messageId`, not by timing — a poll can deliver the stored
       // message long before the turn ends, and showing both would double it for
@@ -1401,6 +2017,133 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByText('a duplicate stand-in'),
       ).not.toBeInTheDocument();
+    });
+
+    describe('a streamed reply the poll has read back', () => {
+      const replyTimeline = (text: string) => ({
+        ...timeline,
+        items: [
+          {
+            kind: 'user-message' as const,
+            id: 'm-sent',
+            taskIndex: 0,
+            messageId: 'm-sent',
+            text: 'how are the nodes?',
+          },
+          {
+            kind: 'agent-message' as const,
+            id: 'art-reply',
+            taskIndex: 0,
+            messageId: 'art-reply',
+            text,
+          },
+        ],
+      });
+      const replyStream = {
+        ...createStreamTurn('m-sent'),
+        dispatched: true,
+        items: [
+          {
+            kind: 'agent-message' as const,
+            id: 'stream:0',
+            taskIndex: 0,
+            messageId: 'art-reply',
+            text: 'All nodes are ready.',
+          },
+        ],
+      };
+
+      it('is shown once', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes are ready.'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: replyStream }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
+      });
+
+      it('shows what the stream has beyond a read that cut it off', async () => {
+        // kagent appends to an artifact as it streams, so a poll mid-reply holds
+        // the start of it under the same id.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: replyStream }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
+        expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
+      });
+
+      it('advances it from the text still being written', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            stream: {
+              ...replyStream,
+              items: [],
+              live: {
+                kind: 'agent-message' as const,
+                text: 'All nodes are rea',
+                messageId: 'art-reply',
+              },
+            },
+          }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are rea')).toHaveLength(1);
+        expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
+      });
+
+      it('keeps each paragraph in its place when text follows a call', async () => {
+        // Both paragraphs and the call between them are one message. The poll
+        // read only the first; the second must neither take its place nor wait
+        // for the next read.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('Checking the nodes.'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            stream: {
+              ...replyStream,
+              items: [
+                { ...replyStream.items[0], text: 'Checking the nodes.' },
+                {
+                  kind: 'tool-call' as const,
+                  id: 'stream:1',
+                  taskIndex: 0,
+                  messageId: 'art-reply',
+                  toolName: 'kubectl_get',
+                  isPending: true,
+                },
+                { ...replyStream.items[0], id: 'stream:2' },
+              ],
+            },
+          }),
+        );
+        await render();
+
+        const first = screen.getByText('Checking the nodes.');
+        const second = screen.getByText('All nodes are ready.');
+        expect(
+          first.compareDocumentPosition(second) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
     });
 
     describe('a streamed turn ending', () => {
@@ -1472,12 +2215,217 @@ describe('SessionDetailPage', () => {
     });
   });
 
+  describe('a connector sign-in the agent asks for', () => {
+    const LINK =
+      'https://muster.gazelle.example.com/oauth/proxy/start?state=xyz789';
+    afterEach(() => {
+      mockMusterServers = [];
+      mockConnectorLabels = new Map();
+    });
+
+    it('shows it as a sign-in to the connector, and answers the question once signed in', async () => {
+      mockMusterServers = [
+        {
+          name: 'grafana-cloud',
+          group: 'registered',
+          toolNamePrefix: 'x_grafana-cloud',
+          oauth: true,
+          signInTool: true,
+          displayName: 'Grafana Cloud',
+        },
+      ];
+      mockConnectorLabels = new Map([['grafana-cloud', 'Grafana Cloud']]);
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        timeline: {
+          ...loadedView.timeline,
+          items: [
+            ...loadedView.timeline.items,
+            {
+              kind: 'tool-call',
+              id: 'login',
+              taskIndex: 1,
+              toolName: 'core_auth_login',
+              via: 'Muster',
+              args: { server: 'grafana-cloud' },
+              result: {
+                content: [
+                  `Authentication Required\n\nServer: grafana-cloud\n\nPlease sign in to connect to this server:\n\n${LINK}`,
+                ],
+              },
+              isPending: false,
+            },
+          ],
+        },
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [
+            {
+              question: `Please sign in to Grafana Cloud: ${LINK}`,
+              choices: ["I've signed in", "I can't sign in right now"],
+              multiple: false,
+            },
+          ],
+        },
+      });
+      const user = userEvent.setup();
+      await render();
+
+      const card = screen.getByRole('form', {
+        name: 'Question from the agent',
+      });
+      const signIn = within(card).getByRole('link', {
+        name: 'Sign in to Grafana Cloud ↗',
+      });
+      expect(card).not.toHaveTextContent(LINK);
+      await user.click(signIn);
+      await user.click(
+        within(card).getByRole('button', { name: "I've signed in" }),
+      );
+
+      expect(mockAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'approve',
+        answers: [["I've signed in"]],
+        text: "I've signed in",
+      });
+    });
+  });
+
+  describe("an agent on the person's own ChatGPT subscription", () => {
+    const composer = () => screen.queryByRole('textbox', { name: 'Message' });
+    const settledView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: {
+        raw: 'completed',
+        key: 'completed',
+        label: 'Idle',
+        tone: 'success' as const,
+        isActive: false,
+      },
+    };
+
+    it('sends no turn while the person is not connected, and shows the connect prompt', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      expect(screen.getByTestId('chatgpt-connect-prompt')).toBeInTheDocument();
+      expect(
+        screen.getAllByText(
+          'Connect your ChatGPT subscription to talk to this agent.',
+        ).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Connect' })).toBeEnabled();
+      expect(composer()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps the sign-in dialog open once the person has connected', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      expect(mockChatGptDialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isOpen: true, installation: 'gazelle' }),
+      );
+
+      setChatGpt(CHATGPT_CONNECTED);
+
+      expect(
+        screen.queryByTestId('chatgpt-connect-prompt'),
+      ).not.toBeInTheDocument();
+      expect(mockChatGptDialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isOpen: true }),
+      );
+    });
+
+    it('sends what was typed once the person is connected', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_CONNECTED);
+      await render();
+
+      expect(
+        screen.queryByTestId('chatgpt-connect-prompt'),
+      ).not.toBeInTheDocument();
+      await userEvent.type(composer()!, 'hello');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith('hello', []);
+    });
+
+    it('holds the first message of a new session until the person connects, then sends it once', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        text: 'why is the ingress failing?',
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+        modelConfig: 'chatgpt-personal',
+      });
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      expect(
+        await screen.findByText(
+          /Your message is sent as soon as you have connected it/,
+        ),
+      ).toBeInTheDocument();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+
+      setChatGpt(CHATGPT_CONNECTED);
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      });
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'why is the ingress failing?',
+        undefined,
+      );
+    });
+
+    it('holds the first message while the connection is still being read', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        text: 'why is the ingress failing?',
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+      });
+      mockUseChatGptConnection.mockReturnValue({
+        ...NO_CHATGPT,
+        isLoading: true,
+      });
+      await render();
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the first message of a session just created', () => {
     const handoff = {
       text: 'why is the ingress failing?',
       agentNamespace: 'kagent',
       agentName: 'issue-tracker',
     };
+
+    it('sends the images that came with it', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        ...handoff,
+        images: [PENDING_IMAGE],
+      });
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          'why is the ingress failing?',
+          [PENDING_IMAGE],
+        );
+      });
+    });
 
     it('sends it on arrival, so the user watches the reply appear', async () => {
       // Created on the previous screen, sent here: `message/send` blocks for the
@@ -1489,6 +2437,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -1551,6 +2500,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -1571,6 +2521,28 @@ describe('SessionDetailPage', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue(
         'why is the ingress failing?',
       );
+    });
+
+    it('captions the first message as the portal’s when a hand-off prepared it', async () => {
+      // A meta-agent hand-off wrote it, not the person (UX review M20).
+      mockUseNewSessionHandoff.mockReturnValue({ ...handoff, prepared: true });
+      await render();
+
+      const captions = screen.getAllByTestId('timeline-user-message-caption');
+      expect(captions).toHaveLength(1);
+      expect(captions[0]).toHaveTextContent('Prepared by the portal');
+      expect(
+        screen.getAllByTestId('timeline-user-message')[0],
+      ).toContainElement(captions[0]);
+    });
+
+    it('captions nothing the person typed themselves', async () => {
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      await render();
+
+      expect(
+        screen.queryByTestId('timeline-user-message-caption'),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -1603,7 +2575,7 @@ describe('SessionDetailPage', () => {
     const composer = () => screen.getByRole('textbox', { name: 'Message' });
     const startButton = () =>
       screen.getByRole('button', {
-        name: 'Start a new session with Issue tracker',
+        name: 'Continue in a new session',
       });
     /** The message that never got its answer — the last one the person sent. */
     const lastUserMessage = [...timeline.items]
@@ -1618,6 +2590,16 @@ describe('SessionDetailPage', () => {
         },
       },
     });
+    /** What the new session was created with. */
+    const created = async () => {
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      return mockCreateSession.mock.calls[0][0] as {
+        prompt: string;
+        title?: string;
+      };
+    };
 
     it('explains the failed turn in the portal’s words and offers the new session under the box', async () => {
       mockUseSessionDetail.mockReturnValue(suspectedView);
@@ -1627,7 +2609,7 @@ describe('SessionDetailPage', () => {
         screen.getByText('The agent’s runtime could not be brought back'),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(/nothing is missing from the transcript/),
+        screen.getByText(/The transcript above is complete/),
       ).toBeInTheDocument();
       // The runtime's words are the evidence under the explanation — and
       // nowhere the whole text of anything.
@@ -1664,12 +2646,44 @@ describe('SessionDetailPage', () => {
       expect(composer()).toHaveValue('Six of them are vegetarian.');
     });
 
-    it('starts a new session with the box’s text and hands the message over', async () => {
+    it('opens the new session on the unanswered message with its images, from an empty box', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        withImageOnLastMessage(suspectedView),
+      );
+      await render();
+
+      await userEvent.click(startButton());
+
+      const { prompt } = await created();
+      // The message is in the conversation the new session carries; its
+      // images go along with the first message.
+      expect(prompt).toContain(`User: ${lastUserMessage.trim()}`);
+      expect(prompt).toContain('[User attached a file: shot.png]');
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+          state: {
+            newSession: expect.objectContaining({
+              text: prompt,
+              imagesKey: expect.any(String),
+            }),
+          },
+        });
+      });
+    });
+
+    it('starts a new session on the whole conversation, not on the box’s text', async () => {
       // Create, navigate, then send — the order every entry point keeps; the
       // new page dispatches the text it finds in the router state.
       mockUseSessionDetail.mockReturnValue(suspectedView);
       await render();
 
+      expect(
+        screen.getByText(
+          /Send again to retry\. If it fails again, continue in a new session with Issue tracker\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results\./,
+        ),
+      ).toBeInTheDocument();
+
+      // The box is for the retry; the new session does not take its text.
       await userEvent.type(composer(), 'Six of them are vegetarian.');
       await userEvent.click(startButton());
 
@@ -1680,83 +2694,328 @@ describe('SessionDetailPage', () => {
             namespace: 'kagent',
             technicalName: 'issue-tracker',
           }),
-          prompt: 'Six of them are vegetarian.',
+          prompt: expect.any(String),
+          title: expect.stringMatching(/^Continued: /),
         });
       });
+      const { prompt } = await created();
+      // Its first line names this session, for the new page's banner.
+      expect(prompt).toMatch(
+        /^\[Continues session gazelle\/abc\]\n\nI am continuing a session with you that could not be resumed/,
+      );
+      const firstUserMessage = timeline.items.find(
+        item => item.kind === 'user-message',
+      )!.text;
+      expect(prompt).toContain(`User: ${firstUserMessage.trim()}`);
+      expect(prompt).toContain(`User: ${lastUserMessage.trim()}`);
+      expect(prompt).not.toContain('Six of them are vegetarian.');
+      expect(prompt).not.toContain('## Your last question');
+      expect(prompt).not.toContain('## My');
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
-          handoffTo('Six of them are vegetarian.'),
+          '/sessions/gazelle/new-1',
+          handoffTo(prompt),
         );
       });
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('carries the message that never got its answer when the box is empty', async () => {
-      mockUseSessionDetail.mockReturnValue(suspectedView);
+    it('withholds the new session, and says why, where muster has no per-user sign-in', async () => {
+      const blocker =
+        "Muster on gazelle has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity instead of as you.";
+      const context = mockUseAgents();
+      mockUseAgents.mockReturnValue({
+        ...context,
+        rows: context.rows.map(row => ({
+          ...row,
+          sessionBlocker: blocker,
+        })),
+      } as AgentsContextValue);
+      mockUseSessionDetail.mockReturnValue(reportedView);
       await render();
 
-      await userEvent.click(startButton());
-
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: lastUserMessage }),
-        );
-      });
-      expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/sessions/gazelle/new-1',
-        handoffTo(lastUserMessage),
-      );
+      expect(
+        screen.queryByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /A new session with Issue tracker cannot be started from this portal: sessions start through agent-manager as you\. Muster on gazelle has no per-user sign-in/,
+        ),
+      ).toBeInTheDocument();
     });
 
-    it('prefers the message the failed send handed back', async () => {
+    it('carries a failed send the transcript does not hold, as the newest message', async () => {
+      // kagent refused it before it recorded the turn: only the box has it.
       mockUseSessionDetail.mockReturnValue(suspectedView);
       mockUseSendMessage.mockReturnValue(
         idleSend({
           error: new Error(ATENET),
-          failed: { messageId: 'm-1', text: 'the message that failed' },
+          failed: {
+            messageId: 'm-1',
+            text: 'the message that failed',
+            images: [PENDING_IMAGE],
+          },
         }),
       );
       await render();
 
-      // The composer restored it into the box, so the box's text and the
-      // handed-back text agree; either way the new session opens on it.
       await userEvent.click(startButton());
 
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: 'the message that failed' }),
-        );
+      const { prompt } = await created();
+      expect(prompt).toMatch(
+        /User: the message that failed\n\n\[User attached a file: shot\.png\]$/,
+      );
+      expect(
+        (mockStashHandoffImages.mock.calls[0][0] as { name: string }[]).map(
+          image => image.name,
+        ),
+      ).toEqual(['shot.png']);
+    });
+
+    describe('sends that keep timing out before the first event (giantswarm/giantswarm#38771)', () => {
+      // A runtime that crashes on every restore: kagent records nothing, the
+      // session reads ready, and the sends never become turns.
+      const settledTasks = [
+        {
+          id: 'turn-1',
+          contextId: 'abc',
+          kind: 'task',
+          status: { state: 'completed' },
+        },
+      ];
+      const settledView: SessionDetailView = {
+        ...loadedView,
+        isAgentWorking: false,
+        state: { ...failedState, key: 'completed', raw: 'completed' },
+        tasks: settledTasks,
+      };
+      const timedOut = (count: number) =>
+        idleSend({
+          error: Object.assign(
+            new Error('The streaming send failed with status 500.'),
+            { name: 'StreamTransportError', status: 500, reason: 'timeout' },
+          ),
+          failed: {
+            messageId: `m-${count}`,
+            text: 'Six of them are vegetarian.',
+          },
+          timeouts: { count, newestTaskId: 'turn-1' },
+        });
+
+      it('offers the new session beside the retry from the second one in a row', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(timedOut(2));
+        await render();
+
+        expect(
+          screen.getByText('This session may not be able to continue'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            /Neither of your last 2 messages reached the agent: each timed out before it started\./,
+          ),
+        ).toBeInTheDocument();
+        // Suspected: the box, its text and Send stay for the retry, and the
+        // session is not marked.
+        expect(composer()).toHaveValue('Six of them are vegetarian.');
+        expect(
+          screen.getByRole('button', { name: 'Send' }),
+        ).toBeInTheDocument();
+        expect(startButton()).toBeEnabled();
+        expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
+        // The notice says what happened; the composer does not say it again.
+        expect(
+          screen.queryByText('The streaming send failed with status 500.'),
+        ).not.toBeInTheDocument();
+
+        await userEvent.click(startButton());
+        const { prompt } = await created();
+        // The message that never landed goes along as the newest one.
+        expect(prompt).toMatch(/User: Six of them are vegetarian\.$/);
+      });
+
+      it('offers nothing new after a single one', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(timedOut(1));
+        await render();
+
+        expect(
+          screen.queryByText('This session may not be able to continue'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Continue in a new session' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByText('The streaming send failed with status 500.'),
+        ).toBeInTheDocument();
+      });
+
+      it('offers nothing once a turn was created since', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...settledView,
+          tasks: [...settledTasks, { ...settledTasks[0], id: 'turn-2' }],
+        });
+        mockUseSendMessage.mockReturnValue(timedOut(2));
+        await render();
+
+        expect(
+          screen.queryByText('This session may not be able to continue'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('gives way to a loss kagent has since reported', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...reportedView,
+          tasks: settledTasks,
+        });
+        mockUseSendMessage.mockReturnValue(timedOut(2));
+        await render();
+
+        expect(
+          screen.getByText('This session cannot continue'),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText('This session may not be able to continue'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('textbox', { name: 'Message' }),
+        ).not.toBeInTheDocument();
       });
     });
 
-    it('marks the session and lets the new session take Send’s place once kagent reports the loss', async () => {
+    describe('the message that never got its answer', () => {
+      const message = 'Six of them are vegetarian.';
+      const items = (...after: TimelineItem[]): TimelineItem[] => [
+        {
+          id: 'u1',
+          kind: 'user-message',
+          taskIndex: 0,
+          messageId: 'm-1',
+          text: 'Plan a barbecue for twelve.',
+        },
+        { id: 'a1', kind: 'agent-message', taskIndex: 0, text: 'Sure.' },
+        {
+          id: 'u2',
+          kind: 'user-message',
+          taskIndex: 1,
+          messageId: 'm-2',
+          text: message,
+        },
+        {
+          id: 'img',
+          kind: 'attachment',
+          taskIndex: 1,
+          messageId: 'm-2',
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+        ...after,
+      ];
+      const failedTurn: TimelineItem = {
+        id: 'f',
+        kind: 'turn-failed',
+        taskIndex: 1,
+        state: 'failed',
+        reason: ATENET,
+      };
+      const lostWith = (timelineItems: TimelineItem[]): SessionDetailView => ({
+        ...reportedView,
+        timeline: { ...loadedView.timeline, items: timelineItems },
+      });
+      const handedImages = () =>
+        mockStashHandoffImages.mock.calls[0][0] as { name: string }[];
+
+      it('is carried once, with its images, when the failed send handed it back too', async () => {
+        // The gateway recorded the turn before the send failed: the
+        // transcript has the message, and the send handed back the same one.
+        mockUseSessionDetail.mockReturnValue(lostWith(items(failedTurn)));
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            error: new Error(ATENET),
+            failed: {
+              messageId: 'm-2',
+              text: message,
+              images: [PENDING_IMAGE],
+            },
+          }),
+        );
+        await render();
+
+        await userEvent.click(startButton());
+
+        const { prompt } = await created();
+        expect(prompt.split(message)).toHaveLength(2);
+        expect(prompt).toContain('[User attached a file: shot.png]');
+        expect(handedImages().map(image => image.name)).toEqual(['shot.png']);
+      });
+
+      it('is not one once the agent answered it', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          lostWith(
+            items({
+              id: 'a2',
+              kind: 'agent-message',
+              taskIndex: 1,
+              text: 'Two grills, then.',
+            }),
+          ),
+        );
+        await render();
+
+        await userEvent.click(startButton());
+
+        await created();
+        expect(handedImages()).toEqual([]);
+      });
+    });
+
+    it('shows no message box once kagent reports the loss, and offers the new session in the notice', async () => {
       mockUseSessionDetail.mockReturnValue(reportedView);
       await render();
 
       expect(screen.getByText('Runtime lost')).toBeInTheDocument();
+      const notice = screen
+        .getByText('This session cannot continue')
+        .closest('.bui-Alert') as HTMLElement;
       expect(
-        screen.getByText('This session cannot continue'),
+        within(notice).getByText(
+          /To carry on, continue in a new session with Issue tracker\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results\./,
+        ),
       ).toBeInTheDocument();
+      // The session takes no more messages: no box, no Send.
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Send' }),
       ).not.toBeInTheDocument();
-      expect(startButton()).toBeInTheDocument();
+      // The way on is inside the notice, where the eye already is.
+      expect(
+        within(notice).getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).toBeInTheDocument();
 
-      // Enter does the one thing that works.
-      await userEvent.type(composer(), 'Six of them are vegetarian.{Enter}');
+      await userEvent.click(startButton());
 
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: 'Six of them are vegetarian.' }),
-        );
-      });
+      const { prompt, title } = await created();
+      expect(prompt).toMatch(/^\[Continues session gazelle\/abc\]/);
+      expect(prompt).toContain(`User: ${lastUserMessage.trim()}`);
+      expect(title).toMatch(/^Continued: /);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('lets the way out take the answer panel’s place', async () => {
+    it('lets the way out take the answer panel’s place, and carries the open question', async () => {
       // An answer would run into the same lost runtime; the question stays in
-      // the transcript and the box below offers the new session instead.
+      // the transcript and the notice offers the new session instead.
       mockUseSessionDetail.mockReturnValue({
         ...reportedView,
         state: awaitingInput,
@@ -1773,8 +3032,106 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByText('How many are vegetarian?'),
       ).not.toBeInTheDocument();
-      expect(composer()).toBeEnabled();
-      expect(startButton()).toBeInTheDocument();
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /with tools named but not their results, and the open question\./,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(startButton());
+
+      const { prompt } = await created();
+      expect(prompt).toMatch(
+        /## Your last question\n\n1\. How many are vegetarian\?$/,
+      );
+      expect(prompt).not.toContain('## My answer');
+    });
+
+    it('leaves the answer to the question card while the card is up', async () => {
+      // Suspected: the card stays with its retry and holds the answer itself.
+      mockUseSessionDetail.mockReturnValue({
+        ...suspectedView,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'input',
+          questions: [
+            { question: 'How many are vegetarian?', multiple: false },
+          ],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error(ATENET),
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-2',
+            decision: 'approve',
+            answers: [['Six']],
+            text: 'Six',
+            askedIn: 'status-1',
+          },
+        }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('The agent’s runtime could not be brought back'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('How many are vegetarian?')).toBeInTheDocument();
+      expect(screen.queryByText('Your answer: Six')).not.toBeInTheDocument();
+    });
+
+    it('carries the answer the lost runtime never took, and shows it', async () => {
+      // The person answered; the resume found the runtime gone, and kagent
+      // has since marked the loss. The answer is the person's, and the new
+      // session gets it.
+      mockUseSessionDetail.mockReturnValue({
+        ...reportedView,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'input',
+          questions: [
+            { question: 'How many are vegetarian?', multiple: false },
+          ],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error(ATENET),
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-2',
+            decision: 'approve',
+            answers: [['Six']],
+            text: 'Six',
+            askedIn: 'status-1',
+          },
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('Your answer: Six')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /with tools named but not their results, the open question and your answer\./,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(startButton());
+
+      const { prompt } = await created();
+      expect(prompt).toContain(
+        '## Your last question\n\n1. How many are vegetarian?',
+      );
+      expect(prompt).toMatch(/## My answer\n\n1\. Six$/);
+      expect(mockAnswer).not.toHaveBeenCalled();
     });
 
     it('reports a failed start in the notice', async () => {
@@ -1807,87 +3164,1046 @@ describe('SessionDetailPage', () => {
         screen.queryByText(/runtime could not be brought back/),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Start a new session/ }),
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
       ).not.toBeInTheDocument();
     });
   });
 
-  describe('the session switcher rail', () => {
-    it('renders beside the conversation', async () => {
+  describe('a session that continues another', () => {
+    const continuationView = (text: string): SessionDetailView => ({
+      ...loadedView,
+      timeline: {
+        ...loadedView.timeline,
+        items: [
+          { id: 'u1', kind: 'user-message', taskIndex: 0, text },
+          ...loadedView.timeline.items.filter(
+            item => item.kind !== 'user-message',
+          ),
+        ],
+      },
+    });
+
+    it('shows the marker as a banner linking to the original session, not as text', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        continuationView(
+          '[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.',
+        ),
+      );
       await render();
 
-      expect(screen.getByTestId('session-switcher-rail')).toHaveTextContent(
-        'gazelle/abc',
+      expect(screen.getByText('Continued session')).toBeInTheDocument();
+      // The original may be on another installation.
+      expect(
+        screen.getByRole('link', { name: 'an earlier session on other-lab' }),
+      ).toHaveAttribute('href', '/sessions/other-lab/0a1b2c');
+      expect(
+        screen.getByText('I am continuing a session with you.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/\[Continues session/)).not.toBeInTheDocument();
+    });
+
+    it('names this session, not the one before, when it is carried on after a lost runtime', async () => {
+      // The new session's marker names the session it continues; the
+      // earlier one's marker is not carried along in the conversation.
+      mockUseSessionDetail.mockReturnValue({
+        ...continuationView(
+          '[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.',
+        ),
+        state: {
+          raw: 'failed',
+          key: 'failed',
+          label: 'Failed',
+          tone: 'danger' as const,
+          isActive: false,
+        },
+        runtimeLoss: { reported: true, cause: 'gone', attempts: 1 },
+      });
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      );
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      const { prompt } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toMatch(/^\[Continues session gazelle\/abc\]\n/);
+      expect(prompt).toContain('User: I am continuing a session with you.');
+      expect(prompt).not.toContain('other-lab');
+    });
+
+    it('shows no banner for an ordinary first message', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        continuationView('Please continue session other-lab/0a1b2c'),
+      );
+      await render();
+
+      expect(screen.queryByText('Continued session')).not.toBeInTheDocument();
+    });
+
+    describe('carrying a long conversation', () => {
+      // jsdom lays nothing out: one line of the bubble's text per line of
+      // the message, and the cut's ten `lh` as ten of them.
+      let layout: MockedCollapsibleLayout;
+      beforeEach(() => {
+        layout = mockCollapsibleLayout();
+      });
+      afterEach(() => layout.restore());
+
+      it('cuts the opener under the banner behind Show more', async () => {
+        // The first message as "Continue in a new session" writes it: the
+        // marker line, the framing and sixty earlier messages.
+        const { text } = buildContinuationPrompt({
+          items: Array.from({ length: 60 }, (_, i) => ({
+            id: `m${i}`,
+            kind:
+              i % 2 ? ('agent-message' as const) : ('user-message' as const),
+            taskIndex: Math.floor(i / 2),
+            text: `Message ${i + 1}`,
+          })),
+          pendingQuestions: [],
+          continues: { installation: 'other-lab', sessionId: '0a1b2c' },
+        });
+        expect(text).toMatch(/^\[Continues session other-lab\/0a1b2c\]/);
+        mockUseSessionDetail.mockReturnValue(continuationView(text));
+        await render();
+
+        expect(screen.getByText('Continued session')).toBeInTheDocument();
+        const toggle = screen.getByRole('button', { name: 'Show more' });
+        const message = document.getElementById(
+          toggle.getAttribute('aria-controls')!,
+        )!;
+        expect(message.style.maxHeight).toBe('10lh');
+        // The marker is the banner, not the message's first line.
+        expect(message).toHaveTextContent(
+          /^I am continuing a session with you that could not be resumed/,
+        );
+        expect(message).toHaveTextContent('Message 60');
+        expect(message).not.toHaveTextContent('[Continues session');
+
+        await userEvent.click(toggle);
+        expect(
+          screen.getByRole('button', { name: 'Show less' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+      });
+    });
+  });
+
+  describe('an answer kagent did not take', () => {
+    // `useAnswerConfirmation` rejects with this once a silent answer (a 202,
+    // an empty stream) never reached the task: the agent could not resume,
+    // and the question is still open.
+    const notTaken = () => {
+      const error = new Error(
+        'kagent did not take the answer: the agent could not resume, and the question is still open.',
+      );
+      error.name = 'AnswerNotTakenError';
+      return error;
+    };
+    const question = 'Who exactly is the audience?';
+    const pendingQuestion = {
+      taskId: 'task-2',
+      asks: 'input' as const,
+      toolName: 'ask_user',
+      questions: [{ question, multiple: false }],
+      askedIn: 'status-1',
+    };
+    const waitingView: SessionDetailView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: awaitingInput,
+      currentTaskId: 'task-2',
+      pendingConfirmation: pendingQuestion,
+    };
+    const failedAnswer = {
+      messageId: 'answer-1',
+      taskId: 'task-2',
+      decision: 'approve' as const,
+      answers: [['Cyclists']],
+      text: 'Cyclists',
+      askedIn: 'status-1',
+    };
+    const notTakenConfirmation = (failed: PendingAnswer = failedAnswer) =>
+      idleConfirmation({ error: notTaken(), failed });
+    const composer = () => screen.getByRole('textbox', { name: 'Message' });
+    const startButton = () =>
+      screen.getByRole('button', {
+        name: 'Continue in a new session',
+      });
+
+    it('replaces the question card with the error, offers no retry and shows the answer', async () => {
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /the question is still open and this session cannot continue/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+      // No card, so nothing invites sending the answer again.
+      expect(
+        screen.queryByRole('form', { name: 'Question from the agent' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send answer' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+      // The session takes no more messages: no box, and the way on is in
+      // the notice.
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      const notice = screen
+        .getByText('Could not resume this session')
+        .closest('.bui-Alert') as HTMLElement;
+      expect(
+        within(notice).getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).toBeInTheDocument();
+      // kagent marked nothing, so the page does not claim a lost runtime.
+      expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
+    });
+
+    it('starts the new session on the whole conversation, the question and the answer', async () => {
+      // An answer alone answers nothing in a session that never saw the
+      // question: the first message carries the conversation so far.
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.getByText(
+          /Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, the open question and your answer/,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      const { prompt, title } = mockCreateSession.mock.calls[0][0];
+      // Its first line names this session, for the new page's banner.
+      expect(prompt).toMatch(
+        /^\[Continues session gazelle\/abc\]\n\nI am continuing a session with you that could not be resumed/,
+      );
+      expect(prompt).toContain('## Earlier conversation');
+      // The conversation's own first message, as the timeline holds it.
+      const firstUserMessage = timeline.items.find(
+        item => item.kind === 'user-message',
+      )!.text;
+      expect(prompt).toContain(`User: ${firstUserMessage.trim()}`);
+      expect(prompt).toContain(`## Your last question\n\n1. ${question}`);
+      expect(prompt).toMatch(/## My answer\n\n1\. Cyclists$/);
+      // Titled after this session, not after the framing.
+      expect(title).toMatch(/^Continued: /);
+      expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+        state: {
+          newSession: expect.not.objectContaining({ prepared: true }),
+        },
+      });
+      expect(mockAnswer).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps one Continued prefix when a continued session is carried on again', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        detail: {
+          ...waitingView.detail!,
+          session: {
+            ...waitingView.detail!.session,
+            title: 'Continued: Fried potatoes',
+          },
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      expect(mockCreateSession.mock.calls[0][0].title).toBe(
+        'Continued: Fried potatoes',
       );
     });
 
-    it.each([
-      ['loading', { isLoading: true }],
-      ['not found', { detail: undefined, isNotFound: true }],
-      [
-        'unreadable',
-        { detail: undefined, hasConversation: false, error: new Error('nope') },
+    it('shows no box and no button where no new session can be offered', async () => {
+      // A plain message would strand the question the answer was for, and
+      // the notice says where else to go.
+      const context = mockUseAgents();
+      mockUseAgents.mockReturnValue({
+        ...context,
+        rows: context.rows.map(row => ({
+          ...row,
+          sessionBlocker: 'Muster has no per-user sign-in here.',
+        })),
+      } as AgentsContextValue);
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+      expect(
+        screen.getByText(/cannot be started from this portal/),
+      ).toBeInTheDocument();
+    });
+
+    it('does not carry a declined approval’s reason into the new session', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'approval',
+          toolName: 'delete_cluster',
+          questions: [],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        notTakenConfirmation({
+          messageId: 'answer-1',
+          taskId: 'task-2',
+          decision: 'reject',
+          rejectionReason: 'not that one',
+          text: 'not that one',
+          askedIn: 'status-1',
+        }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
+      await userEvent.click(startButton());
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      const { prompt } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toContain('## Earlier conversation');
+      expect(prompt).not.toContain('not that one');
+    });
+
+    it('keeps the card and its retry for any other failure', async () => {
+      // A refused or lost request can go through on a second try.
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error('The streaming send failed with status 502.'),
+          failed: failedAnswer,
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('Answer not sent')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send answer' })).toBeEnabled();
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('takes the place of a suspected runtime loss, whose retry this rules out', async () => {
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          error: new Error(
+            'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out',
+          ),
+        }),
+      );
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('The agent’s runtime could not be brought back'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows a follow-up question in the same task rather than the error', async () => {
+      // A late resume took the answer and the agent asked again: a new
+      // question to answer, even though the task id is the same.
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        pendingConfirmation: {
+          ...pendingQuestion,
+          questions: [{ question: 'Which sport first?', multiple: false }],
+          askedIn: 'status-2',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('form', { name: 'Question from the agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('lets go of the error once the question is no longer open', async () => {
+      // A resume that lands late moves the task on; the page follows it.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: true,
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
+      ).not.toBeInTheDocument();
+      expect(composer()).toHaveValue('');
+    });
+  });
+
+  describe('the header', () => {
+    const renderShell = render;
+
+    // The "Show tool activity" choice lives in the test app's localStorage,
+    // shared by every test here: one failing test must not leave it off for
+    // the rest.
+    afterEach(() => window.localStorage.clear());
+
+    it('heads the page with the platform-standard frame', async () => {
+      // The ShellPage idiom every platform page uses (All Sessions, Customize):
+      // the session's name is the h1 at the standard scale, under a breadcrumb
+      // that reads "Sessions / Session" — this page is one conversation, and
+      // the linked ancestor is the way back to the list.
+      await renderShell();
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Which GitHub issues...',
+      );
+
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Sessions' }),
+      ).toHaveAttribute('href', '/sessions');
+      expect(within(breadcrumbs).getByText('Session')).toBeInTheDocument();
+    });
+
+    it('does not repeat the title in the conversation column', async () => {
+      // The shell header carries the title; a second copy below it is exactly
+      // the "bigger, weird position" duplicate this layout replaces.
+      await renderShell();
+
+      expect(
+        screen.getAllByRole('button', { name: /Rename session/ }),
+      ).toHaveLength(1);
+    });
+
+    it('keeps the header title as the way into renaming', async () => {
+      await renderShell();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+
+      expect(
+        await screen.findByRole('textbox', { name: /Session name/ }),
+      ).toHaveValue('Which GitHub issues...');
+    });
+
+    it('keeps the state, the agent and the installation beside the title', async () => {
+      await renderShell();
+
+      expect(screen.getByText('Working')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Issue tracker' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('installation-chip')).toHaveTextContent(
+        'gazelle',
+      );
+      expect(screen.getByText(/^Started/)).toBeInTheDocument();
+    });
+
+    it('pins the session from the header, and shows that it is pinned', async () => {
+      // The prototype's header pin. Handed to the shared header with the
+      // menu, and backed by the same per-user store the rail reads.
+      await renderShell();
+
+      expect(lastProvidedActions().props.pin.isPinned).toBe(false);
+
+      await act(async () => lastProvidedActions().props.pin.onToggle());
+
+      await waitFor(() =>
+        expect(lastProvidedActions().props.pin.isPinned).toBe(true),
+      );
+    });
+
+    it('sets the session’s notifications from the ⋯ menu, and keeps them across a reload', async () => {
+      // The level is kept per person, like the pin; the menu renders in the
+      // shared header, so the element the page hands over is rendered here.
+      const storage = mockApis.storage();
+      const renderHeaderMenu = () =>
+        renderInTestApp(<>{lastProvidedActions()}</>, {
+          apis: [[storageApiRef, storage]],
+          mountedRoutes: { '/sessions': sessionsRouteRef },
+        });
+      const openNotifications = async () => {
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Session actions' }),
+        );
+        await userEvent.click(
+          screen.getByRole('menuitem', { name: 'Notifications' }),
+        );
+        await screen.findByRole('menu', { name: 'Notifications' });
+      };
+
+      const page = await renderShell([[storageApiRef, storage]]);
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('default'),
+      );
+      const menu = await renderHeaderMenu();
+      await openNotifications();
+      expect(
+        screen.getByRole('menuitemradio', { name: 'Default' }),
+      ).toHaveAttribute('aria-checked', 'true');
+
+      await userEvent.click(
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
+      );
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('all'),
+      );
+
+      // A reload: the page and its menu start afresh from the stored record.
+      menu.unmount();
+      page.unmount();
+      providedActions.mockClear();
+      await renderShell([[storageApiRef, storage]]);
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('all'),
+      );
+      await renderHeaderMenu();
+      await openNotifications();
+      expect(
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
+      ).toHaveAttribute('aria-checked', 'true');
+      expect(
+        screen.getByRole('menuitemradio', { name: 'Default' }),
+      ).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('keeps the name, the state and the agent in sight once the header scrolls away', async () => {
+      // ShellPage's compact header: the same header, at the top of the view
+      // while the conversation is read. Where the session runs and when it
+      // started stay out of it.
+      const observer = mockIntersectionObserver();
+      try {
+        await renderShell();
+
+        act(() => observer.report('above'));
+
+        const header = screen.getByTestId('shell-page-header');
+        expect(header).toHaveAttribute('data-compact');
+        // Still the one h1, its rename button and nothing twice.
+        expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+        expect(
+          within(header).getByRole('button', {
+            name: 'Rename session "Which GitHub issues..."',
+          }),
+        ).toBeVisible();
+        expect(within(header).getByText('Working')).toBeVisible();
+        expect(
+          within(header).getByRole('link', { name: 'Issue tracker' }),
+        ).toBeVisible();
+        expect(
+          screen.getAllByRole('switch', { name: 'Show tool activity' }),
+        ).toHaveLength(1);
+        expect(screen.getByTestId('installation-chip')).not.toBeVisible();
+        expect(screen.getByText(/^Started/)).not.toBeVisible();
+      } finally {
+        observer.restore();
+      }
+    });
+
+    /** The "Show tool activity" switch on the session's meta line (S9). */
+    const toolActivitySwitch = () =>
+      screen.getByRole('switch', { name: 'Show tool activity' });
+
+    it('puts the tool activity switch on the line with the start, not among the actions', async () => {
+      await renderShell();
+
+      const started = screen.getByText(/^Started/);
+      // The header holds both, the switch after the start.
+      const header = screen.getByTestId('shell-page-header');
+      expect(header).toContainElement(started);
+      expect(header).toContainElement(toolActivitySwitch());
+      expect(
+        started.compareDocumentPosition(toolActivitySwitch()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(lastProvidedActions().props).not.toHaveProperty('toolActivity');
+    });
+
+    it('hides the tool activity from the switch, and remembers it', async () => {
+      // S9: one switch, on by default, kept per person like the pin.
+      await renderShell();
+
+      expect(toolActivitySwitch()).toBeChecked();
+      expect(
+        screen.getByRole('button', { name: /Used 2 tools/ }),
+      ).toBeInTheDocument();
+
+      await userEvent.click(toolActivitySwitch());
+
+      await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+      expect(
+        screen.queryByRole('button', { name: /Used 2 tools/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    });
+
+    describe('toggled while reading, from the compact header', () => {
+      let observer: ReturnType<typeof mockIntersectionObserver>;
+      let scrollBy: jest.SpyInstance;
+      let rect: jest.SpyInstance;
+      beforeEach(() => {
+        observer = mockIntersectionObserver();
+        scrollBy = jest
+          .spyOn(window, 'scrollBy')
+          .mockImplementation(() => undefined);
+        // jsdom lays nothing out. The agent's reply is the entry in view;
+        // every work summary is laid out above it, 80px each, and the rest
+        // is far above the view.
+        const summaries = () =>
+          document.querySelectorAll('[data-testid="timeline-work-summary"]')
+            .length;
+        rect = jest
+          .spyOn(Element.prototype, 'getBoundingClientRect')
+          .mockImplementation(function layout(this: Element) {
+            const top = this.matches('[data-testid="timeline-agent-message"]')
+              ? 200 + summaries() * 80
+              : -1000;
+            return {
+              top,
+              bottom: top + 40,
+              left: 0,
+              right: 0,
+              width: 0,
+              height: 40,
+              x: 0,
+              y: top,
+              toJSON: () => ({}),
+            };
+          });
+      });
+      afterEach(() => {
+        rect.mockRestore();
+        scrollBy.mockRestore();
+        observer.restore();
+      });
+
+      it('keeps the reply being read where it is on screen', async () => {
+        await renderShell();
+        act(() => observer.report('above'));
+        const hidden =
+          document.querySelectorAll('[data-testid="timeline-work-summary"]')
+            .length * 80;
+        expect(hidden).toBeGreaterThan(0);
+
+        await userEvent.click(toolActivitySwitch());
+
+        await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+        // The summaries above it went, so the page follows the reply up.
+        expect(scrollBy).toHaveBeenCalledWith({
+          top: -hidden,
+          behavior: 'instant',
+        });
+
+        scrollBy.mockClear();
+        await userEvent.click(toolActivitySwitch());
+
+        await waitFor(() => expect(toolActivitySwitch()).toBeChecked());
+        expect(scrollBy).toHaveBeenCalledWith({
+          top: hidden,
+          behavior: 'instant',
+        });
+      });
+
+      it('stays compact while the conversation reflows around the switch', async () => {
+        await renderShell();
+        act(() => observer.report('above'));
+        const header = screen.getByTestId('shell-page-header');
+
+        await userEvent.click(toolActivitySwitch());
+        // The reflow nudges the conversation's start a few pixels into view
+        // and back: no flicker.
+        act(() => observer.report(8));
+        act(() => observer.report(-4));
+        act(() => observer.report(8));
+
+        expect(header).toHaveAttribute('data-compact');
+        await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+        expect(header).toHaveAttribute('data-compact');
+      });
+    });
+
+    it('says why the switch went back when the choice could not be stored', async () => {
+      const post = jest.fn();
+      const storage = mockApis.storage();
+      jest
+        .spyOn(storage.forBucket('agent-platform'), 'set')
+        .mockRejectedValue(new Error('The settings backend is down.'));
+      await renderShell([
+        [storageApiRef, storage],
+        [toastApiRef, { post }],
+      ]);
+
+      await userEvent.click(toolActivitySwitch());
+
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Could not hide tool activity',
+            description: 'The settings backend is down.',
+            status: 'danger',
+          }),
+        ),
+      );
+      await waitFor(() => expect(toolActivitySwitch()).toBeChecked());
+      expect(
+        screen.getByRole('button', { name: /Used 2 tools/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('holds the conversation and the switch until the stored choice is read', async () => {
+      // UserSettingsStorage answers "unknown" first and reads in the
+      // background; showing the work and then hiding it would flash.
+      const never = { subscribe: () => ({ unsubscribe: () => {} }) };
+      const bucket = {
+        snapshot: (key: string) => ({ key, presence: 'unknown' }),
+        observe$: () => never,
+        set: jest.fn(),
+        remove: jest.fn(),
+      };
+      const storage = { ...bucket, forBucket: () => bucket };
+      await renderShell([[storageApiRef, storage as unknown as StorageApi]]);
+
+      expect(screen.getByTestId('progress')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/You have two open issues/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('switch', { name: 'Show tool activity' }),
+      ).not.toBeInTheDocument();
+      // The rest of the line does not wait.
+      expect(screen.getByText(/^Started/)).toBeInTheDocument();
+    });
+
+    it('keeps the cost chip in the composer there too', async () => {
+      await renderShell();
+
+      expect(
+        within(screen.getByTestId('composer-card')).getByRole('button', {
+          name: /Session cost and context/,
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('the workspace', () => {
+    const fourHoursAgo = () =>
+      new Date(Date.now() - 4 * 3600 * 1000).toISOString();
+    const docs = (): Workspace => ({
+      name: 'ws-docs',
+      organization: 'lab',
+      sources: [],
+      sync: { schedule: 'nightly' },
+      resourceVersion: '1',
+      createdAt: '2026-10-01T00:00:00Z',
+      repositories: 2,
+      sessions: 1,
+      lastSync: { time: fourHoursAgo(), result: 'Succeeded' },
+      volume: { handle: 'fs-1::docs' },
+    });
+    const docsDetail = (): WorkspaceDetail => ({
+      workspace: docs(),
+      mirrors: [
+        {
+          provider: 'github',
+          repository: 'giantswarm/devctl',
+          pushedAt: '2026-10-20T00:00:00Z',
+          sizeBytes: 1,
+        },
+        {
+          provider: 'github',
+          repository: 'giantswarm/agentlab',
+          pushedAt: '2026-10-20T00:00:00Z',
+          sizeBytes: 1,
+        },
+        {
+          provider: 'github',
+          repository: 'giantswarm/dropped',
+          pushedAt: '2026-10-20T00:00:00Z',
+          sizeBytes: 1,
+          droppedAt: '2026-10-20T00:00:00Z',
+        },
       ],
-    ])('still renders when the session is %s', async (_label, overrides) => {
-      // A dead session is precisely when the switcher is wanted: without it the
-      // reader is stranded on a page whose only way out is the back link.
-      mockUseSessionDetail.mockReturnValue({
-        ...loadedView,
-        timeline: emptyTimeline,
-        ...overrides,
-      } as never);
-
-      await render();
-
-      expect(screen.getByTestId('session-switcher-rail')).toBeInTheDocument();
+      storage: { mirrorsBytes: 2, sessionsBytes: 3 * 1024 * 1024 },
+      sessionDirectories: [
+        {
+          session: detail.session.sessionId,
+          sizeBytes: 3 * 1024 * 1024,
+          cleanupAfter: '2026-11-04T08:00:00Z',
+        },
+      ],
     });
 
-    it('tells the rail the agent is working while a send is in flight', async () => {
-      // The reported bug: appending a message to a finished session left it in
-      // the rail's "Recently finished" group, because the rail's only source is
-      // a summary the backend caches for 15s. The page owns the fresher answer
-      // for its own session, and `showWorking` is the same signal the
-      // "Working…" indicator uses, so the two cannot disagree.
+    function withWorkspace() {
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
-        state: { ...loadedView.state, raw: 'completed', isActive: false },
-        // false, so the assertion can only pass because of the in-flight send —
-        // which is the gap the conversation's own verdict cannot cover.
-        isAgentWorking: false,
-      } as never);
-      mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+        detail: {
+          ...detail,
+          session: {
+            ...detail.session,
+            workspace: {
+              volumeHandle: 'fs-1::docs',
+              fetched: ['giantswarm/devctl'],
+              providers: ['github'],
+            },
+          },
+        },
+      });
+    }
 
+    async function renderWithWorkspaces() {
+      return renderInTestApp(<SessionDetailPage />, {
+        mountedRoutes: {
+          '/sessions': sessionsRouteRef,
+          '/customize/agents': agentsRouteRef,
+          '/customize/workspaces': workspacesRouteRef,
+        },
+      });
+    }
+
+    beforeEach(() => {
+      mockWorkspaceInstallations.mockClear();
+      mockUseWorkspaceDetail.mockReset();
+      mockUseWorkspaceDetail.mockReturnValue({
+        data: docsDetail(),
+        isPending: false,
+        error: null,
+      });
+      mockWorkspaceName = { status: 'named', workspace: docs() };
+    });
+
+    it('leaves the header of a session without a workspace as it was, reading no workspace list', async () => {
       await render();
 
-      expect(screen.getByTestId('session-switcher-rail')).toHaveAttribute(
-        'data-current-state',
-        'working',
+      expect(
+        screen.queryByRole('button', { name: /^Workspace/ }),
+      ).not.toBeInTheDocument();
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
+    });
+
+    it('shows the workspace’s name, last sync and fetched repositories as a chip opening a drawer', async () => {
+      withWorkspace();
+      await renderWithWorkspaces();
+
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      const chip = screen.getByRole('button', {
+        name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
+      });
+      await userEvent.click(chip);
+
+      const drawer = screen.getByRole('dialog');
+      expect(
+        within(drawer).getByRole('heading', { name: 'Workspace: ws-docs' }),
+      ).toBeInTheDocument();
+      expect(
+        within(drawer).getByRole('link', { name: 'ws-docs' }),
+      ).toHaveAttribute('href', '/customize/workspaces/gazelle/lab/ws-docs');
+      expect(mockUseWorkspaceDetail).toHaveBeenCalledWith(
+        'gazelle',
+        'ws-docs',
+        true,
       );
+      const lists = within(drawer).getAllByRole('list');
+      // Fetched before the first turn, then the workspace's repositories,
+      // the fetched one marked and the dropped one left out.
+      expect(within(lists[0]).getByText('giantswarm/devctl')).toBeVisible();
+      expect(
+        within(lists[1])
+          .getAllByRole('listitem')
+          .map(item => item.textContent),
+      ).toEqual(['giantswarm/agentlab', 'giantswarm/devctl (fetched)']);
+      expect(within(drawer).getByText('Repositories (2)')).toBeVisible();
+      expect(within(drawer).getByText(/^Deleted on /)).toBeVisible();
+      expect(
+        within(drawer).getByText(formatBytes(3 * 1024 * 1024)),
+      ).toBeVisible();
+      expect(within(drawer).getByText('Acting as you on')).toBeVisible();
+      expect(within(drawer).getByText('github')).toBeVisible();
     });
 
-    it('otherwise reports the state read from the conversation', async () => {
+    it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
+      withWorkspace();
+      mockWorkspaceName = { status: 'unnamed' };
+      await renderWithWorkspaces();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Workspace: Workspace · 1 fetched',
+        }),
+      );
+
+      const drawer = screen.getByRole('dialog');
+      expect(
+        within(drawer).getByText(/not listed for you any more/),
+      ).toBeVisible();
+      expect(within(drawer).queryByRole('link')).not.toBeInTheDocument();
+      // Nothing to read of a workspace without a name.
+      expect(mockUseWorkspaceDetail).toHaveBeenCalledWith('gazelle', '', false);
+      expect(within(drawer).getByText('giantswarm/devctl')).toBeVisible();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('on a phone (T22)', () => {
+    let layout: MockedLayout;
+    afterEach(() => layout?.restore());
+
+    const waitingView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: awaitingInput,
+      pendingConfirmation: {
+        taskId: 'task-1',
+        asks: 'input' as const,
+        toolName: 'ask_user',
+        questions: [{ question: 'Which cluster?', multiple: false }],
+      },
+    };
+
+    it('publishes the dock’s height on the document for the toasts, and takes it away with the dock (B4)', async () => {
+      const root = document.documentElement;
+      const { unmount } = await render();
+
+      expect(root.style.getPropertyValue('--session-dock-height')).toMatch(
+        /^\d+px$/,
+      );
+
+      unmount();
+      expect(root.style.getPropertyValue('--session-dock-height')).toBe('');
+    });
+
+    it('publishes no dock height where the composer is withheld', async () => {
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
-        state: { ...loadedView.state, raw: 'completed', isActive: false },
-        isAgentWorking: false,
-      } as never);
-
+        detail: { ...loadedView.detail!, readOnly: true },
+      });
       await render();
 
-      expect(screen.getByTestId('session-switcher-rail')).toHaveAttribute(
-        'data-current-state',
-        'completed',
-      );
+      expect(screen.queryByTestId('session-dock')).not.toBeInTheDocument();
+      expect(
+        document.documentElement.style.getPropertyValue(
+          '--session-dock-height',
+        ),
+      ).toBe('');
     });
 
-    it('is not rendered at all on a narrow viewport', async () => {
-      // Not merely hidden: a narrow viewport should not pay for the rail's two
-      // queries and their polling.
-      mockMatchesUpSm.mockReturnValueOnce(false);
-
+    it('folds the disabled composer to its caption under an open question (B21)', async () => {
+      layout = mockPhoneLayout();
+      mockUseSessionDetail.mockReturnValue(waitingView);
       await render();
 
-      expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
+      const dock = screen.getByTestId('session-dock');
+      expect(
+        within(dock).getByRole('form', { name: 'Question from the agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(within(dock).getByTestId('composer-folded')).toHaveTextContent(
+        'Issue tracker is waiting for your answer above.',
+      );
+      // The cost chip stays reachable beside the caption.
+      expect(
+        within(dock).getByRole('button', { name: /Session cost and context/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the disabled composer under the question on a desktop', async () => {
+      layout = mockDesktopLayout();
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      await render();
+
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
+    });
+
+    it('docks the notice with its button, and no box, once an answer was not taken', async () => {
+      // The question card goes, and the session takes no more messages: the
+      // dock holds the notice, its button and the cost chip.
+      layout = mockPhoneLayout();
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      const notTaken = new Error('kagent did not take the answer.');
+      notTaken.name = 'AnswerNotTakenError';
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: notTaken,
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-1',
+            decision: 'approve',
+            answers: [['prod']],
+            text: 'prod',
+          },
+        }),
+      );
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      expect(
+        within(dock).getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(within(dock).getByText('Your answer: prod')).toBeInTheDocument();
+      expect(
+        within(dock).queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(dock).getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(dock).getByRole('button', { name: /Session cost and context/ }),
+      ).toBeInTheDocument();
     });
   });
 });

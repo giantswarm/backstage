@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
   AgentManagerNotConnectedError,
@@ -13,7 +14,7 @@ import type { AgentWriteFailure } from './useUpdateAgent';
 export type AgentDeletionState = {
   /**
    * `delete_agent` as the person: agent-manager deletes the HelmRelease that
-   * owns the agent (helm-controller uninstalls the template and the agent's
+   * owns the agent (helm-controller uninstalls the Agent and the agent's
    * RemoteMCPServer with it) and the shared chart source only when nothing
    * else references it. Never `force`: a GitOps-owned or suspended release
    * is refused with agent-manager's reason, which the dialog shows as given.
@@ -23,7 +24,8 @@ export type AgentDeletionState = {
   /**
    * `delete_agent` with `mode: commit` (giantswarm/agent-manager#24): a pull
    * request that removes the agent's files from the owning GitOps repository.
-   * Offered only when `get_info` reports the `commit` capability.
+   * Offered only for an agent applied from git, and only when `get_info`
+   * reports the `commit` capability.
    */
   commit: () => Promise<CommitAgentResult>;
   isCommitting: boolean;
@@ -65,21 +67,31 @@ export function useAgentDeletion(
     // Invalidate rather than edit the cache: the plugin's QueryClient is
     // persisted to localStorage, so a stale pre-deletion template could
     // otherwise be rehydrated on reload. Prefixes of the kubernetes-react keys,
-    // so one entry per operation covers every kagent.dev list and instance.
+    // so one entry per operation covers every api.kagent.dev list and instance.
     return Promise.all(
       ['list', 'get'].map(operation =>
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, operation, 'kagent.dev'],
+          queryKey: ['cluster', installation, operation, 'api.kagent.dev'],
         }),
       ),
     ).then(() => undefined);
   }, [queryClient, installation]);
 
-  const deletion = useMutation({
+  const deletion = useTrackedMutation({
+    // Only a call that removed the agent: one that found nothing left to
+    // remove (a concurrent delete, a retry) deleted nothing.
+    event: result =>
+      result.helmReleaseDeleted || result.agentDeleted
+        ? { name: 'AgentPlatform.agentDeleted', attributes: { mode: 'apply' } }
+        : null,
     mutationFn: () => requireClient().deleteAgent(namespace, name),
     onSuccess: () => invalidateReads(),
   });
-  const commitMutation = useMutation({
+  const commitMutation = useTrackedMutation({
+    event: () => ({
+      name: 'AgentPlatform.agentDeleted',
+      attributes: { mode: 'commit' },
+    }),
     mutationFn: () => requireClient().commitDeleteAgent(namespace, name),
   });
 
