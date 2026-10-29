@@ -7,10 +7,34 @@ import { isMusterAuthError } from '../../lib/authError';
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import {
   takesDisplayName,
+  withoutClientSecretRef,
+  type ClientCredentials,
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
 import { displayNameSupportQuery } from './useTakesDisplayName';
+
+/**
+ * Client credentials handed to exactly one write. React Query keeps a
+ * mutation's variables after it settles (and shows them in its devtools), so
+ * the values do not travel as plain variables: the write takes them out of
+ * this holder, which is empty from then on. A private field, so neither
+ * `JSON.stringify` nor an error serializer finds them on the variables.
+ */
+export class OneTimeClientCredentials {
+  #value: ClientCredentials | undefined;
+
+  constructor(value: ClientCredentials) {
+    this.#value = value;
+  }
+
+  /** The credentials, once; `undefined` on every later call. */
+  take(): ClientCredentials | undefined {
+    const value = this.#value;
+    this.#value = undefined;
+    return value;
+  }
+}
 
 export type McpServerRegistration = {
   definition: McpServerDefinition;
@@ -23,6 +47,13 @@ export type McpServerRegistration = {
    * registered server rather than a correction inside its registration.
    */
   startedFromEdit: boolean;
+  /**
+   * A client's ID and secret for muster to store in a Secret bound to the
+   * server (`clientCredentials` of create and update). Sent to the write
+   * only — never to validate — and then with the definition's own
+   * `clientCredentialsSecretRef` left out, since muster sets that itself.
+   */
+  clientCredentials?: OneTimeClientCredentials;
 };
 
 /**
@@ -49,11 +80,17 @@ export function useRegisterMcpServer() {
 
   return useTrackedMutation({
     mutationFn: async ({
-      definition,
+      definition: composed,
       installation,
       isEdit,
+      clientCredentials: handedOver,
     }: McpServerRegistration): Promise<McpServerDefinition> => {
       const tool = isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create';
+      // Taken at once, so the values live only in this call's scope.
+      const clientCredentials = handedOver?.take();
+      const definition = clientCredentials
+        ? withoutClientSecretRef(composed)
+        : composed;
       const { displayName, ...withoutDisplayName } = definition;
       const definitionFor = async (
         name: string,
@@ -86,7 +123,13 @@ export function useRegisterMcpServer() {
         validated,
         installation,
       );
-      await musterApi.callTool(tool, sent, installation);
+      await musterApi.callTool(
+        tool,
+        clientCredentials ? { ...sent, clientCredentials } : sent,
+        installation,
+      );
+      // What was written, without the credentials: the caller keeps it as the
+      // base of later saves.
       return sent;
     },
     event: (_data, { isEdit, startedFromEdit, authMode }) => {

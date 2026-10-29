@@ -426,6 +426,52 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.definition.description).toBe('New');
     });
 
+    it('remembers that a save stored a client, with no value in its base', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://app.hubspot.com');
+      });
+      expect(result.current.storedClientCredentials).toBe(false);
+
+      // The wizard hands markSaved what it sent, without the credentials.
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+
+      expect(result.current.storedClientCredentials).toBe(true);
+      // A later save sends no reference: muster keeps the client it stored.
+      expect(result.current.definition.auth?.authorizationServer).toEqual({
+        issuer: 'https://app.hubspot.com',
+      });
+
+      act(() => result.current.reset());
+      expect(result.current.storedClientCredentials).toBe(false);
+    });
+
+    it('composes an existing Secret only while "Use an existing Secret" is ticked', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://github.com');
+        result.current.setUseExistingSecret(true);
+        result.current.setClientSecretName('github-oauth-client');
+      });
+      expect(
+        result.current.definition.auth?.authorizationServer
+          ?.clientCredentialsSecretRef,
+      ).toEqual({ name: 'github-oauth-client' });
+
+      act(() => result.current.setUseExistingSecret(false));
+      expect(
+        result.current.definition.auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
+    });
+
     it('records a create as the base of the "Edit details" loop', () => {
       const { result, fillDetails } = renderForm();
       fillDetails();

@@ -110,9 +110,18 @@ export type NewMcpServerFormState = {
   /** `own-account` only: pinned token endpoint, set with the one above. */
   tokenEndpoint: string;
   /**
+   * `own-account` only: whether the client credentials come from a Secret
+   * someone created (the fields below) rather than being typed into the
+   * wizard, which muster stores in a Secret of its own (see
+   * {@link ClientCredentials}). Typed values are never part of this state.
+   */
+  useExistingSecret: boolean;
+  /**
    * `own-account` only: name of the Kubernetes Secret holding an out-of-band
    * registered OAuth client's credentials. Empty means muster registers itself
-   * dynamically (RFC 7591) or identifies by its CIMD URL.
+   * dynamically (RFC 7591) or identifies by its CIMD URL. Composed when
+   * {@link NewMcpServerFormState.useExistingSecret} is set, or when it is the
+   * Secret muster stored for this connector ({@link isStoredClientSecret}).
    */
   clientSecretName: string;
   /** `own-account` only: the Secret's namespace. Empty uses muster's default. */
@@ -171,6 +180,7 @@ export const emptyFormState: NewMcpServerFormState = {
   scopes: '',
   authorizationEndpoint: '',
   tokenEndpoint: '',
+  useExistingSecret: false,
   clientSecretName: '',
   clientSecretNamespace: '',
   clientIdKey: '',
@@ -293,6 +303,152 @@ export function takesDisplayName(
   return Boolean(inputSchema?.properties?.displayName);
 }
 
+/**
+ * A pre-registered OAuth client's credentials as typed into the wizard, for
+ * muster to store in a Secret bound to the connector. Held apart from the form
+ * state and the definition: they go into the create or update call as its
+ * `clientCredentials` argument and nowhere else (not validate, not analytics,
+ * not a saved definition or a draft).
+ */
+export type ClientCredentials = { clientId: string; clientSecret: string };
+
+/**
+ * The name muster gives the Secret it stores a connector's client in:
+ * `<server>-oauth-client-<5 of [a-z0-9]>`, the server's name cut so the whole
+ * stays a DNS label. Mirrors muster's `generatedClientSecretPrefix`.
+ */
+const STORED_CLIENT_SECRET_INFIX = '-oauth-client-';
+const STORED_CLIENT_SECRET_SUFFIX = /^[a-z0-9]{5}$/;
+const STORED_CLIENT_SECRET_MAX_SERVER =
+  63 - STORED_CLIENT_SECRET_INFIX.length - 5;
+
+/**
+ * Whether `secretName` is the Secret muster stored the client credentials of
+ * the server `serverName` in (typed into the wizard), rather than a Secret
+ * someone created and named.
+ */
+export function isStoredClientSecret(
+  serverName: string,
+  secretName: string,
+): boolean {
+  const prefix = `${serverName.slice(
+    0,
+    STORED_CLIENT_SECRET_MAX_SERVER,
+  )}${STORED_CLIENT_SECRET_INFIX}`;
+  return (
+    Boolean(serverName) &&
+    secretName.startsWith(prefix) &&
+    STORED_CLIENT_SECRET_SUFFIX.test(secretName.slice(prefix.length))
+  );
+}
+
+/**
+ * Whether the state carries the Secret muster stored this connector's client
+ * in — what the sign-in step shows as "Client secret stored".
+ */
+export function hasStoredClientSecret(state: NewMcpServerFormState): boolean {
+  return (
+    !state.useExistingSecret &&
+    isStoredClientSecret(state.slug.trim(), state.clientSecretName.trim())
+  );
+}
+
+/**
+ * The Secret name the definition names: the one typed for an existing Secret,
+ * or the one muster stored this connector's client in. Secret fields left
+ * over from unticking "Use an existing Secret" are not composed.
+ */
+function composedClientSecretName(state: NewMcpServerFormState): string {
+  const name = state.clientSecretName.trim();
+  return state.useExistingSecret || hasStoredClientSecret(state) ? name : '';
+}
+
+/** Typed client credentials, trimmed. */
+function trimmedCredentials(credentials: ClientCredentials): ClientCredentials {
+  return {
+    clientId: credentials.clientId.trim(),
+    clientSecret: credentials.clientSecret.trim(),
+  };
+}
+
+/**
+ * Problems of typed client credentials: both values or neither, and an issuer
+ * for the authorization-server block muster needs to use them. Empty when the
+ * credentials do not apply (another mode, or an existing Secret).
+ */
+export function clientCredentialsProblems(
+  state: NewMcpServerFormState,
+  credentials: ClientCredentials,
+): McpServerProblem[] {
+  if (state.authMode !== 'own-account' || state.useExistingSecret) {
+    return [];
+  }
+  const { clientId, clientSecret } = trimmedCredentials(credentials);
+  if (!clientId && !clientSecret) {
+    return [];
+  }
+  const problems: McpServerProblem[] = [];
+  if (!state.issuer.trim()) {
+    problems.push({
+      field: 'issuer',
+      message:
+        'Client credentials apply to the issuer override — set an issuer too',
+    });
+  }
+  if (!clientId) {
+    problems.push({ field: 'clientId', message: 'Enter the client ID too.' });
+  }
+  if (!clientSecret) {
+    problems.push({
+      field: 'clientSecret',
+      message: 'Enter the client secret too.',
+    });
+  }
+  return problems;
+}
+
+/**
+ * The `clientCredentials` argument for muster's create or update, or
+ * `undefined` to send none (muster then keeps a client it stored before).
+ * Only complete, applicable credentials are sent; see
+ * {@link clientCredentialsProblems}.
+ */
+export function clientCredentialsArgument(
+  state: NewMcpServerFormState,
+  credentials: ClientCredentials,
+): ClientCredentials | undefined {
+  const trimmed = trimmedCredentials(credentials);
+  if (
+    state.authMode !== 'own-account' ||
+    state.useExistingSecret ||
+    !trimmed.clientId ||
+    !trimmed.clientSecret ||
+    clientCredentialsProblems(state, credentials).length > 0
+  ) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+/**
+ * The definition without a `clientCredentialsSecretRef`: what goes with a
+ * `clientCredentials` argument, which muster refuses next to an explicit
+ * reference (it sets the reference to the Secret it writes).
+ */
+export function withoutClientSecretRef(
+  definition: McpServerDefinition,
+): McpServerDefinition {
+  const authorizationServer = definition.auth?.authorizationServer;
+  if (!authorizationServer?.clientCredentialsSecretRef) {
+    return definition;
+  }
+  const { clientCredentialsSecretRef: _ref, ...rest } = authorizationServer;
+  return {
+    ...definition,
+    auth: { ...definition.auth, authorizationServer: rest },
+  };
+}
+
 function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
   switch (state.authMode) {
     case 'none':
@@ -321,7 +477,7 @@ function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
           authorizationServer.authorizationEndpoint = authorizationEndpoint;
           authorizationServer.tokenEndpoint = tokenEndpoint;
         }
-        const secretName = state.clientSecretName.trim();
+        const secretName = composedClientSecretName(state);
         if (secretName) {
           const secretRef: MCPServerClientCredentialsSecretRef = {
             name: secretName,
@@ -452,6 +608,8 @@ export type McpServerField =
   | 'authorizationEndpoint'
   | 'tokenEndpoint'
   | 'clientSecretName'
+  | 'clientId'
+  | 'clientSecret'
   | 'transport'
   | 'sigv4Region';
 
@@ -575,13 +733,19 @@ const ENDPOINT_PATTERN = /^https:\/\/\S+$/;
 export function hasAdvancedAuthorizationServer(
   state: NewMcpServerFormState,
 ): boolean {
+  const secretFields =
+    state.useExistingSecret || hasStoredClientSecret(state)
+      ? Boolean(
+          state.clientSecretName.trim() ||
+          state.clientSecretNamespace.trim() ||
+          state.clientIdKey.trim() ||
+          state.clientSecretKey.trim(),
+        )
+      : false;
   return Boolean(
     state.authorizationEndpoint.trim() ||
     state.tokenEndpoint.trim() ||
-    state.clientSecretName.trim() ||
-    state.clientSecretNamespace.trim() ||
-    state.clientIdKey.trim() ||
-    state.clientSecretKey.trim() ||
+    secretFields ||
     state.grantScope === 'subject',
   );
 }
@@ -642,16 +806,10 @@ export function mcpServerAuthProblems(
         problems.push({ field, message: `${label} must be an https URL` });
       }
     }
-    if (
-      !state.clientSecretName.trim() &&
-      (state.clientSecretNamespace.trim() ||
-        state.clientIdKey.trim() ||
-        state.clientSecretKey.trim())
-    ) {
+    if (state.useExistingSecret && !state.clientSecretName.trim()) {
       problems.push({
         field: 'clientSecretName',
-        message:
-          'The client-credentials Secret needs a name for its namespace and keys to point into',
+        message: "Enter the Secret's name.",
       });
     }
   }
@@ -978,6 +1136,7 @@ const AUTH_ANSWER_FIELDS = [
   'scopes',
   'authorizationEndpoint',
   'tokenEndpoint',
+  'useExistingSecret',
   'clientSecretName',
   'clientSecretNamespace',
   'clientIdKey',
@@ -1016,6 +1175,7 @@ export const emptyAuthAnswer: McpServerAuthAnswer =
  */
 export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
   const auth = server.getAuth();
+  const clientSecretRef = auth?.authorizationServer?.clientCredentialsSecretRef;
   return {
     ...emptyFormState,
     name: server.getDisplayName(),
@@ -1030,6 +1190,12 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     authorizationEndpoint:
       auth?.authorizationServer?.authorizationEndpoint ?? '',
     tokenEndpoint: auth?.authorizationServer?.tokenEndpoint ?? '',
+    // A Secret muster stored this connector's client in shows as "stored";
+    // any other named Secret is an existing one.
+    useExistingSecret: Boolean(
+      clientSecretRef &&
+      !isStoredClientSecret(server.getName(), clientSecretRef.name),
+    ),
     clientSecretName:
       auth?.authorizationServer?.clientCredentialsSecretRef?.name ?? '',
     clientSecretNamespace:

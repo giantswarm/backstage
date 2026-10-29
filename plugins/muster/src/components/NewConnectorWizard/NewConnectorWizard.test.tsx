@@ -462,14 +462,21 @@ describe('shell connector wizard', () => {
         'https://github.com/login/oauth/access_token',
       );
 
-      // The client credentials ask where the Secret is and which keys to read,
-      // never for the credentials themselves.
+      // An existing Secret is named by where it is and which keys to read.
       const credentials = screen.getByRole('group', {
-        name: 'Client credentials — stored in a Kubernetes Secret',
+        name: 'Client credentials',
       });
+      await userEvent.click(
+        within(credentials).getByRole('checkbox', {
+          name: 'Use an existing Secret',
+        }),
+      );
+      expect(
+        within(credentials).queryByLabelText(/^Client ID/),
+      ).not.toBeInTheDocument();
       expect(
         within(credentials).getByText(
-          /never the client ID or secret themselves/,
+          'Whoever saves the connector must be allowed to get this Secret.',
         ),
       ).toBeInTheDocument();
       await userEvent.type(
@@ -517,6 +524,198 @@ describe('shell connector wizard', () => {
             },
           },
         },
+      });
+    });
+
+    describe('client credentials typed into the wizard', () => {
+      const ISSUER = 'https://app.hubspot.com';
+
+      /** Sign-in with own account, an issuer and the typed client. */
+      async function typeClient(clientId: string, clientSecret: string) {
+        await userEvent.click(
+          screen.getByRole('radio', {
+            name: 'Each person signs in with their own account',
+          }),
+        );
+        await userEvent.click(
+          screen.getByText(
+            "Advanced: sign-in settings for apps muster can't look up",
+          ),
+        );
+        await userEvent.type(
+          await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
+          ISSUER,
+        );
+        const credentials = screen.getByRole('group', {
+          name: 'Client credentials',
+        });
+        if (clientId) {
+          await userEvent.type(
+            within(credentials).getByLabelText(/^Client ID/),
+            clientId,
+          );
+        }
+        if (clientSecret) {
+          await userEvent.type(
+            within(credentials).getByLabelText(/^Client secret/),
+            clientSecret,
+          );
+        }
+        return credentials;
+      }
+
+      it('asks for the client ID and a masked secret, without autofill', async () => {
+        await renderSignInStep();
+        const credentials = await typeClient('', '');
+
+        const id = within(credentials).getByLabelText(/^Client ID/);
+        const secret = within(credentials).getByLabelText(/^Client secret/);
+        expect(id).toHaveAttribute('autocomplete', 'off');
+        expect(secret).toHaveAttribute('type', 'password');
+        expect(secret).toHaveAttribute('autocomplete', 'off');
+        // The Secret fields wait behind "Use an existing Secret".
+        expect(
+          within(credentials).queryByLabelText(/^Secret name/),
+        ).not.toBeInTheDocument();
+      });
+
+      it('sends the client to create only, never to validate', async () => {
+        await renderSignInStep();
+        await typeClient('hubspot-client', 'hubspot-s3cret');
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+
+        const [validate] = toolCalls('core_mcpserver_validate');
+        expect(JSON.stringify(validate)).not.toContain('hubspot-s3cret');
+        expect(validate[1]).not.toHaveProperty('clientCredentials');
+        const [create] = toolCalls('core_mcpserver_create');
+        expect(create[1]).toMatchObject({
+          name: 'jira',
+          auth: { type: 'oauth', authorizationServer: { issuer: ISSUER } },
+          clientCredentials: {
+            clientId: 'hubspot-client',
+            clientSecret: 'hubspot-s3cret',
+          },
+        });
+        expect(
+          (create[1] as { auth: { authorizationServer: object } }).auth
+            .authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+      });
+
+      it('shows the client as stored after the save, and a correction keeps it', async () => {
+        await renderSignInStep();
+        await typeClient('hubspot-client', 'hubspot-s3cret');
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+        await screen.findByText('How do people sign in?');
+        const credentials = screen.getByRole('group', {
+          name: 'Client credentials',
+        });
+        expect(
+          within(credentials).getByText('Client secret stored'),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).queryByLabelText(/^Client secret/),
+        ).not.toBeInTheDocument();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+        const [update] = toolCalls('core_mcpserver_update');
+        expect(JSON.stringify(update)).not.toContain('hubspot-s3cret');
+        expect(update[1]).not.toHaveProperty('clientCredentials');
+        // No reference either: muster keeps the client it stored.
+        expect(
+          (update[1] as { auth: { authorizationServer: object } }).auth
+            .authorizationServer,
+        ).toEqual({ issuer: ISSUER });
+      });
+
+      it('asks for the other value and an issuer before saving half a client', async () => {
+        await renderSignInStep();
+        await userEvent.click(
+          screen.getByRole('radio', {
+            name: 'Each person signs in with their own account',
+          }),
+        );
+        await userEvent.click(
+          screen.getByText(
+            "Advanced: sign-in settings for apps muster can't look up",
+          ),
+        );
+        await userEvent.type(
+          await screen.findByLabelText(/^Client ID/),
+          'hubspot-client',
+        );
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+
+        expect(
+          await screen.findByText('Enter the client secret too.'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Client credentials apply to the issuer override — set an issuer too',
+          ),
+        ).toBeInTheDocument();
+        expect(callTool).not.toHaveBeenCalled();
+      });
+
+      it("shows muster's refusal, stays on the step and clears the values", async () => {
+        const refusal =
+          'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
+        callTool.mockImplementation((tool: string) =>
+          tool === 'core_mcpserver_create'
+            ? Promise.reject(new Error(refusal))
+            : Promise.resolve({}),
+        );
+        await renderSignInStep();
+        const credentials = await typeClient(
+          'hubspot-client',
+          'hubspot-s3cret',
+        );
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+
+        expect(await screen.findByText(refusal)).toBeInTheDocument();
+        expect(
+          screen.getByText('Could not add the connector'),
+        ).toBeInTheDocument();
+        // muster rolled the connector back: nothing to test, nothing to edit.
+        expect(
+          screen.queryByText('Test the connection'),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('How do people sign in?')).toBeInTheDocument();
+        await waitFor(() =>
+          expect(
+            within(credentials).getByLabelText(/^Client secret/),
+          ).toHaveValue(''),
+        );
+        expect(within(credentials).getByLabelText(/^Client ID/)).toHaveValue(
+          '',
+        );
+        // The next attempt is a create again.
+        callTool.mockResolvedValue({});
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+        expect(toolCalls('core_mcpserver_update')).toEqual([]);
+        expect(toolCalls('core_mcpserver_create')[1][1]).not.toHaveProperty(
+          'clientCredentials',
+        );
       });
     });
 
@@ -848,6 +1047,145 @@ describe('shell connector wizard', () => {
       expect(
         screen.queryByText('How do people sign in?'),
       ).not.toBeInTheDocument();
+    });
+
+    describe('with a client muster stored', () => {
+      const STORED_REF = { name: 'jira-oauth-client-x7k2p' };
+      const withClient = (ref: { name: string }) =>
+        new MCPServer(
+          {
+            apiVersion: 'muster.giantswarm.io/v1alpha1',
+            kind: 'MCPServer',
+            metadata: { name: 'jira', namespace: 'muster' },
+            spec: {
+              type: 'streamable-http',
+              url: 'https://jira.example.com/mcp',
+              autoStart: true,
+              auth: {
+                type: 'oauth',
+                authorizationServer: {
+                  issuer: 'https://app.hubspot.com',
+                  clientCredentialsSecretRef: ref,
+                },
+              },
+            },
+            status: { state: 'Connected' },
+          } as never,
+          'gazelle',
+        );
+
+      async function openSignIn() {
+        await renderWizard('/customize/connectors/gazelle/jira/edit');
+        await screen.findByLabelText(/^Server address/);
+        await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        await screen.findByText('How do people sign in?');
+        return screen.getByRole('group', { name: 'Client credentials' });
+      }
+
+      it('shows it as stored, never its values, and keeps it on an ordinary save', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        const credentials = await openSignIn();
+
+        expect(
+          within(credentials).getByText('Client secret stored'),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).queryByLabelText(/^Client secret/),
+        ).not.toBeInTheDocument();
+        expect(
+          within(credentials).queryByLabelText(/^Client ID/),
+        ).not.toBeInTheDocument();
+        expect(
+          within(credentials).getByRole('checkbox', {
+            name: 'Use an existing Secret',
+          }),
+        ).not.toBeChecked();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+        const [update] = toolCalls('core_mcpserver_update');
+        expect(update[1]).toMatchObject({
+          auth: {
+            authorizationServer: { clientCredentialsSecretRef: STORED_REF },
+          },
+        });
+        expect(update[1]).not.toHaveProperty('clientCredentials');
+      });
+
+      it('replaces it with a new client, sent without the old reference', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        const credentials = await openSignIn();
+
+        await userEvent.click(
+          within(credentials).getByRole('button', { name: 'Replace' }),
+        );
+        const id = within(credentials).getByLabelText(/^Client ID/);
+        const secret = within(credentials).getByLabelText(/^Client secret/);
+        expect(id).toHaveValue('');
+        expect(secret).toHaveValue('');
+        await userEvent.type(id, 'new-client');
+        await userEvent.type(secret, 'new-s3cret');
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+
+        const [validate] = toolCalls('core_mcpserver_validate');
+        expect(JSON.stringify(validate)).not.toContain('new-s3cret');
+        const [update] = toolCalls('core_mcpserver_update');
+        expect(update[1]).toMatchObject({
+          name: 'jira',
+          auth: { authorizationServer: { issuer: 'https://app.hubspot.com' } },
+          clientCredentials: {
+            clientId: 'new-client',
+            clientSecret: 'new-s3cret',
+          },
+        });
+        expect(
+          (update[1] as { auth: { authorizationServer: object } }).auth
+            .authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+      });
+
+      it('keeps the stored client when Replace is taken back', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        const credentials = await openSignIn();
+
+        await userEvent.click(
+          within(credentials).getByRole('button', { name: 'Replace' }),
+        );
+        await userEvent.type(
+          within(credentials).getByLabelText(/^Client ID/),
+          'typo',
+        );
+        await userEvent.click(
+          within(credentials).getByRole('button', {
+            name: 'Keep stored secret',
+          }),
+        );
+        expect(
+          within(credentials).getByText('Client secret stored'),
+        ).toBeInTheDocument();
+      });
+
+      it('shows a Secret someone else named as an existing Secret', async () => {
+        mockMcpServers = [withClient({ name: 'hubspot-oauth-client' })];
+        const credentials = await openSignIn();
+
+        expect(
+          within(credentials).getByRole('checkbox', {
+            name: 'Use an existing Secret',
+          }),
+        ).toBeChecked();
+        expect(
+          within(credentials).getByLabelText(/^Secret name(?!space)/),
+        ).toHaveValue('hubspot-oauth-client');
+        expect(
+          within(credentials).queryByText('Client secret stored'),
+        ).not.toBeInTheDocument();
+      });
     });
 
     it('saves the changes as an update of the connector, never a second one', async () => {
