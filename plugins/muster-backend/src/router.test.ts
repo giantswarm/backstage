@@ -1310,6 +1310,37 @@ describe('createRouter', () => {
       expect(response.body.error.reason).toBe('token_expired');
     });
 
+    it.each(['core_mcpserver_update', 'core_mcpserver_validate'])(
+      "answers %s's refusal as a 422 too",
+      async name => {
+        callTool.mockRejectedValue(new MusterToolError(refusal));
+
+        const response = await request(await personApp())
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({ name, arguments: { name: 'jira' } });
+
+        expect(response.status).toBe(422);
+        expect(response.body.error.message).toBe(refusal);
+      },
+    );
+
+    it.each([
+      'core_mcpserver_get',
+      'core_mcpserver_list',
+      'core_mcpserver_detect',
+      'core_mcpserver_delete',
+    ])("leaves %s's tool error a 500", async name => {
+      callTool.mockRejectedValue(new MusterToolError('not found'));
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name, arguments: { name: 'jira' } });
+
+      expect(response.status).toBe(500);
+    });
+
     it('leaves an outage a 5xx', async () => {
       callTool.mockRejectedValue(new Error('fetch failed'));
 

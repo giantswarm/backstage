@@ -13,6 +13,7 @@ import { toMcpServerDefinition } from '../../lib/gitops';
 import {
   authAnswerOf,
   authFieldAvailability,
+  clientBindingChanged,
   composeMcpServerDefinition,
   deriveSlug,
   emptyAuthAnswer,
@@ -108,6 +109,13 @@ export type NewMcpServerFormContextValue = {
    * then a later save sends no reference, which keeps the stored one.
    */
   storedClientCredentials: boolean;
+  /**
+   * Whether the form points at another authorization server (issuer or
+   * endpoints) than the registered server was last read or saved with. muster
+   * binds a stored client to its server, so such a change needs the client
+   * entered again.
+   */
+  authorizationServerChanged: boolean;
   /**
    * Seeds the wizard from an already-registered server, so its "Edit" opens
    * the registration form pre-filled. Saving is then an update to that server
@@ -231,8 +239,12 @@ export function NewMcpServerFormProvider({
       options?: { storedClientCredentials?: boolean },
     ) => {
       const current = latest.current;
-      if (options?.storedClientCredentials) {
+      const storedNow = Boolean(options?.storedClientCredentials);
+      if (storedNow) {
         setStoredClientCredentials(true);
+      } else if (!saved.auth?.authorizationServer) {
+        // Saved without an authorization server: muster dropped the client.
+        setStoredClientCredentials(false);
       }
       setLastSave(current.registeredName ? 'update' : 'create');
       setLastSaveAt(Date.now());
@@ -244,7 +256,21 @@ export function NewMcpServerFormProvider({
         saved.displayName === undefined
           ? latest.current.base?.displayName
           : saved.displayName || undefined;
-      const form = { ...current.state, name: displayName ?? saved.name };
+      const form: NewMcpServerFormState = {
+        ...current.state,
+        name: displayName ?? saved.name,
+        // muster named the new client's Secret; a stored reference read
+        // before is the replaced one. Later saves name none, and muster keeps
+        // the current client.
+        ...(storedNow
+          ? {
+              clientSecretName: '',
+              clientSecretNamespace: '',
+              clientIdKey: '',
+              clientSecretKey: '',
+            }
+          : {}),
+      };
       setState(form);
       setBase({ definition: saved, form, displayName });
     },
@@ -373,6 +399,9 @@ export function NewMcpServerFormProvider({
       startedFromEdit,
       markSaved,
       storedClientCredentials,
+      authorizationServerChanged: base
+        ? clientBindingChanged(state, base.form)
+        : false,
       startEdit,
       reset,
       isComplete: validationErrors.length === 0,

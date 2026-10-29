@@ -572,7 +572,7 @@ describe('shell connector wizard', () => {
         const secret = within(credentials).getByLabelText(/^Client secret/);
         expect(id).toHaveAttribute('autocomplete', 'off');
         expect(secret).toHaveAttribute('type', 'password');
-        expect(secret).toHaveAttribute('autocomplete', 'off');
+        expect(secret).toHaveAttribute('autocomplete', 'new-password');
         // The Secret fields wait behind "Use an existing Secret".
         expect(
           within(credentials).queryByLabelText(/^Secret name/),
@@ -663,11 +663,7 @@ describe('shell connector wizard', () => {
         expect(
           await screen.findByText('Enter the client secret too.'),
         ).toBeInTheDocument();
-        expect(
-          screen.getByText(
-            'Client credentials apply to the issuer override — set an issuer too',
-          ),
-        ).toBeInTheDocument();
+        expect(screen.getByText('Enter an issuer too.')).toBeInTheDocument();
         expect(callTool).not.toHaveBeenCalled();
       });
 
@@ -1147,6 +1143,175 @@ describe('shell connector wizard', () => {
           (update[1] as { auth: { authorizationServer: object } }).auth
             .authorizationServer,
         ).not.toHaveProperty('clientCredentialsSecretRef');
+      });
+
+      it('saves later edits without the replaced reference', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        const credentials = await openSignIn();
+        await userEvent.click(
+          within(credentials).getByRole('button', { name: 'Replace' }),
+        );
+        await userEvent.type(
+          within(credentials).getByLabelText(/^Client ID/),
+          'new-client',
+        );
+        await userEvent.type(
+          within(credentials).getByLabelText(/^Client secret/),
+          'new-s3cret',
+        );
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+        await screen.findByText('How do people sign in?');
+        expect(screen.getByText('Client secret stored')).toBeInTheDocument();
+        await userEvent.type(
+          screen.getByLabelText(/^Permissions to ask for \(scopes\)/),
+          'read',
+        );
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+
+        const updates = toolCalls('core_mcpserver_update');
+        expect(updates).toHaveLength(2);
+        expect(updates[1][1]).not.toHaveProperty('clientCredentials');
+        expect(
+          (updates[1][1] as { auth: { authorizationServer: object } }).auth
+            .authorizationServer,
+        ).toEqual({ issuer: 'https://app.hubspot.com', scopes: 'read' });
+      });
+
+      it('asks for the client again when the sign-in server changes', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        await openSignIn();
+        // The disclosure remounts on a blocked save: read the group afresh.
+        const credentials = () =>
+          screen.getByRole('group', { name: 'Client credentials' });
+
+        const issuer = screen.getByLabelText(
+          /^Where people sign in \(issuer URL\)/,
+        );
+        await userEvent.clear(issuer);
+        await userEvent.type(issuer, 'https://api.hubspot.com');
+
+        expect(
+          within(credentials()).getByText(
+            'The sign-in server changed, so enter the client again.',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials()).queryByText('Client secret stored'),
+        ).not.toBeInTheDocument();
+        expect(
+          within(credentials()).queryByRole('button', {
+            name: 'Keep stored secret',
+          }),
+        ).not.toBeInTheDocument();
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        expect(
+          await screen.findByText('Enter the client ID.'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText('Enter the client secret.'),
+        ).toBeInTheDocument();
+        expect(toolCalls('core_mcpserver_update')).toEqual([]);
+
+        await userEvent.type(
+          within(credentials()).getByLabelText(/^Client ID/),
+          'new-client',
+        );
+        await userEvent.type(
+          within(credentials()).getByLabelText(/^Client secret/),
+          'new-s3cret',
+        );
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+        const [update] = toolCalls('core_mcpserver_update');
+        expect(update[1]).toMatchObject({
+          auth: { authorizationServer: { issuer: 'https://api.hubspot.com' } },
+          clientCredentials: {
+            clientId: 'new-client',
+            clientSecret: 'new-s3cret',
+          },
+        });
+        expect(
+          (update[1] as { auth: { authorizationServer: object } }).auth
+            .authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+      });
+
+      it('says the stored client goes unused without an issuer', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        const credentials = await openSignIn();
+
+        await userEvent.clear(
+          screen.getByLabelText(/^Where people sign in \(issuer URL\)/),
+        );
+
+        expect(
+          within(credentials).getByText(
+            'Without an issuer, the stored client is no longer used.',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).queryByText('Client secret stored'),
+        ).not.toBeInTheDocument();
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        await screen.findByText('Test the connection');
+        const [update] = toolCalls('core_mcpserver_update');
+        expect(update[1]).toMatchObject({ auth: { type: 'oauth' } });
+        expect((update[1] as { auth: object }).auth).not.toHaveProperty(
+          'authorizationServer',
+        );
+      });
+
+      it('wants both values once Replace is chosen, and moves the focus', async () => {
+        mockMcpServers = [withClient(STORED_REF)];
+        await openSignIn();
+        // The disclosure remounts on a blocked save: read the group afresh.
+        const credentials = () =>
+          screen.getByRole('group', { name: 'Client credentials' });
+
+        await userEvent.click(
+          within(credentials()).getByRole('button', { name: 'Replace' }),
+        );
+        const id = within(credentials()).getByLabelText(/^Client ID/);
+        await waitFor(() => expect(id).toHaveFocus());
+        expect(
+          within(credentials()).getByLabelText(/^Client secret/),
+        ).toHaveAttribute('autocomplete', 'new-password');
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Save changes' }),
+        );
+        expect(
+          await screen.findByText('Enter the client ID.'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText('Enter the client secret.'),
+        ).toBeInTheDocument();
+        expect(toolCalls('core_mcpserver_update')).toEqual([]);
+
+        await userEvent.click(
+          within(credentials()).getByRole('button', {
+            name: 'Keep stored secret',
+          }),
+        );
+        await waitFor(() =>
+          expect(
+            within(credentials()).getByRole('button', { name: 'Replace' }),
+          ).toHaveFocus(),
+        );
       });
 
       it('keeps the stored client when Replace is taken back', async () => {

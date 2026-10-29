@@ -372,36 +372,63 @@ function trimmedCredentials(credentials: ClientCredentials): ClientCredentials {
 }
 
 /**
+ * The authorization-server fields muster binds a stored client to. An update
+ * that changes one of them while keeping the stored client is refused: the
+ * client was registered with that server, so it is entered again.
+ */
+const CLIENT_BINDING_FIELDS = [
+  'issuer',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+] as const;
+
+/**
+ * Whether `state` points the stored client at another authorization server
+ * than the one it was `saved` with (see {@link CLIENT_BINDING_FIELDS}).
+ */
+export function clientBindingChanged(
+  state: NewMcpServerFormState,
+  saved: NewMcpServerFormState,
+): boolean {
+  return CLIENT_BINDING_FIELDS.some(
+    field => state[field].trim() !== saved[field].trim(),
+  );
+}
+
+/**
  * Problems of typed client credentials: both values or neither, and an issuer
- * for the authorization-server block muster needs to use them. Empty when the
- * credentials do not apply (another mode, or an existing Secret).
+ * for the authorization-server block muster needs to use them. `required`
+ * (Replace, or a stored client whose server changed) asks for both even when
+ * neither is typed. Empty when the credentials do not apply (another mode, or
+ * an existing Secret).
  */
 export function clientCredentialsProblems(
   state: NewMcpServerFormState,
   credentials: ClientCredentials,
+  { required = false }: { required?: boolean } = {},
 ): McpServerProblem[] {
   if (state.authMode !== 'own-account' || state.useExistingSecret) {
     return [];
   }
   const { clientId, clientSecret } = trimmedCredentials(credentials);
-  if (!clientId && !clientSecret) {
+  if (!required && !clientId && !clientSecret) {
     return [];
   }
   const problems: McpServerProblem[] = [];
   if (!state.issuer.trim()) {
-    problems.push({
-      field: 'issuer',
-      message:
-        'Client credentials apply to the issuer override — set an issuer too',
-    });
+    problems.push({ field: 'issuer', message: 'Enter an issuer too.' });
   }
+  const too = required ? '' : ' too';
   if (!clientId) {
-    problems.push({ field: 'clientId', message: 'Enter the client ID too.' });
+    problems.push({
+      field: 'clientId',
+      message: `Enter the client ID${too}.`,
+    });
   }
   if (!clientSecret) {
     problems.push({
       field: 'clientSecret',
-      message: 'Enter the client secret too.',
+      message: `Enter the client secret${too}.`,
     });
   }
   return problems;
@@ -733,15 +760,16 @@ const ENDPOINT_PATTERN = /^https:\/\/\S+$/;
 export function hasAdvancedAuthorizationServer(
   state: NewMcpServerFormState,
 ): boolean {
-  const secretFields =
-    state.useExistingSecret || hasStoredClientSecret(state)
-      ? Boolean(
-          state.clientSecretName.trim() ||
-          state.clientSecretNamespace.trim() ||
-          state.clientIdKey.trim() ||
-          state.clientSecretKey.trim(),
-        )
-      : false;
+  // A client muster stored is no reason to require an issuer: without one
+  // the connector stops using it, which the sign-in step says.
+  const secretFields = state.useExistingSecret
+    ? Boolean(
+        state.clientSecretName.trim() ||
+        state.clientSecretNamespace.trim() ||
+        state.clientIdKey.trim() ||
+        state.clientSecretKey.trim(),
+      )
+    : false;
   return Boolean(
     state.authorizationEndpoint.trim() ||
     state.tokenEndpoint.trim() ||

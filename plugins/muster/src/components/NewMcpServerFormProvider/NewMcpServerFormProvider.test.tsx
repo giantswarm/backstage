@@ -452,6 +452,71 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.storedClientCredentials).toBe(false);
     });
 
+    it('forgets the replaced reference after a save that stored a client', () => {
+      const { result } = renderForm();
+      act(() =>
+        result.current.startEdit(
+          new MCPServer(
+            {
+              apiVersion: 'muster.giantswarm.io/v1alpha1',
+              kind: 'MCPServer',
+              metadata: { name: 'weather-mcp' },
+              spec: {
+                type: 'streamable-http',
+                url: 'https://weather.example.com/mcp',
+                auth: {
+                  type: 'oauth',
+                  authorizationServer: {
+                    issuer: 'https://idp',
+                    clientCredentialsSecretRef: {
+                      name: 'weather-mcp-oauth-client-old01',
+                    },
+                  },
+                },
+              },
+            } as never,
+            'gaggle',
+          ),
+        ),
+      );
+      expect(
+        result.current.definition.auth?.authorizationServer
+          ?.clientCredentialsSecretRef,
+      ).toEqual({ name: 'weather-mcp-oauth-client-old01' });
+
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+
+      expect(result.current.state.clientSecretName).toBe('');
+      expect(result.current.definition.auth?.authorizationServer).toEqual({
+        issuer: 'https://idp',
+      });
+      expect(result.current.authorizationServerChanged).toBe(false);
+      act(() => result.current.setIssuer('https://other-idp'));
+      expect(result.current.authorizationServerChanged).toBe(true);
+    });
+
+    it('forgets the stored client after a save without an authorization server', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://idp');
+      });
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+      act(() => result.current.setIssuer(''));
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.storedClientCredentials).toBe(false);
+    });
+
     it('composes an existing Secret only while "Use an existing Secret" is ticked', () => {
       const { result, fillDetails } = renderForm();
       fillDetails();

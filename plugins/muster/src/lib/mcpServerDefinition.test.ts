@@ -16,6 +16,7 @@ import {
   sigv4Advisories,
   takesDisplayName,
   validateNewMcpServerForm,
+  clientBindingChanged,
   clientCredentialsArgument,
   clientCredentialsProblems,
   hasStoredClientSecret,
@@ -1492,12 +1493,48 @@ describe('client credentials typed into the wizard', () => {
     ).toEqual([{ field: 'clientId', message: 'Enter the client ID too.' }]);
     expect(
       clientCredentialsProblems(ownAccount({ issuer: '' }), typed),
+    ).toEqual([{ field: 'issuer', message: 'Enter an issuer too.' }]);
+  });
+
+  it('asks for both values when they are required, typed or not', () => {
+    expect(
+      clientCredentialsProblems(ownAccount(), none, { required: true }),
     ).toEqual([
-      {
-        field: 'issuer',
-        message: expect.stringContaining('set an issuer too'),
-      },
+      { field: 'clientId', message: 'Enter the client ID.' },
+      { field: 'clientSecret', message: 'Enter the client secret.' },
     ]);
+    expect(
+      clientCredentialsProblems(ownAccount(), typed, { required: true }),
+    ).toEqual([]);
+  });
+
+  it('tells a stored client is pointed at another authorization server', () => {
+    const saved = ownAccount({
+      authorizationEndpoint: 'https://idp/authorize',
+      tokenEndpoint: 'https://idp/token',
+    });
+    expect(clientBindingChanged({ ...saved, scopes: 'read' }, saved)).toBe(
+      false,
+    );
+    expect(
+      clientBindingChanged({ ...saved, grantScope: 'subject' }, saved),
+    ).toBe(false);
+    for (const changed of [
+      { issuer: 'https://other' },
+      { authorizationEndpoint: 'https://idp/oauth/authorize' },
+      { tokenEndpoint: 'https://idp/oauth/token' },
+    ]) {
+      expect(clientBindingChanged({ ...saved, ...changed }, saved)).toBe(true);
+    }
+  });
+
+  it('lets an issuer be cleared on a connector with a stored client', () => {
+    const form = ownAccount({
+      issuer: '',
+      clientSecretName: 'weather-mcp-oauth-client-x7k2p',
+    });
+    expect(validateNewMcpServerForm(form)).toEqual([]);
+    expect(composeMcpServerDefinition(form).auth).toEqual({ type: 'oauth' });
   });
 
   it('sends only complete, applicable credentials, trimmed', () => {

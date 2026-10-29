@@ -1,4 +1,11 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -167,6 +174,7 @@ export function NewConnectorSignInPage() {
     startedFromEdit,
     markSaved,
     storedClientCredentials,
+    authorizationServerChanged,
   } = useNewMcpServerForm();
 
   // A client's ID and secret live here only, never in the form state: they
@@ -175,19 +183,46 @@ export function NewConnectorSignInPage() {
   const [credentials, setCredentials] =
     useState<ClientCredentials>(NO_CREDENTIALS);
   const [replacing, setReplacing] = useState(false);
-  const clientSecretStored =
+  // A client muster stored for this connector. It is used only while an
+  // issuer is set; it is bound to its authorization server, so pointing the
+  // connector at another one needs the client again (muster refuses the save
+  // otherwise).
+  const hadClient =
     !state.useExistingSecret &&
     (hasStoredClientSecret(state) || storedClientCredentials);
+  const clientSecretStored = hadClient && Boolean(state.issuer.trim());
+  const serverChanged = clientSecretStored && authorizationServerChanged;
+  const replaceMode = clientSecretStored && (replacing || serverChanged);
   const enteringCredentials =
-    !state.useExistingSecret && (!clientSecretStored || replacing);
+    !state.useExistingSecret && (!clientSecretStored || replaceMode);
   const credentialProblems = enteringCredentials
-    ? clientCredentialsProblems(state, credentials)
+    ? clientCredentialsProblems(state, credentials, { required: replaceMode })
     : [];
   const credentialErrors = mcpServerFieldErrors(credentialProblems);
   const issuerError = fieldErrors.issuer ?? credentialErrors.issuer;
+
+  // Replace and Keep stored secret take themselves off the page, so the
+  // focus moves to what replaces them rather than to the body.
+  const credentialsGroupRef = useRef<HTMLDivElement>(null);
+  const replaceButtonRef = useRef<HTMLButtonElement>(null);
+  const [focusAfter, setFocusAfter] = useState<'clientId' | 'replace'>();
+  useEffect(() => {
+    if (focusAfter === 'clientId') {
+      // Client ID is the group's first input.
+      credentialsGroupRef.current?.querySelector('input')?.focus();
+    } else if (focusAfter === 'replace') {
+      replaceButtonRef.current?.focus();
+    }
+    setFocusAfter(undefined);
+  }, [focusAfter]);
+  const startReplacing = () => {
+    setReplacing(true);
+    setFocusAfter('clientId');
+  };
   const keepStoredSecret = () => {
     setReplacing(false);
     setCredentials(NO_CREDENTIALS);
+    setFocusAfter('replace');
   };
 
   // Audiences are a list in the form state but one comma-separated field here;
@@ -405,7 +440,7 @@ export function NewConnectorSignInPage() {
             }
             defaultExpanded={
               hasAdvancedAuthorizationServer(state) ||
-              clientSecretStored ||
+              hadClient ||
               (validation.submitted && hasAdvancedProblem)
             }
           >
@@ -461,6 +496,7 @@ export function NewConnectorSignInPage() {
                 className={classes.fieldGroup}
                 role="group"
                 aria-labelledby={credentialsHeadingId}
+                ref={credentialsGroupRef}
               >
                 <Text
                   as="h3"
@@ -475,23 +511,35 @@ export function NewConnectorSignInPage() {
                   such as a GitHub App. Leave empty when muster can register
                   itself.
                 </Text>
-                {clientSecretStored && !replacing && (
+                {clientSecretStored && !replaceMode && (
                   <Flex align="center" justify="between" gap="3">
                     <Text variant="body-medium">Client secret stored</Text>
                     <Button
+                      ref={replaceButtonRef}
                       variant="secondary"
                       size="small"
-                      onPress={() => setReplacing(true)}
+                      onPress={startReplacing}
                     >
                       Replace
                     </Button>
                   </Flex>
                 )}
+                {serverChanged && (
+                  <Text variant="body-small" color="secondary">
+                    The sign-in server changed, so enter the client again.
+                  </Text>
+                )}
+                {hadClient && !clientSecretStored && (
+                  <Text variant="body-small" color="secondary">
+                    Without an issuer, the stored client is no longer used.
+                  </Text>
+                )}
                 {enteringCredentials && (
                   <>
                     <TextField
                       label="Client ID"
-                      secondaryLabel={replacing ? undefined : 'optional'}
+                      isRequired={replaceMode}
+                      secondaryLabel={replaceMode ? undefined : 'optional'}
                       autoComplete="off"
                       value={credentials.clientId}
                       onChange={clientId =>
@@ -501,19 +549,20 @@ export function NewConnectorSignInPage() {
                     />
                     <PasswordField
                       label="Client secret"
-                      secondaryLabel={replacing ? undefined : 'optional'}
-                      autoComplete="off"
+                      isRequired={replaceMode}
+                      secondaryLabel={replaceMode ? undefined : 'optional'}
+                      autoComplete="new-password"
                       value={credentials.clientSecret}
                       onChange={clientSecret =>
                         setCredentials(prev => ({ ...prev, clientSecret }))
                       }
-                      description="Muster stores it in a Secret bound to the connector; it cannot be read back."
+                      description="Stored in a Secret; cannot be read back."
                       {...textFieldProps(
                         'clientSecret',
                         credentialErrors.clientSecret,
                       )}
                     />
-                    {replacing && (
+                    {replaceMode && !serverChanged && (
                       <Flex>
                         <Button
                           variant="tertiary"
