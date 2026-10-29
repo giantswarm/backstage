@@ -7,7 +7,8 @@ import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology'
 import {
   Gateway,
   HttpRoute,
-  isRouteBroken,
+  gatewayRank,
+  routeRank,
 } from '../../../hooks/gatewayTopology';
 import {
   ListenerRow,
@@ -17,7 +18,10 @@ import {
 } from './columns';
 
 function toListenerRows(gateways: Gateway[]): ListenerRow[] {
-  return gateways.flatMap(gateway =>
+  // Failing Gateways first, then those without status. The sort is stable, so
+  // each band keeps the name order.
+  const ordered = [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
+  return ordered.flatMap(gateway =>
     gateway.listeners.length
       ? gateway.listeners.map(listener => ({
           id: `${gateway.id}/${listener.name}`,
@@ -29,14 +33,13 @@ function toListenerRows(gateways: Gateway[]): ListenerRow[] {
 }
 
 function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
-  // Broken routes first, so a problem is visible without scrolling.
-  const ordered = [...routes].sort(
-    (a, b) => Number(isRouteBroken(b)) - Number(isRouteBroken(a)),
-  );
+  // Broken routes first, then routes without status, so a problem is visible
+  // without scrolling.
+  const ordered = [...routes].sort((a, b) => routeRank(a) - routeRank(b));
   return ordered.flatMap(route =>
     route.parents.length
       ? route.parents.map(parent => ({
-          id: `${route.id}/${parent.kind}/${parent.namespace}/${parent.name}/${parent.sectionName}`,
+          id: `${route.id}/${parent.kind}/${parent.namespace}/${parent.name}/${parent.sectionName}/${parent.port ?? ''}`,
           route,
           parent,
         }))
@@ -45,18 +48,34 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
 }
 
 /**
- * True when any route condition can't be shown. A single unreported route must
- * not hide the explanation for all the others that are not available.
+ * Why route conditions can't be shown, if any can't. A failed load wins over
+ * an older bundle: it's the one that fixes itself on the next refetch, and
+ * the bundle notice would be wrong for it. A single unreported route must not
+ * hide the explanation for all the others.
  */
-function conditionsUnavailable(routes: HttpRoute[]): boolean {
-  return routes.some(route =>
-    route.parents.some(
-      parent =>
-        parent.accepted.status === 'not-available' ||
-        parent.resolvedRefs.status === 'not-available',
+function unavailableCause(
+  routes: HttpRoute[],
+): 'load-failed' | 'not-exported' | undefined {
+  const causes = new Set(
+    routes.flatMap(route =>
+      route.parents.flatMap(parent =>
+        [parent.accepted, parent.resolvedRefs].flatMap(c =>
+          c.status === 'not-available' ? [c.cause ?? 'load-failed'] : [],
+        ),
+      ),
     ),
   );
+  if (causes.has('load-failed')) return 'load-failed';
+  if (causes.has('not-exported')) return 'not-exported';
+  return undefined;
 }
+
+const unavailableNotice = {
+  'load-failed':
+    'Some route conditions could not be loaded. They are retried automatically.',
+  'not-exported':
+    'Route conditions need observability-bundle 3.6.0 or newer on this cluster.',
+};
 
 export type ClusterGatewaysContentProps = {
   clusterName: string;
@@ -79,6 +98,7 @@ export const ClusterGatewaysContent = ({
 }: ClusterGatewaysContentProps) => {
   const listenerRows = useMemo(() => toListenerRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
+  const unavailable = useMemo(() => unavailableCause(routes), [routes]);
 
   if (mimirAvailable === false) {
     return (
@@ -103,6 +123,10 @@ export const ClusterGatewaysContent = ({
 
   return (
     <Flex direction="column" gap="4">
+      <Text variant="body-medium" color="secondary">
+        Based on Gateway API metrics. Changes can take a minute or two to
+        appear.
+      </Text>
       <InfoCard title="Gateways">
         <Table<ListenerRow>
           columnConfig={listenerColumns}
@@ -117,13 +141,8 @@ export const ClusterGatewaysContent = ({
         />
       </InfoCard>
       <InfoCard title="HTTPRoutes">
-        {!isLoading && conditionsUnavailable(routes) ? (
-          <Alert
-            status="info"
-            icon
-            title="Some route conditions are not available on this cluster."
-            description="Either they could not be loaded, or the cluster runs an observability-bundle that doesn't export them yet. Routes are listed without their Accepted and ResolvedRefs status."
-          />
+        {!isLoading && unavailable ? (
+          <Alert status="info" icon title={unavailableNotice[unavailable]} />
         ) : null}
         <Table<RouteParentRow>
           columnConfig={routeColumns}

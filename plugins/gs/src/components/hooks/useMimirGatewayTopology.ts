@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
 import { sanitizePromQLValue } from './promql';
-import { MimirMetricSample, MimirQueryResponse } from '../../apis/mimir/types';
 import {
   GatewayApiGatewayInfo,
   GatewayApiGatewayListenerInfo,
@@ -14,20 +13,7 @@ import {
   GatewayApiHttprouteStatusParentResolvedRefs,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { buildGatewayTopology } from './gatewayTopology';
-
-function samplesOf(
-  response: MimirQueryResponse | undefined,
-): MimirMetricSample[] {
-  return response?.data?.result ?? [];
-}
-
-/** The samples of an optional query, or `undefined` when it failed. */
-function optionalSamplesOf(
-  data: MimirQueryResponse | undefined,
-  error: unknown,
-): MimirMetricSample[] | undefined {
-  return error ? undefined : samplesOf(data);
-}
+import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
 
 /**
  * Fetches the Gateway API topology of one cluster from Mimir: Gateways with
@@ -98,7 +84,9 @@ export function useMimirGatewayTopology(options: {
     routeAccepted.isLoading ||
     routeResolvedRefs.isLoading;
   const error =
-    gatewayInfo.error ?? listenerInfo.error ?? routeParentInfo.error;
+    blockingError(gatewayInfo) ??
+    blockingError(listenerInfo) ??
+    blockingError(routeParentInfo);
 
   const topology = useMemo(
     () =>

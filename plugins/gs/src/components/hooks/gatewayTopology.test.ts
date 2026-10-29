@@ -2,6 +2,7 @@ import { MimirMetricSample } from '../../apis/mimir/types';
 import {
   GatewayTopologyInputs,
   buildGatewayTopology,
+  conditionsRank,
   isRouteBroken,
 } from './gatewayTopology';
 
@@ -171,9 +172,13 @@ describe('buildGatewayTopology', () => {
         routeResolvedRefs: undefined,
       }),
     );
-    expect(routes[0].parents[0].accepted).toEqual({ status: 'not-available' });
+    expect(routes[0].parents[0].accepted).toEqual({
+      status: 'not-available',
+      cause: 'not-exported',
+    });
     expect(routes[0].parents[0].resolvedRefs).toEqual({
       status: 'not-available',
+      cause: 'load-failed',
     });
     expect(isRouteBroken(routes[0])).toBe(false);
   });
@@ -245,7 +250,10 @@ describe('buildGatewayTopology', () => {
         routeHostnameInfo: undefined,
       }),
     );
-    expect(gateways[0].accepted).toEqual({ status: 'not-available' });
+    expect(gateways[0].accepted).toEqual({
+      status: 'not-available',
+      cause: 'load-failed',
+    });
     expect(gateways[0].listeners[0].attachedRoutes).toBeUndefined();
     expect(routes[0].hostnames).toBeUndefined();
   });
@@ -311,6 +319,50 @@ describe('buildGatewayTopology', () => {
       },
     ]);
     expect(isRouteBroken(routes[0])).toBe(true);
+  });
+
+  it('keeps parentRefs that differ only by port apart', () => {
+    const port = (p: string) => ({
+      ...route,
+      ...publicParent,
+      parent_section_name: '',
+      parent_port: p,
+    });
+    const { routes } = buildGatewayTopology(
+      inputs({
+        routeParentInfo: [sample(port('80')), sample(port('443'))],
+        routeAccepted: [
+          sample({ ...port('80'), reason: 'Accepted' }),
+          sample({ ...port('443'), reason: 'NotAllowedByListeners' }, '0'),
+        ],
+      }),
+    );
+    expect(routes[0].parents.map(p => [p.port, p.accepted.status])).toEqual([
+      ['443', 'false'],
+      ['80', 'true'],
+    ]);
+  });
+
+  it('does not list a route attached only to other kinds, even with hostnames', () => {
+    const { routes } = buildGatewayTopology(
+      inputs({
+        routeParentInfo: [
+          sample({ ...route, parent_name: 'mesh', parent_kind: 'Service' }),
+        ],
+        routeHostnameInfo: [sample({ ...route, hostname: 'shop.example.com' })],
+      }),
+    );
+    expect(routes).toEqual([]);
+  });
+
+  it('ranks failing, then unreported, then healthy conditions', () => {
+    expect(conditionsRank([{ status: 'true' }, { status: 'false' }])).toBe(0);
+    expect(
+      conditionsRank([{ status: 'true' }, { status: 'not-reported' }]),
+    ).toBe(1);
+    expect(
+      conditionsRank([{ status: 'true' }, { status: 'not-available' }]),
+    ).toBe(2);
   });
 
   it('ignores parents that are not Gateways or ListenerSets and values that are not finite', () => {
