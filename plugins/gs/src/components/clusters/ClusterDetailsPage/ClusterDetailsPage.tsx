@@ -36,9 +36,9 @@ export const ClusterDetailsPage = ({ actions }: ClusterDetailsPageProps) => {
             </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route path="/gateways" title="Gateways">
-            <ErrorsProvider>
+            <ClusterErrorsProvider>
               <ClusterGateways />
-            </ErrorsProvider>
+            </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route
             path="/node-pools"

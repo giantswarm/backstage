@@ -12,7 +12,7 @@ import {
   GatewayApiHttprouteStatusParentAccepted,
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentResolvedRefs,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { buildGatewayTopology } from './gatewayTopology';
 
 function samplesOf(
