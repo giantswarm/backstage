@@ -139,7 +139,9 @@ function parentKey(
   ].join('/');
 }
 
-function toCondition(sample: MimirMetricSample): ConditionState | undefined {
+export function toCondition(
+  sample: MimirMetricSample,
+): ConditionState | undefined {
   const value = finiteValue(sample);
   if (value === undefined) return undefined;
   const reason = sample.metric.reason || undefined;
@@ -151,7 +153,7 @@ function toCondition(sample: MimirMetricSample): ConditionState | undefined {
  * status for the same parent. Keep the worst, so a `false` is never hidden by
  * a `true` that happens to come first in the response.
  */
-function setWorst(
+export function setWorst(
   map: Map<string, ConditionState>,
   key: string,
   condition: ConditionState,
