@@ -9,6 +9,7 @@ const accepted: GatewayPolicy = {
   namespace: 'team-a',
   name: 'ok',
   targets: [{ kind: 'HTTPRoute', name: 'shop', source: 'targetRefs' }],
+  targetsLoaded: true,
   ancestors: [
     {
       kind: 'Gateway',
@@ -87,7 +88,11 @@ describe('<PoliciesTable />', () => {
       <PoliciesTable
         clusterName="demo"
         policies={[
-          { ...dangling, targets: [], status: { status: 'not-available' } },
+          {
+            ...dangling,
+            targets: [],
+            status: { status: 'not-available', cause: 'not-exported' },
+          },
         ]}
         isLoading={false}
       />,
@@ -96,9 +101,25 @@ describe('<PoliciesTable />', () => {
     expect(screen.getAllByText('Not available')).toHaveLength(2);
     expect(
       screen.getByText(
-        'Some policy targets and status are not available on this cluster.',
+        'Policy targets and status need observability-bundle 3.6.0 or newer on this cluster. Policies using the deprecated targetRef still show their target.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('No status reported')).not.toBeInTheDocument();
+  });
+
+  it('says failed targets are retried, and shows them as not available instead of none', async () => {
+    await renderInTestApp(
+      <PoliciesTable
+        clusterName="demo"
+        policies={[{ ...accepted, targets: [], targetsLoaded: false }]}
+        isLoading={false}
+      />,
+    );
+    expect(within(rowOf('ok')).getByText('Not available')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Some policy targets or status could not be loaded. They are retried automatically.',
+      ),
+    ).toBeInTheDocument();
   });
 });

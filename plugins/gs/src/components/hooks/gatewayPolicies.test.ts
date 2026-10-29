@@ -202,6 +202,19 @@ describe('buildGatewayPolicies', () => {
     });
   });
 
+  it('reports a failed targets query as a load failure, not an older bundle', () => {
+    const policies = buildGatewayPolicies(
+      inputs({ targetInfo: undefined, ancestorAccepted: [] }),
+    );
+    for (const policy of policies) {
+      expect(policy.targetsLoaded).toBe(false);
+      expect(policy.status).toEqual({
+        status: 'not-available',
+        cause: 'load-failed',
+      });
+    }
+  });
+
   it('keeps policies of different kinds with the same name apart', () => {
     const policies = buildGatewayPolicies(
       inputs({

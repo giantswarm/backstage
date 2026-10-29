@@ -11,6 +11,7 @@ Show Envoy Gateway policies in the cluster "Gateways" tab.
 - A policy without any status on a cluster that exports policy status is
   flagged as "No status reported": Envoy Gateway writes none when the target
   doesn't exist, isn't managed by it, or before reconciling.
-- Policy targets and status come from metrics added in
-  giantswarm/observability-bundle#467. On clusters that don't export them yet,
-  status is shown as "Not available".
+- Policy targets and status come from metrics added in observability-bundle
+  3.6.0 (giantswarm/observability-bundle#467). On clusters with an older bundle,
+  or when they fail to load, they are shown as "Not available", with a notice
+  saying which of the two it is.

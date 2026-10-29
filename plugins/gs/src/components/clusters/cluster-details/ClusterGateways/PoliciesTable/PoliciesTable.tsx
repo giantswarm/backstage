@@ -24,9 +24,37 @@ function statusUnavailable(policy: GatewayPolicy): boolean {
   );
 }
 
+/**
+ * Why targets or status can't be shown, if any can't. As for routes, a failed
+ * load wins: it fixes itself on the next refetch, and the bundle notice would
+ * be wrong for it.
+ */
+function unavailableCause(
+  policies: GatewayPolicy[],
+): 'load-failed' | 'not-exported' | undefined {
+  let notExported = false;
+  for (const policy of policies) {
+    if (!policy.targetsLoaded) return 'load-failed';
+    if (statusUnavailable(policy) && policy.status.status === 'not-available') {
+      if (policy.status.cause === 'not-exported') notExported = true;
+      else return 'load-failed';
+    }
+  }
+  return notExported ? 'not-exported' : undefined;
+}
+
+const unavailableNotice = {
+  'load-failed':
+    'Some policy targets or status could not be loaded. They are retried automatically.',
+  'not-exported':
+    'Policy targets and status need observability-bundle 3.6.0 or newer on this cluster. Policies using the deprecated targetRef still show their target.',
+};
+
 function targetsLabel(policy: GatewayPolicy): string {
   if (policy.targets.length === 0) {
-    return statusUnavailable(policy) ? 'Not available' : '—';
+    return !policy.targetsLoaded || statusUnavailable(policy)
+      ? 'Not available'
+      : '—';
   }
   return policy.targets
     .map(
@@ -138,17 +166,12 @@ export const PoliciesTable = ({
     );
   }
 
-  const unavailable = !isLoading && policies.some(statusUnavailable);
+  const unavailable = isLoading ? undefined : unavailableCause(policies);
 
   return (
     <Flex direction="column" gap="2">
       {unavailable ? (
-        <Alert
-          status="info"
-          icon
-          title="Some policy targets and status are not available on this cluster."
-          description="Either they could not be loaded, or the cluster runs an observability-bundle that doesn't export them yet. Policies using the deprecated targetRef still show their target."
-        />
+        <Alert status="info" icon title={unavailableNotice[unavailable]} />
       ) : null}
       <Table<PolicyRow>
         columnConfig={columns}

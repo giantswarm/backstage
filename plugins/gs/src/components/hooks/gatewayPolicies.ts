@@ -87,6 +87,11 @@ export interface GatewayPolicy {
   namespace: string;
   name: string;
   targets: PolicyTarget[];
+  /**
+   * False when the `spec.targetRefs` query failed, so an empty `targets` means
+   * unknown rather than none.
+   */
+  targetsLoaded: boolean;
   ancestors: PolicyAncestor[];
   /**
    * Only meaningful without ancestors: `not-reported` when the cluster exports
@@ -133,7 +138,10 @@ export function buildGatewayPolicies(
   const policies = new Map<
     string,
     {
-      policy: Omit<GatewayPolicy, 'targets' | 'ancestors' | 'status'>;
+      policy: Omit<
+        GatewayPolicy,
+        'targets' | 'targetsLoaded' | 'ancestors' | 'status'
+      >;
       targets: Map<string, PolicyTarget>;
       ancestors: Map<string, ConditionState>;
       ancestorRefs: Map<string, Omit<PolicyAncestor, 'accepted'>>;
@@ -212,7 +220,8 @@ export function buildGatewayPolicies(
         status = {
           status: 'not-available',
           cause:
-            inputs.ancestorAccepted === undefined
+            inputs.ancestorAccepted === undefined ||
+            inputs.targetInfo === undefined
               ? 'load-failed'
               : 'not-exported',
         };
@@ -222,6 +231,7 @@ export function buildGatewayPolicies(
         targets: Array.from(targets.values()).sort((a, b) =>
           `${a.kind}/${a.name}`.localeCompare(`${b.kind}/${b.name}`),
         ),
+        targetsLoaded: inputs.targetInfo !== undefined,
         ancestors: ancestorList,
         status,
       };
