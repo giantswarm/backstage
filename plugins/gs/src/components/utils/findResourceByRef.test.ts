@@ -49,6 +49,40 @@ describe('findResourceByRef', () => {
     });
   });
 
+  describe('mixed control plane kinds', () => {
+    it('picks the kind the ref names from a list of several kinds', () => {
+      // useControlPlanesForClusters merges KubeadmControlPlane and
+      // AzureASOManagedControlPlane lists. Two clusters may share a name on
+      // one installation, so the kind and group must decide, not the name.
+      const resources = [
+        createMockResource({
+          apiVersion: 'controlplane.cluster.x-k8s.io/v1beta2',
+          kind: 'KubeadmControlPlane',
+          name: 'my-cluster',
+          namespace: 'org-test',
+          cluster: 'test-installation',
+        }),
+        createMockResource({
+          apiVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+          kind: 'AzureASOManagedControlPlane',
+          name: 'my-cluster',
+          namespace: 'org-test',
+          cluster: 'test-installation',
+        }),
+      ];
+
+      const result = findResourceByRef(resources, {
+        installationName: 'test-installation',
+        apiGroup: 'infrastructure.cluster.x-k8s.io',
+        kind: 'AzureASOManagedControlPlane',
+        name: 'my-cluster',
+        namespace: 'org-test',
+      });
+
+      expect(result?.getKind()).toBe('AzureASOManagedControlPlane');
+    });
+  });
+
   describe('group-based matching', () => {
     it('matches when ref has v1beta1 and resource has v1beta2 (same group)', () => {
       const resources = [

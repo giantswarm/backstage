@@ -1,9 +1,13 @@
-import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button } from '@backstage/ui';
+import { ButtonLink } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
-import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  EmptyStateCard,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCreatesAgentsNowhere } from '../../hooks/useAgentManager';
+import { ACCESS_GRANT_HINT } from '../../lib/tenants';
 import { newAgentRouteRef } from '../../routes';
 
 /**
@@ -14,10 +18,25 @@ import { newAgentRouteRef } from '../../routes';
  * When the agents could not be read, or no installation in scope runs kagent,
  * inviting the user to create one would send them down the wrong path — the
  * callers decide that, and say so instead.
+ *
+ * A person agent-manager lets create in no tenant on any of `installations`
+ * is not invited: the card says who grants access instead (D6).
  */
-export function FirstAgentCard() {
-  const navigate = useNavigate();
+export function FirstAgentCard({ installations }: { installations: string[] }) {
   const newAgentLink = useRouteRef(newAgentRouteRef);
+  const { createsNowhere, isLoading } = useCreatesAgentsNowhere(installations);
+
+  if (isLoading) {
+    return <LoadingIndicator label="Reading where you may create agents…" />;
+  }
+  if (createsNowhere) {
+    return (
+      <EmptyStateCard
+        title="No agents for you yet"
+        description={`There is no agent you can use yet, and you may not create one. ${ACCESS_GRANT_HINT}`}
+      />
+    );
+  }
 
   return (
     <EmptyStateCard
@@ -28,14 +47,18 @@ export function FirstAgentCard() {
         // tab -- a separate extension -- can outlive. The card still explains
         // the empty screen; it just has nowhere to send the user, and a button
         // that goes nowhere is worse than none.
+        //
+        // A link to the create form rather than a button that navigates on
+        // press: the browser follows the href however the click arrives, and it
+        // opens in a new tab like any other link.
         newAgentLink ? (
-          <Button
+          <ButtonLink
             variant="primary"
             iconStart={<AddIcon />}
-            onPress={() => navigate(newAgentLink())}
+            href={newAgentLink()}
           >
             Create your first agent
-          </Button>
+          </ButtonLink>
         ) : undefined
       }
     />

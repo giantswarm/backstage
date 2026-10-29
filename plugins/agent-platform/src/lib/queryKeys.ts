@@ -61,6 +61,20 @@ export function sessionUsageQueryKey(installation: string) {
 }
 
 /**
+ * The caller's own model cost on one installation, per window. Under `kagent`
+ * with the per-user reads, so `QueryClientProvider` keeps it off the disk.
+ */
+export function modelCostQueryKey(installation: string, days: number) {
+  return [
+    'agent-platform',
+    'kagent',
+    'model-cost',
+    installation,
+    days,
+  ] as const;
+}
+
+/**
  * The model-manager reads, per installation — through muster as the person,
  * but about the installation: its inventory, backend descriptors and pull
  * jobs are the same for every user, so they are prefixed `model-manager` (not
@@ -148,6 +162,22 @@ export function musterToolsetPresetsQueryKey(installation: string) {
 
 export function musterToolCatalogueQueryKey(installation: string) {
   return ['muster', 'agent-platform', 'tool-catalogue', installation] as const;
+}
+
+/** Whether a toolset includes one tool, asked of muster by the tool's name. */
+export function musterToolsetIncludesQueryKey(
+  installation: string,
+  selectors: string[],
+  tool: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolset-includes',
+    installation,
+    selectors.join(','),
+    tool,
+  ] as const;
 }
 
 export function musterToolsetResolutionQueryKey(
@@ -269,6 +299,19 @@ export function musterAgentManagerModelConfigsQueryKey(
   ] as const;
 }
 
+export function musterAgentManagerEgressPoliciesQueryKey(
+  installation: string,
+  namespace: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-egress-policies',
+    installation,
+    namespace,
+  ] as const;
+}
+
 export function musterValidateAgentUpdateQueryKey(
   installation: string,
   updateSignature: string,
@@ -277,6 +320,19 @@ export function musterValidateAgentUpdateQueryKey(
     'muster',
     'agent-platform',
     'validate-agent-update',
+    installation,
+    updateSignature,
+  ] as const;
+}
+
+export function musterCommitAgentUpdateDryRunQueryKey(
+  installation: string,
+  updateSignature: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'commit-agent-update-dry-run',
     installation,
     updateSignature,
   ] as const;
@@ -293,6 +349,15 @@ export function musterClusterManagerInfoQueryKey(installation: string) {
     'muster',
     'agent-platform',
     'cluster-manager-info',
+    installation,
+  ] as const;
+}
+
+export function musterClusterReleasesQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'cluster-releases',
     installation,
   ] as const;
 }
@@ -321,6 +386,139 @@ export function musterCreateNodePoolSchemaQueryKey(installation: string) {
     'muster',
     'agent-platform',
     'create-node-pool-schema',
+    installation,
+  ] as const;
+}
+
+/**
+ * workspace-manager's reads, as the signed-in person: the workspaces and
+ * Organizations of the person on one installation (`list_workspaces`) and one
+ * workspace with its storage and Sessions (`get_workspace`). Under the
+ * `muster` prefix like the reads above: what a person sees depends on their
+ * Organizations, so none of it is persisted.
+ */
+export function musterWorkspacesQueryKey(installation: string) {
+  return ['muster', 'agent-platform', 'workspaces', installation] as const;
+}
+
+export function musterWorkspaceQueryKey(installation: string, name: string) {
+  return ['muster', 'agent-platform', 'workspace', installation, name] as const;
+}
+
+/**
+ * Every toolchain-manager read on an installation, as the signed-in person:
+ * what a person sees depends on their GitHub App grant, so a grant that
+ * lands invalidates this prefix, and none of it is persisted (the `muster`
+ * prefix, like the workspace-manager's).
+ */
+export function musterToolchainManagerQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchain-manager',
+    installation,
+  ] as const;
+}
+
+/** The toolchains an installation offers (`list_toolchains`). */
+export function musterToolchainsQueryKey(installation: string) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'toolchains',
+  ] as const;
+}
+
+/**
+ * One version of one source's toolchain (`describe_toolchain`): under the
+ * list, so a refreshed list refreshes what it shows of each.
+ */
+export function musterToolchainQueryKey(
+  installation: string,
+  source: string,
+  name: string,
+  version: string,
+) {
+  return [
+    ...musterToolchainsQueryKey(installation),
+    source,
+    name,
+    version,
+  ] as const;
+}
+
+/** A package search of the create page (`search_packages`). */
+export function musterToolchainPackagesQueryKey(
+  installation: string,
+  query: string,
+) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'packages',
+    query,
+  ] as const;
+}
+
+/** A new toolchain's pull request, from its checks to its release. */
+export function musterToolchainBuildQueryKey(
+  installation: string,
+  source: string,
+  name: string,
+  pull: number,
+) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'build',
+    source,
+    name,
+    pull,
+  ] as const;
+}
+
+/** The installation's toolchain sources (`list_sources`). */
+export function musterToolchainSourcesQueryKey(installation: string) {
+  return [...musterToolchainManagerQueryKey(installation), 'sources'] as const;
+}
+
+/**
+ * The syncs the person started on this page load (a create, an edit,
+ * Synchronize), by workspace row id: kept in the cache, written by the writes
+ * and read by the list and the workspace's page, so both say Synchronizing
+ * before the manager's reads do. Nothing fetches it.
+ */
+export function musterWorkspaceSyncsAwaitedQueryKey() {
+  return ['muster', 'agent-platform', 'workspace-syncs-awaited'] as const;
+}
+
+/**
+ * The last pushes of a workspace's repositories as of its last sync
+ * (`preview_workspace`): a sibling of the workspace's key, so re-reading the
+ * workspace after Sync now or Delete leaves the provider previews alone.
+ */
+export function musterWorkspaceLastPushesQueryKey(
+  installation: string,
+  name: string,
+  lastSyncTime: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'workspace-last-pushes',
+    installation,
+    name,
+    lastSyncTime,
+  ] as const;
+}
+
+/**
+ * The namespaces of the Agents the person may list on an installation
+ * (`ListAgents` as the person). One person's view: `'agent-namespaces'` is on
+ * `QueryClientProvider`'s never-persist list.
+ */
+export function kagentAgentNamespacesQueryKey(installation: string) {
+  return [
+    'agent-platform',
+    'kagent',
+    'agent-namespaces',
     installation,
   ] as const;
 }

@@ -1,0 +1,591 @@
+/**
+ * Central registry of Prometheus/Mimir metrics used in queries.
+ *
+ * Every metric the application queries should be defined here.
+ * This provides a single place to see which metrics we depend on,
+ * and exports constants for use in PromQL query construction.
+ *
+ * In gs-common rather than the gs frontend plugin so that a backend building
+ * its own PromQL (agent-platform-backend's per-user model cost) queries from
+ * the same constants as the frontend.
+ */
+
+export interface PrometheusMetric {
+  /** The full metric name as it appears in Prometheus/Mimir. */
+  name: string;
+  /** Human-readable description of what this metric measures. */
+  description: string;
+  /** Prometheus metric type. */
+  type: 'counter' | 'gauge' | 'histogram' | 'summary';
+  /** The exporter or component that produces this metric. */
+  source: string;
+}
+
+export const ContainerCpuUsageSecondsTotal = {
+  name: 'container_cpu_usage_seconds_total',
+  description: 'Cumulative CPU time consumed by a container, in core-seconds.',
+  type: 'counter',
+  source: 'cAdvisor',
+} as const satisfies PrometheusMetric;
+
+export const ContainerMemoryWorkingSetBytes = {
+  name: 'container_memory_working_set_bytes',
+  description:
+    'Current working set memory usage of a container, in bytes. This excludes cached memory that can be reclaimed under pressure.',
+  type: 'gauge',
+  source: 'cAdvisor',
+} as const satisfies PrometheusMetric;
+
+export const KubePodContainerResourceRequests = {
+  name: 'kube_pod_container_resource_requests',
+  description:
+    'The resource requests (CPU or memory) configured for a container. The `resource` label indicates the resource type.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubePodContainerResourceLimits = {
+  name: 'kube_pod_container_resource_limits',
+  description:
+    'The resource limits (CPU or memory) configured for a container. The `resource` label indicates the resource type.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDeploymentSpecReplicas = {
+  name: 'kube_deployment_spec_replicas',
+  description: 'Number of desired pods for a deployment.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDeploymentStatusReplicasReady = {
+  name: 'kube_deployment_status_replicas_ready',
+  description: 'Number of ready replicas for a deployment.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeStatefulsetReplicas = {
+  name: 'kube_statefulset_replicas',
+  description: 'Number of desired pods for a statefulset.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeStatefulsetStatusReplicasReady = {
+  name: 'kube_statefulset_status_replicas_ready',
+  description: 'Number of ready replicas for a statefulset.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDaemonsetStatusDesiredNumberScheduled = {
+  name: 'kube_daemonset_status_desired_number_scheduled',
+  description:
+    'Number of nodes that should be running the daemon pod (including nodes with running daemon pod).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDaemonsetStatusNumberReady = {
+  name: 'kube_daemonset_status_number_ready',
+  description: 'Number of nodes that have a daemon pod running and ready.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDeploymentLabels = {
+  name: 'kube_deployment_labels',
+  description:
+    'Kubernetes labels of a deployment. Each label is exposed as a metric label with a `label_` prefix.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeStatefulsetLabels = {
+  name: 'kube_statefulset_labels',
+  description:
+    'Kubernetes labels of a statefulset. Each label is exposed as a metric label with a `label_` prefix.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDaemonsetLabels = {
+  name: 'kube_daemonset_labels',
+  description:
+    'Kubernetes labels of a daemonset. Each label is exposed as a metric label with a `label_` prefix.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubePodContainerStatusWaitingReason = {
+  name: 'kube_pod_container_status_waiting_reason',
+  description:
+    'Describes the reason a container is currently in a waiting state. The `reason` label contains the specific reason (e.g. CrashLoopBackOff, ImagePullBackOff).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubePodContainerStatusTerminatedReason = {
+  name: 'kube_pod_container_status_terminated_reason',
+  description:
+    'Describes the reason a container is currently in a terminated state. The `reason` label contains the specific reason (e.g. OOMKilled, Error).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubePodContainerStatusRestartsTotal = {
+  name: 'kube_pod_container_status_restarts_total',
+  description:
+    'The number of container restarts, reported as a monotonically increasing counter per container.',
+  type: 'counter',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubePodStatusPhase = {
+  name: 'kube_pod_status_phase',
+  description:
+    'The pods current phase. The `phase` label contains the phase value (Pending, Running, Succeeded, Failed, Unknown).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDeploymentStatusCondition = {
+  name: 'kube_deployment_status_condition',
+  description:
+    'The current status conditions of a deployment. Labels include `condition` (Available, Progressing, ReplicaFailure) and `status` (true, false, unknown).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDeploymentCreated = {
+  name: 'kube_deployment_created',
+  description: 'Unix creation timestamp for a deployment.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeStatefulsetCreated = {
+  name: 'kube_statefulset_created',
+  description: 'Unix creation timestamp for a statefulset.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeDaemonsetCreated = {
+  name: 'kube_daemonset_created',
+  description: 'Unix creation timestamp for a daemonset.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeLabels = {
+  name: 'kube_node_labels',
+  description:
+    'Kubernetes labels of a node. Each label is exposed as a metric label with a `label_` prefix. Includes `nodepool` label for node pool membership.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeStatusAllocatable = {
+  name: 'kube_node_status_allocatable',
+  description:
+    'Allocatable resources of a node (CPU, memory, pods). The `resource` label indicates the resource type.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeStatusCapacity = {
+  name: 'kube_node_status_capacity',
+  description:
+    'Total resources of a node (CPU, memory, pods), before system reservations. The `resource` label indicates the resource type.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeStatusCondition = {
+  name: 'kube_node_status_condition',
+  description:
+    'The condition of a node. Labels include `condition` (Ready, DiskPressure, MemoryPressure, PIDPressure) and `status` (true, false, unknown).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeCreated = {
+  name: 'kube_node_created',
+  description: 'Unix creation timestamp for a node.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeletRunningPods = {
+  name: 'kubelet_running_pods',
+  description: 'Number of pods currently running on the kubelet.',
+  type: 'gauge',
+  source: 'kubelet',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteHostnameInfo = {
+  name: 'gatewayapi_httproute_hostname_info',
+  description:
+    'Info series (value is always 1) with one time series per hostname exposed by a Gateway API HTTPRoute. The `hostname` label holds the exposed host; `name` and `namespace` identify the HTTPRoute. Note: the metric carries no backendRef, so a hostname cannot be linked directly to a specific workload — correlate via `namespace` (and optionally route `name`).',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteParentInfo = {
+  name: 'gatewayapi_httproute_parent_info',
+  description:
+    'Info series (value is always 1) with one time series per parentRef of a Gateway API HTTPRoute. `name`/`namespace` identify the HTTPRoute; `parent_name`/`parent_namespace` identify the Gateway it attaches to; `parent_section_name` is the Gateway listener name.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayListenerInfo = {
+  name: 'gatewayapi_gateway_listener_info',
+  description:
+    'Info series (value is always 1) with one time series per Gateway API Gateway listener. `name`/`namespace` identify the Gateway; `listener_name` is the listener section; `hostname` is the listener hostname pattern (may be a wildcard such as `*.example.com`); `protocol`/`port`/`tls_mode` describe the listener.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayInfo = {
+  name: 'gatewayapi_gateway_info',
+  description:
+    'Info series (value is always 1) with one time series per Gateway API Gateway. `name`/`namespace` identify the Gateway; `gatewayclass_name` is its GatewayClass.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayStatus = {
+  name: 'gatewayapi_gateway_status',
+  description:
+    'One series per status condition of a Gateway API Gateway (`type`, e.g. `Accepted`, `Programmed`). Value 1 when the condition is True, 0 when False or Unknown.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayStatusListenerAttachedRoutes = {
+  name: 'gatewayapi_gateway_status_listener_attached_routes',
+  description:
+    'Number of routes attached to a Gateway listener, as reported in the Gateway status. `name`/`namespace` identify the Gateway; `listener_name` is the listener.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteStatusParentInfo = {
+  name: 'gatewayapi_httproute_status_parent_info',
+  description:
+    'Info series (value is always 1) with one time series per entry in `status.parents` of an HTTPRoute, i.e. per parent the controller has written status for. `parent_name`/`parent_namespace`/`parent_section_name` identify the parent.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+/**
+ * Route conditions per parent, added after observability-bundle 3.5.0
+ * (giantswarm/observability-bundle#467). Clusters on an older bundle export no
+ * series at all, so an absent condition means "not available", never "healthy".
+ */
+export const GatewayApiHttprouteStatusParentAccepted = {
+  name: 'gatewayapi_httproute_status_parent_accepted',
+  description:
+    'Accepted condition of an HTTPRoute, one series per parent (`parent_name`/`parent_namespace`/`parent_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when not reported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteStatusParentResolvedRefs = {
+  name: 'gatewayapi_httproute_status_parent_resolved_refs',
+  description:
+    'ResolvedRefs condition of an HTTPRoute, one series per parent, with the condition `reason` as label (e.g. `RefNotPermitted`, `BackendNotFound`). Value 1 when True, 0 when False or Unknown, no series when not reported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+/**
+ * Envoy Gateway policy metrics. `info` exists on every observability-bundle
+ * and only reads the deprecated `spec.targetRef`; `target_info` (from
+ * `spec.targetRefs`) and `status_ancestor_accepted` were added after 3.5.0
+ * (giantswarm/observability-bundle#467). Envoy Gateway writes no ancestor
+ * status when a policy's target doesn't exist, isn't managed by it, or before
+ * reconciling.
+ */
+
+export const EnvoyGatewaySecurityPolicyInfo = {
+  name: 'envoygateway_securitypolicy_info',
+  description:
+    'Info series (value is always 1) per SecurityPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewaySecurityPolicyTargetInfo = {
+  name: 'envoygateway_securitypolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a SecurityPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewaySecurityPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_securitypolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a SecurityPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyInfo = {
+  name: 'envoygateway_backendtrafficpolicy_info',
+  description:
+    'Info series (value is always 1) per BackendTrafficPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyTargetInfo = {
+  name: 'envoygateway_backendtrafficpolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a BackendTrafficPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_backendtrafficpolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a BackendTrafficPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyInfo = {
+  name: 'envoygateway_clienttrafficpolicy_info',
+  description:
+    'Info series (value is always 1) per ClientTrafficPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyTargetInfo = {
+  name: 'envoygateway_clienttrafficpolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a ClientTrafficPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_clienttrafficpolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a ClientTrafficPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyInfo = {
+  name: 'envoygateway_envoyextensionpolicy_info',
+  description:
+    'Info series (value is always 1) per EnvoyExtensionPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyTargetInfo = {
+  name: 'envoygateway_envoyextensionpolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a EnvoyExtensionPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_envoyextensionpolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a EnvoyExtensionPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const CertmanagerCertificateExpirationTimestampSeconds = {
+  name: 'certmanager_certificate_expiration_timestamp_seconds',
+  description:
+    'The unix timestamp (notAfter) after which a cert-manager Certificate expires. `name` is the Certificate resource; `exported_namespace` is its namespace (note: the `namespace` label is the cert-manager controller namespace, not the certificate namespace). `issuer_name`/`issuer_kind`/`issuer_group` identify the issuer.',
+  type: 'gauge',
+  source: 'cert-manager',
+} as const satisfies PrometheusMetric;
+
+export const CertmanagerCertificateReadyStatus = {
+  name: 'certmanager_certificate_ready_status',
+  description:
+    'Readiness of a cert-manager Certificate. Emits one series per `condition` value (True/False/Unknown); the series whose value is 1 is the current state. `name`/`exported_namespace` identify the Certificate.',
+  type: 'gauge',
+  source: 'cert-manager',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodesAllocatable = {
+  name: 'karpenter_nodes_allocatable',
+  description:
+    'Allocatable resources of a Karpenter-provisioned node. One series per resource per node (`resource_type`), so node counts must pin a single resource type. Carries the node facts Karpenter knows and kube-state-metrics does not expose: `capacity_type` (spot/on-demand), `arch`, `instance_type`, `instance_family`, `instance_category`, `instance_size`, `instance_generation`, `zone` and `node_name`, keyed by `nodepool` and `cluster_id`.',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodePoolsLimit = {
+  name: 'karpenter_nodepools_limit',
+  description:
+    'Configured provisioning ceiling of a Karpenter NodePool, by `nodepool` and `resource_type` (e.g. cpu, memory).',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodePoolsUsage = {
+  name: 'karpenter_nodepools_usage',
+  description:
+    'Current resources provisioned by a Karpenter NodePool, by `nodepool` and `resource_type`. Includes `nodes` and `pods` alongside cpu and memory, so it doubles as a direct node count.',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodePoolsAllowedDisruptions = {
+  name: 'karpenter_nodepools_allowed_disruptions',
+  description:
+    'Number of nodes of a Karpenter NodePool that may be disrupted right now, after applying its disruption budgets.',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+/**
+ * agentgateway's LLM metrics. Emitted only for calls that go through the
+ * gateway's inference listener, so an agent that calls a provider directly is
+ * invisible in all of them — the caveat every consumer has to state.
+ *
+ * Registered as histogram/summary *families* under their base name; queries
+ * interpolate the suffix (`${Metric.name}_sum`, `_count`, `_bucket`).
+ *
+ * Labels shared across the gen_ai metrics: `gateway`, `listener`, `route`,
+ * `agent_namespace` and `agent` (the calling pod's namespace and
+ * ServiceAccount, `unknown` when the caller IP matched no known Pod),
+ * `gen_ai_system`, `gen_ai_operation_name`, `gen_ai_request_model`,
+ * `gen_ai_response_model` (what the provider answered with),
+ * `gen_ai_token_type`, and `user` — the caller's email address, which the
+ * platform propagates on the model call. A gateway from before that label
+ * existed reports series without it, so a long window is only partly
+ * attributable. There is **no session label**, so these still cannot answer
+ * "what did that conversation cost".
+ */
+export const AgentgatewayGenAiClientTokenUsage = {
+  name: 'agentgateway_gen_ai_client_token_usage',
+  description:
+    'Tokens the gateway proxied. `_sum` is the token count and `_count` the number of usage records. Split by `gen_ai_token_type` into `input`, `output`, `input_cache_read` and `input_cache_write` — Anthropic counts the three input types separately, so `input` excludes cache traffic and a high cache-read share is prompt caching paying off. Needs no price catalogue, so it is the figure to trust when pricing is incomplete.',
+  type: 'histogram',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayGenAiClientCostUsdTotal = {
+  name: 'agentgateway_gen_ai_client_cost_usd_total',
+  description:
+    "Estimated spend in USD, priced from the gateway's model catalogue. An unpriced model contributes nothing, so zero here can mean 'free' or 'not priced' — always read it next to `agentgateway_cost_catalog_lookups_total`, which is the only thing that distinguishes the two.",
+  type: 'counter',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayGenAiServerRequestDuration = {
+  name: 'agentgateway_gen_ai_server_request_duration',
+  description:
+    'Whole model call, first byte of the request to last byte of the response. `_count` doubles as the number of model calls. Streamed completions run long by design, which is why this is not a speed figure — `agentgateway_gen_ai_server_time_per_output_token` is. (The gateway also exports `_time_to_first_token`, not registered: it answers the same question as the per-output-token histogram less directly, and only for the streamed subset.)',
+  type: 'histogram',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayGenAiServerTimePerOutputToken = {
+  name: 'agentgateway_gen_ai_server_time_per_output_token',
+  description:
+    "Seconds per output token, one observation per **streamed** model call carrying that call's own average. Invert a quantile of it for a generation speed — not `_count / _sum`, whose mean weights a three-token reply like a three-thousand-token one, so a few short replies read as seconds per token and collapse the figure. Only a streamed reply is observed, so it covers a subset of `agentgateway_gen_ai_server_request_duration` and is empty on an installation whose agents ask for whole completions.",
+  type: 'histogram',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayRequestsTotal = {
+  name: 'agentgateway_requests_total',
+  description:
+    "The data plane's HTTP request counter, by `listener` and `status`. Must be filtered to the inference listener (`llm` in the platform chart) — every other listener carries MCP and UI traffic, and folding those in misreports the model-call error rate. Provider errors and rate limits appear as non-2xx.",
+  type: 'counter',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayCostCatalogLookupsTotal = {
+  name: 'agentgateway_cost_catalog_lookups_total',
+  description:
+    'Price-catalogue lookups by `status`: `Exact` (the model is priced), `Unpriced` (in the built-in catalogue of the gateway release or the `llmRouting.modelCatalog` overlay of the platform values, but no rate applies to the call: no `input` or `output` rate, or no tier for its context size), `Missing` (in neither) and `NoCatalog` (none loaded). Anything but `Exact` means the cost figures understate spend; the fix is a gateway release that prices the model, or an overlay entry in the platform values.',
+  type: 'counter',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+/**
+ * All registered metrics. Use this to enumerate or inspect the full set
+ * of metrics the application relies on.
+ */
+export const MetricsRegistry: readonly PrometheusMetric[] = [
+  ContainerCpuUsageSecondsTotal,
+  ContainerMemoryWorkingSetBytes,
+  KubePodContainerResourceRequests,
+  KubePodContainerResourceLimits,
+  KubeDeploymentSpecReplicas,
+  KubeDeploymentStatusReplicasReady,
+  KubeStatefulsetReplicas,
+  KubeStatefulsetStatusReplicasReady,
+  KubeDaemonsetStatusDesiredNumberScheduled,
+  KubeDaemonsetStatusNumberReady,
+  KubeDeploymentLabels,
+  KubeStatefulsetLabels,
+  KubeDaemonsetLabels,
+  KubePodContainerStatusWaitingReason,
+  KubePodContainerStatusTerminatedReason,
+  KubePodContainerStatusRestartsTotal,
+  KubePodStatusPhase,
+  KubeDeploymentStatusCondition,
+  KubeDeploymentCreated,
+  KubeStatefulsetCreated,
+  KubeDaemonsetCreated,
+  KubeNodeLabels,
+  KubeNodeStatusAllocatable,
+  KubeNodeStatusCapacity,
+  KubeNodeStatusCondition,
+  KubeNodeCreated,
+  KubeletRunningPods,
+  GatewayApiHttprouteHostnameInfo,
+  GatewayApiHttprouteParentInfo,
+  GatewayApiGatewayListenerInfo,
+  GatewayApiGatewayInfo,
+  GatewayApiGatewayStatus,
+  GatewayApiGatewayStatusListenerAttachedRoutes,
+  GatewayApiHttprouteStatusParentInfo,
+  GatewayApiHttprouteStatusParentAccepted,
+  GatewayApiHttprouteStatusParentResolvedRefs,
+  EnvoyGatewaySecurityPolicyInfo,
+  EnvoyGatewaySecurityPolicyTargetInfo,
+  EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
+  EnvoyGatewayBackendTrafficPolicyInfo,
+  EnvoyGatewayBackendTrafficPolicyTargetInfo,
+  EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted,
+  EnvoyGatewayClientTrafficPolicyInfo,
+  EnvoyGatewayClientTrafficPolicyTargetInfo,
+  EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted,
+  EnvoyGatewayEnvoyExtensionPolicyInfo,
+  EnvoyGatewayEnvoyExtensionPolicyTargetInfo,
+  EnvoyGatewayEnvoyExtensionPolicyStatusAncestorAccepted,
+  CertmanagerCertificateExpirationTimestampSeconds,
+  CertmanagerCertificateReadyStatus,
+  KarpenterNodesAllocatable,
+  KarpenterNodePoolsLimit,
+  KarpenterNodePoolsUsage,
+  KarpenterNodePoolsAllowedDisruptions,
+  AgentgatewayGenAiClientTokenUsage,
+  AgentgatewayGenAiClientCostUsdTotal,
+  AgentgatewayGenAiServerRequestDuration,
+  AgentgatewayGenAiServerTimePerOutputToken,
+  AgentgatewayRequestsTotal,
+  AgentgatewayCostCatalogLookupsTotal,
+];

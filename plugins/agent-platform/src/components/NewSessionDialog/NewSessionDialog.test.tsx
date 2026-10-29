@@ -12,6 +12,15 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => mockBuildAvatarUrl,
 }));
 
+// The picker's reads are the hook's own tests'; here the installation offers none.
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
+}));
+
+// The toolchain picker's reads are its own tests'; here it is not offered.
+jest.mock('../ToolchainPicker', () => ({ ToolchainPicker: () => null }));
+
 const onStart = jest.fn();
 const onOpenChange = jest.fn();
 
@@ -72,7 +81,13 @@ describe('NewSessionDialog', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Start' }));
 
-    expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'why is the ingress failing?',
+      [],
+      undefined,
+      undefined,
+    );
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
@@ -101,5 +116,29 @@ describe('NewSessionDialog', () => {
     renderDialog({ error: 'kagent did not accept the agent' });
 
     expect(screen.getByText('Session not started')).toBeInTheDocument();
+  });
+});
+
+describe('NewSessionDialog at phone width (T22 C4)', () => {
+  const injectedCss = () =>
+    Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent ?? '')
+      .join('\n');
+
+  it('is the whole screen, so the box and Start stay above the keyboard', () => {
+    renderDialog();
+
+    // bui puts the dialog's `className` on the modal, the dialog's parent.
+    const modal = screen.getByRole('dialog').parentElement!;
+    const className = [...modal.classList].find(name =>
+      name.includes('dialog'),
+    )!;
+    // jsdom applies no media queries; the injected rule is what can be pinned.
+    const rule = new RegExp(
+      `@media \\(max-width: 599\\.95px\\) \\{\\s*\\.${className} \\{([^}]*)\\}`,
+    ).exec(injectedCss());
+    expect(rule?.[1]).toMatch(/width: 100vw !important;/);
+    expect(rule?.[1]).toMatch(/height: 100dvh;/);
+    expect(rule?.[1]).toMatch(/border-radius: 0;/);
   });
 });

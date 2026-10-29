@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   musterApiRef,
@@ -8,9 +9,24 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useUpdateAgent } from './useUpdateAgent';
+import { committedTo } from '../lib/__fixtures__/gitOpsCommit';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
+const analyticsApi = mockApis.analytics.mock();
+
+function expectAgentUpdated(
+  mode: 'apply' | 'commit',
+  change: 'edited' | 'skillsRefreshed',
+) {
+  expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'AgentPlatform.agentUpdated',
+      attributes: { mode, change },
+    }),
+  );
+}
 
 function renderWith(installation: string | undefined = 'gazelle') {
   const queryClient = new QueryClient({
@@ -18,7 +34,12 @@ function renderWith(installation: string | undefined = 'gazelle') {
   });
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -30,6 +51,7 @@ function renderWith(installation: string | undefined = 'gazelle') {
 
 beforeEach(() => {
   callTool.mockReset();
+  jest.mocked(analyticsApi.captureEvent).mockClear();
 });
 
 describe('useUpdateAgent', () => {
@@ -66,8 +88,10 @@ describe('useUpdateAgent', () => {
       changed: ['agent.description'],
       requestedBy: 'admin@lab.local',
     });
+    // An edit applied live; nothing of what changed reaches the event.
+    expectAgentUpdated('apply', 'edited');
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['cluster', 'gazelle', 'get', 'kagent.dev'],
+      queryKey: ['cluster', 'gazelle', 'get', 'api.kagent.dev'],
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: [
@@ -78,6 +102,8 @@ describe('useUpdateAgent', () => {
         'kagent',
         'pr-reviewer',
       ],
+      // Read again even with nobody watching it: the edit wizard seeds from it.
+      refetchType: 'all',
     });
   });
 
@@ -113,9 +139,10 @@ describe('useUpdateAgent', () => {
       name: 'pr-reviewer',
       refreshSkills: true,
     });
+    expectAgentUpdated('apply', 'skillsRefreshed');
   });
 
-  it('reads the template generation before writing, and hands it back', async () => {
+  it('reads the Agent generation before writing, and hands it back', async () => {
     // The progress on the detail page needs it to tell this write's verdict
     // from the one that was already there.
     callTool
@@ -124,7 +151,7 @@ describe('useUpdateAgent', () => {
         namespace: 'kagent',
         verdict: 'ready',
         summary: 'Ready.',
-        template: { exists: true, generation: 7, observedGeneration: 7 },
+        agent: { exists: true, generation: 7, observedGeneration: 7 },
       })
       .mockResolvedValue({
         agent: { name: 'pr-reviewer', namespace: 'kagent' },
@@ -220,13 +247,14 @@ describe('useUpdateAgent', () => {
     await waitFor(() => {
       expect(result.current.failure?.code).toBe('forbidden');
     });
+    // A failed write reports nothing.
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('commits through update_agent with mode: commit', async () => {
-    callTool.mockResolvedValue({
-      status: 'auth_required',
-      authUrl: 'https://x',
-    });
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/3'),
+    );
     const { result } = renderWith();
 
     let outcome;
@@ -239,6 +267,32 @@ describe('useUpdateAgent', () => {
     });
 
     expect(callTool.mock.calls[0][1]).toMatchObject({ mode: 'commit' });
-    expect(outcome).toEqual({ status: 'auth_required', authUrl: 'https://x' });
+    expect(outcome).toEqual(
+      committedTo('https://github.com/org/gitops/pull/3'),
+    );
+    expectAgentUpdated('commit', 'edited');
+  });
+
+  it('reports a committed skills refresh as mode commit, change skillsRefreshed', async () => {
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/4'),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.commit({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        refreshSkills: true,
+      });
+    });
+
+    expect(callTool.mock.calls[0][1]).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      refreshSkills: true,
+      mode: 'commit',
+    });
+    expectAgentUpdated('commit', 'skillsRefreshed');
   });
 });

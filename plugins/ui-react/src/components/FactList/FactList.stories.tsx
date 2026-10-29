@@ -28,8 +28,8 @@ const meta = {
             'For a detail block of many short facts, where a horizontal ' +
             '`label | value` row is denser and easier to scan than a stack. ' +
             'Prefer `ContentRow` where a label stacked *above* its value suits ' +
-            'the surrounding layout better. Below 520px the rows stack ' +
-            'automatically.',
+            'the surrounding layout better. At phone width (≤599.95px, the ' +
+            "shell's phone layout) the rows stack automatically.",
           migration: 'mixed',
           extra:
             'The label column is capped with `minmax()` rather than sized ' +

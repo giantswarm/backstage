@@ -32,6 +32,38 @@ describe('parseAuthLoginResult', () => {
     });
   });
 
+  it('takes a device code from a provider App with a device-code sign-in', () => {
+    expect(
+      parseAuthLoginResult({
+        text: "Connect provider App 'chatgpt'",
+        structuredContent: {
+          status: 'pending',
+          app: 'chatgpt',
+          userCode: 'ABCD-EFGH',
+          verificationUrl: 'https://auth.openai.com/codex/device',
+          expiresAt: '2026-10-22T10:15:00Z',
+        },
+      }),
+    ).toEqual({
+      status: 'pending',
+      message: "Connect provider App 'chatgpt'",
+      deviceCode: {
+        userCode: 'ABCD-EFGH',
+        verificationUrl: 'https://auth.openai.com/codex/device',
+        expiresAt: '2026-10-22T10:15:00Z',
+      },
+    });
+  });
+
+  it('reads a pending answer without a code as unknown', () => {
+    expect(
+      parseAuthLoginResult({
+        text: 'pending',
+        structuredContent: { status: 'pending', app: 'chatgpt' },
+      }).status,
+    ).toBe('unknown');
+  });
+
   // muster#1083: the challenge says how muster identifies itself to the
   // authorization server, so the UI can warn when the AS supports neither
   // CIMD nor DCR.
@@ -159,6 +191,23 @@ describe('parseAuthLogoutResult', () => {
       status: 'signed_out',
       message,
     });
+  });
+
+  it('recognises a provider App’s disconnect', () => {
+    // Verbatim from muster's provider App logout.
+    const message =
+      "Disconnected provider App 'github': muster dropped your grant and revoked it at the provider, where the provider offers revocation.";
+
+    expect(
+      parseAuthLogoutResult({
+        text: message,
+        structuredContent: {
+          status: 'disconnected',
+          app: 'github',
+          revoked: true,
+        },
+      }),
+    ).toEqual({ status: 'signed_out', message });
   });
 
   it('flags an unrecognised answer instead of guessing', () => {

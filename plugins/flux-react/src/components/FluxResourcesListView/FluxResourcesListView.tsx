@@ -17,17 +17,7 @@ const FLUX_RESOURCE_PANE_ID = 'flux-resource';
 const FLUX_RESOURCE_PANE_PREFIX = 'sr';
 
 const Content = ({ filters }: { filters: ReactNode }) => {
-  const {
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
-    isLoading,
-  } = useFluxResourcesData();
+  const { resources, isLoading } = useFluxResourcesData();
 
   const { open } = useDetailsPane(FLUX_RESOURCE_PANE_ID, {
     prefix: FLUX_RESOURCE_PANE_PREFIX,
@@ -63,14 +53,7 @@ const Content = ({ filters }: { filters: ReactNode }) => {
             kind={kind}
             name={name}
             namespace={namespace}
-            kustomizations={kustomizations}
-            helmReleases={helmReleases}
-            gitRepositories={gitRepositories}
-            ociRepositories={ociRepositories}
-            helmRepositories={helmRepositories}
-            imagePolicies={imagePolicies}
-            imageRepositories={imageRepositories}
-            imageUpdateAutomations={imageUpdateAutomations}
+            resources={resources}
             isLoading={isLoading}
           />
         )}

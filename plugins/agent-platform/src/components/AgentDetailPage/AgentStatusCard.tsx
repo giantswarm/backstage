@@ -1,153 +1,110 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
   Agent,
-  AgentHarness,
-  HarnessReadiness,
+  AGENT_CONDITION_STAGE_ORDER,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  CommitSha,
   ConditionsList,
   InfoCard,
-  StatusLabel,
-  type StatusLabelIntent,
+  MONO,
+  SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
-
-/**
- * How one Harness's verdict presents, in the vocabulary agent-manager's
- * `get_agent_status` uses (`ready` | `progressing` | `failed`), plus the
- * "nothing written yet" state.
- */
-const HARNESS_READINESS_PRESENTATION: Record<
-  HarnessReadiness,
-  { label: string; intent: StatusLabelIntent }
-> = {
-  ready: { label: 'Ready', intent: 'positive' },
-  progressing: { label: 'Progressing', intent: 'warning' },
-  failed: { label: 'Failed', intent: 'negative' },
-  pending: { label: 'Pending', intent: 'neutral' },
-};
-
-/**
- * The revision detail of one Harness entry. It explains a `progressing`
- * verdict: the Harness is compiling a newer revision than the one it last
- * succeeded with.
- */
-function describeRevision({
-  desiredRevision,
-  latestSuccessfulRevision,
-}: AgentHarness): string | undefined {
-  if (!desiredRevision) {
-    return undefined;
-  }
-  if (desiredRevision === latestSuccessfulRevision) {
-    return `revision ${desiredRevision}`;
-  }
-  return latestSuccessfulRevision
-    ? `compiling ${desiredRevision}, last successful ${latestSuccessfulRevision}`
-    : `compiling ${desiredRevision}`;
+/** A revision hash shortened like a commit, the full value at hand. */
+function Revision({ value }: { value: string }) {
+  return <CommitSha value={value} style={MONO} />;
 }
 
-/** One admitting Harness: its name, its verdict, and the revision it is on. */
-function HarnessRow({
-  harness,
-  isDeciding,
-}: {
-  harness: AgentHarness;
-  isDeciding: boolean;
-}) {
-  const { label, intent } = HARNESS_READINESS_PRESENTATION[harness.readiness];
-  const revision = describeRevision(harness);
-
+/**
+ * The revision while the Harness compiles a newer one than it last succeeded
+ * with — the one moment the revision explains something.
+ */
+function CompilingRevision({ agent }: { agent: Agent }) {
+  const desiredRevision = agent.getDesiredRevision();
+  const latestSuccessfulRevision = agent.getLatestSuccessfulRevision();
+  if (!desiredRevision || desiredRevision === latestSuccessfulRevision) {
+    return null;
+  }
   return (
-    <Flex direction="column" gap="1" role="listitem">
-      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-        <Text variant="body-medium" style={{ fontFamily: 'monospace' }}>
-          {harness.name}
-        </Text>
-        <StatusLabel label={label} intent={intent} />
-        {isDeciding && (
-          <Text variant="body-x-small" color="secondary">
-            sessions run here
-          </Text>
-        )}
-      </Flex>
-      {revision && (
-        <Text variant="body-small" color="secondary">
-          {revision}
-        </Text>
+    <Text variant="body-small" color="secondary">
+      Compiling <Revision value={desiredRevision} />
+      {latestSuccessfulRevision && (
+        <>
+          , running <Revision value={latestSuccessfulRevision} />
+        </>
       )}
+    </Text>
+  );
+}
+
+/** Where the agent runs. The page header already carries the verdict. */
+function HarnessLine({ agent, isReady }: { agent: Agent; isReady: boolean }) {
+  const harness = agent.getHarnessName();
+  if (!harness) {
+    return null;
+  }
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant="body-medium">
+        {isReady ? 'Sessions run on ' : 'Runs on '}
+        <span style={MONO}>{harness}</span>
+      </Text>
+      <CompilingRevision agent={agent} />
     </Flex>
   );
 }
 
 /**
- * Why the agent is in the state the list shows: the readiness label, the
- * controller's own explanation, every Harness that admits the template with
- * its own verdict, and the deciding Harness's conditions verbatim.
+ * Whether the agent works, below the verdict the page header shows: the
+ * Harness its sessions run on, what the Harness could not honour, and the
+ * conditions behind the verdict.
  *
- * This is the section that makes a broken agent debuggable without `kubectl`, so
- * it leads the page rather than following the configuration.
+ * A ready agent's conditions all read healthy, so they sit behind a closed
+ * disclosure with the revision it runs. Anything else lists them open, in the
+ * order the controller evaluates them, so the stage that failed comes before
+ * the stages it blocks and starts expanded. Why sessions cannot start is the
+ * page banner's to say, not repeated here.
  */
 export function AgentStatusCard({ agent }: { agent: Agent }) {
   const readiness = agent.getReadiness();
-  const { label, intent, icon } = READINESS_PRESENTATION[readiness];
-  const readinessMessage = agent.getReadinessMessage();
   const warnings = agent.getHarnessWarnings();
-  const harnesses = agent.getHarnesses();
-  const deciding = agent.getDecidingHarness();
-  const conditions = agent.getConditions() ?? [];
+  const conditions = agent.getConditions();
+  const revision = agent.getLatestSuccessfulRevision();
+  const isReady = readiness === 'ready';
+
+  const conditionsList = (
+    <ConditionsList
+      conditions={conditions}
+      order={AGENT_CONDITION_STAGE_ORDER}
+      headingLevel={isReady ? 5 : 4}
+      emptyContent={
+        <Text variant="body-small" color="secondary">
+          The controller has not reported on this agent yet — normal until
+          kagent first reconciles a new agent.
+        </Text>
+      }
+    />
+  );
 
   return (
     <InfoCard title="Status">
       <Flex direction="column" gap="4">
-        <Flex direction="column" gap="2">
-          <StatusLabel label={label} intent={intent} icon={icon} />
-          {readinessMessage && (
-            <Text variant="body-small" color="secondary">
-              {readinessMessage}
-            </Text>
-          )}
-          {/* The one explanation the conditions cannot give on their own: they
-              may all read healthy and still describe the *previous* spec. */}
-          {agent.isStale() && (
-            <Text variant="body-small" color="secondary">
-              The controller has reconciled generation{' '}
-              {agent.getObservedGeneration()}, but the stored spec is at
-              generation {agent.getGeneration()} — the Harness entries below
-              describe the previous version.
-            </Text>
-          )}
-        </Flex>
+        <HarnessLine agent={agent} isReady={isReady} />
 
-        {/* Where the agent runs: every Harness that admits the template, each
-            with its own verdict. The deciding one — the platform Harness the
-            admission label names — is what the readiness above is; sessions
-            started from the portal run on it. */}
-        {harnesses.length > 0 && (
-          <Flex direction="column" gap="2">
-            <Text as="h4" variant="body-medium" weight="bold">
-              Harnesses
-            </Text>
-            <Flex
-              direction="column"
-              gap="2"
-              role="list"
-              aria-label="Admitting Harnesses"
-            >
-              {harnesses.map(harness => (
-                <HarnessRow
-                  key={harness.name}
-                  harness={harness}
-                  isDeciding={harness.name === deciding?.name}
-                />
-              ))}
-            </Flex>
-          </Flex>
+        {/* The one explanation the conditions cannot give on their own: they
+            may all read healthy and still describe the *previous* spec. */}
+        {agent.isStale() && (
+          <Text variant="body-small" color="secondary">
+            The controller has reconciled generation{' '}
+            {agent.getObservedGeneration()}, but the stored spec is at
+            generation {agent.getGeneration()} — the conditions below describe
+            the previous version.
+          </Text>
         )}
 
         {/* Independent of readiness — a fully ready agent can carry these — so
-            they are reported separately rather than folded into the label above. */}
+            they stay in view whatever the conditions say. */}
         {warnings.length > 0 && (
           <Alert
             status="warning"
@@ -156,17 +113,23 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
           />
         )}
 
-        <ConditionsList
-          conditions={conditions}
-          headingLevel={4}
-          emptyContent={
-            <Text variant="body-small" color="secondary">
-              {readiness === 'notAdmitted'
-                ? 'No Harness admits this agent, so none has written conditions for it. Label the template for the platform Harness and the controller reports here.'
-                : 'No Harness has reported on this agent yet. A newly created agent shows this until a Harness admits it and reconciles it for the first time.'}
-            </Text>
-          }
-        />
+        {isReady ? (
+          <SimpleAccordion
+            title={`Conditions (${conditions.length})`}
+            headingLevel={4}
+          >
+            <Flex direction="column" gap="2">
+              {revision && (
+                <Text variant="body-small" color="secondary">
+                  Revision <Revision value={revision} />
+                </Text>
+              )}
+              {conditionsList}
+            </Flex>
+          </SimpleAccordion>
+        ) : (
+          conditionsList
+        )}
       </Flex>
     </InfoCard>
   );

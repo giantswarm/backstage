@@ -25,6 +25,7 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     mcpServers: [],
     workflows: [],
     isLoading: false,
+    isLoadingWorkflows: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
     ...overrides,
@@ -43,7 +44,7 @@ describe('describeActiveInstallation', () => {
 
   it('names the one muster shown under "All installations", and that it is the home', () => {
     expect(describeActiveInstallation(instance({ scope: 'all' }))).toBe(
-      'One muster at a time: showing gazelle (the home installation). Pin an installation in the page header to see another.',
+      'This shows one muster at a time, currently gazelle (home). Pin another environment in the page header.',
     );
   });
 
@@ -58,7 +59,7 @@ describe('describeActiveInstallation', () => {
         }),
       ),
     ).toBe(
-      'One muster at a time: showing golem. Pin an installation in the page header to see another.',
+      'This shows one muster at a time, currently golem. Pin another environment in the page header.',
     );
   });
 
@@ -66,7 +67,7 @@ describe('describeActiveInstallation', () => {
     // snail runs no muster (or the portal does not know it): the section fell
     // back to the home muster while the header still says snail.
     expect(describeActiveInstallation(instance({ scope: 'snail' }))).toBe(
-      'No muster is known on snail; showing gazelle instead.',
+      'There is no muster on snail, so this shows gazelle.',
     );
   });
 
@@ -98,7 +99,7 @@ describe('ActiveInstallationNote', () => {
       </MusterInstanceContext.Provider>,
     );
     expect(
-      screen.getByText(/One muster at a time: showing gazelle/),
+      screen.getByText(/This shows one muster at a time, currently gazelle/),
     ).toBeInTheDocument();
 
     rerender(

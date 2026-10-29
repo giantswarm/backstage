@@ -5,7 +5,9 @@ import {
 import { scaffolderActionsExtensionPoint } from '@backstage/plugin-scaffolder-node';
 import { scaffolderTemplatingExtensionPoint } from '@backstage/plugin-scaffolder-node/alpha';
 import type { JsonValue } from '@backstage/types';
+import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { createKubeApplyAction } from './actions/kubeApply';
+import { createOciTagExistsAction } from './actions/ociTagExists';
 import { parseClusterRef } from './filters/parseClusterRef';
 import { KubernetesClientFactory } from './lib/KubernetesClientFactory';
 
@@ -19,12 +21,14 @@ export const scaffolderModuleGS = createBackendModule({
         templatingExtensionPoint: scaffolderTemplatingExtensionPoint,
         config: coreServices.rootConfig,
         logger: coreServices.logger,
+        containerRegistry: containerRegistryServiceRef,
       },
       async init({
         actionsExtensionPoint,
         templatingExtensionPoint,
         config,
         logger,
+        containerRegistry,
       }) {
         const kubernetesClientFactory = new KubernetesClientFactory({
           config,
@@ -32,6 +36,7 @@ export const scaffolderModuleGS = createBackendModule({
         });
         actionsExtensionPoint.addActions(
           createKubeApplyAction(kubernetesClientFactory),
+          createOciTagExistsAction(containerRegistry),
         );
 
         templatingExtensionPoint.addTemplateFilters({

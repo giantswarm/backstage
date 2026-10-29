@@ -1,3 +1,9 @@
+import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
@@ -198,5 +204,125 @@ describe('LlmByAgentTable', () => {
     render(<LlmByAgentTable rows={[]} emptyMessage="Nothing attributed." />);
 
     expect(screen.getByText('Nothing attributed.')).toBeInTheDocument();
+  });
+
+  describe('at fleet scale', () => {
+    /** 300 agents, spend falling with the index so the ranking is known. */
+    const FLEET: LlmAgentRow[] = Array.from({ length: 300 }, (_, i) => ({
+      id: `kagent|agent-${i}`,
+      namespace: 'kagent',
+      agent: `agent-${i}`,
+      kind: 'agent',
+      label: `Agent ${String(i).padStart(3, '0')}`,
+      tokens: 1_000 * (300 - i),
+      calls: 300 - i,
+      costUsd: 300 - i,
+      sharePct: (300 - i) / 450,
+    }));
+
+    it('shows three agents with no reveal control', () => {
+      render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+      expect(screen.queryByText(/shown/)).toBeNull();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+    });
+
+    it('renders the top 20 spenders of 300 and offers the rest', async () => {
+      // Shuffled input: the slice must come after the sort, so the first page
+      // is the biggest spenders whatever order the query returned them in.
+      const shuffled = [...FLEET].reverse();
+      render(<LlmByAgentTable rows={shuffled} emptyMessage="none" />);
+
+      const order = renderedOrder();
+      expect(order).toHaveLength(20);
+      expect(order[0]).toBe('Agent 000');
+      expect(order[19]).toBe('Agent 019');
+      expect(screen.getByText('20 agents shown, 280 more')).toBeVisible();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 20 more agents' }),
+      );
+      expect(renderedOrder()).toHaveLength(40);
+    });
+
+    it('slices after a column sort, not before it', async () => {
+      render(<LlmByAgentTable rows={FLEET} emptyMessage="none" />);
+
+      // Ascending by calls: the quietest agents of all 300 come first, not
+      // the quietest of the first page.
+      await userEvent.click(
+        screen.getByRole('columnheader', { name: /Model calls/ }),
+      );
+
+      const order = renderedOrder();
+      expect(order).toHaveLength(20);
+      expect(order[0]).toBe('Agent 299');
+    });
+  });
+});
+
+// T22 B10: five columns in 343px clipped every figure.
+describe('LlmByAgentTable at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+  it('keeps the agent and its cost', () => {
+    layout = mockPhoneLayout();
+    render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+    expect(headers()).toEqual(['Agent', 'Spend']);
+    expect(screen.getByRole('link', { name: 'Big spender' })).toBeVisible();
+    expect(screen.getByText('$42.50')).toBeVisible();
+    expect(screen.queryByText('Model calls')).toBeNull();
+  });
+
+  it('keeps every column on a desktop', () => {
+    layout = mockDesktopLayout();
+    render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+    expect(headers()).toEqual([
+      'Agent',
+      'Model calls',
+      'Tokens',
+      'Spend',
+      'Share of spend',
+    ]);
+  });
+
+  it('opens what Removed means on a press, not only on hover (C23)', async () => {
+    layout = mockPhoneLayout();
+    const user = userEvent.setup();
+    render(
+      <LlmByAgentTable
+        rows={[
+          {
+            id: 'kagent|gone',
+            namespace: 'kagent',
+            agent: 'gone',
+            kind: 'removed',
+            label: 'kagent/gone',
+            tokens: 1,
+            calls: 1,
+            costUsd: 1,
+            sharePct: 100,
+          },
+        ]}
+        emptyMessage="none"
+      />,
+      // The press opens a popover inside the shell, where this table lives.
+      { wrapper: ShellScopeProvider },
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'What Removed means' }),
+    );
+    expect(
+      await screen.findByText(/This agent is unknown to this portal/),
+    ).toBeVisible();
   });
 });

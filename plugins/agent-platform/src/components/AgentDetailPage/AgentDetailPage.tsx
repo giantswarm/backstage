@@ -7,40 +7,49 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { Helmet } from 'react-helmet';
-import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-} from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
 import {
   toastApiRef,
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
+  Harness,
+  HelmRelease,
   isNotFoundError,
   ModelConfig,
   useResource,
+  useSelfSubjectAccessReview,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  type BreadcrumbItem,
   DateComponent,
-  StatusLabel,
-  useProvidePageHeaderActions,
+  EmptyStateCard,
+  FactsColumn,
+  LoadingIndicator,
+  ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
+  type ShellPageProps,
+  ShellPageTitleSkeleton,
+  StatusDot,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
-import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
+import {
+  AGENT_CREATED_STATE_KEY,
+  type AgentWriteAction,
+} from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
+import { useAgentToolset } from '../../hooks/useAgentToolset';
 import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
@@ -49,15 +58,22 @@ import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  modelConfigNameOf,
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { clientLookupOf } from '../../lib/serving';
+import { toolsetHasTools } from '../../lib/toolset';
 import {
   agentEditRouteRef,
   agentsRouteRef,
   sessionDetailRouteRef,
 } from '../../routes';
 import {
+  agentManagerSessionGate,
   AgentRow,
   getAgentRefetchInterval,
   ResolveModelServing,
@@ -68,18 +84,26 @@ import {
   READINESS_PRESENTATION,
   type ReadinessPresentation,
 } from '../AgentsTable/readinessStatus';
-import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
+import { isStartableAgent } from '../../lib/startableAgent';
+import { tenantInSentence } from '../../lib/tenants';
 import { ServingProvider, useServing } from '../ServingProvider';
+import { toneOfIntent } from '../../lib/customize';
+import {
+  type CustomizePaths,
+  useCustomizePaths,
+} from '../../hooks/useCustomizePaths';
 import { AgentCreationProgress } from '../AgentCreationProgress';
-import { AgentActionsMenu } from './AgentActionsMenu';
-import { AgentDeleteDialog } from './AgentDeleteDialog';
-import { AgentDetailTabs } from './AgentDetailTabs';
-import { AgentOverviewTab } from './AgentOverviewTab';
+import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
+import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
+import { agentTabs } from './AgentDetailTabs';
+import { agentFacts, AgentPlainOverview } from './AgentPlainOverview';
+import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
-import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
+import { AgentUsageTab } from './AgentUsageTab';
 import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -90,7 +114,7 @@ const AVATAR_SIZE: AvatarSize = 96;
 
 /**
  * The header label for an agent whose HelmRelease exists but whose
- * AgentTemplate has not been rendered yet — before there is a readiness to
+ * Agent has not been rendered yet — before there is a readiness to
  * derive. Same neutral hourglass as "Pending", which is the state it becomes.
  */
 const DEPLOYING_PRESENTATION: ReadinessPresentation = {
@@ -98,79 +122,6 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
   intent: 'neutral',
   icon: READINESS_PRESENTATION.pending.icon,
 };
-
-/**
- * The page header: avatar, name, the derived readiness, where the agent runs,
- * and — once the template exists — when it was created and what it is for.
- * It also names the agent in the document title; `GSPageLayout` appends the
- * app title.
- */
-function AgentHeader({
-  displayName,
-  avatarUrl,
-  readiness,
-  name,
-  installation,
-  namespace,
-  created,
-  description,
-}: {
-  displayName: string;
-  avatarUrl: string | undefined;
-  readiness: ReadinessPresentation;
-  name: string;
-  installation: string;
-  namespace: string;
-  created?: string;
-  description?: string;
-}) {
-  return (
-    <Flex direction="column" gap="2">
-      <Helmet title={`${displayName} · Agents · Agent Platform`} />
-      <BackToAgents>← Agents</BackToAgents>
-
-      <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-        <AgentAvatar
-          size="large"
-          purpose="decoration"
-          name={displayName}
-          src={avatarUrl ?? ''}
-        />
-        <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text as="h2" variant="title-medium">
-              {displayName}
-            </Text>
-            {/* Tagged because the derived readiness and the condition it came
-                from share a label ("Ready", "Ready") — this is the derived
-                one, distinct from the entries in the conditions list. */}
-            <span data-testid="agent-readiness">
-              <StatusLabel
-                label={readiness.label}
-                intent={readiness.intent}
-                icon={readiness.icon}
-              />
-            </span>
-            {/* Where the agent runs, where a person reads: two agents may
-                share a name across installations. */}
-            <InstallationChip installation={installation} />
-          </Flex>
-
-          <Text variant="body-small" color="secondary">
-            <span style={{ fontFamily: 'monospace' }}>{name}</span>
-            {' · '}
-            {installation}
-            {namespace ? ` / ${namespace}` : ''}
-            {created ? ' · created ' : ''}
-            {created ? <DateComponent value={created} relative /> : null}
-          </Text>
-        </Flex>
-      </Flex>
-
-      {description && <Text variant="body-medium">{description}</Text>}
-    </Flex>
-  );
-}
 
 /**
  * Link back to the list.
@@ -188,6 +139,69 @@ function BackToAgents({ children }: { children: ReactNode }) {
   return <Link to={agentsRoute()}>{children}</Link>;
 }
 
+/**
+ * Where an agent's page sits inside the shell: "Customize / Agents / <agent>",
+ * on every tab, as on the connector and skill pages.
+ */
+function agentBreadcrumbs(
+  title: string,
+  { customize, agents }: CustomizePaths,
+): BreadcrumbItem[] {
+  return [
+    { label: 'Customize', href: customize },
+    { label: 'Agents', href: agents },
+    { label: title },
+  ];
+}
+
+/**
+ * The page's outer frame: the platform-standard page frame (`ShellPage`) —
+ * breadcrumbs reading "Customize / Agents / <agent>", the agent's name as the
+ * h1 at the standard scale with its avatar and readiness, its actions at the
+ * header's right and the routed tabs under it.
+ *
+ * A component of its own so every exit — loading, deploying, not found,
+ * unreadable, and the agent itself — gets the same frame.
+ */
+function AgentFrame({
+  title,
+  heading,
+  children,
+  ...shellProps
+}: Omit<ShellPageProps, 'title' | 'breadcrumbs'> & {
+  /** The shell header's h1, and the breadcrumbs' last entry. */
+  title: string;
+  /** The h1 instead of `title`, e.g. its skeleton while the agent is read. */
+  heading?: ReactNode;
+}) {
+  const customizePaths = useCustomizePaths();
+  return (
+    <ShellPage
+      title={heading ?? title}
+      breadcrumbs={agentBreadcrumbs(title, customizePaths)}
+      {...shellProps}
+    >
+      {children}
+    </ShellPage>
+  );
+}
+
+/** The derived readiness beside the title, tagged for the tests. */
+function ReadinessBadge({ readiness }: { readiness: ReadinessPresentation }) {
+  return (
+    // Tagged because the derived readiness and the condition it came from
+    // share a label ("Ready", "Ready") — this is the derived one.
+    // A dot and its label, as the Customize list draws the same state and as
+    // the model, session and connector headers draw theirs.
+    <span data-testid="agent-readiness">
+      <StatusDot
+        tone={toneOfIntent(readiness.intent)}
+        label={readiness.label}
+      />
+    </span>
+  );
+}
+
 function AgentDetailPageContent() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -195,9 +209,9 @@ function AgentDetailPageContent() {
   // Same two tiers as the list: tighten while the agent is converging, relax
   // once it settles or stays broken. This page is where someone watches an
   // agent come up, so the fast tier earns its keep here — and it starts before
-  // the template exists: while agent-manager says the agent's HelmRelease is
+  // the Agent exists: while agent-manager says the agent's HelmRelease is
   // there (`isDeploying` below), the read that will eventually find the
-  // template polls at the fast tier too, instead of the 60 s the helper gives
+  // Agent polls at the fast tier too, instead of the 60 s the helper gives
   // "no data". A ref, because the flag is derived from this read's own outcome
   // and react-query re-evaluates the interval after every fetch.
   const isDeployingRef = useRef(false);
@@ -222,31 +236,30 @@ function AgentDetailPageContent() {
   );
 
   // "Not yet" against "not there". agent-manager's `create_agent` applies the
-  // HelmRelease and returns; helm-controller renders the AgentTemplate a few
+  // HelmRelease and returns; helm-controller renders the Agent a few
   // seconds later, and the create flow navigates here in between — so a 404 on
-  // the template alone does not mean the agent is missing. agent-manager's
+  // the Agent alone does not mean the agent is missing. agent-manager's
   // `get_agent_status` is the HelmRelease-aware read: by its contract it
-  // answers `not_found` only when neither the template nor the HelmRelease
+  // answers `not_found` only when neither the Agent nor the HelmRelease
   // exists; otherwise it reports the release and its verdict. It is the read
   // the creation progress polls after Deploy anyway, runs as the signed-in
   // person (so it needs no Kubernetes read on HelmReleases), and survives a
-  // reload of this URL. Asked only once the template read has come back empty;
+  // reload of this URL. Asked only once the Agent read has come back empty;
   // without agent-manager on the installation nothing is asked and a 404 stays
   // "not found".
-  const isTemplateMissing =
-    !isLoading && !agent && errors.some(isNotFoundError);
+  const isAgentMissing = !isLoading && !agent && errors.some(isNotFoundError);
   const release = useAgentStatus(installation, namespace, name, {
-    enabled: isTemplateMissing,
+    enabled: isAgentMissing,
   });
   const isDeploying =
-    isTemplateMissing &&
+    isAgentMissing &&
     (release.status?.helmRelease?.exists === true ||
-      release.status?.template?.exists === true);
+      release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
   const isAskingAgentManager =
-    isTemplateMissing &&
+    isAgentMissing &&
     release.isSettling &&
     !release.status &&
     !release.isNotFound;
@@ -273,29 +286,40 @@ function AgentDetailPageContent() {
 
   // The row shape the sessions list uses, so this agent's name and avatar resolve
   // identically in both places — and, for the composer, the model's state.
+  // Read here, ahead of the row: sessions start through agent-manager as the
+  // person, like every write below, so the row carries whether one can, and
+  // the header button, the dialog's composer and its option all read that.
+  const availability = useAgentManagerAvailability(
+    installation ? [installation] : [],
+  );
   const agentRow = useMemo(
     () =>
       agent
-        ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
+        ? {
+            ...toAgentRow(
+              agent,
+              modelConfig ? [modelConfig] : [],
+              resolveServing,
+            ),
+            ...agentManagerSessionGate(availability, installation),
+          }
         : undefined,
-    [agent, modelConfig, resolveServing],
+    [agent, modelConfig, resolveServing, availability, installation],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
   // The write actions — Delete, Edit, Update skills — go through agent-manager
   // over muster as the signed-in person, and are offered when the installation's
-  // muster lists agent-manager and the agent is not applied from git
+  // muster lists agent-manager and the agent is written live — or, for one
+  // applied from git, through a pull request when agent-manager can commit
   // (authorization stays the apiserver's, reached through agent-manager).
   // Called here rather than inside the menu: the menu is rendered in the shared
   // plugin header, outside this plugin's `QueryClientProvider`, so react-query
   // has no client there. The dialogs are rendered in the page body for the same
   // reason.
-  const availability = useAgentManagerAvailability(
-    installation ? [installation] : [],
-  );
+  const presence = availability.presenceOf(installation);
   const isAgentManagerReachable =
-    !availability.isUnavailable &&
-    availability.presenceOf(installation) === 'available';
+    !availability.isUnavailable && presence === 'available';
 
   // Whether a live write is possible at all, in agent-manager's own words:
   // `managed: 'gitops'` means the agent's HelmRelease is applied by a Flux
@@ -312,32 +336,101 @@ function AgentDetailPageContent() {
       enabled: isAgentManagerReachable,
     });
 
-  const agentManagerGate = useMemo(
-    () => ({
-      presence: availability.presenceOf(installation),
-      isUnavailable: availability.isUnavailable,
-      isGitOpsOwned: managerAgent?.managed === 'gitops',
-      isVerdictPending: isReadingManagerAgent,
-    }),
-    [availability, installation, managerAgent?.managed, isReadingManagerAgent],
+  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
+  // when agent-manager reports the capability — the only way to edit or delete
+  // an agent applied from git, and meaningless for any other: a pull request
+  // goes to the repository that owns the release, and only those have one.
+  const { info: agentManagerInfo, isLoading: isReadingManagerInfo } =
+    useAgentManagerInfo(presence === 'available' ? installation : undefined);
+  const isGitOpsOwned = managerAgent?.managed === 'gitops';
+  const canCommit = agentManagerInfo?.capabilities?.commit === true;
+
+  // A live write runs as the person against the agent's HelmRelease in its
+  // tenant's namespace, so the API server answers whether they may make it:
+  // a tenant's user sees no Edit or Delete, its editor does. Not asked for an
+  // agent applied from git, which changes through a pull request instead, nor
+  // where agent-manager writes as its ServiceAccount, not as the person.
+  const writesAsPerson = agentManagerInfo?.identity !== 'serviceAccount';
+  const asksAccess =
+    isAgentManagerReachable &&
+    !isReadingManagerAgent &&
+    !isGitOpsOwned &&
+    writesAsPerson;
+  const helmRelease = {
+    group: HelmRelease.group,
+    resource: HelmRelease.plural,
+    namespace: managerAgent?.helmRelease?.namespace ?? namespace,
+    // Named, so a grant restricted via `resourceNames` answers accurately.
+    name: managerAgent?.helmRelease?.name ?? name,
+  };
+  const updateAccess = useSelfSubjectAccessReview(
+    installation,
+    { ...helmRelease, verb: 'update' },
+    { enabled: asksAccess },
+  );
+  const deleteAccess = useSelfSubjectAccessReview(
+    installation,
+    { ...helmRelease, verb: 'delete' },
+    { enabled: asksAccess },
   );
 
-  /** Every live write the page offers is gated on this. */
-  const canWriteAgent =
-    isAgentManagerReachable &&
-    !agentManagerGate.isVerdictPending &&
-    !agentManagerGate.isGitOpsOwned;
-  const { info: agentManagerInfo } = useAgentManagerInfo(
-    agentManagerGate.presence === 'available' ? installation : undefined,
+  const agentManagerGate = useMemo(
+    () => ({
+      presence,
+      isUnavailable: availability.isUnavailable,
+      isGitOpsOwned,
+      canCommit,
+      isVerdictPending:
+        isReadingManagerAgent ||
+        (isGitOpsOwned && isReadingManagerInfo) ||
+        (asksAccess && (updateAccess.isLoading || deleteAccess.isLoading)),
+      mayUpdate: !asksAccess || updateAccess.allowed,
+      mayDelete: !asksAccess || deleteAccess.allowed,
+    }),
+    [
+      presence,
+      availability.isUnavailable,
+      isGitOpsOwned,
+      canCommit,
+      isReadingManagerAgent,
+      isReadingManagerInfo,
+      asksAccess,
+      updateAccess.isLoading,
+      updateAccess.allowed,
+      deleteAccess.isLoading,
+      deleteAccess.allowed,
+    ],
   );
-  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
-  // shows only when agent-manager reports the capability.
-  const canCommit = agentManagerInfo?.capabilities?.commit === true;
+
+  const writeMode = agentWriteMode(agentManagerGate);
+  /**
+   * Edit and Update skills are also offered for an agent applied from git when
+   * agent-manager can commit: the Edit agent page and the Update skills dialog
+   * then open a pull request instead of writing live.
+   */
+  const canEditAgent = writeMode !== undefined && agentManagerGate.mayUpdate;
+  // What the person may not do to an agent they may use: said once, naming
+  // the tenant whose editors may.
+  const refusedWrites =
+    writeMode === 'apply'
+      ? [
+          ...(agentManagerGate.mayUpdate ? [] : ['editing']),
+          ...(agentManagerGate.mayDelete ? [] : ['deleting']),
+        ]
+      : [];
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'apply' | 'commit'>('apply');
   const [isUpdateSkillsOpen, setUpdateSkillsOpen] = useState(false);
+  const [updateSkillsMode, setUpdateSkillsMode] = useState<'apply' | 'commit'>(
+    'apply',
+  );
+  const [isChangeHarnessOpen, setChangeHarnessOpen] = useState(false);
+  const [changeHarnessMode, setChangeHarnessMode] = useState<
+    'apply' | 'commit'
+  >('apply');
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const toastApi = useApi(toastApiRef);
   const agentsRoute = useRouteRef(agentsRouteRef);
@@ -346,17 +439,43 @@ function AgentDetailPageContent() {
 
   const { reset: resetDeletion } = deletion;
   const openDelete = useCallback(() => {
+    // The menu's answer, fixed while the dialog is open, so a re-read of the
+    // verdict cannot swap its action under the cursor.
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode || !agentManagerGate.mayDelete) {
+      return;
+    }
     // Clear a previous attempt's error, so the dialog does not open still
-    // showing it.
+    // showing it. A pull request it already opened stays: the agent is only
+    // gone once that is merged, and a second one would duplicate it.
     resetDeletion();
-    setCommitResult(undefined);
+    setCommitResult(previous =>
+      previous && isCommitSettled(previous) ? previous : undefined,
+    );
+    setDeleteMode(mode);
     setDeleteOpen(true);
-  }, [resetDeletion]);
+  }, [agentManagerGate, resetDeletion]);
   const { reset: resetUpdating } = updating;
   const openUpdateSkills = useCallback(() => {
+    // Fixed while the dialog is open, like Delete's: a re-read of the verdict
+    // cannot swap a live write for a pull request (or back) under the cursor.
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode || !agentManagerGate.mayUpdate) {
+      return;
+    }
     resetUpdating();
+    setUpdateSkillsMode(mode);
     setUpdateSkillsOpen(true);
-  }, [resetUpdating]);
+  }, [agentManagerGate, resetUpdating]);
+  const openChangeHarness = useCallback(() => {
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode) {
+      return;
+    }
+    resetUpdating();
+    setChangeHarnessMode(mode);
+    setChangeHarnessOpen(true);
+  }, [agentManagerGate, resetUpdating]);
 
   // Starting a session from this page. The dialog itself is rendered in the page
   // body, not in the header: the header slot lives outside this plugin's
@@ -364,7 +483,7 @@ function AgentDetailPageContent() {
   // up there can only flip this flag — the same split the session detail page's
   // rename dialog makes.
   const [isNewSessionOpen, setNewSessionOpen] = useState(false);
-  const creation = useCreateSession();
+  const creation = useCreateSession('agentDetail');
   const { reset: resetCreation } = creation;
   const openNewSession = useCallback(() => {
     // Clear a previous attempt's error, so the dialog does not open still showing
@@ -389,6 +508,10 @@ function AgentDetailPageContent() {
   // the tab segment removed — what the tab strip builds its hrefs from and
   // where an unknown sub-path is sent.
   const basePath = useSplatBasePath();
+  // Whether the agent has tools decides the Tools tab, on every tab. The
+  // carrier read is shared with the Overview's Connectors section and the
+  // toolset card, so it runs once.
+  const toolset = useAgentToolset(agent);
 
   const openEdit = useCallback(() => {
     const href = agentEditRoute?.({ installation, namespace, name });
@@ -415,7 +538,7 @@ function AgentDetailPageContent() {
       // the list for a few seconds.
       title: `Deleting agent "${agent?.getDisplayName() ?? name}"`,
       description:
-        'Flux is uninstalling it, so it may take a moment to disappear from the list.',
+        'Flux is uninstalling it; it may take a moment to leave the list.',
       status: 'success',
       // A ToastApi toast without a timeout is permanent, and this is an
       // acknowledgement, not something to dismiss by hand.
@@ -437,16 +560,15 @@ function AgentDetailPageContent() {
     }
   }, [commitDeletion]);
 
-  // After Update skills the page watches the new revision converge exactly as
-  // it does after a create — through the same handoff, on the same URL.
-  const onSkillsUpdated = useCallback(
-    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
-      toastApi.post({
-        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
-        description: 'The platform Harness compiles a new revision.',
-        status: 'success',
-        timeout: TOAST_TIMEOUT_MS,
-      });
+  // After Update skills or Change Harness the page watches the new revision
+  // converge exactly as it does after a create — through the same handoff, on
+  // the same URL.
+  const followRevision = useCallback(
+    (
+      action: AgentWriteAction,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => {
       navigate(
         { pathname: location.pathname, search: location.search },
         {
@@ -457,7 +579,7 @@ function AgentDetailPageContent() {
               namespace,
               name,
               requestedBy,
-              action: 'skills-updated',
+              action,
               fromGeneration,
             },
           },
@@ -465,23 +587,66 @@ function AgentDetailPageContent() {
       );
     },
     [
-      toastApi,
-      agent,
-      name,
       navigate,
       location.pathname,
       location.search,
       installation,
       namespace,
+      name,
     ],
+  );
+
+  const onSkillsUpdated = useCallback(
+    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
+      toastApi.post({
+        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
+        description: 'Its Harness compiles a new revision.',
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      followRevision('skills-updated', requestedBy, fromGeneration);
+    },
+    [toastApi, agent, name, followRevision],
+  );
+
+  // The toast is where the person learns that running Sessions stay where
+  // they are; on the Sessions tab they carry the "Earlier revision" mark until
+  // deleted.
+  const onHarnessChanged = useCallback(
+    (
+      from: string,
+      to: string,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => {
+      toastApi.post({
+        title: `Runtime of "${agent?.getDisplayName() ?? name}" changed to ${to}`,
+        description: `Running Sessions stay on ${from} until you delete them; new Sessions start on ${to} once its revision is Ready.`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      followRevision('harness-changed', requestedBy, fromGeneration);
+    },
+    [toastApi, agent, name, followRevision],
   );
 
   const { createSession } = creation;
   const onStartSession = useCallback(
-    async (target: AgentRow, prompt: string) => {
+    async (
+      target: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+      toolchains?: string[],
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: target, prompt });
+        sessionId = await createSession({
+          agent: target,
+          prompt,
+          workspace,
+          toolchains,
+        });
       } catch {
         // Left to the dialog, which stays open and renders the hook's `error`
         // beside the prompt the user still has.
@@ -508,6 +673,8 @@ function AgentDetailPageContent() {
             text: prompt,
             agentNamespace: target.namespace,
             agentName: target.technicalName,
+            modelConfig: modelConfigNameOf(target),
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -521,37 +688,44 @@ function AgentDetailPageContent() {
   // re-registering (and re-rendering) on every poll.
   //
   // The button is withheld for an agent that is not ready: kagent would accept the
-  // session and the turn would then fail at the first message, with the readiness
-  // this very page already explains as the reason.
-  const actions = useMemo(
+  // session and the turn would then fail at the first message. AgentSessionBlocker
+  // says why in its place.
+  const menu = useMemo(
     () =>
       agent ? (
-        <Flex align="center" gap="2">
-          {agentRow?.readiness === 'ready' && (
-            <Button variant="primary" onPress={openNewSession}>
-              Start a session
-            </Button>
-          )}
-          <AgentActionsMenu
-            agent={agent}
-            agentManager={agentManagerGate}
-            onEdit={openEdit}
-            onUpdateSkills={openUpdateSkills}
-            onDelete={openDelete}
-          />
-        </Flex>
+        <AgentActionsMenu
+          agent={agent}
+          agentManager={agentManagerGate}
+          onUpdateSkills={openUpdateSkills}
+          onChangeHarness={openChangeHarness}
+          onDelete={openDelete}
+        />
       ) : null,
-    [
-      agent,
-      agentRow?.readiness,
-      agentManagerGate,
-      openEdit,
-      openUpdateSkills,
-      openDelete,
-      openNewSession,
-    ],
+    [agent, agentManagerGate, openUpdateSkills, openChangeHarness, openDelete],
   );
-  useProvidePageHeaderActions(actions);
+  // An installation where agent-manager cannot start a session as the person
+  // withholds "Use this agent" too, and the note above the tabs says why.
+  const sessionBlocker = agentRow?.sessionBlocker;
+  const isReady = agentRow ? isStartableAgent(agentRow) : false;
+  // The shell header's actions, per the prototype: Edit beside the primary
+  // "Use this agent", the rest in the menu. The header is the one place it
+  // reads so (PO decision); everywhere else starting from an agent is
+  // "Start a session" (T98).
+  const shellActions =
+    agent && (canEditAgent || isReady) ? (
+      <>
+        {canEditAgent && (
+          <Button variant="secondary" onPress={openEdit}>
+            Edit
+          </Button>
+        )}
+        {isReady && (
+          <Button variant="primary" onPress={openNewSession}>
+            Use this agent
+          </Button>
+        )}
+      </>
+    ) : undefined;
 
   // A failed read while an agent is already in hand is reported through the
   // ErrorsProvider notice, not by replacing the page.
@@ -571,157 +745,190 @@ function AgentDetailPageContent() {
   );
   useShowErrors(reportableErrors);
 
-  if (isLoading || isAskingAgentManager) {
+  const avatarUrl = buildAvatarUrl(installation, name, { size: AVATAR_SIZE });
+  const path = location.pathname.replace(/\/$/, '');
+  const onOverview = path === basePath;
+  const onTools = path === `${basePath}/tools`;
+
+  // The Harness it names, read on its own like the ModelConfig, so the facts
+  // call the runtime what the create form called it. Only on the Overview,
+  // whose facts column is the one place it shows; the read stays cached for
+  // a return. A person who may not read Harnesses still sees its name.
+  const harnessName = agent?.getHarnessName();
+  const { resource: harness, isLoading: isReadingHarness } = useResource(
+    installation,
+    Harness,
+    { name: harnessName ?? '', namespace, enableDiscovery: false },
+    { enabled: Boolean(harnessName) && onOverview },
+  );
+
+  // Loading only while there is no agent to show. An agent already in the
+  // query cache renders at once, even while the persisted cache restores on
+  // this provider's mount (`useResource` reports loading throughout that
+  // window): replacing it with the loading frame for that moment and back is
+  // the flash T95 removed.
+  //
+  // The loading frame is the loaded page's frame — trail, avatar (its URL is
+  // the agent's address), tabs — with skeletons in place of what the read
+  // will tell: the name, the readiness, the facts. Nothing moves when it lands.
+  if (!agent && (isLoading || isAskingAgentManager)) {
     return (
-      <Content>
-        <Progress aria-label="Loading agent" />
-      </Content>
+      <AgentFrame
+        title={name || 'Agent'}
+        heading={<ShellPageTitleSkeleton label="Loading agent" />}
+        leading={
+          <AgentAvatar
+            size="large"
+            purpose="decoration"
+            name={name}
+            src={avatarUrl ?? ''}
+          />
+        }
+        badges={<ShellPageBadgeSkeleton />}
+        // Whether the agent has tools is not known yet: the Tools tab is drawn
+        // only where it is the tab asked for, so a deep link keeps its tab
+        // selected. Elsewhere it joins the strip once the agent is read.
+        tabs={agentTabs({ hasTools: onTools })}
+        tabsSearch={location.search}
+        aside={onOverview ? <ShellPageFactsSkeleton /> : undefined}
+      >
+        <LoadingIndicator label="Reading the agent…" />
+      </AgentFrame>
     );
   }
-
-  const avatarUrl = buildAvatarUrl(installation, name, { size: AVATAR_SIZE });
 
   // Every branch below is gated on there being no agent to show. With one in hand
   // the page renders, whatever the last read did.
   if (!agent) {
-    // The HelmRelease exists, the template does not yet: the agent right after
+    // The HelmRelease exists, the Agent does not yet: the agent right after
     // Deploy. The header shows what is known — the name the release was
     // created under and its avatar — and agent-manager's own summary of where
-    // the release stands, until the template read finds it (polled at the fast
+    // the release stands, until the Agent read finds it (polled at the fast
     // tier, see `refetchInterval`) and the page switches to the rendered agent
-    // in place. No "Start a session": there is nothing to start one on yet.
+    // in place. No "Use this agent": there is nothing to start one on yet.
     if (isDeploying) {
       const failed = release.status?.verdict === 'failed';
       return (
-        <Content>
-          <Flex direction="column" gap="4">
-            <AgentHeader
-              displayName={name}
-              avatarUrl={avatarUrl}
-              readiness={DEPLOYING_PRESENTATION}
+        <AgentFrame
+          title={name}
+          leading={
+            <AgentAvatar
+              size="large"
+              purpose="decoration"
               name={name}
-              installation={installation}
-              namespace={namespace}
+              src={avatarUrl ?? ''}
             />
+          }
+          badges={<ReadinessBadge readiness={DEPLOYING_PRESENTATION} />}
+        >
+          <Flex direction="column" gap="4">
             <Alert
               status={failed ? 'danger' : 'info'}
               title={
                 failed
                   ? 'The agent’s release did not become ready'
-                  : 'Deploying — waiting for kagent to render the template'
+                  : 'Deploying — waiting for kagent to render the agent'
               }
               description={
                 release.status?.summary ??
-                'agent-manager applied the Helm release; Flux and kagent have not rendered the AgentTemplate yet.'
+                'agent-manager applied the Helm release.'
               }
             />
           </Flex>
-        </Content>
+        </AgentFrame>
       );
     }
 
     // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
     // agent — so it gets an explanation rather than an error banner. Also covers
     // "no kagent API v2 on this installation": no kagent, or a kagent still on
-    // 0.10, answers 404 for the `agenttemplates` resource.
+    // kagent.dev, answers 404 for the `agents` resource.
     if (errors.some(isNotFoundError)) {
       return (
-        <Content>
-          <EmptyState
-            missing="data"
+        <AgentFrame title="Agent">
+          <EmptyStateCard
             title="Agent not found"
             description={`No agent named "${name}" exists in namespace "${namespace}" on ${
-              installation || 'that installation'
-            }. It may have been deleted or renamed, or that installation may not run kagent API v2.`}
-            action={<BackToAgents>Back to agents</BackToAgents>}
+              installation || 'that environment'
+            }. It may have been deleted or renamed, or that environment may not run kagent API v2.`}
+            actions={<BackToAgents>Back to agents</BackToAgents>}
           />
-        </Content>
+        </AgentFrame>
       );
     }
 
     return (
-      <Content>
+      <AgentFrame title="Agent">
         <Flex direction="column" gap="3">
           <Alert
             status="danger"
             title="Could not load this agent"
             description={
               (error as Error | null)?.message ??
-              'The installation returned a response we could not read. The agent may still exist.'
+              'The environment sent an unreadable response. The agent may still exist.'
             }
           />
           <BackToAgents>Back to agents</BackToAgents>
         </Flex>
-      </Content>
+      </AgentFrame>
     );
   }
 
-  return (
-    <Content>
-      <Flex direction="column" gap="4">
-        <AgentHeader
-          displayName={agent.getDisplayName()}
-          avatarUrl={avatarUrl}
-          readiness={READINESS_PRESENTATION[agent.getReadiness()]}
-          name={name}
-          installation={installation}
-          namespace={namespace}
-          created={agent.getCreatedTimestamp()}
-          description={agent.getDescription()}
+  const hasTools = toolset ? toolsetHasTools(toolset.declared) : false;
+  const toolsHref = hasTools
+    ? `${basePath}/tools${location.search}`
+    : undefined;
+
+  /* What a write just made to the agent is doing, and why sessions cannot
+     start: true on every tab, so above the routed content. */
+  const status = (
+    <>
+      <AgentCreationProgress
+        installation={installation}
+        namespace={namespace}
+        name={name}
+      />
+
+      <AgentSessionBlocker
+        agent={agent}
+        onEdit={canEditAgent ? openEdit : undefined}
+        isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+      />
+
+      {refusedWrites.length > 0 && (
+        <Alert
+          status="info"
+          icon
+          title={
+            refusedWrites.length === 2
+              ? 'You can use this agent, not change it'
+              : `You cannot ${
+                  refusedWrites[0] === 'editing' ? 'edit' : 'delete'
+                } this agent`
+          }
+          description={`${
+            refusedWrites.length === 2
+              ? 'Editing and deleting'
+              : refusedWrites[0].replace(/^./, c => c.toUpperCase())
+          } the agents of ${tenantInSentence(
+            namespace,
+          )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         />
+      )}
 
-        <AgentCreationProgress
-          installation={installation}
-          namespace={namespace}
-          name={name}
+      {sessionBlocker && (
+        <Alert
+          status="info"
+          icon
+          title="Sessions and changes are not available from this portal"
+          description={`Starting a session, editing, updating skills and deleting go through agent-manager as you. ${sessionBlocker}`}
         />
+      )}
+    </>
+  );
 
-        <AgentDetailTabs />
-
-        {/* The tabs are routed, so each is its own URL and a deep link or a
-            reload lands on the section it names. Overview is the index: the
-            three-segment URL every link in the portal already points at keeps
-            rendering the agent, with no redirect to flash through.
-
-            The reads above stay in this component, which the router never
-            unmounts — switching tabs neither refetches the agent nor
-            re-registers the header actions. The toolset's muster queries are the
-            deliberate exception: they live in the Tools tab and now run only
-            when someone opens it, rather than on every visit to the page. */}
-        <Routes>
-          <Route
-            index
-            element={
-              <AgentOverviewTab
-                agent={agent}
-                installation={installation}
-                modelConfig={modelConfig}
-                modelServing={agentRow?.modelServing}
-              />
-            }
-          />
-          <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
-          <Route
-            path="skills"
-            element={
-              <AgentSkillsCard
-                agent={agent}
-                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
-              />
-            }
-          />
-          <Route
-            path="sessions"
-            element={<AgentSessionsCard sessions={sessions} />}
-          />
-          {/* A mistyped or retired tab is not a missing agent: send it to
-              Overview rather than render an empty page under a header that
-              says the agent is fine. `edit` never arrives here — AgentsRouter
-              matches its static segment ahead of this splat. */}
-          <Route path="*" element={<Navigate to={basePath} replace />} />
-        </Routes>
-      </Flex>
-
+  const dialogs = (
+    <>
       {/* In the body rather than beside the header button that opens it: the
           header slot renders outside this plugin's `QueryClientProvider`, so the
           create mutation would have no client there. */}
@@ -731,24 +938,30 @@ function AgentDetailPageContent() {
         agents={composerAgents}
         defaultAgent={agentRow}
         isStarting={creation.isCreating}
-        error={creation.error?.message}
+        error={creation.error ?? undefined}
         onStart={onStartSession}
       />
 
       {/* The write dialogs, in the body for the same reason: their mutations
           and dry runs are react-query, and the muster sign-in affordance they
           may show needs the plugin's providers. */}
-      <AgentDeleteDialog
-        installation={installation}
-        displayName={agent.getDisplayName()}
-        isOpen={isDeleteOpen}
-        onOpenChange={setDeleteOpen}
-        deletion={deletion}
-        canCommit={canCommit}
-        onConfirm={confirmDelete}
-        onCommit={commitDelete}
-        commitResult={commitResult}
-      />
+      {/* Mounted only while open: in commit mode it asks agent-manager afresh
+          whether it can open the pull request, which a page view never does. */}
+      {isDeleteOpen && (
+        <AgentDeleteDialog
+          installation={installation}
+          namespace={namespace}
+          name={name}
+          displayName={agent.getDisplayName()}
+          isOpen={isDeleteOpen}
+          onOpenChange={setDeleteOpen}
+          deletion={deletion}
+          mode={deleteMode}
+          onConfirm={confirmDelete}
+          onCommit={commitDelete}
+          commitResult={commitResult}
+        />
+      )}
       <AgentUpdateSkillsDialog
         installation={installation}
         namespace={namespace}
@@ -756,25 +969,163 @@ function AgentDetailPageContent() {
         displayName={agent.getDisplayName()}
         isOpen={isUpdateSkillsOpen}
         onOpenChange={setUpdateSkillsOpen}
+        skillCount={agent.getSkills().length}
+        mode={updateSkillsMode}
         updating={updating}
         onUpdated={onSkillsUpdated}
       />
-    </Content>
+      {/* Mounted only while open: it lists the namespace's Harnesses, which
+          a page view that never opens it has no need to read. */}
+      {isChangeHarnessOpen && (
+        <AgentChangeHarnessDialog
+          installation={installation}
+          namespace={namespace}
+          name={name}
+          displayName={agent.getDisplayName()}
+          currentHarness={agent.getHarnessName()}
+          isOpen={isChangeHarnessOpen}
+          onOpenChange={setChangeHarnessOpen}
+          mode={changeHarnessMode}
+          updating={updating}
+          editHref={agentEditRoute?.({ installation, namespace, name })}
+          onChanged={onHarnessChanged}
+        />
+      )}
+    </>
+  );
+
+  const displayName = agent.getDisplayName();
+  const created = agent.getCreatedTimestamp();
+
+  return (
+    <AgentFrame
+      title={displayName}
+      leading={
+        <AgentAvatar
+          size="large"
+          purpose="decoration"
+          name={displayName}
+          src={avatarUrl ?? ''}
+        />
+      }
+      badges={
+        <ReadinessBadge
+          readiness={READINESS_PRESENTATION[agent.getReadiness()]}
+        />
+      }
+      meta={
+        created ? (
+          <>
+            Created <DateComponent value={created} />
+          </>
+        ) : undefined
+      }
+      actions={shellActions}
+      menu={menu}
+      tabs={agentTabs({ hasTools })}
+      tabsSearch={location.search}
+      // The facts belong to the Overview; the other tabs take the whole
+      // width.
+      aside={
+        onOverview ? (
+          <FactsColumn
+            aria-label="About this agent"
+            facts={agentFacts({
+              agent,
+              installation,
+              modelConfig,
+              modelServing: agentRow?.modelServing,
+              harness,
+              isReadingHarness: Boolean(harnessName) && isReadingHarness,
+              // Named by get_info alone: until it answers, or where it names
+              // none, no Harness is marked as the platform's on a guess.
+              platformHarness: agentManagerInfo?.harness?.name,
+            })}
+          />
+        ) : undefined
+      }
+    >
+      <Flex direction="column" gap="4">
+        {status}
+
+        {/* Routed, so each tab is its own URL. Skills are folded into the
+              Overview, per the prototype, and a bookmarked `skills` tab lands
+              on the Overview that now shows them; so does `tools` for an
+              agent without tools. */}
+        <Routes>
+          <Route
+            index
+            element={
+              <AgentPlainOverview
+                agent={agent}
+                installation={installation}
+                modelConfig={modelConfig}
+                modelServing={agentRow?.modelServing}
+                toolsHref={toolsHref}
+                onUpdateSkills={canEditAgent ? openUpdateSkills : undefined}
+                onAddSkills={canEditAgent ? openEdit : undefined}
+                isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+              />
+            }
+          />
+          <Route
+            path="tools"
+            element={
+              hasTools ? (
+                <AgentToolsetCard agent={agent} />
+              ) : (
+                <Navigate to={`${basePath}${location.search}`} replace />
+              )
+            }
+          />
+          <Route
+            path="sessions"
+            element={
+              <AgentSessionsCard
+                agentName={displayName}
+                sessions={sessions}
+                currentRevision={agent.getLatestSuccessfulRevision()}
+                onStartSession={isReady ? openNewSession : undefined}
+              />
+            }
+          />
+          <Route
+            path="usage"
+            element={
+              <AgentUsageTab
+                installation={installation}
+                namespace={namespace}
+                name={name}
+              />
+            }
+          />
+          <Route
+            path="*"
+            element={<Navigate to={`${basePath}${location.search}`} replace />}
+          />
+        </Routes>
+      </Flex>
+      {dialogs}
+    </AgentFrame>
   );
 }
 
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
  *
- * Four routed tabs under the agent's own header — Overview, Tools, Skills,
- * Sessions — with Overview as the index, so the three-segment URL the rest of
- * the portal links to still opens the agent. The header and the creation
- * progress sit above the tab strip: which agent this is, and whether a write
- * just made to it has converged, are true on every tab.
+ * The prototype's plain-language page: routed tabs — Overview (what it is
+ * for, its instructions, skills and connectors, with the Kubernetes detail in
+ * a "Technical details" fold-out), Sessions, Tools (for an agent bound to the
+ * gateway: its toolset resolved to exact tools) and Usage — under the
+ * platform-standard `ShellPage` header, with the model and environment as
+ * facts beside the Overview. Overview is the index, so the three-segment URL
+ * the rest of the portal links to still opens the agent. The creation
+ * progress sits above the tabs: whether a write just made to the agent has
+ * converged is true on every tab.
  *
- * The agent can be edited, have its skills re-pinned and be deleted from the
- * header's actions menu — every write through agent-manager over muster as the
- * signed-in person, offered when the installation's muster lists agent-manager
+ * The agent can be edited (the header's Edit), have its skills re-pinned and
+ * be deleted from the header's actions menu — every write through
+ * agent-manager over muster as the signed-in person, offered when the installation's muster lists agent-manager
  * and the agent is not applied from git.
  *
  * What the APUI prototype shows and this deliberately does not, because there is

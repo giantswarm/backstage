@@ -4,12 +4,14 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import { Alert, Text } from '@backstage/ui';
 import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Fact,
   FactList,
   InfoCard,
   StatusLabel,
+  isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { CI, HeadStatus, InventoryRecord, repositoriesApiRef } from '../apis';
 import {
@@ -175,7 +177,7 @@ export function RepositoryDetails({ repository }: { repository: string }) {
   const queryClient = useQueryClient();
   const queryKey = ['repositories', 'record', repository];
 
-  const { data, isLoading, error } = useQuery({
+  const recordQuery = useQuery({
     queryKey,
     queryFn: () => api.getRepository(repository),
     refetchInterval: query =>
@@ -184,7 +186,9 @@ export function RepositoryDetails({ repository }: { repository: string }) {
         : false,
   });
 
-  const refresh = useMutation({
+  const refresh = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A refresh of the inventory record, not a change.',
     mutationFn: () => api.refreshRepository(repository),
     onSuccess: (record: InventoryRecord) => {
       queryClient.setQueryData(queryKey, record);
@@ -194,7 +198,8 @@ export function RepositoryDetails({ repository }: { repository: string }) {
     },
   });
 
-  if (isLoading) {
+  const { data, error } = recordQuery;
+  if (isAwaitingData(recordQuery)) {
     return <Progress />;
   }
   if (error) {

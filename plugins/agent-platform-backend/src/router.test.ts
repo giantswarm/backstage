@@ -1,6 +1,10 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
-import { ConflictError, NotFoundError } from '@backstage/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -12,12 +16,27 @@ import {
   KagentClient,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
+import { turnPendingError, upstreamError } from './kagent/errors';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
  * A reachability cache that never touches the network: every endpoint answers
  * as reachable, immediately. Tests of the reachability route build their own.
  */
+/**
+ * Base64 of bytes that start like a PNG of `width` × `height` — the signature
+ * and the IHDR chunk's dimensions, all a header check reads — padded to `size`.
+ */
+function pngBase64(size = 64, width = 1, height = 1): string {
+  const bytes = Buffer.alloc(Math.max(size, 24));
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes.toString('base64');
+}
+
 function reachableEverywhere() {
   return new ReachabilityCache({
     probe: async () => ({ reachable: true, checkedAt: 0 }),
@@ -37,31 +56,41 @@ const twoInstallations = {
 describe('createRouter', () => {
   const listSessions = jest.fn();
   const getMe = jest.fn();
+  const listAgentNamespaces = jest.fn();
   const getSession = jest.fn();
   const listSessionTasks = jest.fn();
 
   const deleteSession = jest.fn();
   const updateSessionName = jest.fn();
+  const createSessionShare = jest.fn();
+  const listSessionShares = jest.fn();
+  const revokeSessionShare = jest.fn();
   const sendMessage = jest.fn();
   const streamMessage = jest.fn();
-  const createSession = jest.fn();
   const answerConfirmation = jest.fn();
   const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
+  const subscribeToTask = jest.fn();
+  const readSessionImageUsage = jest.fn();
 
   const mockClient = {
     listSessions,
     getMe,
+    listAgentNamespaces,
     getSession,
     listSessionTasks,
     deleteSession,
     updateSessionName,
+    createSessionShare,
+    listSessionShares,
+    revokeSessionShare,
     sendMessage,
     streamMessage,
-    createSession,
     answerConfirmation,
     streamAnswer,
     cancelTask,
+    subscribeToTask,
+    readSessionImageUsage,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -90,14 +119,19 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     listSessions.mockReset();
+    readSessionImageUsage.mockReset();
+    readSessionImageUsage.mockResolvedValue({ bytes: 0, count: 0 });
     getMe.mockReset();
+    listAgentNamespaces.mockReset();
     getSession.mockReset();
     listSessionTasks.mockReset();
     deleteSession.mockReset();
     updateSessionName.mockReset();
+    createSessionShare.mockReset();
+    listSessionShares.mockReset();
+    revokeSessionShare.mockReset();
     sendMessage.mockReset();
     streamMessage.mockReset();
-    createSession.mockReset();
     answerConfirmation.mockReset();
     streamAnswer.mockReset();
     cancelTask.mockReset();
@@ -720,7 +754,29 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(body);
-      expect(listSessions).toHaveBeenCalledWith({ userToken: 'user-token' });
+      expect(listSessions).toHaveBeenCalledWith({
+        userToken: 'user-token',
+        requestId: response.headers['x-request-id'],
+      });
+    });
+
+    it('answers a failed read with the request id it sent and the failure reason', async () => {
+      listSessions.mockRejectedValue(
+        upstreamError('kagent did not respond in time.', 'timeout'),
+      );
+
+      const response = await request(app)
+        .get('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.reason).toBe('timeout');
+      const requestId = response.headers['x-request-id'];
+      expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(listSessions).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId }),
+      );
     });
 
     it('routes to the requested installation', async () => {
@@ -750,150 +806,16 @@ describe('createRouter', () => {
   });
 
   describe('POST /kagent/sessions', () => {
-    const createdBody = {
-      error: false,
-      data: { id: 'new-session-id', name: 'Why is the ingress failing?' },
-    };
-
-    const validBody = {
-      agentNamespace: 'kagent',
-      agentName: 'issue-tracker',
-      name: 'Why is the ingress failing?',
-    };
-
-    function post(body: unknown = validBody, installation = 'gazelle') {
-      return request(app)
-        .post('/kagent/sessions')
-        .query({ installation })
-        .set(KAGENT_AUTH_HEADER, 'user-token')
-        .send(body as object);
-    }
-
-    it('forwards the agent, title and token, answering 201 with kagent’s body', async () => {
-      createSession.mockResolvedValue(createdBody);
-
-      const response = await post();
-
-      expect(response.status).toBe(201);
-      expect(response.body).toEqual(createdBody);
-      expect(createSession).toHaveBeenCalledWith(
-        { namespace: 'kagent', name: 'issue-tracker' },
-        'Why is the ingress failing?',
-        // No requestId in the body: the route mints one, so the create is not
-        // silently non-idempotent but the body stays an addition.
-        expect.stringMatching(/^[0-9a-f-]{36}$/),
-        { userToken: 'user-token' },
-      );
-    });
-
-    it('forwards the caller’s requestId verbatim, so a retry is the same create', async () => {
-      createSession.mockResolvedValue(createdBody);
-
-      await post({ ...validBody, requestId: 'submission-7' });
-      await post({ ...validBody, requestId: 'submission-7' });
-
-      expect(createSession).toHaveBeenNthCalledWith(
-        1,
-        expect.anything(),
-        expect.anything(),
-        'submission-7',
-        expect.anything(),
-      );
-      expect(createSession).toHaveBeenNthCalledWith(
-        2,
-        expect.anything(),
-        expect.anything(),
-        'submission-7',
-        expect.anything(),
-      );
-    });
-
-    it.each([
-      ['an empty requestId', ''],
-      ['a requestId over the limit', 'x'.repeat(129)],
-      ['a requestId that is not a string', 42],
-    ])('rejects %s as a 400', async (_, requestId) => {
-      const response = await post({ ...validBody, requestId });
-
-      expect(response.status).toBe(400);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('does not shadow the sessions list route', async () => {
-      // `GET /kagent/sessions` and `POST /kagent/sessions` share a path; only the
-      // method separates them, and a mix-up would make the list unreachable.
-      listSessions.mockResolvedValue({ error: false, data: [] });
-
-      const response = await request(app)
-        .get('/kagent/sessions')
-        .query({ installation: 'gazelle' })
-        .set(KAGENT_AUTH_HEADER, 'user-token');
-
-      expect(response.status).toBe(200);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ['missing agentNamespace', { ...validBody, agentNamespace: undefined }],
-      ['agentNamespace not a string', { ...validBody, agentNamespace: 42 }],
-      ['empty agentName', { ...validBody, agentName: '  ' }],
-      ['missing name', { ...validBody, name: undefined }],
-      ['whitespace-only name', { ...validBody, name: '   ' }],
-      ['name over the limit', { ...validBody, name: 'x'.repeat(256) }],
-    ])('rejects a body with %s as a 400', async (_, body) => {
-      const response = await post(body);
-
-      expect(response.status).toBe(400);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('trims the title', async () => {
-      createSession.mockResolvedValue(createdBody);
-
-      await post({ ...validBody, name: '  Padded title  ' });
-
-      expect(createSession).toHaveBeenCalledWith(
-        expect.anything(),
-        'Padded title',
-        expect.anything(),
-        expect.anything(),
-      );
-    });
-
-    it('requires a forwarded user token', async () => {
-      // kagent reads the session's owner from this token alone. Without it, a
-      // controller in `unsecure` mode would create a session for the shared
-      // default user on behalf of nobody in particular.
+    it('is not a route: every session starts through agent-manager', async () => {
+      // `start_session` is the one way a session starts, so a workspace's
+      // access check cannot be skipped by a surface that creates directly.
       const response = await request(app)
         .post('/kagent/sessions')
         .query({ installation: 'gazelle' })
-        .send(validBody);
-
-      expect(response.status).toBe(401);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('requires the installation query parameter', async () => {
-      const response = await request(app)
-        .post('/kagent/sessions')
         .set(KAGENT_AUTH_HEADER, 'user-token')
-        .send(validBody);
+        .send({ agentNamespace: 'kagent', agentName: 'issue-tracker' });
 
-      expect(response.status).toBe(400);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('reports an agent kagent cannot resolve as a 409, not a 5xx', async () => {
-      // A stale picker, not a fault. MiddlewareFactory.error() forwards anything
-      // >= 500 to Sentry, and nobody can act on this one.
-      const conflict = new Error('kagent did not accept the agent');
-      conflict.name = 'ConflictError';
-      createSession.mockRejectedValue(conflict);
-
-      const response = await post();
-
-      expect(response.status).toBe(409);
-      expect(response.status).toBeLessThan(500);
+      expect(response.status).toBe(404);
     });
   });
 
@@ -1355,6 +1277,229 @@ describe('createRouter', () => {
     });
   });
 
+  describe('POST /kagent/sessions/:sessionId/shares', () => {
+    const createdBody = {
+      share: {
+        id: 'share-1',
+        sessionId: 'abc',
+        permission: 'SESSION_SHARE_PERMISSION_READ_ONLY',
+        createdAt: '2026-10-09T10:00:00Z',
+        expiresAt: '2026-10-10T10:00:00Z',
+      },
+      token: 'secret-share-token',
+    };
+
+    it('forwards the id, permission, TTL and token, answering 201 with kagent’s body', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ permission: 'read-only', ttlSeconds: 86_400 });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(createdBody);
+      expect(createSessionShare).toHaveBeenCalledWith(
+        'abc',
+        { permission: 'read-only', ttlSeconds: 86_400 },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('marks the answer no-store — it carries the only copy of the token', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({});
+
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('defaults to a read-only share with the controller’s own TTL', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({});
+
+      expect(createSessionShare).toHaveBeenCalledWith(
+        'abc',
+        { permission: 'read-only', ttlSeconds: undefined },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('accepts a read-write share', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ permission: 'read-write' });
+
+      expect(createSessionShare).toHaveBeenCalledWith(
+        'abc',
+        { permission: 'read-write', ttlSeconds: undefined },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it.each([
+      ['an unknown value', { permission: 'admin' }],
+      ['not a string', { permission: 2 }],
+    ])('rejects a permission that is %s with a 400', async (_label, body) => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(createSessionShare).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['not a number', { ttlSeconds: '86400' }],
+      ['not an integer', { ttlSeconds: 1.5 }],
+      ['zero', { ttlSeconds: 0 }],
+      ['negative', { ttlSeconds: -60 }],
+      ['beyond a year', { ttlSeconds: 366 * 24 * 60 * 60 }],
+    ])('rejects a TTL that is %s with a 400', async (_label, body) => {
+      // A 400 rather than a 5xx: the caller's mistake, and anything >= 500 is
+      // logged at error and forwarded to Sentry.
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(createSessionShare).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(createSessionShare).not.toHaveBeenCalled();
+    });
+
+    it('reports someone else’s or a deleted session as 404, not a 5xx', async () => {
+      createSessionShare.mockRejectedValue(
+        new NotFoundError('That session does not exist.'),
+      );
+
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({});
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /kagent/sessions/:sessionId/shares', () => {
+    const sharesBody = {
+      shares: [
+        {
+          id: 'share-1',
+          sessionId: 'abc',
+          permission: 'SESSION_SHARE_PERMISSION_READ_ONLY',
+          createdAt: '2026-10-09T10:00:00Z',
+        },
+      ],
+    };
+
+    it('forwards the id and token and echoes the body verbatim, no-store', async () => {
+      listSessionShares.mockResolvedValue(sharesBody);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(sharesBody);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(listSessionShares).toHaveBeenCalledWith('abc', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('does not shadow the session detail route', async () => {
+      getSession.mockResolvedValue({ session: { id: 'abc' } });
+
+      await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(getSession).toHaveBeenCalled();
+      expect(listSessionShares).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listSessionShares).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /kagent/sessions/:sessionId/shares/:shareId', () => {
+    it('forwards the share id and token and echoes the body', async () => {
+      revokeSessionShare.mockResolvedValue({});
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc/shares/share-1')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({});
+      // The revoke is authorized by the share id and the caller alone; the
+      // session id in the path is not forwarded.
+      expect(revokeSessionShare).toHaveBeenCalledWith('share-1', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .delete('/kagent/sessions/abc/shares/share-1')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(revokeSessionShare).not.toHaveBeenCalled();
+    });
+
+    it('reports a share kagent does not know as 404, not a 5xx', async () => {
+      revokeSessionShare.mockRejectedValue(
+        new NotFoundError('That share does not exist.'),
+      );
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc/shares/share-1')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+    });
+  });
+
   describe('GET /kagent/sessions/:sessionId/tasks', () => {
     const tasksBody = {
       error: false,
@@ -1568,7 +1713,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
       );
     });
@@ -1581,7 +1726,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         expect.anything(),
-        { messageId: 'msg-1', text: 'line one\n\n  line two' },
+        { messageId: 'msg-1', text: 'line one\n\n  line two', images: [] },
         expect.anything(),
       );
     });
@@ -1597,6 +1742,101 @@ describe('createRouter', () => {
       ['missing messageId', { ...validBody, messageId: undefined }],
     ])('rejects a body with %s as a 400', async (_, body) => {
       const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('decodes the images a message carries and forwards them with it', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        images: [{ mediaType: 'image/png', data: pngBase64(), name: 'a.png' }],
+      });
+
+      expect(response.status).toBe(200);
+      const [, , message] = sendMessage.mock.calls[0];
+      expect(message.images).toEqual([
+        {
+          mediaType: 'image/png',
+          bytes: expect.any(Uint8Array),
+          name: 'a.png',
+        },
+      ]);
+      expect(Array.from(message.images[0].bytes.subarray(0, 4))).toEqual([
+        0x89, 0x50, 0x4e, 0x47,
+      ]);
+      // Checked against what the session already carries, as the person.
+      expect(readSessionImageUsage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('reads no session usage for a message without images', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      await post();
+
+      expect(readSessionImageUsage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['bytes', { bytes: 16 * 1024 * 1024 - 10, count: 3 }, 'of images'],
+      ['images', { bytes: 0, count: 50 }, '50 images'],
+    ])(
+      'refuses images past what the session can carry in %s, in words the composer can show',
+      async (_, usage, words) => {
+        readSessionImageUsage.mockResolvedValue(usage);
+
+        const response = await post({
+          ...validBody,
+          images: [{ mediaType: 'image/png', data: pngBase64() }],
+        });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toContain(words);
+        expect(response.body.error.message).toContain(
+          'Start a new session to send more images.',
+        );
+        expect(sendMessage).not.toHaveBeenCalled();
+      },
+    );
+
+    it('takes a body of full-size images past the general 256 kB limit', async () => {
+      // Two images filling the per-message cap, base64 in the JSON: ~4 MB.
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        text: '漢'.repeat(32_000),
+        images: [
+          { mediaType: 'image/png', data: pngBase64(2 * 1024 * 1024) },
+          { mediaType: 'image/png', data: pngBase64(1024 * 1024) },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['images that are not an array', { images: 'x' }],
+      [
+        'an image whose bytes are not its type',
+        { images: [{ mediaType: 'image/jpeg', data: pngBase64() }] },
+      ],
+      [
+        'an SVG',
+        { images: [{ mediaType: 'image/svg+xml', data: 'PHN2Zz4=' }] },
+      ],
+      [
+        'an image longer than 2000 pixels on a side',
+        { images: [{ mediaType: 'image/png', data: pngBase64(64, 2001, 10) }] },
+      ],
+    ])('rejects a body with %s as a 400', async (_, extra) => {
+      const response = await post({ ...validBody, ...extra });
 
       expect(response.status).toBe(400);
       expect(sendMessage).not.toHaveBeenCalled();
@@ -1728,7 +1968,7 @@ describe('createRouter', () => {
       expect(streamMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
         expect.any(AbortSignal),
       );
@@ -1742,6 +1982,10 @@ describe('createRouter', () => {
         { ...validBody, text: 'x'.repeat(32_001) },
         { ...validBody, agentName: undefined },
         { ...validBody, messageId: undefined },
+        {
+          ...validBody,
+          images: [{ mediaType: 'image/gif', data: pngBase64() }],
+        },
       ]) {
         const response = await post(body);
         expect(response.status).toBe(400);
@@ -1770,6 +2014,20 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.error.message).toContain('no such agent');
+    });
+
+    it('keeps a new turn silent past the first-event wait an error, never a 202', async () => {
+      // Unlike a resumed one, a new turn is answered with a task snapshot at
+      // once; silence is a failure the frontend checks against the history
+      // (whether the message landed), which a 202 would skip.
+      streamMessage.mockRejectedValue(
+        turnPendingError('The agent on gazelle has not finished.'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.name).toBe('KagentTurnPendingError');
     });
 
     it('ends the relay cleanly when the upstream body dies mid-stream', async () => {
@@ -1803,6 +2061,74 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.text).toBe('data: {"jsonrpc":"2.0","result":{}}\n\n');
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/tasks/:taskId/subscribe', () => {
+    const agentBody = { agentNamespace: 'kagent', agentName: 'issue-tracker' };
+
+    function post(
+      body: unknown = agentBody,
+      { sessionId = 'abc', taskId = 'task-1' } = {},
+    ) {
+      return request(app)
+        .post(`/kagent/sessions/${sessionId}/tasks/${taskId}/subscribe`)
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    beforeEach(() => subscribeToTask.mockReset());
+
+    it('relays the subscription as the person, to the Agent the body names', async () => {
+      const frame = 'data: {"statusUpdate":{"taskId":"task-1"}}\n\n';
+      subscribeToTask.mockResolvedValue(
+        new Response(frame, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+      );
+
+      const response = await post(agentBody, {
+        sessionId: 'a%2Fb',
+        taskId: '01a086cf-7f84-761d-980a-48f485eded5e',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frame);
+      expect(subscribeToTask).toHaveBeenCalledWith(
+        'a/b',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        '01a086cf-7f84-761d-980a-48f485eded5e',
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/tasks/task-1/subscribe')
+        .query({ installation: 'gazelle' })
+        .send(agentBody);
+
+      expect(response.status).toBe(401);
+      expect(subscribeToTask).not.toHaveBeenCalled();
+    });
+
+    it('requires the Agent', async () => {
+      const response = await post({ agentNamespace: 'kagent' });
+
+      expect(response.status).toBe(400);
+      expect(subscribeToTask).not.toHaveBeenCalled();
+    });
+
+    it('answers a decision as its 4xx', async () => {
+      subscribeToTask.mockRejectedValue(new NotFoundError('no such turn'));
+
+      const response = await post();
+
+      expect(response.status).toBe(404);
     });
   });
 
@@ -1998,6 +2324,19 @@ describe('createRouter', () => {
       expect(answerConfirmation).not.toHaveBeenCalled();
     });
 
+    it('answers 202 for a resumed turn that is still running, never a 5xx', async () => {
+      // Seen on gazelle: the resumed turn outlived the wait and the route let
+      // `KagentTurnPendingError` through as a 500.
+      streamAnswer.mockRejectedValue(
+        turnPendingError('The agent on gazelle has not finished.'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
+    });
+
     it('validates the body exactly as the unary answer route does', async () => {
       for (const body of [
         { ...validBody, taskId: undefined },
@@ -2034,6 +2373,34 @@ describe('createRouter', () => {
     });
   });
 
+  describe('GET /kagent/agent-namespaces', () => {
+    it('asks as the person and answers the namespaces', async () => {
+      listAgentNamespaces.mockResolvedValue({
+        namespaces: ['kagent', 'org-a'],
+      });
+
+      const response = await request(app)
+        .get('/kagent/agent-namespaces')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ namespaces: ['kagent', 'org-a'] });
+      expect(listAgentNamespaces).toHaveBeenCalledWith(
+        expect.objectContaining({ userToken: 'user-token' }),
+      );
+    });
+
+    it('refuses a call without the person’s token', async () => {
+      const response = await request(app)
+        .get('/kagent/agent-namespaces')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listAgentNamespaces).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /kagent/me', () => {
     it('works without a user token and echoes the body', async () => {
       getMe.mockResolvedValue({ sub: 'marian@giantswarm.io' });
@@ -2045,6 +2412,124 @@ describe('createRouter', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ sub: 'marian@giantswarm.io' });
       expect(getMe).toHaveBeenCalledWith({ userToken: undefined });
+    });
+  });
+
+  describe('GET /usage/model-cost', () => {
+    const mimirQuery = jest.fn();
+    const costApp = () =>
+      buildApp(twoInstallations, { mimir: { query: mimirQuery } });
+
+    beforeEach(() => {
+      mimirQuery.mockReset();
+      mimirQuery.mockImplementation(async ({ query }: { query: string }) => ({
+        status: 'success',
+        data: {
+          resultType: 'vector',
+          result: [
+            {
+              metric: query.startsWith('sum by')
+                ? { agent_namespace: 'kagent', agent: 'sre-agent' }
+                : {},
+              value: [0, query.startsWith('sum by') ? '1.25' : '1'],
+            },
+          ],
+        },
+      }));
+      getMe.mockResolvedValue({ sub: 'me@example.com' });
+    });
+
+    it('answers the caller’s own cost, with no-store', async () => {
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toMatchObject({
+        status: 'actual',
+        windowDays: 7,
+        totalUsd: 1.25,
+        byAgent: [{ agentId: 'kagent__NS__sre_agent', costUsd: 1.25 }],
+      });
+      expect(getMe).toHaveBeenCalledWith({ userToken: 'user-token' });
+    });
+
+    it('takes the person from kagent, never from the request', async () => {
+      // Every way a caller might try to name someone else: a parameter, a
+      // PromQL fragment, a header. None reaches the query.
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({
+          installation: 'gazelle',
+          days: '7',
+          user: 'someone-else@example.com',
+          email: 'someone-else@example.com',
+          query: 'sum by (user) (agentgateway_gen_ai_client_cost_usd_total)',
+        })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .set('X-Forwarded-User', 'someone-else@example.com');
+
+      expect(response.status).toBe(200);
+      const queries = mimirQuery.mock.calls.map(([args]) => args.query);
+      expect(queries.join('\n')).not.toContain('someone-else');
+      // Every matcher naming a person names the one kagent vouched for.
+      const personal = queries.filter((query: string) =>
+        /user="[^"]/.test(query),
+      );
+      expect(personal).not.toHaveLength(0);
+      for (const query of personal) {
+        expect(query).toContain('user="me@example.com"');
+      }
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' });
+
+      expect(response.status).toBe(401);
+      expect(getMe).not.toHaveBeenCalled();
+      expect(mimirQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '91', '7.5', 'seven', ''])(
+      'refuses days=%p with a 400',
+      async days => {
+        const response = await request(await costApp())
+          .get('/usage/model-cost')
+          .query({ installation: 'gazelle', days })
+          .set(KAGENT_AUTH_HEADER, 'user-token');
+
+        expect(response.status).toBe(400);
+        expect(mimirQuery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('answers no-mimir where no Mimir is wired in, as for an installation without one', async () => {
+      const response = await request(app)
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        status: 'unavailable',
+        windowDays: 7,
+        reason: 'no-mimir',
+      });
+    });
+
+    it('answers 200, not a 5xx for Sentry, when kagent is down', async () => {
+      getMe.mockRejectedValue(new ServiceUnavailableError('kagent is down'));
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.reason).toBe('identity-unreadable');
     });
   });
 

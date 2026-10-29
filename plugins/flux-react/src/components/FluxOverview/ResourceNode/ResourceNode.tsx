@@ -1,14 +1,5 @@
 import { useMemo } from 'react';
-import {
-  GitRepository,
-  HelmRelease,
-  HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-  Kustomization,
-  OCIRepository,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../utils/fluxResources';
 import { Box, ButtonIcon, Flex } from '@backstage/ui';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import { ResourceInfo, ResourceWrapper } from '../ResourceCard';
@@ -19,15 +10,7 @@ type ResourceNodeProps = {
   namespace?: string;
   kind: string;
   targetCluster?: string;
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource?: FluxResource;
   highlighted?: boolean;
   error?: boolean;
   expandable: boolean;

@@ -2,7 +2,11 @@ import { a2aMessageWireSchema } from './kagentTaskSchema';
 import type { A2aTaskWire } from './kagentTaskSchema';
 import { readMessageText } from './kagentParts';
 import type { KagentSession } from './kagentSessions';
-import { describeSessionState, FAILED_STATES } from './kagentSessionState';
+import {
+  describeSessionState,
+  FAILED_STATES,
+  readNewestTaskState,
+} from './kagentSessionState';
 
 /**
  * A session whose **runtime** kagent cannot bring back.
@@ -21,7 +25,7 @@ import { describeSessionState, FAILED_STATES } from './kagentSessionState';
  * on what it is looking at:
  *
  * - **Reported** ({@link RuntimeLoss.reported} `true`): kagent marks the
- *   `AgentInstance` with a `Failure` whose reason is {@link RUNTIME_LOST_REASON}
+ *   `Session` with a `Failure` whose reason is {@link RUNTIME_LOST_REASON}
  *   once it knows the runtime is gone, and ends such a turn at once with an
  *   A2A error whose message starts with `runtime lost: <cause>`. Definitive:
  *   nothing on this session can continue, and kagent's delete skips the suspend
@@ -29,26 +33,37 @@ import { describeSessionState, FAILED_STATES } from './kagentSessionState';
  * - **Suspected** (`reported` `false`): the interim shape, from before kagent
  *   said so. The turn failed after the runtime's timeout — atenet's
  *   `actor "ai-…" request timed out`, the gateway's `failed to connect to
- *   AgentInstance runtime`, the scheduler's `no free workers available` — and
+ *   Session runtime`, the scheduler's `no free workers available` — and
  *   nothing else distinguishes it from a slow turn. Read as a loss because the
  *   alternative is offering the same retry forever; the retry is still offered
  *   beside the way out, since a cold worker can produce the same text once.
+ *   One suspected shape shows nowhere in kagent's records: a runtime that
+ *   crashes on every restore leaves the session `READY` and the failed sends
+ *   never become turns, so the only sign is that sends keep timing out before
+ *   kagent's first event ({@link readSendTimeoutRuntimeLoss}).
  */
 export type RuntimeLoss = {
-  /** kagent marked the instance's runtime lost, rather than this reading the turn. */
+  /** kagent marked the session's runtime lost, rather than this reading the turn. */
   reported: boolean;
   /** The runtime's words, when there were any — never the whole explanation. */
   cause?: string;
   /**
    * How many turns in a row ended this way, newest first. `1` for the first
    * failure; a reported loss counts what the conversation shows too, and `0`
-   * when it shows nothing yet (the instance was marked before any turn failed).
+   * when it shows nothing yet (the session was marked before any turn failed).
+   * Read from timed-out sends, how many sends in a row timed out.
    */
   attempts: number;
+  /**
+   * Set when the loss is read from sends that kept timing out before kagent's
+   * first event rather than from anything kagent recorded: the session and
+   * its conversation look healthy, and the runtime's own words are unknown.
+   */
+  source?: 'send-timeouts';
 };
 
 /**
- * The `Failure.reason` kagent records on an `AgentInstance` whose runtime is
+ * The `Failure.reason` kagent records on a `Session` whose runtime is
  * lost. Compared leniently — `RuntimeLost` and `runtime-lost` read the same —
  * because the field is a free string on the wire.
  */
@@ -68,7 +83,7 @@ export function isRuntimeLostReason(reason: string | undefined): boolean {
  * - kagent, once it names the cause: `runtime lost: …` (an A2A error message,
  *   or the failed task's reason);
  * - kagent's A2A gateway when the runtime cannot be dialled:
- *   `failed to connect to AgentInstance runtime`;
+ *   `failed to connect to Session runtime`;
  * - atenet, the runtime's ingress, after its resume budget:
  *   `actor "ai-…" request timed out` (the text a person read on gazelle);
  * - Substrate's scheduler when the snapshot's node is gone — a locality miss
@@ -78,7 +93,7 @@ export function isRuntimeLostReason(reason: string | undefined): boolean {
  */
 const RUNTIME_LOST_TEXTS: RegExp[] = [
   /\bruntime lost\b/i,
-  /failed to connect to AgentInstance runtime/i,
+  /failed to connect to (Session|AgentInstance) runtime/i,
   /\bactor\b[^\n]*\brequest timed out\b/i,
   /\bno free workers available\b/i,
   /\bResumeActor\b[^\n]*(timed out|failed)/i,
@@ -100,8 +115,13 @@ export function isRuntimeLostFailureText(text: string | undefined): boolean {
   return RUNTIME_LOST_TEXTS.some(pattern => pattern.test(text));
 }
 
-/** The reason a failed task carries, when it carries a readable one. */
-function readFailedTaskReason(task: A2aTaskWire): string | undefined {
+/**
+ * The reason a failed task carries, when it carries a readable one: the text
+ * of its `status.message`, read as an A2A message. A bare string there is not
+ * read, as everywhere else `status.message` is (see `TurnStatus.raw`). Does
+ * not check that the task failed.
+ */
+export function readFailedTaskReason(task: A2aTaskWire): string | undefined {
   const raw = task.status?.message;
   if (!raw || typeof raw !== 'object') {
     return undefined;
@@ -163,9 +183,9 @@ export function readConversationRuntimeLoss(
 }
 
 /**
- * The runtime loss kagent **reported** on the instance, when it did.
+ * The runtime loss kagent **reported** on the session, when it did.
  *
- * Feature-detected off the `Failure` the instance carries: a kagent from
+ * Feature-detected off the `Failure` the session carries: a kagent from
  * before the reason existed marks nothing, and this answers `undefined` for it
  * so the interim reading takes over. The failure's message is the cause, with
  * kagent's own `runtime lost: ` prefix dropped — the surfaces say that part in
@@ -187,7 +207,7 @@ export function readReportedRuntimeLoss(
 /**
  * What the session and its conversation together say about the runtime.
  *
- * The instance's word wins: once kagent has marked the runtime lost nothing in
+ * The session's word wins: once kagent has marked the runtime lost nothing in
  * the conversation can contradict it, and the conversation's count of failed
  * attempts is folded in for the wording. Without a mark, the conversation's
  * own reading stands — the interim shape — or nothing.
@@ -208,4 +228,85 @@ export function readRuntimeLoss(
     };
   }
   return fromConversation;
+}
+
+/**
+ * Sends on one session that, in a row, timed out before kagent's first event
+ * and did not land — the backend's `UpstreamError` with `reason: "timeout"`,
+ * and a history read that does not hold the message.
+ *
+ * Kept by the page, not by kagent: nothing kagent records shows them (see
+ * {@link readSendTimeoutRuntimeLoss}). A reload starts over, which costs one
+ * more failed send before the way out shows again.
+ */
+export type SendTimeouts = {
+  /** How many sends in a row timed out. */
+  count: number;
+  /**
+   * The id of the conversation's newest task when the run began. A turn
+   * created since — the message landed late, or arrived from elsewhere —
+   * shows the runtime is up, and ends the run.
+   */
+  newestTaskId?: string;
+};
+
+/**
+ * How many sends in a row must time out before a loss is suspected. One is a
+ * slow cold start; two in a session that is otherwise idle are not.
+ */
+export const SEND_TIMEOUTS_BEFORE_LOSS = 2;
+
+function newestTaskIdOf(tasks: A2aTaskWire[] | undefined): string | undefined {
+  return tasks?.[tasks.length - 1]?.id;
+}
+
+/**
+ * The run of timed-out sends after one more, against the conversation as
+ * last read: counted on while the conversation's newest task is the one the
+ * run began with, else started over at one.
+ */
+export function countSendTimeout(
+  previous: SendTimeouts | undefined,
+  tasks: A2aTaskWire[] | undefined,
+): SendTimeouts {
+  const newestTaskId = newestTaskIdOf(tasks);
+  if (previous && previous.newestTaskId === newestTaskId) {
+    return { count: previous.count + 1, newestTaskId };
+  }
+  return { count: 1, newestTaskId };
+}
+
+/**
+ * The runtime loss that sends timing out show, when kagent shows nothing.
+ *
+ * A runtime that crashes on every restore (giantswarm/kagent-upstream#858)
+ * fails each send before kagent's first event: the portal gives up on that
+ * after its request timeout, the message never becomes a turn, and the
+ * session stays `READY` without a failure until kagent, a minute later,
+ * records `RUNTIME_LOST` — if it does. Waiting longer is no way to hear it:
+ * the gateway in front of the portal cuts a silent stream well before.
+ *
+ * So the repetition is the signal: {@link SEND_TIMEOUTS_BEFORE_LOSS} or more
+ * sends in a row, while the conversation has no turn newer than when the run
+ * began and its newest turn is settled — a turn still working would explain
+ * a slow start. Suspected, never reported: the retry stays on offer.
+ */
+export function readSendTimeoutRuntimeLoss(
+  timeouts: SendTimeouts | undefined,
+  tasks: A2aTaskWire[] | undefined,
+): RuntimeLoss | undefined {
+  if (!timeouts || timeouts.count < SEND_TIMEOUTS_BEFORE_LOSS || !tasks) {
+    return undefined;
+  }
+  if (newestTaskIdOf(tasks) !== timeouts.newestTaskId) {
+    return undefined;
+  }
+  if (readNewestTaskState(tasks)?.state.isActive) {
+    return undefined;
+  }
+  return {
+    reported: false,
+    attempts: timeouts.count,
+    source: 'send-timeouts',
+  };
 }

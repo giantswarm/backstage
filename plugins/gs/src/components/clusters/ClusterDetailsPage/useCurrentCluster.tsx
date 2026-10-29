@@ -1,23 +1,37 @@
-import { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext, useMemo } from 'react';
 import { useClusterFromUrl } from './useClusterFromUrl';
-import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  App,
+  Cluster,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type ClusterLoadingStatus = {
   installationName: string;
   cluster?: Cluster;
+  /** The App that installs the cluster, where an App does. */
   clusterApp?: App;
+  /** The HelmRelease that installs the cluster, where no App does. */
+  clusterRelease?: HelmRelease;
+  /** Deletion was requested and the cluster is not gone yet. */
+  isDeleting: boolean;
   loading: boolean;
   notFound: boolean;
   error: Error | null;
+  /** Why the last re-read of a cluster already shown failed. */
+  refreshError: Error | null;
 };
 
 const ClusterContext = createContext<ClusterLoadingStatus>({
   installationName: '',
   cluster: undefined,
   clusterApp: undefined,
+  clusterRelease: undefined,
+  isDeleting: false,
   loading: false,
   notFound: false,
   error: null,
+  refreshError: null,
 });
 
 export interface AsyncClusterProviderProps {
@@ -32,17 +46,42 @@ export interface AsyncClusterProviderProps {
 export const AsyncClusterProvider = ({
   children,
 }: AsyncClusterProviderProps) => {
-  const { installationName, cluster, clusterApp, loading, notFound, error } =
-    useClusterFromUrl();
-
-  const value = {
+  const {
     installationName,
     cluster,
     clusterApp,
+    clusterRelease,
+    isDeleting,
     loading,
     notFound,
     error,
-  };
+    refreshError,
+  } = useClusterFromUrl();
+
+  const value = useMemo(
+    () => ({
+      installationName,
+      cluster,
+      clusterApp,
+      clusterRelease,
+      isDeleting,
+      loading,
+      notFound,
+      error,
+      refreshError,
+    }),
+    [
+      installationName,
+      cluster,
+      clusterApp,
+      clusterRelease,
+      isDeleting,
+      loading,
+      notFound,
+      error,
+      refreshError,
+    ],
+  );
 
   return (
     <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
@@ -58,7 +97,9 @@ export const AsyncClusterProvider = ({
 export function useCurrentCluster(): {
   installationName: string;
   cluster: Cluster;
-  clusterApp: App;
+  clusterApp?: App;
+  clusterRelease?: HelmRelease;
+  isDeleting: boolean;
 } {
   const value = useContext(ClusterContext);
 
@@ -66,7 +107,7 @@ export function useCurrentCluster(): {
     throw new Error('ClusterContext not available');
   }
 
-  if (!value.cluster || !value.clusterApp) {
+  if (!value.cluster) {
     throw new Error(
       'useCurrentCluster hook is being called outside of an ClusterLayout where the cluster has not been loaded. If this is intentional, please use useAsyncCluster instead.',
     );
@@ -76,6 +117,8 @@ export function useCurrentCluster(): {
     installationName: value.installationName,
     cluster: value.cluster,
     clusterApp: value.clusterApp,
+    clusterRelease: value.clusterRelease,
+    isDeleting: value.isDeleting,
   };
 }
 
@@ -91,8 +134,5 @@ export function useAsyncCluster(): ClusterLoadingStatus {
     throw new Error('ClusterContext not available');
   }
 
-  const { installationName, cluster, clusterApp, loading, notFound, error } =
-    value;
-
-  return { installationName, cluster, clusterApp, loading, notFound, error };
+  return value;
 }

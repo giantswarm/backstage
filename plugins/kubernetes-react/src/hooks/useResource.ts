@@ -4,6 +4,7 @@ import { QueryOptions } from './types';
 import { useGetResource } from './useGetResource';
 import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { ErrorInfoUnion } from './utils/queries';
 import { usePreferredVersion } from './useApiDiscovery';
 import { useReportApiVersionIssues } from './useReportApiVersionIssues';
@@ -93,7 +94,7 @@ export function useResource<R extends KubeObject<any>>(
 
   return {
     ...queryInfo,
-    isLoading: isRestoring || isDiscovering || queryInfo.isLoading,
+    isLoading: isRestoring || isDiscovering || isAwaitingData(queryInfo),
     resource,
     errors,
     resolvedApiVersion: resolvedGVK?.apiVersion,

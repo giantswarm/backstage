@@ -142,6 +142,23 @@ export class ContainerRegistryService {
   }
 
   /**
+   * Checks whether a tag exists in a container registry repository.
+   * Uses the standard OCI Distribution Spec.
+   *
+   * @param registry - The registry host (e.g., ghcr.io, docker.io)
+   * @param repository - The repository path (e.g., giantswarm/my-app)
+   * @param tag - The tag to look for (e.g., 1.0.0)
+   * @returns Whether the tag exists; a registry 404 means false, other errors are thrown
+   */
+  async tagExists(
+    registry: string,
+    repository: string,
+    tag: string,
+  ): Promise<boolean> {
+    return this.ociClient.tagExists(registry, repository, tag);
+  }
+
+  /**
    * Checks if the registry is an Azure Container Registry.
    */
   private isAzureContainerRegistry(registry: string): boolean {

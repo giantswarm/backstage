@@ -146,8 +146,8 @@ describe('RoadmapApiClient', () => {
         {
           error: {
             name: 'MusterServerNotConnectedError',
-            message: "Connect 'gazelle-mcp-pro' in muster to use this page.",
-            server: 'gazelle-mcp-pro',
+            message: "Connect 'mcp-pro' in muster to use this page.",
+            server: 'mcp-pro',
             authUrl: 'https://muster/oauth/proxy/start?state=x',
           },
         },

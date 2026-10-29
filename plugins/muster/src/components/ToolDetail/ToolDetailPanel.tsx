@@ -1,92 +1,105 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useRef } from 'react';
+import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Alert,
-  Box,
-  Button,
-  Text,
-} from '@backstage/ui';
-import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation } from '@tanstack/react-query';
-import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
-import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
+  SectionHeader,
+  isAwaitingData,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
   fieldKind,
-  FormValue,
+  type FormValue,
   schemaFields,
 } from '../../lib/schemaForm';
 import { ToolArgField } from './ToolArgField';
 import { ToolResultViewer } from './ToolResultViewer';
+import { InputSchemaFoldOut } from './InputSchemaFoldOut';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
+import { ToolRun, useToolRun } from './useToolRun';
+import { ToolForm, useToolForm } from './useToolForm';
 
-/** localStorage key for a tool's last-used arguments, scoped per installation. */
-function argsKey(installation: string | undefined, name: string): string {
-  return `muster-tool-args:${installation ?? 'default'}/${name}`;
-}
-
-function loadStoredArgs(key: string): Record<string, FormValue> {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Record<string, FormValue>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function storeArgs(key: string, values: Record<string, FormValue>) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(values));
-  } catch {
-    // localStorage may be unavailable (private mode); not fatal.
-  }
+/** A section of the run form: an `h2` that names its region, then the content. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId}>
+      <SectionHeader
+        as="h2"
+        variant="title-x-small"
+        title={title}
+        id={headingId}
+      />
+      <Box mt="2">{children}</Box>
+    </section>
+  );
 }
 
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
+  /** One line beside the run button, e.g. what running the tool does. */
+  note?: string;
   /**
-   * Show the read-only / destructive markers above the description. Off where
-   * the page already shows them, as the tool page does beside the tool's name.
+   * What the tool is: a connector's or muster's own tool, or the tool muster
+   * runs a workflow as (`workflow_<name>`). A workflow's run form speaks of
+   * inputs and the workflow, and keeps the input schema folded above it; a
+   * tool's page shows the schema on its Overview instead.
    */
-  showMarkers?: boolean;
+  subject?: 'tool' | 'workflow';
+  /**
+   * The runs of the tool, where a page keeps them above the panel (a
+   * workflow page, across its tabs); else the panel keeps its own.
+   */
+  run?: ToolRun;
+  /**
+   * What is typed into the form, where a page keeps it above the panel (a
+   * tool's page, across its tabs); else the panel keeps its own.
+   */
+  form?: ToolForm;
 }
 
 /**
+ * The body of a Run it tab, in sections down its single column: "Try it"
+ * (the argument form and the run button) and the result. A tool's page and
+ * a workflow's both render it, the workflow's with "Inputs" for "Try it" and
+ * its input schema folded above. What the tool is for is on Overview.
+ *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
- * executes it via the `call_tool` proxy. The UI executes whatever tools muster
- * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
- * mcp-kubernetes is deployed read-only), not the portal.
+ * runs it with {@link useToolRun}.
  */
 export function ToolDetailPanel({
   name,
   installation,
-  showMarkers = true,
+  note,
+  subject = 'tool',
+  run,
+  form,
 }: ToolDetailPanelProps) {
-  const musterApi = useApi(musterApiRef);
+  // Always called, as hooks must be; idle where the page passes its own.
+  const ownRun = useToolRun(name, installation);
+  const toolRun = run ?? ownRun;
+  const ownForm = useToolForm(name, installation);
+  const { values, setValues, jsonModes, setJsonModes, remember } =
+    form ?? ownForm;
+  // Each argument shows its problem once the person leaves it having typed
+  // in it, or presses Run; a blocked Run focuses the first (the `forms`
+  // skill). Scoped to the form: a workflow's tab has its own fields around.
+  const formScope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(formScope);
+  const { reset: resetValidation } = validation;
 
-  const storageKey = argsKey(installation, name);
-  const [values, setValues] = useState<Record<string, FormValue>>(() =>
-    loadStoredArgs(storageKey),
-  );
-  const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
-
-  // Reload the remembered args when the selected tool changes.
+  // A fresh check for another tool; its form reloads its own arguments.
   useEffect(() => {
-    setValues(loadStoredArgs(storageKey));
-    setJsonModes({});
-    setFieldErrors({});
-  }, [storageKey]);
+    resetValidation();
+  }, [name, installation, resetValidation]);
 
-  const { data, isLoading, error } = useToolDescription(name, installation);
+  const description = useToolDescription(name, installation);
+  const { data, error } = description;
+  const isLoading = isAwaitingData(description);
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
 
@@ -109,15 +122,7 @@ export function ToolDetailPanel({
       }
       return changed ? next : prev;
     });
-  }, [fields]);
-
-  const mutation = useMutation({
-    mutationFn: async (args: Record<string, unknown>) => {
-      const startedAt = performance.now();
-      const result = await musterApi.callTool(name, args, installation);
-      return { result, durationMs: Math.round(performance.now() - startedAt) };
-    },
-  });
+  }, [fields, setValues]);
 
   const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));
@@ -152,19 +157,28 @@ export function ToolDetailPanel({
   };
 
   const execute = (args: Record<string, unknown>) => {
-    setLastArgs(args);
-    storeArgs(storageKey, values);
-    mutation.mutate(args);
+    remember();
+    toolRun.run(args);
   };
 
-  const run = () => {
-    const { args, errors } = buildArgs(fields, values);
-    setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) {
+  const {
+    args,
+    errors: fieldErrors,
+    errorItems,
+  } = useMemo(() => buildArgs(fields, values), [fields, values]);
+  const submit = () => {
+    if (Object.keys(fieldErrors).length > 0) {
+      validation.reveal();
       return;
     }
     execute(args);
   };
+
+  const executeButton = (
+    <Button variant="primary" isPending={toolRun.isPending} onClick={submit}>
+      {toolRun.isPending ? 'Running…' : 'Run'}
+    </Button>
+  );
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -174,99 +188,74 @@ export function ToolDetailPanel({
   }
 
   return (
-    <Box>
-      {showMarkers && hasMarkers(data?.annotations) && (
-        <Box mt="1">
-          <ToolMarkers annotations={data?.annotations} />
-        </Box>
+    <Flex direction="column" gap="5">
+      {subject === 'workflow' && data?.inputSchema && (
+        <InputSchemaFoldOut schema={data.inputSchema} />
       )}
 
-      {data?.description && (
-        <Box mt="1">
-          <Text
-            as="p"
-            variant="body-medium"
-            color="secondary"
-            style={{ whiteSpace: 'pre-wrap' }}
-          >
-            {data.description}
-          </Text>
-        </Box>
-      )}
-
-      {data?.inputSchema && (
-        <Box mt="3">
-          <Accordion>
-            <AccordionTrigger title="Input schema" />
-            <AccordionPanel>
-              <YamlEditorFormField
-                value={JSON.stringify(data.inputSchema, null, 2)}
-                language="json"
-                readOnly
-                maxHeight={360}
-              />
-            </AccordionPanel>
-          </Accordion>
-        </Box>
-      )}
-
-      <Box mt="3">
-        <Box mb="1">
-          <Text as="p" variant="body-large" weight="bold">
-            Arguments
-          </Text>
-        </Box>
+      <Section title={subject === 'workflow' ? 'Inputs' : 'Try it'}>
         {fields.length === 0 ? (
-          <Text variant="body-medium" color="secondary">
-            This tool takes no arguments.
+          <Text as="p" variant="body-medium" color="secondary">
+            {subject === 'workflow'
+              ? 'This workflow takes no inputs.'
+              : 'This tool takes no arguments.'}
           </Text>
         ) : (
-          fields.map(field => (
-            <ToolArgField
-              key={field.name}
-              field={field}
-              value={values[field.name]}
-              error={fieldErrors[field.name]}
-              jsonMode={
-                Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
-              }
-              onChange={value => setValue(field.name, value)}
-              onToggleJson={() => toggleJson(field)}
-            />
-          ))
+          <div ref={formScope}>
+            {fields.map(field => (
+              <ToolArgField
+                key={field.name}
+                field={field}
+                value={values[field.name]}
+                error={validation.errorFor(field.name, fieldErrors[field.name])}
+                invalidItem={errorItems[field.name]}
+                blurProps={validation.blurProps(
+                  field.name,
+                  fieldErrors[field.name],
+                  values[field.name],
+                )}
+                jsonMode={
+                  Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
+                }
+                onChange={value => setValue(field.name, value)}
+                onToggleJson={() => toggleJson(field)}
+              />
+            ))}
+          </div>
         )}
-      </Box>
-
-      <Box mt="2">
-        <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-          {mutation.isPending ? 'Running…' : 'Execute'}
-        </Button>
-      </Box>
-
-      {mutation.isError && (
-        <Box mt="3">
-          <Alert
-            status="danger"
-            title="Execution failed"
-            description={(mutation.error as Error).message}
-          />
+        <Box mt="2">
+          {note ? (
+            <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+              {executeButton}
+              <Text variant="body-small" color="secondary">
+                {note}
+              </Text>
+            </Flex>
+          ) : (
+            executeButton
+          )}
         </Box>
-      )}
-      {mutation.isSuccess && (
-        <Box mt="3">
-          <Box mb="1">
-            <Text as="p" variant="body-large" weight="bold">
-              Result
-            </Text>
+        {toolRun.error && (
+          <Box mt="3">
+            <Alert
+              status="danger"
+              title={`Could not run the ${subject}`}
+              description={toolRun.error.message}
+            />
           </Box>
+        )}
+      </Section>
+
+      {toolRun.lastResult && (
+        <Section title="Result">
           <ToolResultViewer
-            result={mutation.data.result}
-            durationMs={mutation.data.durationMs}
-            onRerun={() => execute(lastArgs)}
-            rerunDisabled={mutation.isPending}
+            result={toolRun.lastResult.result}
+            durationMs={toolRun.lastResult.durationMs}
+            onRerun={toolRun.rerun}
+            rerunDisabled={toolRun.isPending}
           />
-        </Box>
+        </Section>
       )}
-    </Box>
+    </Flex>
   );
 }

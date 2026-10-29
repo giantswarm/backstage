@@ -4,7 +4,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -64,6 +63,12 @@ export interface StackedBarChartProps<T extends object> {
    * a colour-blind reader cannot use — and what the tooltip only reveals on
    * hover, so never on a printout or a screenshot. Off by default solely
    * because the existing single-series charts have no use for one.
+   *
+   * The legend is a list under the chart, not recharts' own: that one was
+   * given a fixed 28px, and eight model names wrap to three to five lines at
+   * phone width and ran over whatever followed the chart (T22 C20). This one
+   * wraps in the page's flow and takes the room it needs; the plot keeps
+   * {@link height}.
    */
   showLegend?: boolean;
   /**
@@ -193,7 +198,7 @@ export function StackedBarChart<T extends object>({
   const tickStyle = { fill: axisColor, fontSize: 11 };
   const surface = theme.palette.background.paper;
 
-  return (
+  const chart = (
     <ResponsiveContainer width="100%" height={height}>
       {/* recharts infers its DataPointType from `data`; keep that inference
           permissive (unknown) so string dataKeys type-check regardless of the
@@ -234,20 +239,6 @@ export function StackedBarChart<T extends object>({
             />
           }
         />
-        {showLegend && (
-          <Legend
-            verticalAlign="bottom"
-            height={28}
-            iconType="circle"
-            iconSize={8}
-            // Legend text wears an ink token, never the series colour: the
-            // swatch beside it already carries the identity, and coloured
-            // label text is what pushes a low-contrast hue onto type.
-            formatter={value => (
-              <span style={{ color: axisColor, fontSize: 11 }}>{value}</span>
-            )}
-          />
-        )}
         {series.map(s => (
           <Bar
             key={s.dataKey}
@@ -266,5 +257,75 @@ export function StackedBarChart<T extends object>({
         ))}
       </BarChart>
     </ResponsiveContainer>
+  );
+
+  if (!showLegend) {
+    return chart;
+  }
+  return (
+    <div>
+      {chart}
+      <ChartLegend series={series} textColor={axisColor} />
+    </div>
+  );
+}
+
+/**
+ * The series under the chart, base of the stack first, as recharts' legend
+ * listed them: a swatch and a name each, wrapping onto as many lines as the
+ * names need.
+ */
+function ChartLegend({
+  series,
+  textColor,
+}: {
+  series: StackedBarChartSeries[];
+  textColor: string;
+}) {
+  return (
+    <ul
+      aria-label="Legend"
+      style={{
+        listStyle: 'none',
+        margin: 0,
+        padding: '4px 0 0',
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: '2px 12px',
+      }}
+    >
+      {series.map(s => (
+        <li
+          key={s.dataKey}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            minWidth: 0,
+            maxWidth: '100%',
+            // Legend text wears an ink token, never the series colour: the
+            // swatch beside it already carries the identity, and coloured
+            // label text is what pushes a low-contrast hue onto type.
+            color: textColor,
+            fontSize: 11,
+            lineHeight: '16px',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: s.color,
+              flexShrink: 0,
+            }}
+          />
+          {s.name}
+        </li>
+      ))}
+    </ul>
   );
 }

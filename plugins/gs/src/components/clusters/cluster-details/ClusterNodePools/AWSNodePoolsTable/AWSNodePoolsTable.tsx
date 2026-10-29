@@ -3,7 +3,8 @@ import { Table } from '@backstage/core-components';
 import { Typography, useTheme } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
-import { AWSNodePoolRow, getInitialColumns } from './columns';
+import { AWSNodePoolRow } from '../../../nodePools';
+import { getInitialColumns } from './columns';
 
 const TABLE_ID = 'aws-node-pools';
 

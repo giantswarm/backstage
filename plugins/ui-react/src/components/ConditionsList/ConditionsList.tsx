@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Box, Flex, Text } from '@backstage/ui';
 import { ConditionMessage } from '../display/ConditionMessage';
 import { DateComponent } from '../DateComponent';
+import { type Fact, FactList } from '../FactList';
 import { SimpleAccordion, type SimpleAccordionProps } from '../SimpleAccordion';
 import { StatusLabel, StatusLabelIntent } from '../StatusLabel';
 
@@ -40,6 +41,16 @@ export type ConditionsListProps = {
   isFailing?: (condition: ConditionLike) => boolean;
   /** Extra controls for a condition's panel, e.g. an "explain this error" button. */
   renderActions?: (condition: ConditionLike) => ReactNode;
+  /**
+   * Condition types in the order the controller evaluates them. When given,
+   * the list follows it instead of sorting by transition time, so the first
+   * failing condition — the one that starts expanded — is the earliest stage
+   * that failed: the root cause rather than a later stage it blocks. A stage
+   * still `Unknown` explains nothing, so an outright failure later in the
+   * order is expanded ahead of it. Types not listed follow, in the default
+   * order.
+   */
+  order?: readonly string[];
   /** Shown instead of the list when there are no conditions at all. */
   emptyContent?: ReactNode;
   /** Heading level of each condition's trigger; see `SimpleAccordion`. */
@@ -73,13 +84,26 @@ function transitionTime(condition: ConditionLike): number | undefined {
 }
 
 /**
- * Sort the most recently changed condition first, so the reason a resource just
+ * Sort by `order` when given; otherwise, and among types it does not list,
+ * the most recently changed condition first, so the reason a resource just
  * became unhealthy is at the top. Conditions with no usable timestamp sort last
  * — "unknown" is not "oldest" — and ties fall back to the type for a stable
  * order.
  */
-function sortConditions(conditions: ConditionLike[]): ConditionLike[] {
+function sortConditions(
+  conditions: ConditionLike[],
+  order?: readonly string[],
+): ConditionLike[] {
+  const rank = (condition: ConditionLike) => {
+    const index = order?.indexOf(condition.type) ?? -1;
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+
   return [...conditions].sort((a, b) => {
+    if (rank(a) !== rank(b)) {
+      return rank(a) - rank(b);
+    }
+
     const aTime = transitionTime(a);
     const bTime = transitionTime(b);
 
@@ -91,6 +115,21 @@ function sortConditions(conditions: ConditionLike[]): ConditionLike[] {
 
     return a.type.localeCompare(b.type);
   });
+}
+
+/** A condition's status, reason and message, as label/value pairs. */
+function conditionFacts(condition: ConditionLike): Fact[] {
+  const facts: Fact[] = [{ label: 'Status', value: condition.status }];
+  if (condition.reason) {
+    facts.push({ label: 'Reason', value: condition.reason });
+  }
+  if (condition.message) {
+    facts.push({
+      label: 'Message',
+      value: <ConditionMessage message={condition.message} />,
+    });
+  }
+  return facts;
 }
 
 /**
@@ -109,6 +148,7 @@ export const ConditionsList = ({
   conditions,
   isFailing = defaultIsFailing,
   renderActions,
+  order,
   emptyContent,
   headingLevel,
 }: ConditionsListProps) => {
@@ -116,8 +156,11 @@ export const ConditionsList = ({
     return <>{emptyContent}</>;
   }
 
-  const sorted = sortConditions(conditions);
-  const firstFailing = sorted.find(condition => isFailing(condition));
+  const sorted = sortConditions(conditions, order);
+  const failures = sorted.filter(condition => isFailing(condition));
+  const firstFailing =
+    (order && failures.find(condition => condition.status !== 'Unknown')) ||
+    failures[0];
 
   return (
     <Flex direction="column" gap="1">
@@ -152,26 +195,13 @@ export const ConditionsList = ({
             }
           >
             <Flex direction="column" gap="2" pb="2">
-              <Flex align="center" gap="2">
-                <Text variant="body-small" color="secondary">
-                  Status
-                </Text>
-                <Text variant="body-small">{condition.status}</Text>
-                {condition.reason && (
-                  <>
-                    <Text variant="body-small" color="secondary">
-                      Reason
-                    </Text>
-                    <Text variant="body-small">{condition.reason}</Text>
-                  </>
-                )}
-              </Flex>
-
-              {condition.message && (
-                <Box>
-                  <ConditionMessage message={condition.message} />
-                </Box>
-              )}
+              {/* A label/value list, as every other technical detail: each
+                  label beside its value, or above it at phone width. */}
+              <FactList
+                facts={conditionFacts(condition)}
+                labelWidth={120}
+                maxWidth={null}
+              />
 
               {actions && <Box>{actions}</Box>}
             </Flex>

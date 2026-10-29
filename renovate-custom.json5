@@ -41,6 +41,15 @@
       matchPackageNames: ['@backstage{/,}**'],
     },
     {
+      // react-aria and react-aria-components follow the versions @backstage/ui
+      // pins, and @backstage/ui follows backstage.json, which Renovate does not
+      // bump. Another version installs a second copy: RouteTabs' RouterProvider
+      // no longer reaches the bui Tabs and Links, and their navigation falls
+      // back to the browser. They move with each Backstage bump.
+      matchPackageNames: ['react-aria', 'react-aria-components'],
+      enabled: false,
+    },
+    {
       // Group the PagerDuty frontend plugin together with its backend
       // counterpart so they are always proposed in one PR. The two packages
       // are released in lockstep and share the same integration surface, so
@@ -165,6 +174,13 @@
       // downgrade landed. Keep v7 held until upstream's peer range allows it --
       // then bump both together in one reviewed PR. Minor/patch still flow.
       matchPackageNames: ['react-router', 'react-router-dom'],
+      allowedVersions: '<7',
+    },
+    {
+      // TypeScript 7.0 ships no JS compiler API, and typescript-eslint (peer
+      // <6.1.0) and @joshwooding/vite-plugin-react-docgen-typescript (peer
+      // <7 || >=7.1.0-0) both load it, so lint and the Storybook build fail.
+      matchPackageNames: ['typescript'],
       allowedVersions: '<7',
     },
   ],

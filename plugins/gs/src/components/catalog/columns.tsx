@@ -1,7 +1,13 @@
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { Box, Typography } from '@material-ui/core';
+import { Text } from '@backstage/ui';
 import {
+  GS_ARCHITECT_ORB_REF,
+  GS_ARCHITECT_ORB_VERSION,
+  getBuildFailingChecksFromEntity,
+  getBuildStatusFromEntity,
+  getBuildToolchainFromEntity,
   getHelmChartsAppVersionsFromEntity,
   getHelmChartsFromEntity,
   getLatestReleaseDateFromEntity,
@@ -9,6 +15,14 @@ import {
   getReadinessFlagsFromEntity,
   getReadinessFromEntity,
 } from '../utils/entity';
+import {
+  BUILD_STATUS_MEANINGS,
+  buildStatusIntent,
+  buildStatusLabel,
+  buildStatusRank,
+  toolchainOrbText,
+  toolchainTitle,
+} from '../utils/build';
 import {
   READINESS_MEANINGS,
   partitionReadinessFlags,
@@ -18,7 +32,7 @@ import {
 } from '../utils/readiness';
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
-import { Entity } from '@backstage/catalog-model';
+import { Entity, stringifyEntityRef } from '@backstage/catalog-model';
 import {
   semverCompareSort,
   StatusLabel,
@@ -198,6 +212,113 @@ export const columnFactories = Object.freeze({
             intent={readinessIntent(readiness)}
             title={readinessTitle(readiness, releaseFlags)}
           />
+        );
+      },
+    };
+  },
+  /**
+   * The verdict `BuildStatusProcessor` writes, with the confirmed failing
+   * checks as hover detail. Filtering belongs to the sidebar picker.
+   */
+  createBuildStatusColumn(
+    options: {
+      hidden: boolean;
+    } = { hidden: false },
+  ): TableColumn<CatalogTableRow> {
+    return {
+      title: 'Build',
+      hidden: options.hidden,
+      width: 'auto',
+      filtering: false,
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return (
+          buildStatusRank(getBuildStatusFromEntity(entity1)) -
+          buildStatusRank(getBuildStatusFromEntity(entity2))
+        );
+      },
+      render: ({ entity }) => {
+        const status = getBuildStatusFromEntity(entity);
+        if (!status) {
+          return undefined;
+        }
+        const failing = getBuildFailingChecksFromEntity(entity);
+
+        return (
+          <StatusLabel
+            label={buildStatusLabel(status)}
+            intent={buildStatusIntent(status)}
+            title={
+              failing.length > 0
+                ? failing.join(', ')
+                : BUILD_STATUS_MEANINGS[status]
+            }
+          />
+        );
+      },
+    };
+  },
+  /**
+   * The architect orb the default branch declares, with the app-build-suite
+   * and app-test-suite versions it pins as hover detail.
+   *
+   * The first click sorts newest release first, then pins that are not a
+   * release (`dev:…`, `volatile`) by name, then rows without an orb; ties
+   * fall back to the entity ref. The comparator ignores the direction, so the
+   * second click is the exact reverse.
+   */
+  createBuildToolchainColumn(
+    options: {
+      hidden: boolean;
+    } = { hidden: false },
+  ): TableColumn<CatalogTableRow> {
+    const newestRelease = semverCompareSort<CatalogTableRow>(
+      ({ entity }) => entity.metadata.labels?.[GS_ARCHITECT_ORB_VERSION],
+      { descending: true },
+    );
+    const refsByName = (
+      { entity: entity1 }: CatalogTableRow,
+      { entity: entity2 }: CatalogTableRow,
+    ) => {
+      const ref1 = entity1.metadata.annotations?.[GS_ARCHITECT_ORB_REF];
+      const ref2 = entity2.metadata.annotations?.[GS_ARCHITECT_ORB_REF];
+      if (ref1 === ref2) {
+        return 0;
+      }
+      if (!ref1) {
+        return 1;
+      }
+      if (!ref2) {
+        return -1;
+      }
+      return ref1.localeCompare(ref2);
+    };
+
+    return {
+      title: 'Architect Orb Version',
+      hidden: options.hidden,
+      width: 'auto',
+      filtering: false,
+      customSort: (a, b) =>
+        newestRelease(a, b) ||
+        refsByName(a, b) ||
+        stringifyEntityRef(a.entity).localeCompare(
+          stringifyEntityRef(b.entity),
+        ),
+      render: ({ entity }) => {
+        const toolchain = getBuildToolchainFromEntity(entity);
+        const text = toolchainOrbText(toolchain);
+        if (!text) {
+          return undefined;
+        }
+
+        return (
+          <Text
+            as="span"
+            variant="body-medium"
+            title={toolchainTitle(toolchain)}
+          >
+            {text}
+          </Text>
         );
       },
     };

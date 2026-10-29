@@ -15,17 +15,7 @@ import { DefaultFilters } from './DefaultFilters';
 import { FLUX_RESOURCE_PANE_ID, FLUX_RESOURCE_PANE_PREFIX } from './constants';
 
 const Content = ({ filters }: { filters: ReactNode }) => {
-  const {
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
-    isLoading,
-  } = useFluxOverviewData();
+  const { resources, isLoading } = useFluxOverviewData();
 
   const { open, getParams } = useDetailsPane(FLUX_RESOURCE_PANE_ID, {
     prefix: FLUX_RESOURCE_PANE_PREFIX,
@@ -77,14 +67,7 @@ const Content = ({ filters }: { filters: ReactNode }) => {
             kind={kind}
             name={name}
             namespace={namespace}
-            kustomizations={kustomizations}
-            helmReleases={helmReleases}
-            gitRepositories={gitRepositories}
-            ociRepositories={ociRepositories}
-            helmRepositories={helmRepositories}
-            imagePolicies={imagePolicies}
-            imageRepositories={imageRepositories}
-            imageUpdateAutomations={imageUpdateAutomations}
+            resources={resources}
             isLoading={isLoading}
           />
         )}

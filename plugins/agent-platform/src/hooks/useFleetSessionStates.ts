@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { sessionStatesQueryKey } from '../lib/queryKeys';
@@ -35,6 +36,11 @@ export type FleetSessionStatesView = {
   skippedCount: number;
   /** No installation has answered yet. */
   isLoading: boolean;
+  /**
+   * Every installation asked has answered or failed at least once, so the
+   * states are the whole of a first read rather than the fastest part of it.
+   */
+  isComplete: boolean;
   /** Every installation asked failed, so no row can be told about. */
   isError: boolean;
 };
@@ -45,15 +51,34 @@ const EMPTY_VIEW: FleetSessionStatesView = {
   failedInstallations: new Set(),
   skippedCount: 0,
   isLoading: false,
+  isComplete: true,
   isError: false,
+};
+
+export type FleetSessionStatesOptions = {
+  /**
+   * Poll interval, defaulting to the baseline tier. The shell rail passes
+   * `ACTIVE_REFETCH_INTERVAL_MS`: its colored session dots are the surface
+   * that exists to say something started needing a person, so it polls on the
+   * fast tier — the backend's 15 s cache keeps the cost flat, and react-query shares one cache entry per installation, so
+   * a list open beside it simply reads fresher data. Interval refetches pause
+   * while the tab is hidden (`refetchIntervalInBackground` defaults to false).
+   */
+  refetchIntervalMs?: number;
+  /**
+   * Keep polling while the tab is hidden. The Notification inbox does, on the
+   * baseline tier, so a background tab still learns that a session waits;
+   * everything else leaves a hidden tab quiet.
+   */
+  refetchIntervalInBackground?: boolean;
 };
 
 /**
  * The derived state of each session, across the installations a list shows.
  *
- * One `GET /kagent/session-states` per installation, under the same query key
- * `useSessionStates` uses — so a list and a session detail page open together
- * share one cache entry per installation rather than each paying for its own.
+ * One `GET /kagent/session-states` per installation, under one query key per
+ * installation, so every list open together shares one cache entry per
+ * installation rather than each paying for its own.
  *
  * **Baseline tier, not the fast one the rail polls on.** The rail watches a
  * single installation and exists to show a turn moving; a list spans the fleet,
@@ -65,8 +90,11 @@ const EMPTY_VIEW: FleetSessionStatesView = {
  */
 export function useFleetSessionStates(
   installations: string[],
+  options?: FleetSessionStatesOptions,
 ): FleetSessionStatesView {
   const kagentApi = useApi(kagentApiRef);
+  const refetchInterval =
+    options?.refetchIntervalMs ?? BASELINE_REFETCH_INTERVAL_MS;
 
   // Keyed on contents: the caller derives this array fresh on every render.
   const key = installations.join(',');
@@ -76,7 +104,8 @@ export function useFleetSessionStates(
     queries: targets.map(installation => ({
       queryKey: sessionStatesQueryKey(installation),
       queryFn: () => kagentApi.listSessionStates(installation),
-      refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+      refetchInterval,
+      refetchIntervalInBackground: options?.refetchIntervalInBackground,
     })),
   });
 
@@ -128,7 +157,8 @@ export function useFleetSessionStates(
       // Only while nothing is in yet. One slow installation must not blank the
       // column for the rows that already have a state — the same rule the
       // sessions fan-out itself follows.
-      isLoading: results.every(result => result.isLoading),
+      isLoading: results.every(result => isAwaitingData(result)),
+      isComplete: !results.some(result => isAwaitingData(result)),
       // A failed *refetch* keeps the previous answer, so this is the harder
       // claim: every installation asked failed and none has data to fall back
       // on.

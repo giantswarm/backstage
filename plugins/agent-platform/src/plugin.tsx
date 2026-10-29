@@ -1,21 +1,21 @@
 import {
   ApiBlueprint,
   coreExtensionData,
+  createExtension,
   createExtensionInput,
   createFrontendPlugin,
+  ExtensionBoundary,
   discoveryApiRef,
   fetchApiRef,
   PageBlueprint,
-  PluginHeaderActionBlueprint,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
-import AndroidIcon from '@material-ui/icons/Android';
-import { orderTabs } from './lib/tabOrder';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   KagentApiClient,
@@ -24,68 +24,76 @@ import {
   modelManagerApiRef,
 } from './apis';
 import {
+  addGpuNodePoolRouteRef,
+  addModelBackendRouteRef,
   agentDetailRouteRef,
+  agentEditRouteRef,
   agentsRouteRef,
+  customizeExternalRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
-  installationsExternalRouteRef,
+  importModelRouteRef,
+  modelCacheRouteRef,
   modelDetailRouteRef,
+  modelEditRouteRef,
+  installationsExternalRouteRef,
   modelsRouteRef,
+  musterServerExternalRouteRef,
   musterServersExternalRouteRef,
   musterServerToolExternalRouteRef,
+  musterWorkflowDetailExternalRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
   newAgentToolsRouteRef,
   newModelRouteRef,
+  newSessionExternalRouteRef,
+  newSkillRouteRef,
+  profileRouteRef,
+  pullModelRouteRef,
   rootRouteRef,
+  serveModelRouteRef,
   servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
+  skillsRouteRef,
+  usageConnectorsRouteRef,
+  usageConversationsRouteRef,
+  usageCostRouteRef,
   usageRouteRef,
+  workspaceDetailRouteRef,
+  workspaceEditRouteRef,
+  workspacesRouteRef,
+  toolchainsRouteRef,
+  newToolchainRouteRef,
+  toolchainDetailRouteRef,
+  newWorkspaceRouteRef,
 } from './routes';
 
-// The Agent Platform section is a tabbed page: with no loader of its own,
-// PageBlueprint renders the attached sub-pages as tabs in the bui PluginHeader
-// (the same pattern as the flux section). The "MCP Servers" and "Workflows"
-// tabs are contributed by the muster plugin (SubPageBlueprints attached to this
-// page).
-//
-// Disabled by default and enabled per-installation via app-config
-// (`app.extensions: [page:agent-platform, nav-item:agent-platform]`) while the
-// agent platform is still internal-only.
-//
-// The page sorts its tabs by `AGENT_PLATFORM_TAB_ORDER` (lib/tabOrder.ts):
-// Sessions · Agents · Models · MCP Servers · Workflows · Usage. Attach order
-// alone cannot interleave two plugins' tabs, and an extension a deployment
-// names in its own `app.extensions` attaches first. The first tab is also
-// where a bare `/agent-platform` lands.
-const agentPlatformPage = PageBlueprint.makeWithOverrides({
-  disabled: true,
-  factory(originalFactory, { inputs }) {
-    return originalFactory(
-      {
-        title: 'Agent Platform',
-        icon: <AndroidIcon />,
-        path: '/agent-platform',
-        routeRef: rootRouteRef,
-      },
-      { inputs: { pages: orderTabs(inputs.pages, page => page.node.spec.id) } },
-    );
-  },
-});
+/**
+ * The id of the app's Customize page (`/customize`), which the Agents, Skills
+ * and Models tabs attach to — the way upstream's
+ * `catalog-unprocessed-entities` attaches to `page:devtools`, and muster's
+ * Connectors and Workflows tabs attach to the same page. The page routes each
+ * tab's bare path to its own list screen and everything deeper to the tab's
+ * router here, so these routers hold the detail, create and edit pages,
+ * never the lists. Attached in code rather than in `app.extensions`, which
+ * deployments replace wholesale.
+ */
+const CUSTOMIZE_PAGE = 'page:app/agent-shell-customize';
 
-// The "Agents" tab. Its content is the agent list, one agent's details
-// (`/agent-platform/agents/<installation>/<namespace>/<name>`) and the create
-// flow (`/agent-platform/agents/new`, `.../new/skills`, `.../new/tools` and
-// `.../new/review`),
-// all driven by an internal react-router in AgentsRouter.
+// The Customize screen's "Agents" tab. Its content is one agent's page
+// (`/customize/agents/<installation>/<namespace>/<name>`), its edit
+// (`…/<name>/edit`) and the create flow (`/customize/agents/new`,
+// `…/new/skills`, `…/new/tools` and `…/new/review`), all driven by an
+// internal react-router in AgentsRouter.
 //
-// Wrapped, like the Sessions tab, in the backend's cookie auth: both render
+// Wrapped, like the Sessions page, in the backend's cookie auth: both render
 // agent avatars, `<img>` loads through the agent-platform backend that the
 // browser's user cookie authenticates (see AgentPlatformCookieAuth).
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
     path: 'agents',
     title: 'Agents',
@@ -106,78 +114,29 @@ const agentsSubPage = SubPageBlueprint.make({
   },
 });
 
-// The "Sessions" tab. Read-only list of the signed-in user's kagent chat
-// sessions across the fleet, via the agent-platform-backend kagent proxy.
-//
-// The first tab (see `agentPlatformPage`), and the first tab is what a bare
-// `/agent-platform` lands on: the section is opened to pick a conversation
-// back up far more often than to look at the fleet's agents. Moving it also moves that landing page, so
-// `getTelemetryPageViewPayload` names the bare path "Sessions index".
-const sessionsSubPage = SubPageBlueprint.make({
-  name: 'sessions',
+// The Customize screen's "Skills" tab: one skill's page
+// (`/customize/skills/<owner>/<repo>[/<dir>]`), its edit and the add form.
+const skillsSubPage = SubPageBlueprint.make({
+  name: 'skills',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
-    path: 'sessions',
-    title: 'Sessions',
-    routeRef: sessionsRouteRef,
+    path: 'skills',
+    title: 'Skills',
+    routeRef: skillsRouteRef,
     loader: async () => {
-      const [{ SessionsRouter }, { AgentPlatformCookieAuth }] =
-        await Promise.all([
-          import('./components/SessionsRouter'),
-          import('./components/AgentPlatformCookieAuth'),
-        ]);
-      return (
-        <AgentPlatformCookieAuth>
-          <SessionsRouter />
-        </AgentPlatformCookieAuth>
-      );
+      const { SkillsRouter } = await import('./components/SkillsRouter');
+      return <SkillsRouter />;
     },
   },
 });
 
-// The "Usage" tab: your own agent usage over the backend's window (personal,
-// derived from kagent's stored conversations), plus the MCP tool calls on the
-// installation (every caller, from muster's Prometheus metrics) contributed by
-// the muster plugin through the `sections` input below.
-//
-// The last tab of the row, after muster's MCP Servers and Workflows (see
-// `agentPlatformPage`).
-//
-// `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
-// list/tree filter inputs — so muster can attach its section by node id
-// (`sub-page:agent-platform/usage`, input `sections`) without either plugin
-// depending on the other, exactly as it already attaches its "MCP Servers" tab
-// to `page:agent-platform`. An empty `sections` (muster not registered) hides
-// the "MCP tools" view's tab rather than leaving a hole.
-const usageSubPage = SubPageBlueprint.makeWithOverrides({
-  name: 'usage',
-  inputs: {
-    sections: createExtensionInput([coreExtensionData.reactElement]),
-  },
-  factory(originalFactory, { inputs }) {
-    return originalFactory({
-      path: 'usage',
-      title: 'Usage',
-      routeRef: usageRouteRef,
-      loader: async () => {
-        const { UsageRouter } = await import('./components/UsageRouter');
-        // Passed as the array rather than wrapped in a fragment: the router
-        // has to know whether anything was contributed at all, so it can
-        // leave the "MCP tools" tab out of the strip when nothing was.
-        const sections = inputs.sections.map(section =>
-          section.get(coreExtensionData.reactElement),
-        );
-        return <UsageRouter sections={sections} />;
-      },
-    });
-  },
-});
-
-// The "Models" tab: the kagent ModelConfigs agents run on — list, create,
-// edit, delete — and the serving layer beneath them, as a second-level tab row
-// (Model configs, Serving, GPU capacity) driven by ModelsRouter. A
-// platform-admin capability, placed after the tabs everyone uses.
+// The Customize screen's "Models" tab: one model's page
+// (`/customize/models/<installation>/<namespace>/<name>`), its edit, the
+// create flow and Model hosting (`/customize/models/hosting/…`), the serving
+// layer beneath the models, driven by ModelsRouter.
 const modelsSubPage = SubPageBlueprint.make({
   name: 'models',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
     path: 'models',
     title: 'Models',
@@ -189,20 +148,151 @@ const modelsSubPage = SubPageBlueprint.make({
   },
 });
 
-// The section's installation scope selector, in the page header next to the
-// tabs' own actions: "All installations" (home first) or
-// one pinned installation, for the three tabs above and the muster plugin's
-// "MCP Servers" tab alike. A header action rather than part of a tab, so it
-// stays put while the tabs change underneath it; the scope itself lives in the
-// gs plugin (`useInstallationScope`), URL `?installation=` plus localStorage.
-// Renders nothing on a portal that knows one installation.
-const installationScopeHeaderAction = PluginHeaderActionBlueprint.make({
-  name: 'installation-scope',
+// The Customize screen's Workspaces tab: the create flow
+// (`/customize/workspaces/new`), one workspace's page
+// (`/customize/workspaces/<installation>/<organization>/<name>`) and its edit
+// (`…/<name>/edit`), driven by WorkspacesRouter.
+const workspacesSubPage = SubPageBlueprint.make({
+  name: 'workspaces',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
+    path: 'workspaces',
+    title: 'Workspaces',
+    routeRef: workspacesRouteRef,
     loader: async () => {
-      const { InstallationScopeHeaderControl } =
-        await import('./components/InstallationScopeHeaderControl');
-      return <InstallationScopeHeaderControl />;
+      const { WorkspacesRouter } =
+        await import('./components/WorkspacesRouter');
+      return <WorkspacesRouter />;
+    },
+  },
+});
+
+// The Customize screen's Toolchains tab: the create flow
+// (`/customize/toolchains/new`) and one toolchain's page
+// (`/customize/toolchains/<installation>/<name>`), driven by
+// ToolchainsRouter.
+const toolchainsSubPage = SubPageBlueprint.make({
+  name: 'toolchains',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
+  params: {
+    path: 'toolchains',
+    title: 'Toolchains',
+    routeRef: toolchainsRouteRef,
+    loader: async () => {
+      const { ToolchainsRouter } =
+        await import('./components/ToolchainsRouter');
+      return <ToolchainsRouter />;
+    },
+  },
+});
+
+// The rail's Sessions (`/sessions`): the signed-in user's kagent chat sessions
+// across the fleet, via the agent-platform-backend kagent proxy, and one
+// session's page.
+//
+// Shell only (`if: AGENT_SHELL_ON`), like every page of the Agent Platform:
+// it exists in the agent shell and nowhere else. Where the shell is not
+// available (`app.portals.agentPlatform` off and no personal opt-in) the page
+// is not mounted at all — no route, no classic-chrome rendering — so the
+// classic portal carries nothing of the Agent Platform. The predicate is
+// evaluated once, at app start, like the shell's own extensions.
+//
+// Enabled by default, like every page here: `if` already gates it, and an
+// opt-in entry would be silently dropped by a deployment that replaces
+// `app.extensions` wholesale.
+const sessionsPage = PageBlueprint.make({
+  name: 'sessions',
+  if: AGENT_SHELL_ON,
+  params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the Sessions page's route definition
+    path: '/sessions',
+    routeRef: sessionsRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const [
+        { SessionsRouter },
+        { AgentPlatformCookieAuth },
+        { ShellPageRoot },
+      ] = await Promise.all([
+        import('./components/SessionsRouter'),
+        import('./components/AgentPlatformCookieAuth'),
+        import('./components/ShellPageRoot'),
+      ]);
+      return (
+        <ShellPageRoot title="Sessions">
+          <AgentPlatformCookieAuth>
+            <SessionsRouter />
+          </AgentPlatformCookieAuth>
+        </ShellPageRoot>
+      );
+    },
+  },
+});
+
+// The rail's Usage (`/usage`): an Overview of the platform's health and
+// headline trends (every caller, the bare path), the Cost view (every
+// caller's money), the Connectors view (every caller's tool calls to the
+// connectors, from muster's Prometheus metrics, contributed by the muster
+// plugin through the `sections` input below), and your own agent usage
+// (personal, derived from kagent's stored conversations).
+//
+// `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
+// list/tree filter inputs — so muster can attach its section by node id
+// (`page:agent-platform/usage`, input `sections`) without either plugin
+// depending on the other, exactly as it attaches its Connectors tab to the
+// Customize page. An empty `sections` (muster not registered) means no
+// Connectors view is offered. Shell only and enabled by default, like
+// `sessionsPage`.
+const usagePage = PageBlueprint.makeWithOverrides({
+  name: 'usage',
+  if: AGENT_SHELL_ON,
+  inputs: {
+    sections: createExtensionInput([coreExtensionData.reactElement]),
+  },
+  factory(originalFactory, { inputs }) {
+    return originalFactory({
+      // eslint-disable-next-line giantswarm/no-restricted-syntax -- the Usage page's route definition
+      path: '/usage',
+      routeRef: usageRouteRef,
+      noHeader: true,
+      loader: async () => {
+        const [{ UsageRouter }, { ShellPageRoot }] = await Promise.all([
+          import('./components/UsageRouter'),
+          import('./components/ShellPageRoot'),
+        ]);
+        // Passed as the array rather than wrapped in a fragment: the router
+        // has to know whether anything was contributed at all, so it offers
+        // the Connectors view only when something was.
+        const sections = inputs.sections.map(section =>
+          section.get(coreExtensionData.reactElement),
+        );
+        return (
+          <ShellPageRoot title="Usage">
+            <UsageRouter sections={sections} />
+          </ShellPageRoot>
+        );
+      },
+    });
+  },
+});
+
+// The shell's minimal "Profile and settings" page (`/profile`): who is signed
+// in, the installations the portal talks to, and Sign out — the rail's
+// profile menu links here, so it no longer jumps into the classic Settings
+// chrome. The classic `/settings` remains reachable through the page's
+// explicit "All portal settings" link. Shell only and enabled by default,
+// like `sessionsPage`.
+const profilePage = PageBlueprint.make({
+  name: 'profile',
+  if: AGENT_SHELL_ON,
+  params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the profile page's route definition
+    path: '/profile',
+    routeRef: profileRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const { ProfilePage } = await import('./components/ProfilePage');
+      return <ProfilePage />;
     },
   },
 });
@@ -247,15 +337,123 @@ const modelManagerApi = ApiBlueprint.make({
     }),
 });
 
+// Create cluster and Delete on the gs plugin's Clusters pages, through
+// cluster-manager over muster as the signed-in person (giantswarm/backstage#2624).
+//
+// **The contract, a cross-plugin coupling by string:** the target node is
+// `page:gs/clusters`, its inputs `listActions` (beside the list's header) and
+// `clusterActions` (beside a cluster's header, reading the cluster with gs's
+// `useClusterPageTarget`), declared there with `PageBlueprint.makeWithOverrides`
+// + `createExtensionInput([coreExtensionData.reactElement])`. Both ends carry
+// this comment; changing either without the other makes the actions silently
+// vanish. Each renders nothing where no installation's cluster-manager offers
+// its tool.
+const createClusterAction = createExtension({
+  kind: 'clusters-action',
+  name: 'create-cluster',
+  attachTo: { id: 'page:gs/clusters', input: 'listActions' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { CreateClusterAction } =
+            await import('./components/ClusterActions');
+          return <CreateClusterAction />;
+        }),
+      ),
+    ];
+  },
+});
+
+const deleteClusterAction = createExtension({
+  kind: 'clusters-action',
+  name: 'delete-cluster',
+  attachTo: { id: 'page:gs/clusters', input: 'clusterActions' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { DeleteClusterAction } =
+            await import('./components/ClusterActions');
+          return <DeleteClusterAction />;
+        }),
+      ),
+    ];
+  },
+});
+
+// The Used by tab of the shell's connector page: the agents whose toolset
+// reaches the connector.
+//
+// **The contract, a cross-plugin coupling by string:** the target node is
+// `sub-page:muster/mcp-servers`, its input `usedBy` (a singleton), declared
+// there with `SubPageBlueprint.makeWithOverrides` +
+// `createExtensionInput([coreExtensionData.reactElement])`. The element reads
+// its connector with muster's `useConnectorPageTarget`. Both ends carry this
+// comment; changing either without the other makes the tab silently vanish.
+const connectorUsedBy = createExtension({
+  kind: 'connector-used-by',
+  name: 'agents',
+  attachTo: { id: 'sub-page:muster/mcp-servers', input: 'usedBy' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { ConnectorUsedBy } =
+            await import('./components/ConnectorUsedBy');
+          return <ConnectorUsedBy />;
+        }),
+      ),
+    ];
+  },
+});
+
+// The shell workflow page's "Edit with <agent>": the hand-off to the workflow
+// agent (`metaAgents.workflowManagement`).
+//
+// **The contract, a cross-plugin coupling by string:** the target node is
+// `sub-page:muster/workflows`, its input `editAction` (a singleton), declared
+// there with `SubPageBlueprint.makeWithOverrides` +
+// `createExtensionInput([coreExtensionData.reactElement])`. The element reads
+// its workflow with muster's `useWorkflowPageTarget`. Both ends carry this
+// comment; changing either without the other makes the action silently
+// vanish.
+const workflowEditAssist = createExtension({
+  kind: 'workflow-action',
+  name: 'edit-via-agent',
+  attachTo: { id: 'sub-page:muster/workflows', input: 'editAction' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { WorkflowEditAssist } =
+            await import('./components/WorkflowEditAssist');
+          return <WorkflowEditAssist />;
+        }),
+      ),
+    ];
+  },
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
-    agentPlatformPage,
-    sessionsSubPage,
+    sessionsPage,
+    usagePage,
+    profilePage,
     agentsSubPage,
+    skillsSubPage,
     modelsSubPage,
-    usageSubPage,
-    installationScopeHeaderAction,
+    workspacesSubPage,
+    toolchainsSubPage,
+    createClusterAction,
+    deleteClusterAction,
+    connectorUsedBy,
+    workflowEditAssist,
     kagentApi,
     modelManagerApi,
   ],
@@ -263,25 +461,53 @@ export const agentPlatformPlugin = createFrontendPlugin({
     root: rootRouteRef,
     agents: agentsRouteRef,
     agentDetail: agentDetailRouteRef,
+    agentEdit: agentEditRouteRef,
     newAgent: newAgentRouteRef,
     newAgentSkills: newAgentSkillsRouteRef,
     newAgentTools: newAgentToolsRouteRef,
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+    skills: skillsRouteRef,
+    newSkill: newSkillRouteRef,
+    profile: profileRouteRef,
     usage: usageRouteRef,
+    usageCost: usageCostRouteRef,
+    usageConversations: usageConversationsRouteRef,
+    usageConnectors: usageConnectorsRouteRef,
     models: modelsRouteRef,
-    modelDetail: modelDetailRouteRef,
     newModel: newModelRouteRef,
+    modelDetail: modelDetailRouteRef,
+    modelEdit: modelEditRouteRef,
     serving: servingRouteRef,
+    serveModel: serveModelRouteRef,
+    importModel: importModelRouteRef,
+    pullModel: pullModelRouteRef,
+    addModelBackend: addModelBackendRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
+    addGpuNodePool: addGpuNodePoolRouteRef,
+    modelCache: modelCacheRouteRef,
+    workspaces: workspacesRouteRef,
+    newWorkspace: newWorkspaceRouteRef,
+    workspaceDetail: workspaceDetailRouteRef,
+    workspaceEdit: workspaceEditRouteRef,
+    toolchains: toolchainsRouteRef,
+    newToolchain: newToolchainRouteRef,
+    toolchainDetail: toolchainDetailRouteRef,
   },
-  // All carry a `defaultTarget`, so they resolve without an app-config binding
-  // and are simply unbound when the target plugin is disabled. Every call site
-  // must handle `useRouteRef` returning undefined.
+  // All but `customize` and `newSession` carry a `defaultTarget`, so they
+  // resolve without an app-config binding and are simply unbound when the
+  // target plugin is disabled. `customize` and `newSession` target the app's
+  // own Customize page and home, which no plugin can name: they resolve only
+  // through the app's `bindRoutes` (packages/app/src/App.tsx) and are unbound
+  // without it. Every call site must handle `useRouteRef` returning undefined.
   externalRoutes: {
+    customize: customizeExternalRouteRef,
+    newSession: newSessionExternalRouteRef,
     musterServers: musterServersExternalRouteRef,
+    musterServer: musterServerExternalRouteRef,
     musterServerTool: musterServerToolExternalRouteRef,
+    musterWorkflowDetail: musterWorkflowDetailExternalRouteRef,
     deploymentDetails: deploymentDetailsExternalRouteRef,
     installations: installationsExternalRouteRef,
   },

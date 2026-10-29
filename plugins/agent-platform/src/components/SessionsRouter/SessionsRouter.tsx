@@ -6,11 +6,15 @@ import { AgentsDataProvider } from '../AgentsDataProvider';
 import { ServingProvider } from '../ServingProvider';
 import { SessionsIndexPage } from '../SessionsIndexPage';
 import { SessionDetailRoute } from './SessionDetailRoute';
+import { RouteRefRedirect } from '../RouteRefRedirect';
+import { sessionsRouteRef } from '../../routes';
 
 /**
- * Content of the "Sessions" tab: the fleet-wide list, and one session's detail.
+ * Content of the Sessions page (`/sessions`): the fleet-wide list, and one
+ * session's detail at `<installation>/<id>`; any other address lands on the
+ * list, its nearest valid parent.
  *
- * Mounted as the tab's content (a descendant `<Routes>`), so paths here are
+ * Mounted as the page's content (a descendant `<Routes>`), so paths here are
  * relative — no leading slash — matching AgentsRouter and muster's WorkflowsRouter.
  *
  * The providers are hoisted above the routes so both screens share one query cache
@@ -19,7 +23,7 @@ import { SessionDetailRoute } from './SessionDetailRoute';
  * avatar render immediately instead of re-querying the fleet.
  *
  * `AgentsDataProvider` requires `ModelConfigsProvider` above it, so the Sessions
- * tab pays for a fleet-wide ModelConfig list neither screen uses. It is cached,
+ * page pays for a fleet-wide ModelConfig list neither screen uses. It is cached,
  * persisted, and shared with the Agents tab, so in practice it is free.
  */
 export const SessionsRouter = () => {
@@ -33,12 +37,17 @@ export const SessionsRouter = () => {
           <AgentsDataProvider>
             <Routes>
               <Route index element={<SessionsIndexPage />} />
-              {/* Both parameters are needed to resolve a session: kagent ids are
-                  only unique within an installation. One page instance per
-                  session, see `SessionDetailRoute`. */}
+              {/* Both parameters are needed to resolve a session: kagent ids
+                  are only unique within an installation. One page instance
+                  per session, see `SessionDetailRoute`. */}
               <Route
                 path=":installation/:sessionId"
                 element={<SessionDetailRoute />}
+              />
+              {/* An address that names no session: the list. */}
+              <Route
+                path="*"
+                element={<RouteRefRedirect routeRef={sessionsRouteRef} />}
               />
             </Routes>
           </AgentsDataProvider>

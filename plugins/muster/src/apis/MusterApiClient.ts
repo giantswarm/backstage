@@ -8,9 +8,27 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import {
+  getSignedInConfig,
+  hasIdTokenLifetimeLeft,
+  idTokenExpiresAt,
+  isIdTokenExpired,
+} from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { isHomeInstallation, MusterTokenMintError } from './installationToken';
+import {
+  isHomeInstallation,
+  MusterTokenMintError,
+  sessionExpiredError,
+} from './installationToken';
+import {
+  MUSTER_TOKEN_EXPIRED_TEXT,
+  MUSTER_TOKEN_REASONS,
+  readJwtClaims,
+} from '@giantswarm/backstage-plugin-gs-common';
+import {
+  MusterUnauthorizedError,
+  unauthorizedBodyOf,
+} from './musterUnauthorized';
 import {
   AuthStatusResponse,
   FilterCapabilitiesOptions,
@@ -21,16 +39,18 @@ import {
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
+  MusterAnswerCutError,
   MusterApi,
   MusterAuthProvidersApi,
   MusterInstallationInfo,
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
+  SignInTarget,
+  MusterToolProgress,
   ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
-  WorkflowGetResponse,
   WorkflowListResponse,
   McpUsage,
   WorkflowStats,
@@ -80,6 +100,76 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
  */
 const MAIN_LOGIN_PROVIDER = 'main';
 
+/**
+ * A token with less than this share of its lifetime (`exp` − `iat`) left is
+ * refreshed before it is sent: about 7 of a 30-minute Dex token's minutes.
+ * muster ends the person's session when the bearer it was opened with
+ * expires, so a call must never go out with one about to; Backstage's own
+ * refresh comes only in the last 3 minutes, and a token the broker cached
+ * can be closer still (giantswarm/giantswarm#38779).
+ */
+const MUSTER_TOKEN_REFRESH_BELOW = 0.25;
+
+/** What a refresh ahead of expiry asks for: half the token's lifetime. */
+const MUSTER_TOKEN_MIN_LIFETIME_LEFT = 0.5;
+
+/**
+ * What a refresh after muster refused the token asks for: a token newer than
+ * the one refused, whatever that one's `exp` says.
+ */
+const MUSTER_TOKEN_FRESH = 1;
+
+/**
+ * How long after a refresh that came back no better the next one waits. A
+ * broker can hand out a token it cached, and then every call would ask
+ * again; a refused token is refreshed regardless.
+ */
+const MUSTER_TOKEN_REFRESH_INTERVAL_MS = 30_000;
+
+/** How a request gets its token (see `resolveToken`). */
+type TokenOptions = {
+  /** A background read: never asks the person to sign in. */
+  silent?: boolean;
+  /**
+   * muster-backend refused the token just sent (none, when it was missing):
+   * get a newer one.
+   */
+  refused?: { token?: string };
+};
+
+/**
+ * The token an installation's calls are sent with after a refresh, while it
+ * lasts. The auth APIs keep a refreshed token apart from the session's, which
+ * stays what a plain read hands out until its last minutes, so the client
+ * keeps it for every call rather than one in each refresh interval.
+ */
+type KeptToken = { token: string; refreshedAt: number };
+
+/** Whichever of two JWTs expires later; the first when neither says. */
+function laterExpiring(a: string, b: string): string {
+  const aExpiresAt = idTokenExpiresAt(a)?.getTime() ?? Infinity;
+  const bExpiresAt = idTokenExpiresAt(b)?.getTime() ?? -Infinity;
+  return aExpiresAt >= bExpiresAt ? a : b;
+}
+
+/**
+ * Whether two JWTs were issued to the same person by the same issuer: a kept
+ * token stands in only for its own holder's, never across a sign-out and a
+ * sign-in as someone else.
+ */
+function sameHolder(a: string, b: string): boolean {
+  const aClaims = readJwtClaims(a);
+  const bClaims = readJwtClaims(b);
+  return (
+    typeof aClaims?.sub === 'string' &&
+    aClaims.sub === bClaims?.sub &&
+    aClaims.iss === bClaims?.iss
+  );
+}
+
+/** A muster-backend answer; a failed one with its body, read once. */
+type Answer = { response: Response; errorData?: unknown };
+
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every(entry => typeof entry === 'string')
@@ -111,6 +201,8 @@ export class MusterApiClient implements MusterApi {
    * not change while the page lives; a failed read is not kept.
    */
   private installationsPromise?: Promise<MusterInstallationsResponse>;
+  /** The refreshed token of each installation, while it lasts. */
+  private readonly keptTokens = new Map<string, KeptToken>();
 
   /**
    * `kubernetesApi` + `kubernetesAuthProvidersApi` mint the per-installation
@@ -140,12 +232,6 @@ export class MusterApiClient implements MusterApi {
 
   async listWorkflows(): Promise<WorkflowListResponse> {
     return this.get<WorkflowListResponse>('/workflows');
-  }
-
-  async getWorkflow(name: string): Promise<WorkflowGetResponse> {
-    return this.get<WorkflowGetResponse>(
-      `/workflows/${encodeURIComponent(name)}`,
-    );
   }
 
   async listExecutions(
@@ -192,11 +278,22 @@ export class MusterApiClient implements MusterApi {
   }
 
   async getMcpUsage(
-    options: { installation?: string; hours?: number } = {},
+    options: {
+      installation?: string;
+      hours?: number;
+      servers?: readonly string[];
+      tool?: string;
+    } = {},
   ): Promise<McpUsage> {
     const searchParams = new URLSearchParams();
     if (options.hours !== undefined) {
       searchParams.set('hours', String(options.hours));
+    }
+    for (const server of options.servers ?? []) {
+      searchParams.append('server', server);
+    }
+    if (options.tool !== undefined) {
+      searchParams.set('tool', options.tool);
     }
     const query = searchParams.toString();
     return this.get<McpUsage>(
@@ -298,28 +395,112 @@ export class MusterApiClient implements MusterApi {
     return this.post<unknown>('/call', { name, arguments: args }, installation);
   }
 
+  async callToolWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<unknown> {
+    const answer = await this.send(
+      '/call/progress',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, arguments: args }),
+        signal: options.signal,
+      },
+      options.installation,
+    );
+    const { response } = answer;
+    if (!response.ok || !response.body) {
+      return this.handleResponse<unknown>(answer, options.installation);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffered += decoder.decode(value, { stream: true });
+      let newline = buffered.indexOf('\n');
+      while (newline >= 0) {
+        const line = buffered.slice(0, newline).trim();
+        buffered = buffered.slice(newline + 1);
+        newline = buffered.indexOf('\n');
+        if (line === '') {
+          continue;
+        }
+        const event = JSON.parse(line) as
+          | ({ type: 'progress' } & MusterToolProgress)
+          | { type: 'result'; result: unknown }
+          | {
+              type: 'error';
+              error: { name: string; message: string; details?: string[] };
+            };
+        switch (event.type) {
+          case 'progress':
+            options.onProgress({
+              progress: event.progress,
+              total: event.total,
+              message: event.message,
+            });
+            break;
+          case 'result':
+            await reader.cancel();
+            return event.result;
+          case 'error': {
+            await reader.cancel();
+            if (MUSTER_TOKEN_EXPIRED_TEXT.test(event.error.message)) {
+              throw sessionExpiredError(options.installation);
+            }
+            const error = new Error(event.error.message);
+            error.name = event.error.name;
+            if (event.error.details) {
+              (error as Error & { details: string[] }).details =
+                event.error.details;
+            }
+            throw error;
+          }
+          default:
+            break;
+        }
+      }
+    }
+    throw new MusterAnswerCutError(
+      `the answer to ${name} ended before its result arrived`,
+    );
+  }
+
   async getAuthStatus(installation?: string): Promise<AuthStatusResponse> {
-    return this.get<AuthStatusResponse>('/auth/status', installation);
+    return this.get<AuthStatusResponse>('/auth/status', installation, {
+      silent: true,
+    });
   }
 
   async signInServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult> {
     return this.post<ServerSignInResult>(
       '/auth/login',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }
 
   async signOutServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult> {
     return this.post<ServerSignOutResult>(
       '/auth/logout',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }
@@ -327,7 +508,7 @@ export class MusterApiClient implements MusterApi {
   /**
    * Resolve (and if needed mint, via the single main re-login) the token for
    * the target installation's muster, the same way every request does. Unlike
-   * getAuthHeaders this reports success/failure instead of throwing, so the UI
+   * a request this reports success/failure instead of throwing, so the UI
    * can re-run the mint from a button and re-probe afterwards.
    */
   async signIn(installation?: string): Promise<boolean> {
@@ -428,13 +609,6 @@ export class MusterApiClient implements MusterApi {
     return mcpConfig?.getOptionalString('authProvider');
   }
 
-  private async getAuthHeaders(
-    installation?: string,
-  ): Promise<Record<string, string>> {
-    const token = await this.resolveToken(installation);
-    return token ? { [MUSTER_AUTH_HEADER]: token } : {};
-  }
-
   /**
    * The bearer token for the target installation's muster, or undefined when
    * the installation needs none.
@@ -447,25 +621,142 @@ export class MusterApiClient implements MusterApi {
    *   kagent/model-manager path). Its `authProvider` config is not consulted
    *   beyond "requires a token".
    *
+   * A token with less than {@link MUSTER_TOKEN_REFRESH_BELOW} of its lifetime
+   * left is refreshed first, and with `refused` -- muster-backend refused the
+   * token just sent -- it always is. The refreshed token is kept and sent with
+   * every call to the installation while it lasts (see {@link lastingToken}).
+   * A refresh never asks the person to sign in.
+   *
+   * No token is ever sent past its `exp`: the auth API refreshes the session
+   * before the ID token lapses (or, when the refresh fails, asks the person
+   * to sign in again), so a token that is still expired here means the
+   * session is gone.
+   *
    * Throws {@link MusterTokenMintError} when the token cannot be obtained, so
    * callers can tell "no token could be minted" from muster's own 401.
+   *
+   * `silent` answers from the current portal session only: it is refreshed
+   * quietly if it can be, and a gone session fails as session-expired before
+   * anything could open the interactive login dialog (the mint, the fetch's
+   * own identity header). Once the quiet check holds a token, the session is
+   * live and the steps after it answer without asking either.
    */
   private async resolveToken(
     installation?: string,
+    options: TokenOptions = {},
   ): Promise<string | undefined> {
     const required = await this.requiresToken(installation);
     if (!required) {
       return undefined;
     }
+    if (options.silent && this.authProvidersApi) {
+      const { token } = await this.authProvidersApi.getCredentials(
+        required.authProvider,
+        { optional: true },
+      );
+      if (!token || isIdTokenExpired(token)) {
+        throw sessionExpiredError(installation);
+      }
+    }
+    let token: string | undefined;
+    if (options.refused) {
+      token = await this.currentToken(
+        installation,
+        required.authProvider,
+        MUSTER_TOKEN_FRESH,
+      );
+      // A refused token is never kept; a newer one stands in for it.
+      if (token === undefined || token === options.refused.token) {
+        this.keptTokens.delete(installation ?? '');
+      } else {
+        this.keptTokens.set(installation ?? '', {
+          token,
+          refreshedAt: Date.now(),
+        });
+      }
+    } else {
+      token = await this.currentToken(installation, required.authProvider);
+      if (token !== undefined) {
+        token = await this.lastingToken(
+          installation,
+          required.authProvider,
+          token,
+        );
+      }
+    }
+    if (token !== undefined && isIdTokenExpired(token)) {
+      throw sessionExpiredError(installation);
+    }
+    return token;
+  }
+
+  /**
+   * `token`, or one that lasts longer when it has less than
+   * {@link MUSTER_TOKEN_REFRESH_BELOW} of its lifetime left: the token kept
+   * from the last refresh while it has more, else a refresh to
+   * {@link MUSTER_TOKEN_MIN_LIFETIME_LEFT}. A refresh that came back no
+   * better is not asked again for {@link MUSTER_TOKEN_REFRESH_INTERVAL_MS};
+   * meanwhile the later-expiring of the two is sent.
+   */
+  private async lastingToken(
+    installation: string | undefined,
+    authProvider: string,
+    token: string,
+  ): Promise<string> {
+    if (hasIdTokenLifetimeLeft(token, MUSTER_TOKEN_REFRESH_BELOW)) {
+      return token;
+    }
+    const key = installation ?? '';
+    const kept = this.keptTokens.get(key);
+    const keptToken =
+      kept && sameHolder(kept.token, token) ? kept.token : undefined;
+    if (
+      keptToken &&
+      hasIdTokenLifetimeLeft(keptToken, MUSTER_TOKEN_REFRESH_BELOW)
+    ) {
+      return keptToken;
+    }
+    if (
+      kept &&
+      keptToken &&
+      Date.now() - kept.refreshedAt < MUSTER_TOKEN_REFRESH_INTERVAL_MS
+    ) {
+      return laterExpiring(keptToken, token);
+    }
+    const refreshed =
+      (await this.currentToken(
+        installation,
+        authProvider,
+        MUSTER_TOKEN_MIN_LIFETIME_LEFT,
+      )) ?? token;
+    const best = laterExpiring(refreshed, token);
+    this.keptTokens.set(key, { token: best, refreshedAt: Date.now() });
+    return best;
+  }
+
+  /**
+   * The installation's token as its source hands it out; with
+   * `minLifetimeLeft`, one refreshed to at least that share of its lifetime
+   * where the source can (else the one it has). Undefined only when there is
+   * no source at all.
+   */
+  private async currentToken(
+    installation: string | undefined,
+    authProvider: string,
+    minLifetimeLeft?: number,
+  ): Promise<string | undefined> {
     if (installation && !(await this.isHomeInstallation(installation))) {
-      return this.mintInstallationToken(installation);
+      return this.mintInstallationToken(installation, minLifetimeLeft);
     }
     if (!this.authProvidersApi) {
       return undefined;
     }
-    const { token } = await this.authProvidersApi.getCredentials(
-      required.authProvider,
-    );
+    const { token } =
+      minLifetimeLeft === undefined
+        ? await this.authProvidersApi.getCredentials(authProvider)
+        : await this.authProvidersApi.getCredentials(authProvider, {
+            minLifetimeLeft,
+          });
     if (!token) {
       // The main-login token is the only source here, so its absence means the
       // portal session is gone (or the re-login was declined).
@@ -502,12 +793,16 @@ export class MusterApiClient implements MusterApi {
     }
   }
 
-  private async mintInstallationToken(installation: string): Promise<string> {
+  private async mintInstallationToken(
+    installation: string,
+    minLifetimeLeft?: number,
+  ): Promise<string> {
     try {
       return await getInstallationOidcToken(
         this.kubernetesApi!,
         this.kubernetesAuthProvidersApi!,
         installation,
+        minLifetimeLeft === undefined ? {} : { minLifetimeLeft },
       );
     } catch (error) {
       throw MusterTokenMintError.fromMintFailure(installation, error);
@@ -519,11 +814,13 @@ export class MusterApiClient implements MusterApi {
    * several are configured (appended as `?installation=`); it is preserved
    * alongside any query string already present in `path`.
    */
-  private async get<T>(path: string, installation?: string): Promise<T> {
-    const url = await this.buildUrl(path, installation);
-    const headers = await this.getAuthHeaders(installation);
-    const response = await this.fetchApi.fetch(url, { headers });
-    return this.handleResponse<T>(response);
+  private async get<T>(
+    path: string,
+    installation?: string,
+    options: TokenOptions = {},
+  ): Promise<T> {
+    const answer = await this.send(path, {}, installation, options);
+    return this.handleResponse<T>(answer, installation);
   }
 
   /**
@@ -535,17 +832,69 @@ export class MusterApiClient implements MusterApi {
     body: unknown,
     installation?: string,
   ): Promise<T> {
+    const answer = await this.send(
+      path,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      installation,
+    );
+    return this.handleResponse<T>(answer, installation);
+  }
+
+  /**
+   * Send a request with the installation's token. When muster-backend
+   * refuses the token (a 401 whose reason a fresh token can fix: missing,
+   * expired, rejected), the token is refreshed and the request is sent once
+   * more with the new one -- never a third time, and never with the token
+   * that was refused. A refused token stops the call before any tool runs
+   * (muster-backend checks it first, muster at its transport), so sending a
+   * write again cannot run it twice. A 401 asking for a server's sign-in is
+   * the page's to act on and goes back as it is.
+   */
+  private async send(
+    path: string,
+    init: RequestInit,
+    installation: string | undefined,
+    options: TokenOptions = {},
+  ): Promise<Answer> {
     const url = await this.buildUrl(path, installation);
-    const headers = {
-      ...(await this.getAuthHeaders(installation)),
-      'Content-Type': 'application/json',
+    const attempt = async (token: string | undefined): Promise<Answer> => {
+      const response = await this.fetchApi.fetch(url, {
+        ...init,
+        headers: {
+          ...(token ? { [MUSTER_AUTH_HEADER]: token } : {}),
+          ...(init.headers as Record<string, string> | undefined),
+        },
+      });
+      if (response.ok) {
+        return { response };
+      }
+      return {
+        response,
+        errorData: await response.json().catch(() => ({})),
+      };
     };
-    const response = await this.fetchApi.fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
+
+    const token = await this.resolveToken(installation, options);
+    const first = await attempt(token);
+    if (first.response.status !== 401) {
+      return first;
+    }
+    const { reason } = unauthorizedBodyOf(first.errorData);
+    if (!reason || !MUSTER_TOKEN_REASONS.includes(reason)) {
+      return first;
+    }
+    const refreshed = await this.resolveToken(installation, {
+      ...options,
+      refused: { token },
     });
-    return this.handleResponse<T>(response);
+    if (refreshed === undefined || refreshed === token) {
+      return first;
+    }
+    return attempt(refreshed);
   }
 
   private async buildUrl(path: string, installation?: string): Promise<string> {
@@ -557,23 +906,33 @@ export class MusterApiClient implements MusterApi {
     return url.toString();
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(
+    { response, errorData }: Answer,
+    installation: string | undefined,
+  ): Promise<T> {
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
       const { message, details } =
         (errorData as { error?: { message?: string; details?: unknown } })
           ?.error ?? {};
-      const error = new Error(
-        message ?? `Muster request failed with status ${response.status}`,
-      );
-      if (response.status === 401) error.name = 'UnauthorizedError';
+      const { reason, server } = unauthorizedBodyOf(errorData);
+      if (
+        reason === 'token_expired' ||
+        (message && MUSTER_TOKEN_EXPIRED_TEXT.test(message))
+      ) {
+        throw sessionExpiredError(installation);
+      }
+      const text =
+        message ?? `Muster request failed with status ${response.status}`;
+      const error: Error =
+        response.status === 401
+          ? new MusterUnauthorizedError(text, reason, server, installation)
+          : Object.assign(new Error(text), { status: response.status });
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 503) error.name = 'ServiceUnavailableError';
-      // The status stays with it: a 502, 503 or 504 is the portal's edge
-      // answering in the backend's place, and a caller that wrote something
-      // cannot tell from it how far the write got.
-      (error as Error & { status: number }).status = response.status;
+      // The status stays with it (above): a 502, 503 or 504 is the portal's
+      // edge answering in the backend's place, and a caller that wrote
+      // something cannot tell from it how far the write got.
       // A tool-level error's further text blocks (gs-node's MusterToolError
       // `details`) stay with it: cluster-manager's structured refusal rides there.
       if (isStringArray(details)) {

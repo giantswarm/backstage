@@ -8,9 +8,11 @@ import {
 import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { Section } from '../../UI';
-import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
-import { findTargetClusterName } from '../../../utils/findTargetClusterName';
-import { findKustomizationSource } from '../../../utils/findKustomizationSource';
+import {
+  InventoryOwner,
+  KustomizationTreeBuilder,
+} from '../utils/KustomizationTreeBuilder';
+import { ParentSection } from '../ParentSection';
 
 function findImageRepository(
   imagePolicy: ImagePolicy,
@@ -77,17 +79,17 @@ function findSourceGitRepository(
 type ImagePolicyDetailsProps = {
   imagePolicy: ImagePolicy;
   parentImageRepository?: ImageRepository;
-  parentKustomization?: ReturnType<
-    KustomizationTreeBuilder['findParentKustomization']
-  >;
-  parentKustomizationSource?: GitRepository | OCIRepository;
+  parent?: InventoryOwner | null;
+  allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
 };
 
 const ImagePolicyDetails = ({
   imagePolicy,
   parentImageRepository,
-  parentKustomization,
-  parentKustomizationSource,
+  parent,
+  allGitRepositories,
+  allOCIRepositories,
 }: ImagePolicyDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -102,19 +104,11 @@ const ImagePolicyDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentKustomizationSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
+      />
 
       {parentImageRepository ? (
         <Section heading="ImageRepository">
@@ -134,17 +128,17 @@ const ImagePolicyDetails = ({
 type ImageRepositoryDetailsProps = {
   imageRepository: ImageRepository;
   childImagePolicies: ImagePolicy[];
-  parentKustomization?: ReturnType<
-    KustomizationTreeBuilder['findParentKustomization']
-  >;
-  parentKustomizationSource?: GitRepository | OCIRepository;
+  parent?: InventoryOwner | null;
+  allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
 };
 
 const ImageRepositoryDetails = ({
   imageRepository,
   childImagePolicies,
-  parentKustomization,
-  parentKustomizationSource,
+  parent,
+  allGitRepositories,
+  allOCIRepositories,
 }: ImageRepositoryDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -159,19 +153,11 @@ const ImageRepositoryDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentKustomizationSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
+      />
 
       {childImagePolicies.length > 0 ? (
         <Section heading="ImagePolicies">
@@ -196,17 +182,17 @@ const ImageRepositoryDetails = ({
 type ImageUpdateAutomationDetailsProps = {
   imageUpdateAutomation: ImageUpdateAutomation;
   sourceGitRepository?: GitRepository;
-  parentKustomization?: ReturnType<
-    KustomizationTreeBuilder['findParentKustomization']
-  >;
-  parentKustomizationSource?: GitRepository | OCIRepository;
+  parent?: InventoryOwner | null;
+  allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
 };
 
 const ImageUpdateAutomationDetails = ({
   imageUpdateAutomation,
   sourceGitRepository,
-  parentKustomization,
-  parentKustomizationSource,
+  parent,
+  allGitRepositories,
+  allOCIRepositories,
 }: ImageUpdateAutomationDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -221,19 +207,11 @@ const ImageUpdateAutomationDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentKustomizationSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
+      />
 
       {sourceGitRepository ? (
         <Section heading="Source">
@@ -255,6 +233,7 @@ type ImageAutomationDetailsProps = {
   allImagePolicies: ImagePolicy[];
   allImageRepositories: ImageRepository[];
   allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
   treeBuilder?: KustomizationTreeBuilder;
 };
 
@@ -263,6 +242,7 @@ export const ImageAutomationDetails = ({
   allImagePolicies,
   allImageRepositories,
   allGitRepositories,
+  allOCIRepositories,
   treeBuilder,
 }: ImageAutomationDetailsProps) => {
   if (resource instanceof ImagePolicy) {
@@ -270,17 +250,15 @@ export const ImageAutomationDetails = ({
       resource,
       allImageRepositories,
     );
-    const parentKustomization = treeBuilder?.findParentKustomization(resource);
-    const parentKustomizationSource = parentKustomization
-      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
-      : undefined;
+    const parent = treeBuilder?.findParent(resource);
 
     return (
       <ImagePolicyDetails
         imagePolicy={resource}
         parentImageRepository={parentImageRepository}
-        parentKustomization={parentKustomization}
-        parentKustomizationSource={parentKustomizationSource}
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
       />
     );
   }
@@ -290,17 +268,15 @@ export const ImageAutomationDetails = ({
       resource,
       allImagePolicies,
     );
-    const parentKustomization = treeBuilder?.findParentKustomization(resource);
-    const parentKustomizationSource = parentKustomization
-      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
-      : undefined;
+    const parent = treeBuilder?.findParent(resource);
 
     return (
       <ImageRepositoryDetails
         imageRepository={resource}
         childImagePolicies={childImagePolicies}
-        parentKustomization={parentKustomization}
-        parentKustomizationSource={parentKustomizationSource}
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
       />
     );
   }
@@ -310,17 +286,15 @@ export const ImageAutomationDetails = ({
       resource,
       allGitRepositories,
     );
-    const parentKustomization = treeBuilder?.findParentKustomization(resource);
-    const parentKustomizationSource = parentKustomization
-      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
-      : undefined;
+    const parent = treeBuilder?.findParent(resource);
 
     return (
       <ImageUpdateAutomationDetails
         imageUpdateAutomation={resource}
         sourceGitRepository={sourceGitRepository}
-        parentKustomization={parentKustomization}
-        parentKustomizationSource={parentKustomizationSource}
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
       />
     );
   }

@@ -13,13 +13,16 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 const agent = new Agent(
   {
-    apiVersion: 'kagent.dev/v1alpha3',
-    kind: 'AgentTemplate',
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'Agent',
     metadata: { name: 'pr-reviewer', namespace: 'kagent' },
     spec: {
-      tools: [
-        { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
-      ],
+      harnessRef: { name: 'kagent' },
+      template: {
+        tools: [
+          { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
+        ],
+      },
     },
   } as never,
   'gazelle',
@@ -28,7 +31,7 @@ const agent = new Agent(
 function carrier(toolset?: string) {
   return new RemoteMCPServer(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'RemoteMCPServer',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {
@@ -63,6 +66,22 @@ const PENDING = query({});
 describe('useAgentToolset', () => {
   beforeEach(() => mockUseResources.mockReset());
 
+  // The agent page reads it before its early returns, while the agent may
+  // not be read yet.
+  it('reads nothing and answers undefined without an agent', () => {
+    mockUseResources.mockReturnValue({ resources: [], queries: [] });
+
+    const { result } = renderHook(() => useAgentToolset(undefined));
+
+    expect(mockUseResources).toHaveBeenCalledWith(
+      '',
+      RemoteMCPServer,
+      { '': { namespace: undefined } },
+      { enableDiscovery: false, enabled: false },
+    );
+    expect(result.current).toBeUndefined();
+  });
+
   it('reads the carrier RemoteMCPServers of the agent’s own namespace', () => {
     mockUseResources.mockReturnValue({
       resources: [carrier('preset:read-only')],
@@ -75,7 +94,7 @@ describe('useAgentToolset', () => {
       'gazelle',
       RemoteMCPServer,
       { gazelle: { namespace: 'kagent' } },
-      { enableDiscovery: false },
+      { enableDiscovery: false, enabled: true },
     );
     expect(result.current).toEqual({
       declared: {

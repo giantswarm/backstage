@@ -2,7 +2,13 @@ import { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
-import { MusterApi, musterApiRef, MusterTokenMintError } from '../../apis';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  MusterApi,
+  musterApiRef,
+  MusterTokenMintError,
+  sessionExpiredError,
+} from '../../apis';
 import {
   MusterInstance,
   MusterInstanceContext,
@@ -13,6 +19,7 @@ import {
   unreachableFailure,
   useMusterSession,
 } from './useMusterSession';
+import { sessionGateCopy } from './sessionCopy';
 
 const MUSTER_401 =
   'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): {"error":"invalid_token","error_description":"Token validation failed"}';
@@ -35,6 +42,7 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     mcpServers: [],
     workflows: [],
     isLoading: false,
+    isLoadingWorkflows: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
     ...overrides,
@@ -379,6 +387,23 @@ describe('classifySessionFailure', () => {
         'golem',
       ),
     ).toEqual({ kind: 'mint-failed', message: 'Could not mint' });
+  });
+
+  it('offers the sign-in for a lapsed token, in plain words', () => {
+    const failure = classifySessionFailure(
+      sessionExpiredError('gazelle'),
+      'gazelle',
+    );
+    expect(failure).toEqual({
+      kind: 'session-expired',
+      message: SESSION_EXPIRED_MESSAGE,
+    });
+    expect(
+      sessionGateCopy({ authenticated: false, pending: false, failure }),
+    ).toEqual({
+      sentence: SESSION_EXPIRED_MESSAGE,
+      action: 'Sign in again',
+    });
   });
 
   it('treats an auth error from the proxy as muster rejecting the token', () => {

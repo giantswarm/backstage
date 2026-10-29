@@ -7,15 +7,26 @@ import { MimirMetricSample } from '../../apis/mimir/types';
  * - `not-reported`: the cluster exports the condition metric, but there is no
  *   series for this object, so the controller has not written the condition
  *   (yet).
- * - `not-available`: the cluster exports no series of the condition metric at
- *   all, typically because it runs an observability-bundle that predates it.
+ * - `not-available`: the condition can't be shown. `cause` says why: the
+ *   query failed (`load-failed`), or the cluster exports no series of the
+ *   condition metric at all because its observability-bundle predates it
+ *   (`not-exported`).
  * Neither may ever be rendered as healthy.
  */
 export type ConditionState =
   | { status: 'true'; reason?: string }
   | { status: 'false'; reason?: string }
   | { status: 'not-reported' }
-  | { status: 'not-available' };
+  | { status: 'not-available'; cause?: 'load-failed' | 'not-exported' };
+
+const loadFailed: ConditionState = {
+  status: 'not-available',
+  cause: 'load-failed',
+};
+const notExported: ConditionState = {
+  status: 'not-available',
+  cause: 'not-exported',
+};
 
 export interface GatewayListener {
   name: string;
@@ -49,6 +60,8 @@ export interface HttpRouteParent {
   name: string;
   /** Empty when the parentRef attaches to the whole Gateway or ListenerSet. */
   sectionName: string;
+  /** Set when the parentRef selects listeners by port. */
+  port?: string;
   accepted: ConditionState;
   resolvedRefs: ConditionState;
 }
@@ -122,6 +135,7 @@ function parentKey(
     labels.parent_namespace || routeNamespace,
     labels.parent_name ?? '',
     labels.parent_section_name ?? '',
+    labels.parent_port ?? '',
   ].join('/');
 }
 
@@ -188,14 +202,12 @@ function routeCondition(
   statusParents: Set<string> | undefined,
   key: string,
 ): ConditionState {
-  if (!conditions) return { status: 'not-available' };
+  if (!conditions) return loadFailed;
   const condition = conditions.get(key);
   if (condition) return condition;
   if (conditions.size > 0) return { status: 'not-reported' };
-  if (!statusParents) return { status: 'not-available' };
-  return statusParents.has(key)
-    ? { status: 'not-available' }
-    : { status: 'not-reported' };
+  if (!statusParents) return loadFailed;
+  return statusParents.has(key) ? notExported : { status: 'not-reported' };
 }
 
 function gatewayCondition(
@@ -203,17 +215,17 @@ function gatewayCondition(
   key: string,
   type: string,
 ): ConditionState {
-  if (!statusByGateway) return { status: 'not-available' };
+  if (!statusByGateway) return loadFailed;
   return statusByGateway.get(key)?.get(type) ?? { status: 'not-reported' };
 }
 
-function buildGateways(inputs: GatewayTopologyInputs): Gateway[] {
-  const statusByGateway = inputs.gatewayStatus
-    ? new Map<string, Map<string, ConditionState>>()
-    : undefined;
-  for (const sample of inputs.gatewayStatus ?? []) {
+function indexGatewayStatus(
+  samples: MimirMetricSample[],
+): Map<string, Map<string, ConditionState>> {
+  const statusByGateway = new Map<string, Map<string, ConditionState>>();
+  for (const sample of samples) {
     const { namespace, name, type } = sample.metric;
-    if (!statusByGateway || !namespace || !name || !type) continue;
+    if (!namespace || !name || !type) continue;
     const condition = toCondition(sample);
     if (!condition) continue;
     const key = objectKey(namespace, name);
@@ -224,6 +236,13 @@ function buildGateways(inputs: GatewayTopologyInputs): Gateway[] {
     }
     setWorst(byType, type, condition);
   }
+  return statusByGateway;
+}
+
+function buildGateways(inputs: GatewayTopologyInputs): Gateway[] {
+  const statusByGateway = inputs.gatewayStatus
+    ? indexGatewayStatus(inputs.gatewayStatus)
+    : undefined;
 
   const attachedRoutes = new Map<string, number>();
   for (const sample of inputs.listenerAttachedRoutes ?? []) {
@@ -334,15 +353,18 @@ function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
       namespace: sample.metric.parent_namespace || namespace,
       name: sample.metric.parent_name,
       sectionName: sample.metric.parent_section_name ?? '',
+      port: sample.metric.parent_port || undefined,
       accepted: routeCondition(accepted, statusParents, key),
       resolvedRefs: routeCondition(resolvedRefs, statusParents, key),
     });
   }
 
+  // Hostnames only enrich routes already listed: a route attached to nothing
+  // but other kinds (a mesh Service) is not part of this view.
   for (const sample of inputs.routeHostnameInfo ?? []) {
     const { namespace, name, hostname } = sample.metric;
     if (!namespace || !name || !hostname) continue;
-    ensureRoute(namespace, name).hostnames.add(hostname);
+    routes.get(objectKey(namespace, name))?.hostnames.add(hostname);
   }
 
   return Array.from(routes.values())
@@ -352,8 +374,8 @@ function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
         ? Array.from(hostnames).sort()
         : undefined,
       parents: route.parents.sort((a, b) =>
-        `${a.kind}/${a.namespace}/${a.name}/${a.sectionName}`.localeCompare(
-          `${b.kind}/${b.namespace}/${b.name}/${b.sectionName}`,
+        `${a.kind}/${a.namespace}/${a.name}/${a.sectionName}/${a.port ?? ''}`.localeCompare(
+          `${b.kind}/${b.namespace}/${b.name}/${b.sectionName}/${b.port ?? ''}`,
         ),
       ),
     }))
@@ -377,4 +399,25 @@ export function isRouteBroken(route: HttpRoute): boolean {
       parent.accepted.status === 'false' ||
       parent.resolvedRefs.status === 'false',
   );
+}
+
+/**
+ * Sort rank of a set of conditions: 0 when any is `false`, 1 when any is not
+ * reported, 2 otherwise. A missing status likely means nothing is serving, so
+ * it belongs right after the failures, not among the healthy entries.
+ */
+export function conditionsRank(conditions: ConditionState[]): number {
+  if (conditions.some(c => c.status === 'false')) return 0;
+  if (conditions.some(c => c.status === 'not-reported')) return 1;
+  return 2;
+}
+
+export function routeRank(route: HttpRoute): number {
+  return conditionsRank(
+    route.parents.flatMap(parent => [parent.accepted, parent.resolvedRefs]),
+  );
+}
+
+export function gatewayRank(gateway: Gateway): number {
+  return conditionsRank([gateway.accepted, gateway.programmed]);
 }

@@ -1,7 +1,7 @@
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { type KarpenterNodePoolStatus } from '../../../../hooks';
-import { formatResourceQuantity } from './resourceFormat';
+import { formatResourceQuantity } from '../../../nodePools';
 
 const useStyles = makeStyles({
   strip: {

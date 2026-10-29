@@ -1,4 +1,6 @@
 import {
+  coreExtensionData,
+  createExtensionInput,
   createFrontendPlugin,
   PageBlueprint,
   ApiBlueprint,
@@ -64,21 +66,40 @@ import { GitHubClient, gitHubApiRef } from './apis/github';
 import { MimirClient, mimirApiRef } from './apis/mimir';
 
 // Pages
-const clustersPage = PageBlueprint.make({
+// The Clusters pages take actions other plugins contribute, by node id
+// (`page:gs/clusters`): `listActions` beside the list's header, `clusterActions`
+// beside a cluster's (the agent-platform plugin's Create cluster and Delete
+// through cluster-manager). An attachment rather than an import, so this plugin
+// depends on none of them and a deployment without one shows nothing in its
+// place; a cluster action reads its cluster with `useClusterPageTarget`.
+const clustersPage = PageBlueprint.makeWithOverrides({
   name: 'clusters',
   disabled: true,
-  params: {
-    title: 'Clusters',
-    icon: <StorageIcon />,
-    // The clusters pages render their own bui PluginHeader (list + detail),
-    // so suppress the app-shell header to avoid stacking two headers.
-    noHeader: true,
-    path: '/clusters',
-    routeRef: clustersRouteRef,
-    loader: async () => {
-      const { Router } = await import('./components/clusters/Router');
-      return <Router />;
-    },
+  inputs: {
+    listActions: createExtensionInput([coreExtensionData.reactElement]),
+    clusterActions: createExtensionInput([coreExtensionData.reactElement]),
+  },
+  factory(originalFactory, { inputs }) {
+    const elementsOf = (input: typeof inputs.listActions) =>
+      input.map(action => action.get(coreExtensionData.reactElement));
+    return originalFactory({
+      title: 'Clusters',
+      icon: <StorageIcon />,
+      // The clusters pages render their own bui PluginHeader (list + detail),
+      // so suppress the app-shell header to avoid stacking two headers.
+      noHeader: true,
+      path: '/clusters',
+      routeRef: clustersRouteRef,
+      loader: async () => {
+        const { Router } = await import('./components/clusters/Router');
+        return (
+          <Router
+            listActions={elementsOf(inputs.listActions)}
+            clusterActions={elementsOf(inputs.clusterActions)}
+          />
+        );
+      },
+    });
   },
 });
 

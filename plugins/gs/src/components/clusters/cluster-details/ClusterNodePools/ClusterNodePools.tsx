@@ -7,6 +7,7 @@ export const ClusterNodePools = () => {
     <ClusterSwitch
       renderAWS={() => <AWSNodePools />}
       renderAzure={() => <AzureNodePools />}
+      renderAzureManaged={() => null}
       renderVSphere={() => null}
       renderVCD={() => null}
     />

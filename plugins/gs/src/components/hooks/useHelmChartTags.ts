@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useIsRestoring, useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { containerRegistryApiRef } from '../../apis/containerRegistry';
 import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
@@ -17,13 +18,14 @@ export function useHelmChartTags(chartRef: string | undefined) {
     return { registry: parsed.registry, repository: parsed.repository };
   }, [chartRef]);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['oci-tags', registry, repository],
     queryFn: () => {
       return containerRegistryApi.getTags(registry!, repository!);
     },
     enabled: Boolean(registry && repository),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   const { tags, latestStableVersion } = data ?? {};
 

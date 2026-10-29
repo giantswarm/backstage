@@ -11,17 +11,8 @@ import { FluxResourceData } from '../FluxResourcesDataProvider';
 import { ColorVariant } from '../UI/colors/makeColorVariants';
 import { Status } from '../UI/Status';
 import { Chip, IconText } from '../UI';
-import {
-  HelmRelease,
-  Kustomization,
-  GitRepository,
-  OCIRepository,
-  HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-  FluxResourceStatus,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResourceStatus } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { hasDetailsPanel } from '../../utils/fluxResources';
 import { getResourceColorVariant } from '../../utils/getResourceColorVariant';
 import {
   AggregatedStatus,
@@ -117,17 +108,7 @@ export const getInitialColumns = ({
           </Typography>
         );
 
-        if (
-          (row.kind === Kustomization.kind ||
-            row.kind === HelmRelease.kind ||
-            row.kind === GitRepository.kind ||
-            row.kind === OCIRepository.kind ||
-            row.kind === HelmRepository.kind ||
-            row.kind === ImagePolicy.kind ||
-            row.kind === ImageRepository.kind ||
-            row.kind === ImageUpdateAutomation.kind) &&
-          onClick
-        ) {
+        if (hasDetailsPanel(row.kind) && onClick) {
           return (
             <Link
               component={RouterLink}

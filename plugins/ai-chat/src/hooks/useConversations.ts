@@ -1,5 +1,7 @@
 import { useMemo, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import type { ConversationApi, ConversationListItem } from '../api';
 
 export interface UseConversationsReturn {
@@ -23,8 +25,9 @@ export function useConversations(
 
   const {
     data: conversations = [],
-    isLoading,
     error,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: CONVERSATIONS_QUERY_KEY,
     queryFn: async () => {
@@ -32,12 +35,15 @@ export function useConversations(
       return response.conversations;
     },
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   const refreshConversations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
   }, [queryClient]);
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'AI Chat is deprecated: no new tracking.',
     mutationFn: (id: string) => conversationApi.deleteConversation(id),
     onMutate: async (id: string) => {
       await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
@@ -60,7 +66,9 @@ export function useConversations(
     },
   });
 
-  const bulkDeleteMutation = useMutation({
+  const bulkDeleteMutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'AI Chat is deprecated: no new tracking.',
     mutationFn: (ids: string[]) => conversationApi.deleteConversations(ids),
     onMutate: async (ids: string[]) => {
       await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
@@ -84,7 +92,9 @@ export function useConversations(
     },
   });
 
-  const starMutation = useMutation({
+  const starMutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'AI Chat is deprecated: no new tracking.',
     mutationFn: (id: string) => conversationApi.toggleConversationStar(id),
     onMutate: async (id: string) => {
       await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
@@ -108,7 +118,9 @@ export function useConversations(
     },
   });
 
-  const renameMutation = useMutation({
+  const renameMutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'AI Chat is deprecated: no new tracking.',
     mutationFn: ({ id, title }: { id: string; title: string }) =>
       conversationApi.updateConversationTitle(id, title),
     onMutate: async ({ id, title }) => {

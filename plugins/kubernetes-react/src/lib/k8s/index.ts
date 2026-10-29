@@ -9,27 +9,30 @@ export * from './resourceRef';
 
 export {
   Agent,
+  AGENT_CONDITION_STAGE_ORDER,
   AgentConditionType,
-  decidingHarnessStatus,
   deriveAgentReadiness,
-  deriveHarnessReadiness,
+  failureFieldOf,
   getAgentStatusChangedAt,
-  HARNESS_LABEL,
   isAgentStatusStale,
   isAgentTransitional,
 } from './Agent';
 export type {
-  AgentHarness,
-  AgentHarnessCondition,
-  AgentHarnessStatus,
+  AgentCondition,
+  AgentFailure,
+  AgentFailureField,
+  AgentInterface,
   AgentMcpBinding,
   AgentReadiness,
   AgentSkill,
+  AgentStatus,
+  AgentSubAgentBinding,
   AgentTemplateInterface,
-  AgentToolAgentRef,
+  AgentTemplateSpec,
   AgentToolBinding,
-  HarnessReadiness,
 } from './Agent';
+export { KAGENT_API_GROUP, KAGENT_API_VERSION } from './kagentApi';
+export type { ModelConfigInterface } from './kagentApi';
 export { RemoteMCPServer } from './RemoteMCPServer';
 export type {
   RemoteMCPServerHeader,
@@ -64,6 +67,15 @@ export { Node } from './Node';
 export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
 export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
+export { Harness, harnessRuntimeOf } from './Harness';
+export type { HarnessInterface, HarnessRuntime } from './Harness';
+export { FluxInstance } from './FluxInstance';
+export {
+  FLUX_OPERATOR_RECONCILE_ANNOTATION,
+  FluxOperatorObject,
+} from './FluxOperatorObject';
+export type { FluxOperatorReconciliation } from './FluxOperatorObject';
+export { FluxReport } from './FluxReport';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';
@@ -71,10 +83,19 @@ export { ImagePolicy } from './ImagePolicy';
 export { ImageRepository } from './ImageRepository';
 export { ImageUpdateAutomation } from './ImageUpdateAutomation';
 export { Kustomization } from './Kustomization';
+export { matchesLabelSelector } from './labelSelector';
+export { toKubectlYaml } from './kubectlYaml';
+export type { LabelSelector } from './labelSelector';
+export { ResourceSet } from './ResourceSet';
+export type { InputProviderRef } from './ResourceSet';
+export { ResourceSetInputProvider } from './ResourceSetInputProvider';
 export {
   deriveModelConfigReadiness,
+  isModelConfigStatusStale,
+  MODEL_CONFIG_CONDITION_ORDER,
   ModelConfig,
   ModelConfigConditionType,
+  PERSONAL_CHATGPT_MODEL_LABEL,
 } from './ModelConfig';
 export type { ModelConfigCondition, ModelConfigReadiness } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';

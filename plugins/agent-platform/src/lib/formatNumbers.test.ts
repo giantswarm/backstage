@@ -1,10 +1,20 @@
+import { ConfigReader } from '@backstage/config';
 import {
+  __resetSignedInConfigForTests,
+  setSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
+import { act, renderHook } from '@testing-library/react';
+import {
+  formatBytes,
+  formatMoney,
   formatCount,
   formatPercent,
   formatSeconds,
   formatTokens,
   formatTokensPerSecond,
   formatUsd,
+  USD,
+  useCurrency,
 } from './formatNumbers';
 
 describe('formatTokens', () => {
@@ -17,10 +27,33 @@ describe('formatTokens', () => {
     expect(formatTokens(1_000)).toBe('1.0k');
     expect(formatTokens(1_500)).toBe('1.5k');
     expect(formatTokens(2_600)).toBe('2.6k');
-    expect(formatTokens(999_999)).toBe('1000.0k');
     expect(formatTokens(1_200_000)).toBe('1.2M');
     expect(formatTokens(1_400_000)).toBe('1.4M');
     expect(formatTokens(8_400_000)).toBe('8.4M');
+  });
+
+  it('rounds half up to a tenth rather than truncating', () => {
+    expect(formatTokens(48_478)).toBe('48.5k');
+    expect(formatTokens(48_449)).toBe('48.4k');
+    expect(formatTokens(47_950)).toBe('48.0k');
+    expect(formatTokens(48_049)).toBe('48.0k');
+    // `48.05.toFixed(1)` is "48.0": the binary fraction sits just below the half.
+    expect(formatTokens(48_050)).toBe('48.1k');
+    expect(formatTokens(1_050_000)).toBe('1.1M');
+  });
+
+  it('moves to the next unit when the figure rounds up into it', () => {
+    expect(formatTokens(999_949)).toBe('999.9k');
+    expect(formatTokens(999_950)).toBe('1.0M');
+    expect(formatTokens(999_999)).toBe('1.0M');
+    expect(formatTokens(999_949_999)).toBe('999.9M');
+    expect(formatTokens(999_950_000)).toBe('1.0B');
+    expect(formatTokens(2_300_000_000)).toBe('2.3B');
+  });
+
+  it('rounds a fractional count, an average say, to whole tokens', () => {
+    expect(formatTokens(12.4)).toBe('12');
+    expect(formatTokens(999.6)).toBe('1.0k');
   });
 });
 
@@ -91,9 +124,9 @@ describe('formatPercent', () => {
 
 describe('formatSeconds', () => {
   it('switches to milliseconds under a second', () => {
-    expect(formatSeconds(0.42)).toBe('420ms');
-    expect(formatSeconds(1.5)).toBe('1.5s');
-    expect(formatSeconds(42)).toBe('42s');
+    expect(formatSeconds(0.42)).toBe('420 ms');
+    expect(formatSeconds(1.5)).toBe('1.5 s');
+    expect(formatSeconds(42)).toBe('42 s');
   });
 
   it('is an em dash for an empty histogram', () => {
@@ -128,5 +161,146 @@ describe('formatTokensPerSecond', () => {
     // Mimir can also answer the division as NaN — neither is "0 tokens/s".
     expect(formatTokensPerSecond(undefined)).toBe('—');
     expect(formatTokensPerSecond(Number.NaN)).toBe('—');
+  });
+});
+
+describe('formatBytes', () => {
+  it('humanises byte sizes with binary prefixes', () => {
+    expect(formatBytes(undefined)).toBe('—');
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(522653767)).toBe('498 MiB');
+    expect(formatBytes(6594474711)).toBe('6.1 GiB');
+    expect(formatBytes(34254796848)).toBe('31.9 GiB');
+    expect(formatBytes(120 * 1024 ** 3)).toBe('120 GiB');
+  });
+
+  it('moves to the next unit when the figure rounds up into it', () => {
+    // 1023.999 KiB rounds to 1024 KiB, which is a MiB.
+    expect(formatBytes(1_048_575)).toBe('1.0 MiB');
+    expect(formatBytes(1023 * 1024)).toBe('1023 KiB');
+    expect(formatBytes(1500 * 1024 ** 4)).toBe('1500 TiB');
+  });
+});
+
+describe('formatMoney', () => {
+  const eur = { code: 'EUR', usdRate: 0.9 };
+
+  it('formats USD exactly as formatUsd does', () => {
+    for (const value of [
+      undefined,
+      NaN,
+      0,
+      0.0004,
+      0.0432,
+      4.5,
+      -4.5,
+      1234.4,
+    ]) {
+      expect(formatMoney(value)).toBe(formatUsd(value));
+      expect(formatMoney(value, USD)).toBe(formatUsd(value));
+    }
+  });
+
+  it('converts at the rate and writes the currency’s symbol', () => {
+    expect(formatMoney(10, eur)).toBe('€9.00');
+    expect(formatMoney(0.5, eur)).toBe('€0.450');
+    expect(formatMoney(2000, eur)).toBe('€1,800');
+    expect(formatMoney(-10, eur)).toBe('-€9.00');
+    expect(formatMoney(0.001, eur)).toBe('<€0.01');
+    expect(formatMoney(0, eur)).toBe('€0.00');
+  });
+
+  it('applies the precision to the converted amount', () => {
+    // $110 is €99, which keeps its cents.
+    expect(formatMoney(110, eur)).toBe('€99.00');
+  });
+
+  it('keeps an unpriced amount unknown in any currency', () => {
+    expect(formatMoney(undefined, eur)).toBe('—');
+  });
+
+  it.each([
+    ['no rate', { code: 'EUR' }],
+    ['a zero rate', { code: 'EUR', usdRate: 0 }],
+    ['a negative rate', { code: 'EUR', usdRate: -1 }],
+    ['an infinite rate', { code: 'EUR', usdRate: Infinity }],
+    ['an invalid code', { code: 'euro', usdRate: 0.9 }],
+    ['an unknown code', { code: 'XYZQ', usdRate: 0.9 }],
+  ])('falls back to USD for %s', (_, currency) => {
+    expect(formatMoney(10, currency)).toBe('$10.00');
+  });
+
+  it('reads the code case-insensitively', () => {
+    expect(formatMoney(10, { code: 'gbp', usdRate: 0.5 })).toBe('£5.00');
+  });
+});
+
+describe('useCurrency', () => {
+  beforeEach(() => __resetSignedInConfigForTests());
+
+  function publish(installations: Record<string, object>) {
+    setSignedInConfig(new ConfigReader({ gs: { installations } }));
+  }
+
+  it('returns the installation’s currency', () => {
+    publish({
+      golem: { pipeline: 'stable', currency: { code: 'EUR', usdRate: 0.9 } },
+      gazelle: { pipeline: 'stable' },
+    });
+
+    expect(renderHook(() => useCurrency('golem')).result.current).toEqual({
+      code: 'EUR',
+      usdRate: 0.9,
+    });
+  });
+
+  it.each([['gazelle'], ['unknown'], ['constructor'], [undefined]])(
+    'returns USD for %p',
+    installation => {
+      publish({ gazelle: { pipeline: 'stable' } });
+
+      expect(renderHook(() => useCurrency(installation)).result.current).toBe(
+        USD,
+      );
+    },
+  );
+
+  it('returns USD until the signed-in config loads, then the currency', () => {
+    const { result } = renderHook(() => useCurrency('golem'));
+    expect(result.current).toBe(USD);
+
+    act(() => publish({ golem: { currency: { code: 'GBP', usdRate: 0.8 } } }));
+
+    expect(result.current).toEqual({ code: 'GBP', usdRate: 0.8 });
+  });
+
+  it('formats costs in the currency the installation configures', () => {
+    publish({
+      golem: { currency: { code: 'EUR', usdRate: 0.9 } },
+      gazelle: { currency: { code: 'EUR' } },
+    });
+
+    const golem = renderHook(() => useCurrency('golem')).result.current;
+    const gazelle = renderHook(() => useCurrency('gazelle')).result.current;
+
+    expect(formatMoney(10, golem)).toBe('€9.00');
+    expect(formatMoney(10, gazelle)).toBe('$10.00');
+  });
+
+  it('returns USD for a currency configured without a code', () => {
+    publish({ golem: { currency: { usdRate: 0.9 } } });
+
+    expect(renderHook(() => useCurrency('golem')).result.current).toBe(USD);
+  });
+
+  it('keeps the same object across renders', () => {
+    publish({ golem: { currency: { code: 'EUR', usdRate: 0.9 } } });
+    const { result, rerender } = renderHook(() => useCurrency('golem'));
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
   });
 });

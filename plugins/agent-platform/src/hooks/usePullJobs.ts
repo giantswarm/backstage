@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { modelManagerApiRef } from '../apis';
 import type { ModelManagerApi } from '../apis/ModelManagerApi';
 import { isJobActive, type ModelManagerJob } from '../lib/modelManager';
@@ -98,7 +100,7 @@ export function usePullJobs(installations: string[]): PullJobs {
   return useMemo(
     () => ({
       jobs,
-      isLoading: queries.some(query => query.isLoading),
+      isLoading: queries.some(query => isAwaitingData(query)),
       errors: installations.flatMap((installation, index) =>
         queries[index]?.isError
           ? [{ installation, error: queries[index].error as Error }]
@@ -121,7 +123,10 @@ export function usePullModel(installation: string) {
   const modelManagerApi = useApi(modelManagerApiRef);
   const invalidate = useInvalidateModelManagerReads(installation);
 
-  return useMutation({
+  return useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Model serving operations are not a tracked portal action yet.',
     mutationFn: (request: PullModelRequest) =>
       modelManagerApi.pullModel(installation, request),
     onSuccess: () => invalidate(),
@@ -133,7 +138,10 @@ export function useCancelJob(installation: string) {
   const modelManagerApi = useApi(modelManagerApiRef);
   const invalidate = useInvalidateModelManagerReads(installation);
 
-  return useMutation({
+  return useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Model serving operations are not a tracked portal action yet.',
     mutationFn: (jobId: string) =>
       modelManagerApi.cancelJob(installation, jobId),
     onSettled: () => invalidate(),

@@ -1,6 +1,7 @@
 export {
   MCPServer,
   DEACTIVATED_LABEL,
+  DISPLAY_NAME_ANNOTATION,
   MANAGEMENT_CLUSTER_LABEL,
   TOOL_GROUP_LABEL,
   TOOL_GROUPS,
@@ -8,8 +9,6 @@ export {
   parseToolGroup,
   mcpServerStateSeverity,
   worstSeverity,
-  serversHealthSummary,
-  SERVERS_HEALTH_WARNING_FRACTION,
 } from './MCPServer';
 export type {
   MCPServerState,
@@ -19,9 +18,10 @@ export type {
   ToolGroupKey,
   ToolGroupInfo,
   MCPServerAuth,
+  MCPServerAuthorizationServer,
+  MCPServerClientCredentialsSecretRef,
   MCPServerSigV4,
   MCPServerTokenExchange,
-  ServersHealthSummary,
 } from './MCPServer';
 export { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from './MusterWorkflow';
 export type {
@@ -29,6 +29,7 @@ export type {
   WorkflowStep,
   WorkflowSubStep,
   WorkflowForEach,
+  WorkflowPaginate,
   WorkflowCondition,
   WorkflowConditionExpectation,
 } from './MusterWorkflow';

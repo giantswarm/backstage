@@ -3,6 +3,7 @@ import { expect, open, test } from './fixtures';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
   stubModelManagerTools,
 } from './model-manager.fixture';
 
@@ -105,7 +106,10 @@ const models = {
   ],
 };
 
-test('a served model whose predictor pod waits reads Pending · Unschedulable with the scheduler’s text', async ({
+// Model hosting is drawn only where model-manager answers.
+skipWithoutModelManager();
+
+test('a served model whose predictor pod waits reads Pending · Unschedulable, the scheduler’s text in its hint', async ({
   admin,
 }) => {
   await installPersistedQueryDrop(admin);
@@ -116,7 +120,7 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
 
   try {
     await dropPersistedQueriesOnNextLoad(admin);
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
 
     const row = admin.getByRole('row', { name: /qwen3-4b-instruct/ });
     await expect(
@@ -130,14 +134,14 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
     ).toHaveText('· Unschedulable');
     await expect(
       row.getByText(SCHEDULER, { exact: true }),
-      'the scheduler’s text is under the label, not only on hover',
-    ).toBeVisible();
+      'the scheduler’s paragraph stays out of the status cell',
+    ).toHaveCount(0);
+    const hint = 'About the state of qwen3-4b-instruct';
+    await row.getByRole('button', { name: hint, exact: true }).click();
     await expect(
-      row
-        .getByText('Pending', { exact: true })
-        .locator('xpath=ancestor::*[@title][1]'),
-      'and on hover',
-    ).toHaveAttribute('title', SCHEDULER);
+      admin.getByRole('dialog', { name: hint, exact: true }),
+      'a press on the status hint says it in full, on a touch screen too',
+    ).toContainText(SCHEDULER);
     expect(
       staged.callsOf('list_models').length,
       'the inventory came over muster',
@@ -147,6 +151,6 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
     await staged.unroute();
     // Leave the page on the lab's real serving layer, the staged answer gone.
     await dropPersistedQueriesOnNextLoad(admin);
-    await admin.goto('/agent-platform/models/serving');
+    await admin.goto('/customize/models/hosting');
   }
 });

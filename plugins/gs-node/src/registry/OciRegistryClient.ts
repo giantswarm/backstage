@@ -252,4 +252,29 @@ export class OciRegistryClient {
 
     return manifest;
   }
+
+  /**
+   * Checks whether a tag exists in a repository. A 404 means it does not;
+   * registries that answer 404 for a missing repository (gsoci does) report
+   * that as a missing tag too. Any other registry error is thrown.
+   *
+   * @param registry - The registry host (e.g., ghcr.io, docker.io)
+   * @param repository - The repository path (e.g., giantswarm/my-app)
+   * @param tag - The tag to look for (e.g., 1.0.0)
+   */
+  async tagExists(
+    registry: string,
+    repository: string,
+    tag: string,
+  ): Promise<boolean> {
+    try {
+      await this.getTagManifest(registry, repository, tag);
+      return true;
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return false;
+      }
+      throw error;
+    }
+  }
 }

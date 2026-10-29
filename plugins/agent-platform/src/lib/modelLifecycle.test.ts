@@ -8,7 +8,7 @@ import {
   weightsMessage,
   weightsTypicalSeconds,
 } from './modelLifecycle';
-import { formatBytes } from './modelManagerServing';
+import { formatBytes } from './formatNumbers';
 import type { ServedModelStep } from './serving';
 
 const T0 = '2026-09-17T06:59:00Z';

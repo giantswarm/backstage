@@ -11,11 +11,22 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
+  countNoun,
+  groupNames,
   InfoCard,
+  INITIAL_ROWS,
+  joinNames,
   LoadingIndicator,
+  NAMED_IN_SENTENCE,
+  ShowMore,
+  SimpleAccordion,
+  StatusHint,
+  usePhoneColumns,
+  usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatBytes, formatTime } from '../../lib/modelManagerServing';
+import { formatTime } from '../../lib/modelManagerServing';
+import { formatBytes } from '../../lib/formatNumbers';
 import {
   gpuFree,
   gpuTotal,
@@ -23,6 +34,7 @@ import {
   type GpuCapacityUnavailableReason,
   type GpuNode,
 } from '../../lib/serving';
+import { nothingCouldBeRead } from '../../lib/soleInstallation';
 import { backendServerName } from '../../lib/modelManagerServing';
 
 /** The default order, and the one while the Installation column is hidden. */
@@ -76,7 +88,7 @@ const NO_DEVICE_PLUGIN =
 const NO_POD_DATA =
   'The pods on this node could not be read, so scheduled GPU requests are unknown.';
 const HOST_NO_GPU_FIGURES =
-  "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator, so there is no GPU product, count or device-plugin figure for it. Its budget is the host's memory as the serving layer sees it.";
+  "This is the host a serving backend runs on, not a cluster node. The backend's API does not expose the accelerator, so there is no GPU product, count or device-plugin figure for it. Its budget is the host's memory as the serving layer sees it.";
 
 /**
  * What the node name's description says for a backend host whose backend is
@@ -108,7 +120,7 @@ function servesModelImagesOnly(node: GpuNode): boolean {
 /** The hint in an empty cache cell when another node of the installation holds the cache. */
 export const NO_CACHE_ON_NODE_HINT = 'no model cache on this node';
 const NO_CACHE_ON_NODE_TITLE =
-  'Another node of this installation holds the model cache. Whether a model can be served here depends on that cache claim being mountable from this node — a node-local claim is not. The serving layer says which nodes are serving targets from model-manager 0.11 on; this one did not.';
+  'Another node of this environment holds the model cache. Whether a model can be served here depends on that cache claim being mountable from this node — a node-local claim is not. The serving layer says which nodes are serving targets from model-manager 0.11 on; this one did not.';
 
 /**
  * "Not a serving target: <reason>" for a node the serving layer will not
@@ -212,13 +224,101 @@ export function describeNode(node: GpuNode): string | undefined {
 }
 
 /**
- * The node name with {@link describeNode} under it. A node that is not a
- * serving target is dimmed (not one model-image presets still serve on), and
- * the serving layer's reason is on hover.
+ * What the columns a phone hides said about a node, as lines under its name
+ * (T22 B15): the GPU — product, memory, count, what pods request — or why
+ * its free count is unknown; the memory budget and the model cache where the
+ * table has those columns; the environment unless the page drops it.
  */
-function NodeCell({ node }: { node: GpuNode }) {
+export function phoneNodeFacts(
+  node: GpuNode,
+  {
+    columns,
+    noCacheHint,
+    showInstallation,
+  }: {
+    columns: GpuCapacityColumns;
+    noCacheHint: boolean;
+    showInstallation: boolean;
+  },
+): string[] {
+  const facts: string[] = [];
+  if (showInstallation) {
+    facts.push(node.installation);
+  }
+  if (columns.gpu && !isHostMemoryNode(node)) {
+    const total = gpuTotal(node);
+    const gpu = [
+      node.product ?? node.resource,
+      node.memoryMiB !== undefined
+        ? formatGpuMemory(node.memoryMiB)
+        : undefined,
+      total !== undefined ? countNoun(total, 'GPU') : undefined,
+      node.requested !== undefined ? `${node.requested} requested` : undefined,
+    ].filter(Boolean);
+    if (gpu.length > 0) {
+      facts.push(gpu.join(' · '));
+    }
+    if (gpuFree(node) === undefined) {
+      facts.push(
+        `Free GPUs unknown: ${
+          node.allocatable === undefined ? NO_DEVICE_PLUGIN : NO_POD_DATA
+        }`,
+      );
+    }
+  }
+  // The budget is a column of its own on a fleet of backend hosts alone.
+  if (columns.gpu && node.memoryBudgetBytes !== undefined) {
+    const free = node.memoryFreeBytes ?? node.memoryBudgetBytes;
+    facts.push(
+      `Memory budget: ${formatBytes(free)} free of ${formatBytes(
+        node.memoryBudgetBytes,
+      )}${
+        node.memoryReservedBytes !== undefined
+          ? ` · ${formatBytes(node.memoryReservedBytes)} reserved`
+          : ''
+      }${node.accelerated === true ? ` · ${ACCELERATED_LABEL}` : ''}`,
+    );
+  }
+  if (columns.cache) {
+    const cache = node.cache;
+    if (cache) {
+      const models = cache.models ?? 0;
+      facts.push(
+        `Model cache: ${countNoun(models, 'model')}${
+          cache.bytesUsed !== undefined
+            ? ` · ${formatBytes(cache.bytesUsed)}`
+            : ''
+        }${cache.error ? ` · the last scan failed: ${cache.error}` : ''}`,
+      );
+    } else if (noCacheHint) {
+      facts.push(
+        `${NO_CACHE_ON_NODE_HINT[0].toUpperCase()}${NO_CACHE_ON_NODE_HINT.slice(1)}`,
+      );
+    }
+  }
+  return facts;
+}
+
+/**
+ * The node name with {@link describeNode} under it. A node that is not a
+ * serving target is dimmed (not one model-image presets still serve on), its
+ * few words keep to the cell, and the serving layer's reason is the
+ * {@link StatusHint} beside them: a tooltip on hover, a popover on a press,
+ * which is how a phone or a touch screen reads it (T22 B15). At phone width
+ * the name wraps rather than truncates, and `phoneFacts` follow it.
+ */
+function NodeCell({
+  node,
+  isPhone,
+  phoneFacts,
+}: {
+  node: GpuNode;
+  isPhone: boolean;
+  phoneFacts: string[];
+}) {
   const description = describeNode(node);
   const ineligible = node.eligible === false;
+  const wrap = isPhone ? { overflowWrap: 'anywhere' as const } : undefined;
   return (
     <Cell>
       <Text
@@ -227,21 +327,48 @@ function NodeCell({ node }: { node: GpuNode }) {
         color={
           ineligible && !servesModelImagesOnly(node) ? 'secondary' : undefined
         }
-        truncate
+        truncate={isPhone ? undefined : true}
         title={node.name}
+        style={wrap}
       >
         {node.name}
       </Text>
       {description && (
-        <Text
-          variant="body-medium"
-          color="secondary"
-          truncate
-          title={ineligible ? eligibilityDetail(node) : description}
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            minWidth: 0,
+          }}
         >
-          {description}
-        </Text>
+          <Text
+            variant="body-medium"
+            color="secondary"
+            truncate={isPhone ? undefined : true}
+            title={description}
+            style={{ ...wrap, minWidth: 0 }}
+          >
+            {description}
+          </Text>
+          <StatusHint
+            subject={node.name}
+            explanation={eligibilityDetail(node)}
+          />
+        </span>
       )}
+      {isPhone &&
+        phoneFacts.map(fact => (
+          <Text
+            key={fact}
+            as="p"
+            variant="body-small"
+            color="secondary"
+            style={wrap}
+          >
+            {fact}
+          </Text>
+        ))}
     </Cell>
   );
 }
@@ -370,10 +497,23 @@ function gpuFigure(
     );
 }
 
+/** How the panel is being read: at phone width, and whether anything hovers. */
+type CapacityLayout = {
+  isPhone: boolean;
+  /** The page drops the Environment column; a phone row names it otherwise. */
+  showInstallation: boolean;
+};
+
+const DESKTOP_LAYOUT: CapacityLayout = {
+  isPhone: false,
+  showInstallation: true,
+};
+
 function getColumnConfig(
   columns: GpuCapacityColumns = { gpu: true, budget: false, cache: false },
   /** Ids of the nodes whose empty cache cell carries the softer hint. */
   noCacheHints: ReadonlySet<string> = new Set(),
+  layout: CapacityLayout = DESKTOP_LAYOUT,
 ): ColumnConfig<GpuNode>[] {
   const config: ColumnConfig<GpuNode>[] = [
     {
@@ -381,11 +521,25 @@ function getColumnConfig(
       label: 'Node',
       isRowHeader: true,
       isSortable: true,
-      cell: node => <NodeCell node={node} />,
+      cell: node => (
+        <NodeCell
+          node={node}
+          isPhone={layout.isPhone}
+          phoneFacts={
+            layout.isPhone
+              ? phoneNodeFacts(node, {
+                  columns,
+                  noCacheHint: noCacheHints.has(node.id),
+                  showInstallation: layout.showInstallation,
+                })
+              : []
+          }
+        />
+      ),
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       cell: node => <CellText title={node.installation} />,
     },
@@ -452,7 +606,19 @@ function getColumnConfig(
         cell: gpuFigure(node => {
           const free = gpuFree(node);
           if (free !== undefined) {
-            return <CellText title={String(free)} />;
+            // At phone width the GPUs column is hidden; the total rides
+            // under the free count.
+            const total = gpuTotal(node);
+            return (
+              <CellText
+                title={String(free)}
+                description={
+                  layout.isPhone && total !== undefined
+                    ? `of ${total}`
+                    : undefined
+                }
+              />
+            );
           }
           return (
             <UnknownCell
@@ -537,10 +703,25 @@ export type GpuCapacityPanelProps = {
  * memory as the budget, what the loaded models take of it, and a marker when
  * one of them sits on the GPU; a fleet of such hosts shows no GPU columns.
  * A node the serving layer will not place a model on (`eligible: false`) is
- * dimmed and says so under its name, the reason on hover; where the layer
+ * dimmed and says so under its name, the reason in a hint; where the layer
  * gives no verdict, a node without a cache beside one that holds it gets the
  * softer hint in its cache cell.
  */
+/**
+ * The columns a phone keeps (T22 B15): the node — whose cell then carries
+ * the GPU and every other figure as lines — and the free GPUs; on a fleet of
+ * backend hosts alone, which has no GPU columns, the memory budget instead.
+ * Not the GPU product as a third column: three columns in 343px are ~104px
+ * each, too narrow for a node name or `NVIDIA-A100-SXM4-80GB` alike, and
+ * the product is an identity fact, which belongs under the name.
+ */
+export function phoneCapacityColumns(columns: GpuCapacityColumns): string[] {
+  if (columns.gpu) {
+    return ['name', 'free'];
+  }
+  return columns.budget ? ['name', 'budget'] : ['name'];
+}
+
 export function GpuCapacityPanel({
   nodes,
   installations,
@@ -548,6 +729,7 @@ export function GpuCapacityPanel({
   isLoading,
   hideColumns,
 }: GpuCapacityPanelProps) {
+  const isPhone = usePhoneLayout();
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
     () =>
@@ -560,10 +742,15 @@ export function GpuCapacityPanel({
   );
   const columnConfig = useMemo(
     () =>
-      getColumnConfig(columns, noCacheHints).filter(
-        column => !hideColumns?.includes(column.id as 'installation'),
-      ),
-    [columns, noCacheHints, hideColumns],
+      getColumnConfig(columns, noCacheHints, {
+        isPhone,
+        showInstallation: !hideColumns?.includes('installation'),
+      }).filter(column => !hideColumns?.includes(column.id as 'installation')),
+    [columns, noCacheHints, hideColumns, isPhone],
+  );
+  const shownColumns = usePhoneColumns(
+    columnConfig,
+    phoneCapacityColumns(columns),
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(
@@ -590,17 +777,39 @@ export function GpuCapacityPanel({
   const readableInstallations = installations.filter(
     installation => !(installation in unavailable),
   );
+  // One pinned environment, or every one in view, failed: the alert below is
+  // all the panel knows.
+  const noneRead = nothingCouldBeRead({
+    installations,
+    unreadable: unavailableEntries.map(([installation]) => installation),
+  });
 
   let body: ReactNode;
   if (nodes.length > 0) {
-    body = <Table<GpuNode> {...tableProps} columnConfig={columnConfig} />;
+    // A page of the sorted nodes at a time (list scale): a fleet's GPU
+    // nodes can run into the hundreds.
+    body = (
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="node"
+      >
+        {visible => (
+          <Table<GpuNode>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+          />
+        )}
+      </ShowMore>
+    );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading nodes…" />;
-  } else {
+  } else if (!noneRead) {
     body = (
       <Text variant="body-medium" color="secondary">
         {readableInstallations.length > 0
-          ? `No GPU nodes found on ${readableInstallations.join(', ')}.`
+          ? `No GPU nodes found on ${joinNames(readableInstallations)}.`
           : 'No GPU nodes found.'}
       </Text>
     );
@@ -611,15 +820,14 @@ export function GpuCapacityPanel({
       <Flex direction="column" gap="3">
         <Text as="p" variant="body-small" color="secondary">
           {columns.gpu &&
-            'GPU product and memory from the gpu-feature-discovery node labels; allocatable from the device plugin; free is allocatable minus the GPUs scheduled pods request.'}
+            'Product and memory come from gpu-feature-discovery labels, allocatable from the device plugin, and free is allocatable minus the GPUs that pods request.'}
           {columns.budget &&
-            ' The memory budget is what the serving layer fit-checks a model against, less what the models already served on the node reserve.'}
+            ' The memory budget is what the serving layer fit-checks against, minus what served models reserve.'}
           {hasHost &&
-            " A backend host has no GPU figures — its API does not expose the accelerator: its budget is the host's memory as the serving layer sees it, and accelerated marks a host where a loaded model sits on the GPU."}
-          {columns.cache &&
-            ' The model cache holds pre-warmed downloads; serving one of them skips the download.'}
+            ' A backend host has no GPU figures because its API hides the accelerator, so its budget is host memory, and accelerated marks a loaded model on the GPU.'}
+          {columns.cache && ' Cached models skip the download when served.'}
           {hasIneligible &&
-            ' A node marked not a serving target is one the serving layer will not place a model on — outside its node selector, or unable to mount the model cache; the reason is on hover.'}
+            " A node is not a serving target when it is outside the serving layer's node selector or cannot mount the model cache; the info icon beside it says which."}
         </Text>
 
         {body}
@@ -627,16 +835,57 @@ export function GpuCapacityPanel({
         {unavailableEntries.length > 0 && (
           <Alert
             status="info"
-            title="GPU capacity is unavailable for some installations"
-            description={unavailableEntries
-              .map(
-                ([installation, reason]) =>
-                  `${installation}: ${UNAVAILABLE_REASON[reason]}`,
-              )
-              .join('; ')}
+            title={
+              noneRead
+                ? 'GPU capacity is unavailable'
+                : 'GPU capacity is unavailable for some environments'
+            }
+            description={
+              <UnavailableDescription entries={unavailableEntries} />
+            }
           />
         )}
       </Flex>
     </InfoCard>
+  );
+}
+
+/**
+ * Why some installations have no capacity, grouped by reason and the names
+ * capped (`a, b, c, d, e and 40 more: the nodes could not be read`), with
+ * every installation behind a disclosure once there are more than a sentence
+ * names.
+ */
+function UnavailableDescription({
+  entries,
+}: {
+  entries: [string, GpuCapacityUnavailableReason][];
+}) {
+  const sentence = groupNames(
+    entries,
+    ([installation]) => installation,
+    ([, reason]) => UNAVAILABLE_REASON[reason],
+  )
+    .map(({ group, names }) => `${joinNames(names)}: ${group}`)
+    .join('; ');
+  if (entries.length <= NAMED_IN_SENTENCE) {
+    return <>{sentence}</>;
+  }
+  return (
+    <Flex direction="column" gap="2">
+      <span>{sentence}</span>
+      <SimpleAccordion
+        title={`All ${entries.length} environments`}
+        headingLevel={4}
+      >
+        <Flex direction="column" gap="1">
+          {entries.map(([installation, reason]) => (
+            <Text key={installation} variant="body-small">
+              {installation}: {UNAVAILABLE_REASON[reason]}
+            </Text>
+          ))}
+        </Flex>
+      </SimpleAccordion>
+    </Flex>
   );
 }

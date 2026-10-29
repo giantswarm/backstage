@@ -4,6 +4,7 @@ import { lab } from './lab';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
 } from './model-manager.fixture';
 
 /**
@@ -55,7 +56,7 @@ async function dropInventoryCacheOnNextLoad(page: Page): Promise<void> {
  * confirm is cancelled, and a DELETE would fail the test.
  */
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 const NAME = 'qwen3-4b-instruct';
 const NAMESPACE = 'model-serving';
 const MODEL = 'Qwen/Qwen3-4B-Instruct-2507';
@@ -281,6 +282,9 @@ async function stageKServe(page: Page): Promise<Stub> {
 }
 
 test.describe('serving: an LLMInferenceService read as a CR', () => {
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test('lists the served model as a KServe row and offers to stop it by deleting the object', async ({
     admin,
   }) => {

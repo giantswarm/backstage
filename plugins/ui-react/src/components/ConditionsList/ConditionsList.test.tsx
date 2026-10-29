@@ -73,6 +73,82 @@ describe('ConditionsList', () => {
     ).toBeInTheDocument();
   });
 
+  describe('with an order', () => {
+    // Written in one pass, so every timestamp ties and the default sort would
+    // fall back to the type: Compatible ahead of ResolvedRefs.
+    const AT = '2026-07-31T10:00:00Z';
+    const staged: ConditionLike[] = [
+      {
+        type: 'Ready',
+        status: 'False',
+        reason: 'Blocked',
+        lastTransitionTime: AT,
+      },
+      {
+        type: 'Compatible',
+        status: 'False',
+        reason: 'Blocked',
+        lastTransitionTime: AT,
+      },
+      {
+        type: 'ResolvedRefs',
+        status: 'False',
+        reason: 'ReferenceResolutionFailed',
+        message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
+        lastTransitionTime: AT,
+      },
+      { type: 'Accepted', status: 'True', lastTransitionTime: AT },
+    ];
+    const order = ['Accepted', 'ResolvedRefs', 'Compatible', 'Ready'];
+
+    it('lists the conditions in that order and expands the earliest failure', () => {
+      render(<ConditionsList conditions={staged} order={order} />);
+
+      expect(triggers().map(trigger => trigger.textContent)).toEqual([
+        expect.stringContaining('Accepted'),
+        expect.stringContaining('ResolvedRefs'),
+        expect.stringContaining('Compatible'),
+        expect.stringContaining('Ready'),
+      ]);
+      expect(triggers()[1]).toHaveAttribute('aria-expanded', 'true');
+      expect(triggers()[2]).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('expands an outright failure ahead of an earlier stage still Unknown', () => {
+      render(
+        <ConditionsList
+          conditions={[
+            { type: 'Accepted', status: 'True', lastTransitionTime: AT },
+            { type: 'ResolvedRefs', status: 'Unknown', lastTransitionTime: AT },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'UnsupportedConfiguration',
+              lastTransitionTime: AT,
+            },
+          ]}
+          order={order}
+        />,
+      );
+
+      expect(triggers()[1]).toHaveAttribute('aria-expanded', 'false');
+      expect(triggers()[2]).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('puts types the order does not list after it, most recent first', () => {
+      render(
+        <ConditionsList
+          conditions={[accepted, notReady, { ...notReady, type: 'Extra' }]}
+          order={['Accepted']}
+        />,
+      );
+
+      expect(triggers()[0]).toHaveTextContent('Accepted');
+      expect(triggers()[1]).toHaveTextContent('Extra');
+      expect(triggers()[2]).toHaveTextContent('Ready');
+    });
+  });
+
   it('expands nothing when every condition is satisfied', () => {
     render(<ConditionsList conditions={[accepted]} />);
 

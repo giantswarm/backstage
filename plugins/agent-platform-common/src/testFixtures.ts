@@ -55,6 +55,8 @@ import sessionDetailNoEventsJson from './kagent/__fixtures__/session-detail.no-e
 import sessionDetailNoSessionJson from './kagent/__fixtures__/session-detail.no-session.json';
 import sessionDetailV010Json from './kagent/__fixtures__/session-detail.v0-10.json';
 import sessionDetailV099Json from './kagent/__fixtures__/session-detail.v0-9-9.json';
+import attachmentCorruptV099Json from './kagent/__fixtures__/attachment.corrupt-v0-9-9.json';
+import attachmentPngV2Json from './kagent/__fixtures__/attachment.png.kagent-v2.json';
 import sessionsBareArrayJson from './kagent/__fixtures__/sessions.bare-array.json';
 import sessionsDataNotArrayJson from './kagent/__fixtures__/sessions.data-not-array.json';
 import sessionsDataNullJson from './kagent/__fixtures__/sessions.data-null.json';
@@ -72,17 +74,28 @@ import tasksApprovalJson from './kagent/__fixtures__/tasks.approval.json';
 import tasksAskUserPendingJson from './kagent/__fixtures__/tasks.ask-user-pending.json';
 import tasksAskUserJson from './kagent/__fixtures__/tasks.ask-user.json';
 import tasksClaudeHarnessJson from './kagent/__fixtures__/tasks.claude-harness-1.1.json';
+import tasksKagent4a91c273Json from './kagent/__fixtures__/tasks.kagent-4a91c273.json';
 import tasksBareArrayJson from './kagent/__fixtures__/tasks.bare-array.json';
 import tasksDataNotArrayJson from './kagent/__fixtures__/tasks.data-not-array.json';
 import tasksEmptyNoDataJson from './kagent/__fixtures__/tasks.empty-no-data.json';
 import tasksErrorEnvelopeJson from './kagent/__fixtures__/tasks.error-envelope.json';
 import tasksFailedJson from './kagent/__fixtures__/tasks.failed.json';
 import tasksRuntimeLostJson from './kagent/__fixtures__/tasks.runtime-lost.json';
-import agentInstanceRuntimeLostJson from './kagent/__fixtures__/agent-instance.runtime-lost.json';
+import sessionRuntimeLostJson from './kagent/__fixtures__/session.runtime-lost.json';
 import tasksMalformedJson from './kagent/__fixtures__/tasks.malformed.json';
 import tasksUnknownStateJson from './kagent/__fixtures__/tasks.unknown-state.json';
 import tasksV099Json from './kagent/__fixtures__/tasks.v0-9-9.json';
 
+/** One PNG attachment as kagent API v2 serves it: proto3 JSON base64. */
+export const attachmentPngV2: { part: unknown } =
+  attachmentPngV2Json as unknown as { part: unknown };
+/**
+ * The same PNG as kagent 0.9.9 served it — raw binary lossily decoded to UTF-8,
+ * which destroys roughly half the bytes. A regression fixture: the renderer must
+ * report it honestly and never try to show it.
+ */
+export const attachmentCorruptV099: { part: unknown } =
+  attachmentCorruptV099Json as unknown as { part: unknown };
 export const sessionDetailBare: unknown = sessionDetailBareJson as unknown;
 export const sessionDetailNoEvents: unknown =
   sessionDetailNoEventsJson as unknown;
@@ -116,6 +129,8 @@ export const tasksAskUser: TaskEnvelopeFixture =
 export const tasksBareArray: unknown = tasksBareArrayJson as unknown;
 /** `ListTasksResponse` of a completed claude Harness turn on kagent 1.1. */
 export const tasksClaudeHarness: unknown = tasksClaudeHarnessJson as unknown;
+/** A kagent API v2 (ADK runtime) task list, one usage bag per model call. */
+export const tasksKagent4a91c273: unknown = tasksKagent4a91c273Json as unknown;
 /**
  * {@link tasksClaudeHarness} with its turn ended `TASK_STATE_FAILED` instead,
  * keeping the status message and the usage on it. Derived, not recorded: it
@@ -137,9 +152,8 @@ export const tasksFailed: TaskEnvelopeFixture =
 export const tasksMalformed: unknown = tasksMalformedJson as unknown;
 export const tasksRuntimeLost: TaskEnvelopeFixture =
   tasksRuntimeLostJson as TaskEnvelopeFixture;
-/** `GetAgentInstanceResponse` of a session whose runtime kagent reports lost. */
-export const agentInstanceRuntimeLost: unknown =
-  agentInstanceRuntimeLostJson as unknown;
+/** `GetSessionResponse` of a session whose runtime kagent reports lost. */
+export const sessionRuntimeLost: unknown = sessionRuntimeLostJson as unknown;
 export const tasksUnknownState: TaskEnvelopeFixture =
   tasksUnknownStateJson as TaskEnvelopeFixture;
 export const tasksV099: TaskEnvelopeFixture =

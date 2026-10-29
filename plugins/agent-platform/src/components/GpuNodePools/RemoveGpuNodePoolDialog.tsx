@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Flex, Text, TextField } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   GpuNodePoolRow,
@@ -15,7 +18,7 @@ import {
 } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
 import { servingRouteRef } from '../../routes';
-import { CommitOutcome } from '../CommitOutcome';
+import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
 
@@ -87,7 +90,7 @@ function RefusalDetails({
         <Text variant="body-small">
           {refused.models.length === 0
             ? 'No model is served on this cluster: something else keeps the nodes busy.'
-            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, on the Serving page:`}
+            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, under Running models:`}
         </Text>
         {refused.models.map(model =>
           servingPath ? (
@@ -123,6 +126,10 @@ function RefusalDetails({
  * anyway — the models model-manager serves go too: cluster-manager removes
  * them with the controller's finalizer taken off, so none is left stopping
  * for good once the controller is gone.
+ *
+ * Remove, Check again and Commit stay pressable: pressed before the pool's
+ * name is typed, the field says so and takes the focus (`useFieldValidation`),
+ * like the app's other forms.
  */
 export function RemoveGpuNodePoolDialog({
   row,
@@ -138,6 +145,8 @@ export function RemoveGpuNodePoolDialog({
   const [committed, setCommitted] = useState<NodePoolWriteResult>();
   const [partial, setPartial] = useState<NodePoolWriteResult>();
   const servingRoute = useRouteRef(servingRouteRef);
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
 
   useEffect(() => {
     if (!isOpen) {
@@ -159,6 +168,9 @@ export function RemoveGpuNodePoolDialog({
   const refusal = failure && !notConnected ? failure : undefined;
   const refused = refusal?.refused;
   const confirmed = typed === row.pool.name;
+  const typedError = confirmed
+    ? undefined
+    : `Type ${row.pool.name} to confirm the removal.`;
   const served = servedModelsOnCluster(
     servedModels,
     row.installation,
@@ -172,6 +184,10 @@ export function RemoveGpuNodePoolDialog({
 
   /** Remove, Check again (never force) and Continue after a partial answer: the same call. */
   const remove = async (options: { force: boolean }) => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
     try {
       const result = await write.remove(input, { mode: 'apply', ...options });
       if (result.partial) {
@@ -187,6 +203,10 @@ export function RemoveGpuNodePoolDialog({
   };
 
   const onCommit = async () => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
     try {
       setCommitted(await write.remove(input, { mode: 'commit', force }));
     } catch {
@@ -203,10 +223,10 @@ export function RemoveGpuNodePoolDialog({
       confirmLabel={force ? 'Remove pool and its nodes' : 'Remove pool'}
       busyLabel="Removing…"
       isBusy={isBusy}
-      isConfirmDisabled={!confirmed || Boolean(partial)}
+      isConfirmDisabled={Boolean(partial)}
       onConfirm={() => remove({ force })}
     >
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="3" ref={scope}>
         <Text variant="body-medium">
           Removes the pool's release from {row.cluster.name} on{' '}
           {row.installation}; helm-controller uninstalls the MachinePool and its
@@ -250,17 +270,16 @@ export function RemoveGpuNodePoolDialog({
                     variant="secondary"
                     size="small"
                     onPress={() => remove({ force: false })}
-                    isDisabled={isBusy || !confirmed}
+                    isDisabled={isBusy}
                   >
                     {isBusy ? 'Checking…' : 'Check again'}
                   </Button>
                 </div>
                 {refused && (
                   <Checkbox isSelected={force} onChange={setForce}>
-                    Remove anyway — the nodes go with the pool, the workloads on
-                    them are evicted, and with the cluster's last pool the
-                    models the platform serves on it are removed, their weights
-                    kept in the cache.
+                    Remove anyway — nodes go with the pool and their workloads
+                    are evicted; with the cluster's last pool, its served models
+                    are removed too (weights stay cached).
                   </Checkbox>
                 )}
               </Flex>
@@ -288,26 +307,31 @@ export function RemoveGpuNodePoolDialog({
           value={typed}
           onChange={setTyped}
           isRequired
+          {...validation.textFieldProps('typed', typedError)}
         />
         {canCommit && (
           <Flex direction="column" gap="2">
             <Text variant="body-small" color="secondary">
-              Or remove it from the repository owning the cluster instead:
-              cluster-manager opens a pull request as you. Where the owning
-              Kustomization runs without pruning, the pull request alone deletes
-              nothing — the tool says so in its answer.
+              Or remove it from the cluster's repository: cluster-manager opens
+              a pull request as you. If the owning Kustomization does not prune,
+              the merge alone deletes nothing — the answer says so.
             </Text>
             <div>
               <Button
                 variant="secondary"
                 size="small"
-                isDisabled={isBusy || !confirmed}
+                isDisabled={isBusy}
                 onPress={onCommit}
               >
                 {isBusy ? 'Committing…' : 'Commit'}
               </Button>
             </div>
-            {committed && <CommitOutcome result={committed} />}
+            {committed?.commit && (
+              <ClusterManagerCommitOutcome
+                commit={committed.commit}
+                placeNoun="environment"
+              />
+            )}
           </Flex>
         )}
       </Flex>

@@ -1,0 +1,694 @@
+/*
+ * The shell's page never scrolls sideways: its pages fit the view, and what is
+ * wider (tables, code) scrolls inside its own box. Clipped rather than hidden,
+ * so the document stays the vertical scroller sticky headers stick to.
+ *
+ * It also keeps a closing popover from shifting the page. While a bui menu or
+ * select is open, react-aria's scroll lock hides the page's scrollbar, and the
+ * popover is placed against the wider view; when it closes, the scrollbar
+ * comes back before the popover's exit animation ends, so it stood a few
+ * pixels past the edge and a horizontal scrollbar took 15px off the view's
+ * height for that moment.
+ */
+html[data-agent-shell] {
+  overflow-x: clip;
+}
+
+html[data-agent-shell] body {
+  --bui-font-regular: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* Repeats agentShellLightColors in theme.ts. */
+html[data-agent-shell] body[data-theme-mode='light'] {
+  --bui-fg-primary: #002645;
+  --bui-fg-secondary: #5b6c79;
+  --bui-bg-app: #ffffff;
+  --bui-bg-neutral-1: #ffffff;
+  --bui-bg-neutral-2: #f0f4f6;
+  --bui-bg-neutral-4: #f0f4f6;
+  --bui-border-1: #e3ebef;
+  --bui-border-2: #d6e1e7;
+  --bui-bg-solid: #002645;
+  --bui-bg-solid-hover: #001b31;
+  --bui-bg-solid-pressed: #00111f;
+  --bui-fg-solid: #ffffff;
+  --bui-accent-bg: #009fff;
+  --bui-accent-bg-hover: #0088db;
+  --bui-ring: #00609c;
+  /* The shell's link colour, at rest and on hover. */
+  --agent-shell-link: #00609c;
+  --agent-shell-link-hover: #002645;
+  --bui-shadow: 0 12px 32px rgba(0, 38, 69, 0.14);
+  --bui-fg-success: #1f9d48;
+  --bui-bg-success: #ddf5e3;
+  --bui-fg-success-on-bg: #14612a;
+  --bui-fg-warning: #e86d00;
+  --bui-bg-warning: #ffe9d6;
+  --bui-fg-warning-on-bg: #8f4000;
+  --bui-border-warning: #f2c9a3;
+  /* bui's current names for the same warning colours (the three above are
+     deprecated), so what uses them matches the shell's warnings. */
+  --bui-warning-bg-subdued: #ffe9d6;
+  --bui-warning-fg-subdued: #8f4000;
+  --bui-warning-border: #f2c9a3;
+  --bui-fg-danger: #c6283a;
+  --bui-bg-info: #dff1ff;
+  --bui-fg-info-on-bg: #004a7a;
+
+  --agent-shell-rail-bg: #f0f7f9;
+  --agent-shell-rail-item-hover: #e2ecf0;
+  --agent-shell-rail-item-active: #ffffff;
+  --agent-shell-rail-item-active-border: #dfe7ec;
+  --agent-shell-rail-item-active-bar: #00609c;
+  --agent-shell-avatar-bg: #002645;
+  --agent-shell-avatar-fg: #ffffff;
+  --agent-shell-avatar-ring: none;
+
+  --agent-platform-state-dot-success: #9fb2c0;
+  --agent-platform-state-dot-neutral: #9fb2c0;
+
+  --agent-shell-input-bg: #ffffff;
+  --agent-shell-input-border: #c4d3dc;
+  --agent-shell-input-border-hover: #b9c8d2;
+  --agent-shell-input-focus-border: #0088db;
+  --agent-shell-input-focus-halo: rgba(0, 159, 255, 0.15);
+  --agent-shell-input-radius: 10px;
+}
+
+/* Native fields that draw their own focus outline take the ring's colour. */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  :is(input, textarea, select):focus {
+  outline-color: #00609c;
+}
+
+/* Inside bui's components layer so unlayered class overrides still win. */
+@layer components {
+  html[data-agent-shell] body[data-theme-mode='light'] .bui-Badge,
+  html[data-agent-shell] body[data-theme-mode='light'] .bui-Tag {
+    color: #30475a;
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Link[data-color='primary'] {
+    color: var(--agent-shell-link);
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Link[data-color='primary']:hover {
+    color: var(--agent-shell-link-hover);
+  }
+}
+
+/*
+ * Links on a tinted surface: inside a banner (bui `Alert`), and on bui's
+ * neutral-2 surface, the #f0f4f6 a `Card` takes inside a white one (the
+ * Technical details fold-out's cards) or a `Box bg="neutral"` nested once.
+ *
+ * There a link could not be told from the text: an alert sets its text in its
+ * status's on-background colour, and a link came out in a near copy of it;
+ * core-components' MUI link takes the shell's primary, the body text's own
+ * colour, underlined only on hover; and bui's 30% underline all but vanishes
+ * on the tint. On these surfaces every text link — bui's `Link` or MUI's —
+ * takes the shell's link colour and a solid underline, whatever its `color`.
+ * The colour holds 4.5:1 against the tint (6.0:1) and each light alert
+ * background (info, success, warning, danger). Against the body text it is
+ * only 2.3:1, short of the 3:1 at which colour alone may mark a link, so the
+ * underline is what marks it. Hover darkens it and thickens the line.
+ *
+ * Buttons rendered as links (`ButtonLink`), tabs, menu items and tags keep
+ * their own look. Unlayered, so it wins over MUI's link classes as well as
+ * bui's.
+ */
+
+/* In a banner, wherever the banner sits. */
+html[data-agent-shell]
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ) {
+  color: var(--agent-shell-link);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):hover {
+  color: var(--agent-shell-link-hover);
+  text-decoration-thickness: 2px;
+}
+
+/* Dark mode takes bui's info foreground, which holds 4.5:1 against the dark
+   alert backgrounds. */
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ) {
+  color: var(--bui-fg-info);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):hover {
+  color: var(--bui-fg-info-on-bg);
+}
+
+/* On the neutral-2 tint. A surface nested inside it is bui's neutral-3, white
+   in the light theme, so its links keep bui's own look. Light mode only, as
+   the shell is: the dark neutral-3 is a tint of its own, and no dark colour
+   here has been checked against it. */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  [data-bg='neutral-2']
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):not([data-bg='neutral-3'] a) {
+  color: var(--agent-shell-link);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  [data-bg='neutral-2']
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):not([data-bg='neutral-3'] a):hover {
+  color: var(--agent-shell-link-hover);
+  text-decoration-thickness: 2px;
+}
+
+/*
+ * Form fields. bui draws a field as a borderless fill (`--bui-bg-neutral-1`,
+ * one step darker on a raised surface) with a 1px inset `--bui-ring` only
+ * while focused — no token gives a field an edge at rest, so on the shell's
+ * white surfaces a field cannot be told from the page until it is clicked.
+ * Every field box takes the artboards' input idiom instead: a white fill, a
+ * visible 1px edge, a 10px radius, and an accent edge with a soft halo while
+ * focused. The edge is an inset shadow, like bui's own ring, so no field
+ * changes size. The composer keeps its own look: its frame is the field's
+ * visible box (ComposerFrame), and the picker in it reads as part of the box.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-SearchFieldInputWrapper,
+      .bui-SelectTrigger,
+      .bui-ComboboxInput,
+      .bui-DatePickerGroup,
+      .bui-SearchAutocomplete
+    ):not(.agent-platform-composer *) {
+    border-radius: var(--agent-shell-input-radius);
+    background-color: var(--agent-shell-input-bg);
+    box-shadow: inset 0 0 0 1px var(--agent-shell-input-border);
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-SearchFieldInputWrapper,
+      .bui-SelectTrigger,
+      .bui-ComboboxInput,
+      .bui-DatePickerGroup,
+      .bui-SearchAutocomplete
+    ):not(.agent-platform-composer *):hover {
+    box-shadow: inset 0 0 0 1px var(--agent-shell-input-border-hover);
+  }
+
+  /* Select and Combobox mark focus on their root, which keeps it while their
+     popover holds the keyboard focus. */
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-SearchFieldInputWrapper,
+      .bui-SelectTrigger,
+      .bui-ComboboxInput,
+      .bui-DatePickerGroup,
+      .bui-SearchAutocomplete
+    ):not(.agent-platform-composer *):focus-within,
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Select[data-focused]
+    .bui-SelectTrigger:not(.agent-platform-composer *),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Combobox[data-focus-within]
+    .bui-ComboboxInput:not(.agent-platform-composer *) {
+    outline: none;
+    box-shadow:
+      inset 0 0 0 1px var(--agent-shell-input-focus-border),
+      0 0 0 3px var(--agent-shell-input-focus-halo);
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-DatePickerGroup
+    )[data-invalid]:not(.agent-platform-composer *),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-SearchFieldInputWrapper:has([data-invalid]):not(
+      .agent-platform-composer *
+    ),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Select[data-invalid]
+    .bui-SelectTrigger:not(.agent-platform-composer *),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Combobox[data-invalid]
+    .bui-ComboboxInput:not(.agent-platform-composer *) {
+    box-shadow: inset 0 0 0 1px var(--bui-border-danger);
+  }
+}
+
+/*
+ * The hand-rolled fields that sit right after a bui FieldLabel (ui-react's
+ * TextAreaField, agent-platform's SecretTextField) take the same idiom.
+ * Unlayered, because their own styles are.
+ */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input) {
+  border: none;
+  border-radius: var(--agent-shell-input-radius);
+  background: var(--agent-shell-input-bg);
+  box-shadow: inset 0 0 0 1px var(--agent-shell-input-border);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input):hover {
+  box-shadow: inset 0 0 0 1px var(--agent-shell-input-border-hover);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input):focus {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--agent-shell-input-focus-border),
+    0 0 0 3px var(--agent-shell-input-focus-halo);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input)[aria-invalid='true'] {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--bui-border-danger);
+}
+
+/*
+ * The agent-platform plugin's own elements, by the stable class names in its
+ * lib/stableClassNames.ts. Unlayered, like the plugin's own styles.
+ */
+html[data-agent-shell] body[data-theme-mode='light'] .agent-platform-composer {
+  box-shadow:
+    0 1px 2px rgba(0, 38, 69, 0.04),
+    0 8px 24px rgba(0, 38, 69, 0.06);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-selectable-card:hover:not(:has(> [aria-checked='true'])) {
+  border-color: #c4d3dc;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-recent-session-title {
+  color: #30475a;
+}
+
+html[data-agent-shell] body[data-theme-mode='light'] .agent-platform-message {
+  color: #1b3850;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter {
+  flex-wrap: wrap;
+  gap: var(--bui-space-2);
+  overflow: visible;
+  box-shadow: none;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter
+  > .bui-ToggleButton:not([data-disabled]) {
+  border: 1px solid;
+  border-color: #dfe7ec;
+  border-radius: 999px;
+  color: #30475a;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter
+  > .bui-ToggleButton:not([data-disabled]):not([data-selected])[data-hovered] {
+  border-color: #b9c8d2;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter
+  > .bui-ToggleButton:not([data-disabled])[data-selected] {
+  border-color: #002645;
+  color: #ffffff;
+}
+
+/*
+ * Responsive rules for the shell at phone width.
+ *
+ * How much of the viewport's bottom edge the shell's own chrome covers. Zero
+ * while the desktop rail is shown; at phone width it is the fixed bottom bar —
+ * core-components' `sidebarConfig.mobileSidebarHeight` (56) plus the iOS
+ * home-indicator inset. Consumed by the bar itself (`AgentShellNav`) and by
+ * anything docked to the viewport's bottom edge (the session view's sticky
+ * composer), so the two cannot disagree. theme.test.ts keeps the 56 in step
+ * with sidebarConfig.
+ *
+ * The 599.95px bound is MUI v4's `theme.breakpoints.down('xs')` — the same
+ * query `useSidebarPinState().isMobile` answers, which is what swaps the rail
+ * for the bottom bar.
+ */
+html[data-agent-shell] body {
+  --agent-shell-mobile-bar-height: 0px;
+}
+
+@media (max-width: 599.95px) {
+  html[data-agent-shell] body {
+    --agent-shell-mobile-bar-height: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  /* SidebarPage already pads the page by the bar's 56px; the home-indicator
+     inset on top of it comes from here, so in-flow content (the home
+     composer) clears the whole bar. */
+  html[data-agent-shell] #content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* core-components tables (Sessions, Agents, Models, usage) scroll inside
+     their own box at phone width instead of widening the page. */
+  html[data-agent-shell] [class*='BackstageTable-root'] {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* bui tables do not scroll on their own: bui 0.18's Table is
+     `table-layout: fixed; width: 100%` with `overflow: hidden` cells, so
+     without column widths N columns are crammed into ~310px and their values
+     and action buttons clipped (T22 §0.1). Its scroll container only scrolls
+     once a column declares a width — then react-aria's resizable container
+     sizes the columns (75px each by default). The shell's phone patterns are
+     stacked rows (ui-react StackedRowList), column hiding (usePhoneColumns,
+     two or three columns) or per-column `minWidth` (T22 §2.2). As the
+     fallback for a table none of those reached yet, one that still shows
+     four or more columns without widths scrolls sideways inside its own
+     container, 7rem a column, rather than clipping — an actions column must
+     never become unreachable. Tables with three columns or fewer keep bui's
+     fixed layout and truncate. */
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(4)) {
+    --agent-shell-table-columns: 4;
+    min-width: calc(var(--agent-shell-table-columns) * 7rem);
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(5)) {
+    --agent-shell-table-columns: 5;
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(6)) {
+    --agent-shell-table-columns: 6;
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(7)) {
+    --agent-shell-table-columns: 7;
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(8)) {
+    --agent-shell-table-columns: 8;
+  }
+
+  /* Form controls at 16px (T22 B3, decision D3): below it iOS Safari zooms
+     the page into a field on focus — the composers, every search box, every
+     wizard field. Form controls only, at phone width only; the type scale is
+     unchanged. Unlayered and specific enough to beat bui's layered field
+     styles and the hand-rolled 14px fields' own class rules. */
+  html[data-agent-shell] :is(input, textarea, select) {
+    font-size: 16px;
+  }
+}
+
+/*
+ * The upstream toast (`@backstage/plugin-app`'s ToastContainer: fixed, bottom
+ * centre, `bottom: 1rem`, 2rem from 500px) lands on the phone's bottom bar
+ * and on the session's docked composer — the needs-input toast covered both
+ * (T22 B4). It sits above the bar at phone width and above the docked
+ * composer and a wizard's footer at any width: `--session-dock-height` is the
+ * docked composer's own height (not counting the bar), which the session page
+ * publishes on the document while its composer is docked, and
+ * `--wizard-footer-height` a WizardFrame's footer (Continue, Create), which
+ * the frame publishes while it is mounted; unset, each is 0. A toast (the
+ * inbox's heads-ups, a write's confirmation) so never takes the click of a
+ * page's primary action for the seconds it shows, nor for as long as the
+ * pointer rests on it, which holds it. A wizard step leaves room for the
+ * toast at its end (`--agent-shell-toast-height`, ShellMain's
+ * `useToastHeight`), so the toast never sits on the step's last control
+ * either. Matched by the module class's stable prefix, since the hash changes
+ * with every release; theme.test.ts checks the upstream class still carries
+ * it.
+ */
+html[data-agent-shell] [class*='Toast_container'] {
+  bottom: calc(
+    2rem + var(--session-dock-height, 0px) + var(--wizard-footer-height, 0px)
+  );
+}
+
+@media (max-width: 599.95px) {
+  html[data-agent-shell] [class*='Toast_container'] {
+    bottom: calc(
+      var(--agent-shell-mobile-bar-height) + var(--session-dock-height, 0px) +
+        var(--wizard-footer-height, 0px) + 8px
+    );
+  }
+}
+
+/*
+ * While the soft keyboard is up the 56px bar sits on top of it and eats the
+ * conversation's height (T22 C2). On a touch phone, while a text field has
+ * focus, the bar steps aside and everything docked above it — the session
+ * composer, the wizard footer, the toasts — drops by the same variable. Text
+ * fields only: a checkbox, a button or a read-only field raises no keyboard.
+ * `data-agent-shell-keyboard-hold` keeps that layout while a tap that blurs
+ * the field is in progress (ShellMain's `useKeyboardTapHold`): without it the
+ * docked buttons jump 56px up under the finger and the tap is lost.
+ */
+@media (max-width: 599.95px) and (hover: none) and (pointer: coarse) {
+  html[data-agent-shell][data-agent-shell-keyboard-hold] body,
+  html[data-agent-shell]
+    body:has(
+      :is(
+          textarea,
+          [contenteditable='true'],
+          [contenteditable=''],
+          input:not(
+            [type='button'],
+            [type='checkbox'],
+            [type='color'],
+            [type='file'],
+            [type='hidden'],
+            [type='image'],
+            [type='radio'],
+            [type='range'],
+            [type='reset'],
+            [type='submit']
+          )
+        ):not([readonly]):focus
+    ) {
+    --agent-shell-mobile-bar-height: 0px;
+  }
+
+  html[data-agent-shell][data-agent-shell-keyboard-hold]
+    body
+    .agent-shell-mobile-bar,
+  html[data-agent-shell]
+    body:has(
+      :is(
+          textarea,
+          [contenteditable='true'],
+          [contenteditable=''],
+          input:not(
+            [type='button'],
+            [type='checkbox'],
+            [type='color'],
+            [type='file'],
+            [type='hidden'],
+            [type='image'],
+            [type='radio'],
+            [type='range'],
+            [type='reset'],
+            [type='submit']
+          )
+        ):not([readonly]):focus
+    )
+    .agent-shell-mobile-bar {
+    display: none;
+  }
+}
+
+/*
+ * Controls bui reveals on hover only: on a touch screen there is no hover, so
+ * they stay visible (T22 §2.3). bui's table sort arrow (T22 P13) is
+ * `opacity: 0` until its header is hovered or sorted.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  @media (hover: none) {
+    html[data-agent-shell] .bui-TableHeadSortButton {
+      opacity: 1;
+    }
+  }
+}
+
+/*
+ * Tab strips (ShellPage's RouteTabs: Customize, Usage, an agent's page). A
+ * label and its count — "Agents (6)" — stay on one line (live round L8: at
+ * 375px each label broke after its title). At phone width the tabs pad by
+ * half bui's space-2, with the active underline inset to match, so the usual
+ * three or four tabs fit without scrolling. A longer strip (Customize's six)
+ * scrolls sideways: RouteTabs owns that at phone width (T72) — one row of
+ * 44px tabs, the selected one scrolled into view, edge fades — which retired
+ * R4's five-tab squeeze and the wrap to a second row.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  html[data-agent-shell] .bui-Tab {
+    white-space: nowrap;
+  }
+
+  @media (max-width: 599.95px) {
+    html[data-agent-shell] .bui-Tab {
+      padding-inline: var(--bui-space-1);
+    }
+
+    html[data-agent-shell] .bui-TabActive {
+      left: calc(var(--active-tab-left) + var(--bui-space-1));
+      width: calc(var(--active-tab-width) - var(--bui-space-2));
+    }
+  }
+}
+
+/*
+ * Select options. bui pads an option 4px above and below and sets a
+ * description right under its option's name, so a list of described options
+ * (the composer's agent picker, the serve dialog's placement choice) reads
+ * as one dense block. Options pad by space-1_5, a description sits 2px under
+ * its name (the command palette's gap), and each group after the first
+ * starts space-2 further down, so its heading reads with its own rows. A
+ * described option grows from 38px to 44px and a one-line one from 32px to
+ * 36px; under touch every option is a 44px thumb target.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  html[data-agent-shell] .bui-SelectItem {
+    padding-block: var(--bui-space-1_5);
+  }
+
+  html[data-agent-shell] .bui-SelectItemTextContent {
+    gap: var(--bui-space-0_5);
+  }
+
+  html[data-agent-shell] .bui-SelectSection:not(:first-child) {
+    margin-top: var(--bui-space-2);
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    html[data-agent-shell] .bui-SelectItem {
+      min-height: 44px;
+    }
+  }
+}

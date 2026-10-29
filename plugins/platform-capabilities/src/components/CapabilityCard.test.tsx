@@ -204,6 +204,16 @@ describe('CapabilityCard', () => {
       'Enabling · pending approval',
     ],
     [
+      'enabling, ready to merge',
+      {
+        state: 'ready to merge',
+        enabled: true,
+        lastAction: { name: 'enable-agent-platform-rowan-1' },
+      },
+      VERIFIED,
+      'Enabling · ready to merge',
+    ],
+    [
       'applying, rolling out',
       {
         state: 'rolling out',
@@ -397,6 +407,26 @@ describe('CapabilityCard', () => {
     expect(button).toHaveAccessibleDescription('Enabling · rolling out');
     // A button that cannot be pressed takes no primary fill.
     expect(button).toHaveAttribute('data-variant', 'secondary');
+  });
+
+  it('names the actor’s merge as the next step of an action ready to merge', async () => {
+    await render(
+      withCapability({
+        state: 'ready to merge',
+        enabled: true,
+        lastAction: { name: 'enable-agent-platform-rowan-1' },
+      }),
+    );
+    const step =
+      'No Team review needed: merge the pull requests once their checks are green.';
+    expect(screen.getByTestId('next-step')).toHaveTextContent(step);
+    expect(header()).toHaveAttribute('title', step);
+    expect(header()).not.toHaveAttribute('data-mark');
+    const button = screen.getByRole('button', {
+      name: 'Apply changes · 2 files',
+    });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(step);
   });
 
   it('gives every row of the record a label of its own where two leaves share a name', async () => {

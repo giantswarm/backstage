@@ -3,10 +3,15 @@
  * them. Nothing here is computed by the page; the names are the tools' own.
  */
 
-/** The state of a capability on an installation, in the manager's words. */
+/**
+ * The state of a capability on an installation, in the manager's words.
+ * *ready to merge* is an action that needs no Team review (every target a
+ * test installation): its actor merges the pull requests, nobody approves.
+ */
 export type CapabilityStateName =
   | 'not enabled'
   | 'pending approval'
+  | 'ready to merge'
   | 'rolling out'
   | 'waiting for the customer'
   | 'enabled'

@@ -14,10 +14,12 @@ import TableBody from '@material-ui/core/TableBody';
 import TableCell from '@material-ui/core/TableCell';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
-import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  MermaidDiagram,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import classNames from 'classnames';
-import { MermaidDiagram } from './MermaidDiagram';
 
 export const useMarkdownStyles = makeStyles((theme: Theme) =>
   createStyles({

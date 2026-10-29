@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
-import { MimirMetricSample, MimirQueryResponse } from '../../apis/mimir/types';
+import { MimirMetricSample } from '../../apis/mimir/types';
 import {
   CertmanagerCertificateExpirationTimestampSeconds,
   CertmanagerCertificateReadyStatus,
   GatewayApiGatewayListenerInfo,
   GatewayApiHttprouteHostnameInfo,
   GatewayApiHttprouteParentInfo,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { HostnameCertInfo, resolveHostnameCert } from './resolveHostnameCert';
+import { samplesOf } from './mimirSamples';
 
 export interface HttpRouteHostname {
   /** The hostname exposed by the HTTPRoute (the `hostname` label). */
@@ -17,12 +18,6 @@ export interface HttpRouteHostname {
   labels: Record<string, string>;
   /** The serving TLS certificate, resolved via the Gateway listener. */
   cert?: HostnameCertInfo;
-}
-
-function samplesOf(
-  response: MimirQueryResponse | undefined,
-): MimirMetricSample[] {
-  return response?.data?.result ?? [];
 }
 
 /**

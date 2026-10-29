@@ -38,8 +38,8 @@ function joinWithAnd(items: string[]): string {
  * helm-controller or a human's `kubectl apply --server-side` just as easily as a
  * Kustomization built from a repository.
  */
-function buildManagedSuspendHint(owners: string[]): string {
-  return `spec.suspend is applied by ${joinWithAnd(
+function buildManagedSuspendHint(field: string, owners: string[]): string {
+  return `${field} is applied by ${joinWithAnd(
     owners,
   )}, so a change made here would be reverted on the next reconciliation. Change it at the source that applies it.`;
 }
@@ -49,8 +49,11 @@ function buildManagedSuspendHint(owners: string[]): string {
  * declaratively managed. Plain {@link SUSPENDED_HINT} would say "Resume it first",
  * which is a dead end here — we have just disabled Resume for the same reason.
  */
-function buildManagedSuspendedReconcileHint(owners: string[]): string {
-  return `Suspended resources are not reconciled, and spec.suspend is applied by ${joinWithAnd(
+function buildManagedSuspendedReconcileHint(
+  field: string,
+  owners: string[],
+): string {
+  return `Suspended resources are not reconciled, and ${field} is applied by ${joinWithAnd(
     owners,
   )} — resume it at the source that applies it.`;
 }
@@ -88,8 +91,9 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
 
   // Reconcile is deliberately *not* gated on declarative management: the
   // `reconcile.fluxcd.io/requestedAt` annotation is never part of an applied
-  // manifest, so no apply-owner ever asserts or prunes it. Only `spec.suspend`
-  // can be contested.
+  // manifest, so no apply-owner ever asserts or prunes it. Only the suspend
+  // field can be contested.
+  const suspendFieldName = resource.getSuspendFieldName();
   const suspendFieldApplyOwners = resource.getSuspendFieldApplyOwners();
   const isSuspendFieldManaged = suspendFieldApplyOwners.length > 0;
 
@@ -97,14 +101,17 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   if (isSuspended && isSuspendFieldManaged) {
     // Must precede the plain suspended case: telling someone to resume first
     // would be a dead end when Resume is disabled for being managed.
-    reconcileHint = buildManagedSuspendedReconcileHint(suspendFieldApplyOwners);
+    reconcileHint = buildManagedSuspendedReconcileHint(
+      suspendFieldName,
+      suspendFieldApplyOwners,
+    );
   } else if (isSuspended) {
     reconcileHint = SUSPENDED_HINT;
   } else if (isReconcileRequestPending) {
     reconcileHint = REQUEST_PENDING_HINT;
   }
   const suspendHint = isSuspendFieldManaged
-    ? buildManagedSuspendHint(suspendFieldApplyOwners)
+    ? buildManagedSuspendHint(suspendFieldName, suspendFieldApplyOwners)
     : '';
 
   const notifyFailure = (error: unknown, action: string) => {

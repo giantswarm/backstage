@@ -8,7 +8,7 @@ import {
   KubeStatefulsetStatusReplicasReady,
   KubeDaemonsetStatusDesiredNumberScheduled,
   KubeDaemonsetStatusNumberReady,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 
 export interface WorkloadReplicaStatus {
   kind: 'Deployment' | 'StatefulSet' | 'DaemonSet';

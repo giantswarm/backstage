@@ -51,7 +51,7 @@ describe('StopServedModelDialog', () => {
 
     expect(screen.getByText('Stop serving "Qwen3 14B"?')).toBeInTheDocument();
     expect(
-      screen.getByText(/weights stay in the model cache/),
+      screen.getByText(/weights stay\s+cached on the node/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Qwen3 14B \(portal\)/)).toBeInTheDocument();
     expect(

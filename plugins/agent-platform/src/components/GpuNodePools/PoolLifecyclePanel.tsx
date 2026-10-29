@@ -17,8 +17,9 @@ import {
   serveIntentStep,
   type ServeIntent,
 } from '../../lib/serveIntent';
+import { serveSeedSearch } from '../../lib/modelManagerServe';
 import type { ServedModel } from '../../lib/serving';
-import { servingRouteRef } from '../../routes';
+import { serveModelRouteRef } from '../../routes';
 import { LifecycleSteps } from '../LifecycleSteps';
 
 /** The pool whose lifecycle panel is open: Deploy's result, or a row's chevron. */
@@ -61,26 +62,22 @@ export const SERVE_FIRST_MODEL = 'Serve your first model';
 export const TRY_SERVING_AGAIN = 'Try serving again';
 
 /**
- * The link contract with the Serving page: `serve=1` opens the Serve flow with
- * the installation, cluster and pool preselected (giantswarm/backstage#2415),
- * and `preset` the preset too, where the pool carries a serve intent
- * (giantswarm/backstage#2437).
+ * The link to Serve model on the pool: the installation, cluster and pool
+ * preselected (giantswarm/backstage#2415), and the preset too where the pool
+ * carries a serve intent (giantswarm/backstage#2437) — `serveModelRouteRef`'s
+ * query (`serveSeedSearch`).
  */
 export function serveFirstModelHref(
-  servingPath: string,
+  servePath: string,
   opened: Pick<OpenedPool, 'installation' | 'cluster' | 'poolName'>,
   preset?: string,
 ): string {
-  const params = new URLSearchParams({
-    serve: '1',
+  return `${servePath}${serveSeedSearch({
     installation: opened.installation,
     cluster: opened.cluster,
     pool: opened.poolName,
-  });
-  if (preset) {
-    params.set('preset', preset);
-  }
-  return `${servingPath}?${params.toString()}`;
+    model: preset,
+  })}`;
 }
 
 /**
@@ -104,7 +101,7 @@ export function PoolLifecyclePanel({
   serve,
   onClose,
 }: PoolLifecyclePanelProps) {
-  const servingRoute = useRouteRef(servingRouteRef);
+  const serveRoute = useRouteRef(serveModelRouteRef);
   const phase = row ? poolPhase(row.pool, row.cluster) : undefined;
   const removing = Boolean(opened.removed) || phase === 'removing';
   const steps = useMemo<LifecycleStep[]>(() => {
@@ -137,11 +134,11 @@ export function PoolLifecyclePanel({
           stackReady: allDone,
           loading: serve.loading,
           model: serve.model,
-          serveAnotherHref: servingRoute
-            ? serveFirstModelHref(servingRoute(), opened)
+          serveAnotherHref: serveRoute
+            ? serveFirstModelHref(serveRoute(), opened)
             : undefined,
-          serveInDialogHref: servingRoute
-            ? serveFirstModelHref(servingRoute(), opened, serve.intent.preset)
+          servePresetHref: serveRoute
+            ? serveFirstModelHref(serveRoute(), opened, serve.intent.preset)
             : undefined,
         }),
       ];
@@ -153,15 +150,15 @@ export function PoolLifecyclePanel({
       message: allDone
         ? 'the pool, the operator and the serving stack are ready'
         : 'once the steps above are done',
-      action: servingRoute
+      action: serveRoute
         ? {
             label: SERVE_FIRST_MODEL,
-            to: serveFirstModelHref(servingRoute(), opened),
+            to: serveFirstModelHref(serveRoute(), opened),
           }
         : undefined,
     };
     return [...lifecycle, first];
-  }, [row, opened, serve, servingRoute, phase, removing]);
+  }, [row, opened, serve, serveRoute, phase, removing]);
 
   const fullName = `${opened.cluster}-${opened.poolName}`;
   const serveFailed = serve?.intent.outcome?.kind === 'failed';

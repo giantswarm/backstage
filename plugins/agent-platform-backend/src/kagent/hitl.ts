@@ -22,6 +22,8 @@ export const HITL_TYPE_TOOL_APPROVAL_REQUEST = 'tool_approval_request';
 export const HITL_TYPE_ASK_USER_REQUEST = 'ask_user_request';
 export const HITL_TYPE_TOOL_APPROVAL_RESPONSE = 'tool_approval_response';
 export const HITL_TYPE_ASK_USER_RESPONSE = 'ask_user_response';
+export const HITL_TYPE_URL_ELICITATION_REQUEST = 'url_elicitation_request';
+export const HITL_TYPE_URL_ELICITATION_RESPONSE = 'url_elicitation_response';
 
 /** One tool invocation awaiting a decision. */
 export type HitlTool = {
@@ -48,6 +50,12 @@ export type HitlRequest =
         choices?: string[];
         multiple?: boolean;
       }[];
+    }
+  | {
+      /** An MCP server's sign-in link the task waits on. */
+      type: typeof HITL_TYPE_URL_ELICITATION_REQUEST;
+      /** Correlates the reply with the request; echoed back verbatim. */
+      id: string;
     };
 
 /** What the panel decided, as the browser sends it. */
@@ -131,6 +139,11 @@ export function readHitlRequest(task: Task): HitlRequest | undefined {
     return { type, id, questions };
   }
 
+  if (type === HITL_TYPE_URL_ELICITATION_REQUEST) {
+    const id = asString(payload.id);
+    return id ? { type, id } : undefined;
+  }
+
   return undefined;
 }
 
@@ -154,6 +167,8 @@ export function readHitlRequest(task: Task): HitlRequest | undefined {
  *   dropped. A rejection of a question is not a thing the extension knows;
  *   declining is answering with nothing, which the controller refuses — so the
  *   panel does not offer it and this refuses it too.
+ * - A **sign-in** (an MCP server's URL elicitation) is accepted by an approval,
+ *   which says the person signed in, and declined by a rejection.
  */
 export function buildHitlResponse(
   request: HitlRequest,
@@ -171,6 +186,14 @@ export function buildHitlResponse(
             rejection_reason: answer.rejectionReason,
           }),
       })),
+    };
+  }
+
+  if (request.type === HITL_TYPE_URL_ELICITATION_REQUEST) {
+    return {
+      type: HITL_TYPE_URL_ELICITATION_RESPONSE,
+      id: request.id,
+      action: answer.decision === 'approve' ? 'accept' : 'decline',
     };
   }
 

@@ -5,10 +5,13 @@ import {
 
 /**
  * Kinds that Flux can reconcile on demand and suspend — i.e. whose CRDs carry
- * both `spec.suspend` and `status.lastHandledReconcileAt`, the two fields these
- * actions drive.
+ * both a suspend field and `status.lastHandledReconcileAt`, the two fields
+ * these actions drive. The toolkit kinds suspend through `spec.suspend`, the
+ * Flux Operator kinds through the `fluxcd.controlplane.io/reconcile`
+ * annotation (see `FluxObject.getSuspendPatch`).
  *
- * This covers every kind the details panel renders. It is kept as an explicit
+ * This covers every kind the details panel renders except FluxReport, which
+ * the operator regenerates on its own schedule. It is kept as an explicit
  * allowlist rather than inferred from `instanceof FluxObject`, so a future Flux
  * resource class that lacks the fields does not silently get buttons that
  * cannot work.
@@ -29,6 +32,9 @@ const ACTIONABLE_KINDS = [
   'ImagePolicy',
   'ImageRepository',
   'ImageUpdateAutomation',
+  'FluxInstance',
+  'ResourceSet',
+  'ResourceSetInputProvider',
 ];
 
 export function supportsFluxActions(

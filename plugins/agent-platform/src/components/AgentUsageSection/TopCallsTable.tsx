@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
 import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
+import type { UsageRemainder } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import { formatCount } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
@@ -27,6 +28,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     // than `break-all` so a long `x_…` name breaks only when it must.
     overflowWrap: 'anywhere',
   },
+  remainder: {
+    marginTop: theme.spacing(1),
+  },
 }));
 
 export type TopCallsRow = { id: string; name: string; calls: number };
@@ -36,8 +40,24 @@ export type TopCallsTableProps = {
   /** Heading of the name column — "Tool", or "MCP server". */
   nameLabel: string;
   rows: TopCallsRow[];
+  /**
+   * What the backend's cap left out. Rendered as one line under the table
+   * when anything was; nothing at all when the list is exhaustive.
+   */
+  other?: UsageRemainder;
   emptyMessage: string;
 };
+
+/**
+ * The line under a capped list: "and 14 more, 230 calls between them." —
+ * TopAgentsCard's wording, so the Usage page says it one way.
+ */
+export function remainderLine({ count, calls }: UsageRemainder): string {
+  const callsText = `${formatCount(calls)} ${calls === 1 ? 'call' : 'calls'}`;
+  return count === 1
+    ? `and 1 more, ${callsText}.`
+    : `and ${formatCount(count)} more, ${callsText} between them.`;
+}
 
 /**
  * A "top N by call count" table. Used twice: tools, and the muster servers
@@ -47,11 +67,16 @@ export type TopCallsTableProps = {
  * most tables: the rows are already ranked, so the bar's job is to show *how
  * steeply* — whether one tool dominates or the top ten are level — which the
  * numbers alone make you do arithmetic for.
+ *
+ * The backend caps both lists, so the table never grows past its top N; what
+ * the cap left out is one line under it ({@link remainderLine}) rather than
+ * dropped silently.
  */
 export function TopCallsTable({
   title,
   nameLabel,
   rows,
+  other,
   emptyMessage,
 }: TopCallsTableProps) {
   const classes = useStyles();
@@ -107,6 +132,16 @@ export function TopCallsTable({
           </Text>
         }
       />
+      {other && other.count > 0 && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          className={classes.remainder}
+        >
+          {remainderLine(other)}
+        </Text>
+      )}
     </Paper>
   );
 }

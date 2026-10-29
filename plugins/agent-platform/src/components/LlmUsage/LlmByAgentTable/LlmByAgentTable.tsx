@@ -1,36 +1,40 @@
 import { useMemo } from 'react';
-import {
-  Badge,
-  Cell,
-  CellText,
-  Flex,
-  Table,
-  Text,
-  useTable,
-} from '@backstage/ui';
+import { Badge, Cell, Flex, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  columnMax,
+  DataBar,
+  InfoHint,
+  INITIAL_ROWS,
+  ShowMore,
+  usePhoneColumns,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
 import {
   formatCount,
+  formatMoney,
   formatPercent,
   formatTokens,
-  formatUsd,
+  USD,
+  type Currency,
 } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
+import { NameCell } from '../NameCell';
 import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByAgentTableProps = {
   rows: LlmAgentRow[];
   emptyMessage: string;
   note?: string;
+  /** The installation's display currency; USD when it has none. */
+  currency?: Currency;
 };
 
 /** The mark on a row whose agent the portal no longer knows. */
 const REMOVED_MARK = 'Removed';
-const REMOVED_TITLE =
-  'This agent matches none the portal knows: it has been removed since, or runs outside this view. Its spend stays in the totals.';
+const REMOVED_EXPLANATION =
+  'This agent is unknown to this portal, either removed or outside this view. Its spend stays in the totals.';
 
 /**
  * The agent column: a known agent's name, linked to its page; a removed
@@ -39,23 +43,23 @@ const REMOVED_TITLE =
  *
  * The mark sits under the name rather than beside it: `namespace/name` is
  * long as names go and the column is narrow, and a mark next to it left only
- * `kagent/lab-re…` of the one thing the row has to say.
+ * `kagent/lab-re…` of the one thing the row has to say. What the mark means
+ * opens from the hint beside it — on a press too, so a phone reaches it
+ * (T22 C23; a `title=` never shows on touch).
  */
 function AgentCell({ row }: { row: LlmAgentRow }) {
   if (row.kind !== 'removed') {
-    return <CellText title={row.label} href={row.href} />;
+    return <NameCell title={row.label} href={row.href} />;
   }
   return (
-    <Cell>
-      <Flex direction="column" align="start" gap="1">
-        <Text as="p" variant="body-medium" truncate title={row.label}>
-          {row.label}
-        </Text>
-        <span title={REMOVED_TITLE}>
-          <Badge size="small">{REMOVED_MARK}</Badge>
-        </span>
+    <NameCell title={row.label}>
+      <Flex align="center" gap="1">
+        <Badge size="small">{REMOVED_MARK}</Badge>
+        <InfoHint label={`What ${REMOVED_MARK} means`}>
+          {REMOVED_EXPLANATION}
+        </InfoHint>
       </Flex>
-    </Cell>
+    </NameCell>
   );
 }
 
@@ -69,11 +73,17 @@ function AgentCell({ row }: { row: LlmAgentRow }) {
  * maximum, each on its own hue. The bars are for comparing rows **down** a
  * column; they say nothing across columns, which is what the separate hues
  * signal.
+ *
+ * One row per agent with spend in the window — on a large fleet, hundreds.
+ * The table sorts first and `ShowMore` slices the sorted rows, so the first
+ * page is always the top spenders (or the top of whatever column is sorted),
+ * and three agents render with no reveal control at all.
  */
 export function LlmByAgentTable({
   rows,
   emptyMessage,
   note,
+  currency = USD,
 }: LlmByAgentTableProps) {
   const colorFor = useMeasureColor();
 
@@ -128,12 +138,12 @@ export function LlmByAgentTable({
     },
     {
       id: 'costUsd',
-      label: 'Cost',
+      label: 'Spend',
       isSortable: true,
       cell: row => (
         <Cell>
           <DataBar
-            label={formatUsd(row.costUsd)}
+            label={formatMoney(row.costUsd, currency)}
             value={row.costUsd}
             max={max.cost}
             color={colorFor('cost')}
@@ -157,6 +167,10 @@ export function LlmByAgentTable({
       ),
     },
   ];
+  // At phone width the agent and what it cost (T22 B10): five columns in
+  // 343px squashed every figure to a clipped sliver. A known agent's calls
+  // and tokens are on its own Usage tab, a link away.
+  const shownColumns = usePhoneColumns(columnConfig, ['label', 'costUsd']);
 
   const { tableProps } = useTable<LlmAgentRow>({
     mode: 'complete',
@@ -172,19 +186,28 @@ export function LlmByAgentTable({
 
   return (
     <UsageCard title="By agent" note={note} wide>
-      {/* No `data` prop here: `tableProps` already carries the *sorted* rows,
-          and passing `data` after the spread overrides them with the unsorted
-          input — which silently breaks every column header while leaving the
-          sort indicator working. */}
-      <Table<LlmAgentRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage}
-          </Text>
-        }
-      />
+      {/* Sort-then-slice: `tableProps.data` is the *sorted* rows, and
+          `ShowMore` hands the table its first page of them. Passing the raw
+          `rows` instead would silently undo every column sort while the
+          header's indicator still moved. */}
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="agent"
+      >
+        {visible => (
+          <Table<LlmAgentRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+            emptyState={
+              <Text variant="body-medium" color="secondary">
+                {emptyMessage}
+              </Text>
+            }
+          />
+        )}
+      </ShowMore>
     </UsageCard>
   );
 }

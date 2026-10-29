@@ -1,6 +1,7 @@
 export * from './types';
 export * from './GSAuthProviders';
 export * from './signInConnectorMemory';
+export * from './loginRequestCaller';
 export {
   GithubGrantAuthConnector,
   GithubTokenError,

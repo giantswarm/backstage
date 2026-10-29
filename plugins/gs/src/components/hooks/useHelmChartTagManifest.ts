@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { containerRegistryApiRef } from '../../apis/containerRegistry';
 import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
@@ -22,7 +23,8 @@ export function useHelmChartTagManifest(
   const {
     data: tagManifest,
     error,
-    isLoading,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: ['oci-tag-manifest', registry, repository, chartTag],
     queryFn: () => {
@@ -38,6 +40,7 @@ export function useHelmChartTagManifest(
     },
     enabled: Boolean(registry && repository && chartTag),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return useMemo(
     () => ({

@@ -1,14 +1,20 @@
 import {
   StatusError,
   StatusOK,
-  StatusPending,
+  StatusWarning,
 } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import { ConditionState } from '../../../../hooks/gatewayTopology';
 
+// Reasons are CamelCase without break points; let them wrap anywhere instead
+// of being clipped.
+const wrap = { overflowWrap: 'anywhere' } as const;
+
 /**
- * One status condition. `not-reported` and `not-available` are shown without
- * a status dot so they can never be mistaken for a healthy condition.
+ * One status condition. A healthy condition reads "True"; only a failing one
+ * shows its reason, which is what someone fixing it needs. `not-reported`
+ * gets a warning, since nothing serving is the likely cause, and
+ * `not-available` no status at all, so neither can be mistaken for healthy.
  */
 export const ConditionStatus = ({
   condition,
@@ -20,21 +26,26 @@ export const ConditionStatus = ({
       return (
         <Flex align="center" gap="1">
           <StatusOK />
-          <Text variant="body-medium">{condition.reason ?? 'True'}</Text>
+          <Text variant="body-medium">True</Text>
         </Flex>
       );
     case 'false':
       return (
         <Flex align="center" gap="1">
           <StatusError />
-          <Text variant="body-medium">{condition.reason ?? 'False'}</Text>
+          <Text variant="body-medium" style={wrap}>
+            {condition.reason ?? 'False'}
+          </Text>
         </Flex>
       );
     case 'not-reported':
       return (
         <Flex align="center" gap="1">
-          <StatusPending />
-          <Text variant="body-medium" color="secondary">
+          <StatusWarning />
+          <Text
+            variant="body-medium"
+            title="No controller has reported this condition yet."
+          >
             Not reported
           </Text>
         </Flex>

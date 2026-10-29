@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  useApi,
-  discoveryApiRef,
-  fetchApiRef,
-} from '@backstage/core-plugin-api';
+import { useApi, discoveryApiRef } from '@backstage/core-plugin-api';
 
 interface ManifestResult {
   assets: Record<string, number>;
@@ -21,7 +17,6 @@ let cachedResult: ManifestResult | null = null;
  */
 export function useBranding() {
   const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
   const [result, setResult] = useState<ManifestResult | null>(cachedResult);
   const [isLoading, setIsLoading] = useState(!cachedResult);
 
@@ -36,7 +31,11 @@ export function useBranding() {
       cachedPromise = (async (): Promise<ManifestResult> => {
         const baseUrl = await discoveryApi.getBaseUrl('branding');
         try {
-          const response = await fetchApi.fetch(`${baseUrl}/manifest`);
+          // Plain fetch, not fetchApi: the branding routes allow
+          // unauthenticated access (the favicon and the sign-in page need
+          // them before anyone is signed in), and fetchApi's identity
+          // middleware waits for sign-in — on the sign-in page, forever.
+          const response = await fetch(`${baseUrl}/manifest`);
           if (response.ok) {
             const data = await response.json();
             return { assets: data.assets ?? {}, baseUrl };
@@ -60,7 +59,7 @@ export function useBranding() {
     return () => {
       cancelled = true;
     };
-  }, [discoveryApi, fetchApi]);
+  }, [discoveryApi]);
 
   const hasAsset = useCallback(
     (filename: string) => result?.assets[filename] !== undefined,

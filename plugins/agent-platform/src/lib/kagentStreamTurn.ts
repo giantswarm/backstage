@@ -1,6 +1,7 @@
 import {
   A2aMessageWire,
   a2aMessageWireSchema,
+  A2aStreamEventWire,
   a2aStreamEventWireSchema,
   CANCELED_STATE,
   CONFIRMATION_TOOL_NAME,
@@ -11,6 +12,7 @@ import {
   isFunctionCallPart,
   isFunctionResponsePart,
   isInternalToolName,
+  isRecord,
   isThoughtPart,
   parsePart,
   readFunctionCall,
@@ -18,11 +20,13 @@ import {
   readKagentMetadata,
   readKagentMetadataString,
   readMessageText,
+  readAttachment,
   readPartText,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { TimelineItem } from './kagentTimeline';
+import { readWorkspaceNotice } from './workspaceNotice';
 
 /**
  * Interpreting one A2A `message/stream` turn, live.
@@ -102,6 +106,15 @@ export type StreamTurn = {
   live?: LiveRun;
   /** A terminal `status-update` was seen: the turn is over. */
   isFinal: boolean;
+  /**
+   * Some event of this turn carried a file part.
+   *
+   * The live preview renders text and calls only, so a file is left to the
+   * polled conversation, and this is how the caller knows to re-read it now
+   * rather than on the next poll. Flips once per turn: the terminal event
+   * repeats the parts a turn already streamed.
+   */
+  carriesFile: boolean;
   /** Newest A2A state the stream reported, lowercased. */
   stateKey?: string;
   /**
@@ -113,6 +126,12 @@ export type StreamTurn = {
    * hide it from an effect watching for one.
    */
   revision: number;
+  /**
+   * Partial artifact chunks are being skipped: the stream was resumed after a
+   * cut (see {@link resumeStreamTurn}), and a reply of chunks that began before
+   * it would show from mid-word. Cleared by the next complete artifact.
+   */
+  skipPartialArtifacts?: boolean;
   /** Calls awaiting their response, by function-call id. Internal. */
   openCalls: { callId: string; itemIndex: number }[];
   /** Monotonic id source for {@link items}. Internal. */
@@ -125,6 +144,7 @@ export function createStreamTurn(sentMessageId: string): StreamTurn {
     dispatched: false,
     items: [],
     isFinal: false,
+    carriesFile: false,
     revision: 0,
     openCalls: [],
     nextItemId: 0,
@@ -152,6 +172,35 @@ export function isStreamTurnOver(turn: StreamTurn): boolean {
 }
 
 /**
+ * The turn as it stands where its stream was cut, ready to take the events of
+ * a resubscription to its task.
+ *
+ * Everything already shown stays: a resubscription delivers the task's
+ * snapshot (whose history is not ingested) and the events from then on, so
+ * nothing on screen arrives twice, and a complete message that repeats one is
+ * recognised by its `messageId`. Only an open run of **artifact chunks** goes —
+ * one with no `messageId`, the Go executor's partial reply. The chunks sent
+ * while no stream was open are gone, so the next ones would be glued onto it
+ * with a hole in the middle; the complete artifact supersedes the run anyway,
+ * from the resubscription or from the poll. A run a message opened is that
+ * message's text as sent and keeps its place.
+ *
+ * Partial chunks are skipped from here until the next complete artifact: the
+ * first one the resubscription delivers may be the middle of a reply, and a
+ * preview starting mid-word reads as broken. The reply shows whole once its
+ * complete artifact arrives.
+ */
+export function resumeStreamTurn(turn: StreamTurn): StreamTurn {
+  const dropsRun = turn.live !== undefined && turn.live.messageId === undefined;
+  return {
+    ...turn,
+    live: dropsRun ? undefined : turn.live,
+    skipPartialArtifacts: true,
+    revision: turn.revision + 1,
+  };
+}
+
+/**
  * Fold one stream event into the turn. Pure: returns a new state, never throws
  * — an unreadable event returns the previous state with only `dispatched` set,
  * because even an event we cannot parse proves kagent is running the turn.
@@ -173,6 +222,9 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     items: turn.items,
     openCalls: turn.openCalls,
   };
+  if (!next.carriesFile && eventCarriesFile(event)) {
+    next.carriesFile = true;
+  }
 
   switch (event.kind) {
     case 'task': {
@@ -188,6 +240,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     }
 
     case 'status-update': {
+      next.taskId ??= event.taskId;
       const state = event.status?.state?.toLowerCase();
       if (state) {
         next.stateKey = state;
@@ -249,6 +302,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     }
 
     case 'artifact-update': {
+      next.taskId ??= event.taskId;
       const parts = Array.isArray(event.artifact?.parts)
         ? event.artifact.parts
         : [];
@@ -260,6 +314,16 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       // The complete response message (Go executor), or the closing sentinel
       // (whose text, when present, is the complete message — Python flow).
       const isComplete = partial === false || event.lastChunk === true;
+      // What the poll keys this output by on API v2, where the agent's output
+      // lands in `Task.artifacts` and each artifact reads back as a message
+      // under its id (`artifactToWireMessage`). Without it the page cannot
+      // recognise the polled copy, and renders the reply twice.
+      const artifactId = event.artifact?.artifactId ?? undefined;
+      // Who produced it, where the poll reads it from too.
+      const artifactAuthor = readKagentMetadataString(
+        event.artifact?.metadata,
+        'author',
+      );
 
       let text = '';
       /**
@@ -267,11 +331,17 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
        * so far.
        *
        * Only chunks that arrived *as artifacts* are what a complete artifact
-       * supersedes, and those carry no `messageId`. A run opened by a message is
-       * someone else's sentence: this event has no complete copy of it, so
-       * discarding it would erase it outright.
+       * supersedes, and the run they build is the one without a `messageId`. A
+       * run opened by a message is someone else's sentence: this event has no
+       * complete copy of it, so discarding it would erase it outright.
+       *
+       * Where that message is the same text (the Python flow: it arrived whole
+       * on a status-update, and this event only repeats it), its run is flushed
+       * under the message's own id, and `pushTextItem` drops this copy as the
+       * adjacent repeat.
        */
       const emitComplete = () => {
+        next.skipPartialArtifacts = false;
         const live = next.live;
         if (!live || live.messageId !== undefined) {
           flushLiveRun(next);
@@ -280,17 +350,15 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         if (!text) {
           return;
         }
-        // Where the run turns out to be that same complete text (the Python
-        // flow: the message arrived whole on a status-update, and this event
-        // only repeats it), it carries the `messageId` this artifact has not
-        // got — and that is what later lets the poll recognise the item.
+        // A run that is this same text knows the author when the artifact
+        // does not say.
         const repeats = live?.text.trim() === text.trim();
         pushTextItem(
           next,
           'agent-message',
           text,
-          repeats ? live?.messageId : undefined,
-          repeats ? live?.author : undefined,
+          artifactId,
+          artifactAuthor ?? (repeats ? live?.author : undefined),
         );
         text = '';
       };
@@ -303,7 +371,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         const partText = readPartText(part);
         if (partText !== undefined) {
           text += partText;
-          if (partial === true) {
+          if (partial === true && !next.skipPartialArtifacts) {
             // Appended as the parts are read rather than after the loop: a
             // `function_call` later in this same event must not take its item
             // slot ahead of the text that came before it.
@@ -312,7 +380,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
               'agent-message',
               partText,
               undefined,
-              undefined,
+              artifactAuthor,
             );
           }
           continue;
@@ -323,7 +391,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         if (isComplete) {
           emitComplete();
         }
-        ingestDataPart(next, part, undefined, undefined);
+        ingestDataPart(next, part, artifactAuthor, artifactId);
       }
 
       if (isComplete) {
@@ -343,6 +411,30 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     default:
       return next;
   }
+}
+
+/**
+ * Whether an event carries a file part anywhere: on its message, its artifact,
+ * or, for a `task` snapshot, in the history and artifacts it repeats.
+ */
+function eventCarriesFile(event: A2aStreamEventWire): boolean {
+  const partsOf = (value: unknown): unknown[] => {
+    const parts = isRecord(value) ? value.parts : undefined;
+    return Array.isArray(parts) ? parts : [];
+  };
+  const listOf = (value: unknown): unknown[] =>
+    Array.isArray(value) ? value : [];
+  const parts = [
+    ...(event.parts ?? []),
+    ...(event.artifact?.parts ?? []),
+    ...partsOf(event.status?.message),
+    ...listOf(event.history).flatMap(partsOf),
+    ...listOf(event.artifacts).flatMap(partsOf),
+  ];
+  return parts.some(rawPart => {
+    const part = parsePart(rawPart);
+    return part !== undefined && readAttachment(part) !== undefined;
+  });
 }
 
 /**
@@ -378,6 +470,9 @@ function ingestCompleteMessage(
     turn.items.some(item => item.messageId === message.messageId)
   ) {
     return false;
+  }
+  if (ingestWorkspaceNotice(turn, message)) {
+    return true;
   }
   const author = readKagentMetadataString(message.metadata, 'author');
   const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -436,6 +531,9 @@ function ingestCompleteMessage(
  * above every sentence.
  */
 function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
+  if (ingestWorkspaceNotice(turn, message)) {
+    return;
+  }
   const author = readKagentMetadataString(message.metadata, 'author');
   const parts = Array.isArray(message.parts) ? message.parts : [];
   for (const rawPart of parts) {
@@ -456,6 +554,54 @@ function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
     }
     ingestDataPart(turn, part, author, message.messageId);
   }
+}
+
+/**
+ * A workspace setup notice, as the item `buildTimeline` makes of it, when the
+ * message is one. It arrives whole on the turn's first `status-update`, so it
+ * is never a run of text to extend: as one, it showed as the start of the
+ * agent's reply.
+ *
+ * Only a message that opens the agent's side of the turn is tested, as on the
+ * poll side (`NoticePosition`): nothing streamed yet but notices, so a repeat
+ * of the notice still reads as one and is taken and dropped — by its id, or by
+ * its text when it carries none. The test is skipped outright once the agent
+ * has said anything, which keeps it off the per-delta path.
+ */
+function ingestWorkspaceNotice(
+  turn: StreamTurn,
+  message: A2aMessageWire,
+): boolean {
+  const opensTurn =
+    turn.live === undefined &&
+    turn.items.every(item => item.kind === 'workspace-notice');
+  const notice = readWorkspaceNotice(message, { opensTurn });
+  if (!notice) {
+    return false;
+  }
+  const repeats = turn.items.some(item =>
+    message.messageId
+      ? item.messageId === message.messageId
+      : item.kind === 'workspace-notice' && item.notice.text === notice.text,
+  );
+  if (repeats) {
+    return true;
+  }
+  // Only a marked notice can find a run open.
+  flushLiveRun(turn);
+  turn.items = [
+    ...turn.items,
+    {
+      kind: 'workspace-notice',
+      id: `stream:${turn.nextItemId}`,
+      taskIndex: 0,
+      messageId: message.messageId,
+      author: readKagentMetadataString(message.metadata, 'author'),
+      notice,
+    },
+  ];
+  turn.nextItemId += 1;
+  return true;
 }
 
 /**
@@ -592,8 +738,8 @@ function pushTextItem(
     return;
   }
   // The Go flow can deliver the same response twice — as the `partial: false`
-  // artifact and again on the terminal status update — and only one of the two
-  // carries a `messageId` to dedupe on. Identical adjacent text is the tell.
+  // artifact and again on the terminal status update — under two different ids,
+  // the artifact's and the message's. Identical adjacent text is the tell.
   const last = turn.items.at(-1);
   if (last && last.kind === kind && last.text === trimmed) {
     return;

@@ -8,6 +8,7 @@ import {
 } from './authLogin';
 import {
   McpContentItem,
+  MusterAuthRequiredError,
   MusterMcpClient,
   readMusterInstallationsFromConfig,
 } from './MusterMcpClient';
@@ -206,6 +207,11 @@ export function looksNotConnected(error: unknown): boolean {
  * to the server, connects it (a person who consented before reconnects
  * silently) and retries once; when that needs a sign-in, throws
  * {@link MusterServerNotConnectedError} carrying the URL to complete.
+ *
+ * Muster's auth_required answer is already the outcome of that login --
+ * muster ran `core_auth_login` for the call and found no grant to reconnect
+ * with -- so it becomes the error as it is, without spending another of the
+ * person's few sign-ins a minute on the same question.
  */
 export async function asConnected<T>(
   gateway: MusterServerGateway,
@@ -216,6 +222,15 @@ export async function asConnected<T>(
   try {
     return await run();
   } catch (error) {
+    if (error instanceof MusterAuthRequiredError) {
+      throw new MusterServerNotConnectedError(
+        error.authUrl
+          ? `Connect '${server}' in muster to use this page.`
+          : `'${server}' is not connected: ${error.message}`,
+        server,
+        error.authUrl,
+      );
+    }
     if (!looksNotConnected(error)) {
       throw error;
     }

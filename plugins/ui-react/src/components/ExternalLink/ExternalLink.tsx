@@ -1,3 +1,4 @@
+import { VisuallyHidden } from '@backstage/ui';
 import { Box, Link, styled } from '@material-ui/core';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
 
@@ -18,6 +19,12 @@ type ExternalLinkProps = {
   display?: 'flex' | 'inline-flex';
 };
 
+/**
+ * A link that opens in a new tab: for a link leaving the app, and for any
+ * link inside a form with input to keep, so following it leaves the form
+ * where it is. The launch icon says so to the eye and "(opens in a new tab)"
+ * to a screen reader, so the tab switch is no surprise.
+ */
 export const ExternalLink = ({
   href,
   children,
@@ -27,7 +34,8 @@ export const ExternalLink = ({
     <Link href={href} target="_blank" rel="noopener noreferrer">
       <Box display={display} alignItems="center">
         {children}
-        <StyledLaunchOutlinedIcon />
+        <StyledLaunchOutlinedIcon aria-hidden />
+        <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
       </Box>
     </Link>
   );

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { usePreventScroll } from 'react-aria';
 import type { Selection } from 'react-aria-components';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
@@ -22,14 +23,13 @@ import {
   sidebarConfig,
   useSidebarPinState,
 } from '@backstage/core-components';
-import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
-import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+  GSMarkdownContent,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   NewReviewComment,
   PlanPull,
@@ -138,6 +138,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     backgroundColor: theme.palette.action.hover,
   },
   htmlFrame: {
+    // Inline, the frame sits on a text baseline and the gap below it
+    // overflows a container sized to the frame.
+    display: 'block',
     width: '100%',
     height: '75vh',
     border: `1px solid ${theme.palette.divider}`,
@@ -172,7 +175,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexGrow: 1,
     minHeight: 0,
     overflow: 'auto',
-    // Reaching the end of the document must not scroll the page underneath.
+    // The page underneath is scroll-locked (usePreventScroll); this keeps
+    // overscroll at the document's end from bouncing or pulling to refresh.
     overscrollBehavior: 'contain',
     padding: theme.spacing(2, 3, 3),
   },
@@ -197,12 +201,16 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
   const queryClient = useQueryClient();
 
   const commentsQueryKey = ['plans', 'pull-comments', repo, pull.number];
-  const { data, isLoading, error } = useQuery({
+  const comments = useQuery({
     queryKey: commentsQueryKey,
     queryFn: () => plansApi.listPullComments(pull.number, repo),
   });
+  const { data, error } = comments;
 
-  const createComment = useMutation({
+  const createComment = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Internal plan review tooling, not a customer portal action.',
     mutationFn: (body: string) =>
       plansApi.createPullComment(pull.number, body, repo),
     onSuccess: () =>
@@ -219,7 +227,7 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
       <Text as="h6" variant="title-small" className={classes.discussionTitle}>
         Discussion
       </Text>
-      {isLoading && <Progress />}
+      {isAwaitingData(comments) && <Progress />}
       {error ? (
         <PlansErrorAlert
           title="Failed to load discussion"
@@ -295,6 +303,9 @@ function DocumentPanel(props: {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [fullscreen]);
+  // The page underneath keeps its height; without this the window shows a
+  // scrollbar for content the overlay covers.
+  usePreventScroll({ isDisabled: !fullscreen });
 
   // The overlay starts where the app's content column starts: right of the
   // sidebar (its closed or pinned-open width), or above the bottom bar the
@@ -309,11 +320,12 @@ function DocumentPanel(props: {
         bottom: 0,
       };
 
-  const { data, isLoading, error } = useQuery({
+  const content = useQuery({
     queryKey: ['plans', 'content', repo, branch, file.filename],
     queryFn: () => plansApi.getContent(file.filename, branch, repo),
     enabled: renderable,
   });
+  const { data, error } = content;
 
   const githubUrl =
     file.status === 'removed' || !branch
@@ -322,7 +334,7 @@ function DocumentPanel(props: {
 
   let body;
   if (view === 'rendered' && renderable) {
-    if (isLoading) {
+    if (isAwaitingData(content)) {
       body = <Progress />;
     } else if (error) {
       body = (
@@ -488,7 +500,10 @@ export function PullReviewPage() {
     enabled: !!repo,
   });
 
-  const createReviewComment = useMutation({
+  const createReviewComment = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Internal plan review tooling, not a customer portal action.',
     mutationFn: (comment: NewReviewComment) =>
       plansApi.createReviewComment(pullNumber, comment, repo),
     onSuccess: () =>
@@ -530,7 +545,11 @@ export function PullReviewPage() {
     return map;
   }, [reviewComments]);
 
-  if (reposQuery.isLoading || pullsQuery.isLoading || filesQuery.isLoading) {
+  if (
+    isAwaitingData(reposQuery) ||
+    isAwaitingData(pullsQuery) ||
+    isAwaitingData(filesQuery)
+  ) {
     return (
       <Content>
         <Progress />

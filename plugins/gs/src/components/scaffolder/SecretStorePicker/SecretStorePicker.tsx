@@ -84,13 +84,13 @@ export const SecretStorePicker = ({
   } = uiSchema?.['ui:options'] ?? {};
 
   const title =
-    (schema.title ?? isClusterSecretStore)
-      ? 'Cluster secret store'
-      : 'Secret store';
+    schema.title ??
+    (isClusterSecretStore ? 'Cluster secret store' : 'Secret store');
   const description =
-    (schema.description ?? isClusterSecretStore)
+    schema.description ??
+    (isClusterSecretStore
       ? 'Cluster secret store reference.'
-      : 'Secret store reference.';
+      : 'Secret store reference.');
 
   const installationName = useValueFromOptions(
     formContext,

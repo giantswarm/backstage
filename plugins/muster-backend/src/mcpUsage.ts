@@ -31,6 +31,11 @@ export interface McpUsageServerRow {
   server: string;
   calls: number;
   errors: number;
+  /**
+   * Only where the usage is read for several servers (a family's instances)
+   * or one (its totals); null for the installation-wide read.
+   */
+  p95_seconds: number | null;
 }
 
 export interface McpUsageResponse {
@@ -42,6 +47,15 @@ export interface McpUsageResponse {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket the chart fills from a sample, ISO
+   * timestamp — where muster's records start inside the window. Absent when
+   * none does, or when muster recorded calls in the
+   * {@link DATA_START_LOOKBACK_SECONDS} before the window: the window's first
+   * days were then quiet, not unrecorded. A bucket seeded with zeros has no
+   * sample; a series that existed and counted nothing does.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;
@@ -49,6 +63,10 @@ export interface McpUsageResponse {
     p95_seconds: number | null;
     distinct_tools: number;
   };
+  /**
+   * The busiest {@link TOP_TOOLS_LIMIT} tools, or every tool called in the
+   * window when the usage is read for some connectors only.
+   */
   top_tools: McpUsageToolRow[];
   servers: McpUsageServerRow[];
 }
@@ -107,6 +125,53 @@ export function pickPrometheusServer(
   return prometheusLike.find(name => name.startsWith(installation.name));
 }
 
+const HOUR_SECONDS = 3600;
+const DAY_SECONDS = 24 * HOUR_SECONDS;
+
+/**
+ * How far before the window the outcome query also reads, to tell a window
+ * muster's records do not reach from one whose first days had no calls.
+ *
+ * A series exists only from its label set's first call since muster started,
+ * so a restart followed by a quiet spell leaves none. A week matches the
+ * gateway views' lookback (`DATA_START_LOOKBACK` in the agent-platform
+ * plugin), so the Usage tabs mean the same thing by "recorded only since".
+ */
+export const DATA_START_LOOKBACK_SECONDS = 7 * DAY_SECONDS;
+
+const OUTCOMES = ['ok', 'error', 'error_result'] as const;
+type Outcome = (typeof OUTCOMES)[number];
+
+function isOutcome(value: string | undefined): value is Outcome {
+  return OUTCOMES.some(outcome => outcome === value);
+}
+
+/**
+ * The window the last `hours` cover, aligned to whole steps so bucket edges
+ * are stable across reloads. Hourly up to two days, daily beyond. A daily
+ * window ends at the next UTC midnight, today included.
+ */
+export function usageWindow(
+  hours: number,
+  nowSeconds: number,
+): { startSeconds: number; endSeconds: number; stepSeconds: number } {
+  if (hours > 48) {
+    const endSeconds =
+      Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS + DAY_SECONDS;
+    return {
+      startSeconds: endSeconds - hours * HOUR_SECONDS,
+      endSeconds,
+      stepSeconds: DAY_SECONDS,
+    };
+  }
+  const endSeconds = Math.ceil(nowSeconds / HOUR_SECONDS) * HOUR_SECONDS;
+  return {
+    startSeconds: endSeconds - hours * HOUR_SECONDS,
+    endSeconds,
+    stepSeconds: HOUR_SECONDS,
+  };
+}
+
 /** Sum of every finite sample across all series (a range-query rollup). */
 function sumPoints(series: PromSeries[]): number {
   let total = 0;
@@ -118,6 +183,23 @@ function sumPoints(series: PromSeries[]): number {
     }
   }
   return total;
+}
+
+/**
+ * The series with only the samples inside the window `(start, end]`: a sample
+ * at T covers `(T - step, T]`, so one at `start` belongs to the step before.
+ */
+function withinWindow(
+  series: PromSeries[],
+  startSeconds: number,
+  endSeconds: number,
+): PromSeries[] {
+  return series.map(s => ({
+    ...s,
+    points: s.points.filter(
+      point => point.ts > startSeconds && point.ts <= endSeconds,
+    ),
+  }));
 }
 
 function parseLe(le: string | undefined): number | undefined {
@@ -225,35 +307,113 @@ function unavailable(hours: number, reason: string): McpUsageResponse {
   };
 }
 
+/**
+ * The prometheus tool's prose, which {@link parsePromToolText} reads. A tool
+ * that answers structured data instead fails here, naming the tool, rather
+ * than parsing to no series and reading as zero calls.
+ */
+function promToolText(tool: string, answer: unknown): string {
+  if (typeof answer !== 'string') {
+    throw new Error(
+      `${tool} answered structured data, not the text the usage query parses`,
+    );
+  }
+  return answer;
+}
+
+/** The content of a PromQL double-quoted string literal. */
+function promString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/** `value` matched literally inside a PromQL (RE2) regular expression. */
+function regexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The label selector that narrows muster's metrics to some connectors and,
+ * optionally, one tool: their MCPServer names, one or several (a family's
+ * instances), and the tool's name as muster exposes it. Empty without either,
+ * which leaves the metric unfiltered. Several names become one anchored
+ * alternation, as PromQL anchors `=~` itself.
+ */
+export function usageSelector(
+  servers: readonly string[] = [],
+  tool?: string,
+): string {
+  const names = [...new Set(servers)].sort();
+  const matchers: string[] = [];
+  if (names.length === 1) {
+    matchers.push(`mcpserver_name="${promString(names[0])}"`);
+  } else if (names.length > 1) {
+    matchers.push(
+      `mcpserver_name=~"${promString(names.map(regexLiteral).join('|'))}"`,
+    );
+  }
+  if (tool !== undefined) {
+    matchers.push(`tool="${promString(tool)}"`);
+  }
+  return matchers.length > 0 ? `{${matchers.join(',')}}` : '';
+}
+
+/**
+ * Usage over the last `hours` on one installation, from muster's dispatch
+ * metrics.
+ *
+ * `servers` narrows every figure to those connectors (a connector's page: the
+ * MCPServer, or a family's instances), and then lists every tool they were
+ * called with rather than the busiest {@link TOP_TOOLS_LIMIT}. `onlyTool`
+ * narrows them to one tool as well (a tool's page), so the buckets, totals
+ * and per-instance rows are that tool's. `data_start` stays the installation's
+ * either way: it says where muster's records start, and a quiet connector's
+ * first call is not that.
+ */
 export async function getMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
   hours: number,
+  servers: readonly string[] = [],
+  onlyTool?: string,
 ): Promise<McpUsageResponse> {
+  const { startSeconds, endSeconds, stepSeconds } = usageWindow(
+    hours,
+    Math.floor(Date.now() / 1000),
+  );
+  const rangeHours = (endSeconds - startSeconds) / HOUR_SECONDS;
+  const stepHours = stepSeconds / HOUR_SECONDS;
+  const step = `${stepHours}h`;
+  const selector = usageSelector(servers, onlyTool);
+  const filtered = selector !== '';
+  const serverCount = new Set(servers).size;
+  // The per-server rollups only where a row is shown for them: unnarrowed,
+  // the Usage page's connector table shows calls and errors, not latency; a
+  // family's Instances table shows all three. Narrowed to one server, its row
+  // is the totals, so neither query runs.
+  const serverOutcomes = serverCount !== 1;
+  const serverLatency = serverCount > 1;
+  // The per-tool rollups only where they can name more than one tool:
+  // narrowed to one, its row is the totals, as for one server.
+  const toolRollups = onlyTool === undefined;
+  const none = Promise.resolve<PromSeries[]>([]);
+  const calls = `${METRIC_CALLS}${selector}`;
+  const duration = `${METRIC_DURATION}${selector}`;
+
   const listed = (await client.callTool(
     'core_mcpserver_list',
     {},
     callOptions,
   )) as ServerListPayload | null;
-  const servers = listed?.mcpServers ?? [];
+  const registered = listed?.mcpServers ?? [];
 
-  const promServer = pickPrometheusServer(servers, installation);
+  const promServer = pickPrometheusServer(registered, installation);
   if (!promServer) {
     return unavailable(
-      hours,
+      rangeHours,
       'No prometheus MCP server is registered on this installation, so usage metrics cannot be queried.',
     );
   }
-
-  // Bucket size: hourly up to two days, daily beyond.
-  const stepHours = hours <= 48 ? 1 : 24;
-  const stepSeconds = stepHours * 3600;
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  // Align the window to whole steps so bucket edges are stable across reloads.
-  const endSeconds = Math.ceil(nowSeconds / stepSeconds) * stepSeconds;
-  const startSeconds = endSeconds - hours * 3600;
-  const step = `${stepHours}h`;
 
   const runQuery = async (
     tool: typeof QUERY_TOOL | typeof RANGE_TOOL,
@@ -261,20 +421,20 @@ export async function getMcpUsage(
   ): Promise<PromSeries[]> => {
     // Family naming first (the GS deployment shape), plain prefix fallback.
     try {
-      const text = (await client.callTool(
+      const text = await client.callTool(
         `${FAMILY_PREFIX}${tool}`,
         { ...args, management_cluster: promServer },
         callOptions,
-      )) as string;
-      return parsePromToolText(String(text));
+      );
+      return parsePromToolText(promToolText(tool, text));
     } catch (familyError) {
       try {
-        const text = (await client.callTool(
+        const text = await client.callTool(
           `x_${promServer}_${tool}`,
           args,
           callOptions,
-        )) as string;
-        return parsePromToolText(String(text));
+        );
+        return parsePromToolText(promToolText(tool, text));
       } catch {
         throw familyError;
       }
@@ -288,59 +448,113 @@ export async function getMcpUsage(
   // read from the store-gateway path — which is exactly what degrades when a
   // store-gateway has a bad day (observed on an internal installation: [1h]
   // fine, [12h]+ returning 500 while the equivalent range query kept working).
-  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+  // The first evaluation is one step after the window's start: the one at the
+  // start itself covers the step before the window.
+  const rangeQueryFrom = (
+    query: string,
+    fromSeconds: number,
+  ): Promise<PromSeries[]> =>
     runQuery(RANGE_TOOL, {
       query,
       // RFC3339, not Unix seconds: mcp-prometheus documents both but its
       // deployed versions only parse RFC3339.
-      start: new Date(startSeconds * 1000).toISOString(),
+      start: new Date((fromSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(endSeconds * 1000).toISOString(),
       step,
     });
+  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+    rangeQueryFrom(query, startSeconds).then(series =>
+      withinWindow(series, startSeconds, endSeconds),
+    );
+  const lookbackStart = startSeconds - DATA_START_LOOKBACK_SECONDS;
   // The secondary rollups degrade to empty on failure instead of taking the
   // whole view down.
   const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>
     promise.catch(() => []);
 
+  let coverage: PromSeries[];
   let byOutcomeOverTime: PromSeries[];
   let byToolOutcome: PromSeries[];
   let byServerOutcome: PromSeries[];
   let latencyBuckets: PromSeries[];
   let latencyBucketsByTool: PromSeries[];
+  let latencyBucketsByServer: PromSeries[];
   try {
+    // Every call muster recorded, from a week before the window: the extra
+    // points say whether muster recorded anything there (`data_start`), and
+    // are dropped before anything is counted. Never narrowed to `servers`,
+    // so a connector's page says where the installation's records start.
+    // Without `servers` it is also the outcome rollup: one query does both.
+    const coverageQuery = rangeQueryFrom(
+      `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`,
+      lookbackStart,
+    );
+    let byOutcomeQuery: Promise<PromSeries[]>;
+    if (filtered) {
+      byOutcomeQuery = rangeQuery(
+        `sum by (outcome) (increase(${calls}[${step}]))`,
+      );
+    } else {
+      byOutcomeQuery = coverageQuery.then(series =>
+        withinWindow(series, startSeconds, endSeconds),
+      );
+    }
     [
+      coverage,
       byOutcomeOverTime,
       byToolOutcome,
       byServerOutcome,
       latencyBuckets,
       latencyBucketsByTool,
+      latencyBucketsByServer,
     ] = await Promise.all([
-      rangeQuery(`sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`),
-      optional(
-        rangeQuery(
-          `sum by (tool, outcome) (increase(${METRIC_CALLS}[${step}]))`,
-        ),
-      ),
-      optional(
-        rangeQuery(
-          `sum by (mcpserver_name, outcome) (increase(${METRIC_CALLS}[${step}]))`,
-        ),
-      ),
-      optional(
-        rangeQuery(`sum by (le) (increase(${METRIC_DURATION}[${step}]))`),
-      ),
-      optional(
-        rangeQuery(`sum by (tool, le) (increase(${METRIC_DURATION}[${step}]))`),
-      ),
+      coverageQuery,
+      byOutcomeQuery,
+      toolRollups
+        ? optional(
+            rangeQuery(`sum by (tool, outcome) (increase(${calls}[${step}]))`),
+          )
+        : none,
+      serverOutcomes
+        ? optional(
+            rangeQuery(
+              `sum by (mcpserver_name, outcome) (increase(${calls}[${step}]))`,
+            ),
+          )
+        : none,
+      optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
+      toolRollups
+        ? optional(
+            rangeQuery(`sum by (tool, le) (increase(${duration}[${step}]))`),
+          )
+        : none,
+      serverLatency
+        ? optional(
+            rangeQuery(
+              `sum by (mcpserver_name, le) (increase(${duration}[${step}]))`,
+            ),
+          )
+        : none,
     ]);
   } catch (error) {
     return unavailable(
-      hours,
+      rangeHours,
       `Querying prometheus MCP server '${promServer}' failed: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
   }
+
+  const recordedBeforeWindow = coverage.some(
+    series =>
+      isOutcome(series.labels.outcome) &&
+      series.points.some(
+        point =>
+          point.ts > lookbackStart &&
+          point.ts <= startSeconds &&
+          Number.isFinite(point.value),
+      ),
+  );
 
   // Time buckets: seed every step in the window so the chart reads as a full
   // range, then fill from the range-query samples. A sample at timestamp T
@@ -360,13 +574,31 @@ export async function getMcpUsage(
   }
   for (const series of byOutcomeOverTime) {
     const outcome = series.labels.outcome;
-    if (outcome !== 'ok' && outcome !== 'error' && outcome !== 'error_result') {
+    if (!isOutcome(outcome)) {
       continue;
     }
     for (const point of series.points) {
       const bucket = buckets.get(point.ts);
       if (bucket && Number.isFinite(point.value)) {
         bucket[outcome] += point.value;
+      }
+    }
+  }
+  // The first step with a sample, by the chart's own definition of one (an
+  // outcome it draws, in a bucket it has), so that unfiltered the note and
+  // the bars cannot disagree.
+  let firstSampled: number | undefined;
+  for (const series of withinWindow(coverage, startSeconds, endSeconds)) {
+    if (!isOutcome(series.labels.outcome)) {
+      continue;
+    }
+    for (const point of series.points) {
+      if (
+        buckets.has(point.ts) &&
+        Number.isFinite(point.value) &&
+        (firstSampled === undefined || point.ts < firstSampled)
+      ) {
+        firstSampled = point.ts;
       }
     }
   }
@@ -409,12 +641,26 @@ export async function getMcpUsage(
       continue;
     }
     const value = sumPoints([series]);
-    const row = serverRows.get(server) ?? { server, calls: 0, errors: 0 };
+    const row = serverRows.get(server) ?? {
+      server,
+      calls: 0,
+      errors: 0,
+      p95_seconds: null,
+    };
     row.calls += value;
     if (series.labels.outcome !== 'ok') {
       row.errors += value;
     }
     serverRows.set(server, row);
+  }
+  for (const [serverName, serverBuckets] of bucketTotals(
+    latencyBucketsByServer,
+    'mcpserver_name',
+  )) {
+    const row = serverRows.get(serverName);
+    if (row) {
+      row.p95_seconds = quantileFromBuckets(0.95, serverBuckets);
+    }
   }
 
   // Totals come from the (required) outcome buckets, so they stay correct
@@ -424,25 +670,47 @@ export async function getMcpUsage(
     byOutcomeOverTime.filter(series => series.labels.outcome !== 'ok'),
   );
   const overallBuckets = bucketTotals(latencyBuckets).get('');
+  const p95Seconds = overallBuckets
+    ? quantileFromBuckets(0.95, overallBuckets)
+    : null;
+  // Narrowed to one tool, its row is the totals, once muster counted it.
+  if (onlyTool !== undefined && byOutcomeOverTime.length > 0) {
+    toolRows.set(onlyTool, {
+      tool: onlyTool,
+      calls: totalCalls,
+      errors: totalErrors,
+      p95_seconds: p95Seconds,
+    });
+  }
+  const tools = [...toolRows.values()].sort((a, b) => b.calls - a.calls);
+  // Narrowed to one server, its row is the totals, once muster counted it.
+  if (!serverOutcomes && byOutcomeOverTime.length > 0) {
+    serverRows.set(servers[0], {
+      server: servers[0],
+      calls: totalCalls,
+      errors: totalErrors,
+      p95_seconds: p95Seconds,
+    });
+  }
 
   return {
     available: true,
     source: { server: promServer, tool: `${FAMILY_PREFIX}${QUERY_TOOL}` },
-    range_hours: hours,
+    range_hours: rangeHours,
     step_hours: stepHours,
     buckets: [...buckets.values()],
+    ...(firstSampled !== undefined &&
+      !recordedBeforeWindow && {
+        data_start: new Date((firstSampled - stepSeconds) * 1000).toISOString(),
+      }),
     totals: {
       calls: totalCalls,
       errors: totalErrors,
       error_ratio: totalCalls > 0 ? totalErrors / totalCalls : null,
-      p95_seconds: overallBuckets
-        ? quantileFromBuckets(0.95, overallBuckets)
-        : null,
+      p95_seconds: p95Seconds,
       distinct_tools: toolRows.size,
     },
-    top_tools: [...toolRows.values()]
-      .sort((a, b) => b.calls - a.calls)
-      .slice(0, TOP_TOOLS_LIMIT),
+    top_tools: filtered ? tools : tools.slice(0, TOP_TOOLS_LIMIT),
     servers: [...serverRows.values()].sort((a, b) => b.calls - a.calls),
   };
 }

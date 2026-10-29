@@ -57,8 +57,9 @@ export interface Config {
        * An AgentInstance reports whether it is ready, suspended or failed, but
        * not whether its newest turn is working or waiting for input — that lives
        * in the instance's tasks, so the route reads each candidate's task list
-       * (status only, no history) and these are the levers on how much that may
-       * cost. Instances whose own state already answers (failed, still being
+       * (status only, no history: the newest task's state, time and, for a
+       * failed turn, its failure class) and these are the levers on how much
+       * that may cost. Instances whose own state already answers (failed, still being
        * created, being deleted) are not read. They are config rather than constants because the one
        * thing we cannot predict is how this behaves against an account far larger
        * than any measured — that wants a knob, not a release.
@@ -141,12 +142,18 @@ export interface Config {
          * Instances and tasks the controller has pruned are gone outright — past
          * that point the window is silently incomplete and no field in the
          * response can say so.
+         *
+         * `maxAgeMs` follows it unless set; `maxSessions` does not. A wider
+         * window holds more sessions, and past the cap the oldest are
+         * `skipped`, so raise `maxSessions` with it (and keep the pass within
+         * `budgetMs`).
          */
         windowDays?: number;
 
         /**
          * How many sessions may be evaluated in one pass, newest activity
-         * first. Defaults to 60 — three times a measured real account.
+         * first. Defaults to 60 — three times a measured real account over
+         * the default 30-day window. It does not scale with `windowDays`.
          *
          * Higher than the `sessionStates` cap because the window here *is* the
          * reported scope, which makes this cap the only thing that can make the
@@ -156,12 +163,14 @@ export interface Config {
 
         /**
          * How stale a session may be and still be worth a task read, in
-         * milliseconds. Defaults to 2678400000 (31 days) — the window plus a
-         * day of slack for clock skew and the UTC day boundary.
+         * milliseconds. Defaults to `windowDays` plus one day (2678400000,
+         * 31 days, for the default window) — the slack covers clock skew and
+         * the UTC day boundary.
          *
          * Safe because the controller bumps an instance's `updated_at` on
          * every turn, so an instance with no activity in 31 days holds no turn
-         * inside a 30-day window. Raise it with `windowDays`.
+         * inside a 30-day window. Set explicitly, it does not follow
+         * `windowDays`: below the window, sessions idle for longer drop out.
          */
         maxAgeMs?: number;
 

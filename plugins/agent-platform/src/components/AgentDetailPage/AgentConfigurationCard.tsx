@@ -1,37 +1,35 @@
 import { ReactNode } from 'react';
-import { Box, Flex, Text } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
+import { Box, Flex, Link, Text } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Agent,
+  AgentFailure,
   AgentMcpBinding,
   getHelmReleaseName,
   getHelmReleaseNamespace,
-  HARNESS_LABEL,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   DateComponent,
   InfoCard,
+  MONO,
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import type { ClientServingSummary } from '../../lib/serving';
-import {
-  agentDetailRouteRef,
-  deploymentDetailsExternalRouteRef,
-  musterServersExternalRouteRef,
-} from '../../routes';
+import { bindsGateway, describeToolset } from '../../lib/toolset';
+import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
+import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,
   isGatewayServerBinding,
   mcpBindingId,
 } from './helpers';
-
-/** Monospace for identifiers the reader may retype into `kubectl`. */
-const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 
 /**
  * How the model is described: the ModelConfig's friendly name, with the model id
@@ -43,20 +41,31 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
  * Falls back to the bare reference when the ModelConfig cannot be read — which is
  * normal for a non-admin, since ModelConfigs live in namespaces they may not have
  * access to — rather than implying the agent has no model.
+ *
+ * The ModelConfig line opens the model's page, which says why a model is not
+ * accepted, where the ModelConfig could be read: otherwise the page could only
+ * say it cannot load it. Plain text too where the agent has no namespace to
+ * resolve it in. It names the ModelConfig alone: the agent references one in
+ * its own namespace, which the Resource card states.
  */
 function ModelValue({
   modelConfigName,
   modelConfig,
   modelServing,
+  installation,
   namespace,
+  isFailing,
 }: {
   modelConfigName?: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  installation: string;
   namespace?: string;
+  isFailing: boolean;
 }) {
+  const { modelDetail: modelDetailHref } = useCustomizePaths();
   if (!modelConfigName) {
-    return <NotAvailable />;
+    return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
 
   const modelLine = [modelConfig?.getModel(), modelConfig?.getProvider()]
@@ -66,6 +75,10 @@ function ModelValue({
   // ModelConfig line below already shows it. The model itself leads instead,
   // still in monospace like every identifier here.
   const displayName = modelConfig?.getDisplayNameAnnotation();
+  const href =
+    modelConfig && namespace
+      ? modelDetailHref?.({ installation, namespace, name: modelConfigName })
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">
@@ -83,47 +96,32 @@ function ModelValue({
       )}
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
-        <span style={MONO}>
-          {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
-        </span>
+        {href ? (
+          <Link href={href} variant="body-small" color="secondary" style={MONO}>
+            {modelConfigName}
+          </Link>
+        ) : (
+          <span style={MONO}>{modelConfigName}</span>
+        )}
       </Text>
       {modelServing && <ModelServingStatus serving={modelServing} />}
+      {isFailing && <FailureMarker />}
     </Flex>
   );
 }
 
 /**
- * One MCP server binding: the same-namespace `RemoteMCPServer` the agent draws
- * tools from, and how much of it.
+ * One MCP server binding outside the gateway: a same-namespace
+ * `RemoteMCPServer` the agent draws tools from directly, and how much of it.
  */
-function McpBindingRow({
-  agent,
-  binding,
-}: {
-  agent: Agent;
-  binding: AgentMcpBinding;
-}) {
-  const serversRoute = useRouteRef(musterServersExternalRouteRef);
-  const isGateway = isGatewayServerBinding(agent, binding);
-
-  // The MCP servers the gateway aggregates, on the installation the agent runs
-  // on. Only offered for the gateway: muster's servers list can say nothing
-  // about any other MCP server.
-  const musterLink =
-    isGateway && serversRoute
-      ? `${serversRoute()}?installation=${encodeURIComponent(agent.cluster)}`
-      : undefined;
-
+function McpBindingRow({ binding }: { binding: AgentMcpBinding }) {
   return (
     <Flex direction="column" gap="1">
-      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-        <Text variant="body-medium" style={MONO}>
-          {mcpBindingId(binding)}
-        </Text>
-        {musterLink && <Link to={musterLink}>MCP servers</Link>}
-      </Flex>
+      <Text variant="body-medium" style={MONO}>
+        {mcpBindingId(binding)}
+      </Text>
       <Text variant="body-small" color="secondary">
-        {describeToolScope(binding, isGateway)}
+        {describeToolScope(binding)}
       </Text>
       {/* Rare, and the only per-binding setting that changes what a user will
           experience mid-session (the turn pauses for a decision), so it is
@@ -137,96 +135,132 @@ function McpBindingRow({
   );
 }
 
-/** The tools block: MCP servers, then any agents invoked as tools. */
-function ToolsValue({ agent }: { agent: Agent }) {
-  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
+/**
+ * What the agent can reach through the gateway, in the words the Agents list
+ * uses for it — read from the toolset its carrier `RemoteMCPServer` declares,
+ * which is a Kubernetes read. Resolving it to tools needs muster, so that is
+ * left to the Tools tab, linked here.
+ */
+function GatewayToolsetSummary({
+  agent,
+  toolsHref,
+}: {
+  agent: Agent;
+  toolsHref?: string;
+}) {
+  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  // The read answered and the carrier is not in it: the binding reaches
+  // nothing, which describeToolset — written for a list cell that cannot tell
+  // the two apart — would call "not readable".
+  const isCarrierMissing =
+    !isReading && !isUnreadable && declared.state === 'unresolved';
+  const { summary, detail } = isCarrierMissing
+    ? {
+        summary: 'Gateway server missing',
+        detail: `${declared.carrier} does not exist`,
+      }
+    : describeToolset(declared);
+
+  return (
+    <Flex direction="column" gap="1">
+      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+        <Text variant="body-medium">
+          {isReading ? 'Reading the toolset…' : summary}
+        </Text>
+        {toolsHref && (
+          <Link href={toolsHref} variant="body-medium">
+            See tools
+          </Link>
+        )}
+      </Flex>
+      {!isReading && detail && (
+        <Text variant="body-small" color="secondary" style={MONO}>
+          {detail}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * The tools block: what the agent reaches through the gateway in one line,
+ * then any MCP server bound directly and any agents invoked as tools.
+ */
+function ToolsValue({
+  agent,
+  toolsHref,
+  isFailing,
+}: {
+  agent: Agent;
+  toolsHref?: string;
+  isFailing: boolean;
+}) {
   const mcpBindings = agent.getMcpBindings();
-  const agentRefs = agent.getAgentRefs();
+  const directBindings = mcpBindings.filter(
+    binding => !isGatewayServerBinding(agent, binding),
+  );
+  const hasGateway = bindsGateway(agent);
+  const agentRefs = agent.getSubAgentBindings();
 
   if (mcpBindings.length === 0 && agentRefs.length === 0) {
     return (
-      <Text variant="body-small" color="secondary">
-        This agent declares no tool servers, so it has no tools beyond its own
-        reasoning.
-      </Text>
+      <Flex direction="column" gap="1">
+        <Text variant="body-medium">No tools</Text>
+        <Text variant="body-small" color="secondary">
+          It relies on its own reasoning alone.
+        </Text>
+      </Flex>
     );
   }
 
   return (
     <Flex direction="column" gap="3">
-      {mcpBindings.map((binding, index) => (
+      {hasGateway && (
+        <GatewayToolsetSummary agent={agent} toolsHref={toolsHref} />
+      )}
+
+      {directBindings.map((binding, index) => (
         <McpBindingRow
           // The server name is not unique: nothing stops two bindings referencing
           // the same server with different `tools`/`requireApproval`, which is
           // how you express "these tools need approval, those don't" for one
           // server. Same reasoning as the skill cards.
           key={`${mcpBindingId(binding)}#${index}`}
-          agent={agent}
           binding={binding}
         />
       ))}
 
       {agentRefs.map(ref => {
-        // Another template invoked over A2A. Same installation and namespace
-        // by definition — a binding cannot cross either — and `name` is what
-        // the agent calls the tool, `templateRef.name` the template behind it.
-        const namespace = agent.getNamespace() ?? '';
-        const target = ref.templateRef.name ?? ref.name;
-        const href = agentDetailRoute?.({
-          installation: agent.cluster,
-          namespace,
-          name: target,
-        });
+        // A same-namespace AgentTemplate compiled into this agent's runtime,
+        // so named alone, as the Resource card states the namespace.
+        // `name` is what the agent calls the tool, `templateRef.name` the
+        // template behind it; a template is not an agent, so there is no
+        // detail page to link.
+        const target = ref.templateRef.name;
 
         return (
           <Flex key={`agent/${ref.name}/${target}`} direction="column" gap="1">
             <Text variant="body-medium">
-              Agent{' '}
-              {href ? (
-                <Link to={href}>{`${namespace}/${target}`}</Link>
-              ) : (
-                <span style={MONO}>{`${namespace}/${target}`}</span>
-              )}
+              Sub-agent <span style={MONO}>{target}</span>
             </Text>
             <Text variant="body-small" color="secondary">
-              Called as the tool <span style={MONO}>{ref.name}</span> over A2A
-              {ref.isolation === 'Dedicated' ? ', in its own instance' : ''}
+              Called as the tool <span style={MONO}>{ref.name}</span>, running
+              inside this agent
             </Text>
           </Flex>
         );
       })}
+
+      {isFailing && <FailureMarker />}
     </Flex>
   );
 }
 
 /**
- * The Harness the admission label asks to run the agent. The label is what
- * makes a Harness admit the template; without it the agent never becomes
- * ready, and the status card says so.
+ * The owning HelmRelease, linked to its deployment page when gs is enabled.
+ * Named alone, with its namespace on a line of its own where it is not the
+ * agent's, which the Resource card states.
  */
-function HarnessValue({ agent }: { agent: Agent }) {
-  const harness = agent.getHarnessLabel();
-  if (!harness) {
-    return (
-      <Text variant="body-small" color="secondary">
-        Not labelled for any Harness (<span style={MONO}>{HARNESS_LABEL}</span>{' '}
-        is missing)
-      </Text>
-    );
-  }
-  return (
-    <Flex direction="column" gap="1">
-      <Text variant="body-medium" style={MONO}>
-        {harness}
-      </Text>
-      <Text variant="body-small" color="secondary">
-        From the label <span style={MONO}>{HARNESS_LABEL}</span>
-      </Text>
-    </Flex>
-  );
-}
-
-/** The owning HelmRelease, linked to its deployment page when gs is enabled. */
 function DeployedByValue({ agent }: { agent: Agent }) {
   const deploymentDetailsRoute = useRouteRef(deploymentDetailsExternalRouteRef);
 
@@ -237,9 +271,9 @@ function DeployedByValue({ agent }: { agent: Agent }) {
     return <NotAvailable />;
   }
 
-  const namespace =
-    getHelmReleaseNamespace(agent) ?? agent.getNamespace() ?? '';
-  const label = namespace ? `${namespace}/${name}` : name;
+  const agentNamespace = agent.getNamespace();
+  const namespace = getHelmReleaseNamespace(agent) ?? agentNamespace ?? '';
+  const label = `HelmRelease ${name}`;
   const href = deploymentDetailsRoute?.({
     installationName: agent.cluster,
     kind: 'helmrelease',
@@ -250,9 +284,18 @@ function DeployedByValue({ agent }: { agent: Agent }) {
   return (
     <Flex direction="column" gap="1">
       {href ? (
-        <Link to={href}>{`HelmRelease ${label}`}</Link>
+        <Link href={href} variant="body-medium">
+          {label}
+        </Link>
       ) : (
-        <Text variant="body-medium" style={MONO}>{`HelmRelease ${label}`}</Text>
+        <Text variant="body-medium" style={MONO}>
+          {label}
+        </Text>
+      )}
+      {namespace && namespace !== agentNamespace && (
+        <Text variant="body-small" color="secondary">
+          Namespace <span style={MONO}>{namespace}</span>
+        </Text>
       )}
       <Text variant="body-small" color="secondary">
         Reconciling this agent's chart
@@ -263,44 +306,83 @@ function DeployedByValue({ agent }: { agent: Agent }) {
 
 export type AgentConfigurationCardProps = {
   agent: Agent;
+  /** The page's installation, as the overview's model fact links with it. */
+  installation: string;
   modelConfig?: ModelConfig;
   /** The serving layer's word on the model behind `modelConfig`, when it has one. */
   modelServing?: ClientServingSummary;
+  /** A failed agent's root cause, which marks the field it is about. */
+  failure?: AgentFailure;
+  /** The Tools tab, which resolves the toolset this card summarises. */
+  toolsHref?: string;
 };
 
 /**
- * What the agent *is*, as its AgentTemplate defines it.
+ * What the agent *is*, as its template defines it. Where it runs — the
+ * installation in the page header, its namespace and name in the Resource
+ * card, the Harness in the Status card — is not repeated here.
  *
  * Read-only here: the values behind it are changed through **Edit agent…** in
  * the header's actions, which goes through agent-manager as the person.
  */
 export function AgentConfigurationCard({
   agent,
+  installation,
   modelConfig,
   modelServing,
+  failure,
+  toolsHref,
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
   const created = agent.getCreatedTimestamp();
+  const egress = agent.getEgress();
+  const egressPolicyRefs = agent.getEgressPolicyRefs();
 
   const metadata: Record<string, ReactNode> = {
-    Harness: <HarnessValue agent={agent} />,
     Model: (
       <ModelValue
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
         modelServing={modelServing}
+        installation={installation}
         namespace={namespace}
+        isFailing={failure?.field === 'model'}
       />
     ),
-    Installation: agent.cluster,
-    Namespace: namespace ?? <NotAvailable />,
+    Tools: (
+      <ToolsValue
+        agent={agent}
+        toolsHref={toolsHref}
+        isFailing={failure?.field === 'tools'}
+      />
+    ),
+    ...(egressPolicyRefs.length > 0 && {
+      EgressPolicies: (
+        <PickedEgressPolicies
+          installation={installation}
+          namespace={namespace}
+          names={egressPolicyRefs}
+          variant="body-medium"
+        />
+      ),
+    }),
+    ...(egress.length > 0 && {
+      'Extra egress': (
+        <Flex direction="column" gap="1">
+          {egress.map(origin => (
+            <Text key={origin} variant="body-medium" style={MONO}>
+              {origin}
+            </Text>
+          ))}
+        </Flex>
+      ),
+    }),
     Created: created ? (
       <DateComponent value={created} relative />
     ) : (
       <NotAvailable />
     ),
     'Deployed by': <DeployedByValue agent={agent} />,
-    Tools: <ToolsValue agent={agent} />,
   };
 
   return (

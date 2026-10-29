@@ -45,7 +45,7 @@ export function ServerCapabilityTab({
   // connected to the server, not because it exposes nothing.
   const state = server.getState();
   const connected = state === 'Connected' || state === 'Running';
-  const noun = row.kind === 'family' ? 'This family' : 'This server';
+  const noun = row.kind === 'family' ? 'This family' : 'This connector';
   const emptyText = connected ? `${noun} exposes no ${capability}.` : undefined;
 
   return (

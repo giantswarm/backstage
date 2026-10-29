@@ -8,12 +8,13 @@ import {
   type AgentStatus,
 } from '../lib/agentManager';
 import { musterAgentStatusQueryKey } from '../lib/queryKeys';
+import { TRANSITIONAL_REFETCH_INTERVAL_MS } from '../components/AgentsDataProvider/helpers';
 import { useAgentManagerClient } from './useAgentManager';
 
 /**
  * How often `get_agent_status` is re-read while the template is still
  * compiling. A fresh release renders its template within seconds and the
- * platform Harness reports Ready shortly after; this is the pace a person
+ * agent's Harness reports Ready shortly after; this is the pace a person
  * watching the page notices without hammering agent-manager.
  */
 export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
@@ -33,13 +34,25 @@ export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
  */
 export const MAX_REVISION_WAIT_MS = 60_000;
 
+/**
+ * How often a `failed` verdict is re-read. A `failed` right after a create is
+ * often not final: the release renders the Agent beside the tool server it
+ * references, and until that server exists kagent reports the reference
+ * unresolved, which clears within seconds. Re-reading turns that failure into
+ * Ready without a reload. The pace the detail page reads a converging Agent at,
+ * so this verdict and the page's status card, derived from that read, do not
+ * disagree for long. A stopgap until agent-manager reports such a state as
+ * `progressing` (giantswarm/agent-manager#145).
+ */
+export const FAILED_STATUS_POLL_INTERVAL_MS = TRANSITIONAL_REFETCH_INTERVAL_MS;
+
 export type AgentStatusState = {
   status: AgentStatus | undefined;
   /** True until the verdict is `ready` or `failed`. */
   isSettling: boolean;
   /**
    * agent-manager answered `not_found`: by its contract, neither an
-   * AgentTemplate nor a HelmRelease of that name exists. Right after a create
+   * Agent object nor a HelmRelease of that name exists. Right after a create
    * this is transient and polled through (see {@link isSettling}); on a page
    * reached any other way it is the difference between "not yet" and "not
    * there".
@@ -49,12 +62,14 @@ export type AgentStatusState = {
 };
 
 /**
- * `get_agent_status` for one agent, polled until the platform Harness has a
- * verdict: `ready`, or `failed` with the reason. On API v2 that verdict comes
- * from the template's `status.harnesses[]` entry for the platform Harness —
+ * `get_agent_status` for one agent, polled until the agent's Harness has a
+ * verdict: `ready`, or `failed` with the reason. A `failed` verdict is still
+ * re-read every {@link FAILED_STATUS_POLL_INTERVAL_MS} in case it clears; only
+ * `ready` stops the poll. On API v2 that verdict comes
+ * from the Agent object's `status.conditions` —
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
- * template yet, and is polled through like `progressing`.
+ * Agent yet, and is polled through like `progressing`.
  */
 export function useAgentStatus(
   installation: string | undefined,
@@ -120,7 +135,10 @@ export function useAgentStatus(
           hasReachedWrittenRevision(query.state.data, fromGeneration) ||
           givenUpWaiting
         ) {
-          return false;
+          // A failed re-read stops here, as any read error does.
+          return verdict === 'failed' && !query.state.error
+            ? FAILED_STATUS_POLL_INTERVAL_MS
+            : false;
         }
         return AGENT_STATUS_POLL_INTERVAL_MS;
       }
@@ -137,19 +155,26 @@ export function useAgentStatus(
       return AGENT_STATUS_POLL_INTERVAL_MS;
     },
     // The interval above is the retry: an error other than not_found stops
-    // it and is shown; a not_found keeps polling.
+    // it and is shown; a not_found keeps polling, unless it comes after a
+    // `failed` verdict (the agent is gone, see `hasFailed`), which stops it.
     retry: false,
   });
 
   const notFoundYet =
     error instanceof AgentManagerError && error.code === 'not_found';
+  // The verdict for this write was `failed` (react-query keeps it when a later
+  // read errors): a `not_found` after it means the agent is gone, not that it
+  // is not there yet, so it is not waited on.
+  const hasFailed =
+    data?.verdict === 'failed' &&
+    (hasReachedWrittenRevision(data, fromGeneration) || givenUpWaiting);
 
   return {
     status: data,
     isNotFound: notFoundYet,
     isSettling:
       enabled &&
-      (notFoundYet ||
+      ((notFoundYet && !hasFailed) ||
         !data ||
         !isSettledVerdict(data.verdict) ||
         (!hasReachedWrittenRevision(data, fromGeneration) &&

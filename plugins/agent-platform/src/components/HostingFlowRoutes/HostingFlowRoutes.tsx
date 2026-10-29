@@ -1,0 +1,368 @@
+import { useCallback, useMemo, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
+import { Alert } from '@backstage/ui';
+import {
+  LoadingIndicator,
+  WizardFrame,
+} from '@giantswarm/backstage-plugin-ui-react';
+
+import { useCloseHref } from '../../hooks/useCloseHref';
+import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
+import { useHostingFlowReturn } from '../../hooks/useHostingFlow';
+import { useServeIntents } from '../../hooks/useServeIntents';
+import type { NodePoolWriteResult } from '../../lib/clusterManager';
+import type { ModelManagerLoadAnswer } from '../../lib/modelManager';
+import type { AddBackendResult } from '../../lib/modelManagerBackends';
+import {
+  describeLoadAnswer,
+  loadAnswerNodes,
+  parseServeSeed,
+} from '../../lib/modelManagerServe';
+import type { ServeChoice } from '../../lib/serveIntent';
+import { gpuCapacityRouteRef, servingRouteRef } from '../../routes';
+import {
+  AddGpuNodePoolPage,
+  OPENED_POOL_KEY,
+  openedPoolOf,
+} from '../GpuNodePools';
+import { AddModelBackendPage, useModelBackendTargets } from '../ModelBackends';
+import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
+import {
+  describeLoadTarget,
+  ImportModelPage,
+  PullModelPage,
+  ServeModelPage,
+  type LoadTarget,
+} from '../ModelManagerControls';
+import { useServing } from '../ServingProvider';
+import {
+  GPU_POOLS_VIA,
+  MODEL_SERVING_VIA,
+  useModelHostingSharedIdentity,
+} from '../ModelHostingSharedIdentity';
+import { sharedIdentityReason } from '../../lib/sharedIdentity';
+import { OPENED_SERVED_MODEL_KEY, useServingTargets } from '../ServingPage';
+
+/** Long enough to read two lines, short enough not to follow you to the next page. */
+const TOAST_TIMEOUT_MS = 6000;
+
+/**
+ * A hosting flow's frame while what it offers is read, or once nothing turns
+ * out to offer it: the flow's title and Cancel in place, the reason as the
+ * step. Otherwise the flow itself.
+ */
+function HostingFlowGate({
+  title,
+  closeHref,
+  isLoading,
+  unavailable,
+  children,
+}: {
+  title: string;
+  closeHref: string;
+  isLoading: boolean;
+  /** Why nothing offers the flow, once nothing does. */
+  unavailable: string | undefined;
+  children: ReactNode;
+}) {
+  if (!isLoading && !unavailable) {
+    return <>{children}</>;
+  }
+  return (
+    <WizardFrame
+      title={title}
+      context={HOSTING_FLOW_CONTEXT}
+      closeHref={closeHref}
+      width="medium"
+    >
+      {unavailable && !isLoading ? (
+        <Alert status="info" description={unavailable} />
+      ) : (
+        <LoadingIndicator label="Reading the environments…" />
+      )}
+    </WizardFrame>
+  );
+}
+
+/**
+ * Why a serving flow has no target, where the reason is model-manager
+ * withheld for want of a per-user sign-in; else `otherwise`.
+ */
+function servingUnavailable(sharedModelManager: string[], otherwise: string) {
+  return sharedModelManager.length > 0
+    ? sharedIdentityReason(MODEL_SERVING_VIA, sharedModelManager)
+    : otherwise;
+}
+
+/** The Serving view's path: where the serving flows return and land. */
+function useServingHref(): string {
+  const servingRoute = useRouteRef(servingRouteRef);
+  return useCloseHref(servingRoute?.());
+}
+
+/**
+ * Serve model's route (`/customize/models/hosting/serve`): the backends
+ * that can load, the seed from the query, and — once model-manager accepted
+ * the load — a toast and the Serving view, opened on the served model's
+ * timeline.
+ */
+export function ServeModelRoute() {
+  const serving = useServing();
+  const { loadTargets } = useServingTargets();
+  const shared = useModelHostingSharedIdentity();
+  const [searchParams] = useSearchParams();
+  const seed = useMemo(() => parseServeSeed(searchParams), [searchParams]);
+  const servingHref = useServingHref();
+  const closeHref = useHostingFlowReturn(servingHref);
+  const navigate = useNavigate();
+  const toastApi = useApi(toastApiRef);
+
+  const onServed = useCallback(
+    (target: LoadTarget, answer: ModelManagerLoadAnswer) => {
+      const nodes = loadAnswerNodes(answer).join(', ');
+      const where = `${describeLoadTarget(target)}${nodes ? ` · ${nodes}` : ''}`;
+      toastApi.post(
+        answer.alreadyServing
+          ? {
+              title: `"${answer.name}" already serves on ${where}`,
+              description:
+                'Nothing was started: model-manager serves each preset once. Stop it first to serve it on another node.',
+              status: 'info',
+              timeout: TOAST_TIMEOUT_MS,
+            }
+          : {
+              title: `Serving "${answer.name}" on ${where}`,
+              description:
+                describeLoadAnswer(answer) ||
+                'model-manager is starting it; its status follows in the list.',
+              status: 'success',
+              timeout: TOAST_TIMEOUT_MS,
+            },
+      );
+      // The timeline follows the object model-manager composed; the row
+      // arrives with the next inventory read.
+      navigate(servingHref, {
+        state: {
+          [OPENED_SERVED_MODEL_KEY]: {
+            installation: target.name,
+            name: answer.running?.resource ?? answer.name,
+          },
+        },
+      });
+    },
+    [toastApi, navigate, servingHref],
+  );
+
+  return (
+    <HostingFlowGate
+      title="Serve model"
+      closeHref={closeHref}
+      isLoading={serving.isLoading && loadTargets.length === 0}
+      unavailable={
+        loadTargets.length === 0
+          ? servingUnavailable(
+              shared.modelManager,
+              'No backend can serve a model yet. Add a model backend or a GPU node pool first.',
+            )
+          : undefined
+      }
+    >
+      <ServeModelPage
+        targets={loadTargets}
+        models={serving.servedModels}
+        seed={seed}
+        closeHref={closeHref}
+        onServed={onServed}
+      />
+    </HostingFlowGate>
+  );
+}
+
+/** Import from Hugging Face's route (`/customize/models/hosting/import`). */
+export function ImportModelRoute() {
+  const serving = useServing();
+  const { importTargets } = useServingTargets();
+  const shared = useModelHostingSharedIdentity();
+  const servingHref = useServingHref();
+  const closeHref = useHostingFlowReturn(servingHref);
+  const navigate = useNavigate();
+  const onImported = useCallback(
+    () => navigate(servingHref),
+    [navigate, servingHref],
+  );
+
+  return (
+    <HostingFlowGate
+      title="Import from Hugging Face"
+      closeHref={closeHref}
+      isLoading={serving.isLoading && importTargets.length === 0}
+      unavailable={
+        importTargets.length === 0
+          ? servingUnavailable(
+              shared.modelManager,
+              'No backend in reach can import models from Hugging Face.',
+            )
+          : undefined
+      }
+    >
+      <ImportModelPage
+        targets={importTargets}
+        closeHref={closeHref}
+        onImported={onImported}
+      />
+    </HostingFlowGate>
+  );
+}
+
+/** Pull model's route (`/customize/models/hosting/pull`). */
+export function PullModelRoute() {
+  const serving = useServing();
+  const { pullTargets } = useServingTargets();
+  const shared = useModelHostingSharedIdentity();
+  const servingHref = useServingHref();
+  const closeHref = useHostingFlowReturn(servingHref);
+  const navigate = useNavigate();
+  const onPulled = useCallback(
+    () => navigate(servingHref),
+    [navigate, servingHref],
+  );
+
+  return (
+    <HostingFlowGate
+      title="Pull model"
+      closeHref={closeHref}
+      isLoading={serving.isLoading && pullTargets.length === 0}
+      unavailable={
+        pullTargets.length === 0
+          ? servingUnavailable(
+              shared.modelManager,
+              'No backend in reach can pull models by reference.',
+            )
+          : undefined
+      }
+    >
+      <PullModelPage
+        targets={pullTargets}
+        closeHref={closeHref}
+        onPulled={onPulled}
+      />
+    </HostingFlowGate>
+  );
+}
+
+/**
+ * Add model backend's route (`/customize/models/hosting/add-backend`):
+ * the installations whose muster lists model-manager, and — after a Deploy —
+ * a toast and the Serving view, where the backend's group appears.
+ */
+export function AddModelBackendRoute() {
+  const { available, installations, isLoading, registeredKinds } =
+    useModelBackendTargets();
+  const shared = useModelHostingSharedIdentity();
+  const servingHref = useServingHref();
+  const closeHref = useHostingFlowReturn(servingHref);
+  const navigate = useNavigate();
+  const toastApi = useApi(toastApiRef);
+  const onDeployed = useCallback(
+    (installation: string, result: AddBackendResult) => {
+      toastApi.post({
+        title: `Registered ${result.configMap.name} on ${installation}`,
+        description:
+          'model-manager reads the backend document; its models appear as the inventory answers.',
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      navigate(servingHref);
+    },
+    [toastApi, navigate, servingHref],
+  );
+
+  return (
+    <HostingFlowGate
+      title="Add model backend"
+      closeHref={closeHref}
+      isLoading={isLoading && !available}
+      unavailable={
+        available
+          ? undefined
+          : servingUnavailable(
+              shared.modelManager,
+              'No environment in reach runs model-manager, so no backend can be added.',
+            )
+      }
+    >
+      <AddModelBackendPage
+        installations={installations}
+        registeredKinds={registeredKinds}
+        closeHref={closeHref}
+        onDeployed={onDeployed}
+      />
+    </HostingFlowGate>
+  );
+}
+
+/**
+ * Add GPU node pool's route (`/customize/models/hosting/capacity/add-pool`): the
+ * installations whose muster lists cluster-manager, and — after a complete
+ * Deploy — the GPU pools view, opened on the pool's lifecycle panel. A preset
+ * chosen to serve becomes the pool's serve intent (a Deploy without one
+ * clears an older pool's, so a re-created pool never inherits a choice).
+ */
+export function AddGpuNodePoolRoute() {
+  const serving = useServing();
+  const availability = useClusterManagerAvailability(
+    serving.reachableInstallations ?? [],
+  );
+  const shared = useModelHostingSharedIdentity();
+  const capacityRoute = useRouteRef(gpuCapacityRouteRef);
+  const capacityHref = useCloseHref(capacityRoute?.());
+  const closeHref = useHostingFlowReturn(capacityHref);
+  const navigate = useNavigate();
+  const intents = useServeIntents();
+  const onDeployed = useCallback(
+    (
+      result: NodePoolWriteResult,
+      installation: string,
+      serve?: ServeChoice,
+    ) => {
+      const pool = openedPoolOf(installation, result);
+      if (serve) {
+        intents.record(pool, serve);
+      } else {
+        intents.remove([pool.id]);
+      }
+      navigate(capacityHref, { state: { [OPENED_POOL_KEY]: pool } });
+    },
+    [intents, navigate, capacityHref],
+  );
+  const available = availability.available.length > 0;
+  let unavailable: string | undefined;
+  if (available) {
+    unavailable = undefined;
+  } else if (shared.clusterManager.length > 0) {
+    unavailable = sharedIdentityReason(GPU_POOLS_VIA, shared.clusterManager);
+  } else {
+    unavailable =
+      'No environment in reach runs cluster-manager, so no GPU node pool can be added.';
+  }
+
+  return (
+    <HostingFlowGate
+      title="Add GPU node pool"
+      closeHref={closeHref}
+      isLoading={availability.isLoading && !available}
+      unavailable={unavailable}
+    >
+      <AddGpuNodePoolPage
+        installations={availability.available}
+        closeHref={closeHref}
+        onDeployed={onDeployed}
+      />
+    </HostingFlowGate>
+  );
+}

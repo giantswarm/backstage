@@ -80,7 +80,7 @@ const render = (element: React.ReactElement) => {
     </TestApiProvider>
   );
   return renderInTestApp(<Wrapper>{element}</Wrapper>, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: { '/customize/models': modelsRouteRef },
   });
 };
 
@@ -130,7 +130,7 @@ describe('ModelServingStatus', () => {
     );
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
@@ -256,7 +256,7 @@ describe('ModelServingStatus', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Pull failed for qwen2.5:0.5b',
+          title: 'Could not pull qwen2.5:0.5b',
           description: 'registry unreachable',
           status: 'danger',
         }),

@@ -18,7 +18,7 @@ export const AiChatApiOverride = ApiBlueprint.make({
         // entry get the main Dex ID token forwarded instead (single
         // sign-on via muster's trusted-audiences validation), so no
         // separate PKCE login is needed.
-        const mainAuthApi = getOptionalMainAuthApi(gsAuthProvidersApi);
+        const mainAuthApi = getOptionalMainAuthApi(gsAuthProvidersApi, 'mcp');
         return new MCPAuthProviders(authProviders, mainAuthApi);
       },
     }),

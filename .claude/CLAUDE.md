@@ -96,7 +96,7 @@ yarn prettier:fix > /dev/null
 yarn prettier:check
 
 # Type checking
-yarn tsc                # With incremental mode
+yarn tsc                # With incremental mode; heap set in scripts/tsc.sh
 yarn tsc:full           # Full check without skipping lib checks
 ```
 
@@ -184,8 +184,9 @@ All plugins live under `plugins/` and are published under the
 - **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
   (kagent), ported from the APUI prototype
 
-- **`muster`** - Muster (MCP tool aggregator) UI: the Agent Platform's MCP
-  Servers tab (servers table, a page per server and per tool) and Workflows tab
+- **`muster`** - Muster (MCP tool aggregator) UI: the Customize screen's
+  Connectors tab (a page per connector and per tool, the connector wizard) and
+  Workflows tab
 
 - **`plans`** - Plans feature
 
@@ -231,6 +232,9 @@ All plugins live under `plugins/` and are published under the
   **Deprecated** along with `ai-chat`.
 
 - **`error-reporter-react`** (web) - Error reporting components
+
+- **`analytics-react`** (web) - The portal's tracked actions: the typed event
+  list (`portalEvents`) and `useTrackedMutation`
 
 - **`gs-common`** (common) - Shared constants/utilities for frontend and backend
 
@@ -298,12 +302,48 @@ See `docs/ui.md` and the **`ui`** Claude Code skill for details — the full bui
 inventory, the MUI→bui swap table, and how to read Backstage Storybook
 component/story source without cloning the monorepo.
 
+#### Forms and field validation
+
+Forms follow the **`forms`** skill (`.claude/skills/forms/SKILL.md`): a field
+is checked when the person leaves it, never while they first type; a shown
+error clears the moment it is fixed; submit stays enabled, shows every error
+next to its field and focuses the first invalid one; errors are tied to their
+field for screen readers and say how to fix the problem. Build them with
+`useFieldValidation` from `ui-react`. **A review of a change that adds or
+changes a form, a dialog with inputs or a field's validation checks it against
+that skill's review checklist.**
+
+#### URLs of the Agent Platform shell
+
+The shell's URLs follow the **`urls`** skill (`.claude/skills/urls/SKILL.md`):
+the URL tree follows the rail (`/`, `/sessions`, `/usage`, `/profile`,
+`/customize/<section>/…`; the old `/agent-platform/**` only redirects),
+identity lives in the path, create is `…/new`, edit is `<id>/edit`, every tab
+is a routed segment with the default at the bare path, and moving a URL means a
+one-hop redirect through `legacyAgentPlatformTarget` with the same telemetry
+names. Plugin and shell code never writes a shell path by hand: a link resolves
+through a route ref, an external route ref the app binds in
+`packages/app/src/App.tsx`, or a helper built on one (`useCustomizePaths`,
+`useSkillPaths`, `useNewSessionHref` in agent-platform; `useServerPageLinks`,
+`useWorkflowPageLinks` in muster). The ESLint rule
+`giantswarm/no-restricted-syntax` fails CI on such a literal in
+`plugins/*/src` and `packages/app/src/modules`; a route definition carries a
+disable comment with its reason. **A review of a change that adds or moves a
+route checks it against that skill's review checklist.**
+
+The shell's visual sitemap on Miro (a screenshot per page, tab, wizard step
+and dialog) is kept by the **`ui-sitemap`** skill (`.claude/skills/ui-sitemap/SKILL.md`).
+
 #### Analytics / Telemetry — keep in sync when adding pages
 
 Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
 which maps each `navigate` event to a page name through
 `getTelemetryPageViewPayload` in `packages/app/src/utils/telemetry.ts`. That
-mapping is a hand-maintained `switch` over path prefixes.
+mapping is a hand-maintained `switch` over path prefixes. Each case sets the
+page name and the route template sent as `path`
+(`/sessions/:installation/:sessionId`), never the path itself: a segment that
+names something becomes a placeholder, a tab only appears from its closed set,
+and no attribute takes free text from the URL (see `docs/telemetry.md`).
 
 **When you add a new top-level page/route (a new plugin page, tab, or sub-route),
 add a matching case to `getTelemetryPageViewPayload`.** A *registered* route that
@@ -318,6 +358,28 @@ listed route resolves to a named page, so a missing mapping fails CI instead of
 silently flooding Sentry. Update
 `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.test.tsx` too if the
 routing/reporting behaviour changes.
+
+#### Analytics / Telemetry — keep in sync when adding actions
+
+A write a person completes in a GS plugin goes through `useTrackedMutation`
+from `@giantswarm/backstage-plugin-analytics-react`, never a plain
+`useMutation` (ESLint fails `plugins/*/src` on one: the
+`giantswarm/no-restricted-imports` rule in the root `.eslintrc.js`). It takes
+`event` — the event the success reports, from the typed list `portalEvents` in
+`plugins/analytics-react/src/events.ts` — or `event: null` with an
+`untrackedReason`. Report from the hook every entry point shares, never from a
+page component. A write that is not a react-query mutation moves into a hook.
+ESLint cannot see a write run by hand (a busy flag, an `await`, a `catch`), so
+check for one in review: it goes through `useTrackedMutation` too.
+
+**When you add a tracked action**: add it to `portalEvents` (TelemetryDeck's
+naming: capitalized prefixes, a past-tense last part, at most three levels;
+every attribute a closed set of values, never free text), add the row to the
+table in `docs/telemetry.md` (a test compares them), and assert the event in the
+hook's test with `mockApis.analytics.mock()` (a test fails when no plugin test
+names the event). The TelemetryDeck connector forwards only listed events with
+valid attributes; anything else named like ours goes to Sentry as
+`Untracked action: <name>`.
 
 ### Scaffolder Field Extensions
 
@@ -513,7 +575,9 @@ reach Sentry.
     turns conventional-commit PR titles into a tag + GitHub Release
     (`zz_generated.auto_release.yaml`), which triggers the CircleCI architect
     pipeline. The tagger does not bump `package.json`, so the root `version`
-    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it.
+    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it. The
+    generated notes of a final release are then curated by hand with the
+    **`release-notes`** skill.
   - **Plugin packages**: changeset-managed, but that axis is dormant — nothing is
     published to npm and nothing consumes `.changeset/*.md` today (see #1772).
     Still add one for any user-facing `plugins/*` change (`minor` for a new

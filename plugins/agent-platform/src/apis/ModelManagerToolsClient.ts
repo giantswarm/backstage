@@ -78,7 +78,7 @@ export type ServeRequest = {
 /**
  * model-manager's backend-registration and serving tools on one installation,
  * called as the signed-in person ({@link callModelManagerTool}): the writes
- * of the backend registry and the two calls the Serve dialog makes. The
+ * of the backend registry and the two calls Serve model makes. The
  * inventory reads and the per-model operations of the Models pages take the
  * same hop through `ModelManagerApiClient`.
  */

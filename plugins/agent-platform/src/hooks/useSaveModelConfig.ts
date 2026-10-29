@@ -1,6 +1,7 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   createResource,
   CustomResourceMatcher,
@@ -58,7 +59,13 @@ export function useSaveModelConfig() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: (_data, { original }) => ({
+      name: original
+        ? 'AgentPlatform.modelUpdated'
+        : 'AgentPlatform.modelCreated',
+      attributes: {},
+    }),
     mutationFn: async ({
       installation,
       values,
@@ -66,7 +73,10 @@ export function useSaveModelConfig() {
     }: SaveModelConfigInput) => {
       const isEdit = Boolean(original);
       const namespace = original?.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
-      const plan = planKeySecret(values, isEdit);
+      const plan = planKeySecret(values, {
+        isEdit,
+        originalProvider: original?.getProvider(),
+      });
 
       if (plan.action === 'write') {
         // Create-or-replace, mirroring what `kubectl apply` would do. The

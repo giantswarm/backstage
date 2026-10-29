@@ -43,8 +43,8 @@ const unavailable: HttpRoute = {
   parents: [
     {
       ...parent,
-      accepted: { status: 'not-available' },
-      resolvedRefs: { status: 'not-available' },
+      accepted: { status: 'not-available', cause: 'not-exported' },
+      resolvedRefs: { status: 'not-available', cause: 'not-exported' },
     },
   ],
 };
@@ -98,11 +98,55 @@ describe('<ClusterGatewaysContent />', () => {
     expect(screen.getByText('NotAllowedByListeners')).toBeInTheDocument();
   });
 
+  it('lists routes without status right after the broken ones', async () => {
+    const unreported: HttpRoute = {
+      ...healthy,
+      id: 'team-c/admin',
+      namespace: 'team-c',
+      name: 'admin',
+      parents: [
+        {
+          ...parent,
+          accepted: { status: 'not-reported' },
+          resolvedRefs: { status: 'not-reported' },
+        },
+      ],
+    };
+    await render([healthy, unreported, broken]);
+    const names = screen
+      .getAllByRole('row')
+      .map(row => within(row).queryByText(/^(healthy|broken|admin)$/))
+      .filter(Boolean)
+      .map(cell => cell!.textContent);
+    expect(names).toEqual(['broken', 'admin', 'healthy']);
+  });
+
+  it('says a failed load will be retried, not that the bundle is too old', async () => {
+    await render([
+      {
+        ...healthy,
+        parents: [
+          {
+            ...parent,
+            accepted: { status: 'not-available', cause: 'load-failed' },
+            resolvedRefs: { status: 'not-available', cause: 'not-exported' },
+          },
+        ],
+      },
+    ]);
+    expect(
+      screen.getByText(
+        'Some route conditions could not be loaded. They are retried automatically.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/observability-bundle/)).not.toBeInTheDocument();
+  });
+
   it('explains when route conditions are not available', async () => {
     await render([unavailable]);
     expect(
       screen.getByText(
-        'Some route conditions are not available on this cluster.',
+        'Route conditions need observability-bundle 3.6.0 or newer on this cluster.',
       ),
     ).toBeInTheDocument();
   });
@@ -123,7 +167,7 @@ describe('<ClusterGatewaysContent />', () => {
     await render([unavailable, unreported]);
     expect(
       screen.getByText(
-        'Some route conditions are not available on this cluster.',
+        'Route conditions need observability-bundle 3.6.0 or newer on this cluster.',
       ),
     ).toBeInTheDocument();
   });
@@ -131,9 +175,7 @@ describe('<ClusterGatewaysContent />', () => {
   it('does not show the unavailable notice when conditions are reported', async () => {
     await render([healthy]);
     expect(
-      screen.queryByText(
-        'Some route conditions are not available on this cluster.',
-      ),
+      screen.queryByText(/Route conditions need|could not be loaded/),
     ).not.toBeInTheDocument();
   });
 

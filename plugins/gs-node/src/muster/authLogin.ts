@@ -14,6 +14,12 @@ export type AuthLoginStatus =
   | 'connected'
   /** The user must complete `authUrl` in a browser to connect the server. */
   | 'auth_required'
+  /**
+   * A device-code sign-in waits for the person to enter `deviceCode.userCode`
+   * at `deviceCode.verificationUrl` (a provider App such as ChatGPT); muster
+   * polls the provider and files the grant itself.
+   */
+  | 'pending'
   /** Muster refused the login (SSO-managed server, rate limit, no issuer, ...). */
   | 'error'
   /** Muster answered something we don't recognise; re-read auth://status. */
@@ -31,10 +37,20 @@ export type AuthLoginStatus =
  */
 export type ClientIdMethod = 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
 
+/** The code a device-code sign-in waits for, and where to enter it. */
+export interface DeviceCode {
+  userCode: string;
+  verificationUrl: string;
+  /** RFC 3339; muster gives the code up after it. */
+  expiresAt?: string;
+}
+
 export interface AuthLoginResult {
   status: AuthLoginStatus;
   /** Muster's sign-in URL (its OAuth proxy start endpoint), when challenged. */
   authUrl?: string;
+  /** The code to enter, when `status` is `pending`. */
+  deviceCode?: DeviceCode;
   /** Muster's own message, passed through for display. */
   message: string;
   /** How muster identifies itself to the authorization server, when reported. */
@@ -70,7 +86,9 @@ const CLIENT_ID_METHODS: ClientIdMethod[] = [
  * saying how muster identifies itself to the authorization server; older
  * musters omit it. Connection outcomes have no structured content and are
  * still recognised by their `api.AuthMsg*` markers, the same way muster's own
- * CLI does.
+ * CLI does. A provider App with a device-code sign-in answers
+ * `structuredContent: {status: "pending", userCode, verificationUrl,
+ * expiresAt}`.
  */
 export function parseAuthLoginResult(result: {
   text?: string;
@@ -81,7 +99,31 @@ export function parseAuthLoginResult(result: {
   const structured = result.structuredContent as {
     authUrl?: unknown;
     clientIdMethod?: unknown;
+    status?: unknown;
+    userCode?: unknown;
+    verificationUrl?: unknown;
+    expiresAt?: unknown;
   } | null;
+  if (
+    structured?.status === 'pending' &&
+    typeof structured.userCode === 'string' &&
+    structured.userCode !== '' &&
+    typeof structured.verificationUrl === 'string' &&
+    structured.verificationUrl !== ''
+  ) {
+    return {
+      status: 'pending',
+      message,
+      deviceCode: {
+        userCode: structured.userCode,
+        verificationUrl: structured.verificationUrl,
+        expiresAt:
+          typeof structured.expiresAt === 'string'
+            ? structured.expiresAt
+            : undefined,
+      },
+    };
+  }
   const authUrl = structured?.authUrl;
   if (typeof authUrl === 'string' && authUrl !== '') {
     const clientIdMethod = CLIENT_ID_METHODS.find(
@@ -116,12 +158,22 @@ export interface AuthLogoutResult {
  */
 const SIGNED_OUT_MARKER = 'Successfully logged out';
 
-/** Classify `core_auth_logout`'s answer. The result is prose-only. */
+/**
+ * Classify `core_auth_logout`'s answer: prose for a server; for a provider
+ * App (`app=<instance>`) muster answers "Disconnected provider App '<name>':
+ * …" with `structuredContent.status` `disconnected`.
+ */
 export function parseAuthLogoutResult(result: {
   text?: string;
+  structuredContent?: unknown;
 }): AuthLogoutResult {
   const message = result.text ?? '';
-  if (message.includes(SIGNED_OUT_MARKER)) {
+  const structured = result.structuredContent as
+    { status?: unknown } | undefined;
+  if (
+    message.includes(SIGNED_OUT_MARKER) ||
+    structured?.status === 'disconnected'
+  ) {
     return { status: 'signed_out', message };
   }
   return { status: 'unknown', message };

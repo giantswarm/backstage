@@ -1,4 +1,5 @@
 import { expect, open, test } from './fixtures';
+import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
  * The Serving page's listing order (giantswarm/backstage#2496): each
@@ -24,10 +25,13 @@ const TIER: Record<string, number> = {
 const STATUS_WORD =
   /^(Ready|Not serving|Not ready|Pending|Stopping|Idle|Downloading|Available)\b/;
 
+// Model hosting is drawn only where model-manager answers.
+skipWithoutModelManager();
+
 test('each backend lists the running models first, then the ones that need attention, then the ones not running', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/models/serving');
+  await open(admin, '/customize/models/hosting');
   const grids = admin.getByRole('grid');
   await expect(
     grids.first(),

@@ -11,11 +11,14 @@ import { buildLlmUsage, type LlmUsage } from '../lib/llmUsage';
 import {
   dailyRangeWindow,
   dailyWindowDayKeys,
-  llmUsageQueries,
-  llmUsageRangeQueries,
+  hasCompleteDays,
+  llmUsageQueriesFor,
+  llmUsageRangeQueriesFor,
   todayDayKey,
   todayPartialQueries,
   todayPartialRange,
+  windowDaysOf,
+  type LlmUsageQueryOptions,
 } from '../lib/llmUsageQueries';
 
 export type LlmUsageView = {
@@ -29,14 +32,47 @@ export type LlmUsageView = {
   isAvailable: boolean | undefined;
 };
 
+export type LlmUsageOptions = LlmUsageQueryOptions & {
+  /**
+   * Also query the spend over the window before this one, reported as
+   * `usage.totals.previousCostUsd` when the data reaches back to that
+   * window's start. Off by default: two more queries, one of them a day's
+   * read to check that reach.
+   */
+  comparePrevious?: boolean;
+  /**
+   * Also query model calls per day, reported as `usage.callsPerDay` — the
+   * Overview's activity heatmap. Off by default: two more queries (the daily
+   * range and today's partial count) no other view reads.
+   */
+  dailyCalls?: boolean;
+};
+
+/**
+ * A coverage check's answer: whether its vector holds a series, from the data
+ * whenever there is any — react-query keeps the last good answer beside a
+ * failed background refetch, and one transient Mimir error must not flip the
+ * page. `undefined` (unknown) only without data: disabled, or failed before it
+ * ever answered.
+ */
+function hasSeries(query: {
+  data?: { data?: { result?: unknown[] } };
+}): boolean | undefined {
+  const result = query.data?.data?.result;
+  return result ? result.length > 0 : undefined;
+}
+
 /** Copy for the gateway's own `unknown`: a call it could attribute to no caller. */
 const UNKNOWN_AGENT = 'Unattributed';
 const UNKNOWN_MODEL = 'Unknown model';
 
 /**
- * Everything the Overview and Cost views read, for one installation.
+ * Everything the Overview and Cost views read, for one installation: by
+ * default its last `WINDOW_DAYS` across every organization, or the window and
+ * the organization `options` name.
  *
- * Twelve queries: ten instant and two range, written out one call at a time.
+ * Thirteen queries (two more with `comparePrevious`, two more with
+ * `dailyCalls`): eleven instant and two range, written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
  * helper either, because a helper that calls a hook is unverifiable by
@@ -55,21 +91,37 @@ const UNKNOWN_MODEL = 'Unknown model';
  * quantile Mimir refuses, say) leaves the rest of the page true, so only a
  * failure of the two load-bearing vectors counts as the page failing.
  */
-export function useLlmUsage(installation: string | undefined): LlmUsageView {
+export function useLlmUsage(
+  installation: string | undefined,
+  options: LlmUsageOptions = {},
+): LlmUsageView {
+  const { org, comparePrevious = false, dailyCalls = false } = options;
+  const windowDays = windowDaysOf(options.days);
   const enabled = Boolean(installation);
   const installationName = installation ?? '';
+  const llmUsageQueries = useMemo(
+    () => llmUsageQueriesFor({ days: windowDays, org }),
+    [windowDays, org],
+  );
+  const llmUsageRangeQueries = useMemo(
+    () => llmUsageRangeQueriesFor({ org }),
+    [org],
+  );
 
   // Snapped to UTC midnight, so it is stable for the whole day and cannot
   // re-key the range queries on every render.
-  const range = dailyRangeWindow();
+  const range = dailyRangeWindow(Date.now(), windowDays);
   const { start, end, step } = range;
+  // A one-day window has no complete day to query; today's partial row is
+  // the whole chart.
+  const rangeEnabled = enabled && hasCompleteDays(range);
   // The charts render one bar per day of this window whether or not Mimir
-  // answered for it, so the axis is the 30 days the page claims.
+  // answered for it, so the axis is the window the page claims.
   //
   // Memoised on `start`, which is already midnight-snapped and so a stable
   // per-day key. Without this both are fresh values every render, and since
   // they are dependencies of the `usage` memo below, that memo could never hit
-  // — re-running ten vector reductions, two 30-day series and the agent
+  // — re-running ten vector reductions, two daily series and the agent
   // join on every render, and re-keying every downstream memo with a new
   // `usage` object.
   const days = useMemo(
@@ -87,7 +139,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
   // (`PARTIAL_SNAP_SECONDS`), not per render — which is why these two stay out
   // of the blocking `isLoading` below.
   const todayRange = todayPartialRange();
-  const todayQueries = todayPartialQueries(todayRange);
+  const todayQueries = todayPartialQueries(todayRange, { org });
 
   const cost = useMimirQuery({
     installationName,
@@ -135,7 +187,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     start,
     end,
     step,
-    enabled,
+    enabled: rangeEnabled,
     // The window re-keys at UTC midnight; hold the previous series rather than
     // reporting a first load.
     keepPreviousAnswer: true,
@@ -146,7 +198,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     start,
     end,
     step,
-    enabled,
+    enabled: rangeEnabled,
     // The window re-keys at UTC midnight; hold the previous series rather than
     // reporting a first load.
     keepPreviousAnswer: true,
@@ -167,6 +219,41 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     // This key moves every five minutes by design, so it must not read as a
     // first load — see the note on `isLoading` below.
     keepPreviousAnswer: true,
+  });
+
+  // The activity heatmap's day-by-day model calls: the same range window and
+  // today's-partial split as the two charts above, only when asked for.
+  const callsPerDay = useMimirRangeQuery({
+    installationName,
+    query: llmUsageRangeQueries.callsPerDay,
+    start,
+    end,
+    step,
+    enabled: rangeEnabled && dailyCalls,
+    keepPreviousAnswer: true,
+  });
+  const callsToday = useMimirQuery({
+    installationName,
+    query: todayQueries.calls,
+    enabled: enabled && dailyCalls,
+    keepPreviousAnswer: true,
+  });
+
+  const previousCost = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.previousCost,
+    enabled: enabled && comparePrevious,
+  });
+  const dataBeforePreviousWindow = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.dataBeforePreviousWindow,
+    enabled: enabled && comparePrevious,
+  });
+  // Whether the "data starts on …" note may show at all; see `dataStart`.
+  const dataBeforeWindow = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.dataBeforeWindow,
+    enabled,
   });
 
   const { rows: agentRows } = useAgents();
@@ -192,17 +279,32 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     requestsByStatus.isLoading ||
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
-    tokensPerDay.isLoading;
+    tokensPerDay.isLoading ||
+    // One small read, waited for so the data-start note does not pop in
+    // after the page has rendered. Its failure is not the page's: the note
+    // then stays away (`hasSeries`).
+    dataBeforeWindow.isLoading ||
+    (comparePrevious &&
+      (previousCost.isLoading || dataBeforePreviousWindow.isLoading)) ||
+    (dailyCalls && callsPerDay.isLoading);
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
-  // `days` is always supplied it densifies to 30 zero rows — a chart of empty
+  // `days` is always supplied it densifies to a row of zeros per day — a chart of empty
   // bars directly beneath a strip showing a real non-zero total, with nothing
   // saying a query failed. A refused quantile degrades honestly to `—`; a
-  // silently zeroed 30-day chart does not.
+  // silently zeroed chart does not.
+  //
+  // The daily-calls query is *not* among them: it feeds one card, which says
+  // so itself when the query failed (`callsPerDay: null`), and the rest of
+  // the Overview is still true without it.
   const isError = Boolean(
     cost.error || tokens.error || costPerDay.error || tokensPerDay.error,
   );
   const isAvailable = cost.isAvailable;
+
+  // Booleans, not the query results, so the memo below keys on the answer.
+  const hasDataBeforeWindow = hasSeries(dataBeforeWindow);
+  const hasDataBeforePreviousWindow = hasSeries(dataBeforePreviousWindow);
 
   const usage = useMemo(() => {
     if (!enabled || isLoading || isError) {
@@ -235,6 +337,18 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
       today,
       costToday: costToday.data?.data?.result,
       tokensToday: tokensToday.data?.data?.result,
+      ...(dailyCalls && {
+        callsPerDay: callsPerDay.error
+          ? null
+          : (callsPerDay.data?.data?.result ?? []),
+        callsToday: callsToday.data?.data?.result,
+      }),
+      windowDays,
+      previousCost: comparePrevious
+        ? (previousCost.data?.data?.result ?? [])
+        : undefined,
+      dataBeforeWindow: hasDataBeforeWindow,
+      dataBeforePreviousWindow: hasDataBeforePreviousWindow,
     });
   }, [
     enabled,
@@ -257,6 +371,15 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     agentDetailRoute,
     days,
     today,
+    windowDays,
+    comparePrevious,
+    previousCost.data,
+    hasDataBeforeWindow,
+    hasDataBeforePreviousWindow,
+    dailyCalls,
+    callsPerDay.data,
+    callsPerDay.error,
+    callsToday.data,
   ]);
 
   return { usage, isLoading, isError, isAvailable };

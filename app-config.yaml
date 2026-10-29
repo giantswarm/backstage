@@ -2,6 +2,17 @@ app:
   title: Dev Portal
   baseUrl: http://localhost:3000
   releaseVersion: ${VERSION}
+  # Which portals this deployment serves (schema and full semantics:
+  # packages/app/config.d.ts). Both on: the Agent Platform shell on `/`,
+  # `/sessions/**`, `/usage/**`, `/profile`, `/customize/**` and the old
+  # `/agent-platform/**` (redirects only), the classic Platform Portal
+  # everywhere else, cross-linked in new tabs. Only agentPlatform: the shell is
+  # the whole navigation (no "Platform Portal" item; classic pages reachable by
+  # URL only). Only platformPortal (the default): the classic portal, where the
+  # `agent-platform-shell` feature flag lets one browser opt into the shell.
+  portals:
+    platformPortal: true
+    agentPlatform: false
   extensions:
     - api:home/visits
     - app-root-element:home/visit-listener
@@ -244,6 +255,19 @@ catalog:
   #     # never blocked.
   #     enabled: true
   #     cacheTtlSeconds: 3600
+  #   buildStatus:
+  #     # Annotates Component entities that have github.com/project-slug with
+  #     # whether their default branch builds. Sets the giantswarm.io/build-status
+  #     # label to passing, failing or unknown, names the failing checks in
+  #     # giantswarm.io/build-failing-checks, and merges BUILD-RED into
+  #     # giantswarm.io/readiness-flags when failing. A red that cannot be
+  #     # attributed to the default branch (GitHub hangs statuses off a SHA, so
+  #     # a build from a branch cut off main lands on main) yields unknown,
+  #     # never failing. Needs a GitHub token; the CircleCI token is only
+  #     # needed to attribute reds on private projects.
+  #     enabled: true
+  #     circleciToken: ${CIRCLECI_TOKEN}
+  #     cacheTtlSeconds: 3600
   #   latestOciRelease:
   #     # Annotates Component entities that have giantswarm.io/helmcharts with
   #     # giantswarm.io/latest-release-tag and giantswarm.io/latest-release-date,
@@ -399,25 +423,83 @@ aiChat:
 # `https://muster.<baseDomain>/mcp`; nothing has to be listed for an
 # installation that adopts muster. `installations` holds OVERRIDES of that
 # derived list (url, headers, prometheusServer, authProvider per name) and
-# additions the fleet configuration does not know. The proxy is read-only by
-# default -- mutating `call_tool` names and workflow runs are blocked unless
-# `allowMutations: true`. See app-config.example.yaml.
+# additions the fleet configuration does not know. The proxy has no mutation
+# gate of its own: `call_tool` and workflow runs go to muster as the signed-in
+# person, and the trust boundary is each MCP server's deployment (e.g.
+# mcp-kubernetes deployed read-only). A leftover `allowMutations` key is
+# ignored. See app-config.example.yaml.
 # muster:
 #   installations:
 #     - name: main
 #       url: https://muster.<mc>.<domain>/mcp
 #       authProvider: oidc-main
-#       # allowMutations: false   # read-only default; opt in per installation
 
 # Agent platform (plugins/agent-platform). The create flow is disabled by
 # default and enabled per environment via `app.extensions`.
 agentPlatform:
+  # Context-window sizes per model, in tokens, for the chat's context indicator.
+  # Nothing in the platform reports a hosted model's window, so it is a table
+  # here: keys are model-name patterns matched (case-insensitively) against the
+  # provider's model name, '*' matches any run of characters, and the most
+  # specific matching pattern wins. A model no pattern names shows its raw
+  # token count instead of a percentage.
+  #
+  # Claude values follow Anthropic's "Context windows" page
+  # (https://platform.claude.com/docs/en/build-with-claude/context-windows):
+  # the models listed with a 1M window have it by default, with no beta header,
+  # on the Claude API, Bedrock and Vertex alike; every other Claude model has
+  # 200k. Each family is named on its own, with no 'claude-*' catch-all, so a
+  # model released after this table shows its raw count rather than a wrong
+  # share. The leading '*' also matches Bedrock ids
+  # (`[us.]anthropic.claude-...`); a trailing '*' matches dated or versioned
+  # ids (`-20251001`, `@20251001`, `-v1:0`).
+  models:
+    contextWindows:
+      '*claude-fable-5*': 1000000
+      '*claude-mythos-5*': 1000000
+      '*claude-opus-5*': 1000000
+      '*claude-sonnet-5*': 1000000
+      '*claude-haiku-5*': 1000000
+      '*claude-opus-4-8*': 1000000
+      '*claude-opus-4-7*': 1000000
+      '*claude-opus-4-6*': 1000000
+      '*claude-sonnet-4-6*': 1000000
+      '*claude-opus-4-5*': 200000
+      '*claude-sonnet-4-5*': 200000
+      '*claude-haiku-4-5*': 200000
   skills:
-    # GitHub repositories to discover agent skills from. Every SKILL.md file
+    # Git repositories to discover agent skills from. Every SKILL.md file
     # defines one skill (its directory is the skill root); a selected skill
-    # becomes a kagent spec.skills.gitRefs entry.
+    # becomes a kagent spec.skills.gitRefs entry. A github.com entry is read
+    # through the GitHub REST API (token via the GitHub integration, else
+    # anonymous at 60 requests/hour); any other http(s) entry is read over the
+    # plain git protocol (depth-1 clone, no API rate limit), so a self-hosted
+    # or lab-local git server works, e.g.
+    #   - http://gitserver.agent-platform.svc.cluster.local/skills.git
+    # The URL travels into the agent chart's `git.url` unchanged, so agents
+    # must be able to `git fetch` it at boot too.
     repositories:
       - https://github.com/giantswarm/agent-skills
+  # Which agent serves each meta-agent role, as `<namespace>/<name>` (or
+  # `<installation>/<namespace>/<name>` where the agent runs on several
+  # installations). A bare name resolves to nothing. A feature gated on a role
+  # appears only where the value matches exactly one agent, and stays hidden
+  # otherwise. All roles are optional.
+  # metaAgents:
+  #   generalInformation: kagent/swarmgeist
+  #   agentManagement: kagent/swarm-operator
+  #   workflowManagement: kagent/workflow-manager
+  #   platformOperations: kagent/platform-manager
+  #   skillEvaluation: kagent/skill-evaluator
+  #   skillCreation: kagent/skill-creator
+  # Integrations living outside the portal that it points people at. `slack`
+  # shows the dismissible "Use your agents right in Slack" banner on the
+  # new-session home; leave it off until the installation's Slack integration
+  # is set up. Off by default. `slackDocsUrl` is where the banner's "How it
+  # works" button points (a new tab); Giant Swarm's docs when unset.
+  # integrations:
+  #   slack: true
+  #   slackDocsUrl: https://docs.example.com/agents-in-slack
   # kagent API v2 access (gRPC), used by the Sessions list, the session chat
   # and the Usage tab. The backend speaks gRPC to each installation's
   # controller route and forwards the user's Dex ID token.
@@ -433,4 +515,6 @@ agentPlatform:
   #   installations:
   #     lab: {}   # enabled, use the derived URL
   #     golem:
-  #       apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api
+  #       # The gRPC origin only, `https://<host>[:port]`: no path, no
+  #       # trailing slash (gRPC is matched by service, not by prefix).
+  #       apiBaseUrl: https://agentgateway.<other-domain>

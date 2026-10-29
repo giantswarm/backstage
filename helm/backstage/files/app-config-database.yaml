@@ -1,0 +1,17 @@
+backend:
+  database:
+    client: pg
+    pluginDivisionMode: schema
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      # TLS, verifying the server against the CNPG cluster's CA. The path is
+      # relative to this file, mounted at /app/app-config-database.yaml beside
+      # the CA at /app/database-ca-certificate/ca.crt. POSTGRES_HOST is the
+      # cluster's -rw service, a SAN of the server certificate.
+      ssl:
+        ca:
+          $file: database-ca-certificate/ca.crt
+        rejectUnauthorized: true

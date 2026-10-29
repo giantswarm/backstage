@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
-import { ModelManagerToolsClient } from '../apis/ModelManagerToolsClient';
+import {
+  ModelManagerToolsClient,
+  type ServeRequest,
+} from '../apis/ModelManagerToolsClient';
 import { poolLifecycleSteps } from '../lib/poolLifecycle';
 import {
   isServedModelReady,
@@ -67,6 +71,18 @@ export function useServeIntentRunner(
   // starts a second one, mirrored in state for the panel's wording.
   const running = useRef(new Set<string>());
   const [inFlight, setInFlight] = useState<string[]>([]);
+  const { mutateAsync: loadModel } = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Model serving operations are not a tracked portal action yet.',
+    mutationFn: ({
+      client,
+      request,
+    }: {
+      client: ModelManagerToolsClient;
+      request: ServeRequest;
+    }) => client.loadModel(request),
+  });
 
   useEffect(() => {
     for (const [id, intent] of Object.entries(intents)) {
@@ -117,7 +133,7 @@ export function useServeIntentRunner(
             return;
           }
           loadAsked = true;
-          const answer = await client.loadModel(request);
+          const answer = await loadModel({ client, request });
           setOutcome(id, {
             kind: 'served',
             resource: answer.running?.resource ?? answer.name,
@@ -146,7 +162,15 @@ export function useServeIntentRunner(
         }
       })();
     }
-  }, [intents, rows, servedModels, musterApi, setOutcome, invalidate]);
+  }, [
+    intents,
+    rows,
+    servedModels,
+    musterApi,
+    setOutcome,
+    invalidate,
+    loadModel,
+  ]);
 
   useEffect(() => {
     const stale = staleServeIntentIds(intents, {

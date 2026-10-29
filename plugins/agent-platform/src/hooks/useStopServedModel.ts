@@ -1,6 +1,7 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   deleteResource,
   LLMInferenceService,
@@ -77,7 +78,10 @@ export function useStopServedModel() {
     ]);
   };
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Model serving operations are not a tracked portal action yet.',
     mutationFn: async (input: ServedModel | StopServedModelInput) => {
       const { model, via } =
         'via' in input && 'model' in input

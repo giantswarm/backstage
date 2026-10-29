@@ -20,6 +20,8 @@ import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { ReactNode } from 'react';
 import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityReadinessPicker } from '../EntityReadinessPicker';
+import { EntityBuildStatusPicker } from '../EntityBuildStatusPicker';
+import { EntityOrbVersionPicker } from '../EntityOrbVersionPicker';
 
 /**
  * Props for root catalog pages.
@@ -58,6 +60,8 @@ export function CustomCatalogPage(props: CustomCatalogPageProps) {
             <EntityOwnerPicker mode={ownerPickerMode} />
             <EntityLifecyclePicker />
             <EntityReadinessPicker />
+            <EntityBuildStatusPicker />
+            <EntityOrbVersionPicker />
             <EntityTagPicker />
             <EntityNamespacePicker />
           </CatalogFilterLayout.Filters>

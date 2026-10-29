@@ -1,0 +1,303 @@
+import { useCallback, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
+import CheckIcon from '@material-ui/icons/Check';
+import {
+  useFieldValidation,
+  useProvidePageHeaderActions,
+  WizardStepHeading,
+} from '@giantswarm/backstage-plugin-ui-react';
+
+import { useMusterInstance } from '../MusterInstanceProvider';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
+import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
+import { useTakesDisplayName } from '../NewMcpServerReviewPage';
+import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
+import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
+import { ConnectorWizardFrame } from './ConnectorWizardFrame';
+
+const useStyles = makeStyles({
+  found: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    height: 24,
+    padding: '0 8px',
+    borderRadius: 6,
+    background: 'var(--bui-success-bg-subdued, #e7f6ec)',
+    color: 'var(--bui-success-fg-subdued, #14612a)',
+    fontSize: 12,
+    '& svg': { width: 12, height: 12 },
+  },
+});
+
+const TRANSPORT_NAMES = {
+  'streamable-http': 'Streamable HTTP',
+  sse: 'SSE',
+} as const;
+
+/**
+ * What the probe of `url` says, as one inline line under the address field —
+ * the prototype's "Server found" state. Nothing while there is nothing to
+ * say: an incomplete URL, a verdict about an address already typed past.
+ */
+function DetectionStatus({
+  url,
+  installation,
+}: {
+  url: string;
+  installation: string | undefined;
+}) {
+  const classes = useStyles();
+  const { probing, detection, probedUrl } = useTransportDetection(
+    url,
+    installation,
+  );
+
+  if (probing) {
+    return (
+      <Text variant="body-small" color="secondary">
+        Checking the server…
+      </Text>
+    );
+  }
+  if (!detection || probedUrl !== url.trim()) {
+    return null;
+  }
+  if (!detection.reachable) {
+    return (
+      <Text variant="body-small" color="secondary">
+        Muster could not reach this address. Check it, or continue and test at
+        the end.
+      </Text>
+    );
+  }
+  const transport =
+    detection.transport === 'unknown'
+      ? undefined
+      : TRANSPORT_NAMES[detection.transport];
+  return (
+    <Flex direction="column" gap="1">
+      <span className={classes.found}>
+        <CheckIcon aria-hidden />
+        Server found
+      </span>
+      <Text variant="body-small" color="secondary">
+        {[
+          detection.serverName &&
+            `${detection.serverName}${
+              detection.serverVersion ? ` ${detection.serverVersion}` : ''
+            }`,
+          transport,
+          detection.requiresAuth
+            ? 'asks for a sign-in — set up on the next step'
+            : 'no sign-in needed',
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </Text>
+    </Flex>
+  );
+}
+
+/**
+ * The shared validator words the address's problems for the definition's
+ * field ("URL"); this step labels it "Server address". Say them in this
+ * step's words.
+ */
+function inStepWords(message: string | undefined): string | undefined {
+  return message
+    ?.replace(/^URL\b/, 'Server address')
+    .replace(/^Enter the URL\b/, 'Enter the server address');
+}
+
+/**
+ * Step 1 (Connect) of the shell's connector wizard: the server address with a
+ * live probe through muster's `core_mcpserver_detect` (the "Server found"
+ * state), the connector's name and an optional description. The transport is
+ * taken from the probe rather than asked.
+ *
+ * The name is the connector's display name; its technical name derives from
+ * it on create and is fixed after. An edit lets the name change only where
+ * the installation's muster takes a display name on update (v5.43.0 and
+ * later, read from the tool's input schema), and not on a family member,
+ * whose members share one name a rename of one would split.
+ *
+ * The prototype's "Who can use it?" audience choice is deliberately absent:
+ * muster registers a connector for the whole installation and has no
+ * per-person visibility to map it to, so the wizard does not pretend to ask.
+ */
+export function NewConnectorConnectPage() {
+  const navigate = useNavigate();
+  const wizardLinks = useConnectorWizardLinks();
+  const { activeInstallation, mcpServers } = useMusterInstance();
+  const {
+    state,
+    setName,
+    setDescription,
+    setInstallation,
+    setUrl,
+    setTransport,
+    detailsErrors,
+    fieldErrors,
+    registeredName,
+    registeredInstallation,
+  } = useNewMcpServerForm();
+
+  // The wizard registers onto the section's active installation, mirrored into
+  // the form state so validation and the composed definition see it. Not
+  // while editing: that server lives
+  // where it lives (NewMcpServerEditGate ends the edit on a switch).
+  useEffect(() => {
+    if (!registeredName && state.installation !== activeInstallation) {
+      setInstallation(activeInstallation);
+    }
+  }, [registeredName, activeInstallation, state.installation, setInstallation]);
+
+  // Whether this muster's update keeps a changed name; read only for an edit.
+  // Until the schema is read the name stays read-only, as it was before
+  // muster took a display name. A family's members are named together (the
+  // name they agree on), so one member is not renamed on its own.
+  const updateTakesDisplayName = useTakesDisplayName(
+    'core_mcpserver_update',
+    registeredInstallation,
+    { enabled: Boolean(registeredName) },
+  );
+  const family = registeredName
+    ? mcpServers
+        .find(server => server.getName() === registeredName)
+        ?.getFamily()
+    : undefined;
+  const canRename = !registeredName || (updateTakesDisplayName && !family);
+  let nameDescription = 'Shown when giving an agent access.';
+  if (!canRename) {
+    nameDescription = family
+      ? `Shared with the other members of the ${family} family, so it is set where they are defined.`
+      : 'It cannot be changed after registration.';
+  }
+
+  // The detected transport is applied as long as this run has not been
+  // registered yet; an edit keeps the transport the server is registered with,
+  // so a re-probe of the unchanged URL cannot quietly switch it.
+  const { detected } = useTransportDetection(state.url, state.installation);
+  useEffect(() => {
+    if (registeredName || !detected || state.transport === detected) {
+      return;
+    }
+    setTransport(detected);
+  }, [registeredName, detected, state.transport, setTransport]);
+
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or tries to proceed — not while they first type — and a blocked
+  // Continue moves the focus to the first one (the `forms` skill).
+  const validation = useFieldValidation();
+  const { reveal } = validation;
+  const errorCount = detailsErrors.length;
+  const onContinue = useCallback(() => {
+    if (errorCount > 0) {
+      reveal();
+      return;
+    }
+    const signIn = wizardLinks('auth', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (signIn) {
+      navigate(signIn);
+    }
+  }, [
+    errorCount,
+    reveal,
+    wizardLinks,
+    navigate,
+    registeredName,
+    registeredInstallation,
+  ]);
+  // Problems no field on this step can show: the installation comes from the
+  // section, request metadata has no field in this wizard. Named in a summary.
+  const unanchoredErrors = [
+    inStepWords(fieldErrors.installation),
+    fieldErrors.meta,
+  ].filter((error): error is string => Boolean(error));
+
+  // Memoized so the frame's footer slot only updates when the handler does,
+  // not on every keystroke (see useProvidePageHeaderActions).
+  const actions = useMemo(
+    () => (
+      <Button variant="primary" onPress={onContinue}>
+        Continue
+      </Button>
+    ),
+    [onContinue],
+  );
+  useProvidePageHeaderActions(actions);
+
+  return (
+    <ConnectorWizardFrame step="connect">
+      <WizardStepHeading
+        title={registeredName ? 'Connection' : 'Connect an app'}
+      >
+        {registeredName
+          ? 'Saving updates the registered connector in place.'
+          : 'Gives agents access to an app through its MCP server. Paste the address from the app or your admin.'}
+      </WizardStepHeading>
+
+      <ActiveInstallationNote />
+
+      <Flex direction="column" gap="2">
+        <TextField
+          label="Server address"
+          isRequired
+          value={state.url}
+          onChange={setUrl}
+          placeholder="https://mcp.example.com/mcp"
+          {...validation.textFieldProps('url', inStepWords(fieldErrors.url))}
+        />
+        <DetectionStatus url={state.url} installation={state.installation} />
+      </Flex>
+
+      {/* The technical name derives from this one, so its problems show here. */}
+      <TextField
+        label="Name"
+        isRequired
+        isReadOnly={!canRename}
+        value={state.name}
+        onChange={setName}
+        placeholder="e.g. Jira"
+        description={nameDescription}
+        {...validation.textFieldProps(
+          'name',
+          fieldErrors.name ?? fieldErrors.slug,
+        )}
+      />
+      {state.slug &&
+        (!registeredName || canRename || state.name.trim() !== state.slug) && (
+          <Text variant="body-small" color="secondary">
+            Registered as <code>{state.slug}</code> — used in its tool names.
+            {registeredName && canRename && ' It cannot be changed.'}
+          </Text>
+        )}
+
+      <TextAreaField
+        label="What does it give access to?"
+        secondaryLabel="optional"
+        value={state.description}
+        onChange={setDescription}
+        rows={2}
+        placeholder="e.g. Search, read and update tickets"
+        {...validation.fieldProps('description', fieldErrors.description)}
+      />
+
+      {validation.submitted && unanchoredErrors.length > 0 && (
+        <Alert
+          status="danger"
+          title="Fix before continuing"
+          description={unanchoredErrors.join('. ')}
+        />
+      )}
+    </ConnectorWizardFrame>
+  );
+}

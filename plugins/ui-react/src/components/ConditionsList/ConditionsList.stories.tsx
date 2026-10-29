@@ -119,6 +119,39 @@ export const AbnormalTrue: Story = {
   },
 };
 
+export const StagedOrder: Story = {
+  name: 'Staged order (root cause first)',
+  args: {
+    // Written in one pass, so the timestamps tie; `order` keeps the stage that
+    // failed ahead of the stages it blocks.
+    conditions: [
+      { ...healthy[0], type: 'Accepted' },
+      {
+        type: 'Compatible',
+        status: 'False',
+        reason: 'Blocked',
+        message: 'blocked by ResolvedRefs',
+        lastTransitionTime: '2026-07-31T10:00:00Z',
+      },
+      {
+        type: 'Ready',
+        status: 'False',
+        reason: 'Blocked',
+        message: 'blocked by ResolvedRefs',
+        lastTransitionTime: '2026-07-31T10:00:00Z',
+      },
+      {
+        type: 'ResolvedRefs',
+        status: 'False',
+        reason: 'ReferenceResolutionFailed',
+        message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
+        lastTransitionTime: '2026-07-31T10:00:00Z',
+      },
+    ],
+    order: ['Accepted', 'ResolvedRefs', 'Compatible', 'Ready'],
+  },
+};
+
 export const LongMessage: Story = {
   args: {
     conditions: [

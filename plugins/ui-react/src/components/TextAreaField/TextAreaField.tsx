@@ -1,0 +1,151 @@
+import { useId, type ChangeEvent, type FocusEvent } from 'react';
+import { FieldLabel } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
+import { FieldErrorText } from '../FieldValidation';
+
+const useStyles = makeStyles(theme => ({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.75),
+  },
+  // Matches the bui TextField input (filled, no border) using bui tokens, so
+  // these textareas are visually consistent with neighbouring TextFields. bui
+  // has no multiline/textarea component, so this is a hand-rolled equivalent.
+  textarea: {
+    width: '100%',
+    boxSizing: 'border-box',
+    resize: 'vertical',
+    padding: theme.spacing(1, 1.5),
+    fontFamily: 'inherit',
+    fontSize: '0.875rem',
+    lineHeight: 1.5,
+    borderRadius: theme.shape.borderRadius,
+    border: 'none',
+    background: 'var(--bui-bg-neutral-2)',
+    color: theme.palette.text.primary,
+    '&:focus': {
+      outline: '2px solid var(--bui-accent-bg)',
+      outlineOffset: -1,
+    },
+    '&::placeholder': {
+      color: theme.palette.text.secondary,
+    },
+  },
+  mono: {
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
+  },
+  invalid: {
+    outline: `2px solid ${theme.palette.error.main}`,
+    outlineOffset: -1,
+  },
+  counter: {
+    fontSize: '0.75rem',
+    color: theme.palette.text.secondary,
+    alignSelf: 'flex-end',
+  },
+}));
+
+// The portal's fixed `en-US` presentation (see agent-platform's
+// lib/formatNumbers.ts for the reasoning), inlined so this shared field pulls
+// no plugin dependency.
+const grouped = new Intl.NumberFormat('en-US');
+
+/** Code points, not UTF-16 units — what "characters" means to a person. */
+function characterCount(value: string): number {
+  return [...value].length;
+}
+
+export type TextAreaFieldProps = {
+  label: string;
+  secondaryLabel?: string;
+  description?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  mono?: boolean;
+  /** Shows a live character count against this limit (in code points). */
+  maxLength?: number;
+  /** Marks the field invalid and says why, right under it. */
+  error?: string;
+  /** For `useFieldValidation`'s `blurProps`. */
+  onFocus?: (event: FocusEvent<Element>) => void;
+  onBlur?: (event: FocusEvent<Element>) => void;
+};
+
+/**
+ * A multi-line form field styled like the bui `TextField` — label, optional
+ * secondary label and description, the textarea, and an optional character
+ * counter and inline error. Shared by the creation flows so their long-text
+ * fields all look the same.
+ */
+export function TextAreaField(props: TextAreaFieldProps) {
+  const classes = useStyles();
+  const id = useId();
+  const {
+    label,
+    secondaryLabel,
+    description,
+    value,
+    onChange,
+    placeholder,
+    rows = 4,
+    mono = false,
+    maxLength,
+    error,
+    onFocus,
+    onBlur,
+  } = props;
+  const counterId = `${id}-counter`;
+  const errorId = `${id}-error`;
+  const describedBy =
+    [maxLength !== undefined && counterId, error && errorId]
+      .filter(Boolean)
+      .join(' ') || undefined;
+  // Past the limit, the error appears while the person types — the one live
+  // check the counter makes — so it is announced as it appears. Other errors
+  // appear on leaving the field or on submit, which useFieldValidation
+  // announces or focuses.
+  const overLimit =
+    maxLength !== undefined && characterCount(value) > maxLength;
+
+  return (
+    <div className={classes.root}>
+      <FieldLabel
+        htmlFor={id}
+        label={label}
+        secondaryLabel={secondaryLabel}
+        description={description}
+      />
+      <textarea
+        id={id}
+        className={`${classes.textarea} ${mono ? classes.mono : ''} ${
+          error ? classes.invalid : ''
+        }`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+        value={value}
+        rows={rows}
+        placeholder={placeholder}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+          onChange(e.target.value)
+        }
+        onFocus={onFocus}
+        onBlur={onBlur}
+      />
+      {error && (
+        <FieldErrorText id={errorId} role={overLimit ? 'alert' : undefined}>
+          {error}
+        </FieldErrorText>
+      )}
+      {maxLength !== undefined && (
+        <span id={counterId} className={classes.counter}>
+          {grouped.format(characterCount(value))} / {grouped.format(maxLength)}{' '}
+          characters
+        </span>
+      )}
+    </div>
+  );
+}

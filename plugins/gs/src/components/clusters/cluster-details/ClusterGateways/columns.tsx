@@ -38,13 +38,13 @@ export const listenerColumns: ColumnConfig<ListenerRow>[] = [
     label: 'Gateway',
     isRowHeader: true,
     cell: row => (
-      <CellText title={row.gateway.name} description={row.gateway.namespace} />
+      <CellText
+        title={row.gateway.name}
+        description={[row.gateway.namespace, row.gateway.className]
+          .filter(Boolean)
+          .join(' · ')}
+      />
     ),
-  },
-  {
-    id: 'class',
-    label: 'Class',
-    cell: row => <CellText title={row.gateway.className ?? '—'} />,
   },
   {
     id: 'accepted',
@@ -69,7 +69,9 @@ export const listenerColumns: ColumnConfig<ListenerRow>[] = [
   {
     id: 'hostname',
     label: 'Hostname',
-    cell: row => <CellText title={row.listener?.hostname ?? 'any'} />,
+    cell: row => (
+      <CellText title={row.listener ? (row.listener.hostname ?? 'any') : '—'} />
+    ),
   },
   {
     id: 'attachedRoutes',
@@ -109,9 +111,14 @@ export const routeColumns: ColumnConfig<RouteParentRow>[] = [
       row.parent ? (
         <CellText
           title={row.parent.name}
-          description={`${row.parent.kind} · ${row.parent.namespace} · ${
-            row.parent.sectionName || 'all listeners'
-          }`}
+          description={[
+            row.parent.kind,
+            row.parent.namespace,
+            row.parent.sectionName || 'all listeners',
+            row.parent.port ? `port ${row.parent.port}` : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         />
       ) : (
         <CellText title="No Gateway or ListenerSet parent" />
@@ -124,7 +131,7 @@ export const routeColumns: ColumnConfig<RouteParentRow>[] = [
   },
   {
     id: 'resolvedRefs',
-    label: 'Resolved refs',
+    label: 'ResolvedRefs',
     cell: row => conditionCell(row.parent?.resolvedRefs),
   },
 ];

@@ -1,15 +1,20 @@
 import {
   A2aTaskWire,
   addTokenUsage,
+  AttachmentPreview,
   ASK_USER_TOOL_NAME,
-  claimEndedTurnUsage,
+  claimEndedTurnMessage,
+  ContextReading,
   CONFIRMATION_TOOL_NAME,
+  describeSessionState,
   historyWithPendingPrompt,
   isAgentToolName,
   isFunctionCallPart,
   isFunctionResponsePart,
   isInternalToolName,
+  isRecord,
   isThoughtPart,
+  KagentAttachment,
   normalizeTimestamp,
   parseHistoryEntry,
   parsePart,
@@ -17,14 +22,18 @@ import {
   readFunctionResponse,
   readKagentMetadataString,
   readMessageText,
+  readAttachment,
+  readAttachmentPreview,
+  readUsageReport,
   readNestedTokenUsage,
   readPartText,
-  readTokenUsage,
   readTurnStatus,
   TokenUsage,
   TurnStatus,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+
+import { readWorkspaceNotice, WorkspaceNotice } from './workspaceNotice';
 
 /** Fields every timeline item carries. */
 type TimelineItemBase = {
@@ -110,6 +119,22 @@ export type TimelineItem =
       verdict?: 'approved' | 'rejected';
     })
   | (TimelineItemBase & {
+      kind: 'attachment';
+      /** The file name kagent reported, when it reported one. */
+      name?: string;
+      /**
+       * The type the sender declared.
+       *
+       * Carried so the entry can say what the file claims to be, and never used
+       * to decide how to render it — see `readAttachmentPreview`.
+       */
+      declaredType?: string;
+      /** Whether it can be shown, and as what. */
+      preview: AttachmentPreview;
+      /** Whether the attachment came from the user rather than the agent. */
+      isUser: boolean;
+    })
+  | (TimelineItemBase & {
       /**
        * A turn that ended with no reply under it. Named for the case it was built
        * for, and kept that way because an e2e suite and the stream reducer address
@@ -131,12 +156,51 @@ export type TimelineItem =
        * entry says so without inventing a reason.
        */
       reason?: string;
+    })
+  | (TimelineItemBase & {
+      /**
+       * A workspace setup notice: kagent's harness reporting on the session's
+       * directory before the turn starts (see `workspaceNotice.ts`). It arrives
+       * as an agent message but is not the agent's reply, so it is its own kind
+       * and never counts as one.
+       */
+      kind: 'workspace-notice';
+      notice: WorkspaceNotice;
+    })
+  | (TimelineItemBase & {
+      /**
+       * Connections the agent's egress policy refused during this turn, to one
+       * destination. Not from kagent: the Substrate egress gateway counts them
+       * per actor, and `withEgressRefusals` places them on their turn.
+       */
+      kind: 'egress-refused';
+      /** `http`, `https` or `tcp`. */
+      scheme: string;
+      /** Absent when the gateway counted it without naming the host. */
+      host?: string;
+      port?: number;
+      /** Refusals of this destination in this turn. */
+      count: number;
     });
 
 export type SessionTimeline = {
   items: TimelineItem[];
   /** Total usage across the session, message-level plus delegated agents. */
   tokens: TokenUsage;
+  /**
+   * The context indicator's reading: the largest model call of the newest turn
+   * that reported usage. A turn's context only grows from call to call, so its
+   * largest call is its newest root-agent call — and, unlike the newest bag,
+   * it cannot be undercut by a small auxiliary or sub-agent call recorded in
+   * the same turn, or by a bag that counts no tokens. (A compaction mid-turn
+   * is the exception: the figure stays at the pre-compaction size until the
+   * next turn.) Calls are never summed: each re-sends the whole context.
+   * When any bag of the turn is a total over several calls (the claude
+   * Harness), the turn's reading is that bag, `perCall: false` — no call's
+   * context is known. Delegated agents' nested usage is excluded: it belongs
+   * to their own context. Undefined when no turn reported any usage.
+   */
+  context?: ContextReading;
   /**
    * History entries that failed to parse at all — genuine data loss, safe for the
    * UI to report as "N messages could not be read".
@@ -148,10 +212,57 @@ export type SessionTimeline = {
   skippedMessages: number;
 };
 
+/**
+ * One turn's context reading so far, given its next bag's: the larger of two
+ * per-call readings, and a turn total (not per call) over anything, since a
+ * turn that reports a total measures no call on its own.
+ */
+function foldContext(
+  turn: ContextReading | undefined,
+  next: ContextReading | undefined,
+): ContextReading | undefined {
+  if (!next || next.tokens <= 0) {
+    return turn;
+  }
+  if (!turn || !next.perCall) {
+    return next;
+  }
+  if (!turn.perCall) {
+    return turn;
+  }
+  return next.tokens > turn.tokens ? next : turn;
+}
+
 /** A `tool-call`/`agent-call` item still waiting for its response. */
 type OpenCall = { callId: string; itemIndex: number };
 
 const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
+
+/**
+ * Previews already decided, keyed on the raw part.
+ *
+ * The timeline is rebuilt on every poll, and deciding a preview validates the
+ * whole payload and builds a `data:` URL as long as it. react-query keeps the
+ * identity of every part that did not change between polls, so an unchanged
+ * attachment is decided once, and a part that is no longer referenced takes its
+ * preview with it.
+ */
+const previewsByPart = new WeakMap<object, AttachmentPreview>();
+
+function previewFor(
+  rawPart: unknown,
+  attachment: KagentAttachment,
+): AttachmentPreview {
+  if (!rawPart || typeof rawPart !== 'object') {
+    return readAttachmentPreview(attachment);
+  }
+  let preview = previewsByPart.get(rawPart);
+  if (!preview) {
+    preview = readAttachmentPreview(attachment);
+    previewsByPart.set(rawPart, preview);
+  }
+  return preview;
+}
 
 /**
  * The A2A states in which `status.message` is a prompt the task is *waiting on*,
@@ -255,6 +366,7 @@ function readTurnEnding(
 export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   const items: TimelineItem[] = [];
   let tokens = EMPTY_USAGE;
+  let context: ContextReading | undefined;
   let skippedMessages = 0;
 
   // kagent repeats a message under the same `messageId` — reliably for the user's
@@ -287,6 +399,21 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
 
+    // Where a workspace setup notice can open the turn (`NoticePosition`):
+    // not the agent's output artifacts or the completed task's status message,
+    // which `toWireTask` merges into history, nor the pending prompt appended
+    // after it, and only before the agent has said anything in this turn.
+    const outputIds = readTurnOutputIds(task);
+    const recordedLength = Array.isArray(task.history)
+      ? task.history.length
+      : 0;
+    let agentSpoke = false;
+
+    // This turn's reading, for `context`. Message-level bags and the
+    // ended-turn claim only — a delegated agent's nested usage is another
+    // session's context, so it counts toward the session total but not here.
+    let taskContext: ContextReading | undefined;
+
     entries.forEach((entry, entryIndex) => {
       const parsed = parseHistoryEntry(entry);
       if (parsed.kind === 'unparseable') {
@@ -316,12 +443,39 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       const at = taskTimestamp;
       const author = readKagentMetadataString(message.metadata, 'author');
       const isUser = message.role === 'user';
+      const opensTurn =
+        !isUser &&
+        !agentSpoke &&
+        entryIndex < recordedLength &&
+        !(message.messageId && outputIds.has(message.messageId));
+      if (!isUser) {
+        agentSpoke = true;
+      }
 
       // Usage is only counted for agent messages: kagent attributes a turn's
       // tokens to the agent's reply, and a user message carrying a usage bag
       // (some do) would double count the same turn.
       if (!isUser) {
-        tokens = addTokenUsage(tokens, readTokenUsage(message.metadata));
+        const report = readUsageReport(message.metadata);
+        tokens = addTokenUsage(tokens, report?.usage);
+        taskContext = foldContext(taskContext, report?.context);
+      }
+
+      // The harness's report on the session's directory, not the agent's words:
+      // a status of the turn, under the message's id so the streamed copy of it
+      // is recognised.
+      const notice = readWorkspaceNotice(message, { opensTurn });
+      if (notice) {
+        items.push({
+          kind: 'workspace-notice',
+          id: `${taskIndex}:${entryIndex}:${items.length}`,
+          at,
+          author,
+          taskIndex,
+          messageId: message.messageId,
+          notice,
+        });
+        return;
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -352,7 +506,8 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           // are none, the answers are recovered from the decision payload's
           // `ask_user_answers` instead: kagent's own UI reads only that field, so it
           // may be the sole carrier on sessions that did not come through a
-          // gateway that also writes the text part.
+          // gateway that also writes the text part. The parts still go through the
+          // handling below, so a file sent with the answers is not dropped.
           if (decision.answers.length > 0 && !hasTextPart(parts)) {
             items.push({
               kind: 'user-message',
@@ -361,7 +516,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
               taskIndex,
               text: decision.answers.join('\n\n'),
             });
-            return;
           }
         }
       }
@@ -494,10 +648,34 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           return;
         }
 
+        const attachment = readAttachment(part);
+        if (attachment) {
+          // Conversation, not working: a file someone attached belongs with the
+          // message it came with, so it is never one of `ACTIVITY_KINDS` and the
+          // Hidden setting does not remove it.
+          flushText();
+          const preview = previewFor(rawPart, attachment);
+          items.push({
+            kind: 'attachment',
+            id: `${taskIndex}:${entryIndex}:${items.length}`,
+            at,
+            author,
+            taskIndex,
+            messageId: message.messageId,
+            isUser,
+            preview,
+            ...(attachment.name === undefined ? {} : { name: attachment.name }),
+            ...(attachment.declaredType === undefined
+              ? {}
+              : { declaredType: attachment.declaredType }),
+          });
+          return;
+        }
+
         if (!isFunctionCallPart(part)) {
-          // A file part, or something we have no renderer for. Silently ignored:
-          // the timeline is about what the agent said and did, and an unknown part
-          // type is not evidence of either.
+          // Something we have no renderer for. Silently ignored: the timeline is
+          // about what the agent said and did, and an unknown part type is not
+          // evidence of either.
           return;
         }
 
@@ -593,10 +771,54 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       });
     }
     // After the ending: it reads the reason against the ids rendered so far.
-    tokens = addTokenUsage(tokens, claimEndedTurnUsage(status, seenMessageIds));
+    const endedReport = readUsageReport(
+      claimEndedTurnMessage(status, seenMessageIds)?.metadata,
+    );
+    tokens = addTokenUsage(tokens, endedReport?.usage);
+    taskContext = foldContext(taskContext, endedReport?.context);
+
+    // The newest turn with a reading wins, as soon as its first call reports:
+    // on the API v2 line ADK's per-call bags arrive on artifacts while the turn
+    // is still working, so the indicator moves mid-turn. A turn that has
+    // reported nothing yet keeps the previous turn's reading.
+    if (taskContext) {
+      context = taskContext;
+    }
   });
 
-  return { items, tokens, skippedMessages };
+  return {
+    items,
+    tokens,
+    skippedMessages,
+    ...(context && { context }),
+  };
+}
+
+/**
+ * The ids under which a task's own output reads back as history entries: its
+ * artifacts (`artifactToWireMessage` keys each by its `artifactId`) and, once
+ * it completed, its status message (`toWireTask` appends it as the reply).
+ * Neither is ever a workspace setup notice, which kagent records as a history
+ * message of its own. A working task's status message is left alone: it can be
+ * the notice itself, not yet superseded.
+ */
+function readTurnOutputIds(task: A2aTaskWire): Set<string> {
+  const ids = new Set<string>();
+  for (const artifact of Array.isArray(task.artifacts) ? task.artifacts : []) {
+    const id = isRecord(artifact) ? artifact.artifactId : undefined;
+    if (typeof id === 'string' && id) {
+      ids.add(id);
+    }
+  }
+  const status =
+    describeSessionState(task.status?.state)?.key === 'completed'
+      ? task.status?.message
+      : undefined;
+  const statusId = isRecord(status) ? status.messageId : undefined;
+  if (typeof statusId === 'string' && statusId) {
+    ids.add(statusId);
+  }
+  return ids;
 }
 
 /** Build a `tool-call` or `agent-call` item depending on the tool name. */

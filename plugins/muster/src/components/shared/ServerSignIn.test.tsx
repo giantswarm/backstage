@@ -9,8 +9,14 @@ import {
   ServerAuthStatus,
   ServerSignInResult,
   ServerSignOutResult,
+  SignInTarget,
 } from '../../apis';
-import { ServerAuthActions, ServerSignIn } from './ServerSignIn';
+import {
+  deactivatedSignInGate,
+  ServerAuthActions,
+  ServerSignIn,
+} from './ServerSignIn';
+import type { SignInNoun } from './useServerSignIn';
 
 const AUTH_URL =
   'https://muster.gazelle.example.io/oauth/proxy/start?state=abc';
@@ -91,7 +97,7 @@ function makeApi(options: {
   };
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(response)),
-    signInServer: jest.fn((_server: string, _installation?: string) =>
+    signInServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(
         options.signIn ?? {
           status: 'auth_required',
@@ -101,7 +107,7 @@ function makeApi(options: {
         },
       ),
     ),
-    signOutServer: jest.fn((_server: string, _installation?: string) =>
+    signOutServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(
         options.signOut ?? {
           status: 'signed_out',
@@ -121,11 +127,20 @@ function newQueryClient() {
   });
 }
 
-async function renderSignIn(api: Api, queryClient = newQueryClient()) {
+async function renderSignIn(
+  api: Api,
+  queryClient = newQueryClient(),
+  noun?: SignInNoun,
+) {
   const rendered = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <ServerSignIn serverName="pro" installation="gazelle" showName />
+        <ServerSignIn
+          serverName="pro"
+          installation="gazelle"
+          showName
+          noun={noun}
+        />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -134,7 +149,7 @@ async function renderSignIn(api: Api, queryClient = newQueryClient()) {
 
 async function renderAuthActions(
   api: Api,
-  props: { oauthConfigured?: boolean } = {},
+  props: { oauthConfigured?: boolean; noun?: SignInNoun } = {},
   queryClient = newQueryClient(),
 ) {
   const rendered = await renderInTestApp(
@@ -339,7 +354,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(/may be rejected as an unregistered client/),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/^This server's authorization server advertises/);
     // The sign-in link still works — the fallback often succeeds.
     expect(
       screen.getByRole('link', { name: /Open sign-in page/ }),
@@ -395,6 +410,27 @@ describe('ServerSignIn', () => {
     expect(
       screen.queryByText(/may be rejected as an unregistered client/),
     ).not.toBeInTheDocument();
+  });
+
+  it('names the connector in its notes in the agent platform’s sections', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'auth_required',
+        authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=x',
+        message: CHALLENGE,
+        clientIdMethod: 'dcr-failed',
+      },
+    });
+    await renderSignIn(api, undefined, 'connector');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
+      await screen.findByText(
+        /rejected muster's automatic client registration/,
+      ),
+    ).toHaveTextContent(/^This connector's authorization server rejected/);
   });
 
   it('shows neither note when the AS advertises CIMD support', async () => {
@@ -475,10 +511,32 @@ describe('ServerSignIn', () => {
     await renderSignIn(api);
 
     expect(
-      await screen.findByText(/authenticates through SSO/),
+      await screen.findByText(/^pro uses your portal sign-in/),
     ).toBeInTheDocument();
-    expect(await screen.findByText(/trusted audiences/)).toBeInTheDocument();
+    // main's wording by default (the classic portal, e.g. Bot PRs).
+    expect(
+      screen.getByText(/to the server's trusted audiences\.$/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('explains a connected SSO server without a failure muster kept from another session', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'connected',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(
+        "pro authenticates through SSO from muster's own session, so there is nothing to sign in to here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
   });
 
   /**
@@ -739,14 +797,72 @@ describe('ServerAuthActions', () => {
     const api = makeApi({
       status: {
         name: 'pro',
-        status: 'failed',
+        status: 'reauth_required',
         token_exchange_enabled: true,
         sso_attempt_failed: true,
       },
     });
     await renderAuthActions(api);
 
-    expect(await screen.findByText(/trusted audiences/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/to the server's trusted audiences\.$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['connected in this session', 'connected'],
+    ['unreachable, which refused nothing', 'unreachable'],
+    ['still retrying', 'sso_pending'],
+  ] as const)(
+    'stays hidden for an SSO server with a recorded failure, %s',
+    async (_, status) => {
+      const api = makeApi({
+        status: {
+          name: 'pro',
+          status,
+          token_exchange_enabled: true,
+          sso_attempt_failed: true,
+        },
+      });
+      await renderAuthActions(api);
+
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+      expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/authenticates through SSO/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    },
+  );
+
+  it('stays hidden for an SSO server muster has not connected yet', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required', kind: 'sso' },
+    });
+    await renderAuthActions(api);
+
+    await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+    expect(
+      screen.queryByText(/authenticates through SSO/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('names the connector in the SSO diagnosis in the agent platform’s sections', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'reauth_required',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+    });
+    await renderAuthActions(api, { noun: 'connector' });
+
+    expect(
+      await screen.findByText(/to the connector's trusted audiences\.$/),
+    ).toBeInTheDocument();
   });
 
   it('stays hidden for a healthy SSO server', async () => {
@@ -766,5 +882,19 @@ describe('ServerAuthActions', () => {
       screen.queryByText(/authenticates through SSO/),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+
+describe('deactivatedSignInGate', () => {
+  it('keeps main’s wording by default', () => {
+    expect(deactivatedSignInGate()).toBe(
+      'Deactivated servers cannot be signed in to; activate the server first.',
+    );
+  });
+
+  it('names connectors in the agent platform’s sections', () => {
+    expect(deactivatedSignInGate('connector')).toBe(
+      'Deactivated connectors cannot be signed in to; activate the connector first.',
+    );
   });
 });

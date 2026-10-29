@@ -1,0 +1,189 @@
+import type { ReactNode } from 'react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import type { ConnectorPageTarget } from '@giantswarm/backstage-plugin-muster';
+import type { AgentRow } from '../AgentsDataProvider';
+import { agentsRouteRef } from '../../routes';
+import { ConnectorUsedBy } from './ConnectorUsedBy';
+
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
+}));
+
+function mockPassThrough({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
+
+let mockTarget: ConnectorPageTarget | undefined;
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  useConnectorPageTarget: () => mockTarget,
+}));
+
+let mockRows: AgentRow[] = [];
+let mockUnreachable: string[] = [];
+jest.mock('../AgentsDataProvider', () => ({
+  AgentsDataProvider: mockPassThrough,
+  useAgents: () => ({
+    rows: mockRows,
+    isLoading: false,
+    unreachableInstallations: mockUnreachable,
+  }),
+}));
+jest.mock('../ModelConfigsProvider', () => ({
+  ModelConfigsProvider: mockPassThrough,
+}));
+jest.mock('../AgentPlatformCookieAuth', () => ({
+  AgentPlatformCookieAuth: mockPassThrough,
+}));
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => () => undefined,
+}));
+
+function row(
+  name: string,
+  toolset: AgentRow['toolset'],
+  installation = 'gazelle',
+): AgentRow {
+  return {
+    id: `${installation}/team/${name}`,
+    installation,
+    namespace: 'team',
+    name,
+    technicalName: name.toLowerCase().replace(/\s+/g, '-'),
+    description: '',
+    skillCount: 0,
+    readiness: 'Ready' as AgentRow['readiness'],
+    toolset,
+  };
+}
+
+const declared = (...selectors: string[]): AgentRow['toolset'] => ({
+  state: 'declared',
+  selectors,
+  carrier: 'agent',
+});
+
+beforeEach(() => {
+  mockTarget = {
+    name: 'jira',
+    installation: 'gazelle',
+    serverNames: ['jira'],
+    ownsTool: name => name.startsWith('x_jira_'),
+    readOnlyToolCount: 3,
+  };
+  mockUnreachable = [];
+  mockRows = [
+    row('Support Triage', declared('preset:read-only')),
+    row(
+      'Escalation Helper',
+      declared('preset:read-only', 'tool:x_jira_comment', 'tool:x_jira_move'),
+    ),
+    row('Ops', declared('server:jira')),
+    row('Other', declared('server:grafana')),
+    row('Elsewhere', declared('preset:full'), 'walrus'),
+    row('Unknown', { state: 'unresolved', carrier: 'unknown' }),
+  ];
+});
+
+async function render() {
+  await renderInTestApp(<ConnectorUsedBy />, {
+    mountedRoutes: {
+      '/customize/agents': agentsRouteRef,
+    },
+  });
+}
+
+describe('ConnectorUsedBy', () => {
+  it('lists the agents on the installation whose toolset reaches the connector', async () => {
+    await render();
+
+    const list = screen.getByRole('grid', {
+      name: 'Agents using this connector',
+    });
+    const items = within(list).getAllByRole('row');
+    expect(items.map(item => item.textContent)).toEqual([
+      expect.stringContaining('Escalation HelperRead-only tools · 2 tools'),
+      expect.stringContaining('OpsAll tools'),
+      expect.stringContaining('Support TriageRead-only tools'),
+    ]);
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+    expect(screen.queryByText('Elsewhere')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('The tools of 1 more agent could not be read.'),
+    ).toBeInTheDocument();
+  });
+
+  it("links each agent's name to its page, on the agent's installation", async () => {
+    await render();
+
+    expect(screen.getByRole('link', { name: 'Ops' })).toHaveAttribute(
+      'href',
+      '/customize/agents/gazelle/team/ops',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Escalation Helper' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/agents/gazelle/team/escalation-helper',
+    );
+  });
+
+  it('opens an agent from anywhere on its row', async () => {
+    await render();
+
+    await userEvent.click(screen.getByText('All tools'));
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/customize/agents/gazelle/team/ops',
+      undefined,
+    );
+  });
+
+  it('says when no agent uses the connector', async () => {
+    mockRows = [row('Other', declared('server:grafana'))];
+    await render();
+
+    expect(
+      screen.getByText('No agent on gazelle uses this connector.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not claim an unread installation has no users', async () => {
+    mockUnreachable = ['gazelle'];
+    await render();
+
+    expect(screen.getByText('Could not read the agents')).toBeInTheDocument();
+  });
+
+  it('renders nothing outside a connector page', async () => {
+    mockTarget = undefined;
+    await render();
+
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+  });
+});
+
+describe('ConnectorUsedBy at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('writes what an agent can do under its name, not beside it', async () => {
+    await render();
+
+    const ops = screen.getByRole('row', { name: /Ops/ });
+    expect(within(ops).getByText('All tools')).toHaveAttribute(
+      'slot',
+      'description',
+    );
+  });
+});

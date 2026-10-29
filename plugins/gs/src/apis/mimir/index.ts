@@ -24,5 +24,5 @@ export {
   KubeStatefulsetLabels,
   KubeDaemonsetLabels,
   MetricsRegistry,
-} from './metrics';
-export type { PrometheusMetric } from './metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
+export type { PrometheusMetric } from '@giantswarm/backstage-plugin-gs-common';

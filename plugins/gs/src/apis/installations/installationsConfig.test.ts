@@ -34,6 +34,27 @@ describe('installationsConfig source', () => {
     );
   });
 
+  it('carries an installation’s currency', () => {
+    const config = new ConfigReader({
+      gs: {
+        installations: {
+          golem: {
+            pipeline: 'stable',
+            currency: { code: 'EUR', usdRate: 0.9 },
+          },
+        },
+      },
+    });
+
+    expect(readInstallationsConfig(config)).toEqual([
+      {
+        name: 'golem',
+        pipeline: 'stable',
+        currency: { code: 'EUR', usdRate: 0.9 },
+      },
+    ]);
+  });
+
   it('reads a signed-in config without installations as none', () => {
     setSignedInConfig(new ConfigReader({ gs: { adminGroups: [] } }));
 
