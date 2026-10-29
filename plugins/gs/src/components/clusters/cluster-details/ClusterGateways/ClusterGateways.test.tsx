@@ -71,6 +71,31 @@ describe('<ClusterGatewaysContent />', () => {
     expect(within(rows[0]).getByText('RefNotPermitted')).toBeInTheDocument();
   });
 
+  it('shows a ListenerSet parent with its kind and conditions', async () => {
+    await render([
+      {
+        ...healthy,
+        id: 'team-b/slack-events',
+        namespace: 'team-b',
+        name: 'slack-events',
+        parents: [
+          {
+            kind: 'ListenerSet',
+            namespace: 'team-b',
+            name: 'slack-events',
+            sectionName: 'slack-events-https',
+            accepted: { status: 'false', reason: 'NotAllowedByListeners' },
+            resolvedRefs: { status: 'true', reason: 'ResolvedRefs' },
+          },
+        ],
+      },
+    ]);
+    expect(
+      screen.getByText('ListenerSet · team-b · slack-events-https'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('NotAllowedByListeners')).toBeInTheDocument();
+  });
+
   it('explains when route conditions are not available', async () => {
     await render([unavailable]);
     expect(
