@@ -3,6 +3,7 @@ import { dump } from 'js-yaml';
 import { GitHubApiError, parseRepoUrl } from './discoverAgentSkills';
 import { splitSkillMarkdown } from './frontmatter';
 import { isSkillFilePath } from './skillFiles';
+import { withSkillTags } from './skillTags';
 import { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
@@ -27,6 +28,11 @@ export interface CreateSkillPullRequestOptions {
   description: string;
   /** The SKILL.md body under the frontmatter. */
   instructions: string;
+  /**
+   * Frontmatter `metadata.tags`, valid tags (the route checks them). Replaces
+   * the skill's tags; `[]` removes them; absent keeps an update's as they are.
+   */
+  tags?: string[];
   /** The signed-in person's GitHub access token; the PR is authored as them. */
   token: string;
   /**
@@ -199,19 +205,33 @@ async function refuse(step: string, response: Response): Promise<never> {
  * The SKILL.md the pull request writes: YAML frontmatter plus the body. An
  * edit passes the existing file's frontmatter as `keepFrontmatter`, so keys
  * the form does not show (`license`, `allowed-tools`, …) survive it; `name`
- * and `description` always come first and from the form.
+ * and `description` always come first and from the form. `tags`, when given,
+ * replace `metadata.tags` (see `withSkillTags`); every other `metadata` key
+ * is kept. A `metadata` that is not a map cannot take tags: a 422.
  */
 export function renderSkillMarkdown(options: {
   skillName: string;
   description: string;
   instructions: string;
+  tags?: readonly string[];
   keepFrontmatter?: Record<string, unknown>;
 }): string {
   const {
     name: _name,
     description: _description,
-    ...kept
+    ...rest
   } = options.keepFrontmatter ?? {};
+  let kept = rest;
+  if (options.tags !== undefined) {
+    try {
+      kept = withSkillTags(rest, options.tags);
+    } catch {
+      throw new GitHubApiError(
+        422,
+        `The skill's frontmatter metadata is not a map, so tags cannot be added to it.`,
+      );
+    }
+  }
   // js-yaml's dump quotes and escapes whatever the description contains, so
   // the frontmatter stays parseable for any input the route's bounds allow.
   const frontmatter = dump(
@@ -251,7 +271,7 @@ export function renderSkillMarkdown(options: {
 export async function createSkillPullRequest(
   options: CreateSkillPullRequestOptions,
 ): Promise<SkillPullRequest> {
-  const { skillName, description, instructions, token, logger } = options;
+  const { skillName, description, instructions, tags, token, logger } = options;
   const isUpdate = options.kind === 'update';
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const api = `https://api.github.com/repos/${owner}/${repo}`;
@@ -384,6 +404,7 @@ export async function createSkillPullRequest(
         skillName,
         description,
         instructions,
+        tags,
         keepFrontmatter,
       });
       if (proposed === started.content) {
@@ -491,6 +512,7 @@ export async function createSkillPullRequest(
       skillName,
       description,
       instructions,
+      tags,
       keepFrontmatter,
     }),
     'utf8',

@@ -224,6 +224,9 @@ describe('search', () => {
     expect(searchSkills([skill('triage')], 'giantswarm/skills')).toHaveLength(
       1,
     );
+    const taggedSkill = { ...skill('notes'), tags: ['on-call', 'kubernetes'] };
+    expect(searchSkills([taggedSkill], 'kubernetes')).toHaveLength(1);
+    expect(searchSkills([skill('notes')], 'kubernetes')).toHaveLength(0);
   });
 });
 

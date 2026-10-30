@@ -268,6 +268,27 @@ describe('SkillDetailPage', () => {
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });
 
+  it('shows the skill’s tags under what it is for, and none when it has none', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, tags: ['triage', 'ops'] }],
+    };
+    const { unmount } = await renderPage();
+
+    const section = screen.getByRole('region', { name: 'What it’s for' });
+    const tags = within(section).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['triage', 'ops']);
+    unmount();
+
+    mockCatalog = loaded;
+    await renderPage();
+    expect(screen.queryByRole('list', { name: 'Tags' })).toBeNull();
+  });
+
   it('links the latest commit of a skill at the repository root to the tree at that commit', async () => {
     mockCatalog = { ...loaded, skills: [{ ...skill, path: '' }] };
     await renderPage('giantswarm/skills');

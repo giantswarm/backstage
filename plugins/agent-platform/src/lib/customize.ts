@@ -15,6 +15,7 @@ import {
   normalizedRepoUrl,
   type DiscoveredSkill,
   repoSlug,
+  skillTags,
 } from './skills';
 
 /** A state as the shell's Customize screen shows it: a dot and a few words. */
@@ -173,8 +174,8 @@ export function searchModels(rows: ModelRow[], search: string): ModelRow[] {
 /**
  * The skill catalog's one search, for Customize › Skills and the agent
  * wizard's skill step alike: token-boundary matching (`matchesQuery`) over the
- * name, description, path and source, so one query finds the same skills in
- * both places.
+ * name, description, path, source and tags, so one query finds the same
+ * skills in both places.
  */
 export function searchSkills<T extends DiscoveredSkill>(
   skills: T[],
@@ -185,9 +186,13 @@ export function searchSkills<T extends DiscoveredSkill>(
     ? skills.filter(skill =>
         matchesQuery(
           query,
-          [skill.name, skill.description, skill.path, skillSource(skill)].join(
-            ' ',
-          ),
+          [
+            skill.name,
+            skill.description,
+            skill.path,
+            skillSource(skill),
+            ...skillTags(skill),
+          ].join(' '),
         ),
       )
     : skills;

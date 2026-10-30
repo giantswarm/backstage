@@ -116,6 +116,7 @@ describe('createSkillPullRequest', () => {
     expect(parseFrontmatter(written)).toEqual({
       name: 'ticket-triage',
       description: 'How to triage a ticket.',
+      tags: [],
     });
     expect(written).toContain('Classify, prioritise, route.');
 
@@ -323,6 +324,22 @@ describe('createSkillPullRequest — update', () => {
     }
   });
 
+  it('writes the tags into metadata, keeping the other keys', async () => {
+    const calls = mockGithub(updateHandlers);
+
+    await createSkillPullRequest({ ...update, tags: ['triage', 'k8s'] });
+
+    const put = calls.find(call => call.key === `PUT ${API}/contents/${FILE}`)
+      ?.body as { content: string };
+    const written = Buffer.from(put.content, 'base64').toString('utf8');
+    expect(splitSkillMarkdown(written).frontmatter).toEqual({
+      name: 'ticket-triage',
+      description: 'New description.',
+      license: 'Apache-2.0',
+      metadata: { tags: 'triage, k8s' },
+    });
+  });
+
   it('refuses with 409, and creates no branch, when the skill changed since the edit started', async () => {
     const calls = mockGithub({
       ...updateHandlers,
@@ -389,6 +406,7 @@ describe('createSkillPullRequest — update', () => {
     expect(parseFrontmatter(written)).toEqual({
       name: 'Ticket Triage (v2)',
       description: 'New description.',
+      tags: [],
     });
     expect(
       calls.find(call => call.key === `POST ${API}/pulls`)?.body,
@@ -677,7 +695,105 @@ describe('renderSkillMarkdown', () => {
     expect(parseFrontmatter(written)).toEqual({
       name: 'notes',
       description: 'Sort: "tickets" — #fast',
+      tags: [],
     });
+  });
+
+  it('writes tags as a comma-joined metadata.tags', () => {
+    const written = renderSkillMarkdown({
+      skillName: 'notes',
+      description: 'Notes.',
+      instructions: 'Body',
+      tags: ['triage', 'kubernetes'],
+    });
+    expect(splitSkillMarkdown(written).frontmatter).toEqual({
+      name: 'notes',
+      description: 'Notes.',
+      metadata: { tags: 'triage, kubernetes' },
+    });
+    expect(parseFrontmatter(written).tags).toEqual(['triage', 'kubernetes']);
+  });
+
+  it('round-trips an edit: every other key and metadata key is kept', () => {
+    const { frontmatter } = splitSkillMarkdown(
+      [
+        '---',
+        'name: notes',
+        'description: Old.',
+        'license: Apache-2.0',
+        'allowed-tools: Bash',
+        'metadata:',
+        '  author: ops',
+        '  tags: "old, triage"',
+        '  version: "1.2"',
+        '---',
+        '',
+        'Body',
+      ].join('\n'),
+    );
+    const written = renderSkillMarkdown({
+      skillName: 'notes',
+      description: 'New.',
+      instructions: 'Body',
+      tags: ['triage', 'kubernetes'],
+      keepFrontmatter: frontmatter,
+    });
+    expect(splitSkillMarkdown(written).frontmatter).toEqual({
+      name: 'notes',
+      description: 'New.',
+      license: 'Apache-2.0',
+      'allowed-tools': 'Bash',
+      metadata: { author: 'ops', tags: 'triage, kubernetes', version: '1.2' },
+    });
+  });
+
+  it('keeps the tags as they are when none are given', () => {
+    const keepFrontmatter = { metadata: { tags: 'Old,  triage' } };
+    const written = renderSkillMarkdown({
+      skillName: 'notes',
+      description: 'New.',
+      instructions: 'Body',
+      keepFrontmatter,
+    });
+    expect(splitSkillMarkdown(written).frontmatter.metadata).toEqual({
+      tags: 'Old,  triage',
+    });
+  });
+
+  it('removes metadata.tags, and a metadata only they made, for no tags', () => {
+    const render = (metadata: Record<string, unknown>) =>
+      splitSkillMarkdown(
+        renderSkillMarkdown({
+          skillName: 'notes',
+          description: 'New.',
+          instructions: 'Body',
+          tags: [],
+          keepFrontmatter: { license: 'MIT', metadata },
+        }),
+      ).frontmatter;
+    expect(render({ tags: 'a' })).toEqual({
+      name: 'notes',
+      description: 'New.',
+      license: 'MIT',
+    });
+    expect(render({ tags: 'a', author: 'ops' })).toEqual({
+      name: 'notes',
+      description: 'New.',
+      license: 'MIT',
+      metadata: { author: 'ops' },
+    });
+  });
+
+  it('refuses with 422 tags for a metadata that is not a map', () => {
+    expect(() =>
+      renderSkillMarkdown({
+        skillName: 'notes',
+        description: 'New.',
+        instructions: 'Body',
+        tags: ['a'],
+        keepFrontmatter: { metadata: 'x' },
+      }),
+    ).toThrow(expect.objectContaining({ status: 422 }));
   });
 });
 
