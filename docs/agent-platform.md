@@ -443,9 +443,9 @@ page.
   **By organization** table has one row per organization whose agents the
   gateway recorded calls for: the organization's name, `None` for the
   platform's shared agents, `namespace <name>` for another namespace agents
-  run in, and Unattributed for calls the gateway matched to no caller; each
-  row carries its agents, model calls, tokens, spend and share of spend. A row
-  opens the same page narrowed to that organization.
+  run in, and Unattributed for calls the gateway placed in no namespace; each
+  row carries its model calls, tokens, spend and share of spend. A row opens
+  the same page narrowed to that organization.
 - **Connectors** — every caller's tool calls from muster's metrics. Only where
   the muster plugin is registered. Each connector in its table links to that
   connector's Usage tab on the selected installation and window; an instance
@@ -470,8 +470,10 @@ organization's agents, by the namespace they run in (the gateway's
 and is left out for every organization. Its options are the namespaces the
 gateway recorded calls for in the window, so a removed organization keeps its
 spend, plus the namespaces the roster's agents run in; a deep link to any other
-namespace is kept as the selection. The Cost caption says whose spend the page
-shows and for whom: every organization's, for everyone who can read the
+namespace is kept as the selection. Error rate, Rate limited and the
+unpriced-models warning cannot follow the scope, because their metrics carry
+no organization: narrowed, they say they are every organization's. The Cost
+caption says whose spend the page shows and for whom: every organization's, for everyone who can read the
 environment's metrics. The portal adds no access check of its own: who may
 read an installation's metrics is the observability platform's decision
 (agent-permissions plan, D8 T1).

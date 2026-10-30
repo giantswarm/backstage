@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmOrganizationRow } from '../../../lib/llmUsage';
 import { LlmByOrganizationTable } from './LlmByOrganizationTable';
@@ -10,7 +10,6 @@ const ROWS: LlmOrganizationRow[] = [
     kind: 'organization',
     label: 'alpha',
     description: 'org-alpha',
-    agents: 3,
     tokens: 7_500_000,
     calls: 120,
     costUsd: 42.5,
@@ -21,7 +20,6 @@ const ROWS: LlmOrganizationRow[] = [
     namespace: 'kagent',
     kind: 'platform',
     label: 'None',
-    agents: 5,
     tokens: 300_000,
     calls: 400,
     costUsd: 6.5,
@@ -32,7 +30,6 @@ const ROWS: LlmOrganizationRow[] = [
     namespace: '',
     kind: 'unattributed',
     label: 'Unattributed',
-    agents: 0,
     tokens: 60_000,
     calls: 3,
     costUsd: 1,
@@ -97,18 +94,6 @@ describe('LlmByOrganizationTable', () => {
     );
 
     expect(renderedOrder()).toEqual(['Unattributed', 'alphaorg-alpha', 'None']);
-  });
-
-  it('counts the agents of each organization', () => {
-    render(<LlmByOrganizationTable rows={ROWS} emptyMessage="none" />);
-
-    expect(
-      screen.getByRole('columnheader', { name: /Agents/ }),
-    ).toBeInTheDocument();
-    // Sorted by spend: alpha, then the platform.
-    const [alpha, platform] = screen.getAllByRole('row').slice(1);
-    expect(within(alpha).getByText('3')).toBeInTheDocument();
-    expect(within(platform).getByText('5')).toBeInTheDocument();
   });
 
   it('says so when the window holds no organization', () => {

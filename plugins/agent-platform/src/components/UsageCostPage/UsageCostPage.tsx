@@ -159,7 +159,14 @@ export function UsageCostPage() {
             {/* Beside the headline it qualifies: every figure on this page
                 understates the bill by what an unpriced model spent, and
                 the detail table below says which models and why. */}
-            <PricingCoverageAlert rows={usage.unpricedModels} />
+            <PricingCoverageAlert
+              rows={usage.unpricedModels}
+              scopeNote={
+                namespace
+                  ? `Counted across every organization, not only ${scope}: the price lookups carry no organization.`
+                  : undefined
+              }
+            />
             <div className={classes.row}>
               <CostPerDayCard
                 daily={usage.costPerDay}
@@ -176,7 +183,7 @@ export function UsageCostPage() {
                 currency={currency}
                 hrefFor={hrefForOrganization}
                 emptyMessage="The gateway attributed no calls to an organization in this window."
-                note="An organization is the namespace its agents run in, so its row covers every agent and every user there. None is the platform's shared agents, available to every organization. Unattributed marks calls the gateway matched to no caller. Open an organization to narrow every figure on this page to it."
+                note="An organization is the namespace its agents run in, so its row covers every agent and every user there. None is the platform's shared agents, available to every organization. Unattributed marks calls the gateway placed in no namespace; a call it could match to no agent still counts for its namespace. Open an organization to narrow every figure on this page to it."
               />
             )}
             <LlmByAgentTable

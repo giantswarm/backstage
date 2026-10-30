@@ -98,7 +98,7 @@ describe('useUsageOrganizations', () => {
     expect(mimirState.lastOptions).toMatchObject({ enabled: false });
     // Without an installation the roster is every installation's, and none
     // of it is this page's.
-    expect(result.current.namespaces).toEqual(['org-alpha']);
+    expect(result.current.namespaces).toEqual([]);
     expect(result.current.isLoading).toBe(false);
   });
 });

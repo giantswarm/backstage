@@ -56,9 +56,13 @@ export function useUsageOrganizations(
         set.add(namespace);
       }
     }
-    for (const agent of agents) {
-      if (installation === undefined || agent.installation === installation) {
-        set.add(agent.namespace);
+    // The roster is every installation's; only this installation's agents
+    // run in this page's organizations, and without one there is none.
+    if (installation !== undefined) {
+      for (const agent of agents) {
+        if (agent.installation === installation) {
+          set.add(agent.namespace);
+        }
       }
     }
     return [...set].sort(compareNamespaces);

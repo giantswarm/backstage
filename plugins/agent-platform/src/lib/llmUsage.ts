@@ -120,8 +120,6 @@ export type LlmOrganizationRow = {
   label: string;
   /** The line under the label: the namespace, where the label is not it. */
   description?: string;
-  /** Distinct agents the gateway attributed calls to in this namespace. */
-  agents: number;
   tokens: number;
   calls: number;
   /** As {@link LlmAgentRow.costUsd}: `undefined` when nothing was priced. */
@@ -471,26 +469,18 @@ function identifyAgent(
 
 /**
  * The namespace a sample's traffic is charged to, or `''` for traffic the
- * gateway attributed to no caller.
+ * gateway placed in no namespace (`agent_namespace` missing, or its own
+ * `unknown`).
  *
- * The same reading as {@link identifyAgent}: a call whose `agent` is the
- * gateway's `unknown` (or missing) is unattributed whatever its namespace
- * label says, so the by-organization and by-agent tables agree on what
- * "Unattributed" covers. A namespace label of `unknown` or none is
- * unattributed too.
+ * The namespace alone, as the organization scope's queries narrow by it, so
+ * a row's figures are exactly its narrowed view's. A call the gateway could
+ * match to no agent still counts for its namespace here, where the by-agent
+ * table marks it unattributed: the namespace is the cost centre whether or
+ * not the agent is known.
  */
 function organizationKey(labels: Record<string, string>): string {
   const namespace = labels.agent_namespace ?? '';
-  const agent = labels.agent ?? '';
-  if (
-    namespace === '' ||
-    namespace === UNKNOWN_AGENT_LABEL ||
-    agent === '' ||
-    agent === UNKNOWN_AGENT_LABEL
-  ) {
-    return '';
-  }
-  return namespace;
+  return namespace === UNKNOWN_AGENT_LABEL ? '' : namespace;
 }
 
 /**
@@ -498,8 +488,8 @@ function organizationKey(labels: Record<string, string>): string {
  * organization's tenant, which is the cost centre (giantswarm/giantswarm#36698,
  * D8). An Organization's `org-<name>` namespace reads as the organization,
  * the `kagent` namespace as the platform (no organization), any other
- * namespace by its name, and traffic attributed to no caller as
- * `unknownLabel`. No join is needed: the namespace is the identity.
+ * namespace by its name, and traffic in no namespace as `unknownLabel`. No
+ * join is needed: the namespace is the identity.
  */
 export function reduceByOrganization(options: {
   cost: MimirMetricSample[] | undefined;
@@ -514,19 +504,6 @@ export function reduceByOrganization(options: {
   const callsByNamespace = sumBy(calls, organizationKey);
   const totalCost = optionalSum(costByNamespace);
 
-  // Distinct agents per namespace, from whichever vector names them.
-  const agentsByNamespace = new Map<string, Set<string>>();
-  for (const sample of [...(cost ?? []), ...(tokens ?? []), ...(calls ?? [])]) {
-    const labels = sample.metric ?? {};
-    const namespace = organizationKey(labels);
-    if (namespace === '') {
-      continue;
-    }
-    const agents = agentsByNamespace.get(namespace) ?? new Set<string>();
-    agents.add(labels.agent ?? '');
-    agentsByNamespace.set(namespace, agents);
-  }
-
   const keys = new Set([
     ...costByNamespace.keys(),
     ...tokensByNamespace.keys(),
@@ -540,7 +517,6 @@ export function reduceByOrganization(options: {
       id: namespace || 'unattributed',
       namespace,
       ...identifyOrganization(namespace, unknownLabel),
-      agents: agentsByNamespace.get(namespace)?.size ?? 0,
       tokens: tokensByNamespace.get(namespace) ?? 0,
       calls: callsByNamespace.get(namespace) ?? 0,
       costUsd,

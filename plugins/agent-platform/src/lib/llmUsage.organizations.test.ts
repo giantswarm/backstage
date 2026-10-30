@@ -49,7 +49,6 @@ describe('reduceByOrganization', () => {
         kind: 'organization',
         label: 'alpha',
         description: 'org-alpha',
-        agents: 2,
         tokens: 800_000,
         calls: 15,
         costUsd: 7,
@@ -60,7 +59,6 @@ describe('reduceByOrganization', () => {
         kind: 'platform',
         label: 'None',
         description: undefined,
-        agents: 1,
         costUsd: 2,
         sharePct: 20,
       }),
@@ -69,20 +67,20 @@ describe('reduceByOrganization', () => {
         kind: 'namespace',
         label: 'namespace team-x',
         description: undefined,
-        agents: 1,
         costUsd: 1,
         sharePct: 10,
       }),
     ]);
   });
 
-  it('pools traffic the gateway attributed to no caller under one unattributed row, whatever its namespace label', () => {
+  it('pools traffic in no namespace under one unattributed row, and charges a call with no known agent to its namespace', () => {
     const rows = reduceByOrganization({
       ...options,
       cost: [
         sample(unknown, '0.5'),
-        // The agent is unknown though the pod's namespace was read: the
-        // by-agent table calls that unattributed, so this table does too.
+        // The agent is unknown though the namespace was read: the namespace
+        // is the cost centre, so the call counts for the platform here (the
+        // by-agent table marks it unattributed).
         sample({ agent_namespace: 'kagent', agent: 'unknown' }, '0.25'),
         sample({ agent: 'orphan' }, '0.25'),
         sample(platform, '1'),
@@ -92,14 +90,12 @@ describe('reduceByOrganization', () => {
     });
 
     expect(rows.map(row => [row.label, row.kind, row.costUsd])).toEqual([
-      // Equal spend: the platform's tokens rank it first.
-      ['None', 'platform', 1],
-      ['Unattributed', 'unattributed', 1],
+      ['None', 'platform', 1.25],
+      ['Unattributed', 'unattributed', 0.75],
     ]);
     const unattributed = rows.find(row => row.kind === 'unattributed')!;
     expect(unattributed.id).toBe('unattributed');
     expect(unattributed.namespace).toBe('');
-    expect(unattributed.agents).toBe(0);
     expect(unattributed.tokens).toBe(1000);
     expect(unattributed.calls).toBe(2);
   });

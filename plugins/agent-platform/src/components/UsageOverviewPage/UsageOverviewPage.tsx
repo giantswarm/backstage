@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -137,6 +138,8 @@ export function UsageOverviewPage() {
     ? `the model use of ${tenantInSentence(namespace)}`
     : "everyone's model use";
   const costRoute = useRouteRef(usageCostRouteRef);
+  // The Cost link keeps the screen's scope, as the tabs do.
+  const { search } = useLocation();
   const { usage, installation, isResolvedFromAll } = view;
   const currency = useCurrency(installation);
 
@@ -224,7 +227,7 @@ export function UsageOverviewPage() {
               currency={currency}
               windowDays={days}
               sessions={sessions}
-              costHref={costRoute?.()}
+              costHref={costRoute ? `${costRoute()}${search}` : undefined}
             />
 
             {/* The headline trend beside who drives it. */}
@@ -255,6 +258,7 @@ export function UsageOverviewPage() {
               <ReliabilityStrip
                 reliability={usage.reliability}
                 windowDays={usage.windowDays}
+                narrowedTo={namespace ? tenantInSentence(namespace) : undefined}
               />
             </UsageCard>
 

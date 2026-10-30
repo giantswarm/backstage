@@ -62,7 +62,6 @@ export function LlmByOrganizationTable({
 
   const max = useMemo(
     () => ({
-      agents: columnMax(rows, row => row.agents),
       calls: columnMax(rows, row => row.calls),
       tokens: columnMax(rows, row => row.tokens),
       cost: columnMax(rows, row => row.costUsd),
@@ -83,21 +82,6 @@ export function LlmByOrganizationTable({
           description={row.description}
           href={hrefFor?.(row)}
         />
-      ),
-    },
-    {
-      id: 'agents',
-      label: 'Agents',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatCount(row.agents)}
-            value={row.agents}
-            max={max.agents}
-            color={colorFor('calls')}
-          />
-        </Cell>
       ),
     },
     {
