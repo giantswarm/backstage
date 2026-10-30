@@ -185,6 +185,33 @@ async function signInToConnector(admin: Page): Promise<void> {
   });
 }
 
+/**
+ * Signs the admin out of the connector (the header's More actions), as
+ * mcp-servers.spec.ts leaves the fixture. Nothing to do when not signed in.
+ */
+async function signOutOfConnector(admin: Page): Promise<void> {
+  await open(admin, `/customize/connectors/${lab.installation}/${NAME}`);
+  await expect(
+    admin.getByRole('heading', { level: 1, name: TYPED }),
+  ).toBeVisible({ timeout: 60_000 });
+  await admin.getByRole('button', { name: 'More actions' }).click();
+  const signOut = admin.getByRole('menuitem', { name: 'Sign out' });
+  const signedIn = await signOut
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!signedIn) {
+    await admin.keyboard.press('Escape');
+    return;
+  }
+  await signOut.click();
+  await expect(
+    admin.getByRole('main').getByRole('button', { name: 'Sign in' }).first(),
+  ).toBeVisible({ timeout: 60_000 });
+}
+
 function credentialsGroup(page: Page): Locator {
   return page.getByRole('group', { name: 'Client credentials', exact: true });
 }
@@ -216,7 +243,10 @@ test.describe('a connector whose client is typed into the wizard', () => {
     await deleteConnector(fixture.namespace);
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({ adminPage }) => {
+    // The admin's grant is muster's, keyed by the issuer, and outlives the
+    // connector: signed out, the next run's sign-in goes through Dex again.
+    await signOutOfConnector(adminPage).catch(() => undefined);
     if (fixture) {
       await deleteConnector(fixture.namespace);
     }

@@ -49,30 +49,23 @@ export class DexRefusedLogin extends Error {
  *
  * A per-server sign-in can pass Dex twice: muster's OAuth proxy first asks
  * who the person is (its own login), then the connector's authorization
- * server, the lab Dex again, asks for its login. A popup that comes back to
- * Dex's login form after the first one is answered once more.
+ * server, the lab Dex again, asks for its login. The hops between are
+ * server-side redirects, so the popup goes from one login form straight to
+ * the next; that one is answered too. A sign-in the person already holds a
+ * grant for never reaches Dex: the popup closes or lands on muster's
+ * completion page, and this returns without a login.
  */
 export async function completeDexLogin(
   dex: Page,
   user: LabUser,
   password: string = lab.password,
 ): Promise<void> {
-  await submitDexLogin(dex, user, password);
-  if (dex.isClosed()) {
-    return;
-  }
-  const closed = dex.waitForEvent('close', { timeout: 5_000 }).then(
-    () => 'closed' as const,
-    () => 'open' as const,
-  );
-  const loginAgain = dex
-    .locator('input[name="login"]')
-    .waitFor({ state: 'visible', timeout: 5_000 })
-    .then(
-      () => 'login' as const,
-      () => 'open' as const,
-    );
-  if ((await Promise.race([closed, loginAgain])) === 'login') {
+  // The first form may take a moment (the popup opens blank and is sent
+  // through muster first); a second one follows its submission at once.
+  for (const wait of [15_000, 5_000]) {
+    if ((await nextDexLogin(dex, wait)) !== 'login') {
+      break;
+    }
     await submitDexLogin(dex, user, password);
   }
   if (!dex.isClosed()) {
@@ -82,7 +75,36 @@ export async function completeDexLogin(
   }
 }
 
-/** One submission of the lab Dex's login form; see {@link completeDexLogin}. */
+/**
+ * Whether the popup shows the lab Dex's login form within `timeout`, or
+ * closed or stayed elsewhere (a completion page) instead.
+ */
+async function nextDexLogin(
+  dex: Page,
+  timeout: number,
+): Promise<'login' | 'closed' | 'elsewhere'> {
+  if (dex.isClosed()) {
+    return 'closed';
+  }
+  const closed = dex.waitForEvent('close', { timeout }).then(
+    () => 'closed' as const,
+    () => 'elsewhere' as const,
+  );
+  const login = dex
+    .locator('input[name="login"]')
+    .waitFor({ state: 'visible', timeout })
+    .then(
+      () => (dex.url().includes('/dex/') ? ('login' as const) : 'elsewhere'),
+      () => 'elsewhere' as const,
+    );
+  return Promise.race([closed, login]);
+}
+
+/**
+ * One submission of the lab Dex's login form; see {@link completeDexLogin}.
+ * Done once the popup closes, leaves Dex, or shows a fresh login form (the
+ * next login of a per-server sign-in); a form naming the refusal throws.
+ */
 async function submitDexLogin(
   dex: Page,
   user: LabUser,
@@ -106,14 +128,25 @@ async function submitDexLogin(
       () => false,
     );
   // The page Dex renders for the submitted form: an error the popup showed
-  // before (a typo's) is gone from it unless Dex refused this login too.
+  // before (a typo's) is gone from it unless Dex refused this login too. A
+  // login form without that error is the next login, reached through
+  // server-side redirects that never commit a page outside Dex.
   const refusal = dex.getByText(/invalid .* and password/i);
-  const refused = dex.waitForEvent('load', { timeout: 60_000 }).then(
-    async () =>
-      !dex.isClosed() &&
-      dex.url().includes('/dex/') &&
-      (await refusal.isVisible().catch(() => false)),
-    () => false,
+  const loaded = dex.waitForEvent('load', { timeout: 60_000 }).then(
+    async () => {
+      if (dex.isClosed() || !dex.url().includes('/dex/')) {
+        return undefined;
+      }
+      if (await refusal.isVisible().catch(() => false)) {
+        return 'refused' as const;
+      }
+      const nextForm = await dex
+        .locator('input[name="login"]')
+        .isVisible()
+        .catch(() => false);
+      return nextForm ? ('next' as const) : undefined;
+    },
+    () => undefined,
   );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<'timeout'>(resolve => {
@@ -123,7 +156,14 @@ async function submitDexLogin(
   const outcome = await Promise.race([
     settled(closed, 'done'),
     settled(leftDex, 'done'),
-    settled(refused, 'refused'),
+    settled(
+      loaded.then(page => page === 'refused'),
+      'refused',
+    ),
+    settled(
+      loaded.then(page => page === 'next'),
+      'done',
+    ),
     timedOut,
   ]).finally(() => clearTimeout(timer));
   if (outcome === 'refused') {
