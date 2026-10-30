@@ -46,11 +46,47 @@ export class DexRefusedLogin extends Error {
  * Dex when this resolves; a popup still open is closed, the opener has what
  * it needs by then. A refusal throws {@link DexRefusedLogin} as soon as Dex
  * renders it: Dex answers the form with its login page again, naming it.
+ *
+ * A per-server sign-in can pass Dex twice: muster's OAuth proxy first asks
+ * who the person is (its own login), then the connector's authorization
+ * server, the lab Dex again, asks for its login. A popup that comes back to
+ * Dex's login form after the first one is answered once more.
  */
 export async function completeDexLogin(
   dex: Page,
   user: LabUser,
   password: string = lab.password,
+): Promise<void> {
+  await submitDexLogin(dex, user, password);
+  if (dex.isClosed()) {
+    return;
+  }
+  const closed = dex.waitForEvent('close', { timeout: 5_000 }).then(
+    () => 'closed' as const,
+    () => 'open' as const,
+  );
+  const loginAgain = dex
+    .locator('input[name="login"]')
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(
+      () => 'login' as const,
+      () => 'open' as const,
+    );
+  if ((await Promise.race([closed, loginAgain])) === 'login') {
+    await submitDexLogin(dex, user, password);
+  }
+  if (!dex.isClosed()) {
+    // A completion page that did not close itself: close it the way a
+    // person would.
+    await dex.close();
+  }
+}
+
+/** One submission of the lab Dex's login form; see {@link completeDexLogin}. */
+async function submitDexLogin(
+  dex: Page,
+  user: LabUser,
+  password: string,
 ): Promise<void> {
   await dex.waitForLoadState('domcontentloaded');
   await expect(dex, 'the popup lands on the lab Dex').toHaveURL(/\/dex\//);
@@ -94,14 +130,6 @@ export async function completeDexLogin(
     throw new DexRefusedLogin(user.email, await refusal.innerText());
   }
   expect(outcome, 'Dex accepted the login and sent the popup on').toBe('done');
-  if (!dex.isClosed()) {
-    // A completion page: give it a moment in case it closes itself, then
-    // close it the way a person would.
-    await Promise.race([closed, new Promise(r => setTimeout(r, 3000))]);
-    if (!dex.isClosed()) {
-      await dex.close();
-    }
-  }
 }
 
 /**

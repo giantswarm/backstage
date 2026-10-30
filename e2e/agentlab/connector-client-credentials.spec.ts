@@ -1,6 +1,12 @@
 import type { Locator, Page } from '@playwright/test';
 import { connectorRow } from './connectors';
-import { connectToMuster, expect, open, test } from './fixtures';
+import {
+  completeDexLogin,
+  connectToMuster,
+  expect,
+  open,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
 
@@ -8,8 +14,11 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
 // muster stores it, as the person, in a Secret owned by the MCPServer and
 // names it `<server>-oauth-client-<5 of [a-z0-9]>`; the portal shows it as
 // stored and never reads it back. The client is the lab's
-// `lab-oauth-fixture`'s own (Dex's platform client), so the new connector
-// signs in like the fixture. Needs a muster that takes `clientCredentials`.
+// `lab-oauth-fixture`'s own (Dex's platform client) with its pinned Dex
+// endpoints, so the new connector signs in like the fixture. Its issuer is
+// its own, though: muster refuses a second connector naming the same issuer
+// with another client, and the issuer keys a person's grant. Needs a muster
+// that takes `clientCredentials`.
 
 const FIXTURE = 'lab-oauth-fixture';
 const TYPED = 'E2E Client Credentials';
@@ -131,6 +140,51 @@ async function continueTo(page: Page, next: Locator) {
   }).toPass({ timeout: 60_000 });
 }
 
+/**
+ * The connector's issuer: on muster's public host like the fixture's, under a
+ * path of its own (see the note at the top).
+ */
+function issuerOf(fixtureIssuer: string): string {
+  return `${new URL(fixtureIssuer).origin}/v38849-${NAME}`;
+}
+
+/**
+ * Signs the admin in to the new connector from its page, through muster's
+ * OAuth proxy and the lab Dex, and waits until it no longer asks: the
+ * stored client is what the authorization server accepted.
+ */
+async function signInToConnector(admin: Page): Promise<void> {
+  await open(admin, `/customize/connectors/${lab.installation}/${NAME}`);
+  await expect(
+    admin.getByRole('heading', { level: 1, name: TYPED }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    admin.getByRole('main'),
+    'the connector settles on Auth Required (or Connected from an earlier run)',
+  ).toContainText(/Auth Required|Connected/, { timeout: 120_000 });
+  await admin.getByRole('tab', { name: /^Tools/ }).click();
+  // The page's own Sign in, not the one of the inbox's MCP sign-in row.
+  const signIn = admin
+    .getByRole('main')
+    .getByRole('button', { name: 'Sign in' })
+    .first();
+  await expect(
+    signIn.or(admin.getByRole('tab', { name: /^Tools \([1-9]/ })).first(),
+    'an OAuth connector offers Sign in, or its tools once signed in',
+  ).toBeVisible({ timeout: 60_000 });
+  if (await signIn.isVisible()) {
+    const popup = admin.waitForEvent('popup');
+    await signIn.click();
+    await completeDexLogin(await popup, lab.users.admin);
+  }
+  await expect(signIn, 'signed in, the page no longer asks for it').toBeHidden({
+    timeout: 60_000,
+  });
+  await expect(admin.getByRole('main')).toContainText('Connected', {
+    timeout: 60_000,
+  });
+}
+
 function credentialsGroup(page: Page): Locator {
   return page.getByRole('group', { name: 'Client credentials', exact: true });
 }
@@ -144,8 +198,11 @@ async function typeClient(
   await group
     .getByRole('textbox', { name: 'Client ID', exact: true })
     .fill(clientId);
-  // A password input has no textbox role.
-  await group.getByLabel('Client secret', { exact: true }).fill(clientSecret);
+  // Chromium exposes a password input as a textbox; its label's "(optional)"
+  // is aria-hidden, so the accessible name is the label alone.
+  await group
+    .getByRole('textbox', { name: 'Client secret', exact: true })
+    .fill(clientSecret);
 }
 
 test.describe('a connector whose client is typed into the wizard', () => {
@@ -165,9 +222,10 @@ test.describe('a connector whose client is typed into the wizard', () => {
     }
   });
 
-  test('stores the client in a Secret owned by the connector', async ({
+  test('stores the client in a Secret owned by the connector, which signs in', async ({
     admin,
   }) => {
+    test.setTimeout(300_000);
     await open(admin, `/customize/connectors/new${scope}`);
     await admin
       .getByRole('textbox', { name: 'Server address', exact: true })
@@ -194,7 +252,7 @@ test.describe('a connector whose client is typed into the wizard', () => {
     const { authorizationServer } = fixture;
     await admin
       .getByRole('textbox', { name: /^Where people sign in \(issuer URL\)/ })
-      .fill(authorizationServer.issuer);
+      .fill(issuerOf(authorizationServer.issuer));
     if (authorizationServer.scopes) {
       await admin
         .getByRole('textbox', { name: /^Permissions to ask for \(scopes\)/ })
@@ -228,6 +286,8 @@ test.describe('a connector whose client is typed into the wizard', () => {
     await open(admin, `/customize/connectors${scope}`);
     await connectToMuster(admin, admin.getByRole('grid'));
     await expect(connectorRow(admin, TYPED)).toBeVisible({ timeout: 60_000 });
+
+    await signInToConnector(admin);
   });
 
   test('shows the client as stored and replaces it with a new Secret', async ({
