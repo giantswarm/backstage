@@ -1,8 +1,8 @@
 import {
+  defaultTenant,
   organizationOf,
   tenantGroups,
   tenantInSentence,
-  tenantKindProblem,
   tenantOf,
 } from './tenants';
 
@@ -65,14 +65,13 @@ describe('tenantGroups', () => {
   });
 });
 
-describe('tenantKindProblem', () => {
+describe('defaultTenant', () => {
   it.each([
-    [['platform', 'organization'] as const, 'Choose Platform or Organization.'],
-    [
-      ['platform', 'organization', 'namespace'] as const,
-      'Choose Platform, Organization or Other namespace.',
-    ],
-  ])('asks for one of %j', (kinds, problem) => {
-    expect(tenantKindProblem(kinds)).toBe(problem);
+    [['org-acme', 'kagent', 'team-a'], 'kagent'],
+    [['team-a', 'org-beta', 'org-acme'], 'org-beta'],
+    [['team-b', 'team-a'], 'team-b'],
+    [[], undefined],
+  ])('picks the first offered of %j', (choices, expected) => {
+    expect(defaultTenant(choices)).toBe(expected);
   });
 });

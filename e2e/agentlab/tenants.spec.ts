@@ -301,13 +301,19 @@ test.describe('agents per tenant', () => {
       test.setTimeout(rosterWait + 60_000);
       const dev = await signInAs(lab.users.dev);
       await open(dev, '/customize/agents/new', lab.users.dev);
+      await openWizardMoreOptions(dev);
+      await expect(
+        dev.getByText(`Runs in Environment: ${lab.installation}`, {
+          exact: true,
+        }),
+        'the lab’s only environment is named in a line under More options',
+      ).toBeVisible({ timeout: 60_000 });
       await expect(
         dev.getByText(
-          `The agent belongs to ${inSentence}: on ${lab.installation}, you may create agents only there.`,
+          `Belongs to ${organization}, the only place on ${lab.installation} where you may create agents.`,
         ),
-        'the only organization is picked and named, not offered',
+        'the only organization is picked and stated under More options, not offered',
       ).toBeVisible({ timeout: 60_000 });
-      await openWizardMoreOptions(dev);
       await expect(
         dev.getByText(
           `The agents of ${inSentence} run on the platform Harness.`,

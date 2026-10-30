@@ -35,19 +35,35 @@ jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
   useModelConfigs: () => ({ isLoading: false, modelConfigsFor: () => [] }),
 }));
-jest.mock('../InstallationSelect', () => ({
-  InstallationSelect: function MockInstallationSelect({
+// Where each field's hook says its field goes, and whether the environment
+// one picks an installation (a default, or the sole one).
+// What each field's hook renders: nothing, a choice (which holds the pair in
+// the main form), or a line.
+type MockKind = 'none' | 'choice' | 'line' | 'alone';
+let mockEnvironment: MockKind;
+let mockPicksInstallation: boolean;
+let mockOrganization: MockKind;
+const mockField = (kind: MockKind, text: string) => ({
+  inMain: kind === 'choice',
+  alone: kind === 'alone',
+  field: kind === 'none' ? null : <p>{text}</p>,
+});
+jest.mock('./useEnvironmentField', () => ({
+  useEnvironmentField: function useMockEnvironmentField({
     error,
   }: {
     error?: string;
   }) {
-    const { state, setInstallation } = useNewAgentForm();
+    const { state, edit, setInstallation } = useNewAgentForm();
     useEffect(() => {
-      if (!state.installation) {
+      if (!edit && mockPicksInstallation && !state.installation) {
         setInstallation('gazelle');
       }
-    }, [state.installation, setInstallation]);
-    return <p>installation select{error && `: ${error}`}</p>;
+    }, [edit, state.installation, setInstallation]);
+    return mockField(
+      edit ? 'none' : mockEnvironment,
+      `installation select${error ? `: ${error}` : ''}`,
+    );
   },
 }));
 jest.mock('../ModelConfigPicker', () => ({
@@ -73,8 +89,12 @@ jest.mock('../ModelConfigPicker', () => ({
     return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
-jest.mock('../TenantPicker', () => ({
-  TenantPicker: () => <p>tenant picker</p>,
+jest.mock('./useOrganizationField', () => ({
+  soleOrganizationLabel: () => 'acme',
+  useOrganizationField: () => ({
+    ...mockField(mockOrganization, 'tenant picker'),
+    sole: mockOrganization === 'line' ? 'org-acme' : undefined,
+  }),
 }));
 let mockHarnessChoices: HarnessChoice[] = [];
 let mockPlatformChoice: HarnessChoice | undefined;
@@ -167,6 +187,10 @@ beforeEach(() => {
   mockPreselectedModel = 'Claude Sonnet';
   mockHarnessChoices = [];
   mockPlatformChoice = undefined;
+  // A single-installation portal: the sole one picked, the field nowhere.
+  mockEnvironment = 'none';
+  mockPicksInstallation = true;
+  mockOrganization = 'choice';
 });
 
 describe('NewAgentPage', () => {
@@ -295,6 +319,103 @@ describe('NewAgentPage', () => {
     );
     expect(technicalName).toHaveFocus();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  describe('where Environment and Organization sit', () => {
+    const inMoreOptions = (text: string) =>
+      screen.getByText(text).closest('details') === moreOptions();
+    const summary = () => moreOptions().querySelector('summary');
+
+    it('keeps an organization choice in the main form on a single-installation portal', async () => {
+      await renderPage();
+
+      expect(screen.queryByText('installation select')).toBeNull();
+      expect(inMoreOptions('tenant picker')).toBe(false);
+      expect(summary()).not.toHaveTextContent(/environment|organization/);
+    });
+
+    it('names the only environment first under More options, whatever Organization does', async () => {
+      mockEnvironment = 'alone';
+      await renderPage();
+
+      expect(inMoreOptions('installation select')).toBe(true);
+      expect(inMoreOptions('tenant picker')).toBe(false);
+      expect(summary()).not.toHaveTextContent(/environment/);
+    });
+
+    it('puts the only environment’s line before the sole organization’s', async () => {
+      mockEnvironment = 'alone';
+      mockOrganization = 'line';
+      await renderPage();
+
+      expect(inMoreOptions('installation select')).toBe(true);
+      expect(screen.getByText('installation select').nextElementSibling).toBe(
+        screen.getByText('tenant picker'),
+      );
+    });
+
+    it('puts the sole organization’s line under More options, named in the summary', async () => {
+      mockOrganization = 'line';
+      await renderPage();
+
+      expect(inMoreOptions('tenant picker')).toBe(true);
+      expect(summary()).toHaveTextContent(
+        'More options · Platform default runtime, organization acme',
+      );
+    });
+
+    it('keeps both in the main form, Environment first, when the environment is a choice', async () => {
+      mockEnvironment = 'choice';
+      mockOrganization = 'line';
+      await renderPage();
+
+      const environment = screen.getByText('installation select');
+      const organization = screen.getByText('tenant picker');
+      expect(inMoreOptions('installation select')).toBe(false);
+      expect(inMoreOptions('tenant picker')).toBe(false);
+      expect(environment.nextElementSibling).toBe(organization);
+      expect(summary()).not.toHaveTextContent(/environment|organization/);
+    });
+
+    it('keeps the environment’s line beside an organization choice in the main form', async () => {
+      mockEnvironment = 'line';
+      await renderPage();
+
+      expect(inMoreOptions('installation select')).toBe(false);
+      expect(inMoreOptions('tenant picker')).toBe(false);
+    });
+
+    it('puts both lines under More options when neither is a choice', async () => {
+      mockEnvironment = 'line';
+      mockOrganization = 'line';
+      await renderPage();
+
+      expect(screen.getByText('installation select').nextElementSibling).toBe(
+        screen.getByText('tenant picker'),
+      );
+      expect(inMoreOptions('installation select')).toBe(true);
+      expect(inMoreOptions('tenant picker')).toBe(true);
+      expect(summary()).toHaveTextContent(
+        'More options · Platform default runtime, organization acme',
+      );
+    });
+
+    it('shows an environment problem on the field in the main form', async () => {
+      mockEnvironment = 'choice';
+      mockPicksInstallation = false;
+      await renderPage();
+
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Support triage');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(
+        screen.getByText('installation select: Choose an environment.'),
+      ).toBeInTheDocument();
+      expect(inMoreOptions('installation select: Choose an environment.')).toBe(
+        false,
+      );
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
   });
 
   it('keeps More options closed for a problem outside it', async () => {

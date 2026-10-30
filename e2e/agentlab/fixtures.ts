@@ -751,40 +751,36 @@ export async function createAgentInWizard(
   const model = page
     .getByRole('radiogroup', { name: 'Model' })
     .getByRole('radio', { name: options.model ?? /default-model-config/ });
-  // Platform beside the organizations, or the organizations alone.
-  const kinds = page.getByRole('radiogroup', {
-    name: 'Who the agent belongs to',
-  });
-  // The Select's name is its value and its label: "Select an option
+  // Several places are one dropdown (Platform, then the organizations). The
+  // Select's name is its value and its label: "Select an option
   // Organization".
   const organizationPicker = page.getByRole('button', {
     name: /\bOrganization$/,
   });
-  await expect(model.or(kinds).or(organizationPicker).first()).toBeVisible({
+  // The only place, stated in a line: under More options (opened above), or
+  // under an Environment dropdown in the main form.
+  const soleOrganization = page.getByText(
+    /^Belongs to .+, the only place on .+ where you may create agents\.$/,
+  );
+  // The Organization field shows once agent-manager's get_info answers; the
+  // models may be offered before. Decide on the place only once it is known.
+  await expect(organizationPicker.or(soleOrganization).first()).toBeVisible({
     timeout: 60_000,
   });
-  // Until agent-manager's get_info answers, the models are offered before the
-  // places are known: decide on the place only once they are.
-  await expect(
-    page.getByText('Reading where you may create agents…'),
-  ).toBeHidden({ timeout: 60_000 });
-  if (await kinds.isVisible()) {
-    await kinds
-      .getByRole('radio', {
-        name: options.organization ? /^Organization/ : /^Platform/,
-      })
-      .check();
-  }
   if (await organizationPicker.isVisible()) {
-    if (!options.organization) {
+    await organizationPicker.click();
+    await page.getByRole('option').first().waitFor();
+    const platform = page.getByRole('option', { name: /^Platform/ });
+    if (!options.organization && !(await platform.isVisible())) {
       throw new Error(
         'the wizard offers organizations only, no Platform: pass options.organization',
       );
     }
-    await organizationPicker.click();
-    await page
-      .getByRole('option', { name: options.organization, exact: true })
-      .click();
+    await (
+      options.organization
+        ? page.getByRole('option', { name: options.organization, exact: true })
+        : platform
+    ).click();
   }
   await model.check();
   if (options.harness) {
