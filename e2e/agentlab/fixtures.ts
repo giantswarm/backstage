@@ -63,11 +63,13 @@ export async function completeDexLogin(
     () => true,
     () => false,
   );
+  // The popup closing rejects the URL wait at once: a closed popup has left
+  // Dex too, so it counts as sent on.
   const leftDex = dex
     .waitForURL(url => !url.pathname.includes('/dex/'), { timeout: 60_000 })
     .then(
       () => true,
-      () => false,
+      () => dex.isClosed(),
     );
   // The page Dex renders for the submitted form: an error the popup showed
   // before (a typo's) is gone from it unless Dex refused this login too.
