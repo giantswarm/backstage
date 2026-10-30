@@ -37,6 +37,8 @@ export type AgentManagerInfoState = {
   info: AgentManagerInfo | undefined;
   isLoading: boolean;
   error: Error | null;
+  /** Reads `get_info` again (Check again). */
+  refetch: () => void;
 };
 
 /**
@@ -49,7 +51,7 @@ export function useAgentManagerInfo(
   installation: string | undefined,
 ): AgentManagerInfoState {
   const client = useAgentManagerClient(installation);
-  const { data, error, isPending, fetchStatus } = useQuery({
+  const { data, error, isPending, fetchStatus, refetch } = useQuery({
     queryKey: musterAgentManagerInfoQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.getInfo(),
@@ -61,6 +63,9 @@ export function useAgentManagerInfo(
     info: data,
     isLoading: Boolean(client) && isLoading,
     error: (error as Error) ?? null,
+    refetch: () => {
+      refetch();
+    },
   };
 }
 

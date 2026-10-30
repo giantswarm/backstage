@@ -110,17 +110,14 @@ export function tenantGroups(choices: readonly string[]): {
   return { kinds, byKind };
 }
 
-/** The problem while none of several kinds is chosen. */
-export function tenantKindProblem(kinds: readonly TenantKind[]): string {
-  const labels = kinds.map(kind => TENANT_KIND_LABELS[kind]);
-  return `Choose ${labels.slice(0, -1).join(', ')} or ${labels.at(-1)}.`;
-}
-
-/** The problem while a kind's dropdown has nothing picked. */
-export function tenantPickProblem(kind: TenantKind): string {
-  return kind === 'namespace'
-    ? 'Choose a namespace.'
-    : 'Choose an organization.';
+/**
+ * The place a new agent's form picks among `choices`: the first in the order
+ * the form offers them (Platform, then the organizations, then the other
+ * namespaces).
+ */
+export function defaultTenant(choices: readonly string[]): string | undefined {
+  const { kinds, byKind } = tenantGroups(choices);
+  return kinds.length > 0 ? byKind[kinds[0]][0] : undefined;
 }
 
 /**

@@ -6,26 +6,20 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import {
-  Alert,
-  Button,
-  Card,
-  CardBody,
-  Flex,
-  Select,
-  Text,
-} from '@backstage/ui';
+import { Alert, Button, Flex, Select, Text } from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
 import {
   joinNames,
   NAMED_IN_SENTENCE,
   ExternalLink,
   searchableIf,
-  SectionHeader,
   ShowMore,
   useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import {
+  useHomeInstallation,
+  useInstallations,
+} from '@giantswarm/backstage-plugin-gs';
 import { withQuery } from '@giantswarm/backstage-plugin-muster';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
@@ -35,6 +29,9 @@ import { useNewAgentForm } from '../NewAgentFormProvider';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { LabelledField } from './LabelledField';
+
+const LABEL = 'Environment';
 
 const DESCRIPTION =
   'Choose the management cluster the agent runs on; it decides which models are available.';
@@ -42,25 +39,8 @@ const DESCRIPTION =
 /** How many installations a note names, and links to, before the rest are a count. */
 const NAMED_INSTALLATIONS = NAMED_IN_SENTENCE;
 
-/**
- * Card shell, so every branch below gets the same heading and description. The
- * heading names the field, so the controls inside use `aria-label` rather than a
- * visible label that would repeat it.
- */
-function InstallationCard({ children }: { children: ReactNode }) {
-  return (
-    <Card>
-      <CardBody>
-        <SectionHeader
-          variant="title-x-small"
-          title="Environment"
-          description={DESCRIPTION}
-        />
-        {children}
-      </CardBody>
-    </Card>
-  );
-}
+/** No installations while editing: an existing agent stays where it is. */
+const NONE: string[] = [];
 
 /**
  * Why an installation with models is still not offered: its muster lists no
@@ -133,7 +113,7 @@ function AgentManagerUnknownNote({
           </Text>
           {/* One link per installation, wrapping, the first few shown: on a
               fleet of 50 where signed-out is the norm, a row of every link
-              would run off the card. */}
+              would run off the alert. */}
           {signInHref && (
             <ShowMore
               items={installations}
@@ -199,27 +179,69 @@ function InaccessibleInstallationsNote({
   );
 }
 
-export type InstallationSelectProps = {
+export type EnvironmentFieldOptions = {
   /**
    * The field's validation problem, shown on the dropdown once the form wants
-   * it seen. Where no dropdown renders (one installation, or none usable) the
-   * notes on the card already say why nothing is picked.
+   * it seen. Where no dropdown renders (one usable installation, or none) the
+   * notes under the label already say why nothing is picked.
    */
   error?: string;
 };
 
-export function InstallationSelect({ error }: InstallationSelectProps = {}) {
-  const { state, setInstallation } = useNewAgentForm();
+export type EnvironmentField = {
+  /**
+   * Whether the field puts itself and Organization in the main form: a real
+   * choice, or a state that says why there is none. Otherwise it is a line
+   * (or nothing) that goes wherever Organization goes.
+   */
+  inMain: boolean;
+  /**
+   * The portal's only environment: a line under More options whatever
+   * Organization does, not one of the pair.
+   */
+  alone?: boolean;
+  /** The field itself, for the page to put directly before Organization. */
+  field: ReactNode;
+};
+
+/**
+ * The New agent form's Environment field: the installations agents can be
+ * created on.
+ *
+ * - One installation configured: picked, and named in a line of its own
+ *   under More options.
+ * - Several, one of them usable: picked, and named in a line.
+ * - Several usable: a dropdown, always with one picked: the home installation
+ *   (`useHomeInstallation`) once it is known to be usable, else the first
+ *   usable one. A pick of the person's own is never replaced.
+ * - None usable: the states that explain why nothing can be chosen.
+ *
+ * Once the field has shown a dropdown or a state (while the fleet settles,
+ * say), it keeps the pair in the main form, so a sole usable environment
+ * found later does not move what the person has seen into More options.
+ *
+ * A hook rather than a component, so the page mounts it once and places its
+ * field: its effects pick the default while More options is closed, and a
+ * component moved between the two places would remount, losing its settled
+ * latch and a Check again in flight. Inert while editing: an existing agent
+ * stays where it is.
+ */
+export function useEnvironmentField({
+  error,
+}: EnvironmentFieldOptions = {}): EnvironmentField {
+  const { state, edit, setInstallation } = useNewAgentForm();
   const selectError = useSelectFieldError(error);
   const { installations, isLoading: isLoadingInstallations } =
     useInstallations();
+  const home = useHomeInstallation().home?.name;
   const {
     isLoading,
     hasInstallations,
-    availableInstallations,
+    availableInstallations: fleetInstallations,
     unreachableInstallations,
     inaccessibleInstallations,
   } = useModelConfigs();
+  const availableInstallations = edit ? NONE : fleetInstallations;
 
   // Feature detection: an installation is offered only when its muster
   // registers agent-manager (`core_mcpserver_list`), read through the person's
@@ -249,7 +271,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   );
   // The installations a Check again is reading anew. A failed read refetched
   // is pending again (it has no data to keep), so without this the note --
-  // with the button just pressed -- and the card's settled state would drop
+  // with the button just pressed -- and the field's settled state would drop
   // out until the reads answer; the note stays as it was instead.
   const [rechecking, setRechecking] = useState<string[]>();
   const agentManagerUnknown = rechecking ?? settledUnknown;
@@ -264,7 +286,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   // dropdown. Keyed on the configured list rather than the narrower "usable"
   // one, so the choice lands as soon as it is knowable.
   const singleConfigured =
-    !isLoadingInstallations && installations.length === 1
+    !edit && !isLoadingInstallations && installations.length === 1
       ? installations[0].name
       : undefined;
   const isSettling = isLoading || (agentManager.isLoading && !rechecking);
@@ -275,6 +297,8 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   if (!isLoadingInstallations && !isSettling) {
     hasSettled.current = true;
   }
+  // Whether the field has held the pair in the main form (see above).
+  const shownInMain = useRef(false);
   // Several installations configured, but once the fleet has settled only one
   // of them is usable: still no real choice, so pick it too. Only when every
   // installation with models has a definite agent-manager answer: one whose
@@ -306,6 +330,36 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     }
   }, [singleInstallation, state.installation, setInstallation]);
 
+  // The default, picked while nothing is (so a pick of the person's own, or
+  // a restored draft's, stays; a withdrawn one is replaced by it): the home
+  // installation once it is known to be usable, else the first usable one.
+  // While the home installation may still prove usable, none: a pick that
+  // would change a moment later is worse than waiting.
+  const homeMayBeUsable =
+    home !== undefined &&
+    !hasSettled.current &&
+    !isWithheld(home) &&
+    !unreachableInstallations.includes(home) &&
+    !inaccessibleInstallations.includes(home);
+  let defaultInstallation: string | undefined;
+  if (!edit) {
+    if (home && usableInstallations.includes(home)) {
+      defaultInstallation = home;
+    } else if (!homeMayBeUsable) {
+      defaultInstallation = usableInstallations[0];
+    }
+  }
+  useEffect(() => {
+    if (defaultInstallation && !state.installation && !singleInstallation) {
+      setInstallation(defaultInstallation);
+    }
+  }, [
+    defaultInstallation,
+    singleInstallation,
+    state.installation,
+    setInstallation,
+  ]);
+
   // A pick that turned out not to be usable (the server list or the
   // installations answered after the selection) is withdrawn: the review page
   // could not deploy it.
@@ -323,10 +377,10 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   }, [state.installation, singleInstallation, agentManager, setInstallation]);
 
   // Until the installations config resolves we don't know whether this field
-  // belongs on the page at all — render nothing rather than a loading card that
-  // would vanish a moment later on a single-installation instance.
-  if (isLoadingInstallations) {
-    return null;
+  // belongs on the page at all — render nothing rather than a loading field
+  // that would vanish a moment later on a single-installation instance.
+  if (edit || isLoadingInstallations) {
+    return { inMain: false, field: null };
   }
 
   // Something about an installation that is not offered needs saying.
@@ -336,21 +390,6 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     withSharedIdentity.length > 0 ||
     agentManagerUnknown.length > 0 ||
     inaccessibleInstallations.length > 0;
-
-  // Hide the field only once the sole installation proves usable. While the
-  // fleet query is still settling we can't tell yet, so stay out of the way; if
-  // it turns out to be unreachable, model-less or without agent-manager we fall
-  // through, because the guidance below is then the only thing that explains
-  // why the form is stuck. Only here: with several installations the card has
-  // been on screen while they resolved, and removing it would shift the form.
-  if (
-    singleConfigured &&
-    (isSettling || usableInstallations.length > 0) &&
-    !hasNotes &&
-    !agentManager.isUnavailable
-  ) {
-    return null;
-  }
 
   const unreachableNote = (
     <UnreachableInstallationsAlert
@@ -383,15 +422,56 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     </>
   );
 
+  const main = (field: ReactNode): EnvironmentField => {
+    shownInMain.current = true;
+    return { inMain: true, field };
+  };
+
+  // The only usable environment: nothing to choose, so a line says where
+  // the agent runs, with the notes on the others.
+  const soleField = (sole: string): EnvironmentField => ({
+    inMain: shownInMain.current,
+    field: (
+      <Flex direction="column" gap="2">
+        <Text as="p" variant="body-small" color="secondary">
+          Runs in Environment: <strong>{sole}</strong>
+        </Text>
+        {notes}
+      </Flex>
+    ),
+  });
+
+  // The sole configured installation is picked and named, once it proves
+  // usable or while the fleet query is still settling. If it
+  // turns out to be unreachable, model-less or without agent-manager we fall
+  // through, because the guidance below is then the only thing that explains
+  // why the form is stuck.
+  if (
+    singleConfigured &&
+    (isSettling || usableInstallations.length > 0) &&
+    !hasNotes &&
+    !agentManager.isUnavailable
+  ) {
+    return {
+      inMain: false,
+      alone: true,
+      field: (
+        <Text as="p" variant="body-small" color="secondary">
+          Runs in Environment: <strong>{singleConfigured}</strong>
+        </Text>
+      ),
+    };
+  }
+
   if (agentManager.isUnavailable) {
-    return (
-      <InstallationCard>
+    return main(
+      <LabelledField label={LABEL} description={DESCRIPTION}>
         <Alert
           status="warning"
           title="The muster plugin is required"
           description="Agents are created through agent-manager over muster, and this portal has no muster plugin installed."
         />
-      </InstallationCard>
+      </LabelledField>,
     );
   }
 
@@ -400,95 +480,84 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   // loading/empty states while nothing is available yet.
   if (usableInstallations.length === 0) {
     if (isSettling) {
-      return (
-        <InstallationCard>
-          <Flex direction="column" gap="2">
-            <Select
-              aria-label="Environment"
-              isRequired
-              isDisabled
-              icon={<CircularProgress size={16} color="inherit" />}
-              options={[]}
-              placeholder="Finding environments with models and agent-manager…"
-              {...selectError.selectProps}
-            />
-            {selectError.message}
-            <NoAgentManagerNote installations={withoutAgentManager} />
-            <SharedIdentityNote
-              installations={withSharedIdentity}
-              blocked="Agents cannot be created"
-              via="Agents are created through agent-manager"
-            />
-          </Flex>
-        </InstallationCard>
+      return main(
+        <Flex direction="column" gap="2">
+          <Select
+            label={LABEL}
+            description={DESCRIPTION}
+            isRequired
+            isDisabled
+            icon={<CircularProgress size={16} color="inherit" />}
+            options={[]}
+            placeholder="Finding environments with models and agent-manager…"
+            {...selectError.selectProps}
+          />
+          {selectError.message}
+          <NoAgentManagerNote installations={withoutAgentManager} />
+          <SharedIdentityNote
+            installations={withSharedIdentity}
+            blocked="Agents cannot be created"
+            via="Agents are created through agent-manager"
+          />
+        </Flex>,
       );
     }
 
     if (hasInstallations) {
-      return (
-        <InstallationCard>
-          <Flex direction="column" gap="2">
-            {/* If every queried installation errored, the warning explains it;
-                only claim "no models" when reads actually succeeded. */}
-            {notes}
-            {!hasNotes && (
-              <Alert
-                status="info"
-                title="No environments with models"
-                description="No reachable environment has a kagent ModelConfig yet. A platform admin must add one before agents can be created."
-              />
-            )}
-          </Flex>
-        </InstallationCard>
+      return main(
+        <LabelledField label={LABEL} description={DESCRIPTION}>
+          {/* If every queried installation errored, the warning explains it;
+              only claim "no models" when reads actually succeeded. */}
+          {notes}
+          {!hasNotes && (
+            <Alert
+              status="info"
+              title="No environments with models"
+              description="No reachable environment has a kagent ModelConfig yet. A platform admin must add one before agents can be created."
+            />
+          )}
+        </LabelledField>,
       );
     }
   }
 
-  // Only one usable installation out of several: it is picked above, so say
-  // where the agent runs instead of offering a one-option dropdown. The card
-  // stays (it was on screen while the fleet resolved), and so do the notes on
-  // the others.
+  // Only one usable installation out of several: it is picked above, so it is
+  // named in a line instead of offered in a one-option dropdown. Latched (see `hasSettled`),
+  // so it changes once, when the fleet settles.
   if (singleUsable) {
-    return (
-      <InstallationCard>
-        <Flex direction="column" gap="2">
-          <Text>
-            Runs on <strong>{singleUsable}</strong>, the only environment with
-            models and agent-manager.
-          </Text>
-          {notes}
-        </Flex>
-      </InstallationCard>
-    );
+    return soleField(singleUsable);
   }
 
-  return (
-    <InstallationCard>
-      <Flex direction="column" gap="2">
-        <Select
-          aria-label="Environment"
-          isRequired
-          searchable={searchableIf(usableInstallations)}
-          options={usableInstallations.map(name => ({
-            id: name,
-            label: name,
-          }))}
-          selectedKey={state.installation ?? null}
-          onSelectionChange={key =>
-            setInstallation(key ? String(key) : undefined)
-          }
-          {...selectError.selectProps}
-        />
-        {selectError.message}
-        {/* The list grows as slower installations respond, so say so rather than
-            letting a short list look complete. */}
-        {isSettling && (
-          <Text variant="body-small" color="secondary">
-            Still checking the remaining environments…
-          </Text>
-        )}
-        {notes}
-      </Flex>
-    </InstallationCard>
+  return main(
+    <Flex direction="column" gap="2">
+      <Select
+        label={LABEL}
+        description={DESCRIPTION}
+        isRequired
+        searchable={searchableIf(usableInstallations)}
+        options={usableInstallations.map(name => ({
+          id: name,
+          label: name,
+        }))}
+        // The default shows until its pick lands, rather than a placeholder.
+        selectedKey={state.installation ?? defaultInstallation ?? null}
+        placeholder={
+          home && !defaultInstallation ? `Checking ${home}…` : undefined
+        }
+        onSelectionChange={key =>
+          setInstallation(key ? String(key) : undefined)
+        }
+        {...selectError.selectProps}
+      />
+      {selectError.message}
+      {/* The list grows as slower installations respond, so say so rather than
+          letting a short list look complete. */}
+      {isSettling && (
+        <Text variant="body-small" color="secondary">
+          Still checking the remaining environments…
+        </Text>
+      )}
+      {notes}
+    </Flex>,
   );
 }

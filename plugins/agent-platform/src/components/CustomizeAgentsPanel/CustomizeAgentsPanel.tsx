@@ -26,6 +26,7 @@ import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
+import { useWarmNewAgentForm } from '../../hooks/useWarmNewAgentForm';
 import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -613,6 +614,9 @@ function AgentGroup({
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
+  // The New agent form's reads, started from here so its Organization field
+  // does not arrive a moment after the form opens.
+  useWarmNewAgentForm();
   const {
     rows,
     installations,

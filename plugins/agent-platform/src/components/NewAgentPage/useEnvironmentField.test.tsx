@@ -1,10 +1,27 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { InstallationSelect } from './InstallationSelect';
+import {
+  type EnvironmentFieldOptions,
+  useEnvironmentField,
+} from './useEnvironmentField';
+
+/**
+ * The field in a region named by where it puts the pair: `main`, or `line`
+ * (wherever the other field goes).
+ */
+function EnvironmentFieldHarness(props: EnvironmentFieldOptions) {
+  const { inMain, alone, field } = useEnvironmentField(props);
+  let region = inMain ? 'main' : 'line';
+  if (alone) {
+    region = 'alone';
+  }
+  return field ? <section aria-label={region}>{field}</section> : null;
+}
 
 type FormState = { installation: string | undefined };
 
 let mockState: FormState;
+let mockEdit: object | undefined;
 const mockSetInstallation = jest.fn();
 
 let mockInstallations: { name: string }[];
@@ -27,14 +44,21 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
 jest.mock('../NewAgentFormProvider', () => ({
   useNewAgentForm: () => ({
     state: mockState,
+    edit: mockEdit,
     setInstallation: mockSetInstallation,
   }),
 }));
+
+let mockHome: string | undefined;
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useInstallations: () => ({
     installations: mockInstallations,
     isLoading: mockIsLoadingInstallations,
+  }),
+  useHomeInstallation: () => ({
+    home: mockHome ? { name: mockHome } : undefined,
+    isLoading: false,
   }),
 }));
 
@@ -64,13 +88,18 @@ jest.mock('../../hooks/useAgentManager', () => ({
   }),
 }));
 
-describe('InstallationSelect', () => {
+/** The line naming the only usable environment. */
+const SOLE = /^Runs in Environment:/;
+
+describe('useEnvironmentField', () => {
   beforeEach(() => {
     mockSetInstallation.mockClear();
     mockRecheck.mockClear();
     mockState = { installation: undefined };
     mockInstallations = [{ name: 'alpha' }, { name: 'beta' }];
     mockIsLoadingInstallations = false;
+    mockHome = undefined;
+    mockEdit = undefined;
     mockModelConfigs = {
       isLoading: false,
       hasInstallations: true,
@@ -87,7 +116,7 @@ describe('InstallationSelect', () => {
     it('offers only the installations whose muster lists agent-manager, and says why the others are missing', () => {
       mockPresence = { alpha: 'available', beta: 'missing' };
 
-      const { getByText, queryByText } = render(<InstallationSelect />);
+      const { getByText, queryByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('alpha')).toBeInTheDocument();
       expect(queryByText('beta')).not.toBeInTheDocument();
@@ -100,7 +129,7 @@ describe('InstallationSelect', () => {
     it('offers no installation whose muster runs under its shared identity, and says why', () => {
       mockPresence = { alpha: 'available', beta: 'sharedIdentity' };
 
-      const { getByText, queryByText } = render(<InstallationSelect />);
+      const { getByText, queryByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('alpha')).toBeInTheDocument();
       expect(queryByText('beta')).not.toBeInTheDocument();
@@ -129,7 +158,7 @@ describe('InstallationSelect', () => {
         gamma: 'available',
       };
 
-      render(<InstallationSelect />);
+      render(<EnvironmentFieldHarness />);
 
       expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
     });
@@ -151,7 +180,7 @@ describe('InstallationSelect', () => {
         gamma: 'available',
       };
 
-      render(<InstallationSelect />);
+      render(<EnvironmentFieldHarness />);
 
       expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
     });
@@ -160,7 +189,7 @@ describe('InstallationSelect', () => {
       mockState = { installation: 'beta' };
       mockPresence = { alpha: 'available', beta: 'missing' };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
       expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
       expect(mockSetInstallation).not.toHaveBeenCalledWith(undefined);
@@ -172,7 +201,7 @@ describe('InstallationSelect', () => {
       mockPresence = {};
       mockAgentManagerLoading = true;
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
       expect(
         getByText('Finding environments with models and agent-manager…'),
@@ -182,7 +211,7 @@ describe('InstallationSelect', () => {
     it('explains that nothing can be created when no installation has agent-manager', () => {
       mockPresence = { alpha: 'missing', beta: 'missing' };
 
-      const { getByText, queryByText } = render(<InstallationSelect />);
+      const { getByText, queryByText } = render(<EnvironmentFieldHarness />);
 
       expect(
         getByText('No agent-manager on some environments'),
@@ -195,10 +224,10 @@ describe('InstallationSelect', () => {
     it('requires the muster plugin — there is no other path to agent-manager', () => {
       mockMusterPluginMissing = true;
 
-      const { getByText, queryByLabelText } = render(<InstallationSelect />);
+      const { getByText, queryByRole } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('The muster plugin is required')).toBeInTheDocument();
-      expect(queryByLabelText('Environment')).not.toBeInTheDocument();
+      expect(queryByRole('button', { name: /Environment/ })).toBeNull();
     });
 
     it('never picks the sole installation when its muster runs under its shared identity', () => {
@@ -210,7 +239,7 @@ describe('InstallationSelect', () => {
       mockState = { installation: 'solo' };
       mockPresence = { solo: 'sharedIdentity' };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
       expect(mockSetInstallation).not.toHaveBeenCalledWith('solo');
       expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
@@ -227,27 +256,29 @@ describe('InstallationSelect', () => {
       };
       mockPresence = { solo: 'missing' };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('No agent-manager on solo')).toBeInTheDocument();
     });
   });
 
   describe('with more than one installation configured', () => {
-    it('renders the picker', () => {
-      const { getByRole, getByText } = render(<InstallationSelect />);
+    it('renders the picker in the main form when there is no home installation', () => {
+      const { getByRole, getByText } = render(<EnvironmentFieldHarness />);
 
-      expect(
-        getByRole('heading', { name: 'Environment', level: 3 }),
-      ).toBeInTheDocument();
-      expect(getByText('alpha')).toBeInTheDocument();
+      expect(getByRole('region', { name: 'main' })).toBeInTheDocument();
+      // The first usable one shows as picked, never a placeholder.
+      expect(getByRole('button', { name: /Environment/ })).toHaveTextContent(
+        /^alpha/,
+      );
       expect(getByText('beta')).toBeInTheDocument();
-      expect(mockSetInstallation).not.toHaveBeenCalled();
+      // Nothing to wait for: the first usable one is picked.
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
 
     it('marks the dropdown with the form’s validation problem', () => {
       const { getByRole, getByText } = render(
-        <InstallationSelect error="Select an environment" />,
+        <EnvironmentFieldHarness error="Select an environment" />,
       );
 
       const trigger = getByRole('button', { name: /Environment/ });
@@ -256,52 +287,166 @@ describe('InstallationSelect', () => {
       expect(trigger.closest('[data-invalid]')).not.toBeNull();
     });
 
-    it('names the field for assistive tech without repeating the card heading', () => {
-      const { getAllByText, getByLabelText } = render(<InstallationSelect />);
+    it('labels the dropdown like the form’s other fields, with no heading', () => {
+      const { getAllByText, getByRole, getByText, queryByRole } = render(
+        <EnvironmentFieldHarness />,
+      );
 
-      // The section heading is the only visible "Environment" text; the select
-      // carries the same name via aria-label instead of a second visible label.
+      // The field's own label names the dropdown; no card heading repeats it.
       expect(getAllByText('Environment')).toHaveLength(1);
-      expect(getByLabelText('Environment')).toBeInTheDocument();
-    });
-
-    it('shows the loading state while models are still resolving across the fleet', () => {
-      mockModelConfigs = {
-        ...mockModelConfigs,
-        isLoading: true,
-        availableInstallations: [],
-      };
-
-      const { getByText } = render(<InstallationSelect />);
-
+      expect(getByRole('button', { name: /Environment/ })).toBeInTheDocument();
       expect(
-        getByText('Finding environments with models and agent-manager…'),
+        getByText(/Choose the management cluster the agent runs on/),
       ).toBeInTheDocument();
+      expect(queryByRole('heading')).toBeNull();
+    });
+  });
+
+  describe('with a home installation among several', () => {
+    beforeEach(() => {
+      mockHome = 'beta';
     });
 
-    it('flags that the list is still growing once some installations have responded', () => {
+    it('preselects the home installation in the dropdown, in the main form', () => {
+      const { getByRole } = render(<EnvironmentFieldHarness />);
+
+      expect(mockSetInstallation).toHaveBeenCalledWith('beta');
+      expect(getByRole('region', { name: 'main' })).toContainElement(
+        getByRole('button', { name: /Environment/ }),
+      );
+    });
+
+    it('keeps a pick of the person’s own', () => {
+      mockState = { installation: 'alpha' };
+
+      render(<EnvironmentFieldHarness />);
+
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+    });
+
+    it('waits for the home installation while the fleet settles, rather than picking another', () => {
       mockModelConfigs = {
         ...mockModelConfigs,
         isLoading: true,
         availableInstallations: ['alpha'],
       };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByRole } = render(<EnvironmentFieldHarness />);
 
-      expect(
-        getByText('Still checking the remaining environments…'),
-      ).toBeInTheDocument();
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+      expect(getByRole('button', { name: /Environment/ })).toHaveTextContent(
+        'Checking beta…',
+      );
     });
 
-    it('surfaces the empty state when no reachable installation has a model', () => {
+    it('picks the default again when the pick is withdrawn', () => {
+      mockInstallations = [
+        { name: 'alpha' },
+        { name: 'beta' },
+        { name: 'gamma' },
+      ];
       mockModelConfigs = {
         ...mockModelConfigs,
+        availableInstallations: ['alpha', 'beta', 'gamma'],
+      };
+      mockState = { installation: 'alpha' };
+      mockPresence = {
+        alpha: 'missing',
+        beta: 'available',
+        gamma: 'available',
+      };
+
+      const { rerender } = render(<EnvironmentFieldHarness />);
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
+
+      mockState = { installation: undefined };
+      rerender(<EnvironmentFieldHarness />);
+      expect(mockSetInstallation).toHaveBeenLastCalledWith('beta');
+    });
+
+    it('picks nothing while the fleet settles', () => {
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        isLoading: true,
         availableInstallations: [],
       };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByRole, getByText } = render(<EnvironmentFieldHarness />);
 
-      expect(getByText('No environments with models')).toBeInTheDocument();
+      expect(getByRole('region', { name: 'main' })).toBeInTheDocument();
+      expect(
+        getByText('Finding environments with models and agent-manager…'),
+      ).toBeInTheDocument();
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+    });
+
+    it('preselects the first usable one where the home installation lacks agent-manager', () => {
+      mockInstallations = [
+        { name: 'alpha' },
+        { name: 'beta' },
+        { name: 'gamma' },
+      ];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['alpha', 'beta', 'gamma'],
+      };
+      mockPresence = {
+        alpha: 'available',
+        beta: 'missing',
+        gamma: 'available',
+      };
+
+      const { getByRole } = render(<EnvironmentFieldHarness />);
+
+      expect(getByRole('region', { name: 'main' })).toContainElement(
+        getByRole('button', { name: /Environment/ }),
+      );
+      // Nothing to wait for: the first usable one is picked.
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+    });
+
+    it('preselects the first usable one where the home installation is unreachable', () => {
+      mockInstallations = [
+        { name: 'alpha' },
+        { name: 'beta' },
+        { name: 'gamma' },
+      ];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['alpha', 'gamma'],
+        unreachableInstallations: ['beta'],
+      };
+      mockPresence = { alpha: 'available', gamma: 'available' };
+
+      render(<EnvironmentFieldHarness />);
+
+      // Nothing to wait for: the first usable one is picked.
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+    });
+  });
+
+  describe('without a home installation, while the fleet settles', () => {
+    it('keeps the field in the main form once it was there, naming the only usable environment there', () => {
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        isLoading: true,
+        availableInstallations: [],
+      };
+      const { getByRole, rerender } = render(<EnvironmentFieldHarness />);
+      expect(getByRole('region', { name: 'main' })).toBeInTheDocument();
+
+      // Settled: alpha is the only usable one.
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        isLoading: false,
+        availableInstallations: ['alpha'],
+      };
+      rerender(<EnvironmentFieldHarness />);
+
+      expect(getByRole('region', { name: 'main' })).toHaveTextContent(
+        /^Runs in Environment: alpha$/,
+      );
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
   });
 
@@ -313,44 +458,38 @@ describe('InstallationSelect', () => {
       };
     });
 
-    it('says where the agent runs instead of offering a one-option dropdown once the fleet query settles', () => {
-      const { getByRole, getByText, queryByLabelText } = render(
-        <InstallationSelect />,
-      );
+    it('names it under More options instead of offering a one-option dropdown once the fleet query settles', () => {
+      const { getByRole, queryByRole } = render(<EnvironmentFieldHarness />);
 
-      // The card stays: it was on screen while the fleet resolved.
-      expect(
-        getByRole('heading', { name: 'Environment', level: 3 }),
-      ).toBeInTheDocument();
-      expect(
-        getByText(/the only environment with models and agent-manager/),
-      ).toHaveTextContent(
-        'Runs on alpha, the only environment with models and agent-manager.',
+      // A line, not a control: nothing to choose.
+      expect(getByRole('region', { name: 'line' })).toHaveTextContent(
+        /^Runs in Environment: alpha$/,
       );
-      expect(queryByLabelText('Environment')).not.toBeInTheDocument();
+      expect(queryByRole('button', { name: /Environment/ })).toBeNull();
       expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
 
     it('keeps offering the picker while other installations may still respond', () => {
       mockModelConfigs = { ...mockModelConfigs, isLoading: true };
 
-      const { getByLabelText, queryByText } = render(<InstallationSelect />);
+      const { getByRole, queryByText } = render(<EnvironmentFieldHarness />);
 
-      expect(getByLabelText('Environment')).toBeInTheDocument();
-      expect(queryByText(/^Runs on/)).not.toBeInTheDocument();
-      expect(mockSetInstallation).not.toHaveBeenCalled();
+      expect(getByRole('button', { name: /Environment/ })).toBeInTheDocument();
+      expect(queryByText(SOLE)).not.toBeInTheDocument();
+      // Nothing to wait for: the first usable one is picked.
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
 
     it('keeps the sole option once settled, even when the fleet query re-probes', () => {
-      const { getByText, queryByLabelText, rerender } = render(
-        <InstallationSelect />,
+      const { getByText, queryByRole, rerender } = render(
+        <EnvironmentFieldHarness />,
       );
       // A cluster-access reconnect turns the inventory's probing back on.
       mockModelConfigs = { ...mockModelConfigs, isLoading: true };
-      rerender(<InstallationSelect />);
+      rerender(<EnvironmentFieldHarness />);
 
-      expect(getByText(/^Runs on/)).toBeInTheDocument();
-      expect(queryByLabelText('Environment')).not.toBeInTheDocument();
+      expect(getByText(SOLE)).toBeInTheDocument();
+      expect(queryByRole('button', { name: /Environment/ })).toBeNull();
     });
 
     it('keeps explaining unreachable installations', () => {
@@ -359,9 +498,9 @@ describe('InstallationSelect', () => {
         unreachableInstallations: ['beta'],
       };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
-      expect(getByText(/^Runs on/)).toBeInTheDocument();
+      expect(getByText(SOLE)).toBeInTheDocument();
       expect(getByText(/Could not read 1 environment/)).toBeInTheDocument();
       expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
@@ -372,7 +511,7 @@ describe('InstallationSelect', () => {
         inaccessibleInstallations: ['gamma'],
       };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('Could not check gamma')).toBeInTheDocument();
       expect(getByText(/Cluster access to gamma is not healthy/)).toBeVisible();
@@ -383,13 +522,13 @@ describe('InstallationSelect', () => {
     it('keeps the picker and explains an installation whose server list could not be read', () => {
       mockPresence = { alpha: 'available', beta: 'unknown' };
 
-      const { getByLabelText, getByRole, getByText, queryByText } = render(
-        <InstallationSelect />,
+      const { getByRole, getByText, queryByText } = render(
+        <EnvironmentFieldHarness />,
       );
 
       // beta might have agent-manager, so alpha is not the only choice yet.
-      expect(getByLabelText('Environment')).toBeInTheDocument();
-      expect(queryByText(/^Runs on/)).not.toBeInTheDocument();
+      expect(getByRole('button', { name: /Environment/ })).toBeInTheDocument();
+      expect(queryByText(SOLE)).not.toBeInTheDocument();
       expect(queryByText('beta')).not.toBeInTheDocument();
       expect(
         getByText('Could not check beta for agent-manager'),
@@ -412,7 +551,8 @@ describe('InstallationSelect', () => {
       );
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-      expect(mockSetInstallation).not.toHaveBeenCalled();
+      // Nothing to wait for: the first usable one is picked.
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
 
     it('reads the server lists again on Check again, keeping the note while it does', async () => {
@@ -427,7 +567,7 @@ describe('InstallationSelect', () => {
         });
       });
 
-      render(<InstallationSelect />);
+      render(<EnvironmentFieldHarness />);
       await userEvent.click(
         screen.getByRole('button', { name: 'Check again' }),
       );
@@ -455,13 +595,14 @@ describe('InstallationSelect', () => {
       mockPresence = { alpha: 'available', beta: 'missing' };
       mockAgentManagerLoading = true;
 
-      const { getByLabelText, getByText } = render(<InstallationSelect />);
+      const { getByRole, getByText } = render(<EnvironmentFieldHarness />);
 
-      expect(getByLabelText('Environment')).toBeInTheDocument();
+      expect(getByRole('button', { name: /Environment/ })).toBeInTheDocument();
       expect(
         getByText('Still checking the remaining environments…'),
       ).toBeInTheDocument();
-      expect(mockSetInstallation).not.toHaveBeenCalled();
+      // Nothing to wait for: the first usable one is picked.
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
   });
 
@@ -487,7 +628,7 @@ describe('InstallationSelect', () => {
       unknownFleet(3);
 
       const { getAllByRole, queryByRole, getByText } = render(
-        <InstallationSelect />,
+        <EnvironmentFieldHarness />,
       );
 
       expect(
@@ -506,7 +647,7 @@ describe('InstallationSelect', () => {
       unknownFleet(50);
 
       const { getAllByRole, getByRole, getByText } = render(
-        <InstallationSelect />,
+        <EnvironmentFieldHarness />,
       );
 
       const links = getAllByRole('link', { name: /^Sign in to muster on/ });
@@ -536,7 +677,7 @@ describe('InstallationSelect', () => {
         ),
       };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('Could not check 50 environments')).toBeInTheDocument();
       expect(
@@ -556,10 +697,15 @@ describe('InstallationSelect', () => {
       };
     });
 
-    it('hides the picker and auto-selects it', () => {
-      const { container } = render(<InstallationSelect />);
+    it('names it in a line of its own and auto-selects it', () => {
+      mockHome = 'solo';
+      const { getByRole, queryByRole } = render(<EnvironmentFieldHarness />);
 
-      expect(container).toBeEmptyDOMElement();
+      // Under More options whatever Organization does; no dropdown.
+      expect(getByRole('region', { name: 'alone' })).toHaveTextContent(
+        /^Runs in Environment: solo$/,
+      );
+      expect(queryByRole('button', { name: /Environment/ })).toBeNull();
       expect(mockSetInstallation).toHaveBeenCalledTimes(1);
       expect(mockSetInstallation).toHaveBeenCalledWith('solo');
     });
@@ -567,23 +713,25 @@ describe('InstallationSelect', () => {
     it('does not re-select once it is already selected', () => {
       mockState = { installation: 'solo' };
 
-      render(<InstallationSelect />);
+      render(<EnvironmentFieldHarness />);
 
       expect(mockSetInstallation).not.toHaveBeenCalled();
     });
 
-    it('renders nothing while the fleet query is still settling', () => {
-      // Rendering the loading card here would make it appear only to vanish
-      // once the sole installation turns out to be usable.
+    it('names it while the fleet query is still settling', () => {
+      // A loading field here would appear only to vanish once the sole
+      // installation turns out to be usable.
       mockModelConfigs = {
         ...mockModelConfigs,
         isLoading: true,
         availableInstallations: [],
       };
 
-      const { container } = render(<InstallationSelect />);
+      const { getByRole } = render(<EnvironmentFieldHarness />);
 
-      expect(container).toBeEmptyDOMElement();
+      expect(getByRole('region', { name: 'alone' })).toHaveTextContent(
+        'Runs in Environment: solo',
+      );
     });
 
     it('still explains itself when the sole installation has no models', () => {
@@ -592,9 +740,9 @@ describe('InstallationSelect', () => {
         availableInstallations: [],
       };
 
-      const { getByText } = render(<InstallationSelect />);
+      const { getByText } = render(<EnvironmentFieldHarness />);
 
-      // Hiding the card here would leave the model picker's "no ModelConfigs on
+      // Hiding the field here would leave the model picker's "no ModelConfigs on
       // X" fallback as the only feedback, which misdiagnoses the problem.
       expect(getByText('No environments with models')).toBeInTheDocument();
       expect(mockSetInstallation).toHaveBeenCalledWith('solo');
@@ -607,7 +755,7 @@ describe('InstallationSelect', () => {
         unreachableInstallations: ['solo'],
       };
 
-      const { getByText, queryByText } = render(<InstallationSelect />);
+      const { getByText, queryByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText(/Could not read 1 environment/)).toBeInTheDocument();
       // Don't claim "no models" when the read never succeeded.
@@ -617,7 +765,7 @@ describe('InstallationSelect', () => {
     it("still explains itself when the sole installation's server list could not be read", () => {
       mockPresence = { solo: 'unknown' };
 
-      const { getByText, queryByText } = render(<InstallationSelect />);
+      const { getByText, queryByText } = render(<EnvironmentFieldHarness />);
 
       expect(
         getByText('Could not check solo for agent-manager'),
@@ -632,7 +780,7 @@ describe('InstallationSelect', () => {
         inaccessibleInstallations: ['solo'],
       };
 
-      const { getByText, queryByText } = render(<InstallationSelect />);
+      const { getByText, queryByText } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('Could not check solo')).toBeInTheDocument();
       expect(queryByText('No environments with models')).toBeNull();
@@ -653,7 +801,7 @@ describe('InstallationSelect', () => {
 
     it('offers three environments without a search', async () => {
       offer(['alpha', 'beta', 'gamma']);
-      render(<InstallationSelect />);
+      render(<EnvironmentFieldHarness />);
 
       await userEvent.click(
         screen.getByRole('button', { name: /Environment/ }),
@@ -671,7 +819,7 @@ describe('InstallationSelect', () => {
           (_, i) => `inst-${String(i).padStart(3, '0')}`,
         ),
       );
-      render(<InstallationSelect />);
+      render(<EnvironmentFieldHarness />);
 
       await userEvent.click(
         screen.getByRole('button', { name: /Environment/ }),
@@ -688,7 +836,7 @@ describe('InstallationSelect', () => {
       availableInstallations: [],
       unreachableInstallations: ['gamma'],
     };
-    const { rerender } = render(<InstallationSelect />);
+    const { rerender } = render(<EnvironmentFieldHarness />);
     expect(
       screen.getByText(/Finding environments with models/),
     ).toBeInTheDocument();
@@ -701,7 +849,7 @@ describe('InstallationSelect', () => {
       availableInstallations: ['alpha'],
     };
     mockPresence = { alpha: 'available' };
-    rerender(<InstallationSelect />);
+    rerender(<EnvironmentFieldHarness />);
     expect(
       screen.getByText(/Still checking the remaining/),
     ).toBeInTheDocument();
@@ -721,7 +869,18 @@ describe('InstallationSelect', () => {
       inaccessibleInstallations: [],
     };
 
-    const { container } = render(<InstallationSelect />);
+    const { container } = render(<EnvironmentFieldHarness />);
+
+    expect(container).toBeEmptyDOMElement();
+    expect(mockSetInstallation).not.toHaveBeenCalled();
+  });
+
+  it('is inert while editing: an existing agent stays where it is', () => {
+    mockEdit = { agent: {} };
+    mockInstallations = [{ name: 'solo' }];
+    mockHome = 'solo';
+
+    const { container } = render(<EnvironmentFieldHarness />);
 
     expect(container).toBeEmptyDOMElement();
     expect(mockSetInstallation).not.toHaveBeenCalled();

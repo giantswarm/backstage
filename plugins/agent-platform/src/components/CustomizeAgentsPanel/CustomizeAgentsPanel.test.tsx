@@ -80,6 +80,10 @@ jest.mock('../AgentsDataProvider', () => {
 // The person as agent-manager names a creator, on every installation: whom
 // "created by me" compares an agent's creator with.
 const mockCaller = 'me@example.com';
+// The New agent form's warm-up has its own tests.
+jest.mock('../../hooks/useWarmNewAgentForm', () => ({
+  useWarmNewAgentForm: () => undefined,
+}));
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilitiesMap: () => () => ({
     isUserScoped: true,

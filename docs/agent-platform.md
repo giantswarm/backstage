@@ -99,14 +99,14 @@ under a name too long for its line and wraps there. A
 row's link is the agent's name, its hit area stretched over the row, so the
 star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person
-create in (`get_info.namespaces.managed`): the only one is picked and named.
-Several of more than one kind are offered as a choice of **Platform**,
-**Organization** and, for a managed namespace that is no organization (not
-`org-<name>`), **Other namespace**; Organization and Other namespace then show a
-dropdown of their namespaces by plain name, and a kind with only one picks it
-straight away. Several of one kind show the dropdown alone. The choice lives in
-the form's state (`tenantKind`) and goes with the environment. Nothing is
-chosen for the person, a dropdown that appears after a blocked Continue stays
+create in (`get_info.namespaces.managed`): the only one is picked and stated
+in a line. Several are one **Organization** dropdown: **Platform**, then the
+organizations by plain name and, for a managed namespace that is no
+organization (not `org-<name>`), the namespace by its name; organizations and
+other namespaces get a section each where both are offered. The first is
+preselected; a pick of the person's own stays while the environment offers
+it, and an environment that does not offers its own first instead. A dropdown
+that appears after a blocked Continue stays
 quiet until the next, and editing an agent never moves it. The form keeps
 "Platform" as the name of that choice. An organization named `none` reads
 `organization none`, never as the platform's "None".
@@ -476,9 +476,14 @@ A wizard (`AgentWizardFrame`, bui). The portal composes nothing: the review is
 agent-manager's dry run and the deploy is agent-manager's `create_agent`, both
 called through the installation's muster as the signed-in person.
 
-1. **Details** — `/customize/agents/new` (`NewAgentPage`). The installation
-   select renders nothing on a single-installation portal. **More options**
-   holds the model, the runtime, the technical name and extra egress origins.
+1. **Details** — `/customize/agents/new` (`NewAgentPage`). Environment and
+   Organization sit together, Environment first: in the main form when
+   either is a dropdown, else both are lines under **More options**. A
+   single-installation portal names its environment in a line first under
+   More options, whatever Organization does; with several usable, its dropdown preselects the home installation
+   (`gs.authProvider`'s), else the first usable one; a sole usable
+   environment is a line. **More options** holds the model, the runtime, the
+   technical name and extra egress origins.
    `CreateAgentAssist` appears when an `agentManagement` meta-agent resolves.
 2. **Skills** — `/customize/agents/new/skills` (`NewAgentSkillsPage`); see
    "Skill discovery".
@@ -563,7 +568,7 @@ because it signs as muster.
 
 `ModelConfigPicker` lists the selected installation's kagent `ModelConfig`s.
 The preselection is the only model, else the installation's default, else the
-first. `InstallationSelect` offers only installations known to have at least
+first. `useEnvironmentField` offers only installations known to have at least
 one `ModelConfig`, resolved incrementally.
 
 `ModelConfigsProvider` keeps the fleet-wide query cheap:
@@ -1009,7 +1014,7 @@ keys (`lib/queryKeys.ts`): never persisted, and re-read after sign-in.
 
 Only installations whose muster lists agent-manager (`core_mcpserver_list`
 through `musterApi.listServers`) are offered for creation
-(`useAgentManagerAvailability`, `InstallationSelect`). One with models but no
+(`useAgentManagerAvailability`, `useEnvironmentField`). One with models but no
 agent-manager is named with the reason. There is no fallback write path.
 
 ### Deploy through agent-manager
@@ -2845,7 +2850,7 @@ is typed. `isStartableAgent` is shared, so the picker and the decision to offer
 one agree.
 
 A single offered agent is preselected and the control disabled, but still named
-to confirm the target. `InstallationSelect` does the same for one installation.
+to confirm the target. `useEnvironmentField` does the same for one installation.
 A lone non-ready agent is never preselected.
 
 The start screen tells apart three reasons for having no composer: nothing

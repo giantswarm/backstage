@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -20,13 +21,7 @@ import {
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
-import {
-  tenantGroups,
-  tenantKindOf,
-  tenantKindProblem,
-  tenantPickProblem,
-  type TenantKind,
-} from '../../lib/tenants';
+import { defaultTenant } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
@@ -53,20 +48,20 @@ export type NewAgentFormState = {
    * Creating only: the tenants (namespaces) on the installation in which the
    * person may create an agent, as agent-manager's `get_info` answers them
    * for the caller (`namespaces.managed`, a `SelfSubjectAccessReview` per
-   * namespace). `undefined` until it has answered: then nothing is required.
+   * namespace). `undefined` until it has answered.
    */
   tenantChoices?: string[];
+  /**
+   * Creating only: agent-manager's `get_info` could not be read on the
+   * installation, so there are no {@link tenantChoices} to pick from. Not
+   * kept in the draft.
+   */
+  tenantChoicesFailed?: boolean;
   /**
    * Creating only: the tenant, one of {@link tenantChoices}, the agent is
    * created in -- the namespace its model, Harness and release live in.
    */
   tenant?: string;
-  /**
-   * Creating only: the kind of place chosen where several are offered
-   * (Platform, Organization, Other namespace), set before {@link tenant} when
-   * the kind's dropdown has nothing picked yet. Cleared with the environment.
-   */
-  tenantKind?: TenantKind;
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
@@ -198,17 +193,15 @@ export type NewAgentFormContextValue = {
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
   /**
-   * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
-   * stays when it is still a choice; otherwise the only choice is picked.
+   * Sets {@link NewAgentFormState.tenantChoices}. The tenant held stays when
+   * it is still a choice; else the person's own last pick, when it is one
+   * (it survives an environment change); else the first choice offered.
    */
   setTenantChoices: (choices: string[]) => void;
-  /** Picks the tenant, and its kind; a model of another namespace is dropped. */
+  /** Sets {@link NewAgentFormState.tenantChoicesFailed}. */
+  setTenantChoicesFailed: (failed: boolean) => void;
+  /** Picks the tenant; a model of another namespace is dropped. */
   selectTenant: (tenant: string) => void;
-  /**
-   * Chooses the kind of place (Platform, Organization, Other namespace): the
-   * kind's only namespace is picked with it, a tenant of another kind goes.
-   */
-  selectTenantKind: (kind: TenantKind) => void;
   selectModelConfig: (
     name: string,
     namespace: string,
@@ -326,7 +319,6 @@ export type NewAgentField =
   | 'systemMessage'
   | 'installation'
   | 'tenant'
-  | 'tenantPick'
   | 'model'
   | 'slug'
   | 'egress';
@@ -406,26 +398,6 @@ function hasCreateInput(state: NewAgentFormState): boolean {
     state.toolset.length > 0 ||
     state.toolsChatOnly !== initialState.toolsChatOnly
   );
-}
-
-/**
- * The state with its {@link NewAgentFormState.tenantKind} settled: `tenant`
- * kept where it is of that kind, else the kind's only namespace picked, else
- * none. No kind keeps `tenant` as it is.
- */
-function withTenantKind(
-  state: NewAgentFormState,
-  tenant: string | undefined,
-): NewAgentFormState {
-  const kind = state.tenantKind;
-  if (!kind) {
-    return withTenant(state, tenant);
-  }
-  if (tenant && tenantKindOf(tenant) === kind) {
-    return withTenant(state, tenant);
-  }
-  const members = tenantGroups(state.tenantChoices ?? []).byKind[kind];
-  return withTenant(state, members.length === 1 ? members[0] : undefined);
 }
 
 /**
@@ -511,6 +483,9 @@ export function NewAgentFormProvider({
   persistDraft?: boolean;
 }) {
   const [state, setState] = useState<NewAgentFormState>(seed);
+  // The tenant the person picked themselves, so another environment that
+  // offers it too picks it again instead of its own first.
+  const ownTenantPick = useRef<string>();
   // The slug auto-derives from the name until the user edits it by hand — and
   // never while editing: an existing agent's technical name cannot change.
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
@@ -522,6 +497,7 @@ export function NewAgentFormProvider({
     // egress is read again, like the tenant choices.
     const {
       tenantChoices: _choices,
+      tenantChoicesFailed: _failed,
       droppedEgress: _dropped,
       egressSetByPlatform: _setByPlatform,
       ...kept
@@ -573,19 +549,19 @@ export function NewAgentFormProvider({
     if (!state.installation) {
       fieldErrors.installation = 'Choose an environment.';
     }
-    if (!edit && state.installation && state.tenantChoices) {
-      if (state.tenantChoices.length === 0) {
+    // No agent is created without its place: Continue waits for agent-manager
+    // to say where the person may create, and stops where it could not.
+    if (!edit && state.installation && !state.tenant) {
+      if (state.tenantChoices?.length === 0) {
         fieldErrors.tenant = `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
-      } else if (!state.tenant) {
-        // Several kinds: the kind first (`tenant`), then the kind's dropdown
-        // (`tenantPick`), each its own field.
-        const { kinds } = tenantGroups(state.tenantChoices);
-        const kind = kinds.length === 1 ? kinds[0] : state.tenantKind;
-        if (kind) {
-          fieldErrors.tenantPick = tenantPickProblem(kind);
-        } else {
-          fieldErrors.tenant = tenantKindProblem(kinds);
-        }
+      } else if (state.tenantChoices) {
+        // A guard only: a choice is always picked once there are choices
+        // (`setTenantChoices`).
+        fieldErrors.tenant = 'Choose an organization.';
+      } else if (state.tenantChoicesFailed) {
+        fieldErrors.tenant = 'Could not read where you may create agents.';
+      } else {
+        fieldErrors.tenant = 'Still reading where you may create agents.';
       }
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
@@ -600,7 +576,6 @@ export function NewAgentFormProvider({
         'slug',
         'installation',
         'tenant',
-        'tenantPick',
         'model',
       ] as const
     )
@@ -649,8 +624,8 @@ export function NewAgentFormProvider({
           ...prev,
           installation,
           tenantChoices: undefined,
+          tenantChoicesFailed: undefined,
           tenant: undefined,
-          tenantKind: undefined,
           defaultWorkspace: '',
           egressPolicyRefs: [],
           modelConfigName: undefined,
@@ -663,40 +638,33 @@ export function NewAgentFormProvider({
         setState(prev => {
           if (
             prev.tenantChoices?.join(',') === choices.join(',') &&
-            (prev.tenant === undefined || choices.includes(prev.tenant))
+            (prev.tenant === undefined
+              ? choices.length === 0
+              : choices.includes(prev.tenant))
           ) {
             return prev;
           }
           let tenant = prev.tenant;
           if (!tenant || !choices.includes(tenant)) {
-            tenant = choices.length === 1 ? choices[0] : undefined;
+            const own = ownTenantPick.current;
+            tenant =
+              own && choices.includes(own) ? own : defaultTenant(choices);
           }
-          // A kind chosen without a pick (a restored draft) stays only where
-          // these choices still offer it as a choice among several.
-          const { kinds } = tenantGroups(choices);
-          let tenantKind: TenantKind | undefined;
-          if (tenant) {
-            tenantKind = tenantKindOf(tenant);
-          } else if (
-            prev.tenantKind &&
-            kinds.length > 1 &&
-            kinds.includes(prev.tenantKind)
-          ) {
-            tenantKind = prev.tenantKind;
-          }
-          return withTenantKind(
-            { ...prev, tenantChoices: choices, tenantKind },
+          return withTenant(
+            { ...prev, tenantChoices: choices, tenantChoicesFailed: undefined },
             tenant,
           );
         }),
-      selectTenant: tenant =>
+      setTenantChoicesFailed: failed =>
         setState(prev =>
-          withTenant({ ...prev, tenantKind: tenantKindOf(tenant) }, tenant),
+          Boolean(prev.tenantChoicesFailed) === failed
+            ? prev
+            : { ...prev, tenantChoicesFailed: failed || undefined },
         ),
-      selectTenantKind: kind =>
-        setState(prev =>
-          withTenantKind({ ...prev, tenantKind: kind }, prev.tenant),
-        ),
+      selectTenant: tenant => {
+        ownTenantPick.current = tenant;
+        setState(prev => withTenant(prev, tenant));
+      },
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick. A model outside the picked tenant is not taken: a

@@ -46,6 +46,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     installations: [{ name: 'alpha' }, { name: 'beta' }],
     isLoading: false,
   }),
+  useHomeInstallation: () => ({ home: undefined, isLoading: false }),
 }));
 let mockAgentManagerInfo: {
   info?: { namespaces: { managed: string[] } };
@@ -67,7 +68,10 @@ jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => mockAgentManagerInfo,
 }));
 jest.mock('../ModelConfigPicker', () => ({ ModelConfigPicker: () => null }));
-jest.mock('../TenantPicker', () => ({ TenantPicker: () => null }));
+jest.mock('../NewAgentPage/useOrganizationField', () => ({
+  soleOrganizationLabel: (namespace: string) => namespace,
+  useOrganizationField: () => ({ inMain: false, field: null }),
+}));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => null,
   // The platform Harness not read: the summaries name it by its mark.
@@ -271,15 +275,15 @@ describe('the new-agent draft', () => {
     expect(screen.queryByText(/^tools step/)).not.toBeInTheDocument();
     unmount();
 
-    // team-a is no longer one the person may create in: the tenant goes, so
-    // the form is incomplete again (the real step then sends them to Details).
+    // team-a is no longer one the person may create in: the first place
+    // offered takes its place.
     mockAgentManagerInfo = {
       isLoading: false,
       info: { namespaces: { managed: ['team-b', 'team-c'] } },
     };
     await renderFlow('/customize/agents/new/tools');
     expect(
-      await screen.findByText('tools step for "Support triage" in no tenant'),
+      await screen.findByText('tools step for "Support triage" in team-b'),
     ).toBeInTheDocument();
   });
 
