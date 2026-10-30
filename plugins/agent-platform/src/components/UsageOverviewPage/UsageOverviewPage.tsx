@@ -1,12 +1,15 @@
 import { useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usageCostRouteRef } from '../../routes';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useUsageOrganization } from '../../hooks/useUsageOrganization';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useCurrency } from '../../lib/formatNumbers';
+import { tenantInSentence } from '../../lib/tenants';
 import {
   CALLS_SERIES,
   type LlmDailySeries,
@@ -123,11 +126,20 @@ function topAgentRows(usage: LlmUsage): TopAgentsRow[] {
 export function UsageOverviewPage() {
   const classes = useStyles();
   const { days } = useUsageWindow();
+  // The organization scope narrows every gateway figure to one
+  // organization's agents, as on the Cost tab; the reliability strip stays
+  // the whole listener's, whose metrics carry no namespace.
+  const { namespace } = useUsageOrganization();
   // No `comparePrevious`: the change against the previous window is a money
   // trend, and it lives on the Cost tab with the extra query it costs. The
   // daily calls feed the heatmap, which only this view draws.
-  const view = useLlmUsageView({ days, dailyCalls: true });
+  const view = useLlmUsageView({ days, org: namespace, dailyCalls: true });
+  const whose = namespace
+    ? `the model use of ${tenantInSentence(namespace)}`
+    : "everyone's model use";
   const costRoute = useRouteRef(usageCostRouteRef);
+  // The Cost link keeps the screen's scope, as the tabs do.
+  const { search } = useLocation();
   const { usage, installation, isResolvedFromAll } = view;
   const currency = useCurrency(installation);
 
@@ -173,13 +185,13 @@ export function UsageOverviewPage() {
         <Text as="p" variant="body-medium" color="secondary">
           {installation ? (
             <>
-              Shows everyone's model use on <strong>{installation}</strong> over
-              the last {days} days.
+              Shows {whose} on <strong>{installation}</strong> over the last{' '}
+              {days} days.
               {isResolvedFromAll &&
                 ' It shows one environment at a time; switch it in the Environment control.'}
             </>
           ) : (
-            `Shows everyone's model use over the last ${days} days.`
+            `Shows ${whose} over the last ${days} days.`
           )}
         </Text>
 
@@ -215,7 +227,7 @@ export function UsageOverviewPage() {
               currency={currency}
               windowDays={days}
               sessions={sessions}
-              costHref={costRoute?.()}
+              costHref={costRoute ? `${costRoute()}${search}` : undefined}
             />
 
             {/* The headline trend beside who drives it. */}
@@ -246,6 +258,7 @@ export function UsageOverviewPage() {
               <ReliabilityStrip
                 reliability={usage.reliability}
                 windowDays={usage.windowDays}
+                narrowedTo={namespace ? tenantInSentence(namespace) : undefined}
               />
             </UsageCard>
 

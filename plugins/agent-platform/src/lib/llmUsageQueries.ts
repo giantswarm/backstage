@@ -112,6 +112,22 @@ function dataBefore(only: string, secondsAgo: number): string {
 }
 
 /**
+ * The namespaces the gateway attributed calls to in the window, one series
+ * per `agent_namespace`, for the Organization scope's options. Never
+ * narrowed to an organization: the options are what the control chooses
+ * from, so they are the same whichever one is chosen. The value is a count
+ * of series and is not read.
+ *
+ * Tokens rather than cost, as {@link dataBefore}: every model call records
+ * them, so an organization whose models the catalogue cannot price is still
+ * an option.
+ */
+export function organizationsSeenQueryFor(days?: number): string {
+  const window = `${windowDaysOf(days)}d`;
+  return `count by (agent_namespace) (last_over_time(${TokenUsage.name}_sum[${window}]))`;
+}
+
+/**
  * The LLM usage queries for a window and, optionally, one organization.
  *
  * `previousCost` is the same spend over the window just before this one
