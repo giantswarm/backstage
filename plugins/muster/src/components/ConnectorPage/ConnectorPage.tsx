@@ -35,6 +35,7 @@ import {
   ShellPageBadgeSkeleton,
   StatusDot,
   type StatusDotTone,
+  TagList,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -46,6 +47,7 @@ import {
 import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
+import { serverTags } from '../../lib/serverList';
 import { mcpServersRouteRef } from '../../routes';
 import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
 import {
@@ -481,6 +483,10 @@ function ConnectorPageContent({
   // The Details tab's plain facts; the address and the rest of the MCPServer
   // are in its Technical details.
   const facts: Fact[] = [];
+  const tags = serverTags(members);
+  if (tags.length > 0) {
+    facts.push({ label: 'Tags', value: <TagList tags={tags} /> });
+  }
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });
   }

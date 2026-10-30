@@ -29,6 +29,8 @@ import {
   StackedRowList,
   StatusDot,
   isAwaitingData,
+  TagList,
+  tagsFacet,
   stopRowPress,
   useCatalogFilters,
   usePhoneLayout,
@@ -95,6 +97,9 @@ const useStyles = makeStyles({
   },
 });
 
+/** Tags a row shows before "+N", as on agent rows; the rest are on its page. */
+export const ROW_TAGS_MAX = 3;
+
 export type CustomizeConnectorsPanelProps = {
   search: string;
   /** The sub-tab to list; the customer's own connectors by default. */
@@ -114,6 +119,7 @@ type Row = {
   /** Why that sign-in cannot help now (a deactivated connector). */
   signInGate?: string;
   reach?: ConnectorReach;
+  tags: string[];
 };
 
 /** A row muster asks this person to sign in to. */
@@ -124,8 +130,8 @@ function hasSignIn(row: Row): row is SignInRow {
 }
 
 /**
- * The Connectors tab's facets (T49): how a person signs in, and whether the
- * connector answers now (with this person's sign-in).
+ * The Connectors tab's facets (T49): how a person signs in, whether the
+ * connector answers now (with this person's sign-in), and its tags.
  */
 const CONNECTOR_FACETS: CatalogFacet<Row>[] = [
   { id: 'auth', label: 'Sign-in', value: row => row.auth || undefined },
@@ -137,6 +143,7 @@ const CONNECTOR_FACETS: CatalogFacet<Row>[] = [
       CONNECTOR_REACH_LABELS[value as ConnectorReach] ?? value,
     order: CONNECTOR_REACH_ORDER,
   },
+  tagsFacet<Row>(row => row.tags),
 ];
 
 function ConnectorName({ row, href }: { row: Row; href?: string }) {
@@ -282,7 +289,13 @@ function ConnectorStackedRow({
         {row.entry.displayName.charAt(0).toUpperCase()}
       </span>
     ),
-    facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
+    facts: [
+      row.tags.length > 0 ? (
+        <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+      ) : null,
+      row.auth,
+      row.tools ?? (toolsPending ? '…' : ''),
+    ],
   };
   if (hasSignIn(row)) {
     return (
@@ -305,7 +318,7 @@ function ConnectorStackedRow({
  *
  * - line 1: the letter tile, the connector's name (the row's link), its
  *   state, and Sign in at the end as the row's action;
- * - line 2: how one signs in · its tools;
+ * - line 2: its tags · how one signs in · its tools;
  * - under them, the description (two lines), and an outstanding sign-in's
  *   way back into the page.
  *
@@ -424,6 +437,7 @@ function ConnectorsTable({
           tools: toolsLabel(entry),
           status: musterStatus(musterSession),
           ...(reach ? { reach } : {}),
+          tags: entry.tags,
         };
       }
       const server = rowServer(entry, installation);
@@ -451,6 +465,7 @@ function ConnectorsTable({
           ? { signInGate: deactivatedSignInGate('connector') }
           : {}),
         ...(reach ? { reach } : {}),
+        tags: entry.tags,
       };
     },
     [installation, authStatus.data, musterSession],
@@ -489,6 +504,16 @@ function ConnectorsTable({
       isRowHeader: true,
       defaultWidth: '3fr',
       cell: row => <ConnectorName row={row} href={hrefOf(row)} />,
+    },
+    {
+      id: 'tags',
+      label: 'Tags',
+      defaultWidth: '1.4fr',
+      cell: row => (
+        <Cell>
+          <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+        </Cell>
+      ),
     },
     {
       id: 'auth',

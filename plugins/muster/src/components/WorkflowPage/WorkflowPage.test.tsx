@@ -486,6 +486,22 @@ describe('WorkflowPage', () => {
     expect(within(section).getByText(/^Created/)).toBeInTheDocument();
   });
 
+  it('shows its tags under what it is for', async () => {
+    mockWorkflows = [
+      deployWith({}, { 'ui.giantswarm.io/tags': 'release,ops' }),
+    ];
+    await renderAt(`${BASE}/deploy`);
+
+    const section = await screen.findByRole('region', {
+      name: 'What it’s for',
+    });
+    expect(
+      within(within(section).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['release', 'ops']);
+  });
+
   it('says so where the definition gives no description', async () => {
     mockWorkflows = [
       new MusterWorkflow(

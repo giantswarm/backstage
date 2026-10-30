@@ -61,6 +61,7 @@ function makeServer(
     toolGroup?: string;
     family?: string;
     displayName?: string;
+    tags?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -69,13 +70,12 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name,
-        ...(options.displayName
-          ? {
-              annotations: {
-                'ui.giantswarm.io/display-name': options.displayName,
-              },
-            }
-          : {}),
+        annotations: {
+          ...(options.displayName
+            ? { 'ui.giantswarm.io/display-name': options.displayName }
+            : {}),
+          ...(options.tags ? { 'ui.giantswarm.io/tags': options.tags } : {}),
+        },
         labels: options.toolGroup
           ? { [TOOL_GROUP_LABEL]: options.toolGroup }
           : {},
@@ -993,6 +993,41 @@ describe('CustomizeConnectorsPanel', () => {
       // A second sign-in kind widens the list.
       await pickFilter('sign-in', 'Your own account 1');
       expect(bodyRows()).toHaveLength(2);
+    });
+
+    it('filters by tags, after the type’s own facets, and searches them', async () => {
+      mockServers = [
+        makeServer('jira', { tags: 'ticketing,ops,support,triage' }),
+        makeServer('pagerduty', { tags: 'ops' }),
+        makeServer('web-search'),
+      ];
+      await renderPanel();
+
+      await screen.findByRole('button', { name: /Filter by connection/ });
+      expect(
+        filterDropdown('connection').compareDocumentPosition(
+          filterDropdown('tags'),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // A row shows three tags, then "+N".
+      const jira = within(rowOf('jira')).getByRole('list', { name: 'Tags' });
+      expect(within(jira).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(jira).getByText('1 more tags')).toBeInTheDocument();
+
+      await pickFilter('tags', 'ops 2');
+      expect(bodyRows()).toHaveLength(2);
+      expect(screen.queryByRole('row', { name: /^web-search/ })).toBeNull();
+    });
+
+    it('finds a connector by a tag', async () => {
+      mockServers = [
+        makeServer('jira', { tags: 'ticketing' }),
+        makeServer('web-search'),
+      ];
+      await renderPanel('ticket');
+
+      expect(await screen.findByRole('row', { name: /^jira/ })).toBeVisible();
+      expect(screen.queryByRole('row', { name: /^web-search/ })).toBeNull();
     });
 
     it('says when a search and a filter leave nothing, and clears the filter', async () => {

@@ -32,6 +32,7 @@ function single(s: MCPServer, toolCount?: number): ServerListEntry {
     id: s.getName(),
     displayName: s.getName(),
     row: { kind: 'server', server: s },
+    tags: [],
     shadowed: false,
     toolCount,
   };
@@ -114,6 +115,7 @@ describe('connectorStatus', () => {
         family: 'kubernetes',
         servers: [server('a'), server('b', 'Failed')],
       } as never,
+      tags: [],
       shadowed: false,
     };
     expect(connectorStatus(entry)).toEqual({
@@ -139,6 +141,7 @@ describe('connectorReach', () => {
     id: 'kubernetes',
     displayName: 'kubernetes',
     row: { kind: 'family', family: 'kubernetes', servers } as never,
+    tags: [],
     shadowed: false,
   });
 
@@ -285,6 +288,7 @@ describe('unsearchedToolsNotes', () => {
         id: 'muster',
         displayName: 'muster',
         row: { kind: 'core' as const },
+        tags: [],
         shadowed: false,
         toolCount: 0,
       },

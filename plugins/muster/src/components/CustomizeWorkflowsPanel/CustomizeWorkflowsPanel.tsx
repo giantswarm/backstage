@@ -13,6 +13,8 @@ import {
   ShowMore,
   type StackedRowItem,
   StackedRowList,
+  TagList,
+  tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -56,6 +58,7 @@ type Row = {
   name: string;
   description: string;
   category?: string;
+  tags: string[];
   steps: string;
   /** Derived read-only hint of `workflow_<name>`; absent while unknown. */
   effect?: ToolEffect;
@@ -72,6 +75,9 @@ export function runsLabel(response: WorkflowExecutionListResponse): string {
   const runs = countNoun(response.total, 'run');
   return latest ? `${runs} · ${latest}` : runs;
 }
+
+/** Tags a row shows before "+N", as on agent rows; the rest are on its page. */
+export const ROW_TAGS_MAX = 3;
 
 const SOURCE_LABELS = {
   gitops: 'GitOps',
@@ -128,6 +134,7 @@ function WorkflowRows({
       name: workflow.getName(),
       description: workflow.getDescription() ?? '',
       ...(category ? { category } : {}),
+      tags: workflow.getTags(),
       // The steps at every depth: a loop's steps count, not only the loop.
       steps: workflowShapeLabel(workflow.getSteps()),
       ...(effect ? { effect } : {}),
@@ -157,6 +164,16 @@ function WorkflowRows({
       label: 'Category',
       defaultWidth: '1fr',
       cell: row => <CellText title={row.category ?? ''} />,
+    },
+    {
+      id: 'tags',
+      label: 'Tags',
+      defaultWidth: '1.4fr',
+      cell: row => (
+        <Cell>
+          <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+        </Cell>
+      ),
     },
     {
       id: 'steps',
@@ -197,7 +214,7 @@ function WorkflowRows({
     // The phone layout (T22 B9): six columns in 343px froze the five
     // secondary ones at bui's 75px minimum and left the name ~51px of text,
     // with its access badge clipped. A stacked row per workflow instead:
-    // the name (the row's link) and its access badge, then category · steps ·
+    // the name (the row's link) and its access badge, then category · tags · steps ·
     // runs · source, then two lines of what it does.
     const items = rows.map<StackedRowItem>(row => {
       const href = hrefOf(row);
@@ -208,7 +225,15 @@ function WorkflowRows({
         ...(row.effect
           ? { status: <WorkflowEffectBadge effect={row.effect} /> }
           : {}),
-        facts: [row.category, row.steps, row.runs, row.source],
+        facts: [
+          row.category,
+          row.tags.length > 0 ? (
+            <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+          ) : null,
+          row.steps,
+          row.runs,
+          row.source,
+        ],
         ...(row.description ? { description: row.description } : {}),
       };
     });
@@ -261,8 +286,9 @@ function WorkflowsTable({
     staleTime: 30_000,
   });
   const facets = useMemo<CatalogFacet<MusterWorkflow>[]>(() => {
+    const tags = tagsFacet<MusterWorkflow>(workflow => workflow.getTags());
     if (!lastRuns.data) {
-      return [];
+      return [tags];
     }
     const stateOf = lastRunStates(lastRuns.data);
     return [
@@ -273,6 +299,7 @@ function WorkflowsTable({
         optionLabel: value => LAST_RUN_LABELS[value as LastRunState] ?? value,
         order: LAST_RUN_ORDER,
       },
+      tags,
     ];
   }, [lastRuns.data]);
 
@@ -291,6 +318,7 @@ function WorkflowsTable({
               workflow.getName(),
               workflow.getDescription() ?? '',
               workflow.getCategory() ?? '',
+              ...workflow.getTags(),
             ].some(field => field.toLowerCase().includes(needle)),
           )
         : sorted,
@@ -395,7 +423,7 @@ function Panel({ search, createAssist }: CustomizeWorkflowsPanelProps) {
  * `workflow_<name>` tool, read-only only when every step's tool is), run
  * count with the latest run, and whether GitOps or muster's own store holds
  * the definition. Each row opens the workflow's page. Filtered by how the
- * last run went, once runs tell the workflows apart (T49). Must be mounted
+ * last run went, once runs tell the workflows apart (T49), and by tags. Must be mounted
  * inside a `CustomizeMusterProvider`.
  */
 export function CustomizeWorkflowsPanel(props: CustomizeWorkflowsPanelProps) {

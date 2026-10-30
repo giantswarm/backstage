@@ -4,6 +4,7 @@ import { makeStyles, Theme } from '@material-ui/core';
 import {
   DateComponent,
   PageSection,
+  TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MusterWorkflow } from '../../../lib/k8s';
 import { ServerPrefixInfo } from '../../../lib/toolGrouping';
@@ -191,6 +192,7 @@ export function WorkflowOverviewTab({
             Its definition gives no description.
           </Text>
         )}
+        <TagList tags={workflow.getTags()} />
         {created && (
           <Text as="p" variant="body-small" color="secondary">
             Created <DateComponent value={created} relative tooltip />

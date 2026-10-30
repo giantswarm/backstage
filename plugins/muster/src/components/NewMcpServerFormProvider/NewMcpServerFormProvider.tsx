@@ -38,6 +38,10 @@ export type NewMcpServerFormContextValue = {
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
+  /** Adds tags not yet present (already normalized and valid). */
+  addTags: (tags: readonly string[]) => void;
+  removeTag: (tag: string) => void;
+  setTagDraft: (draft: string) => void;
   setInstallation: (installation: string | undefined) => void;
   setUrl: (url: string) => void;
   setTransport: (transport: McpServerTransport) => void;
@@ -153,14 +157,15 @@ const NewMcpServerFormContext = createContext<
 >(undefined);
 
 /**
- * The registered server a run edits, the form state it reads back as, and its
- * `ui.giantswarm.io/display-name` (`undefined` without one) — what an update
- * leaves alone unless the name changes.
+ * The registered server a run edits, the form state it reads back as, its
+ * `ui.giantswarm.io/display-name` (`undefined` without one) and its tags —
+ * what an update leaves alone unless they change.
  */
 type EditBase = {
   definition: Record<string, unknown>;
   form: NewMcpServerFormState;
   displayName: string | undefined;
+  tags: string[];
 };
 
 /** An unfinished registration an edit set aside. */
@@ -225,9 +230,11 @@ export function NewMcpServerFormProvider({
       saved.displayName === undefined
         ? latest.current.base?.displayName
         : saved.displayName || undefined;
+    // Likewise tags: a save without them kept what was there.
+    const tags = saved.tags ?? latest.current.base?.tags ?? [];
     const form = { ...current.state, name: displayName ?? saved.name };
     setState(form);
-    setBase({ definition: saved, form, displayName });
+    setBase({ definition: saved, form, displayName, tags });
   }, []);
 
   const startEdit = useCallback(
@@ -255,6 +262,7 @@ export function NewMcpServerFormProvider({
         definition: toMcpServerDefinition(server),
         form,
         displayName: server.getDisplayNameAnnotation(),
+        tags: server.getTags(),
       });
       setState(form);
     },
@@ -296,6 +304,21 @@ export function NewMcpServerFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
+      addTags: tags =>
+        setState(prev => {
+          const added = [...new Set(tags)].filter(
+            tag => !prev.tags.includes(tag),
+          );
+          return added.length > 0
+            ? { ...prev, tags: [...prev.tags, ...added] }
+            : prev;
+        }),
+      removeTag: tag =>
+        setState(prev => ({
+          ...prev,
+          tags: prev.tags.filter(each => each !== tag),
+        })),
+      setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
       setInstallation: installation =>
         setState(prev => ({ ...prev, installation })),
       setUrl: url => setState(prev => ({ ...prev, url })),
@@ -358,7 +381,10 @@ export function NewMcpServerFormProvider({
       definition: base
         ? mergeOntoExisting(
             base.definition,
-            composeMcpServerDefinition(state, { stored: base.displayName }),
+            composeMcpServerDefinition(state, {
+              stored: base.displayName,
+              tags: base.tags,
+            }),
           )
         : composeMcpServerDefinition(state),
     };

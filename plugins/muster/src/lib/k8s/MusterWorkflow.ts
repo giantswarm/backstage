@@ -2,6 +2,10 @@ import {
   KubeObject,
   KubeObjectInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** Optional category label used to group workflows (a workflow-grouping convention). */
 export const WORKFLOW_CATEGORY_LABEL = 'klaus-lab.giantswarm.io/category';
@@ -172,5 +176,14 @@ export class MusterWorkflow extends KubeObject<MusterWorkflowInterface> {
 
   getCategory() {
     return this.findLabel(WORKFLOW_CATEGORY_LABEL);
+  }
+
+  /**
+   * The workflow's tags (`ui.giantswarm.io/tags`), beside its category. None
+   * when the annotation is missing; a value that is not a valid tag is left
+   * out.
+   */
+  getTags(): string[] {
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
   }
 }

@@ -15,6 +15,9 @@ import {
   WIZARD_AUTH_MODES,
   sigv4Advisories,
   takesDisplayName,
+  takesTags,
+  tagsArgument,
+  mcpServerDetailsProblems,
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
@@ -1476,5 +1479,70 @@ describe('wizardAuthModeLabel', () => {
     ).map(wizardAuthModeLabel);
 
     expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+describe('tags', () => {
+  it('sends tags on create only when there are some', () => {
+    expect(composeMcpServerDefinition(state()).tags).toBeUndefined();
+    expect(
+      composeMcpServerDefinition(state({ tags: ['ops', 'ticketing'] })).tags,
+    ).toEqual(['ops', 'ticketing']);
+  });
+
+  it('sends the whole list on an edit only when it changed', () => {
+    const edit = { stored: ['ops', 'ticketing'] };
+    expect(tagsArgument(['ticketing', 'ops'], edit)).toBeUndefined();
+    expect(tagsArgument(['ops'], edit)).toEqual(['ops']);
+    expect(tagsArgument([], edit)).toEqual([]);
+    expect(
+      composeMcpServerDefinition(state({ tags: ['ops'] }), {
+        stored: 'Weather MCP',
+        tags: ['ops'],
+      }).tags,
+    ).toBeUndefined();
+  });
+
+  it('never carries the stored tags into an update', () => {
+    const merged = mergeOntoExisting(
+      { name: 'weather-mcp', tags: ['ops'], timeout: 30 },
+      composeMcpServerDefinition(state(), { stored: undefined, tags: [] }),
+    );
+    expect(merged).not.toHaveProperty('tags');
+    expect(merged).toHaveProperty('timeout', 30);
+  });
+
+  it('blocks Continue on a typed tag that cannot be one', () => {
+    expect(mcpServerDetailsProblems(state({ tagDraft: '!!' }))).toContainEqual({
+      field: 'tags',
+      message: 'Use letters and numbers.',
+    });
+    expect(
+      mcpServerDetailsProblems(state({ tagDraft: 'on call' })).map(
+        problem => problem.field,
+      ),
+    ).not.toContain('tags');
+  });
+
+  it('reads an edited server’s tags into the form', () => {
+    const server = new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: {
+          name: 'weather',
+          annotations: { 'ui.giantswarm.io/tags': 'ops,weather' },
+        },
+        spec: { type: 'streamable-http', url: 'https://w.example.com/mcp' },
+      } as never,
+      'gaggle',
+    );
+    expect(formStateFromServer(server).tags).toEqual(['ops', 'weather']);
+  });
+
+  it('takes tags only from a tool whose schema declares them', () => {
+    expect(takesTags({ properties: { tags: { type: 'array' } } })).toBe(true);
+    expect(takesTags({ properties: { name: {} } })).toBe(false);
+    expect(takesTags(undefined)).toBe(false);
   });
 });

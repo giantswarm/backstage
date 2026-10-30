@@ -75,6 +75,7 @@ function makeServer(opts: {
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
   displayName?: string;
+  tags?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -83,13 +84,12 @@ function makeServer(opts: {
       metadata: {
         name: opts.name,
         namespace: 'muster',
-        ...(opts.displayName
-          ? {
-              annotations: {
-                'ui.giantswarm.io/display-name': opts.displayName,
-              },
-            }
-          : {}),
+        annotations: {
+          ...(opts.displayName
+            ? { 'ui.giantswarm.io/display-name': opts.displayName }
+            : {}),
+          ...(opts.tags ? { 'ui.giantswarm.io/tags': opts.tags } : {}),
+        },
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -410,6 +410,20 @@ describe('ConnectorPage', () => {
         // The back arrow has no text, only its label.
         .map(link => link.textContent || link.getAttribute('aria-label')),
     ).toEqual(['Back to Connectors', 'Connectors']);
+  });
+
+  it('lists a connector’s tags on the Details tab', async () => {
+    mockServers = [makeServer({ name: 'jira', tags: 'ticketing,support' })];
+    await renderAt(`${BASE}/jira`);
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(within(facts).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['ticketing', 'support']);
   });
 
   it('lists the facts on the Details tab, not beside the content', async () => {

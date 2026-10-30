@@ -4,6 +4,8 @@ import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
+  tagCounts,
+  TagsField,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -13,7 +15,7 @@ import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
-import { useTakesDisplayName } from '../NewMcpServerReviewPage';
+import { useTakesDisplayName, useTakesTags } from '../NewMcpServerReviewPage';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
@@ -126,6 +128,9 @@ function inStepWords(message: string | undefined): string | undefined {
  * later, read from the tool's input schema), and not on a family member,
  * whose members share one name a rename of one would split.
  *
+ * Tags show only where the installation's muster takes them (read from the
+ * create or update tool's input schema), since an older one refuses them.
+ *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
  * per-person visibility to map it to, so the wizard does not pretend to ask.
@@ -138,6 +143,9 @@ export function NewConnectorConnectPage() {
     state,
     setName,
     setDescription,
+    addTags,
+    removeTag,
+    setTagDraft,
     setInstallation,
     setUrl,
     setTransport,
@@ -171,6 +179,16 @@ export function NewConnectorConnectPage() {
         .find(server => server.getName() === registeredName)
         ?.getFamily()
     : undefined;
+  // Whether this muster keeps tags: the tool this run writes with.
+  const takesTags = useTakesTags(
+    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+    registeredName ? registeredInstallation : state.installation,
+  );
+  // The tags the installation's connectors already use, offered while typing.
+  const knownTags = useMemo(
+    () => tagCounts(mcpServers.map(server => ({ tags: server.getTags() }))),
+    [mcpServers],
+  );
   const canRename = !registeredName || (updateTakesDisplayName && !family);
   let nameDescription = 'Shown when giving an agent access.';
   if (!canRename) {
@@ -290,6 +308,18 @@ export function NewConnectorConnectPage() {
         placeholder="e.g. Search, read and update tickets"
         {...validation.fieldProps('description', fieldErrors.description)}
       />
+
+      {takesTags && (
+        <TagsField
+          tags={state.tags}
+          draft={state.tagDraft}
+          error={validation.errorFor('tags', fieldErrors.tags)}
+          counts={knownTags}
+          onDraftChange={setTagDraft}
+          onAdd={addTags}
+          onRemove={removeTag}
+        />
+      )}
 
       {validation.submitted && unanchoredErrors.length > 0 && (
         <Alert

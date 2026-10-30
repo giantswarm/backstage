@@ -107,6 +107,46 @@ describe('serverListEntries with display names', () => {
   });
 });
 
+describe('serverListEntries with tags', () => {
+  const tagged = (name: string, tags: string, family?: string) =>
+    new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name, annotations: { 'ui.giantswarm.io/tags': tags } },
+        spec: family ? { family: { name: family, instanceArg: 'mc' } } : {},
+      } as never,
+      'gazelle',
+    );
+  const rows = serverListRows(
+    [
+      tagged('jira', 'ticketing,ops'),
+      tagged('walrus-kubernetes', 'clusters', 'kubernetes'),
+      tagged('gazelle-kubernetes', 'ops', 'kubernetes'),
+      makeServer('github'),
+    ],
+    undefined,
+  );
+
+  it('gives a server its tags, a family its members’ tags and muster none', () => {
+    expect(rows.map(r => [r.id, r.tags])).toEqual([
+      ['kubernetes', ['clusters', 'ops']],
+      ['github', []],
+      ['jira', ['ticketing', 'ops']],
+      ['muster', []],
+    ]);
+  });
+
+  it('matches a tag as a name match', () => {
+    expect(
+      serverListEntries(rows, 'ops').map(e => [e.id, e.toolMatches]),
+    ).toEqual([
+      ['jira', undefined],
+      ['kubernetes', undefined],
+    ]);
+  });
+});
+
 describe('toolMatchesQuery', () => {
   it('matches the full name, the short name or the description', () => {
     const t = tool('x_kubernetes_get_pods', 'List pods');
