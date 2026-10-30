@@ -259,8 +259,8 @@ export type CustomizeAgentsPanelProps = {
 
 /**
  * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
- * runs on, its Harness, its tags (drawn only once some agent has one), who
- * created it and the person's favorites. The
+ * runs on, its Harness, who created it, the person's favorites and its tags
+ * (drawn only once some agent has one), last as on every catalog tab. The
  * environment is not one of them: the page's Environment select already
  * scopes the tab to one installation, and shows only where there is more than
  * one — a second control for the same thing would be two answers to one
@@ -307,7 +307,6 @@ export function agentFacets(
           },
         ]
       : []),
-    tagsFacet((row: AgentRow) => row.tags),
     ...(isMine
       ? [
           {
@@ -324,6 +323,8 @@ export function agentFacets(
       value: row => (isFavorite(row.id) ? 'starred' : undefined),
       optionLabel: () => 'Starred',
     },
+    // After the agent's own facets, as on every catalog tab.
+    tagsFacet((row: AgentRow) => row.tags),
   ];
 }
 

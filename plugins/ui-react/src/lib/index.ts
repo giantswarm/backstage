@@ -7,6 +7,8 @@ export {
   parseTags,
   draftProblem,
   splitDraft,
+  addTags,
+  commitTagDraft,
   sameTags,
   tagCounts,
   suggestTags,

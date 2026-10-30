@@ -1,5 +1,7 @@
 import {
+  addTags,
   areSimilarTags,
+  commitTagDraft,
   draftProblem,
   editDistance,
   normalizeTag,
@@ -63,6 +65,25 @@ describe('splitDraft', () => {
       invalid: ['!!!'],
     });
     expect(splitDraft('')).toEqual({ tags: [], invalid: [] });
+  });
+});
+
+describe('addTags', () => {
+  it('appends the tags not held yet, once each', () => {
+    expect(addTags(['util'], ['ops', 'util', 'ops'])).toEqual(['util', 'ops']);
+  });
+});
+
+describe('commitTagDraft', () => {
+  it('adds what can be tags and keeps the rest as the draft', () => {
+    expect(commitTagDraft(['util'], 'Ops, !!!, util')).toEqual({
+      tags: ['util', 'ops'],
+      draft: '!!!',
+    });
+    expect(commitTagDraft(['util'], '  ')).toEqual({
+      tags: ['util'],
+      draft: '',
+    });
   });
 });
 

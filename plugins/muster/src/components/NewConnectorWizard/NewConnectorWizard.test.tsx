@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -493,6 +493,33 @@ describe('shell connector wizard', () => {
 
       expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
         tags: ['ticket-triage', 'ops'],
+      });
+    });
+
+    it('adds a typed tag on Continue, as the agent form does', async () => {
+      musterTakesTags();
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Jira');
+      await userEvent.type(
+        await screen.findByRole('textbox', { name: /^Tags/ }),
+        'Ticket Triage',
+      );
+      // Pressed without the field losing focus first, so its blur adds nothing.
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        tags: ['ticket-triage'],
       });
     });
 

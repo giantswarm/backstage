@@ -45,7 +45,7 @@ test('the roster lists the agent under Customize · Agents', async ({
   await expect(row).toContainText(
     'Throwaway agent of the Playwright suite; deleted by the same run.',
   );
-  await expect(row.getByRole('grid', { name: 'Tags' })).toHaveCount(0);
+  await expect(row.getByRole('list', { name: 'Tags' })).toHaveCount(0);
   await expect(row).not.toContainText(/claude-|skills ·/);
   // The lab runs every agent on one Harness: main's singleHarness rule (#2858)
   // shows neither a Harness filter nor a Harness per row.

@@ -86,6 +86,27 @@ export function splitDraft(text: string): {
   return { tags, invalid };
 }
 
+/** `tags` with those of `added` it does not hold yet appended, in order. */
+export function addTags(
+  tags: readonly string[],
+  added: readonly string[],
+): string[] {
+  return [...tags, ...[...new Set(added)].filter(tag => !tags.includes(tag))];
+}
+
+/**
+ * A typed but not yet added text taken into `tags`: the parts that can be
+ * tags added, the rest left as the draft. What every tags form does with a
+ * draft when it is left (Continue, submit), as the field does on Enter.
+ */
+export function commitTagDraft(
+  tags: readonly string[],
+  draft: string,
+): { tags: string[]; draft: string } {
+  const { tags: valid, invalid } = splitDraft(draft);
+  return { tags: addTags(tags, valid), draft: invalid.join(', ') };
+}
+
 /**
  * Why a typed but not yet added text cannot become tags: the first of its
  * comma-separated parts that cannot. Undefined when it can, or is empty.

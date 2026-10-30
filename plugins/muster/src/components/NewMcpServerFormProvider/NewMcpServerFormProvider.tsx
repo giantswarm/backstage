@@ -7,6 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  addTags as addTagsTo,
+  commitTagDraft as commitDraft,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
@@ -42,6 +46,8 @@ export type NewMcpServerFormContextValue = {
   addTags: (tags: readonly string[]) => void;
   removeTag: (tag: string) => void;
   setTagDraft: (draft: string) => void;
+  /** Adds what the tags draft can, leaving the rest typed (see `commitTagDraft`). */
+  commitTagDraft: () => void;
   setInstallation: (installation: string | undefined) => void;
   setUrl: (url: string) => void;
   setTransport: (transport: McpServerTransport) => void;
@@ -306,11 +312,9 @@ export function NewMcpServerFormProvider({
         setState(prev => ({ ...prev, description })),
       addTags: tags =>
         setState(prev => {
-          const added = [...new Set(tags)].filter(
-            tag => !prev.tags.includes(tag),
-          );
-          return added.length > 0
-            ? { ...prev, tags: [...prev.tags, ...added] }
+          const next = addTagsTo(prev.tags, tags);
+          return next.length > prev.tags.length
+            ? { ...prev, tags: next }
             : prev;
         }),
       removeTag: tag =>
@@ -319,6 +323,18 @@ export function NewMcpServerFormProvider({
           tags: prev.tags.filter(each => each !== tag),
         })),
       setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
+      commitTagDraft: () =>
+        setState(prev => {
+          if (!prev.tagDraft.trim()) {
+            return prev;
+          }
+          const committed = commitDraft(prev.tags, prev.tagDraft);
+          return {
+            ...prev,
+            tags: committed.tags,
+            tagDraft: committed.draft,
+          };
+        }),
       setInstallation: installation =>
         setState(prev => ({ ...prev, installation })),
       setUrl: url => setState(prev => ({ ...prev, url })),

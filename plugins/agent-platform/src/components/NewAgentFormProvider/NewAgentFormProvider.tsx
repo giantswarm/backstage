@@ -7,8 +7,9 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  addTags as addTagsTo,
+  commitTagDraft as commitDraft,
   draftProblem,
-  splitDraft,
   useSessionDraft,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -670,11 +671,9 @@ export function NewAgentFormProvider({
         setState(prev => ({ ...prev, description })),
       addTags: tags =>
         setState(prev => {
-          const added = [...new Set(tags)].filter(
-            tag => !prev.tags.includes(tag),
-          );
-          return added.length > 0
-            ? { ...prev, tags: [...prev.tags, ...added] }
+          const next = addTagsTo(prev.tags, tags);
+          return next.length > prev.tags.length
+            ? { ...prev, tags: next }
             : prev;
         }),
       removeTag: tag =>
@@ -688,14 +687,11 @@ export function NewAgentFormProvider({
           if (!prev.tagDraft?.trim()) {
             return prev;
           }
-          const { tags, invalid } = splitDraft(prev.tagDraft);
-          const added = [...new Set(tags)].filter(
-            tag => !prev.tags.includes(tag),
-          );
+          const committed = commitDraft(prev.tags, prev.tagDraft);
           return {
             ...prev,
-            tags: [...prev.tags, ...added],
-            tagDraft: invalid.join(', '),
+            tags: committed.tags,
+            tagDraft: committed.draft,
           };
         }),
       // Changing the installation clears the model and Harness selections:

@@ -146,6 +146,7 @@ export function NewConnectorConnectPage() {
     addTags,
     removeTag,
     setTagDraft,
+    commitTagDraft,
     setInstallation,
     setUrl,
     setTransport,
@@ -213,11 +214,20 @@ export function NewConnectorConnectPage() {
   // Continue moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { reveal } = validation;
-  const errorCount = detailsErrors.length;
+  // A draft left in a hidden Tags field (an older muster) does not block
+  // Continue; Continue drops it.
+  const errorCount =
+    detailsErrors.length - (!takesTags && fieldErrors.tags ? 1 : 0);
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       reveal();
       return;
+    }
+    // A typed tag not yet added goes with the connector, as on the agent form.
+    if (takesTags) {
+      commitTagDraft();
+    } else {
+      setTagDraft('');
     }
     const signIn = wizardLinks('auth', {
       name: registeredName,
@@ -229,6 +239,9 @@ export function NewConnectorConnectPage() {
   }, [
     errorCount,
     reveal,
+    takesTags,
+    commitTagDraft,
+    setTagDraft,
     wizardLinks,
     navigate,
     registeredName,

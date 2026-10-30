@@ -264,12 +264,14 @@ function ConnectorGroupTabs({
   counts: MusterCustomizeCounts['connectorGroups'];
 }) {
   const customize = useCustomizePath();
+  // The address's search as it is: the page stays mounted from sub-tab to
+  // sub-tab, so the Tags pick carries over without it, and a changed `tags`
+  // would remount the tab and drop its search.
   const { search } = useLocation();
-  const tags = useSharedTags()?.tags ?? [];
   return (
     <RouteTabs
       basePath={`${customize}/connectors`}
-      search={withTagsSearch(search, tags)}
+      search={search}
       tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
         id,
         path,

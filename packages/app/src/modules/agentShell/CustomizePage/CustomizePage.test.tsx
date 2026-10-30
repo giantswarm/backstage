@@ -121,9 +121,23 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
         internal: { id: 'internal', path: 'internal', title: 'Internal' },
       })[group],
     LEGACY_CONNECTOR_GROUP_PATHS: { families: 'infrastructure' },
-    CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
-      <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
-    ),
+    CustomizeConnectorsPanel: function MockConnectorsPanel(props: {
+      search: string;
+      group: string;
+    }) {
+      const shared = useSharedTags();
+      return (
+        <>
+          <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
+          {shared && shared.tags.length > 0 && (
+            <p>{`Connectors panel, tags ${shared.tags.join(',')}`}</p>
+          )}
+          <button type="button" onClick={() => shared?.setTags(['ops'])}>
+            Pick ops on connectors
+          </button>
+        </>
+      );
+    },
     CustomizeWorkflowsPanel: ({
       createAssist,
       ...props
@@ -814,6 +828,29 @@ describe('CustomizePage', () => {
         await screen.findByText(
           'Connectors panel, search “kube”, infrastructure',
         ),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the search and the Tags pick when switching sub-tabs', async () => {
+      await renderCustomize('/customize/connectors');
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search connectors and tools' }),
+        'kube',
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Pick ops on connectors' }),
+      );
+      await userEvent.click(
+        screen.getByRole('tab', { name: /^Infrastructure/ }),
+      );
+
+      expect(
+        await screen.findByText(
+          'Connectors panel, search “kube”, infrastructure',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Connectors panel, tags ops'),
       ).toBeInTheDocument();
     });
 

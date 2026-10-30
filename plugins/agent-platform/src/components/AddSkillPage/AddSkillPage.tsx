@@ -11,9 +11,10 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  addTags,
+  commitTagDraft,
   draftProblem,
   EmptyStateCard,
-  normalizeTag,
   sameTags,
   searchableIf,
   tagCounts,
@@ -163,20 +164,10 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const [tags, setTags] = useState<string[]>(baselineTags);
   /** What the Tags field holds but has not added yet. */
   const [tagDraft, setTagDraft] = useState('');
-  // A draft that can be tags counts as added: submitting does not drop it.
+  // A draft that can be tags counts as added: submitting adds it, as the
+  // agent form's Continue does.
   const submittedTags = useMemo(
-    () =>
-      draftProblem(tagDraft)
-        ? tags
-        : [
-            ...new Set([
-              ...tags,
-              ...tagDraft
-                .split(',')
-                .map(normalizeTag)
-                .filter(tag => tag !== ''),
-            ]),
-          ],
+    () => commitTagDraft(tags, tagDraft).tags,
     [tags, tagDraft],
   );
   // The tags the catalog's skills already use, offered while typing a tag.
@@ -237,6 +228,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     if (!isChanged) {
       return;
     }
+    setTags(submittedTags);
+    setTagDraft('');
     try {
       await proposeSkill({
         repoUrl,
@@ -445,12 +438,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             error={errorFor('tags', fieldErrors.tags)}
             counts={knownTags}
             onDraftChange={setTagDraft}
-            onAdd={added =>
-              setTags(prev => [
-                ...prev,
-                ...added.filter(tag => !prev.includes(tag)),
-              ])
-            }
+            onAdd={added => setTags(prev => addTags(prev, added))}
             onRemove={tag => setTags(prev => prev.filter(each => each !== tag))}
           />
           <TextAreaField
