@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { MCPServer } from '../../lib/k8s';
+import type { MCPServer, MCPServerAuth } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
 import {
   authAnswerOf,
@@ -21,6 +21,7 @@ import {
   formStateFromServer,
   hasStoredClientSecret,
   hasUserInput,
+  isStoredClientSecret,
   mcpServerAuthProblems,
   mcpServerDetailsProblems,
   mcpServerFieldErrors,
@@ -159,7 +160,6 @@ export type NewMcpServerFormContextValue = {
    */
   authFields: {
     authorizationServer: FieldAvailability;
-    scopes: FieldAvailability;
     requiredAudiences: FieldAvailability;
     sigv4: FieldAvailability;
   };
@@ -249,9 +249,18 @@ export function NewMcpServerFormProvider({
       const storedNow = Boolean(options?.storedClientCredentials);
       if (storedNow) {
         setStoredClientCredentials(true);
-      } else if (!saved.auth?.authorizationServer) {
-        // Saved without an authorization server: muster dropped the client.
-        setStoredClientCredentials(false);
+      } else {
+        // muster keeps a stored client only while the server sends to an
+        // authorization server and names no Secret of someone else's.
+        const savedServer = saved.auth?.authorizationServer;
+        const ref = savedServer?.clientCredentialsSecretRef;
+        if (
+          !savedServer ||
+          current.state.useExistingSecret ||
+          (ref && !isStoredClientSecret(saved.name, ref.name))
+        ) {
+          setStoredClientCredentials(false);
+        }
       }
       setLastSave(current.registeredName ? 'update' : 'create');
       setLastSaveAt(Date.now());
@@ -336,6 +345,12 @@ export function NewMcpServerFormProvider({
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
     const validationErrors = problems.map(problem => problem.message);
+    const definition = base
+      ? mergeOntoExisting(
+          base.definition,
+          composeMcpServerDefinition(state, { stored: base.displayName }),
+        )
+      : composeMcpServerDefinition(state);
 
     return {
       state,
@@ -427,7 +442,11 @@ export function NewMcpServerFormProvider({
       markSaved,
       storedClientCredentials,
       authorizationServerChanged: base
-        ? clientBindingChanged(state, base.form)
+        ? clientBindingChanged(
+            definition.auth?.authorizationServer,
+            (base.definition.auth as MCPServerAuth | undefined)
+              ?.authorizationServer,
+          )
         : false,
       startEdit,
       reset,
@@ -437,12 +456,7 @@ export function NewMcpServerFormProvider({
       fieldErrors: mcpServerFieldErrors(problems),
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
-      definition: base
-        ? mergeOntoExisting(
-            base.definition,
-            composeMcpServerDefinition(state, { stored: base.displayName }),
-          )
-        : composeMcpServerDefinition(state),
+      definition,
     };
   }, [
     state,

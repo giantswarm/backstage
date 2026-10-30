@@ -484,7 +484,7 @@ describe('validateNewMcpServerForm', () => {
     ).toEqual(["Enter the Secret's name."]);
   });
 
-  it('ignores Secret fields left over from unticking "Use an existing Secret"', () => {
+  it('ignores Secret fields of the other source when New Secret is chosen', () => {
     const leftOver = state({
       authMode: 'own-account',
       issuer: 'https://auth.example.com',
@@ -576,23 +576,17 @@ describe('sigv4Advisories', () => {
 });
 
 describe('authFieldAvailability', () => {
-  it('offers the issuer override and scopes only for "own account"', () => {
+  it('offers the issuer override only for "own account"', () => {
     const withIssuer = authFieldAvailability(
       state({ authMode: 'own-account', issuer: 'https://auth.example.com' }),
     );
     expect(withIssuer.authorizationServer.available).toBe(true);
-    expect(withIssuer.scopes.available).toBe(true);
     expect(withIssuer.requiredAudiences.available).toBe(false);
 
     const withoutIssuer = authFieldAvailability(
       state({ authMode: 'own-account' }),
     );
     expect(withoutIssuer.authorizationServer.available).toBe(true);
-    // Scopes belong to the override, so they stay disabled until an issuer is set.
-    expect(withoutIssuer.scopes).toEqual({
-      available: false,
-      reason: expect.stringContaining('set an issuer first'),
-    });
   });
 
   it('offers required audiences only for Platform SSO, and explains the exclusion', () => {
@@ -602,13 +596,11 @@ describe('authFieldAvailability', () => {
       available: false,
       reason: expect.stringContaining('the CRD rejects both together'),
     });
-    expect(sso.scopes.available).toBe(false);
   });
 
   it('disables every auth field for a server without authentication', () => {
     const none = authFieldAvailability(state({ authMode: 'none' }));
     expect(none.authorizationServer.available).toBe(false);
-    expect(none.scopes.available).toBe(false);
     expect(none.requiredAudiences.available).toBe(false);
     expect(none.authorizationServer.reason).toContain(
       'needs no authentication',
@@ -642,7 +634,6 @@ describe('authFieldAvailability', () => {
       available: false,
       reason: expect.stringContaining("muster's own machine identity"),
     });
-    expect(sigv4.scopes.available).toBe(false);
     expect(sigv4.requiredAudiences).toEqual({
       available: false,
       reason: expect.stringContaining('AWS SigV4 forwards no token at all'),
@@ -1509,10 +1500,12 @@ describe('client credentials typed into the wizard', () => {
   });
 
   it('tells a stored client is pointed at another authorization server', () => {
-    const saved = ownAccount({
+    const saved = {
+      issuer: 'https://idp',
       authorizationEndpoint: 'https://idp/authorize',
       tokenEndpoint: 'https://idp/token',
-    });
+      revocationEndpoint: 'https://idp/revoke',
+    };
     expect(clientBindingChanged({ ...saved, scopes: 'read' }, saved)).toBe(
       false,
     );
@@ -1523,9 +1516,55 @@ describe('client credentials typed into the wizard', () => {
       { issuer: 'https://other' },
       { authorizationEndpoint: 'https://idp/oauth/authorize' },
       { tokenEndpoint: 'https://idp/oauth/token' },
+      { revocationEndpoint: undefined },
     ]) {
       expect(clientBindingChanged({ ...saved, ...changed }, saved)).toBe(true);
     }
+    expect(clientBindingChanged(undefined, saved)).toBe(true);
+  });
+
+  it('keeps a revocation endpoint the wizard does not show on an edit', () => {
+    const server = registered({
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://idp',
+          revocationEndpoint: 'https://idp/revoke',
+          clientCredentialsSecretRef: {
+            name: 'weather-mcp-oauth-client-x7k2p',
+          },
+        },
+      },
+    });
+    expect(wizardEditBlocker(server)).toBeUndefined();
+    const form = formStateFromServer(server);
+    const existing = toMcpServerDefinition(server);
+
+    const edited = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({ ...form, scopes: 'read' }),
+    );
+    expect(edited.auth?.authorizationServer).toEqual({
+      issuer: 'https://idp',
+      scopes: 'read',
+      revocationEndpoint: 'https://idp/revoke',
+      clientCredentialsSecretRef: { name: 'weather-mcp-oauth-client-x7k2p' },
+    });
+    expect(
+      clientBindingChanged(
+        edited.auth?.authorizationServer,
+        server.getAuth()?.authorizationServer,
+      ),
+    ).toBe(false);
+
+    // Another issuer is another server: its endpoints are discovered.
+    const moved = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({ ...form, issuer: 'https://other' }),
+    );
+    expect(moved.auth?.authorizationServer).not.toHaveProperty(
+      'revocationEndpoint',
+    );
   });
 
   it('lets an issuer be cleared on a connector with a stored client', () => {

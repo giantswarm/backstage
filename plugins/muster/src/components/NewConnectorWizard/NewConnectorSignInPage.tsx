@@ -66,6 +66,12 @@ const useStyles = makeStyles({
     gap: 16,
     margin: 0,
   },
+  // A tertiary button's label lines up with the fields' left edge: its own
+  // inline padding (bui's small size, space-2) moves outside the column.
+  inlineAction: {
+    alignSelf: 'flex-start',
+    marginInlineStart: 'calc(-1 * var(--bui-space-2))',
+  },
   disclosureSummary: {
     padding: '4px 0',
     fontWeight: 500,
@@ -79,14 +85,14 @@ const useStyles = makeStyles({
   },
 });
 
+const NO_CREDENTIALS: ClientCredentials = { clientId: '', clientSecret: '' };
+
 // The auth question is asked about the people using the connector, never as
 // muster spec fields. One card per mode the platform decided to offer; token
 // exchange, forwardIdentity and plaintext header credentials are deliberately
 // not on this list (operator-level, niche, or insecurely stored). Company login
 // leads and is where a new connector starts (the design's recommendation); each
 // description says what people experience first and the caveat second.
-const NO_CREDENTIALS: ClientCredentials = { clientId: '', clientSecret: '' };
-
 const SIGN_IN_CHOICES: Array<{
   value: McpServerAuthMode;
   title: string;
@@ -242,6 +248,10 @@ export function NewConnectorSignInPage() {
   if (audiencesMode !== state.authMode) {
     setAudiencesMode(state.authMode);
     setAudiencesRaw(state.requiredAudiences.join(', '));
+    // Typed client values belong to "own account"; another mode drops them,
+    // as switching the client's source does.
+    setCredentials(NO_CREDENTIALS);
+    setReplacing(false);
   }
   const onAudiencesChange = (raw: string) => {
     setAudiencesRaw(raw);
@@ -303,8 +313,13 @@ export function NewConnectorSignInPage() {
           : undefined,
       },
       {
-        onSettled: () => setCredentials(NO_CREDENTIALS),
+        // Cleared only once stored: after a refusal the person fixes what
+        // muster named and saves again with the values still typed (the
+        // forms skill: never clear typed input on a failed submit). They
+        // stay in this page's state only, never in the form, its saved base
+        // or the edit draft.
         onSuccess: sent => {
+          setCredentials(NO_CREDENTIALS);
           // What was just written is the base of any further save in this run.
           markSaved(sent, {
             storedClientCredentials: Boolean(clientCredentials),
@@ -521,7 +536,7 @@ export function NewConnectorSignInPage() {
                   value={state.useExistingSecret ? 'existing' : 'new'}
                   onChange={value => chooseSource(value === 'existing')}
                 >
-                  <Radio value="new">New secret</Radio>
+                  <Radio value="new">New Secret</Radio>
                   <Radio value="existing">Existing Secret</Radio>
                 </RadioGroup>
                 {clientSecretStored && !replaceMode && (
@@ -577,15 +592,14 @@ export function NewConnectorSignInPage() {
                       )}
                     />
                     {replaceMode && !serverChanged && (
-                      <Flex>
-                        <Button
-                          variant="tertiary"
-                          size="small"
-                          onPress={keepStoredSecret}
-                        >
-                          Keep stored secret
-                        </Button>
-                      </Flex>
+                      <Button
+                        className={classes.inlineAction}
+                        variant="tertiary"
+                        size="small"
+                        onPress={keepStoredSecret}
+                      >
+                        Keep stored secret
+                      </Button>
                     )}
                   </>
                 )}

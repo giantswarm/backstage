@@ -98,10 +98,6 @@ describe('NewMcpServerFormProvider', () => {
 
     act(() => result.current.setAuthMode('own-account'));
     expect(result.current.authFields.authorizationServer.available).toBe(true);
-    // Scopes only make sense together with an issuer.
-    expect(result.current.authFields.scopes.available).toBe(false);
-    act(() => result.current.setIssuer('https://auth.example.com'));
-    expect(result.current.authFields.scopes.available).toBe(true);
   });
 
   it('offers required audiences only for Platform SSO, explaining the exclusion', () => {
@@ -497,6 +493,38 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.authorizationServerChanged).toBe(false);
       act(() => result.current.setIssuer('https://other-idp'));
       expect(result.current.authorizationServerChanged).toBe(true);
+    });
+
+    it('forgets the stored client after a save naming an existing Secret', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://idp');
+      });
+      // Add with a typed client.
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+      expect(result.current.storedClientCredentials).toBe(true);
+
+      // Back, Existing Secret my-secret, save.
+      act(() => {
+        result.current.setUseExistingSecret(true);
+        result.current.setClientSecretName('my-secret');
+      });
+      act(() => result.current.markSaved(result.current.definition));
+      expect(result.current.storedClientCredentials).toBe(false);
+
+      // Back, New Secret: nothing is stored, nothing is named.
+      act(() => result.current.setUseExistingSecret(false));
+      expect(result.current.storedClientCredentials).toBe(false);
+      expect(result.current.state.clientSecretName).toBe('');
+      expect(
+        result.current.definition.auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
     });
 
     it('forgets the stored client after a save without an authorization server', () => {

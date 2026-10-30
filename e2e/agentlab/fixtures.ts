@@ -51,22 +51,26 @@ export class DexRefusedLogin extends Error {
  * who the person is (its own login), then the connector's authorization
  * server, the lab Dex again, asks for its login. The hops between are
  * server-side redirects, so the popup goes from one login form straight to
- * the next; that one is answered too. A sign-in the person already holds a
- * grant for never reaches Dex: the popup closes or lands on muster's
- * completion page, and this returns without a login.
+ * the next; that one is answered too.
+ *
+ * The popup must land on Dex. With `mayBeGranted`, a sign-in the person may
+ * already hold a grant for may skip Dex instead: the popup closes or lands on
+ * muster's completion page, and this returns without a login.
  */
 export async function completeDexLogin(
   dex: Page,
   user: LabUser,
   password: string = lab.password,
+  { mayBeGranted = false }: { mayBeGranted?: boolean } = {},
 ): Promise<void> {
   // The first form may take a moment (the popup opens blank and is sent
   // through muster first); a second one follows its submission at once.
-  for (const wait of [15_000, 5_000]) {
-    if ((await nextDexLogin(dex, wait)) !== 'login') {
-      break;
-    }
+  const first = !mayBeGranted || (await nextDexLogin(dex, 15_000)) === 'login';
+  if (first) {
     await submitDexLogin(dex, user, password);
+    if ((await nextDexLogin(dex, 5_000)) === 'login') {
+      await submitDexLogin(dex, user, password);
+    }
   }
   if (!dex.isClosed()) {
     // A completion page that did not close itself: close it the way a

@@ -1284,6 +1284,54 @@ describe('createRouter', () => {
       expect(JSON.stringify(response.body)).not.toContain(SECRET);
     });
 
+    // MiddlewareFactory.error() logs at error level, which the root logger
+    // ships to Sentry, only from 500 on: a refusal stays out, an outage not.
+    it.each([
+      [new MusterToolError(refusal), 422, false],
+      [new Error('fetch failed'), 500, true],
+    ])(
+      'logs %s at error level only for a 5xx',
+      async (error, status, loggedAsError) => {
+        const logger = mockServices.logger.mock();
+        jest.mocked(logger.child).mockReturnValue(logger);
+        const config = mockServices.rootConfig({
+          data: {
+            muster: {
+              installations: [
+                { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+              ],
+            },
+          },
+        });
+        const router = await createRouter({
+          logger,
+          config,
+          client: mockClient,
+          reachability: reachableEverywhere(),
+        });
+        const loggedApp = expressApp();
+        loggedApp.use(router);
+        loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
+        callTool.mockRejectedValue(error);
+
+        const response = await request(loggedApp)
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({
+            name: 'core_mcpserver_create',
+            arguments: { clientCredentials: { clientSecret: SECRET } },
+          });
+
+        expect(response.status).toBe(status);
+        expect(jest.mocked(logger.error).mock.calls.length > 0).toBe(
+          loggedAsError,
+        );
+        expect(
+          JSON.stringify(jest.mocked(logger.error).mock.calls),
+        ).not.toContain(SECRET);
+      },
+    );
+
     it('keeps the sign-in muster asks for a 401', async () => {
       callTool.mockRejectedValue(
         new MusterAuthRequiredError('jira', 'https://idp/authorize', [

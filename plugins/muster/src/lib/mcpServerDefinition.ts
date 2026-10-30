@@ -355,8 +355,8 @@ export function hasStoredClientSecret(state: NewMcpServerFormState): boolean {
 
 /**
  * The Secret name the definition names: the one typed for an existing Secret,
- * or the one muster stored this connector's client in. Secret fields left
- * over from unticking "Use an existing Secret" are not composed.
+ * or the one muster stored this connector's client in. Secret fields of
+ * the other source ("New Secret" with no stored client) are not composed.
  */
 function composedClientSecretName(state: NewMcpServerFormState): string {
   const name = state.clientSecretName.trim();
@@ -372,26 +372,28 @@ function trimmedCredentials(credentials: ClientCredentials): ClientCredentials {
 }
 
 /**
- * The authorization-server fields muster binds a stored client to. An update
- * that changes one of them while keeping the stored client is refused: the
- * client was registered with that server, so it is entered again.
+ * The authorization-server fields muster binds a stored client to (its
+ * `AuthorizationServerDigest`). An update that changes one of them while
+ * keeping the stored client is refused: the client was registered with that
+ * server, so it is entered again.
  */
 const CLIENT_BINDING_FIELDS = [
   'issuer',
   'authorizationEndpoint',
   'tokenEndpoint',
+  'revocationEndpoint',
 ] as const;
 
 /**
- * Whether `state` points the stored client at another authorization server
- * than the one it was `saved` with (see {@link CLIENT_BINDING_FIELDS}).
+ * Whether the authorization server a definition sends to differs from the
+ * one it was `saved` with (see {@link CLIENT_BINDING_FIELDS}).
  */
 export function clientBindingChanged(
-  state: NewMcpServerFormState,
-  saved: NewMcpServerFormState,
+  current: MCPServerAuthorizationServer | undefined,
+  saved: MCPServerAuthorizationServer | undefined,
 ): boolean {
   return CLIENT_BINDING_FIELDS.some(
-    field => state[field].trim() !== saved[field].trim(),
+    field => (current?.[field] ?? '').trim() !== (saved?.[field] ?? '').trim(),
   );
 }
 
@@ -944,11 +946,9 @@ const AVAILABLE: FieldAvailability = { available: true };
  */
 export function authFieldAvailability(state: NewMcpServerFormState): {
   authorizationServer: FieldAvailability;
-  scopes: FieldAvailability;
   requiredAudiences: FieldAvailability;
   sigv4: FieldAvailability;
 } {
-  const ownAccount = state.authMode === 'own-account';
   const platformSso = state.authMode === 'platform-sso';
   const sigv4Mode = state.authMode === 'sigv4';
 
@@ -973,19 +973,6 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
     };
   }
 
-  // Scopes are part of the issuer override, so they follow it and additionally
-  // wait for an issuer to exist (the CRD requires one).
-  let scopes: FieldAvailability = AVAILABLE;
-  if (!ownAccount) {
-    scopes = { available: false, reason: authorizationServer.reason };
-  } else if (!state.issuer.trim()) {
-    scopes = {
-      available: false,
-      reason:
-        'Scopes belong to the issuer override — set an issuer first, or leave both empty to discover them.',
-    };
-  }
-
   // The CRD's `auth.sigv4` rules as availability: the block belongs to the
   // sigv4 auth type (`has(self.sigv4) == (self.type == 'sigv4')`) and only to
   // the streamable-http transport. Its counterpart — that choosing sigv4 rules
@@ -1005,7 +992,6 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
 
   return {
     authorizationServer,
-    scopes,
     requiredAudiences: platformSso
       ? AVAILABLE
       : {
@@ -1067,8 +1053,16 @@ const WIZARD_AUTH_KEYS: Record<McpServerAuthMode, string[]> = {
   'platform-sso': ['type', 'forwardToken', 'requiredAudiences'],
   sigv4: ['type', 'sigv4'],
 };
-// `expectedIssuer` stays out: the wizard has no field for it, so a server
-// pinning one keeps being edited as JSON rather than silently losing it.
+/**
+ * `authorizationServer` keys the wizard has no field for but keeps: an edit
+ * carries them over from the server unchanged while the issuer stays
+ * ({@link mergeOntoExisting}). Kept rather than dropped because muster binds
+ * a stored client to the revocation endpoint too. `expectedIssuer` stays out:
+ * a server pinning one keeps being edited as JSON rather than silently
+ * losing it.
+ */
+const CARRIED_AUTHORIZATION_SERVER_KEYS = ['revocationEndpoint'] as const;
+
 const WIZARD_AUTHORIZATION_SERVER_KEYS = [
   'issuer',
   'scopes',
@@ -1076,6 +1070,7 @@ const WIZARD_AUTHORIZATION_SERVER_KEYS = [
   'tokenEndpoint',
   'clientCredentialsSecretRef',
   'grantScope',
+  ...CARRIED_AUTHORIZATION_SERVER_KEYS,
 ];
 const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
 
@@ -1305,6 +1300,29 @@ export function mergeOntoExisting(
   }
   if (!merged.auth && existing.auth) {
     merged.auth = { type: 'none' };
+  }
+  // The authorization server's keys the wizard does not render ride along
+  // while it still sends to the same issuer; another issuer is another
+  // server, whose endpoints muster discovers.
+  const existingServer = (existing.auth as MCPServerAuth | undefined)
+    ?.authorizationServer;
+  const composedServer = merged.auth?.authorizationServer;
+  if (
+    composedServer &&
+    existingServer &&
+    composedServer.issuer === existingServer.issuer
+  ) {
+    const carried = Object.fromEntries(
+      CARRIED_AUTHORIZATION_SERVER_KEYS.filter(
+        key => existingServer[key] !== undefined,
+      ).map(key => [key, existingServer[key]]),
+    );
+    if (Object.keys(carried).length > 0) {
+      merged.auth = {
+        ...merged.auth,
+        authorizationServer: { ...composedServer, ...carried },
+      };
+    }
   }
   if (!merged.meta && existing.meta) {
     merged.meta = {};

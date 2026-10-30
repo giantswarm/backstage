@@ -175,7 +175,10 @@ async function signInToConnector(admin: Page): Promise<void> {
   if (await signIn.isVisible()) {
     const popup = admin.waitForEvent('popup');
     await signIn.click();
-    await completeDexLogin(await popup, lab.users.admin);
+    // A grant left by an earlier run signs in without Dex.
+    await completeDexLogin(await popup, lab.users.admin, lab.password, {
+      mayBeGranted: true,
+    });
   }
   await expect(signIn, 'signed in, the page no longer asks for it').toBeHidden({
     timeout: 60_000,
@@ -224,7 +227,7 @@ async function typeClient(
   const group = credentialsGroup(page);
   // A typed client is the group's default source, on add and on edit.
   await expect(
-    group.getByRole('radio', { name: 'New secret', exact: true }),
+    group.getByRole('radio', { name: 'New Secret', exact: true }),
   ).toBeChecked();
   await group
     .getByRole('textbox', { name: 'Client ID', exact: true })

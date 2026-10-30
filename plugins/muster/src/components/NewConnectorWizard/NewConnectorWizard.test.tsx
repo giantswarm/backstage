@@ -574,7 +574,7 @@ describe('shell connector wizard', () => {
         // New secret is the default; the Secret fields wait behind
         // Existing Secret.
         expect(
-          within(credentials).getByRole('radio', { name: 'New secret' }),
+          within(credentials).getByRole('radio', { name: 'New Secret' }),
         ).toBeChecked();
         expect(
           within(credentials).queryByLabelText(/^Secret name/),
@@ -596,7 +596,7 @@ describe('shell connector wizard', () => {
           'hubspot-oauth-client',
         );
         await userEvent.click(
-          within(credentials).getByRole('radio', { name: 'New secret' }),
+          within(credentials).getByRole('radio', { name: 'New Secret' }),
         );
 
         expect(within(credentials).getByLabelText(/^Client ID/)).toHaveValue(
@@ -659,6 +659,34 @@ describe('shell connector wizard', () => {
             .getAllByRole('radio')
             .map(radio => radio.getAttribute('value')),
         ).toEqual(['new', 'existing']);
+      });
+
+      it('drops the typed values when another sign-in mode is picked', async () => {
+        await renderSignInStep();
+        await typeClient('hubspot-client', 'hubspot-s3cret');
+
+        await userEvent.click(
+          screen.getByRole('radio', { name: 'No sign-in' }),
+        );
+        await userEvent.click(
+          screen.getByRole('radio', {
+            name: 'Each person signs in with their own account',
+          }),
+        );
+        await userEvent.click(
+          screen.getByText(
+            "Advanced: sign-in settings for apps muster can't look up",
+          ),
+        );
+        const credentials = screen.getByRole('group', {
+          name: 'Client credentials',
+        });
+        expect(within(credentials).getByLabelText(/^Client ID/)).toHaveValue(
+          '',
+        );
+        expect(
+          within(credentials).getByLabelText(/^Client secret/),
+        ).toHaveValue('');
       });
 
       it('sends the client to create only, never to validate', async () => {
@@ -749,7 +777,7 @@ describe('shell connector wizard', () => {
         expect(callTool).not.toHaveBeenCalled();
       });
 
-      it("shows muster's refusal, stays on the step and clears the values", async () => {
+      it("shows muster's refusal, stays on the step and keeps the values for the retry", async () => {
         const refusal =
           'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
         callTool.mockImplementation((tool: string) =>
@@ -776,24 +804,26 @@ describe('shell connector wizard', () => {
           screen.queryByText('Test the connection'),
         ).not.toBeInTheDocument();
         expect(screen.getByText('How do people sign in?')).toBeInTheDocument();
-        await waitFor(() =>
-          expect(
-            within(credentials).getByLabelText(/^Client secret/),
-          ).toHaveValue(''),
-        );
+        // A failed save keeps what was typed (the forms skill).
+        expect(
+          within(credentials).getByLabelText(/^Client secret/),
+        ).toHaveValue('hubspot-s3cret');
         expect(within(credentials).getByLabelText(/^Client ID/)).toHaveValue(
-          '',
+          'hubspot-client',
         );
-        // The next attempt is a create again.
+        // The next attempt is a create again, with the client.
         callTool.mockResolvedValue({});
         await userEvent.click(
           screen.getByRole('button', { name: 'Add connector' }),
         );
         await screen.findByText('Test the connection');
         expect(toolCalls('core_mcpserver_update')).toEqual([]);
-        expect(toolCalls('core_mcpserver_create')[1][1]).not.toHaveProperty(
-          'clientCredentials',
-        );
+        expect(toolCalls('core_mcpserver_create')[1][1]).toMatchObject({
+          clientCredentials: {
+            clientId: 'hubspot-client',
+            clientSecret: 'hubspot-s3cret',
+          },
+        });
       });
     });
 
