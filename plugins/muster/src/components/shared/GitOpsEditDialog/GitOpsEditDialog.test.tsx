@@ -74,6 +74,9 @@ describe('GitOpsEditDialog', () => {
       'find the YAML document that declares kind: MCPServer with name: github in namespace agent-platform',
     );
     expect(dialog).toHaveTextContent(
+      'To edit, change its spec (the current manifest is below); its tags are the comma-separated ui.giantswarm.io/tags annotation.',
+    );
+    expect(dialog).toHaveTextContent(
       'To remove, delete that document; if the file is then empty, delete it too, along with its entry under resources: in the kustomization.yaml next to it, if there is one.',
     );
     expect(dialog).toHaveTextContent(

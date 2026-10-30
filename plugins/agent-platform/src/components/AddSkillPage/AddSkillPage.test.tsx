@@ -699,6 +699,64 @@ describe('AddSkillPage · the skill creator hand-off', () => {
     );
   }, 30_000);
 
+  it('carries the tags of a new skill, a typed one included', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const tags = screen.getByRole('textbox', { name: /^Tags/ });
+    await user.type(tags, 'triage{Enter}');
+    await user.type(tags, 'kubernetes');
+    await user.click(
+      screen.getByRole('button', { name: 'Create with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      '`metadata.tags: "triage, kubernetes"`',
+    );
+  }, 30_000);
+
+  it('leaves an edit’s unchanged tags out of the hand-off', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage({
+      ...edit,
+      content: { ...edit.content, tags: ['triage'] },
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).not.toContain(
+      'metadata.tags',
+    );
+  }, 30_000);
+
+  it('carries tags changed on an edit', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage({
+      ...edit,
+      content: { ...edit.content, tags: ['triage'] },
+    });
+
+    await user.type(
+      screen.getByRole('textbox', { name: /^Tags/ }),
+      'kubernetes{Enter}',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      'Set its tags in the frontmatter to `metadata.tags: "triage, kubernetes"`.',
+    );
+  }, 30_000);
+
   it('shows the caveat on an edit and hands the skill being changed over', async () => {
     mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     createSession.mockReturnValue(new Promise(() => {}));

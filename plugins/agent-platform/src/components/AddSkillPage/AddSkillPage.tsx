@@ -290,6 +290,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               instructions.trim() !== edit.content.instructions.trim()
                 ? instructions
                 : undefined,
+            tags: sameTags(submittedTags, baselineTags)
+              ? undefined
+              : submittedTags,
           }
         : {
             kind: 'create',
@@ -297,8 +300,18 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             name: skillName,
             description,
             instructions,
+            ...(submittedTags.length > 0 ? { tags: submittedTags } : {}),
           },
-    [edit, repoUrl, repositories, skillName, description, instructions],
+    [
+      edit,
+      repoUrl,
+      repositories,
+      skillName,
+      description,
+      instructions,
+      submittedTags,
+      baselineTags,
+    ],
   );
 
   // Memoized so the frame's footer slot only updates when the handlers change,
