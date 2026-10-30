@@ -6,6 +6,7 @@ export { DataStartNote } from './DataStartNote';
 export { SessionKpiTiles } from './SessionKpiTiles';
 export { LlmByAgentTable } from './LlmByAgentTable';
 export { LlmByModelTable } from './LlmByModelTable';
+export { LlmByOrganizationTable } from './LlmByOrganizationTable';
 export { LlmUsageState } from './LlmUsageState';
 export {
   PricingCoverageAlert,

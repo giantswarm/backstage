@@ -439,7 +439,13 @@ page.
 `/usage` reports over 7, 30 (the default) or 90 days:
 
 - **Overview** — platform health and trends from the LLM gateway.
-- **Cost** — spend from the gateway, by agent and model.
+- **Cost** — spend from the gateway, by organization, agent and model. The
+  **By organization** table has one row per organization whose agents the
+  gateway recorded calls for: the organization's name, `None` for the
+  platform's shared agents, `namespace <name>` for another namespace agents
+  run in, and Unattributed for calls the gateway matched to no caller; each
+  row carries its agents, model calls, tokens, spend and share of spend. A row
+  opens the same page narrowed to that organization.
 - **Connectors** — every caller's tool calls from muster's metrics. Only where
   the muster plugin is registered. Each connector in its table links to that
   connector's Usage tab on the selected installation and window; an instance
@@ -456,6 +462,19 @@ page.
 Overview and Cost cover everyone's traffic and need the installation's metrics
 (see the configuration page); without them, Overview and Cost say so and still
 show the person's own session figures.
+
+**Organization.** The scope bar's Organization select, shown on Overview and
+Cost from two organizations on, narrows every gateway figure to one
+organization's agents, by the namespace they run in (the gateway's
+`agent_namespace` label). It travels in the URL as `?organization=<namespace>`
+and is left out for every organization. Its options are the namespaces the
+gateway recorded calls for in the window, so a removed organization keeps its
+spend, plus the namespaces the roster's agents run in; a deep link to any other
+namespace is kept as the selection. The Cost caption says whose spend the page
+shows and for whom: every organization's, for everyone who can read the
+environment's metrics. The portal adds no access check of its own: who may
+read an installation's metrics is the observability platform's decision
+(agent-permissions plan, D8 T1).
 
 Each installation's metrics start on a different day. When the selected range
 reaches back further than the records, Overview, Cost and Connectors say since

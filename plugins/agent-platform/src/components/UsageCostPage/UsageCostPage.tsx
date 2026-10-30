@@ -1,20 +1,26 @@
-import { Flex, Text } from '@backstage/ui';
+import { useLocation } from 'react-router-dom';
+import { Flex, Link, Text } from '@backstage/ui';
 import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useUsageOrganization } from '../../hooks/useUsageOrganization';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import {
   formatUsd,
   isConvertedCurrency,
   useCurrency,
 } from '../../lib/formatNumbers';
+import type { LlmOrganizationRow } from '../../lib/llmUsage';
+import { tenantInSentence } from '../../lib/tenants';
+import { withUsageOrganization } from '../../lib/usageOrganization';
 import {
   CostKpiTiles,
   CostPerDayCard,
   DataStartNote,
   LlmByAgentTable,
   LlmByModelTable,
+  LlmByOrganizationTable,
   LlmUsageState,
   PricingCoverageAlert,
   PricingCoverageNote,
@@ -58,12 +64,30 @@ const useStyles = makeStyles((theme: Theme) => ({
 export function UsageCostPage() {
   const classes = useStyles();
   const { days } = useUsageWindow();
+  // The organization scope, when a link or the scope bar names one: every
+  // query below then carries its namespace, so every figure is that
+  // organization's (giantswarm/giantswarm#36698, D8).
+  const { namespace } = useUsageOrganization();
+  const { pathname, search } = useLocation();
   // `comparePrevious` is the one extra query the delta on the spend tile
   // needs; only this view pays for it.
-  const view = useLlmUsageView({ days, comparePrevious: true });
+  const view = useLlmUsageView({
+    days,
+    org: namespace,
+    comparePrevious: true,
+  });
   const { usage, installation } = view;
   const currency = useCurrency(installation);
   const converted = isConvertedCurrency(currency);
+
+  // Whose spend the caption says it is, and where a row of the organization
+  // table takes the reader: the same page, narrowed to that organization.
+  // Unattributed traffic has no namespace to narrow to.
+  const scope = namespace ? tenantInSentence(namespace) : 'every organization';
+  const hrefForOrganization = (row: LlmOrganizationRow) =>
+    row.kind === 'unattributed'
+      ? undefined
+      : withUsageOrganization(pathname, search, row.namespace);
 
   // Only read for the gateway-less fallback below; the query key is shared
   // with the Overview and the Your sessions tab, so this costs no extra round.
@@ -84,15 +108,27 @@ export function UsageCostPage() {
     <UsageColumn>
       <Flex direction="column" gap="6">
         {/* One short caption, not a heading: the tab above already names
-            the view. How the spend is priced is the footnote's to say. */}
+            the view. How the spend is priced is the footnote's to say. Whose
+            spend, and for whom, is the caption's: every organization's, for
+            everyone who may read the environment's metrics — the portal adds
+            no check of its own (agent-permissions plan, D8 T1). */}
         <Text as="p" variant="body-medium" color="secondary">
-          {installation ? (
+          Shows the spend of {scope}
+          {installation && (
             <>
-              Shows the spend on <strong>{installation}</strong> over the last{' '}
-              {days} days, for every user.
+              {' '}
+              on <strong>{installation}</strong>
             </>
-          ) : (
-            `Shows the spend over the last ${days} days, for every user.`
+          )}{' '}
+          over the last {days} days, for everyone who can read this
+          environment's metrics.
+          {namespace && (
+            <>
+              {' '}
+              <Link href={withUsageOrganization(pathname, search, undefined)}>
+                Show all organizations
+              </Link>
+            </>
           )}
         </Text>
 
@@ -131,6 +167,18 @@ export function UsageCostPage() {
                 currency={currency}
               />
             </div>
+            {/* The roll-up by organization, the cost centre: only across
+                every organization — narrowed to one it would be one row,
+                and the caption already names it. */}
+            {!namespace && (
+              <LlmByOrganizationTable
+                rows={usage.byOrganization}
+                currency={currency}
+                hrefFor={hrefForOrganization}
+                emptyMessage="The gateway attributed no calls to an organization in this window."
+                note="An organization is the namespace its agents run in, so its row covers every agent and every user there. None is the platform's shared agents, available to every organization. Unattributed marks calls the gateway matched to no caller. Open an organization to narrow every figure on this page to it."
+              />
+            )}
             <LlmByAgentTable
               rows={usage.byAgent}
               currency={currency}
