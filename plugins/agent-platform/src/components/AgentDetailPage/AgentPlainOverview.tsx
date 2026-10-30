@@ -18,6 +18,7 @@ import {
   ShowMore,
   TechnicalDetailsFoldOut,
   TagList,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -412,6 +413,7 @@ export function AgentPlainOverview({
   const failure = agent.getFailure();
   const description = agent.getDescription();
   const tags = agent.getTags();
+  const { agents: agentsPath } = useCustomizePaths();
 
   return (
     <div className={classes.sections}>
@@ -425,7 +427,10 @@ export function AgentPlainOverview({
             No description yet.
           </Text>
         )}
-        <TagList tags={tags} />
+        <TagList
+          tags={tags}
+          getHref={agentsPath ? tag => tagHref(agentsPath, tag) : undefined}
+        />
       </PageSection>
 
       <InstructionsSection

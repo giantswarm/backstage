@@ -500,6 +500,10 @@ describe('WorkflowPage', () => {
         .getAllByRole('listitem')
         .map(item => item.textContent),
     ).toEqual(['release', 'ops']);
+    // Each opens Customize → Workflows with that tag picked.
+    expect(
+      within(section).getByRole('link', { name: 'release' }),
+    ).toHaveAttribute('href', '/customize/workflows?tags=release');
   });
 
   it('says so where the definition gives no description', async () => {

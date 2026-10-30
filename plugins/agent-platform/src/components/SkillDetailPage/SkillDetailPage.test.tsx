@@ -282,6 +282,11 @@ describe('SkillDetailPage', () => {
         .getAllByRole('listitem')
         .map(item => item.textContent),
     ).toEqual(['triage', 'ops']);
+    // Each opens Customize → Skills with that tag picked.
+    expect(within(tags).getByRole('link', { name: 'ops' })).toHaveAttribute(
+      'href',
+      '/customize/skills?tags=ops',
+    );
     unmount();
 
     mockCatalog = loaded;

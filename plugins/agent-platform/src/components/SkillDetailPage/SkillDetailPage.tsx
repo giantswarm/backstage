@@ -26,6 +26,7 @@ import {
   usePhoneLayout,
   CommitSha,
   shortSha,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -137,6 +138,7 @@ function OverviewTab({
 }) {
   const classes = useStyles();
   const tags = skillTags(skill);
+  const { skills: skillsPath } = useCustomizePaths();
   return (
     <div className={classes.sections}>
       {!proposable && (
@@ -163,7 +165,10 @@ function OverviewTab({
             Its SKILL.md gives no description.
           </Text>
         )}
-        <TagList tags={tags} />
+        <TagList
+          tags={tags}
+          getHref={skillsPath ? tag => tagHref(skillsPath, tag) : undefined}
+        />
       </PageSection>
       <PageSection title="Where it lives">
         <FactList facts={facts} labelWidth={160} />

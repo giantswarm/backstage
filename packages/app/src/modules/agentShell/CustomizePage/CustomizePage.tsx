@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import {
   Navigate,
   Route,
@@ -19,8 +19,12 @@ import {
   type RouteTabCount,
   RouteTabs,
   ShellDocumentTitle,
+  SharedTagsProvider,
   ShellPage,
+  tagsOfSearch,
   usePhoneLayout,
+  useSharedTags,
+  withTagsSearch,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   agentPlatformPlugin,
@@ -261,10 +265,11 @@ function ConnectorGroupTabs({
 }) {
   const customize = useCustomizePath();
   const { search } = useLocation();
+  const tags = useSharedTags()?.tags ?? [];
   return (
     <RouteTabs
       basePath={`${customize}/connectors`}
-      search={search}
+      search={withTagsSearch(search, tags)}
       tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
         id,
         path,
@@ -300,6 +305,8 @@ function CustomizeTabContent({
   const musterCounts = useMusterCustomizeCounts();
   const location = useLocation();
   const isPhone = usePhoneLayout();
+  // The Tags pick goes with a switch to another tab.
+  const sharedTags = useSharedTags()?.tags ?? [];
   // Seeded once from `?q=`, so a link (the command palette's "+N more") can
   // open the tab already searched. Not written back.
   const [search, setSearch] = useState(
@@ -348,6 +355,7 @@ function CustomizeTabContent({
         )
       }
       tabs={tabs}
+      tabsSearch={withTagsSearch('', sharedTags)}
     >
       <Flex direction="column" gap="5">
         {tab.id === 'connectors' && (
@@ -470,11 +478,14 @@ function CustomizeTabPage({
   // address's `q`, so a link that brings a search (the palette's "+N more")
   // reseeds it even when it lands on the tab already open. Typing never
   // writes `q` back, so a keystroke does not remount anything.
-  const query = new URLSearchParams(search).get('q') ?? '';
+  const params = new URLSearchParams(search);
+  const query = params.get('q') ?? '';
+  // Keyed by the address's tags too, so a tag link reseeds the Tags filter.
+  const tags = params.get('tags') ?? '';
   // Not keyed by the sub-tab: a search carries over to the next one.
   return (
     <CustomizeTabContent
-      key={`${tab.id}?${query}`}
+      key={`${tab.id}?${query}&${tags}`}
       tab={tab}
       connectorGroup={connectorGroup}
     />
@@ -493,12 +504,26 @@ function CustomizeScreen({
   tab: CustomizeTab;
   connectorGroup?: ConnectorGroup;
 }) {
+  // One Tags pick for every tab: seeded from `?tags=` (a tag link from a
+  // detail page), carried to the tab switched to, never written back.
+  const { search } = useLocation();
+  const linkedTags = tagsOfSearch(search).join(',');
+  const [tags, setTags] = useState<readonly string[]>(() =>
+    tagsOfSearch(search),
+  );
+  useEffect(() => {
+    if (linkedTags) {
+      setTags(linkedTags.split(','));
+    }
+  }, [linkedTags]);
   return (
-    <CustomizeMusterProvider>
-      <CustomizeDataProvider>
-        <CustomizeTabPage tab={tab} connectorGroup={connectorGroup} />
-      </CustomizeDataProvider>
-    </CustomizeMusterProvider>
+    <SharedTagsProvider tags={tags} onTagsChange={setTags}>
+      <CustomizeMusterProvider>
+        <CustomizeDataProvider>
+          <CustomizeTabPage tab={tab} connectorGroup={connectorGroup} />
+        </CustomizeDataProvider>
+      </CustomizeMusterProvider>
+    </SharedTagsProvider>
   );
 }
 

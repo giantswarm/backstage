@@ -2478,6 +2478,11 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
           .getAllByRole('listitem')
           .map(item => item.textContent),
       ).toEqual(['review', 'github']);
+      // Each opens Customize → Agents with that tag picked.
+      expect(screen.getByRole('link', { name: 'review' })).toHaveAttribute(
+        'href',
+        '/customize/agents?tags=review',
+      );
     });
 
     it('draws no tags for an agent without any', async () => {

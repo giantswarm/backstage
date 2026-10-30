@@ -8,6 +8,8 @@ import {
   type CatalogFilterSelection,
   isCatalogFiltered,
 } from './catalogFilters';
+import { useSharedTags } from './sharedTags';
+import { TAGS_FACET_ID } from './tagsFacet';
 
 export type UseCatalogFiltersOptions<T> = {
   /** The whole catalog, unsearched: decides which values each facet offers. */
@@ -38,6 +40,10 @@ export type CatalogFilters<T> = {
 /**
  * The state of a catalog's filter bar: the picks, and what they leave.
  * Counts and the facets drawn follow {@link catalogFilterDimensions}.
+ *
+ * Under a `SharedTagsProvider`, a catalog with a Tags facet starts from the
+ * shared tags (unless `initialSelection` picks tags itself) and writes its
+ * Tags picks back, so the next catalog on the page opens with them.
  */
 export function useCatalogFilters<T>({
   items,
@@ -45,9 +51,17 @@ export function useCatalogFilters<T>({
   facets,
   initialSelection,
 }: UseCatalogFiltersOptions<T>): CatalogFilters<T> {
-  const [selection, setSelection] = useState<CatalogFilterSelection>(
-    () => initialSelection ?? {},
-  );
+  const sharedTags = useSharedTags();
+  const shared = facets.some(facet => facet.id === TAGS_FACET_ID)
+    ? sharedTags
+    : undefined;
+  const [selection, setSelection] = useState<CatalogFilterSelection>(() => {
+    const initial = initialSelection ?? {};
+    if (!shared || shared.tags.length === 0 || initial[TAGS_FACET_ID]?.length) {
+      return initial;
+    }
+    return { ...initial, [TAGS_FACET_ID]: [...shared.tags] };
+  });
   const filtered = useMemo(
     () => applyCatalogFilters(searched, facets, selection),
     [searched, facets, selection],
@@ -56,12 +70,20 @@ export function useCatalogFilters<T>({
     () => catalogFilterDimensions(items, searched, facets, selection),
     [items, searched, facets, selection],
   );
+  const setSharedTags = shared?.setTags;
   const select = useCallback(
-    (facetId: string, values: readonly string[]) =>
-      setSelection(current => ({ ...current, [facetId]: [...values] })),
-    [],
+    (facetId: string, values: readonly string[]) => {
+      setSelection(current => ({ ...current, [facetId]: [...values] }));
+      if (facetId === TAGS_FACET_ID) {
+        setSharedTags?.(values);
+      }
+    },
+    [setSharedTags],
   );
-  const clear = useCallback(() => setSelection({}), []);
+  const clear = useCallback(() => {
+    setSelection({});
+    setSharedTags?.([]);
+  }, [setSharedTags]);
   return {
     filtered,
     dimensions,

@@ -37,6 +37,7 @@ import {
   type StatusDotTone,
   TagList,
   useSplatBasePath,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
@@ -485,7 +486,15 @@ function ConnectorPageContent({
   const facts: Fact[] = [];
   const tags = serverTags(members);
   if (tags.length > 0) {
-    facts.push({ label: 'Tags', value: <TagList tags={tags} /> });
+    facts.push({
+      label: 'Tags',
+      value: (
+        <TagList
+          tags={tags}
+          getHref={listPath ? tag => tagHref(listPath, tag) : undefined}
+        />
+      ),
+    });
   }
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });

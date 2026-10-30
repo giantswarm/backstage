@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
+import { useSharedTags } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type MockedLayout,
   mockDesktopLayout,
@@ -25,12 +26,26 @@ let mockMusterCounts: Record<string, unknown>;
 let mockCanAddSkill = false;
 
 function mockPanel(name: string) {
-  return (props: { search: string }) => (
-    <p>{`${name} panel, search “${props.search}”${
-      // Anything beyond the search would be a filter the page hands down.
-      Object.keys(props).length > 1 ? ', with more props' : ''
-    }`}</p>
-  );
+  return function MockPanel(props: { search: string }) {
+    // What a panel's Tags facet starts from, and a way to change it.
+    const shared = useSharedTags();
+    return (
+      <>
+        <p>{`${name} panel, search “${props.search}”${
+          // Anything beyond the search would be a filter the page hands down.
+          Object.keys(props).length > 1 ? ', with more props' : ''
+        }`}</p>
+        {shared && shared.tags.length > 0 && (
+          <>
+            <p>{`${name} panel, tags ${shared.tags.join(',')}`}</p>
+            <button type="button" onClick={() => shared.setTags(['ops'])}>
+              Pick ops
+            </button>
+          </>
+        )}
+      </>
+    );
+  };
 }
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
@@ -552,6 +567,37 @@ describe('CustomizePage', () => {
       expect(
         screen.getByRole('link', { name: 'Connect a model' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the Tags pick', () => {
+    it('opens the tab with the tags of ?tags= picked', async () => {
+      await renderCustomize('/customize/skills?tags=util');
+
+      expect(screen.getByText('Skills panel, tags util')).toBeInTheDocument();
+    });
+
+    it('goes with a switch to another tab, as it was last picked', async () => {
+      await renderCustomize('/customize/agents?tags=util');
+      await userEvent.click(screen.getByRole('button', { name: 'Pick ops' }));
+
+      expect(screen.getByRole('tab', { name: /^Skills/ })).toHaveAttribute(
+        'href',
+        '/customize/skills?tags=ops',
+      );
+      await userEvent.click(screen.getByRole('tab', { name: /^Skills/ }));
+
+      expect(screen.getByText('Skills panel, tags ops')).toBeInTheDocument();
+    });
+
+    it('is nothing without ?tags=', async () => {
+      await renderCustomize('/customize/agents');
+
+      expect(screen.queryByText(/panel, tags/)).toBeNull();
+      expect(screen.getByRole('tab', { name: /^Skills/ })).toHaveAttribute(
+        'href',
+        '/customize/skills',
+      );
     });
   });
 

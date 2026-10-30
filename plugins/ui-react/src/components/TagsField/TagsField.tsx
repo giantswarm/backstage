@@ -34,8 +34,8 @@ export type TagsFieldProps = {
   /** The draft's problem once the form shows its errors. */
   error: string | undefined;
   /**
-   * How many resources carry each tag; a mounted `TagVocabularyContext`
-   * takes precedence.
+   * How many resources carry each tag; a mounted `TagVocabularyProvider`
+   * takes precedence once it has read.
    */
   counts?: ReadonlyMap<string, number>;
   onDraftChange: (draft: string) => void;

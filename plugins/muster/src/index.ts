@@ -1,4 +1,5 @@
 export { musterPlugin as default } from './plugin';
+export { ConnectorTagSource, WorkflowTagSource } from './components/TagSources';
 export {
   isMusterAuthFailure,
   isSessionExpiredError,

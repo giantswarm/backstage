@@ -424,6 +424,10 @@ describe('ConnectorPage', () => {
         .getAllByRole('listitem')
         .map(item => item.textContent),
     ).toEqual(['ticketing', 'support']);
+    // Each opens the connector's Customize list with that tag picked.
+    expect(
+      within(facts).getByRole('link', { name: 'support' }),
+    ).toHaveAttribute('href', '/customize/connectors?tags=support');
   });
 
   it('lists the facts on the Details tab, not beside the content', async () => {
