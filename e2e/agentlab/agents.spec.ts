@@ -23,7 +23,7 @@ import {
  */
 const rosterWait = 2 * 60_000;
 
-test('the roster lists the agent with its model, under Customize · Agents', async ({
+test('the roster lists the agent under Customize · Agents', async ({
   admin,
   labAgent,
 }) => {
@@ -39,14 +39,14 @@ test('the roster lists the agent with its model, under Customize · Agents', asy
   await expect(row, 'the roster lists the fixture agent').toBeVisible({
     timeout: rosterWait,
   });
-  // A row reads its name, its description, the model its ModelConfig
-  // serves (the lab's `aiModel`, a Claude model) and what it carries — the
-  // fixture agent has no skills and no tools.
+  // A row reads its name, its description and its tags — the fixture agent
+  // has none, so no tag group. The model, skills and connectors are on the
+  // agent's own page.
   await expect(row).toContainText(
     'Throwaway agent of the Playwright suite; deleted by the same run.',
   );
-  await expect(row).toContainText(/claude-/);
-  await expect(row).toContainText('0 skills · 0 connectors');
+  await expect(row.getByRole('grid', { name: 'Tags' })).toHaveCount(0);
+  await expect(row).not.toContainText(/claude-|skills ·/);
   // The lab runs every agent on one Harness: main's singleHarness rule (#2858)
   // shows neither a Harness filter nor a Harness per row.
   await expect(

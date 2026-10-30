@@ -106,6 +106,8 @@ export type AgentSpec = {
   name: string;
   displayName: string;
   description?: string;
+  /** Keywords to find the agent by (the `ui.giantswarm.io/tags` annotation). */
+  tags?: string[];
   systemMessage?: string;
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
@@ -633,6 +635,7 @@ export type AgentManagerAgent = {
   exists: boolean;
   displayName?: string;
   description?: string;
+  tags?: string[];
   modelConfig?: string;
   iconUrl?: string;
   systemMessage?: string;
@@ -703,6 +706,8 @@ export type AgentUpdate = {
   name: string;
   displayName?: string;
   description?: string;
+  /** Replaces the whole list; an empty list clears it. */
+  tags?: string[];
   systemMessage?: string;
   modelConfig?: string;
   iconUrl?: string;

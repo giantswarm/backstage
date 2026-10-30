@@ -163,3 +163,60 @@ describe('isCatalogFiltered and catalogFilterKey', () => {
     ).toBe('repo=x,y&usage=used');
   });
 });
+
+describe('a facet with several values per item', () => {
+  type Tagged = { name: string; tags: string[]; repo: string };
+  const tagged: Tagged[] = [
+    { name: 'a', tags: ['util', 'ops'], repo: 'x' },
+    { name: 'b', tags: ['util'], repo: 'y' },
+    { name: 'c', tags: [], repo: 'x' },
+    { name: 'd', tags: ['marketing', 'marketing'], repo: 'y' },
+  ];
+  const tagFacets: CatalogFacet<Tagged>[] = [
+    { id: 'tags', label: 'Tags', value: item => item.tags },
+    { id: 'repo', label: 'Source', value: item => item.repo },
+  ];
+
+  it('keeps an item when any of its values is picked', () => {
+    expect(
+      applyCatalogFilters(tagged, tagFacets, {
+        tags: ['ops', 'marketing'],
+      }).map(item => item.name),
+    ).toEqual(['a', 'd']);
+    expect(
+      applyCatalogFilters(tagged, tagFacets, {
+        tags: ['util'],
+        repo: ['y'],
+      }).map(item => item.name),
+    ).toEqual(['b']);
+  });
+
+  it('counts an item under each of its values, once per value', () => {
+    const [tags, repo] = catalogFilterDimensions(tagged, tagged, tagFacets, {});
+    expect(tags.options).toEqual([
+      { id: 'util', label: 'util', count: 2 },
+      { id: 'marketing', label: 'marketing', count: 1 },
+      { id: 'ops', label: 'ops', count: 1 },
+    ]);
+    expect(repo.options.map(option => option.count)).toEqual([2, 2]);
+  });
+
+  it('counts other facets over the items any picked value keeps', () => {
+    const [, repo] = catalogFilterDimensions(tagged, tagged, tagFacets, {
+      tags: ['util'],
+    });
+    expect(repo.options.map(option => [option.id, option.count])).toEqual([
+      ['x', 1],
+      ['y', 1],
+    ]);
+  });
+
+  it('leaves the facet out when no item has a value', () => {
+    const none = tagged.map(item => ({ ...item, tags: [] }));
+    expect(
+      catalogFilterDimensions(none, none, tagFacets, {}).map(
+        dimension => dimension.id,
+      ),
+    ).toEqual(['repo']);
+  });
+});

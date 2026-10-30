@@ -33,6 +33,9 @@ import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
+import { TagsField } from './TagsField';
+import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
+import { tagCounts } from '../../lib/tags';
 import {
   harnessTitle,
   PLATFORM_DEFAULT_LABEL,
@@ -56,7 +59,10 @@ const useStyles = makeStyles({
 export function NewAgentPage() {
   return (
     <ModelConfigsProvider>
-      <NewAgentPageContent />
+      {/* The fleet's agents, for the tags they already use. */}
+      <AgentsDataProvider>
+        <NewAgentPageContent />
+      </AgentsDataProvider>
     </ModelConfigsProvider>
   );
 }
@@ -78,6 +84,9 @@ function NewAgentPageContent() {
     setName,
     setSlug,
     setDescription,
+    addTags,
+    removeTag,
+    setTagDraft,
     setSystemMessage,
     setEgressText,
     setEgressSetByPlatform,
@@ -104,6 +113,9 @@ function NewAgentPageContent() {
   // to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { errorFor, fieldProps, textFieldProps } = validation;
+  // The tags the fleet already uses, offered while typing a tag.
+  const { rows: agents } = useAgents();
+  const knownTags = useMemo(() => tagCounts(agents), [agents]);
   // "More options" holds the technical knobs (model, runtime, default
   // workspace, technical name, EgressPolicies and extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
@@ -281,6 +293,15 @@ function NewAgentPageContent() {
           rows={2}
           placeholder="e.g. Sorts, summarises and routes support tickets"
           description="Shown to people when they pick an agent."
+        />
+        <TagsField
+          tags={state.tags}
+          draft={state.tagDraft ?? ''}
+          error={errorFor('tags', fieldErrors.tags)}
+          counts={knownTags}
+          onDraftChange={setTagDraft}
+          onAdd={addTags}
+          onRemove={removeTag}
         />
         <TextAreaField
           label="Instructions"

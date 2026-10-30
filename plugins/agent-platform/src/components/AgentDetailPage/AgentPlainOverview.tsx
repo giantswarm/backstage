@@ -1,6 +1,6 @@
 import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
-import { Badge, Button, Flex, Text } from '@backstage/ui';
+import { Badge, Button, Flex, Tag, TagGroup, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   Agent,
@@ -410,6 +410,7 @@ export function AgentPlainOverview({
   const classes = useStyles();
   const failure = agent.getFailure();
   const description = agent.getDescription();
+  const tags = agent.getTags();
 
   return (
     <div className={classes.sections}>
@@ -422,6 +423,15 @@ export function AgentPlainOverview({
           <Text as="p" variant="body-medium" color="secondary">
             No description yet.
           </Text>
+        )}
+        {tags.length > 0 && (
+          <TagGroup aria-label="Tags">
+            {tags.map(tag => (
+              <Tag key={tag} id={tag} size="small">
+                {tag}
+              </Tag>
+            ))}
+          </TagGroup>
         )}
       </PageSection>
 

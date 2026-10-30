@@ -2,11 +2,9 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
 import {
   agentHarnesses,
-  agentParts,
   agentsByModel,
   agentsBySkill,
   agentStatus,
-  connectorCount,
   harnessLabel,
   modelStatus,
   STALE_MODEL_DETAIL,
@@ -26,6 +24,7 @@ function agent(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'Support triage',
     technicalName: 'triage',
     description: 'Sorts tickets',
+    tags: [],
     skillCount: 0,
     readiness: 'ready',
     ...overrides,
@@ -81,75 +80,6 @@ describe('agentStatus', () => {
         }),
       ),
     ).toEqual({ label: 'Model not serving', tone: 'warning' });
-  });
-});
-
-describe('connectorCount', () => {
-  it('counts the servers a composed toolset names', () => {
-    expect(
-      connectorCount(
-        agent({
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['server:github', 'server:jira', 'server:github'],
-          },
-        }),
-      ),
-    ).toBe(2);
-  });
-
-  it('counts none for an agent without tools', () => {
-    expect(connectorCount(agent({ toolset: { state: 'no-gateway' } }))).toBe(0);
-    expect(
-      connectorCount(
-        agent({
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['preset:none'],
-          },
-        }),
-      ),
-    ).toBe(0);
-  });
-
-  it('does not count what only muster resolves', () => {
-    expect(connectorCount(agent())).toBeUndefined();
-    expect(
-      connectorCount(
-        agent({ toolset: { state: 'implicit-full', carrier: 'triage' } }),
-      ),
-    ).toBeUndefined();
-    expect(
-      connectorCount(
-        agent({
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['server:github', 'preset:read-only'],
-          },
-        }),
-      ),
-    ).toBeUndefined();
-  });
-});
-
-describe('agentParts', () => {
-  it('names skills and, when known, connectors', () => {
-    expect(agentParts(agent({ skillCount: 1 }))).toBe('1 skill');
-    expect(
-      agentParts(
-        agent({
-          skillCount: 2,
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['server:github'],
-          },
-        }),
-      ),
-    ).toBe('2 skills · 1 connector');
   });
 });
 
@@ -287,6 +217,9 @@ describe('search', () => {
     const onCodex = agent({ harness: 'codex', harnessTitle: 'Codex CLI' });
     expect(searchAgents([onCodex], 'codex')).toHaveLength(1);
     expect(searchAgents([onCodex], 'cli')).toHaveLength(1);
+    const tagged = agent({ tags: ['util', 'marketing'] });
+    expect(searchAgents([tagged], 'MARKET')).toHaveLength(1);
+    expect(searchAgents([agent()], 'util')).toHaveLength(0);
     expect(searchModels([model()], 'anthropic')).toHaveLength(1);
     expect(searchSkills([skill('triage')], 'giantswarm/skills')).toHaveLength(
       1,

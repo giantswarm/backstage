@@ -115,7 +115,23 @@ jest.mock('../EgressPolicyPicker', () => ({
   EgressPolicyPicker: () => <p>egress policy picker</p>,
 }));
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
+// The fleet's agents, for the tags they already use; none by default.
+let mockAgentTags: string[][] = [];
+jest.mock('../AgentsDataProvider', () => ({
+  AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
+  useAgents: () => ({
+    rows: mockAgentTags.map(tags => ({ tags })),
+    isLoading: false,
+  }),
+}));
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
+
+/** The form's tags, as the state holds them. */
+let formTags: string[] = [];
+function TagsProbe() {
+  formTags = useNewAgentForm().state.tags;
+  return null;
+}
 
 async function renderPage(
   provider: Omit<ComponentProps<typeof NewAgentFormProvider>, 'children'> = {},
@@ -124,6 +140,7 @@ async function renderPage(
     <PageHeaderActionsProvider>
       <NewAgentFormProvider {...provider}>
         <NewAgentPage />
+        <TagsProbe />
       </NewAgentFormProvider>
     </PageHeaderActionsProvider>,
     {
@@ -163,10 +180,145 @@ const moreOptions = () =>
   screen.getByText('More options').closest('details') as HTMLDetailsElement;
 
 beforeEach(() => {
+  mockAgentTags = [];
+  formTags = [];
   mockNavigate.mockReset();
   mockPreselectedModel = 'Claude Sonnet';
   mockHarnessChoices = [];
   mockPlatformChoice = undefined;
+});
+
+describe('NewAgentPage tags', () => {
+  const tagsField = () => screen.getByRole('textbox', { name: /^Tags/ });
+  const rowsOf = (name: string) =>
+    within(screen.getByRole('grid', { name }))
+      .getAllByRole('row')
+      .map(row => row.textContent);
+
+  it('adds what is typed on Enter and comma, normalized, once each', async () => {
+    await renderPage();
+
+    await userEvent.type(tagsField(), ' On_Call! {Enter}');
+    await userEvent.type(tagsField(), 'Util, marketing,util,');
+    expect(formTags).toEqual(['on-call', 'util', 'marketing']);
+    expect(rowsOf('Tags')).toEqual(['on-call', 'util', 'marketing']);
+    expect(tagsField()).toHaveValue('');
+  });
+
+  it('adds a pasted list', async () => {
+    await renderPage();
+
+    await userEvent.click(tagsField());
+    await userEvent.paste('a, b, c');
+    // The last part is still being typed until Enter, a comma or leaving.
+    expect(formTags).toEqual(['a', 'b']);
+    await userEvent.tab();
+    expect(formTags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('adds what is typed on leaving the field', async () => {
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'ops');
+    await userEvent.tab();
+    expect(formTags).toEqual(['ops']);
+    expect(tagsField()).toHaveValue('');
+  });
+
+  it('keeps the tags, and adds a typed one, when Continue is pressed', async () => {
+    await renderPage();
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Notes');
+    await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+    await userEvent.type(tagsField(), 'util{Enter}');
+    await userEvent.type(tagsField(), 'ops');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockNavigate).toHaveBeenCalled();
+    expect(formTags).toEqual(['util', 'ops']);
+  });
+
+  it('keeps a draft that cannot be a tag, with the reason', async () => {
+    await renderPage();
+
+    await userEvent.type(tagsField(), '!!!{Enter}');
+    expect(formTags).toEqual([]);
+    expect(tagsField()).toHaveValue('!!!');
+    expect(screen.getByText('Use letters and numbers.')).toBeInTheDocument();
+  });
+
+  it('blocks Continue on a draft that cannot be a tag', async () => {
+    await renderPage();
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Notes');
+    await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+    await userEvent.type(tagsField(), '!!!');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText('Use letters and numbers.')).toBeInTheDocument();
+    expect(tagsField()).toHaveFocus();
+
+    await userEvent.clear(tagsField());
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it('removes a tag', async () => {
+    await renderPage();
+    await userEvent.type(tagsField(), 'util,ops,');
+
+    await userEvent.click(
+      within(screen.getByRole('row', { name: /util/ })).getByRole('button'),
+    );
+    expect(formTags).toEqual(['ops']);
+    expect(rowsOf('Tags')).toEqual(['ops']);
+  });
+
+  it('offers the fleet’s matching tags while typing, the most used first, and adds a clicked one', async () => {
+    mockAgentTags = [['util', 'ops'], ['ops'], ['ops', 'marketing']];
+    await renderPage();
+    const field = tagsField();
+    expect(
+      screen.queryByRole('grid', { name: 'Suggested tags' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(field, 't');
+    expect(rowsOf('Suggested tags')).toEqual(['marketing', 'util']);
+    // Typing on is the same input: nothing remounts under the cursor.
+    await userEvent.type(field, 'il');
+    expect(tagsField()).toBe(field);
+    expect(field).toHaveValue('til');
+    expect(rowsOf('Suggested tags')).toEqual(['util']);
+
+    await userEvent.click(screen.getByRole('row', { name: 'util' }));
+    // The partial draft is not added on the way to the suggestion.
+    expect(formTags).toEqual(['util']);
+    expect(field).toHaveValue('');
+    expect(
+      screen.queryByRole('grid', { name: 'Suggested tags' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(field, 'u');
+    expect(
+      screen.queryByRole('grid', { name: 'Suggested tags' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('points out the existing tag a new one is close to, and swaps it in', async () => {
+    mockAgentTags = [['marketing']];
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'marketng{Enter}');
+    expect(formTags).toEqual(['marketng']);
+    expect(screen.getByText(/Existing:/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'marketing' }));
+    expect(formTags).toEqual(['marketing']);
+    expect(screen.queryByText(/Existing:/)).not.toBeInTheDocument();
+  });
 });
 
 describe('NewAgentPage', () => {

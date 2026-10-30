@@ -86,6 +86,7 @@ const agent: AgentRow = {
   name: 'Issue tracker',
   technicalName: 'issue-tracker',
   description: 'Tracks issues',
+  tags: [],
   skillCount: 0,
   readiness: 'ready',
 };

@@ -1,7 +1,7 @@
 import { ReactNode, useCallback, useEffect, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
-import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
+import { ButtonIcon, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
@@ -30,7 +30,6 @@ import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
-  agentParts,
   agentStatus,
   harnessLabel,
   searchAgents,
@@ -59,6 +58,9 @@ const ROW_AVATAR_SIZE: AvatarSize = 96;
  * the tab is how a specific agent is found.
  */
 export const AGENTS_PAGE_SIZE = 25;
+
+/** Tags a row shows before "+N": the rest are on the agent's page. */
+export const ROW_TAGS_MAX = 3;
 
 /** Two lines, then an ellipsis: what a phone row shows of a long text. */
 const TWO_LINES = {
@@ -228,6 +230,14 @@ const useStyles = makeStyles({
       flexBasis: '100%',
     },
   },
+  // Tags sit under the name link's stretched hit area, so a press on one
+  // opens the agent like the rest of the row: bui's tags would otherwise take
+  // the press themselves.
+  tags: {
+    flex: '0 1 auto',
+    minWidth: 0,
+    pointerEvents: 'none',
+  },
   // Fixed-width fact columns line the rows up, as the prototype's do.
   fact: {
     flex: '0 0 150px',
@@ -249,7 +259,8 @@ export type CustomizeAgentsPanelProps = {
 
 /**
  * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
- * runs on, its Harness, who created it and the person's favorites. The
+ * runs on, its Harness, its tags (drawn only once some agent has one), who
+ * created it and the person's favorites. The
  * environment is not one of them: the page's Environment select already
  * scopes the tab to one installation, and shows only where there is more than
  * one — a second control for the same thing would be two answers to one
@@ -296,6 +307,7 @@ export function agentFacets(
           },
         ]
       : []),
+    { id: 'tags', label: 'Tags', value: (row: AgentRow) => row.tags },
     ...(isMine
       ? [
           {
@@ -346,11 +358,39 @@ function organizationText(namespace: string): string {
 }
 
 /**
+ * An agent's tags on its row: the first {@link ROW_TAGS_MAX}, then "+N".
+ * Nothing when it has none.
+ */
+function AgentRowTags({ tags }: { tags: readonly string[] }) {
+  const classes = useStyles();
+  if (tags.length === 0) {
+    return null;
+  }
+  const hidden = tags.length - ROW_TAGS_MAX;
+  return (
+    <div className={classes.tags}>
+      <TagGroup aria-label="Tags">
+        {tags.slice(0, ROW_TAGS_MAX).map(tag => (
+          <Tag key={tag} id={tag} size="small">
+            {tag}
+          </Tag>
+        ))}
+        {hidden > 0 && (
+          <Tag key="more" id="more" size="small">
+            {`+${hidden}`}
+          </Tag>
+        )}
+      </TagGroup>
+    </div>
+  );
+}
+
+/**
  * One agent as the prototype's list row: avatar, name — with its organization
  * and, only when it is not Ready, its state — and what it is for, then its
- * model, its Harness, its skills and connectors and its environment, the
- * organization, Harness and environment when the list has more than one of
- * each.
+ * tags, its Harness and its environment, the organization, Harness and
+ * environment when the list has more than one of each. The model, skills and
+ * connectors are technical detail, on the agent's own page.
  */
 function AgentListItem({
   row,
@@ -378,7 +418,6 @@ function AgentListItem({
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
-  const parts = agentParts(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
@@ -392,7 +431,6 @@ function AgentListItem({
     ? undefined
     : [row.name, organization].filter(Boolean).join('\n');
   const facts: AgentFact[] = [
-    { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
     ...(showHarness
@@ -405,7 +443,6 @@ function AgentListItem({
           },
         ]
       : []),
-    { key: 'parts', text: parts, label: 'Skills and connectors' },
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
       : []),
@@ -505,6 +542,7 @@ function AgentListItem({
         </div>
         {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
         <div className={classes.facts} data-testid="agent-facts">
+          <AgentRowTags tags={row.tags} />
           {facts.map(fact => (
             <Text
               key={fact.key}
@@ -606,7 +644,7 @@ function AgentGroup({
  * agent (when configured), the person's "Last used by you" cards, then the
  * rounded list of the agents in scope — the person's favorites (starred, per
  * person) in a group of their own on top — an avatar row each with what it is
- * for, its model and its parts, each row opening the agent's page. One list,
+ * for and its tags, each row opening the agent’s page. One list,
  * not grouped by tenant (D4); where the agents belong to more than one tenant,
  * each row names its tenant and the bar filters by it (giantswarm#36698, D6).
  * Must be mounted inside a `CustomizeDataProvider`.

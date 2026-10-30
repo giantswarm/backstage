@@ -137,6 +137,7 @@ function row(overrides: Partial<AgentRow>): AgentRow {
     name: 'Agent',
     technicalName: 'agent',
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready' as const,
     ...overrides,
@@ -326,10 +327,13 @@ describe('CustomizeAgentsPanel', () => {
     );
     const triageRow = items[0];
     expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
-    expect(within(triageRow).getByText('Sonnet 4.5')).toBeInTheDocument();
+    // The model, skills and connectors are technical: the agent's page has them.
+    expect(within(triageRow).queryByText('Sonnet 4.5')).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText(/connector/)).not.toBeInTheDocument();
+    // No tags, no tag group.
     expect(
-      within(triageRow).getByText('2 skills · 2 connectors'),
-    ).toBeInTheDocument();
+      within(triageRow).queryByRole('grid', { name: 'Tags' }),
+    ).not.toBeInTheDocument();
     expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     // A Ready agent shows no state; one that needs a look says so inline.
     expect(within(triageRow).queryByText('Ready')).not.toBeInTheDocument();
@@ -360,6 +364,45 @@ describe('CustomizeAgentsPanel', () => {
     await renderPanel('triage');
     expect(screen.getByText('Support triage')).toBeInTheDocument();
     expect(screen.queryByText('Release notes')).not.toBeInTheDocument();
+  });
+
+  it('shows the first three tags of an agent on its row, then how many more', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['util', 'ops', 'support', 'tickets'] }, notes],
+    };
+    await renderPanel();
+
+    const [triageItem] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    const tags = within(triageItem).getByRole('grid', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('row')
+        .map(tag => tag.textContent),
+    ).toEqual(['util', 'ops', 'support', '+1']);
+  });
+
+  it('offers a Tags filter once an agent has tags, and narrows to any picked', async () => {
+    const tagsFilter = () =>
+      screen.queryByRole('button', { name: /Filter by tags/, hidden: true });
+    const { unmount } = await renderPanel();
+    expect(tagsFilter()).not.toBeInTheDocument();
+    unmount();
+
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['util', 'ops'] }, notes],
+    };
+    await renderPanel();
+    await userEvent.click(tagsFilter()!);
+    await userEvent.click(await screen.findByRole('option', { name: /ops/ }));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByText('Release notes')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('Support triage')).toBeInTheDocument();
   });
 
   it('renders 300 agents a page of 25 at a time', async () => {
@@ -1047,7 +1090,7 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
   });
   afterEach(() => layout.restore());
 
-  it('wraps the name, the description and the facts instead of cutting them', async () => {
+  it('wraps the name and the description instead of cutting them', async () => {
     await renderPanel();
 
     const name = screen.getByText(longName);
@@ -1058,9 +1101,6 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
         'Reconciles the cloud bills against the budget every quarter',
       ),
     ).not.toHaveAttribute('data-truncate');
-    expect(within(items()[0]).getByText('Sonnet 4.5')).not.toHaveAttribute(
-      'data-truncate',
-    );
   });
 
   it('wraps an organization under the name instead of cutting it', async () => {
@@ -1184,7 +1224,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   /** A row's fact columns, in order, as text. */
   const factsOf = (item: HTMLElement) =>
     Array.from(
-      within(item).getByText('Opus').parentElement!.children,
+      within(item).getByTestId('agent-facts').children,
       fact => fact.textContent,
     );
 
@@ -1251,10 +1291,11 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     // Room for the organization beside the name, on every row of the list.
     expect(getComputedStyle(nameColumnOf(billing)).flexBasis).toBe('320px');
     expect(getComputedStyle(nameColumnOf(sre)).flexBasis).toBe('320px');
-    // Not among the facts: both rows have the same fact columns, the model
-    // first, so they line up from row to row however the facts wrap.
+    // Not among the facts: both rows have the same fact columns, so they
+    // line up from row to row however the facts wrap. The model is not one
+    // of them: the agent's page has it.
     expect(factsOf(billing)).toEqual(factsOf(sre));
-    expect(factsOf(billing)[0]).toBe('Opus');
+    expect(factsOf(billing).join()).not.toMatch(/Opus/);
     expect(factsOf(billing).join()).not.toMatch(/Organization|acme/);
     expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);

@@ -42,6 +42,9 @@ export function agentSpecOf(
   if (state.description.trim()) {
     spec.description = state.description;
   }
+  if (state.tags.length > 0) {
+    spec.tags = state.tags;
+  }
   if (state.systemMessage.trim()) {
     spec.systemMessage = state.systemMessage;
   }

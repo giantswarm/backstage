@@ -313,6 +313,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           {state.description.trim() && (
             <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
+          {state.tags.length > 0 && (
+            <PlainRow label="Tags">{state.tags.join(', ')}</PlainRow>
+          )}
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>

@@ -11,8 +11,12 @@ export type CatalogFacet<T> = {
   id: string;
   /** What the facet is about, named on its dropdown: "Source". */
   label: string;
-  /** The one value an item has on this facet; undefined when it has none. */
-  value: (item: T) => string | undefined;
+  /**
+   * The value an item has on this facet, or its values when it can have
+   * several (tags); undefined or empty when it has none. An item with several
+   * values is kept when any of them is picked, and counted under each.
+   */
+  value: (item: T) => string | readonly string[] | undefined;
   /** How a value reads in the dropdown; the value itself by default. */
   optionLabel?: (value: string) => string;
   /**
@@ -46,6 +50,15 @@ export type CatalogFilterDimension = {
   selected: string[];
 };
 
+function valuesOf<T>(facet: CatalogFacet<T>, item: T): readonly string[] {
+  const value = facet.value(item);
+  if (value === undefined) {
+    return [];
+  }
+  // A value listed twice still counts the item once.
+  return typeof value === 'string' ? [value] : [...new Set(value)];
+}
+
 function picksOf(
   selection: CatalogFilterSelection,
   facetId: string,
@@ -67,8 +80,7 @@ function matchesFacets<T>(
     if (picked.length === 0) {
       return true;
     }
-    const value = facet.value(item);
-    return value !== undefined && picked.includes(value);
+    return valuesOf(facet, item).some(value => picked.includes(value));
   });
 }
 
@@ -94,8 +106,7 @@ function countValues<T>(
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const item of items) {
-    const value = facet.value(item);
-    if (value !== undefined) {
+    for (const value of valuesOf(facet, item)) {
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
   }

@@ -29,6 +29,7 @@ import {
 } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
+import { draftProblem } from '../../lib/tags';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
@@ -48,6 +49,14 @@ export type NewAgentFormState = {
   name: string;
   slug: string;
   description: string;
+  /** Keywords to find the agent by, normalized and unique, as added. */
+  tags: string[];
+  /**
+   * What the Tags field holds but has not added yet. Not part of the agent;
+   * kept here so a draft that cannot be a tag blocks Continue like any other
+   * invalid field.
+   */
+  tagDraft?: string;
   installation: string | undefined;
   /**
    * Creating only: the tenants (namespaces) on the installation in which the
@@ -196,6 +205,10 @@ export type NewAgentFormContextValue = {
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
+  /** Adds tags not yet present (already normalized and valid). */
+  addTags: (tags: readonly string[]) => void;
+  removeTag: (tag: string) => void;
+  setTagDraft: (draft: string) => void;
   setInstallation: (installation: string | undefined) => void;
   /**
    * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
@@ -323,6 +336,7 @@ export type NewAgentFormContextValue = {
 /** The step-1 fields a validation problem can belong to. */
 export type NewAgentField =
   | 'name'
+  | 'tags'
   | 'systemMessage'
   | 'installation'
   | 'tenant'
@@ -337,6 +351,7 @@ const initialState: NewAgentFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
@@ -397,10 +412,12 @@ function hasCreateInput(state: NewAgentFormState): boolean {
       state.description,
       state.systemMessage,
       state.egressText,
+      state.tagDraft ?? '',
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.egressPolicyRefs.length > 0 ||
     state.defaultWorkspace !== '' ||
+    state.tags.length > 0 ||
     state.selectedSkills.length > 0 ||
     state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
@@ -556,6 +573,7 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
+    fieldErrors.tags = draftProblem(state.tagDraft ?? '');
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -597,6 +615,7 @@ export function NewAgentFormProvider({
         'systemMessage',
         'egress',
         'name',
+        'tags',
         'slug',
         'installation',
         'tenant',
@@ -641,6 +660,21 @@ export function NewAgentFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
+      addTags: tags =>
+        setState(prev => {
+          const added = [...new Set(tags)].filter(
+            tag => !prev.tags.includes(tag),
+          );
+          return added.length > 0
+            ? { ...prev, tags: [...prev.tags, ...added] }
+            : prev;
+        }),
+      removeTag: tag =>
+        setState(prev => ({
+          ...prev,
+          tags: prev.tags.filter(each => each !== tag),
+        })),
+      setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
       // here.

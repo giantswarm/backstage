@@ -186,6 +186,7 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getName: () => spec.name,
     getDisplayName: () => spec.name,
     getDescription: () => spec.description ?? '',
+    getTags: () => [],
     getModelConfigName: () => undefined,
     getSkillCount: () => 0,
     getSkills: () => [],

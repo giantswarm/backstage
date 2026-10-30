@@ -782,6 +782,39 @@ describe('EditAgentPage', () => {
     });
   });
 
+  it('keeps the agent’s tags and an added one on the review, through the dry run', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+    });
+
+    const tags = await screen.findByRole('textbox', { name: /^Tags/ });
+    await user.type(tags, 'go');
+    // Leaving the field with Continue adds what is typed.
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+
+    const tagsRow = () =>
+      within(screen.getByLabelText('Summary')).getByText('Tags', {
+        selector: 'dt',
+      }).nextElementSibling;
+    expect(tagsRow()).toHaveTextContent('review, go');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    expect(tagsRow()).toHaveTextContent('review, go');
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    )[0];
+    expect(dryRunArgs).toMatchObject({ tags: ['review', 'go'] });
+  });
+
   it('leaves an untouched edit without asking', async () => {
     const user = userEvent.setup();
     await renderEdit(BASE);
