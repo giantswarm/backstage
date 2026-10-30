@@ -16,6 +16,8 @@ import {
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
   isTokenExpired,
+  MusterAuthRequiredError,
+  MusterToolError,
   musterTokenExpiredError,
   musterTokenMissingError,
   toMusterUnauthorizedError,
@@ -31,6 +33,40 @@ import {
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
+
+/**
+ * muster's connector writes and their dry run. A tool error of one is muster
+ * refusing the request: an invalid definition, or a Secret the person may not
+ * create for the connector's client (giantswarm/giantswarm#38849). Reads
+ * (`get`, `list`, `detect`) and `delete` keep the 500 every other tool
+ * answers.
+ */
+const CONNECTOR_WRITE_TOOLS = new Set([
+  'core_mcpserver_create',
+  'core_mcpserver_update',
+  'core_mcpserver_validate',
+]);
+
+/**
+ * The status `/call` answers a connector write's refusal with: the person's
+ * request was refused, the portal did not fail. Below the `>= 500` at which
+ * `MiddlewareFactory.error()` logs the error and the root logger ships it to
+ * Sentry, where a refusal is noise and its message names the person's
+ * Secret. Every other tool's error keeps its 500: those tools are many, and
+ * their callers classify the status (agent-platform's read failures).
+ */
+const CONNECTOR_REFUSAL_STATUS = 422;
+
+/**
+ * A connector write's refusal as a 422 that keeps muster's message and further
+ * text blocks for the page. Built from the tool error alone: the request's
+ * arguments, which may carry a client secret, never reach it.
+ */
+function connectorRefusal(error: MusterToolError): MusterToolError {
+  return Object.assign(new MusterToolError(error.message, error.details), {
+    statusCode: CONNECTOR_REFUSAL_STATUS,
+  });
+}
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -578,11 +614,25 @@ export async function createRouter(
     }
     assertRunsAsPerson(name, installation);
 
-    const result = await client.callTool(
-      name,
-      (toolArgs as Record<string, unknown>) ?? {},
-      readCallOptions(req, installation),
-    );
+    let result: unknown;
+    try {
+      result = await client.callTool(
+        name,
+        (toolArgs as Record<string, unknown>) ?? {},
+        readCallOptions(req, installation),
+      );
+    } catch (error) {
+      // A sign-in muster asks for stays a MusterAuthRequiredError, and an
+      // expired token's text keeps its 401 below: both are not refusals.
+      if (
+        CONNECTOR_WRITE_TOOLS.has(name) &&
+        error instanceof MusterToolError &&
+        !(error instanceof MusterAuthRequiredError)
+      ) {
+        throw connectorRefusal(error);
+      }
+      throw error;
+    }
     res.json(result);
   });
 

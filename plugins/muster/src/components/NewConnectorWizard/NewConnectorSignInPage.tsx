@@ -1,6 +1,23 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
+import {
+  Alert,
+  Button,
+  Flex,
+  PasswordField,
+  Radio,
+  RadioGroup,
+  Select,
+  Text,
+  TextField,
+} from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   useFieldValidation,
@@ -10,14 +27,22 @@ import {
 
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
+  clientCredentialsArgument,
+  clientCredentialsProblems,
   hasAdvancedAuthorizationServer,
+  hasStoredClientSecret,
+  mcpServerFieldErrors,
+  type ClientCredentials,
   type McpServerAuthMode,
 } from '../../lib/mcpServerDefinition';
 import { mutationErrorMessage } from '../../lib/authError';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { useRegisterMcpServer } from '../NewMcpServerReviewPage';
+import {
+  OneTimeClientCredentials,
+  useRegisterMcpServer,
+} from '../NewMcpServerReviewPage';
 import { SelectableCard } from '../SelectableCard';
 import { DisclosureAccordion, SessionGate } from '../shared';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
@@ -41,6 +66,12 @@ const useStyles = makeStyles({
     gap: 16,
     margin: 0,
   },
+  // A tertiary button's label lines up with the fields' left edge: its own
+  // inline padding (bui's small size, space-2) moves outside the column.
+  inlineAction: {
+    alignSelf: 'flex-start',
+    marginInlineStart: 'calc(-1 * var(--bui-space-2))',
+  },
   disclosureSummary: {
     padding: '4px 0',
     fontWeight: 500,
@@ -53,6 +84,8 @@ const useStyles = makeStyles({
     gap: 12,
   },
 });
+
+const NO_CREDENTIALS: ClientCredentials = { clientId: '', clientSecret: '' };
 
 // The auth question is asked about the people using the connector, never as
 // muster spec fields. One card per mode the platform decided to offer; token
@@ -127,6 +160,7 @@ export function NewConnectorSignInPage() {
     setScopes,
     setAuthorizationEndpoint,
     setTokenEndpoint,
+    setUseExistingSecret,
     setClientSecretName,
     setClientSecretNamespace,
     setClientIdKey,
@@ -146,7 +180,62 @@ export function NewConnectorSignInPage() {
     registeredInstallation,
     startedFromEdit,
     markSaved,
+    storedClientCredentials,
+    authorizationServerChanged,
   } = useNewMcpServerForm();
+
+  // A client's ID and secret live here only, never in the form state: they
+  // go into the create or update call and are cleared once it settles,
+  // whatever its outcome, so a failed save is retyped.
+  const [credentials, setCredentials] =
+    useState<ClientCredentials>(NO_CREDENTIALS);
+  const [replacing, setReplacing] = useState(false);
+  // A client muster stored for this connector. It is used only while an
+  // issuer is set; it is bound to its authorization server, so pointing the
+  // connector at another one needs the client again (muster refuses the save
+  // otherwise).
+  const hadClient =
+    !state.useExistingSecret &&
+    (hasStoredClientSecret(state) || storedClientCredentials);
+  const clientSecretStored = hadClient && Boolean(state.issuer.trim());
+  const serverChanged = clientSecretStored && authorizationServerChanged;
+  const replaceMode = clientSecretStored && (replacing || serverChanged);
+  const enteringCredentials =
+    !state.useExistingSecret && (!clientSecretStored || replaceMode);
+  const credentialProblems = enteringCredentials
+    ? clientCredentialsProblems(state, credentials, { required: replaceMode })
+    : [];
+  const credentialErrors = mcpServerFieldErrors(credentialProblems);
+  const issuerError = fieldErrors.issuer ?? credentialErrors.issuer;
+
+  // Replace and Keep stored secret take themselves off the page, so the
+  // focus moves to what replaces them rather than to the body.
+  const clientIdRef = useRef<HTMLDivElement>(null);
+  const replaceButtonRef = useRef<HTMLButtonElement>(null);
+  const [focusAfter, setFocusAfter] = useState<'clientId' | 'replace'>();
+  useEffect(() => {
+    if (focusAfter === 'clientId') {
+      clientIdRef.current?.querySelector('input')?.focus();
+    } else if (focusAfter === 'replace') {
+      replaceButtonRef.current?.focus();
+    }
+    setFocusAfter(undefined);
+  }, [focusAfter]);
+  // The other side's values go: a typed secret is never kept around.
+  const chooseSource = (existing: boolean) => {
+    setUseExistingSecret(existing);
+    setCredentials(NO_CREDENTIALS);
+    setReplacing(false);
+  };
+  const startReplacing = () => {
+    setReplacing(true);
+    setFocusAfter('clientId');
+  };
+  const keepStoredSecret = () => {
+    setReplacing(false);
+    setCredentials(NO_CREDENTIALS);
+    setFocusAfter('replace');
+  };
 
   // Audiences are a list in the form state but one comma-separated field here;
   // raw text is local so typing "aud1, " isn't normalised mid-keystroke. A
@@ -159,6 +248,10 @@ export function NewConnectorSignInPage() {
   if (audiencesMode !== state.authMode) {
     setAudiencesMode(state.authMode);
     setAudiencesRaw(state.requiredAudiences.join(', '));
+    // Typed client values belong to "own account"; another mode drops them,
+    // as switching the client's source does.
+    setCredentials(NO_CREDENTIALS);
+    setReplacing(false);
   }
   const onAudiencesChange = (raw: string) => {
     setAudiencesRaw(raw);
@@ -176,10 +269,12 @@ export function NewConnectorSignInPage() {
   );
   // The own-account fields all sit in the Advanced disclosure.
   const hasAdvancedProblem = Boolean(
-    fieldErrors.issuer ||
+    issuerError ||
     fieldErrors.authorizationEndpoint ||
     fieldErrors.tokenEndpoint ||
-    fieldErrors.clientSecretName,
+    fieldErrors.clientSecretName ||
+    credentialErrors.clientId ||
+    credentialErrors.clientSecret,
   );
 
   const isEdit = Boolean(registeredName);
@@ -195,7 +290,7 @@ export function NewConnectorSignInPage() {
   // moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { reveal, textFieldProps } = validation;
-  const authErrorCount = authErrors.length;
+  const authErrorCount = authErrors.length + credentialProblems.length;
   const installation = state.installation;
   const authMode = state.authMode;
   const onRegister = useCallback(() => {
@@ -203,12 +298,33 @@ export function NewConnectorSignInPage() {
       reveal();
       return;
     }
+    const clientCredentials = enteringCredentials
+      ? clientCredentialsArgument(state, credentials)
+      : undefined;
     register(
-      { definition, installation, authMode, isEdit, startedFromEdit },
       {
+        definition,
+        installation,
+        authMode,
+        isEdit,
+        startedFromEdit,
+        clientCredentials: clientCredentials
+          ? new OneTimeClientCredentials(clientCredentials)
+          : undefined,
+      },
+      {
+        // Cleared only once stored: after a refusal the person fixes what
+        // muster named and saves again with the values still typed (the
+        // forms skill: never clear typed input on a failed submit). They
+        // stay in this page's state only, never in the form, its saved base
+        // or the edit draft.
         onSuccess: sent => {
+          setCredentials(NO_CREDENTIALS);
           // What was just written is the base of any further save in this run.
-          markSaved(sent);
+          markSaved(sent, {
+            storedClientCredentials: Boolean(clientCredentials),
+          });
+          setReplacing(false);
           const test = wizardLinks('verify', {
             name: sent.name,
             installation,
@@ -222,6 +338,9 @@ export function NewConnectorSignInPage() {
   }, [
     authErrorCount,
     reveal,
+    enteringCredentials,
+    state,
+    credentials,
     register,
     definition,
     installation,
@@ -342,6 +461,7 @@ export function NewConnectorSignInPage() {
             }
             defaultExpanded={
               hasAdvancedAuthorizationServer(state) ||
+              hadClient ||
               (validation.submitted && hasAdvancedProblem)
             }
           >
@@ -355,29 +475,16 @@ export function NewConnectorSignInPage() {
                 secondaryLabel="optional"
                 value={state.issuer}
                 onChange={setIssuer}
-                placeholder="https://auth.example.com"
+                placeholder="e.g. https://auth.example.com"
                 description="Every setting below requires this."
-                {...textFieldProps('issuer', fieldErrors.issuer)}
-              />
-              <TextField
-                label="Permissions to ask for (scopes)"
-                secondaryLabel="optional"
-                isDisabled={!authFields.scopes.available}
-                value={state.scopes}
-                onChange={setScopes}
-                placeholder="read write"
-                description={
-                  authFields.scopes.available
-                    ? "Separate them with spaces, as the app's documentation names them."
-                    : authFields.scopes.reason
-                }
+                {...textFieldProps('issuer', issuerError)}
               />
               <TextField
                 label="Sign-in page address (authorization endpoint)"
                 secondaryLabel="optional"
                 value={state.authorizationEndpoint}
                 onChange={setAuthorizationEndpoint}
-                placeholder="https://github.com/login/oauth/authorize"
+                placeholder="e.g. https://github.com/login/oauth/authorize"
                 description="Set together with the token address, or leave both empty."
                 {...textFieldProps(
                   'authorizationEndpoint',
@@ -389,9 +496,21 @@ export function NewConnectorSignInPage() {
                 secondaryLabel="optional"
                 value={state.tokenEndpoint}
                 onChange={setTokenEndpoint}
-                placeholder="https://github.com/login/oauth/access_token"
+                placeholder="e.g. https://github.com/login/oauth/access_token"
                 description="Set together with the sign-in page address."
                 {...textFieldProps('tokenEndpoint', fieldErrors.tokenEndpoint)}
+              />
+              {/* Enabled with or without an issuer: a field greyed out until
+                  one above is filled reads as broken. Validation names the
+                  missing issuer instead. */}
+              <TextField
+                label="Permissions to ask for (scopes)"
+                secondaryLabel="optional"
+                value={state.scopes}
+                onChange={setScopes}
+                placeholder="e.g. read write"
+                description="Separated by spaces. Needs an issuer."
+                {...textFieldProps('scopes', fieldErrors.scopes)}
               />
               <div
                 className={classes.fieldGroup}
@@ -404,49 +523,125 @@ export function NewConnectorSignInPage() {
                   variant="body-medium"
                   weight="bold"
                 >
-                  Client credentials — stored in a Kubernetes Secret
+                  Client credentials
                 </Text>
                 <Text variant="body-small" color="secondary">
                   Only if you registered the app with its provider yourself,
-                  such as a GitHub App. Enter the Secret&apos;s name and key
-                  names — never the client ID or secret themselves. Leave empty
-                  when muster can register itself.
+                  such as a GitHub App. Leave empty when muster can register
+                  itself.
                 </Text>
-                <TextField
-                  label="Secret name"
-                  secondaryLabel="optional"
-                  value={state.clientSecretName}
-                  onChange={setClientSecretName}
-                  placeholder="github-oauth-client"
-                  {...textFieldProps(
-                    'clientSecretName',
-                    fieldErrors.clientSecretName,
-                  )}
-                />
-                <TextField
-                  label="Secret namespace"
-                  secondaryLabel="optional"
-                  value={state.clientSecretNamespace}
-                  onChange={setClientSecretNamespace}
-                  placeholder="muster"
-                  description="Defaults to the connector's namespace."
-                />
-                <TextField
-                  label="Key holding the client ID"
-                  secondaryLabel="optional"
-                  value={state.clientIdKey}
-                  onChange={setClientIdKey}
-                  placeholder="client-id"
-                  description="Defaults to client-id."
-                />
-                <TextField
-                  label="Key holding the client secret"
-                  secondaryLabel="optional"
-                  value={state.clientSecretKey}
-                  onChange={setClientSecretKey}
-                  placeholder="client-secret"
-                  description="Defaults to client-secret."
-                />
+                <RadioGroup
+                  aria-labelledby={credentialsHeadingId}
+                  orientation="horizontal"
+                  value={state.useExistingSecret ? 'existing' : 'new'}
+                  onChange={value => chooseSource(value === 'existing')}
+                >
+                  <Radio value="new">New Secret</Radio>
+                  <Radio value="existing">Existing Secret</Radio>
+                </RadioGroup>
+                {clientSecretStored && !replaceMode && (
+                  <Flex align="center" justify="between" gap="3">
+                    <Text variant="body-medium">Client secret stored</Text>
+                    <Button
+                      ref={replaceButtonRef}
+                      variant="secondary"
+                      size="small"
+                      onPress={startReplacing}
+                    >
+                      Replace
+                    </Button>
+                  </Flex>
+                )}
+                {serverChanged && (
+                  <Text variant="body-small" color="secondary">
+                    The sign-in server changed, so enter the client again.
+                  </Text>
+                )}
+                {hadClient && !clientSecretStored && (
+                  <Text variant="body-small" color="secondary">
+                    Without an issuer, the stored client is no longer used.
+                  </Text>
+                )}
+                {enteringCredentials && (
+                  <>
+                    <TextField
+                      ref={clientIdRef}
+                      label="Client ID"
+                      isRequired={replaceMode}
+                      secondaryLabel={replaceMode ? undefined : 'optional'}
+                      autoComplete="off"
+                      value={credentials.clientId}
+                      onChange={clientId =>
+                        setCredentials(prev => ({ ...prev, clientId }))
+                      }
+                      {...textFieldProps('clientId', credentialErrors.clientId)}
+                    />
+                    <PasswordField
+                      label="Client secret"
+                      isRequired={replaceMode}
+                      secondaryLabel={replaceMode ? undefined : 'optional'}
+                      autoComplete="new-password"
+                      value={credentials.clientSecret}
+                      onChange={clientSecret =>
+                        setCredentials(prev => ({ ...prev, clientSecret }))
+                      }
+                      description="Stored in a Secret; cannot be read back."
+                      {...textFieldProps(
+                        'clientSecret',
+                        credentialErrors.clientSecret,
+                      )}
+                    />
+                    {replaceMode && !serverChanged && (
+                      <Button
+                        className={classes.inlineAction}
+                        variant="tertiary"
+                        size="small"
+                        onPress={keepStoredSecret}
+                      >
+                        Keep stored secret
+                      </Button>
+                    )}
+                  </>
+                )}
+                {state.useExistingSecret && (
+                  <>
+                    <Text variant="body-small" color="secondary">
+                      Whoever saves the connector must be allowed to get this
+                      Secret.
+                    </Text>
+                    <TextField
+                      label="Secret name"
+                      value={state.clientSecretName}
+                      onChange={setClientSecretName}
+                      placeholder="e.g. github-oauth-client"
+                      {...textFieldProps(
+                        'clientSecretName',
+                        fieldErrors.clientSecretName,
+                      )}
+                    />
+                    <TextField
+                      label="Secret namespace"
+                      secondaryLabel="optional"
+                      value={state.clientSecretNamespace}
+                      onChange={setClientSecretNamespace}
+                      description="Defaults to the connector's namespace."
+                    />
+                    <TextField
+                      label="Key holding the client ID"
+                      secondaryLabel="optional"
+                      value={state.clientIdKey}
+                      onChange={setClientIdKey}
+                      description="Defaults to client-id."
+                    />
+                    <TextField
+                      label="Key holding the client secret"
+                      secondaryLabel="optional"
+                      value={state.clientSecretKey}
+                      onChange={setClientSecretKey}
+                      description="Defaults to client-secret."
+                    />
+                  </>
+                )}
               </div>
               <Select
                 label="How long a sign-in lasts"

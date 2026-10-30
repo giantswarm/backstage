@@ -8,17 +8,20 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { MCPServer } from '../../lib/k8s';
+import type { MCPServer, MCPServerAuth } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
 import {
   authAnswerOf,
   authFieldAvailability,
+  clientBindingChanged,
   composeMcpServerDefinition,
   deriveSlug,
   emptyAuthAnswer,
   emptyFormState,
   formStateFromServer,
+  hasStoredClientSecret,
   hasUserInput,
+  isStoredClientSecret,
   mcpServerAuthProblems,
   mcpServerDetailsProblems,
   mcpServerFieldErrors,
@@ -46,6 +49,13 @@ export type NewMcpServerFormContextValue = {
   setScopes: (scopes: string) => void;
   setAuthorizationEndpoint: (authorizationEndpoint: string) => void;
   setTokenEndpoint: (tokenEndpoint: string) => void;
+  /**
+   * Picks where the client comes from: a new one typed in (stored by
+   * muster) or an existing Secret. The Secret fields start over with the
+   * registered server's own answer for that side, or empty: what was typed
+   * on the other side is dropped.
+   */
+  setUseExistingSecret: (useExistingSecret: boolean) => void;
   setClientSecretName: (clientSecretName: string) => void;
   setClientSecretNamespace: (clientSecretNamespace: string) => void;
   setClientIdKey: (clientIdKey: string) => void;
@@ -96,7 +106,24 @@ export type NewMcpServerFormContextValue = {
    * started. The Name field then shows what the connector is called now: a
    * typed name the save could not keep gives way to the technical name.
    */
-  markSaved: (definition: McpServerDefinition) => void;
+  markSaved: (
+    definition: McpServerDefinition,
+    options?: { storedClientCredentials?: boolean },
+  ) => void;
+  /**
+   * Whether a save of this run handed muster client credentials to store,
+   * so the sign-in step shows them as stored. Muster names the Secret, so
+   * the form does not know its name until the server is read again; until
+   * then a later save sends no reference, which keeps the stored one.
+   */
+  storedClientCredentials: boolean;
+  /**
+   * Whether the form points at another authorization server (issuer or
+   * endpoints) than the registered server was last read or saved with. muster
+   * binds a stored client to its server, so such a change needs the client
+   * entered again.
+   */
+  authorizationServerChanged: boolean;
   /**
    * Seeds the wizard from an already-registered server, so its "Edit" opens
    * the registration form pre-filled. Saving is then an update to that server
@@ -133,7 +160,6 @@ export type NewMcpServerFormContextValue = {
    */
   authFields: {
     authorizationServer: FieldAvailability;
-    scopes: FieldAvailability;
     requiredAudiences: FieldAvailability;
     sigv4: FieldAvailability;
   };
@@ -203,6 +229,7 @@ export function NewMcpServerFormProvider({
   const [lastSave, setLastSave] = useState<'create' | 'update'>();
   const [startedFromEdit, setStartedFromEdit] = useState(false);
   const [lastSaveAt, setLastSaveAt] = useState<number>();
+  const [storedClientCredentials, setStoredClientCredentials] = useState(false);
   // The registered server as last read or saved: the base the wizard's
   // definition is laid over, so an update keeps what it cannot show.
   const [base, setBase] = useState<EditBase>();
@@ -213,22 +240,58 @@ export function NewMcpServerFormProvider({
   latest.current = { state, slugEdited, registeredName, base };
   const draft = useRef<Draft>();
 
-  const markSaved = useCallback((saved: McpServerDefinition) => {
-    const current = latest.current;
-    setLastSave(current.registeredName ? 'update' : 'create');
-    setLastSaveAt(Date.now());
-    setRegisteredName(saved.name);
-    setRegisteredInstallation(current.state.installation);
-    // A save without `displayName` left the annotation as it was: none after a
-    // create, the stored one after an update.
-    const displayName =
-      saved.displayName === undefined
-        ? latest.current.base?.displayName
-        : saved.displayName || undefined;
-    const form = { ...current.state, name: displayName ?? saved.name };
-    setState(form);
-    setBase({ definition: saved, form, displayName });
-  }, []);
+  const markSaved = useCallback(
+    (
+      saved: McpServerDefinition,
+      options?: { storedClientCredentials?: boolean },
+    ) => {
+      const current = latest.current;
+      const storedNow = Boolean(options?.storedClientCredentials);
+      if (storedNow) {
+        setStoredClientCredentials(true);
+      } else {
+        // muster keeps a stored client only while the server sends to an
+        // authorization server and names no Secret of someone else's.
+        const savedServer = saved.auth?.authorizationServer;
+        const ref = savedServer?.clientCredentialsSecretRef;
+        if (
+          !savedServer ||
+          current.state.useExistingSecret ||
+          (ref && !isStoredClientSecret(saved.name, ref.name))
+        ) {
+          setStoredClientCredentials(false);
+        }
+      }
+      setLastSave(current.registeredName ? 'update' : 'create');
+      setLastSaveAt(Date.now());
+      setRegisteredName(saved.name);
+      setRegisteredInstallation(current.state.installation);
+      // A save without `displayName` left the annotation as it was: none after a
+      // create, the stored one after an update.
+      const displayName =
+        saved.displayName === undefined
+          ? latest.current.base?.displayName
+          : saved.displayName || undefined;
+      const form: NewMcpServerFormState = {
+        ...current.state,
+        name: displayName ?? saved.name,
+        // muster named the new client's Secret; a stored reference read
+        // before is the replaced one. Later saves name none, and muster keeps
+        // the current client.
+        ...(storedNow
+          ? {
+              clientSecretName: '',
+              clientSecretNamespace: '',
+              clientIdKey: '',
+              clientSecretKey: '',
+            }
+          : {}),
+      };
+      setState(form);
+      setBase({ definition: saved, form, displayName });
+    },
+    [],
+  );
 
   const startEdit = useCallback(
     (server: MCPServer) => {
@@ -251,6 +314,7 @@ export function NewMcpServerFormProvider({
       setStartedFromEdit(true);
       setLastSave(undefined);
       setLastSaveAt(undefined);
+      setStoredClientCredentials(false);
       setBase({
         definition: toMcpServerDefinition(server),
         form,
@@ -271,6 +335,7 @@ export function NewMcpServerFormProvider({
     setStartedFromEdit(false);
     setLastSave(undefined);
     setLastSaveAt(undefined);
+    setStoredClientCredentials(false);
     setBase(undefined);
     setState(restored?.state ?? initialState);
   }, [initialState]);
@@ -280,6 +345,12 @@ export function NewMcpServerFormProvider({
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
     const validationErrors = problems.map(problem => problem.message);
+    const definition = base
+      ? mergeOntoExisting(
+          base.definition,
+          composeMcpServerDefinition(state, { stored: base.displayName }),
+        )
+      : composeMcpServerDefinition(state);
 
     return {
       state,
@@ -323,6 +394,28 @@ export function NewMcpServerFormProvider({
         setState(prev => ({ ...prev, authorizationEndpoint })),
       setTokenEndpoint: tokenEndpoint =>
         setState(prev => ({ ...prev, tokenEndpoint })),
+      setUseExistingSecret: useExistingSecret =>
+        setState(prev => {
+          if (prev.useExistingSecret === useExistingSecret) {
+            return prev;
+          }
+          const saved = base?.form;
+          const keepsSaved =
+            saved &&
+            (useExistingSecret
+              ? saved.useExistingSecret
+              : hasStoredClientSecret(saved));
+          return {
+            ...prev,
+            useExistingSecret,
+            clientSecretName: keepsSaved ? saved.clientSecretName : '',
+            clientSecretNamespace: keepsSaved
+              ? saved.clientSecretNamespace
+              : '',
+            clientIdKey: keepsSaved ? saved.clientIdKey : '',
+            clientSecretKey: keepsSaved ? saved.clientSecretKey : '',
+          };
+        }),
       setClientSecretName: clientSecretName =>
         setState(prev => ({ ...prev, clientSecretName })),
       setClientSecretNamespace: clientSecretNamespace =>
@@ -347,6 +440,14 @@ export function NewMcpServerFormProvider({
       lastSaveAt,
       startedFromEdit,
       markSaved,
+      storedClientCredentials,
+      authorizationServerChanged: base
+        ? clientBindingChanged(
+            definition.auth?.authorizationServer,
+            (base.definition.auth as MCPServerAuth | undefined)
+              ?.authorizationServer,
+          )
+        : false,
       startEdit,
       reset,
       isComplete: validationErrors.length === 0,
@@ -355,12 +456,7 @@ export function NewMcpServerFormProvider({
       fieldErrors: mcpServerFieldErrors(problems),
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
-      definition: base
-        ? mergeOntoExisting(
-            base.definition,
-            composeMcpServerDefinition(state, { stored: base.displayName }),
-          )
-        : composeMcpServerDefinition(state),
+      definition,
     };
   }, [
     state,
@@ -370,6 +466,7 @@ export function NewMcpServerFormProvider({
     lastSave,
     lastSaveAt,
     startedFromEdit,
+    storedClientCredentials,
     base,
     markSaved,
     startEdit,

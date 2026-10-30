@@ -1247,6 +1247,157 @@ describe('createRouter', () => {
     });
   });
 
+  describe("/call of muster's connector tools", () => {
+    const SECRET = 'hubspot-s3cret';
+    const refusal =
+      'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
+    const create = async () =>
+      request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'core_mcpserver_create',
+          arguments: {
+            name: 'jira',
+            clientCredentials: {
+              clientId: 'hubspot-client',
+              clientSecret: SECRET,
+            },
+          },
+        });
+
+    // A refusal is the person's answer, not the portal's fault: below the
+    // 500 at which the error middleware logs to Sentry.
+    it("answers muster's refusal as a 422 with its message, never the arguments", async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError(refusal, ['{"missing":"create secrets"}']),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterToolError',
+        message: refusal,
+        details: ['{"missing":"create secrets"}'],
+      });
+      expect(JSON.stringify(response.body)).not.toContain(SECRET);
+    });
+
+    // MiddlewareFactory.error() logs at error level, which the root logger
+    // ships to Sentry, only from 500 on: a refusal stays out, an outage not.
+    it.each([
+      [new MusterToolError(refusal), 422, false],
+      [new Error('fetch failed'), 500, true],
+    ])(
+      'logs %s at error level only for a 5xx',
+      async (error, status, loggedAsError) => {
+        const logger = mockServices.logger.mock();
+        jest.mocked(logger.child).mockReturnValue(logger);
+        const config = mockServices.rootConfig({
+          data: {
+            muster: {
+              installations: [
+                { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+              ],
+            },
+          },
+        });
+        const router = await createRouter({
+          logger,
+          config,
+          client: mockClient,
+          reachability: reachableEverywhere(),
+        });
+        const loggedApp = expressApp();
+        loggedApp.use(router);
+        loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
+        callTool.mockRejectedValue(error);
+
+        const response = await request(loggedApp)
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({
+            name: 'core_mcpserver_create',
+            arguments: { clientCredentials: { clientSecret: SECRET } },
+          });
+
+        expect(response.status).toBe(status);
+        expect(jest.mocked(logger.error).mock.calls.length > 0).toBe(
+          loggedAsError,
+        );
+        expect(
+          JSON.stringify(jest.mocked(logger.error).mock.calls),
+        ).not.toContain(SECRET);
+      },
+    );
+
+    it('keeps the sign-in muster asks for a 401', async () => {
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError('jira', 'https://idp/authorize', [
+          "auth_required: server 'jira' requires authentication",
+        ]),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('server_sign_in_required');
+    });
+
+    it("keeps muster's expired-token answer a 401", async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError(
+          'token has expired for muster, re-authenticate to refresh: token is expired',
+        ),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+    });
+
+    it.each(['core_mcpserver_update', 'core_mcpserver_validate'])(
+      "answers %s's refusal as a 422 too",
+      async name => {
+        callTool.mockRejectedValue(new MusterToolError(refusal));
+
+        const response = await request(await personApp())
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({ name, arguments: { name: 'jira' } });
+
+        expect(response.status).toBe(422);
+        expect(response.body.error.message).toBe(refusal);
+      },
+    );
+
+    it.each([
+      'core_mcpserver_get',
+      'core_mcpserver_list',
+      'core_mcpserver_detect',
+      'core_mcpserver_delete',
+    ])("leaves %s's tool error a 500", async name => {
+      callTool.mockRejectedValue(new MusterToolError('not found'));
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name, arguments: { name: 'jira' } });
+
+      expect(response.status).toBe(500);
+    });
+
+    it('leaves an outage a 5xx', async () => {
+      callTool.mockRejectedValue(new Error('fetch failed'));
+
+      const response = await create();
+
+      expect(response.status).toBe(500);
+    });
+  });
+
   describe('/call/progress', () => {
     const lines = (text: string) =>
       text

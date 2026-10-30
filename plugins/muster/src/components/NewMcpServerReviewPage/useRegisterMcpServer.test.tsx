@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { musterApiRef, type MusterApi } from '../../apis';
 import type { McpServerDefinition } from '../../lib/mcpServerDefinition';
 import {
+  OneTimeClientCredentials,
   useRegisterMcpServer,
   type McpServerRegistration,
 } from './useRegisterMcpServer';
@@ -52,6 +53,15 @@ function renderRegister() {
   return {
     ...renderHook(() => useRegisterMcpServer(), { wrapper }),
     invalidateQueries,
+    /** What React Query keeps of every mutation after it settled. */
+    keptVariables: () =>
+      queryClient
+        .getMutationCache()
+        .getAll()
+        .map(
+          mutation =>
+            mutation.state.variables as McpServerRegistration | undefined,
+        ),
   };
 }
 
@@ -79,6 +89,135 @@ beforeEach(() => {
 });
 
 describe('useRegisterMcpServer', () => {
+  describe('with client credentials', () => {
+    const SECRET = 'hubspot-s3cret';
+    const withClient: McpServerDefinition = {
+      ...definition,
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://app.hubspot.com',
+          clientCredentialsSecretRef: { name: 'github-oauth-client-ab12c' },
+        },
+      },
+    };
+    const sentAuth = {
+      type: 'oauth',
+      authorizationServer: { issuer: 'https://app.hubspot.com' },
+    };
+    const clientCredentials = () =>
+      new OneTimeClientCredentials({
+        clientId: 'hubspot-client',
+        clientSecret: SECRET,
+      });
+
+    it.each([
+      [false, 'core_mcpserver_create'],
+      [true, 'core_mcpserver_update'],
+    ])(
+      'sends them to the write only, without the old reference (isEdit %s)',
+      async (isEdit, tool) => {
+        const { result } = renderRegister();
+
+        let sent: McpServerDefinition | undefined;
+        await act(async () => {
+          sent = await result.current.mutateAsync({
+            ...registration,
+            definition: withClient,
+            isEdit,
+            clientCredentials: clientCredentials(),
+          });
+        });
+
+        expect(callTool.mock.calls).toEqual([
+          [
+            'core_mcpserver_validate',
+            { ...definition, auth: sentAuth },
+            'gazelle',
+          ],
+          [
+            tool,
+            {
+              ...definition,
+              auth: sentAuth,
+              clientCredentials: {
+                clientId: 'hubspot-client',
+                clientSecret: SECRET,
+              },
+            },
+            'gazelle',
+          ],
+        ]);
+        // What the caller keeps as the base of later saves has no values.
+        expect(sent).toEqual({ ...definition, auth: sentAuth });
+      },
+    );
+
+    it('keeps them out of the analytics event and the mutation state', async () => {
+      const { result, keptVariables } = renderRegister();
+
+      await act(() =>
+        result.current.mutateAsync({
+          ...registration,
+          definition: withClient,
+          clientCredentials: clientCredentials(),
+        }),
+      );
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'Muster.mcpServerAdded',
+          attributes: { authMode: 'own-account' },
+        }),
+      );
+      expect(
+        JSON.stringify(jest.mocked(analyticsApi.captureEvent).mock.calls),
+      ).not.toContain(SECRET);
+      // React Query keeps the variables after the call; the holder in them
+      // is empty by then.
+      const [kept] = keptVariables();
+      expect(kept?.clientCredentials).toBeInstanceOf(OneTimeClientCredentials);
+      expect(JSON.stringify(kept)).not.toContain(SECRET);
+      expect(kept?.clientCredentials?.take()).toBeUndefined();
+    });
+
+    it('keeps them out of the error of a refused write', async () => {
+      callTool.mockImplementation((tool: string) =>
+        tool === 'core_mcpserver_create'
+          ? Promise.reject(
+              new Error('Permission denied: may not create Secret'),
+            )
+          : Promise.resolve({}),
+      );
+      const { result, keptVariables } = renderRegister();
+
+      await act(() =>
+        result.current
+          .mutateAsync({
+            ...registration,
+            definition: withClient,
+            clientCredentials: clientCredentials(),
+          })
+          .catch(() => undefined),
+      );
+
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe(
+          'Permission denied: may not create Secret',
+        ),
+      );
+      expect(
+        JSON.stringify(
+          result.current.error,
+          Object.getOwnPropertyNames(result.current.error),
+        ),
+      ).not.toContain(SECRET);
+      const [kept] = keptVariables();
+      expect(kept?.clientCredentials?.take()).toBeUndefined();
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+  });
+
   it('validates, creates and reports the added server with its auth mode', async () => {
     const { result, invalidateQueries } = renderRegister();
 

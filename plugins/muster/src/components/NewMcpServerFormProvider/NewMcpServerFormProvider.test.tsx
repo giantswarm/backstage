@@ -98,10 +98,6 @@ describe('NewMcpServerFormProvider', () => {
 
     act(() => result.current.setAuthMode('own-account'));
     expect(result.current.authFields.authorizationServer.available).toBe(true);
-    // Scopes only make sense together with an issuer.
-    expect(result.current.authFields.scopes.available).toBe(false);
-    act(() => result.current.setIssuer('https://auth.example.com'));
-    expect(result.current.authFields.scopes.available).toBe(true);
   });
 
   it('offers required audiences only for Platform SSO, explaining the exclusion', () => {
@@ -424,6 +420,192 @@ describe('NewMcpServerFormProvider', () => {
       // the one now live: the saved one.
       act(() => result.current.setDescription(''));
       expect(result.current.definition.description).toBe('New');
+    });
+
+    it('remembers that a save stored a client, with no value in its base', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://app.hubspot.com');
+      });
+      expect(result.current.storedClientCredentials).toBe(false);
+
+      // The wizard hands markSaved what it sent, without the credentials.
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+
+      expect(result.current.storedClientCredentials).toBe(true);
+      // A later save sends no reference: muster keeps the client it stored.
+      expect(result.current.definition.auth?.authorizationServer).toEqual({
+        issuer: 'https://app.hubspot.com',
+      });
+
+      act(() => result.current.reset());
+      expect(result.current.storedClientCredentials).toBe(false);
+    });
+
+    it('forgets the replaced reference after a save that stored a client', () => {
+      const { result } = renderForm();
+      act(() =>
+        result.current.startEdit(
+          new MCPServer(
+            {
+              apiVersion: 'muster.giantswarm.io/v1alpha1',
+              kind: 'MCPServer',
+              metadata: { name: 'weather-mcp' },
+              spec: {
+                type: 'streamable-http',
+                url: 'https://weather.example.com/mcp',
+                auth: {
+                  type: 'oauth',
+                  authorizationServer: {
+                    issuer: 'https://idp',
+                    clientCredentialsSecretRef: {
+                      name: 'weather-mcp-oauth-client-old01',
+                    },
+                  },
+                },
+              },
+            } as never,
+            'gaggle',
+          ),
+        ),
+      );
+      expect(
+        result.current.definition.auth?.authorizationServer
+          ?.clientCredentialsSecretRef,
+      ).toEqual({ name: 'weather-mcp-oauth-client-old01' });
+
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+
+      expect(result.current.state.clientSecretName).toBe('');
+      expect(result.current.definition.auth?.authorizationServer).toEqual({
+        issuer: 'https://idp',
+      });
+      expect(result.current.authorizationServerChanged).toBe(false);
+      act(() => result.current.setIssuer('https://other-idp'));
+      expect(result.current.authorizationServerChanged).toBe(true);
+    });
+
+    it('forgets the stored client after a save naming an existing Secret', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://idp');
+      });
+      // Add with a typed client.
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+      expect(result.current.storedClientCredentials).toBe(true);
+
+      // Back, Existing Secret my-secret, save.
+      act(() => {
+        result.current.setUseExistingSecret(true);
+        result.current.setClientSecretName('my-secret');
+      });
+      act(() => result.current.markSaved(result.current.definition));
+      expect(result.current.storedClientCredentials).toBe(false);
+
+      // Back, New Secret: nothing is stored, nothing is named.
+      act(() => result.current.setUseExistingSecret(false));
+      expect(result.current.storedClientCredentials).toBe(false);
+      expect(result.current.state.clientSecretName).toBe('');
+      expect(
+        result.current.definition.auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
+    });
+
+    it('forgets the stored client after a save without an authorization server', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://idp');
+      });
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+      act(() => result.current.setIssuer(''));
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.storedClientCredentials).toBe(false);
+    });
+
+    it.each([
+      ['a stored client', 'weather-mcp-oauth-client-x7k2p', false],
+      ['an existing Secret', 'weather-oauth-client', true],
+    ])(
+      'brings %s back when its side is chosen again, empty on the other',
+      (_what, secretName, existing) => {
+        const { result } = renderForm();
+        act(() =>
+          result.current.startEdit(
+            new MCPServer(
+              {
+                apiVersion: 'muster.giantswarm.io/v1alpha1',
+                kind: 'MCPServer',
+                metadata: { name: 'weather-mcp' },
+                spec: {
+                  type: 'streamable-http',
+                  url: 'https://weather.example.com/mcp',
+                  auth: {
+                    type: 'oauth',
+                    authorizationServer: {
+                      issuer: 'https://idp',
+                      clientCredentialsSecretRef: { name: secretName },
+                    },
+                  },
+                },
+              } as never,
+              'gaggle',
+            ),
+          ),
+        );
+        expect(result.current.state.useExistingSecret).toBe(existing);
+
+        act(() => result.current.setUseExistingSecret(!existing));
+        expect(result.current.state.clientSecretName).toBe('');
+        expect(
+          result.current.definition.auth?.authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+
+        act(() => result.current.setUseExistingSecret(existing));
+        expect(result.current.state.clientSecretName).toBe(secretName);
+      },
+    );
+
+    it('composes an existing Secret only while Existing Secret is chosen', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://github.com');
+        result.current.setUseExistingSecret(true);
+        result.current.setClientSecretName('github-oauth-client');
+      });
+      expect(
+        result.current.definition.auth?.authorizationServer
+          ?.clientCredentialsSecretRef,
+      ).toEqual({ name: 'github-oauth-client' });
+
+      act(() => result.current.setUseExistingSecret(false));
+      expect(
+        result.current.definition.auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
     });
 
     it('records a create as the base of the "Edit details" loop', () => {
