@@ -1,5 +1,26 @@
 # @giantswarm/backstage-plugin-agent-platform
 
+## 1.1.0
+
+### Minor Changes
+
+- 689b152: A session that waits on an MCP server's sign-in link (kagent's HITL `url_elicitation_request`, sent by runtimes that relay MCP URL elicitations, such as muster's sign-in link from 5.53.0 on) shows a sign-in card instead of the composer's question card: the server that asked, its message, _Sign in_ and _Not now_. Muster returns the sign-in's tab to the session and the agent continues on its own (`url_elicitation_response` `accept`); _Not now_ declines. `readUrlElicitationRequest` reads the request off a status message.
+- 97c84d4: A workspace setup notice from kagent's harness shows as a status of its turn,
+  not as the agent's reply: an alert above the agent's answer with one summary
+  line ("Workspace setup: 3 repositories not updated"), a warning when the setup
+  failed, the directory was set up again or repositories stayed at the last sync,
+  and information when they are up to date again, with git's reasons folded
+  under Technical details. It renders the same live and after a reload, and no
+  longer counts as a reply. kagent does not mark a notice, so it is recognised by
+  its text on the message that opens the turn; `readKagentNotice` also reads a
+  proposed mark (`kagent.dev/notice`) that kagent does not send yet.
+
+### Patch Changes
+
+- Updated dependencies [689b152]
+- Updated dependencies [97c84d4]
+  - @giantswarm/backstage-plugin-agent-platform-common@1.1.0
+
 ## 1.0.0
 
 ### Major Changes
