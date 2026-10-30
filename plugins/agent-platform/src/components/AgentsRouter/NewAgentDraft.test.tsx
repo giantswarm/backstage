@@ -136,7 +136,7 @@ beforeEach(() => {
 });
 
 /** A draft of a complete form in tenant `team-a`, as an earlier visit kept it. */
-function keepCompleteDraft() {
+function keepCompleteDraft(tenant: string | undefined = 'team-a') {
   window.sessionStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
@@ -147,7 +147,7 @@ function keepCompleteDraft() {
           slug: 'support-triage',
           description: '',
           installation: 'alpha',
-          tenant: 'team-a',
+          tenant,
           modelConfigName: 'default',
           modelConfigNamespace: 'team-a',
           systemMessage: '',
@@ -277,6 +277,28 @@ describe('the new-agent draft', () => {
 
     // team-a is no longer one the person may create in: the first place
     // offered takes its place.
+    mockAgentManagerInfo = {
+      isLoading: false,
+      info: { namespaces: { managed: ['team-b', 'team-c'] } },
+    };
+    await renderFlow('/customize/agents/new/tools');
+    expect(
+      await screen.findByText('tools step for "Support triage" in team-b'),
+    ).toBeInTheDocument();
+  });
+
+  it('reads the places on a later step for a draft without a tenant, rather than sending the person back', async () => {
+    keepCompleteDraft(undefined);
+    mockAgentManagerInfo = { isLoading: true };
+    const { unmount } = await renderFlow('/customize/agents/new/tools');
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Loading your draft…' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^tools step/)).not.toBeInTheDocument();
+    unmount();
+
+    // The answer picks the first place offered, and the step goes on.
     mockAgentManagerInfo = {
       isLoading: false,
       info: { namespaces: { managed: ['team-b', 'team-c'] } },

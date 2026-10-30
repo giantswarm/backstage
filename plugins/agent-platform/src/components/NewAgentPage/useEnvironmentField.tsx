@@ -29,7 +29,7 @@ import { useNewAgentForm } from '../NewAgentFormProvider';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
-import { LabelledField } from './LabelledField';
+import { LabelledField } from '../LabelledField';
 
 const LABEL = 'Environment';
 
@@ -212,8 +212,9 @@ export type EnvironmentField = {
  *   under More options.
  * - Several, one of them usable: picked, and named in a line.
  * - Several usable: a dropdown, always with one picked: the home installation
- *   (`useHomeInstallation`) once it is known to be usable, else the first
- *   usable one. A pick of the person's own is never replaced.
+ *   (`useHomeInstallation`) once it is known to be usable, else, once the
+ *   fleet has settled, the first usable one in config order. A pick of the
+ *   person's own is never replaced.
  * - None usable: the states that explain why nothing can be chosen.
  *
  * Once the field has shown a dropdown or a state (while the fleet settles,
@@ -297,8 +298,9 @@ export function useEnvironmentField({
   if (!isLoadingInstallations && !isSettling) {
     hasSettled.current = true;
   }
-  // Whether the field has held the pair in the main form (see above).
-  const shownInMain = useRef(false);
+  // Whether the field has held the pair in the main form (see above):
+  // latched from what was committed, not from a render that may be dropped.
+  const [shownInMain, setShownInMain] = useState(false);
   // Several installations configured, but once the fleet has settled only one
   // of them is usable: still no real choice, so pick it too. Only when every
   // installation with models has a definite agent-manager answer: one whose
@@ -332,21 +334,17 @@ export function useEnvironmentField({
 
   // The default, picked while nothing is (so a pick of the person's own, or
   // a restored draft's, stays; a withdrawn one is replaced by it): the home
-  // installation once it is known to be usable, else the first usable one.
-  // While the home installation may still prove usable, none: a pick that
-  // would change a moment later is worse than waiting.
-  const homeMayBeUsable =
-    home !== undefined &&
-    !hasSettled.current &&
-    !isWithheld(home) &&
-    !unreachableInstallations.includes(home) &&
-    !inaccessibleInstallations.includes(home);
+  // installation once it is known to be usable; else, once the fleet has
+  // settled, the first usable one in config order. Never before: which
+  // installation answers first must not decide the pick.
   let defaultInstallation: string | undefined;
   if (!edit) {
     if (home && usableInstallations.includes(home)) {
       defaultInstallation = home;
-    } else if (!homeMayBeUsable) {
-      defaultInstallation = usableInstallations[0];
+    } else if (hasSettled.current) {
+      defaultInstallation = installations
+        .map(({ name }) => name)
+        .find(name => usableInstallations.includes(name));
     }
   }
   useEffect(() => {
@@ -376,188 +374,200 @@ export function useEnvironmentField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.installation, singleInstallation, agentManager, setInstallation]);
 
-  // Until the installations config resolves we don't know whether this field
-  // belongs on the page at all — render nothing rather than a loading field
-  // that would vanish a moment later on a single-installation instance.
-  if (edit || isLoadingInstallations) {
-    return { inMain: false, field: null };
-  }
-
-  // Something about an installation that is not offered needs saying.
-  const hasNotes =
-    unreachableInstallations.length > 0 ||
-    withoutAgentManager.length > 0 ||
-    withSharedIdentity.length > 0 ||
-    agentManagerUnknown.length > 0 ||
-    inaccessibleInstallations.length > 0;
-
-  const unreachableNote = (
-    <UnreachableInstallationsAlert
-      installations={unreachableInstallations}
-      resourceName="model configs"
-      consequence={
-        unreachableInstallations.length === 1
-          ? 'It is not offered for this agent.'
-          : 'They are not offered for this agent.'
-      }
-    />
-  );
-  const notes = (
-    <>
-      {unreachableNote}
-      <InaccessibleInstallationsNote
-        installations={inaccessibleInstallations}
-      />
-      <NoAgentManagerNote installations={withoutAgentManager} />
-      <SharedIdentityNote
-        installations={withSharedIdentity}
-        blocked="Agents cannot be created"
-        via="Agents are created through agent-manager"
-      />
-      <AgentManagerUnknownNote
-        installations={agentManagerUnknown}
-        isChecking={rechecking !== undefined}
-        onRecheck={recheckUnknown}
-      />
-    </>
-  );
-
-  const main = (field: ReactNode): EnvironmentField => {
-    shownInMain.current = true;
-    return { inMain: true, field };
-  };
-
-  // The only usable environment: nothing to choose, so a line says where
-  // the agent runs, with the notes on the others.
-  const soleField = (sole: string): EnvironmentField => ({
-    inMain: shownInMain.current,
-    field: (
-      <Flex direction="column" gap="2">
-        <Text as="p" variant="body-small" color="secondary">
-          Runs in Environment: <strong>{sole}</strong>
-        </Text>
-        {notes}
-      </Flex>
-    ),
-  });
-
-  // The sole configured installation is picked and named, once it proves
-  // usable or while the fleet query is still settling. If it
-  // turns out to be unreachable, model-less or without agent-manager we fall
-  // through, because the guidance below is then the only thing that explains
-  // why the form is stuck.
-  if (
-    singleConfigured &&
-    (isSettling || usableInstallations.length > 0) &&
-    !hasNotes &&
-    !agentManager.isUnavailable
-  ) {
-    return {
-      inMain: false,
-      alone: true,
-      field: (
-        <Text as="p" variant="body-small" color="secondary">
-          Runs in Environment: <strong>{singleConfigured}</strong>
-        </Text>
-      ),
-    };
-  }
-
-  if (agentManager.isUnavailable) {
-    return main(
-      <LabelledField label={LABEL} description={DESCRIPTION}>
-        <Alert
-          status="warning"
-          title="The muster plugin is required"
-          description="Agents are created through agent-manager over muster, and this portal has no muster plugin installed."
-        />
-      </LabelledField>,
-    );
-  }
-
-  // Installations resolve one by one across the fleet, so offer each as soon as
-  // it responds rather than waiting for the slowest one. Only fall back to the
-  // loading/empty states while nothing is available yet.
-  if (usableInstallations.length === 0) {
-    if (isSettling) {
-      return main(
-        <Flex direction="column" gap="2">
-          <Select
-            label={LABEL}
-            description={DESCRIPTION}
-            isRequired
-            isDisabled
-            icon={<CircularProgress size={16} color="inherit" />}
-            options={[]}
-            placeholder="Finding environments with models and agent-manager…"
-            {...selectError.selectProps}
-          />
-          {selectError.message}
-          <NoAgentManagerNote installations={withoutAgentManager} />
-          <SharedIdentityNote
-            installations={withSharedIdentity}
-            blocked="Agents cannot be created"
-            via="Agents are created through agent-manager"
-          />
-        </Flex>,
-      );
+  const result = ((): EnvironmentField => {
+    // Until the installations config resolves we don't know whether this field
+    // belongs on the page at all — render nothing rather than a loading field
+    // that would vanish a moment later on a single-installation instance.
+    if (edit || isLoadingInstallations) {
+      return { inMain: false, field: null };
     }
 
-    if (hasInstallations) {
+    // Something about an installation that is not offered needs saying.
+    const hasNotes =
+      unreachableInstallations.length > 0 ||
+      withoutAgentManager.length > 0 ||
+      withSharedIdentity.length > 0 ||
+      agentManagerUnknown.length > 0 ||
+      inaccessibleInstallations.length > 0;
+
+    const unreachableNote = (
+      <UnreachableInstallationsAlert
+        installations={unreachableInstallations}
+        resourceName="model configs"
+        consequence={
+          unreachableInstallations.length === 1
+            ? 'It is not offered for this agent.'
+            : 'They are not offered for this agent.'
+        }
+      />
+    );
+    const notes = (
+      <>
+        {unreachableNote}
+        <InaccessibleInstallationsNote
+          installations={inaccessibleInstallations}
+        />
+        <NoAgentManagerNote installations={withoutAgentManager} />
+        <SharedIdentityNote
+          installations={withSharedIdentity}
+          blocked="Agents cannot be created"
+          via="Agents are created through agent-manager"
+        />
+        <AgentManagerUnknownNote
+          installations={agentManagerUnknown}
+          isChecking={rechecking !== undefined}
+          onRecheck={recheckUnknown}
+        />
+      </>
+    );
+
+    const main = (field: ReactNode): EnvironmentField => ({
+      inMain: true,
+      field,
+    });
+
+    // The only usable environment: nothing to choose, so a line says where
+    // the agent runs, with the notes on the others.
+    const soleField = (sole: string): EnvironmentField => ({
+      inMain: shownInMain,
+      field: (
+        <Flex direction="column" gap="2">
+          <Text as="p" variant="body-small" color="secondary">
+            Runs in Environment: <strong>{sole}</strong>
+          </Text>
+          {notes}
+        </Flex>
+      ),
+    });
+
+    // The sole configured installation is picked and named, once it proves
+    // usable or while the fleet query is still settling. If it
+    // turns out to be unreachable, model-less or without agent-manager we fall
+    // through, because the guidance below is then the only thing that explains
+    // why the form is stuck.
+    if (
+      singleConfigured &&
+      (isSettling || usableInstallations.length > 0) &&
+      !hasNotes &&
+      !agentManager.isUnavailable
+    ) {
+      return {
+        inMain: false,
+        alone: true,
+        field: (
+          <Text as="p" variant="body-small" color="secondary">
+            Runs in Environment: <strong>{singleConfigured}</strong>
+          </Text>
+        ),
+      };
+    }
+
+    if (agentManager.isUnavailable) {
       return main(
         <LabelledField label={LABEL} description={DESCRIPTION}>
-          {/* If every queried installation errored, the warning explains it;
-              only claim "no models" when reads actually succeeded. */}
-          {notes}
-          {!hasNotes && (
-            <Alert
-              status="info"
-              title="No environments with models"
-              description="No reachable environment has a kagent ModelConfig yet. A platform admin must add one before agents can be created."
-            />
-          )}
+          <Alert
+            status="warning"
+            title="The muster plugin is required"
+            description="Agents are created through agent-manager over muster, and this portal has no muster plugin installed."
+          />
         </LabelledField>,
       );
     }
-  }
 
-  // Only one usable installation out of several: it is picked above, so it is
-  // named in a line instead of offered in a one-option dropdown. Latched (see `hasSettled`),
-  // so it changes once, when the fleet settles.
-  if (singleUsable) {
-    return soleField(singleUsable);
-  }
+    // Installations resolve one by one across the fleet, so offer each as soon as
+    // it responds rather than waiting for the slowest one. Only fall back to the
+    // loading/empty states while nothing is available yet.
+    if (usableInstallations.length === 0) {
+      if (isSettling) {
+        return main(
+          <Flex direction="column" gap="2">
+            <Select
+              label={LABEL}
+              description={DESCRIPTION}
+              isRequired
+              isDisabled
+              icon={<CircularProgress size={16} color="inherit" />}
+              options={[]}
+              placeholder="Finding environments with models and agent-manager…"
+              {...selectError.selectProps}
+            />
+            {selectError.message}
+            <NoAgentManagerNote installations={withoutAgentManager} />
+            <SharedIdentityNote
+              installations={withSharedIdentity}
+              blocked="Agents cannot be created"
+              via="Agents are created through agent-manager"
+            />
+          </Flex>,
+        );
+      }
 
-  return main(
-    <Flex direction="column" gap="2">
-      <Select
-        label={LABEL}
-        description={DESCRIPTION}
-        isRequired
-        searchable={searchableIf(usableInstallations)}
-        options={usableInstallations.map(name => ({
-          id: name,
-          label: name,
-        }))}
-        // The default shows until its pick lands, rather than a placeholder.
-        selectedKey={state.installation ?? defaultInstallation ?? null}
-        placeholder={
-          home && !defaultInstallation ? `Checking ${home}…` : undefined
-        }
-        onSelectionChange={key =>
-          setInstallation(key ? String(key) : undefined)
-        }
-        {...selectError.selectProps}
-      />
-      {selectError.message}
-      {/* The list grows as slower installations respond, so say so rather than
+      if (hasInstallations) {
+        return main(
+          <LabelledField label={LABEL} description={DESCRIPTION}>
+            {/* If every queried installation errored, the warning explains it;
+              only claim "no models" when reads actually succeeded. */}
+            {notes}
+            {!hasNotes && (
+              <Alert
+                status="info"
+                title="No environments with models"
+                description="No reachable environment has a kagent ModelConfig yet. A platform admin must add one before agents can be created."
+              />
+            )}
+          </LabelledField>,
+        );
+      }
+    }
+
+    // Only one usable installation out of several: it is picked above, so it is
+    // named in a line instead of offered in a one-option dropdown. Latched (see `hasSettled`),
+    // so it changes once, when the fleet settles.
+    if (singleUsable) {
+      return soleField(singleUsable);
+    }
+
+    return main(
+      <Flex direction="column" gap="2">
+        <Select
+          label={LABEL}
+          description={DESCRIPTION}
+          isRequired
+          searchable={searchableIf(usableInstallations)}
+          options={usableInstallations.map(name => ({
+            id: name,
+            label: name,
+          }))}
+          // The default shows until its pick lands, rather than a placeholder.
+          selectedKey={state.installation ?? defaultInstallation ?? null}
+          placeholder={
+            !defaultInstallation && !state.installation
+              ? `Checking ${home ?? 'the environments'}…`
+              : undefined
+          }
+          onSelectionChange={key =>
+            setInstallation(key ? String(key) : undefined)
+          }
+          {...selectError.selectProps}
+        />
+        {selectError.message}
+        {/* The list grows as slower installations respond, so say so rather than
           letting a short list look complete. */}
-      {isSettling && (
-        <Text variant="body-small" color="secondary">
-          Still checking the remaining environments…
-        </Text>
-      )}
-      {notes}
-    </Flex>,
-  );
+        {isSettling && (
+          <Text variant="body-small" color="secondary">
+            Still checking the remaining environments…
+          </Text>
+        )}
+        {notes}
+      </Flex>,
+    );
+  })();
+
+  const holdsMain = result.inMain;
+  useEffect(() => {
+    if (holdsMain) {
+      setShownInMain(true);
+    }
+  }, [holdsMain]);
+  return result;
 }

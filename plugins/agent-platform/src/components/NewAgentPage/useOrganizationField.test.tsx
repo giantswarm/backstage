@@ -29,6 +29,8 @@ let mockManaged: Record<string, string[] | undefined> = {};
 /** get_info still in flight: no answer yet. */
 let mockReading = false;
 const mockRefetch = jest.fn();
+/** Whether there is a muster plugin to ask. */
+let mockCanRead = true;
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: (installation: string | undefined) => {
     const managed =
@@ -39,6 +41,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
         : undefined,
       isLoading: mockReading,
       error: null,
+      canRead: mockCanRead,
       refetch: mockRefetch,
     };
   },
@@ -114,6 +117,7 @@ describe('useOrganizationField', () => {
   beforeEach(() => {
     mockManaged = {};
     mockReading = false;
+    mockCanRead = true;
   });
 
   it('picks the only organization and states it in a line under More options', async () => {
@@ -280,6 +284,22 @@ describe('useOrganizationField', () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(mockRefetch).toHaveBeenCalled();
+  });
+
+  it('offers no Check again without a muster plugin to ask', async () => {
+    mockManaged = { gazelle: undefined };
+    mockCanRead = false;
+    await renderInTestApp(
+      <NewAgentFormProvider>
+        <ValidatedPicker />
+      </NewAgentFormProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(
+      await screen.findByText('Could not read where you may create agents.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   });
 
   it('lets Continue through with the default picked', async () => {

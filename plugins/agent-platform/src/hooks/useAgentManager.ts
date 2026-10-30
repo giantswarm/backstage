@@ -37,8 +37,13 @@ export type AgentManagerInfoState = {
   info: AgentManagerInfo | undefined;
   isLoading: boolean;
   error: Error | null;
-  /** Reads `get_info` again (Check again). */
-  refetch: () => void;
+  /**
+   * Whether `get_info` can be read at all: the muster plugin is installed and
+   * an installation given.
+   */
+  canRead: boolean;
+  /** Reads `get_info` again (Check again); react-query's own, stable. */
+  refetch: () => Promise<unknown>;
 };
 
 /**
@@ -63,9 +68,8 @@ export function useAgentManagerInfo(
     info: data,
     isLoading: Boolean(client) && isLoading,
     error: (error as Error) ?? null,
-    refetch: () => {
-      refetch();
-    },
+    canRead: Boolean(client),
+    refetch,
   };
 }
 

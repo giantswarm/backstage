@@ -17,14 +17,13 @@ import {
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
   ACCESS_GRANT_HINT,
-  defaultTenant,
   TENANT_KIND_LABELS,
   tenantGroups,
   tenantKindOf,
   tenantOf,
 } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { LabelledField } from './LabelledField';
+import { LabelledField } from '../LabelledField';
 
 const TITLE = 'Organization';
 
@@ -99,11 +98,22 @@ export function useOrganizationField({
     selectTenant,
   } = useNewAgentForm();
   const installation = edit ? undefined : state.installation;
-  const { info, isLoading, refetch } = useAgentManagerInfo(installation);
-  const managed = info?.namespaces?.managed;
-  const choicesKey = managed?.join(',');
-  // agent-manager answered without the places, failed, or cannot be reached.
-  const failed = Boolean(installation) && !isLoading && !managed;
+  const { info, isLoading, canRead, refetch } =
+    useAgentManagerInfo(installation);
+  const answered = info?.namespaces?.managed;
+  const choicesKey = answered?.join(',');
+  // The places as the form holds them: agent-manager's answer once
+  // `setTenantChoices` has taken it (and picked one), so the dropdown never
+  // shows a pick the form does not hold.
+  const managed =
+    answered && state.tenantChoices?.join(',') === choicesKey
+      ? answered
+      : undefined;
+  // agent-manager answered without the places or failed; or there is no
+  // muster plugin to ask, which the Environment field explains (no Check
+  // again then: there is nothing to read again).
+  const failed =
+    Boolean(installation) && (!canRead || (!isLoading && !answered));
 
   useEffect(() => {
     if (choicesKey !== undefined) {
@@ -126,7 +136,8 @@ export function useOrganizationField({
     return { inMain: false, field: null };
   }
   if (!managed) {
-    // Still reading, or agent-manager did not answer. Nothing, rather than a
+    // Still reading, or agent-manager did not answer (or the form has not
+    // taken its answer yet). Nothing, rather than a
     // line that would vanish a moment later in the common single-place case,
     // until a blocked Continue asks for the place: then the field says why
     // there is none yet, and offers to read it again where it failed.
@@ -139,8 +150,12 @@ export function useOrganizationField({
         <LabelledField label={TITLE} description={DESCRIPTION}>
           <div aria-label={TITLE} {...unreadError.groupProps}>
             {unreadError.message}
-            {failed && (
-              <Button size="small" variant="secondary" onPress={refetch}>
+            {failed && canRead && (
+              <Button
+                size="small"
+                variant="secondary"
+                onPress={() => refetch()}
+              >
                 Check again
               </Button>
             )}
@@ -219,13 +234,8 @@ export function useOrganizationField({
           isRequired
           searchable={searchableIf(managed)}
           options={options}
-          // The provider picks one as soon as the choices are in; until that
-          // lands, the one it picks shows rather than a placeholder.
-          selectedKey={
-            state.tenant && managed.includes(state.tenant)
-              ? state.tenant
-              : (defaultTenant(managed) ?? null)
-          }
+          // Always one: `setTenantChoices` picks the first with the choices.
+          selectedKey={state.tenant ?? null}
           onSelectionChange={key => {
             if (key) {
               selectTenant(String(key));

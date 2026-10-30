@@ -302,6 +302,31 @@ describe('useEnvironmentField', () => {
     });
   });
 
+  describe('without a home installation', () => {
+    it('picks the first usable one in config order once the fleet settles, whichever answered first', () => {
+      mockInstallations = [{ name: 'alpha' }, { name: 'beta' }];
+      // beta answered first.
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        isLoading: true,
+        availableInstallations: ['beta'],
+      };
+      const { rerender } = render(<EnvironmentFieldHarness />);
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', { name: /Environment/ }),
+      ).toHaveTextContent('Checking the environments…');
+
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        isLoading: false,
+        availableInstallations: ['beta', 'alpha'],
+      };
+      rerender(<EnvironmentFieldHarness />);
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+    });
+  });
+
   describe('with a home installation among several', () => {
     beforeEach(() => {
       mockHome = 'beta';
@@ -476,8 +501,9 @@ describe('useEnvironmentField', () => {
 
       expect(getByRole('button', { name: /Environment/ })).toBeInTheDocument();
       expect(queryByText(SOLE)).not.toBeInTheDocument();
-      // Nothing to wait for: the first usable one is picked.
-      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+      // No home installation: the pick waits for the fleet to settle, so
+      // which installation answers first does not decide it.
+      expect(mockSetInstallation).not.toHaveBeenCalled();
     });
 
     it('keeps the sole option once settled, even when the fleet query re-probes', () => {
@@ -601,8 +627,9 @@ describe('useEnvironmentField', () => {
       expect(
         getByText('Still checking the remaining environments…'),
       ).toBeInTheDocument();
-      // Nothing to wait for: the first usable one is picked.
-      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+      // No home installation: the pick waits for the fleet to settle, so
+      // which installation answers first does not decide it.
+      expect(mockSetInstallation).not.toHaveBeenCalled();
     });
   });
 
