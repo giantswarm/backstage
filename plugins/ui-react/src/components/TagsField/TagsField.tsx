@@ -6,8 +6,8 @@ import {
   useState,
 } from 'react';
 import { Button, Flex, Tag, TagGroup, Text, TextField } from '@backstage/ui';
-import { fieldErrorProps } from '@giantswarm/backstage-plugin-ui-react';
 
+import { fieldErrorProps } from '../FieldValidation';
 import {
   draftProblem,
   normalizeTag,
@@ -16,6 +16,7 @@ import {
   suggestTags,
   tagProblem,
 } from '../../lib/tags';
+import { useTagVocabulary } from './TagVocabularyContext';
 
 /**
  * At most this many existing tags are offered at once: what is typed narrows
@@ -23,36 +24,45 @@ import {
  */
 const MAX_SUGGESTIONS = 8;
 
+const NO_COUNTS: ReadonlyMap<string, number> = new Map();
+
+export type TagsFieldProps = {
+  tags: readonly string[];
+  /**
+   * What is typed and not added yet (form state, so an invalid draft blocks
+   * Continue).
+   */
+  draft: string;
+  /** The draft's problem once the form shows its errors. */
+  error: string | undefined;
+  /**
+   * How many resources carry each tag; a mounted `TagVocabularyContext`
+   * takes precedence.
+   */
+  counts?: ReadonlyMap<string, number>;
+  onDraftChange: (draft: string) => void;
+  onAdd: (tags: string[]) => void;
+  onRemove: (tag: string) => void;
+};
+
 /**
- * The wizard's tags: a field where Enter, a comma or leaving it adds what was
+ * A form's tags: a field where Enter, a comma or leaving it adds what was
  * typed as tags, normalized (`On Call` is `on-call`), and the tags so far
- * beneath it, each removable. While typing, the tags other agents carry are
+ * beneath it, each removable. While typing, the tags already in use are
  * offered as a row to click, the most used first. A new tag close to an
  * existing one gets a hint that swaps it in. Text that cannot be a tag stays
  * in the field with the reason under it.
- *
- * @param draft what is typed and not added yet (form state, so an invalid
- *   draft blocks Continue)
- * @param error the draft's problem once the form shows its errors
- * @param counts how many agents carry each tag, across the loaded fleet
  */
 export function TagsField({
   tags,
   draft,
   error,
-  counts,
+  counts: ownCounts = NO_COUNTS,
   onDraftChange,
   onAdd,
   onRemove,
-}: {
-  tags: readonly string[];
-  draft: string;
-  error: string | undefined;
-  counts: ReadonlyMap<string, number>;
-  onDraftChange: (draft: string) => void;
-  onAdd: (tags: string[]) => void;
-  onRemove: (tag: string) => void;
-}) {
+}: TagsFieldProps) {
+  const counts = useTagVocabulary() ?? ownCounts;
   // The draft's problem shows at once after a failed add, else only once the
   // form reveals its errors.
   const [attempted, setAttempted] = useState(false);

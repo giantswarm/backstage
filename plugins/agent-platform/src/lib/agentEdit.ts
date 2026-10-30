@@ -1,3 +1,4 @@
+import { sameTags } from '@giantswarm/backstage-plugin-ui-react';
 import type {
   AgentManagerAgent,
   AgentPluginEntry,
@@ -21,7 +22,6 @@ import {
   type DiscoveredPlugin,
   type SelectedPlugin,
 } from './plugins';
-import { sameTags } from './tags';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**

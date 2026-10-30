@@ -18,6 +18,7 @@ import {
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
+  tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -307,7 +308,7 @@ export function agentFacets(
           },
         ]
       : []),
-    { id: 'tags', label: 'Tags', value: (row: AgentRow) => row.tags },
+    tagsFacet((row: AgentRow) => row.tags),
     ...(isMine
       ? [
           {

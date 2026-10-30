@@ -12,6 +12,8 @@ import {
   InfoHint,
   MoreOptions,
   useFieldValidation,
+  tagCounts,
+  TagsField,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -33,9 +35,7 @@ import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { TagsField } from './TagsField';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
-import { tagCounts } from '../../lib/tags';
 import {
   harnessTitle,
   PLATFORM_DEFAULT_LABEL,

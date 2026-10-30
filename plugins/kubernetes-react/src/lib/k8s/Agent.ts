@@ -1,3 +1,7 @@
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { KubeObject } from './KubeObject';
 import { harnessRuntimeOf, type HarnessRuntime } from './Harness';
 import {
@@ -42,15 +46,6 @@ export type AgentSkill = {
 
 const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
 const ICON_URL_ANNOTATION = 'ui.giantswarm.io/icon-url';
-const TAGS_ANNOTATION = 'ui.giantswarm.io/tags';
-/** agent-manager's tag form: lowercase words joined by single hyphens. */
-const AGENT_TAG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const MAX_AGENT_TAG_LENGTH = 63;
-
-/** Whether agent-manager accepts `tag` as an agent tag. */
-function isValidAgentTag(tag: string): boolean {
-  return tag.length <= MAX_AGENT_TAG_LENGTH && AGENT_TAG_PATTERN.test(tag);
-}
 
 /**
  * Condition types the controller writes on an Agent: `Accepted` (the Harness
@@ -318,19 +313,11 @@ export class Agent extends KubeObject<AgentInterface> {
   /**
    * The keywords people find the agent by: the comma-joined
    * `ui.giantswarm.io/tags` annotation, trimmed and lowercased, without
-   * empties or repeats. A value agent-manager would refuse (see
-   * {@link isValidAgentTag}) is left out, so an edit never sends it back.
+   * empties or repeats. A value agent-manager would refuse is left out, so
+   * an edit never sends it back.
    */
   getTags(): string[] {
-    const raw = this.getAnnotations()?.[TAGS_ANNOTATION] ?? '';
-    return [
-      ...new Set(
-        raw
-          .split(',')
-          .map(tag => tag.trim().toLowerCase())
-          .filter(isValidAgentTag),
-      ),
-    ];
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
   }
 
   /**

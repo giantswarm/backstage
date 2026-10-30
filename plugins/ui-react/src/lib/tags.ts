@@ -1,8 +1,10 @@
 /**
- * Agent tags: free-form keywords people find an agent by (`util`,
- * `marketing`). Stored as the comma-joined `ui.giantswarm.io/tags`
+ * Tags: free-form keywords people find an agent (or another resource) by
+ * (`util`, `marketing`). Stored as the comma-joined `ui.giantswarm.io/tags`
  * annotation; agent-manager takes them as `tags` and checks the same form.
  */
+export const TAGS_ANNOTATION = 'ui.giantswarm.io/tags';
+
 export const MAX_TAG_LENGTH = 63;
 
 /** agent-manager's form: lowercase letters and digits, single `-` between. */
@@ -32,6 +34,22 @@ export function tagProblem(tag: string): string | undefined {
     return 'Use letters and numbers.';
   }
   return undefined;
+}
+
+/**
+ * The tags in a stored annotation value: split on commas, trimmed and
+ * lowercased, without empties or repeats. A value that is not a valid tag
+ * (see {@link tagProblem}) is left out, so an edit never sends it back.
+ */
+export function parseTags(raw: string | undefined): string[] {
+  return [
+    ...new Set(
+      (raw ?? '')
+        .split(',')
+        .map(tag => tag.trim().toLowerCase())
+        .filter(tag => tagProblem(tag) === undefined),
+    ),
+  ];
 }
 
 /** The parts of a typed text a comma separates, trimmed, without empties. */

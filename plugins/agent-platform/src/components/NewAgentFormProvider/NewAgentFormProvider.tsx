@@ -6,7 +6,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSessionDraft } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  draftProblem,
+  useSessionDraft,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   AgentManagerAgent,
@@ -29,7 +32,6 @@ import {
 } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
-import { draftProblem } from '../../lib/tags';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {

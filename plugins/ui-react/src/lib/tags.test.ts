@@ -3,6 +3,7 @@ import {
   draftProblem,
   editDistance,
   normalizeTag,
+  parseTags,
   sameTags,
   similarExistingTag,
   suggestTags,
@@ -113,5 +114,29 @@ describe('similarity', () => {
     expect(similarExistingTag('util', counts)).toBeUndefined();
     expect(similarExistingTag('finance', counts)).toBeUndefined();
     expect(similarExistingTag('utill', counts, ['util'])).toBe('utils');
+  });
+});
+
+describe('parseTags', () => {
+  it('splits the value, trimmed, without empties or repeats', () => {
+    expect(parseTags('util, marketing,,util , ')).toEqual([
+      'util',
+      'marketing',
+    ]);
+  });
+
+  it('lowercases, so differently written repeats are one tag', () => {
+    expect(parseTags('Util,util, UTIL,Ops')).toEqual(['util', 'ops']);
+  });
+
+  it('leaves out invalid tags', () => {
+    expect(
+      parseTags(`ok,on call,a--b,-x,y_z,ä,${'a'.repeat(64)},${'b'.repeat(63)}`),
+    ).toEqual(['ok', 'b'.repeat(63)]);
+  });
+
+  it('is empty without a value or with a blank one', () => {
+    expect(parseTags(undefined)).toEqual([]);
+    expect(parseTags(' ')).toEqual([]);
   });
 });
