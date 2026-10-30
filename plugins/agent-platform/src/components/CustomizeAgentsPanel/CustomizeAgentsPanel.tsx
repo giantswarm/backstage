@@ -1,7 +1,7 @@
 import { ReactNode, useCallback, useEffect, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
-import { ButtonIcon, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
+import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
@@ -21,6 +21,7 @@ import {
   tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
+  TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -232,12 +233,10 @@ const useStyles = makeStyles({
     },
   },
   // Tags sit under the name link's stretched hit area, so a press on one
-  // opens the agent like the rest of the row: bui's tags would otherwise take
-  // the press themselves.
+  // opens the agent like the rest of the row.
   tags: {
     flex: '0 1 auto',
     minWidth: 0,
-    pointerEvents: 'none',
   },
   // Fixed-width fact columns line the rows up, as the prototype's do.
   fact: {
@@ -359,34 +358,6 @@ function organizationText(namespace: string): string {
 }
 
 /**
- * An agent's tags on its row: the first {@link ROW_TAGS_MAX}, then "+N".
- * Nothing when it has none.
- */
-function AgentRowTags({ tags }: { tags: readonly string[] }) {
-  const classes = useStyles();
-  if (tags.length === 0) {
-    return null;
-  }
-  const hidden = tags.length - ROW_TAGS_MAX;
-  return (
-    <div className={classes.tags}>
-      <TagGroup aria-label="Tags">
-        {tags.slice(0, ROW_TAGS_MAX).map(tag => (
-          <Tag key={tag} id={tag} size="small">
-            {tag}
-          </Tag>
-        ))}
-        {hidden > 0 && (
-          <Tag key="more" id="more" size="small">
-            {`+${hidden}`}
-          </Tag>
-        )}
-      </TagGroup>
-    </div>
-  );
-}
-
-/**
  * One agent as the prototype's list row: avatar, name — with its organization
  * and, only when it is not Ready, its state — and what it is for, then its
  * tags, its Harness and its environment, the organization, Harness and
@@ -424,13 +395,25 @@ function AgentListItem({
   const truncate = isPhone ? undefined : true;
   const organization = showTenant ? organizationText(row.namespace) : '';
   const organizationId = useId();
+  const tagsId = useId();
   // The name's tooltip, with the organization beside it on a line of its own:
   // the name link's hit area covers the row, so the row shows this tooltip
   // wherever it is pointed at, the organization's text included, and either
   // can be read in full however it is cut. A phone has no hover.
   const nameTitle = isPhone
     ? undefined
-    : [row.name, organization].filter(Boolean).join('\n');
+    : [
+        row.name,
+        organization,
+        row.tags.length > 0 ? `Tags: ${row.tags.join(', ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+  // The link names the agent; its organization and tags describe it.
+  const describedBy =
+    [organization && organizationId, row.tags.length > 0 && tagsId]
+      .filter(Boolean)
+      .join(' ') || undefined;
   const facts: AgentFact[] = [
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
@@ -475,7 +458,7 @@ function AgentListItem({
                 weight="bold"
                 truncate={truncate}
                 title={nameTitle}
-                aria-describedby={organization ? organizationId : undefined}
+                aria-describedby={describedBy}
                 className={[
                   classes.nameLink,
                   stretched.link,
@@ -543,7 +526,12 @@ function AgentListItem({
         </div>
         {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
         <div className={classes.facts} data-testid="agent-facts">
-          <AgentRowTags tags={row.tags} />
+          <TagList
+            id={tagsId}
+            tags={row.tags}
+            max={ROW_TAGS_MAX}
+            className={classes.tags}
+          />
           {facts.map(fact => (
             <Text
               key={fact.key}

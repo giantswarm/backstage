@@ -124,7 +124,12 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
 // installation named here is read with these agents, and with empty Harness
 // and RemoteMCPServer lists; one marked pending has not answered yet; any
 // other refused installation is refused in every namespace too.
-type MockNamespacedAgents = { agents: unknown[]; data: unknown[] };
+type MockNamespacedAgents = {
+  agents: unknown[];
+  data: unknown[];
+  /** The RemoteMCPServers (toolset carriers) its namespaces answer with. */
+  carriers?: unknown[];
+};
 // One marked refused refused the list in every namespace (no tenant binds
 // the person there).
 let mockNamespacedRead: Record<
@@ -135,7 +140,7 @@ jest.mock('../../hooks/useNamespacedResources', () => {
   const actual = jest.requireActual('../../hooks/useNamespacedResources');
   return {
     useNamespacedFallback: (base: { errors: unknown[] }, Resource: unknown) => {
-      const { Agent } = jest.requireMock(
+      const { Agent, RemoteMCPServer } = jest.requireMock(
         '@giantswarm/backstage-plugin-kubernetes-react',
       );
       const forbidden: string[] = actual.forbiddenInstallationsOf(base.errors);
@@ -149,13 +154,19 @@ jest.mock('../../hooks/useNamespacedResources', () => {
           answer(cluster) !== 'refused',
       );
       const agentsRead = Resource === Agent;
+      const carriersOf = (cluster: string) =>
+        Resource === RemoteMCPServer ? (readOf(cluster).carriers ?? []) : [];
       return actual.mergeNamespaced(base, {
         resources: agentsRead
           ? read.flatMap(cluster => readOf(cluster).agents)
-          : [],
+          : read.flatMap(carriersOf),
         clustersData: read.map(cluster => ({
           cluster,
-          data: agentsRead ? readOf(cluster).data : [],
+          data: agentsRead
+            ? readOf(cluster).data
+            : carriersOf(cluster).map(() => ({
+                metadata: { name: 'carrier', resourceVersion: '1' },
+              })),
         })),
         pendingInstallations: forbidden.filter(
           cluster => answer(cluster) === 'pending',
@@ -176,6 +187,8 @@ type AgentSpec = {
   resourceVersion?: string;
   description?: string;
   readiness?: AgentReadiness;
+  /** Binds the gateway through a carrier of its own name. */
+  bindsGateway?: boolean;
 };
 
 // Duck-typed stand-in for an Agent instance — only the getters toAgentRow uses.
@@ -195,7 +208,8 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getReadinessMessage: () => undefined,
     getHarnessWarnings: () => [],
     getAnnotations: () => undefined,
-    getMcpBindings: () => [],
+    getMcpBindings: () =>
+      spec.bindsGateway ? [{ server: { name: spec.name } }] : [],
   };
 }
 
@@ -639,6 +653,36 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.unreachableInstallations).toEqual([]);
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('resolves a namespaced agent’s toolset from the RemoteMCPServers read the same way', async () => {
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockNamespacedRead = {
+      alpha: {
+        agents: [fakeAgent('alpha', { name: 'a1', bindsGateway: true })],
+        data: [{ metadata: { name: 'a1', resourceVersion: '1' } }],
+        carriers: [
+          {
+            cluster: 'alpha',
+            getName: () => 'a1',
+            getNamespace: () => 'team-a',
+            getHeaderValue: (header: string) =>
+              header === 'X-Muster-Toolset' ? 'preset:none' : undefined,
+          },
+        ],
+      },
+    };
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.rows[0]?.toolset).toEqual({
+        state: 'declared',
+        selectors: ['preset:none'],
+        carrier: 'a1',
+      }),
+    );
   });
 
   it('keeps a namespaced read loading, never "couldn’t read", until its namespaces answer', async () => {

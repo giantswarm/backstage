@@ -36,6 +36,7 @@ import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
+import { supportsTags } from '../../lib/agentManager';
 import {
   harnessTitle,
   PLATFORM_DEFAULT_LABEL,
@@ -87,6 +88,7 @@ function NewAgentPageContent() {
     addTags,
     removeTag,
     setTagDraft,
+    commitTagDraft,
     setSystemMessage,
     setEgressText,
     setEgressSetByPlatform,
@@ -116,6 +118,16 @@ function NewAgentPageContent() {
   // The tags the fleet already uses, offered while typing a tag.
   const { rows: agents } = useAgents();
   const knownTags = useMemo(() => tagCounts(agents), [agents]);
+  // Tags only where the installation's agent-manager takes them. A draft
+  // left in the hidden field must not block Continue.
+  const tagsSupported = supportsTags(agentManagerInfo);
+  const hasHiddenTagDraft =
+    agentManagerInfo !== undefined && !tagsSupported && !!state.tagDraft;
+  useEffect(() => {
+    if (hasHiddenTagDraft) {
+      setTagDraft('');
+    }
+  }, [hasHiddenTagDraft, setTagDraft]);
   // "More options" holds the technical knobs (model, runtime, default
   // workspace, technical name, EgressPolicies and extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
@@ -146,10 +158,19 @@ function NewAgentPageContent() {
       reveal();
       return;
     }
+    // A typed tag not yet added goes with the agent, however step 1 is left.
+    commitTagDraft();
     if (nextLink) {
       navigate(nextLink());
     }
-  }, [errorCount, hasHiddenProblem, nextLink, navigate, reveal]);
+  }, [
+    errorCount,
+    hasHiddenProblem,
+    nextLink,
+    navigate,
+    reveal,
+    commitTagDraft,
+  ]);
 
   // Memoized so the frame's footer slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -294,15 +315,17 @@ function NewAgentPageContent() {
           placeholder="e.g. Sorts, summarises and routes support tickets"
           description="Shown to people when they pick an agent."
         />
-        <TagsField
-          tags={state.tags}
-          draft={state.tagDraft ?? ''}
-          error={errorFor('tags', fieldErrors.tags)}
-          counts={knownTags}
-          onDraftChange={setTagDraft}
-          onAdd={addTags}
-          onRemove={removeTag}
-        />
+        {tagsSupported && (
+          <TagsField
+            tags={state.tags}
+            draft={state.tagDraft ?? ''}
+            error={errorFor('tags', fieldErrors.tags)}
+            counts={knownTags}
+            onDraftChange={setTagDraft}
+            onAdd={addTags}
+            onRemove={removeTag}
+          />
+        )}
         <TextAreaField
           label="Instructions"
           secondaryLabel="optional"

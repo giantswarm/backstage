@@ -5,22 +5,27 @@
  */
 export const TAGS_ANNOTATION = 'ui.giantswarm.io/tags';
 
+/** The longest tag the charts take. */
 export const MAX_TAG_LENGTH = 63;
 
-/** agent-manager's form: lowercase letters and digits, single `-` between. */
+/**
+ * The charts' tag form: lowercase letters and digits, single `-` between.
+ * The one tag rule the portal checks against; muster and gs-backend mirror it.
+ */
 export const TAG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * A tag as typed, in the stored form: lowercase, spaces and underscores as
  * `-`, other punctuation dropped, no repeated, leading or trailing `-`.
- * `" On_Call! "` is `on-call`.
+ * `" On_Call! "` is `on-call`. Letters outside a-z stay, so `über` is refused
+ * rather than quietly stored as `ber`.
  */
 export function normalizeTag(text: string): string {
   return text
     .trim()
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
+    .replace(/[^\p{L}\p{N}-]/gu, '')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '');
 }
@@ -58,6 +63,27 @@ export function splitTyped(text: string): string[] {
     .split(',')
     .map(part => part.trim())
     .filter(part => part !== '');
+}
+
+/**
+ * A typed text's comma-separated parts: the tags it holds (normalized, valid)
+ * and the parts that cannot be tags, as typed.
+ */
+export function splitDraft(text: string): {
+  tags: string[];
+  invalid: string[];
+} {
+  const tags: string[] = [];
+  const invalid: string[] = [];
+  for (const part of splitTyped(text)) {
+    const tag = normalizeTag(part);
+    if (tagProblem(tag) === undefined) {
+      tags.push(tag);
+    } else {
+      invalid.push(part);
+    }
+  }
+  return { tags, invalid };
 }
 
 /**

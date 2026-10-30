@@ -2474,9 +2474,9 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       await renderShell();
 
       expect(
-        within(screen.getByRole('grid', { name: 'Tags' }))
-          .getAllByRole('row')
-          .map(row => row.textContent),
+        within(screen.getByRole('list', { name: 'Tags' }))
+          .getAllByRole('listitem')
+          .map(item => item.textContent),
       ).toEqual(['review', 'github']);
     });
 
@@ -2489,7 +2489,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         screen.getByText('Reviews pull requests in depth.'),
       ).toBeInTheDocument();
       expect(
-        screen.queryByRole('grid', { name: 'Tags' }),
+        screen.queryByRole('list', { name: 'Tags' }),
       ).not.toBeInTheDocument();
     });
 

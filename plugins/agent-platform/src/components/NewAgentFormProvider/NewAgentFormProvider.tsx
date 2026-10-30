@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   draftProblem,
+  splitDraft,
   useSessionDraft,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -211,6 +212,11 @@ export type NewAgentFormContextValue = {
   addTags: (tags: readonly string[]) => void;
   removeTag: (tag: string) => void;
   setTagDraft: (draft: string) => void;
+  /**
+   * Adds the tags the draft holds, leaving only what cannot be a tag in it:
+   * what leaving step 1 does with a typed but not added draft.
+   */
+  commitTagDraft: () => void;
   setInstallation: (installation: string | undefined) => void;
   /**
    * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
@@ -677,6 +683,21 @@ export function NewAgentFormProvider({
           tags: prev.tags.filter(each => each !== tag),
         })),
       setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
+      commitTagDraft: () =>
+        setState(prev => {
+          if (!prev.tagDraft?.trim()) {
+            return prev;
+          }
+          const { tags, invalid } = splitDraft(prev.tagDraft);
+          const added = [...new Set(tags)].filter(
+            tag => !prev.tags.includes(tag),
+          );
+          return {
+            ...prev,
+            tags: [...prev.tags, ...added],
+            tagDraft: invalid.join(', '),
+          };
+        }),
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
       // here.

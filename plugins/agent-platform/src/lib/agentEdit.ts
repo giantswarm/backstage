@@ -1,4 +1,4 @@
-import { sameTags } from '@giantswarm/backstage-plugin-ui-react';
+import { sameTags, tagProblem } from '@giantswarm/backstage-plugin-ui-react';
 import type {
   AgentManagerAgent,
   AgentPluginEntry,
@@ -83,7 +83,8 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
   return {
     displayName: agent.displayName ?? '',
     description: agent.description ?? '',
-    tags: [...(agent.tags ?? [])],
+    // A tag the chart refuses is never sent back with an edit.
+    tags: (agent.tags ?? []).filter(tag => tagProblem(tag) === undefined),
     systemMessage: agent.systemMessage ?? '',
     modelConfig: agent.modelConfig ?? '',
     toolset: normalizeSelection(agent.toolset ?? []),
@@ -455,17 +456,24 @@ function pluginEntriesOfForm(
   return entries;
 }
 
-/** The edit the wizard's state amounts to, for {@link updateOf}. */
+/**
+ * The edit the wizard's state amounts to, for {@link updateOf}.
+ *
+ * @param options.tags whether the installation's agent-manager takes tags
+ *   (`get_info`'s `tags`); without it the agent's own tags stand, so no
+ *   update carries `tags`
+ */
 export function editStateOfForm(
   agent: AgentManagerAgent,
   form: NewAgentFormState,
+  options: { tags?: boolean } = {},
 ): AgentEditState {
   const untouchedTechnicalName =
     !agent.displayName && form.name.trim() === agent.name;
   return {
     displayName: untouchedTechnicalName ? '' : form.name,
     description: form.description,
-    tags: form.tags,
+    tags: options.tags === false ? editStateOf(agent).tags : form.tags,
     systemMessage: form.systemMessage,
     modelConfig: form.modelConfigName ?? '',
     toolset: form.toolset,

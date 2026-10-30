@@ -673,6 +673,19 @@ export type AgentManagerModelConfig = {
   managedBy?: string;
 };
 
+/**
+ * `get_info`'s capability for `tags` on create and update: where the agent
+ * form offers tags.
+ */
+export const TAGS_CAPABILITY = 'tags';
+
+/** Whether an installation's agent-manager takes tags. */
+export function supportsTags(
+  info: Pick<AgentManagerInfo, 'capabilities'> | undefined,
+): boolean {
+  return info?.capabilities?.[TAGS_CAPABILITY] === true;
+}
+
 /** `get_info`'s capability for `egressPolicyRefs` and `list_egress_policies`. */
 export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
 

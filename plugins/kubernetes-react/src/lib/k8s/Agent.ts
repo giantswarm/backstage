@@ -313,8 +313,8 @@ export class Agent extends KubeObject<AgentInterface> {
   /**
    * The keywords people find the agent by: the comma-joined
    * `ui.giantswarm.io/tags` annotation, trimmed and lowercased, without
-   * empties or repeats. A value agent-manager would refuse is left out, so
-   * an edit never sends it back.
+   * empties or repeats. A value the chart would refuse (see `tagProblem` in
+   * ui-react, the one tag rule) is left out of what is shown.
    */
   getTags(): string[] {
     return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);

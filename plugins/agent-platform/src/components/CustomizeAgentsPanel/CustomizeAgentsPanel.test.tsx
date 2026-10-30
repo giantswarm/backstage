@@ -330,9 +330,9 @@ describe('CustomizeAgentsPanel', () => {
     // The model, skills and connectors are technical: the agent's page has them.
     expect(within(triageRow).queryByText('Sonnet 4.5')).not.toBeInTheDocument();
     expect(within(triageRow).queryByText(/connector/)).not.toBeInTheDocument();
-    // No tags, no tag group.
+    // No tags, no tag list.
     expect(
-      within(triageRow).queryByRole('grid', { name: 'Tags' }),
+      within(triageRow).queryByRole('list', { name: 'Tags' }),
     ).not.toBeInTheDocument();
     expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     // A Ready agent shows no state; one that needs a look says so inline.
@@ -376,12 +376,42 @@ describe('CustomizeAgentsPanel', () => {
     const [triageItem] = within(
       screen.getByRole('list', { name: 'Agents' }),
     ).getAllByRole('listitem');
-    const tags = within(triageItem).getByRole('grid', { name: 'Tags' });
+    const tags = within(triageItem).getByRole('list', { name: 'Tags' });
     expect(
       within(tags)
-        .getAllByRole('row')
+        .getAllByRole('listitem')
         .map(tag => tag.textContent),
-    ).toEqual(['util', 'ops', 'support', '+1']);
+    ).toEqual(['util', 'ops', 'support', '+11 more tags']);
+    // Shown, not operated: nothing in them takes the focus.
+    expect(within(tags).queryByRole('grid')).not.toBeInTheDocument();
+    expect(within(tags).queryAllByRole('row')).toHaveLength(0);
+    expect(within(tags).getByText('+1')).toHaveAttribute('aria-hidden');
+    expect(within(tags).getByText('1 more tags')).toBeInTheDocument();
+    // The row's link carries them as its description, and all of them in
+    // its tooltip.
+    const link = within(triageItem).getByRole('link', { name: triage.name });
+    expect(link).toHaveAccessibleDescription(/util ops support 1 more tags/);
+    expect(link).toHaveAttribute(
+      'title',
+      expect.stringContaining('Tags: util, ops, support, tickets'),
+    );
+  });
+
+  it('keeps a tag named "more" apart from the count of the rest', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['a', 'b', 'c', 'more', 'e'] }, notes],
+    };
+    await renderPanel();
+
+    const [triageItem] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(
+      within(within(triageItem).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(tag => tag.textContent),
+    ).toEqual(['a', 'b', 'c', '+22 more tags']);
   });
 
   it('offers a Tags filter once an agent has tags, and narrows to any picked', async () => {

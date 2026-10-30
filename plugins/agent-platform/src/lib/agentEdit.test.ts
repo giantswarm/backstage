@@ -137,6 +137,15 @@ describe('updateOf', () => {
     expect(hasChanges(updateOf(untagged, editStateOf(untagged)))).toBe(false);
   });
 
+  it('never resends a tag the chart refuses', () => {
+    const current = agent({ tags: ['review', 'Bad Tag', 'über'] });
+    expect(editStateOf(current).tags).toEqual(['review']);
+    expect(
+      updateOf(current, { ...editStateOf(current), tags: ['review', 'ops'] })
+        .tags,
+    ).toEqual(['review', 'ops']);
+  });
+
   it('replaces the whole egress list, and clears it with an empty list', () => {
     const withEgress = agent({ egress: ['https://github.com:443'] });
     expect(editStateOf(withEgress).egressText).toBe('https://github.com:443');
@@ -351,6 +360,18 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
     expect(seed(agent({ harness: 'claude-code' })).harness).toEqual({
       name: 'claude-code',
     });
+  });
+
+  it('keeps the agent’s own tags where agent-manager takes none', () => {
+    const current = agent();
+    const state = { ...seed(current), tags: [] };
+
+    expect(
+      changedFields(current, editStateOfForm(current, state, { tags: false })),
+    ).toEqual([]);
+    expect(changedFields(current, editStateOfForm(current, state))).toEqual([
+      'tags',
+    ]);
   });
 
   it('is no change at all when nothing is touched', () => {

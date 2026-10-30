@@ -6,6 +6,7 @@ import {
   parseTags,
   sameTags,
   similarExistingTag,
+  splitDraft,
   suggestTags,
   tagCounts,
   tagProblem,
@@ -20,6 +21,12 @@ describe('normalizeTag', () => {
     expect(normalizeTag('--ops--')).toBe('ops');
     expect(normalizeTag('c++/c#')).toBe('cc');
     expect(normalizeTag('!!!')).toBe('');
+  });
+
+  it('keeps letters outside a-z, so the tag is refused, not stripped', () => {
+    expect(normalizeTag('Über')).toBe('über');
+    expect(tagProblem(normalizeTag('Über'))).toBe('Use letters and numbers.');
+    expect(draftProblem('ops, über')).toBe('Use letters and numbers.');
   });
 });
 
@@ -46,6 +53,16 @@ describe('draftProblem', () => {
     expect(draftProblem(`${'a'.repeat(64)}`)).toBe(
       'Use at most 63 characters.',
     );
+  });
+});
+
+describe('splitDraft', () => {
+  it('parts what can be a tag from what cannot', () => {
+    expect(splitDraft(' Util, !!!, On Call ')).toEqual({
+      tags: ['util', 'on-call'],
+      invalid: ['!!!'],
+    });
+    expect(splitDraft('')).toEqual({ tags: [], invalid: [] });
   });
 });
 

@@ -1,6 +1,6 @@
 import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
-import { Badge, Button, Flex, Tag, TagGroup, Text } from '@backstage/ui';
+import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   Agent,
@@ -17,6 +17,7 @@ import {
   PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
+  TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -424,15 +425,7 @@ export function AgentPlainOverview({
             No description yet.
           </Text>
         )}
-        {tags.length > 0 && (
-          <TagGroup aria-label="Tags">
-            {tags.map(tag => (
-              <Tag key={tag} id={tag} size="small">
-                {tag}
-              </Tag>
-            ))}
-          </TagGroup>
-        )}
+        <TagList tags={tags} />
       </PageSection>
 
       <InstructionsSection

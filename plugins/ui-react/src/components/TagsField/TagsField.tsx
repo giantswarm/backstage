@@ -10,11 +10,9 @@ import { Button, Flex, Tag, TagGroup, Text, TextField } from '@backstage/ui';
 import { fieldErrorProps } from '../FieldValidation';
 import {
   draftProblem,
-  normalizeTag,
   similarExistingTag,
-  splitTyped,
+  splitDraft,
   suggestTags,
-  tagProblem,
 } from '../../lib/tags';
 import { useTagVocabulary } from './TagVocabularyContext';
 
@@ -68,7 +66,9 @@ export function TagsField({
   const [attempted, setAttempted] = useState(false);
   /** A tag just added that looks like an existing one, and that one. */
   const [hint, setHint] = useState<{ added: string; existing: string }>();
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+  /** The field and its suggestions: focus moving between them stays put. */
+  const entryRef = useRef<HTMLDivElement>(null);
+  const focusField = () => entryRef.current?.querySelector('input')?.focus();
 
   const suggestions = useMemo(
     () =>
@@ -94,9 +94,8 @@ export function TagsField({
    * followed by `rest` (what is still being typed after a comma), if any.
    */
   const commit = (text: string, rest?: string) => {
-    const parts = splitTyped(text);
-    const invalid = parts.filter(part => tagProblem(normalizeTag(part)));
-    add(parts.map(normalizeTag).filter(tag => tagProblem(tag) === undefined));
+    const { tags: valid, invalid } = splitDraft(text);
+    add(valid);
     const kept = invalid.join(', ');
     if (rest === undefined) {
       onDraftChange(kept);
@@ -124,8 +123,9 @@ export function TagsField({
   };
 
   const onBlur = (event: FocusEvent) => {
-    // Picking a suggestion is not leaving the field with what is typed.
-    if (suggestionsRef.current?.contains(event.relatedTarget as Node | null)) {
+    // Moving to a suggestion is not leaving the field with what is typed;
+    // leaving both, by tab or click, adds it.
+    if (entryRef.current?.contains(event.relatedTarget as Node | null)) {
       return;
     }
     if (draft.trim()) {
@@ -137,6 +137,7 @@ export function TagsField({
     add([tag]);
     setAttempted(false);
     onDraftChange('');
+    focusField();
   };
 
   const swap = () => {
@@ -146,23 +147,23 @@ export function TagsField({
     onRemove(hint.added);
     onAdd([hint.existing]);
     setHint(undefined);
+    focusField();
   };
 
   return (
     <Flex direction="column" gap="2">
-      <TextField
-        label="Tags"
-        secondaryLabel="optional"
-        value={draft}
-        onChange={onChange}
-        onKeyDown={onKeyDown}
-        onBlur={onBlur}
-        placeholder="e.g. util"
-        description="Press Enter to add."
-        {...fieldErrorProps(attempted ? draftProblem(draft) : error)}
-      />
-      {suggestions.length > 0 && (
-        <div ref={suggestionsRef}>
+      <Flex direction="column" gap="2" ref={entryRef} onBlur={onBlur}>
+        <TextField
+          label="Tags"
+          secondaryLabel="optional"
+          value={draft}
+          onChange={onChange}
+          onKeyDown={onKeyDown}
+          placeholder="e.g. util"
+          description="Press Enter to add."
+          {...fieldErrorProps(attempted ? draftProblem(draft) : error)}
+        />
+        {suggestions.length > 0 && (
           <TagGroup aria-label="Suggested tags">
             {suggestions.map(tag => (
               <Tag key={tag} id={tag} size="small" onAction={() => pick(tag)}>
@@ -170,16 +171,23 @@ export function TagsField({
               </Tag>
             ))}
           </TagGroup>
-        </div>
-      )}
-      {hint && (
-        <Text as="p" variant="body-small" color="secondary">
-          Existing:{' '}
-          <Button variant="tertiary" size="small" onPress={swap}>
-            {hint.existing}
-          </Button>
-        </Text>
-      )}
+        )}
+      </Flex>
+      <div aria-live="polite">
+        {hint && (
+          <Text as="p" variant="body-small" color="secondary">
+            Existing:{' '}
+            <Button
+              variant="tertiary"
+              size="small"
+              aria-label={`Use ${hint.existing} instead`}
+              onPress={swap}
+            >
+              {hint.existing}
+            </Button>
+          </Text>
+        )}
+      </div>
       {tags.length > 0 && (
         <TagGroup
           aria-label="Tags"

@@ -13,6 +13,7 @@ import {
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { supportsTags } from '../../lib/agentManager';
 import {
   useCreateAgent,
   type CreateAgentFailure,
@@ -138,25 +139,32 @@ function CreateAgentReview() {
   // re-requested on every re-render — this page re-renders as the queries below
   // settle and as the deploy advances. Computed before the completeness guard
   // so the hook order stays stable (only rendered when complete).
+  const { info, isLoading: isInfoLoading } = useAgentManagerInfo(
+    state.installation,
+  );
+  const tagsSupported = supportsTags(info);
   const spec = useMemo(
     () =>
       agentSpecOf(state, {
         toolset: declared,
         iconUrl: buildIconUrl(state.installation, state.slug),
+        tags: tagsSupported,
       }),
-    [state, declared, buildIconUrl],
+    [state, declared, buildIconUrl, tagsSupported],
   );
   const namespace = spec.namespace;
 
-  const { info } = useAgentManagerInfo(state.installation);
   // The platform Harness the runtime field shows, for its summary row.
   const { platformChoice } = useRuntimeChoices();
   // The Harness a refusal names, by the title the runtime field shows.
   const formRuntime = useFormHarnessRuntime();
-  // Not before the sign-in tool is decided: the spec would lack it.
+  // Not before the sign-in tool is decided, nor before agent-manager says
+  // whether it takes tags: the spec would differ from what Create sends.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid && !signIn.isLoading ? spec : undefined,
+    isComplete && isToolsetValid && !signIn.isLoading && !isInfoLoading
+      ? spec
+      : undefined,
   );
   const creation = useCreateAgent(state.installation);
   const [commitResult, setCommitResult] = useState<
@@ -332,8 +340,8 @@ function CreateAgentReview() {
           {state.description.trim() && (
             <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
-          {state.tags.length > 0 && (
-            <PlainRow label="Tags">{state.tags.join(', ')}</PlainRow>
+          {spec.tags && (
+            <PlainRow label="Tags">{spec.tags.join(', ')}</PlainRow>
           )}
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}

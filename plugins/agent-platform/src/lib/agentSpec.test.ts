@@ -163,13 +163,14 @@ describe('agentSpecOf', () => {
     });
   });
 
-  it('sends the tags as added', () => {
+  it('sends the tags as added, only where agent-manager takes them', () => {
+    const tagged = { ...state, tags: ['review', 'github'] };
     expect(
-      agentSpecOf(
-        { ...state, tags: ['review', 'github'] },
-        { toolset: ['preset:none'] },
-      ).tags,
+      agentSpecOf(tagged, { toolset: ['preset:none'], tags: true }).tags,
     ).toEqual(['review', 'github']);
+    expect(
+      agentSpecOf(tagged, { toolset: ['preset:none'] }),
+    ).not.toHaveProperty('tags');
   });
 
   it('leaves optional fields out so the chart defaults apply', () => {
