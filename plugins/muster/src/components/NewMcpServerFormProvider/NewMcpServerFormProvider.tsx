@@ -19,6 +19,7 @@ import {
   emptyAuthAnswer,
   emptyFormState,
   formStateFromServer,
+  hasStoredClientSecret,
   hasUserInput,
   mcpServerAuthProblems,
   mcpServerDetailsProblems,
@@ -47,6 +48,12 @@ export type NewMcpServerFormContextValue = {
   setScopes: (scopes: string) => void;
   setAuthorizationEndpoint: (authorizationEndpoint: string) => void;
   setTokenEndpoint: (tokenEndpoint: string) => void;
+  /**
+   * Picks where the client comes from: a new one typed in (stored by
+   * muster) or an existing Secret. The Secret fields start over with the
+   * registered server's own answer for that side, or empty: what was typed
+   * on the other side is dropped.
+   */
   setUseExistingSecret: (useExistingSecret: boolean) => void;
   setClientSecretName: (clientSecretName: string) => void;
   setClientSecretNamespace: (clientSecretNamespace: string) => void;
@@ -373,7 +380,27 @@ export function NewMcpServerFormProvider({
       setTokenEndpoint: tokenEndpoint =>
         setState(prev => ({ ...prev, tokenEndpoint })),
       setUseExistingSecret: useExistingSecret =>
-        setState(prev => ({ ...prev, useExistingSecret })),
+        setState(prev => {
+          if (prev.useExistingSecret === useExistingSecret) {
+            return prev;
+          }
+          const saved = base?.form;
+          const keepsSaved =
+            saved &&
+            (useExistingSecret
+              ? saved.useExistingSecret
+              : hasStoredClientSecret(saved));
+          return {
+            ...prev,
+            useExistingSecret,
+            clientSecretName: keepsSaved ? saved.clientSecretName : '',
+            clientSecretNamespace: keepsSaved
+              ? saved.clientSecretNamespace
+              : '',
+            clientIdKey: keepsSaved ? saved.clientIdKey : '',
+            clientSecretKey: keepsSaved ? saved.clientSecretKey : '',
+          };
+        }),
       setClientSecretName: clientSecretName =>
         setState(prev => ({ ...prev, clientSecretName })),
       setClientSecretNamespace: clientSecretNamespace =>

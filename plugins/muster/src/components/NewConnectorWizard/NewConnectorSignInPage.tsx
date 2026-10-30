@@ -10,9 +10,10 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Alert,
   Button,
-  Checkbox,
   Flex,
   PasswordField,
+  Radio,
+  RadioGroup,
   Select,
   Text,
   TextField,
@@ -203,18 +204,23 @@ export function NewConnectorSignInPage() {
 
   // Replace and Keep stored secret take themselves off the page, so the
   // focus moves to what replaces them rather than to the body.
-  const credentialsGroupRef = useRef<HTMLDivElement>(null);
+  const clientIdRef = useRef<HTMLDivElement>(null);
   const replaceButtonRef = useRef<HTMLButtonElement>(null);
   const [focusAfter, setFocusAfter] = useState<'clientId' | 'replace'>();
   useEffect(() => {
     if (focusAfter === 'clientId') {
-      // Client ID is the group's first input.
-      credentialsGroupRef.current?.querySelector('input')?.focus();
+      clientIdRef.current?.querySelector('input')?.focus();
     } else if (focusAfter === 'replace') {
       replaceButtonRef.current?.focus();
     }
     setFocusAfter(undefined);
   }, [focusAfter]);
+  // The other side's values go: a typed secret is never kept around.
+  const chooseSource = (existing: boolean) => {
+    setUseExistingSecret(existing);
+    setCredentials(NO_CREDENTIALS);
+    setReplacing(false);
+  };
   const startReplacing = () => {
     setReplacing(true);
     setFocusAfter('clientId');
@@ -454,29 +460,16 @@ export function NewConnectorSignInPage() {
                 secondaryLabel="optional"
                 value={state.issuer}
                 onChange={setIssuer}
-                placeholder="https://auth.example.com"
+                placeholder="e.g. https://auth.example.com"
                 description="Every setting below requires this."
                 {...textFieldProps('issuer', issuerError)}
-              />
-              <TextField
-                label="Permissions to ask for (scopes)"
-                secondaryLabel="optional"
-                isDisabled={!authFields.scopes.available}
-                value={state.scopes}
-                onChange={setScopes}
-                placeholder="read write"
-                description={
-                  authFields.scopes.available
-                    ? "Separate them with spaces, as the app's documentation names them."
-                    : authFields.scopes.reason
-                }
               />
               <TextField
                 label="Sign-in page address (authorization endpoint)"
                 secondaryLabel="optional"
                 value={state.authorizationEndpoint}
                 onChange={setAuthorizationEndpoint}
-                placeholder="https://github.com/login/oauth/authorize"
+                placeholder="e.g. https://github.com/login/oauth/authorize"
                 description="Set together with the token address, or leave both empty."
                 {...textFieldProps(
                   'authorizationEndpoint',
@@ -488,15 +481,26 @@ export function NewConnectorSignInPage() {
                 secondaryLabel="optional"
                 value={state.tokenEndpoint}
                 onChange={setTokenEndpoint}
-                placeholder="https://github.com/login/oauth/access_token"
+                placeholder="e.g. https://github.com/login/oauth/access_token"
                 description="Set together with the sign-in page address."
                 {...textFieldProps('tokenEndpoint', fieldErrors.tokenEndpoint)}
+              />
+              {/* Enabled with or without an issuer: a field greyed out until
+                  one above is filled reads as broken. Validation names the
+                  missing issuer instead. */}
+              <TextField
+                label="Permissions to ask for (scopes)"
+                secondaryLabel="optional"
+                value={state.scopes}
+                onChange={setScopes}
+                placeholder="e.g. read write"
+                description="Separated by spaces. Needs an issuer."
+                {...textFieldProps('scopes', fieldErrors.scopes)}
               />
               <div
                 className={classes.fieldGroup}
                 role="group"
                 aria-labelledby={credentialsHeadingId}
-                ref={credentialsGroupRef}
               >
                 <Text
                   as="h3"
@@ -511,6 +515,15 @@ export function NewConnectorSignInPage() {
                   such as a GitHub App. Leave empty when muster can register
                   itself.
                 </Text>
+                <RadioGroup
+                  aria-labelledby={credentialsHeadingId}
+                  orientation="horizontal"
+                  value={state.useExistingSecret ? 'existing' : 'new'}
+                  onChange={value => chooseSource(value === 'existing')}
+                >
+                  <Radio value="new">New secret</Radio>
+                  <Radio value="existing">Existing Secret</Radio>
+                </RadioGroup>
                 {clientSecretStored && !replaceMode && (
                   <Flex align="center" justify="between" gap="3">
                     <Text variant="body-medium">Client secret stored</Text>
@@ -537,6 +550,7 @@ export function NewConnectorSignInPage() {
                 {enteringCredentials && (
                   <>
                     <TextField
+                      ref={clientIdRef}
                       label="Client ID"
                       isRequired={replaceMode}
                       secondaryLabel={replaceMode ? undefined : 'optional'}
@@ -575,12 +589,6 @@ export function NewConnectorSignInPage() {
                     )}
                   </>
                 )}
-                <Checkbox
-                  isSelected={state.useExistingSecret}
-                  onChange={setUseExistingSecret}
-                >
-                  Use an existing Secret
-                </Checkbox>
                 {state.useExistingSecret && (
                   <>
                     <Text variant="body-small" color="secondary">
@@ -591,7 +599,7 @@ export function NewConnectorSignInPage() {
                       label="Secret name"
                       value={state.clientSecretName}
                       onChange={setClientSecretName}
-                      placeholder="github-oauth-client"
+                      placeholder="e.g. github-oauth-client"
                       {...textFieldProps(
                         'clientSecretName',
                         fieldErrors.clientSecretName,
@@ -602,7 +610,6 @@ export function NewConnectorSignInPage() {
                       secondaryLabel="optional"
                       value={state.clientSecretNamespace}
                       onChange={setClientSecretNamespace}
-                      placeholder="muster"
                       description="Defaults to the connector's namespace."
                     />
                     <TextField
@@ -610,7 +617,6 @@ export function NewConnectorSignInPage() {
                       secondaryLabel="optional"
                       value={state.clientIdKey}
                       onChange={setClientIdKey}
-                      placeholder="client-id"
                       description="Defaults to client-id."
                     />
                     <TextField
@@ -618,7 +624,6 @@ export function NewConnectorSignInPage() {
                       secondaryLabel="optional"
                       value={state.clientSecretKey}
                       onChange={setClientSecretKey}
-                      placeholder="client-secret"
                       description="Defaults to client-secret."
                     />
                   </>

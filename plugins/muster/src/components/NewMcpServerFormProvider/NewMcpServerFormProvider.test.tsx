@@ -517,7 +517,50 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.storedClientCredentials).toBe(false);
     });
 
-    it('composes an existing Secret only while "Use an existing Secret" is ticked', () => {
+    it.each([
+      ['a stored client', 'weather-mcp-oauth-client-x7k2p', false],
+      ['an existing Secret', 'weather-oauth-client', true],
+    ])(
+      'brings %s back when its side is chosen again, empty on the other',
+      (_what, secretName, existing) => {
+        const { result } = renderForm();
+        act(() =>
+          result.current.startEdit(
+            new MCPServer(
+              {
+                apiVersion: 'muster.giantswarm.io/v1alpha1',
+                kind: 'MCPServer',
+                metadata: { name: 'weather-mcp' },
+                spec: {
+                  type: 'streamable-http',
+                  url: 'https://weather.example.com/mcp',
+                  auth: {
+                    type: 'oauth',
+                    authorizationServer: {
+                      issuer: 'https://idp',
+                      clientCredentialsSecretRef: { name: secretName },
+                    },
+                  },
+                },
+              } as never,
+              'gaggle',
+            ),
+          ),
+        );
+        expect(result.current.state.useExistingSecret).toBe(existing);
+
+        act(() => result.current.setUseExistingSecret(!existing));
+        expect(result.current.state.clientSecretName).toBe('');
+        expect(
+          result.current.definition.auth?.authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+
+        act(() => result.current.setUseExistingSecret(existing));
+        expect(result.current.state.clientSecretName).toBe(secretName);
+      },
+    );
+
+    it('composes an existing Secret only while Existing Secret is chosen', () => {
       const { result, fillDetails } = renderForm();
       fillDetails();
       act(() => {

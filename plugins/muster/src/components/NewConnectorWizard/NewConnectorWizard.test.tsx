@@ -467,9 +467,7 @@ describe('shell connector wizard', () => {
         name: 'Client credentials',
       });
       await userEvent.click(
-        within(credentials).getByRole('checkbox', {
-          name: 'Use an existing Secret',
-        }),
+        within(credentials).getByRole('radio', { name: 'Existing Secret' }),
       );
       expect(
         within(credentials).queryByLabelText(/^Client ID/),
@@ -573,10 +571,94 @@ describe('shell connector wizard', () => {
         expect(id).toHaveAttribute('autocomplete', 'off');
         expect(secret).toHaveAttribute('type', 'password');
         expect(secret).toHaveAttribute('autocomplete', 'new-password');
-        // The Secret fields wait behind "Use an existing Secret".
+        // New secret is the default; the Secret fields wait behind
+        // Existing Secret.
+        expect(
+          within(credentials).getByRole('radio', { name: 'New secret' }),
+        ).toBeChecked();
         expect(
           within(credentials).queryByLabelText(/^Secret name/),
         ).not.toBeInTheDocument();
+      });
+
+      it('drops the typed values of the side it switches away from', async () => {
+        await renderSignInStep();
+        const credentials = await typeClient(
+          'hubspot-client',
+          'hubspot-s3cret',
+        );
+
+        await userEvent.click(
+          within(credentials).getByRole('radio', { name: 'Existing Secret' }),
+        );
+        await userEvent.type(
+          within(credentials).getByLabelText(/^Secret name(?!space)/),
+          'hubspot-oauth-client',
+        );
+        await userEvent.click(
+          within(credentials).getByRole('radio', { name: 'New secret' }),
+        );
+
+        expect(within(credentials).getByLabelText(/^Client ID/)).toHaveValue(
+          '',
+        );
+        expect(
+          within(credentials).getByLabelText(/^Client secret/),
+        ).toHaveValue('');
+        await userEvent.click(
+          within(credentials).getByRole('radio', { name: 'Existing Secret' }),
+        );
+        expect(
+          within(credentials).getByLabelText(/^Secret name(?!space)/),
+        ).toHaveValue('');
+      });
+
+      it('lists issuer, endpoints and scopes in that order, scopes never greyed out', async () => {
+        await renderSignInStep();
+        await userEvent.click(
+          screen.getByRole('radio', {
+            name: 'Each person signs in with their own account',
+          }),
+        );
+        await userEvent.click(
+          screen.getByText(
+            "Advanced: sign-in settings for apps muster can't look up",
+          ),
+        );
+        const scopes = await screen.findByLabelText(
+          /^Permissions to ask for \(scopes\)/,
+        );
+        expect(scopes).toBeEnabled();
+        expect(scopes).toHaveValue('');
+        expect(scopes).toHaveAttribute('placeholder', 'e.g. read write');
+        expect(scopes).toHaveAccessibleDescription(
+          'Separated by spaces. Needs an issuer.',
+        );
+        const order = [
+          /^Where people sign in \(issuer URL\)/,
+          /^Sign-in page address \(authorization endpoint\)/,
+          /^Token address \(token endpoint\)/,
+          /^Permissions to ask for \(scopes\)/,
+        ].map(label => screen.getByLabelText(label));
+        for (let i = 1; i < order.length; i++) {
+          expect(
+            order[i - 1].compareDocumentPosition(order[i]) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          ).toBeTruthy();
+        }
+        // The client group follows them, its source choice first.
+        const credentials = screen.getByRole('group', {
+          name: 'Client credentials',
+        });
+        expect(
+          order[3].compareDocumentPosition(credentials) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(
+          within(credentials)
+            .getAllByRole('radio')
+            .map(radio => radio.getAttribute('value')),
+        ).toEqual(['new', 'existing']);
       });
 
       it('sends the client to create only, never to validate', async () => {
@@ -1092,9 +1174,7 @@ describe('shell connector wizard', () => {
           within(credentials).queryByLabelText(/^Client ID/),
         ).not.toBeInTheDocument();
         expect(
-          within(credentials).getByRole('checkbox', {
-            name: 'Use an existing Secret',
-          }),
+          within(credentials).getByRole('radio', { name: 'Existing Secret' }),
         ).not.toBeChecked();
 
         await userEvent.click(
@@ -1340,9 +1420,7 @@ describe('shell connector wizard', () => {
         const credentials = await openSignIn();
 
         expect(
-          within(credentials).getByRole('checkbox', {
-            name: 'Use an existing Secret',
-          }),
+          within(credentials).getByRole('radio', { name: 'Existing Secret' }),
         ).toBeChecked();
         expect(
           within(credentials).getByLabelText(/^Secret name(?!space)/),

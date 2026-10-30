@@ -222,6 +222,10 @@ async function typeClient(
   clientSecret: string,
 ): Promise<void> {
   const group = credentialsGroup(page);
+  // A typed client is the group's default source, on add and on edit.
+  await expect(
+    group.getByRole('radio', { name: 'New secret', exact: true }),
+  ).toBeChecked();
   await group
     .getByRole('textbox', { name: 'Client ID', exact: true })
     .fill(clientId);
