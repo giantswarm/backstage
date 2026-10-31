@@ -8,6 +8,7 @@ import {
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
   DateComponent,
@@ -37,8 +38,13 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { bindsGateway } from '../../lib/toolset';
-import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import { bindsGateway, surfaceName } from '../../lib/toolset';
+import {
+  describeReach,
+  reachedConnectors,
+  reachNeedsCatalogue,
+} from '../../lib/toolsetReach';
+import { useMusterServers } from '../../hooks/useMusterServers';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
@@ -96,6 +102,14 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+  },
+  logos: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
   },
 }));
 
@@ -251,11 +265,21 @@ function SkillsSection({
   );
 }
 
+/** One logo in the Connectors section's row. */
+type ConnectorMark = {
+  key: string;
+  name: string;
+  icon?: string;
+  url?: string;
+  detail?: string;
+};
+
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares; the exact tools are the Tools tab.
- * Servers bound directly rather than through the gateway, and agents it calls
- * as tools, follow by name.
+ * read from the toolset it declares; the exact tools are the Tools tab. The
+ * connectors it names, and the servers it binds directly rather than through
+ * the gateway, follow as a row of logos, each named on hover or focus; agents
+ * it calls as tools follow by name.
  */
 function ConnectorsSection({
   agent,
@@ -265,16 +289,55 @@ function ConnectorsSection({
   isFailing: boolean;
 }) {
   const classes = useStyles();
-  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  const { declared, isReading, isUnreadable, servers } = useAgentToolset(agent);
   const groups = useReachCatalogue(
     agent.cluster,
     reachNeedsCatalogue(declared),
   );
+  const muster = useMusterServers(agent.cluster);
   const direct = agent
     .getMcpBindings()
     .filter(binding => !isGatewayServerBinding(agent, binding));
   const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
+
+  // Each muster connector's logo source, by surface name: the first CR of a
+  // family with an icon, else its first URL.
+  const sources = useMemo(() => {
+    const bySurface = new Map<string, { icon?: string; url?: string }>();
+    for (const server of muster.servers) {
+      const name = surfaceName(server);
+      const known = bySurface.get(name);
+      bySurface.set(name, {
+        icon: known?.icon ?? server.icon,
+        url: known?.url ?? server.url,
+      });
+    }
+    return bySurface;
+  }, [muster.servers]);
+
+  const marks: ConnectorMark[] = [
+    ...(hasGateway ? reachedConnectors(declared, groups) : []).map(name => ({
+      key: `server:${name}`,
+      name: muster.labels.get(name) ?? name,
+      ...sources.get(name),
+    })),
+    ...direct.map((binding, index) => {
+      const name = binding.server.name;
+      const remote = servers?.find(server => server.getName() === name);
+      return {
+        // The server name is not unique: two bindings may scope one server
+        // differently.
+        key: `${name}#${index}`,
+        name: muster.labels.get(name) ?? name,
+        icon: sources.get(name)?.icon,
+        url: remote?.getUrl() ?? sources.get(name)?.url,
+        detail: `${describeToolScope(binding)}${
+          binding.requireApproval ? ' · asks you before every call' : ''
+        }`,
+      };
+    }),
+  ];
 
   let reach: string;
   if (!hasGateway) {
@@ -286,7 +349,7 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared, groups) ??
+      describeReach(declared, groups, muster.labels) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
@@ -295,21 +358,23 @@ function ConnectorsSection({
   return (
     <PageSection title="Connectors">
       <Text variant="body-medium">{reach}</Text>
-      {(direct.length > 0 || subAgents.length > 0) && (
-        <div className={classes.rows}>
-          {direct.map((binding, index) => (
-            <Flex
-              key={`${binding.server.name}#${index}`}
-              direction="column"
-              gap="1"
-            >
-              <Text variant="body-medium">{binding.server.name}</Text>
-              <Text variant="body-small" color="secondary">
-                {describeToolScope(binding)}
-                {binding.requireApproval ? ' · asks you before every call' : ''}
-              </Text>
-            </Flex>
+      {marks.length > 0 && (
+        <ul className={classes.logos} aria-label="Connectors">
+          {marks.map(mark => (
+            <li key={mark.key}>
+              <ConnectorLogo
+                name={mark.name}
+                icon={mark.icon}
+                url={mark.url}
+                detail={mark.detail}
+                tooltip
+              />
+            </li>
           ))}
+        </ul>
+      )}
+      {subAgents.length > 0 && (
+        <div className={classes.rows}>
           {subAgents.map(ref => (
             <Flex
               key={`agent/${ref.name}/${ref.templateRef.name}`}

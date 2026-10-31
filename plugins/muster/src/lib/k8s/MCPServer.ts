@@ -248,6 +248,11 @@ interface MCPServerInterface extends KubeObjectInterface {
     consecutiveFailures?: number;
     nextRetryAfter?: string;
     conditions?: MCPServerCondition[];
+    /**
+     * The server's own icon, read by muster from its MCP `icons`: a base64
+     * `data:` URI (SVG, PNG, JPEG or WebP) of at most 64 KiB.
+     */
+    icon?: string;
   };
 }
 
@@ -268,6 +273,14 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
   getDisplayNameAnnotation(): string | undefined {
     const value = this.getAnnotations()?.[DISPLAY_NAME_ANNOTATION]?.trim();
     return value ? value : undefined;
+  }
+
+  /**
+   * The server's own icon as muster wrote it (`.status.icon`), unchecked:
+   * `resolveConnectorLogo` decides whether it is shown.
+   */
+  getStatusIcon(): string | undefined {
+    return this.jsonData.status?.icon;
   }
 
   /**

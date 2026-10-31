@@ -18,7 +18,6 @@ import {
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
@@ -99,6 +98,7 @@ import {
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 import { ConnectorCannotConnect } from './ConnectorCannotConnect';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
+import { ConnectorLogo } from '../ConnectorLogo';
 import { ConnectorUsageTab } from './ConnectorUsageTab';
 import { useConnectorUsage } from './hooks/useConnectorUsage';
 import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
@@ -106,23 +106,6 @@ import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
-
-const useStyles = makeStyles({
-  tile: {
-    flex: 'none',
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    border: '1px solid var(--bui-border-1)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 20,
-    fontWeight: 700,
-    color: 'var(--bui-fg-secondary)',
-    textTransform: 'uppercase',
-  },
-});
 
 /**
  * muster's endpoint, the address an MCP client connects to, with its copy
@@ -146,15 +129,6 @@ function MusterEndpoint({ endpoint }: { endpoint: string }) {
         <CopyButton text={endpoint} label="Copy endpoint" size="compact" />
       </span>
     </>
-  );
-}
-
-function ConnectorTile({ name }: { name: string }) {
-  const classes = useStyles();
-  return (
-    <span className={classes.tile} aria-hidden>
-      {name.charAt(0)}
-    </span>
   );
 }
 
@@ -562,7 +536,15 @@ function ConnectorPageContent({
       <ShellPage
         title={displayName}
         breadcrumbs={breadcrumbs}
-        leading={<ConnectorTile name={displayName} />}
+        leading={
+          <ConnectorLogo
+            name={displayName}
+            icon={representative?.getStatusIcon()}
+            url={representative?.getUrl()}
+            size={56}
+            decorative
+          />
+        }
         badges={<StatusBadge row={row} />}
         meta={
           row.kind === 'core'
@@ -793,7 +775,7 @@ function ConnectorPageBody({
           { label: 'Connectors', href: listPath },
           { label: shownName },
         ]}
-        leading={<ConnectorTile name={shownName} />}
+        leading={<ConnectorLogo name={shownName} size={56} decorative />}
         badges={<ShellPageBadgeSkeleton />}
         // Tools with its count's place held, so the tab keeps its width as
         // the page and then the tools land.
