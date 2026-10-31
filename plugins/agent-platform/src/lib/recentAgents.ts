@@ -1,6 +1,8 @@
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { isStartableAgent } from '../components/NewSessionComposer';
+import type { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
+  lastActiveAt,
   sortSessionRows,
   type SessionRow,
 } from '../components/SessionsDataProvider/helpers';
@@ -67,4 +69,28 @@ export function recentAgents(
   limit: number = RECENT_AGENTS_LIMIT,
 ): AgentRow[] {
   return recentAgentUses(sessions, agents, { limit }).map(use => use.agent);
+}
+
+/**
+ * When the person last used each agent, epoch ms by agent id: the latest
+ * activity of its sessions ({@link lastActiveAt}, with `states` keyed by
+ * session row id). An agent without a dated session has no entry.
+ */
+export function agentLastUsedAt(
+  sessions: readonly SessionRow[],
+  states?: ReadonlyMap<string, SessionStateEntry>,
+): Map<string, number> {
+  const latest = new Map<string, number>();
+  for (const session of sessions) {
+    if (!session.agentNamespace || !session.agentTechnicalName) {
+      continue;
+    }
+    const at = lastActiveAt(session, states?.get(session.id));
+    if (at === undefined) {
+      continue;
+    }
+    const id = `${session.installation}/${session.agentNamespace}/${session.agentTechnicalName}`;
+    latest.set(id, Math.max(at, latest.get(id) ?? at));
+  }
+  return latest;
 }

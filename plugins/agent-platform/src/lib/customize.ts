@@ -162,6 +162,50 @@ export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {
     : rows;
 }
 
+/** How the Agents list is ordered. */
+export type AgentSort = 'lastUsed' | 'recent' | 'name';
+
+export const AGENT_SORTS: ReadonlyArray<{ id: AgentSort; label: string }> = [
+  { id: 'lastUsed', label: 'Last used' },
+  { id: 'recent', label: 'Recently added' },
+  { id: 'name', label: 'Name' },
+];
+
+function timeOf(value: string | undefined): number | undefined {
+  const parsed = value ? Date.parse(value) : NaN;
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/** Newest first, an unknown time last. */
+function byTimeDesc(a: number | undefined, b: number | undefined): number {
+  if (a === b) return 0;
+  if (a === undefined) return 1;
+  if (b === undefined) return -1;
+  return b - a;
+}
+
+/**
+ * The rows in the list's order: by when the person last used each agent
+ * (`lastUsedAt`, epoch ms by row id; an agent never used goes last), by
+ * creation, newest first, or by name. The name breaks every tie.
+ */
+export function sortAgents(
+  rows: readonly AgentRow[],
+  sort: AgentSort,
+  lastUsedAt: ReadonlyMap<string, number> = new Map(),
+): AgentRow[] {
+  const byName = (a: AgentRow, b: AgentRow) => a.name.localeCompare(b.name);
+  return [...rows].sort((a, b) => {
+    let order = 0;
+    if (sort === 'lastUsed') {
+      order = byTimeDesc(lastUsedAt.get(a.id), lastUsedAt.get(b.id));
+    } else if (sort === 'recent') {
+      order = byTimeDesc(timeOf(a.createdAt), timeOf(b.createdAt));
+    }
+    return order || byName(a, b);
+  });
+}
+
 export function searchModels(rows: ModelRow[], search: string): ModelRow[] {
   const needle = search.trim().toLowerCase();
   return needle

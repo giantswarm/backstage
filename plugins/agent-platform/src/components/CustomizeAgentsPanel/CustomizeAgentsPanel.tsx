@@ -1,7 +1,15 @@
-import { ReactNode, useCallback, useEffect, useId, useMemo } from 'react';
+import {
+  type CSSProperties,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+} from 'react';
+import useLocalStorageState from 'use-local-storage-state';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
-import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
+import { ButtonIcon, Flex, Link, Select, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
@@ -26,15 +34,25 @@ import {
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
+import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
-import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
+import {
+  ACCESS_GRANT_HINT,
+  creatorOf,
+  tenantKindOf,
+  tenantOf,
+} from '../../lib/tenants';
+import { agentLastUsedAt } from '../../lib/recentAgents';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
+  AGENT_SORTS,
+  type AgentSort,
   agentHarnesses,
   agentStatus,
   harnessLabel,
   searchAgents,
+  sortAgents,
 } from '../../lib/customize';
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
@@ -47,7 +65,7 @@ import {
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
-import { SessionsDataProvider } from '../SessionsDataProvider';
+import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -63,6 +81,17 @@ export const AGENTS_PAGE_SIZE = 25;
 
 /** Tags a row shows before "+N": the rest are on the agent's page. */
 export const ROW_TAGS_MAX = 3;
+
+/** The list's order, remembered per browser like `useLastUsedAgent`'s pick. */
+const SORT_STORAGE_KEY = 'gs-agent-platform-agents-sort';
+
+/** "Sort" in the trigger, as the filter dropdowns name their field there. */
+const SORT_NAME_STYLE: CSSProperties = {
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+  color: 'var(--bui-fg-secondary)',
+  fontSize: 'var(--bui-font-size-3)',
+};
 
 /** Two lines, then an ellipsis: what a phone row shows of a long text. */
 const TWO_LINES = {
@@ -361,9 +390,9 @@ function organizationText(namespace: string): string {
 /**
  * One agent as the prototype's list row: avatar, name — with its organization
  * and, only when it is not Ready, its state — and what it is for, then its
- * tags, its Harness and its environment, the organization, Harness and
- * environment when the list has more than one of each. The model, skills and
- * connectors are technical detail, on the agent's own page.
+ * tags, its creator, its Harness and its environment, the organization,
+ * Harness and environment when the list has more than one of each. The model,
+ * skills and connectors are technical detail, on the agent's own page.
  */
 function AgentListItem({
   row,
@@ -416,6 +445,13 @@ function AgentListItem({
       .filter(Boolean)
       .join(' ') || undefined;
   const facts: AgentFact[] = [
+    // Who made it, or the platform for an agent no one is recorded against.
+    {
+      key: 'createdBy',
+      text: `by ${creatorOf(row.createdBy)}`,
+      label: 'Created by',
+      detail: creatorOf(row.createdBy),
+    },
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
     ...(showHarness
@@ -639,7 +675,17 @@ function AgentGroup({
  * each row names its tenant and the bar filters by it (giantswarm#36698, D6).
  * Must be mounted inside a `CustomizeDataProvider`.
  */
-export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
+export function CustomizeAgentsPanel(props: CustomizeAgentsPanelProps) {
+  // The person's sessions order the list by last use and fill the "Last used
+  // by you" cards.
+  return (
+    <SessionsDataProvider>
+      <AgentsPanelContent {...props} />
+    </SessionsDataProvider>
+  );
+}
+
+function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
   const {
     rows,
@@ -692,7 +738,38 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       select('harness', []);
     }
   }, [showHarness, harnessPicked, select]);
-  const visible = filters.filtered;
+  // Last use is the person's own: sessions of an installation whose list is
+  // not scoped to them are left out, as the "Last used by you" cards do. A
+  // session's last turn is in its state; its start is the fallback.
+  const { rows: sessions, notUserScopedInstallations } = useSessions();
+  const sessionInstallations = useMemo(
+    () => Array.from(new Set(sessions.map(session => session.installation))),
+    [sessions],
+  );
+  const { states: sessionStates } = useFleetSessionStates(sessionInstallations);
+  const lastUsedAt = useMemo(() => {
+    const notMine = new Set(notUserScopedInstallations);
+    return agentLastUsedAt(
+      sessions.filter(session => !notMine.has(session.installation)),
+      sessionStates,
+    );
+  }, [sessions, sessionStates, notUserScopedInstallations]);
+  const [storedSort, setSort] = useLocalStorageState<AgentSort | undefined>(
+    SORT_STORAGE_KEY,
+    { defaultValue: undefined },
+  );
+  // Last used once the person has used any agent listed; by name until then.
+  const defaultSort: AgentSort = rows.some(row => lastUsedAt.has(row.id))
+    ? 'lastUsed'
+    : 'name';
+  const sort: AgentSort =
+    storedSort && AGENT_SORTS.some(option => option.id === storedSort)
+      ? storedSort
+      : defaultSort;
+  const visible = useMemo(
+    () => sortAgents(filters.filtered, sort, lastUsedAt),
+    [filters.filtered, sort, lastUsedAt],
+  );
   const favorites = useMemo(
     () => visible.filter(row => isFavorite(row.id)),
     [visible, isFavorite],
@@ -859,11 +936,32 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       {/* Under the page's search, so the bar stays put when a pick hides the
           recent-agent cards. */}
       {!isLoading && (
-        <CatalogFilterBar
-          dimensions={filters.dimensions}
-          onSelect={filters.select}
-          onClear={filters.clear}
-        />
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          <CatalogFilterBar
+            dimensions={filters.dimensions}
+            onSelect={filters.select}
+            onClear={filters.clear}
+          />
+          {rows.length > 1 && (
+            <Select
+              aria-label="Sort agents"
+              size="small"
+              icon={
+                <span aria-hidden style={SORT_NAME_STYLE}>
+                  Sort
+                </span>
+              }
+              options={AGENT_SORTS}
+              value={sort}
+              onChange={key => {
+                if (key !== null) {
+                  setSort(String(key) as AgentSort);
+                }
+              }}
+              style={{ flex: 'none', width: 'auto', marginLeft: 'auto' }}
+            />
+          )}
+        </Flex>
       )}
       {/* The environment this tab reads could not be asked whether it runs
           kagent: said once, with the remedy, as `InstallationInventoryGate`
@@ -883,11 +981,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       <AgentsHelperBanner />
       {/* The person's recent agents, while the tab shows everything: a search
           or a filter narrows the list below, and the cards would not follow. */}
-      {!isLoading && rows.length > 0 && !isNarrowed && (
-        <SessionsDataProvider>
-          <LastUsedAgents />
-        </SessionsDataProvider>
-      )}
+      {!isLoading && rows.length > 0 && !isNarrowed && <LastUsedAgents />}
       {rows.length > 0 ? (
         <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin

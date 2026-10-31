@@ -285,6 +285,8 @@ export type AgentRow = {
    * not through agent-manager.
    */
   createdBy?: string;
+  /** When the `Agent` was created (`metadata.creationTimestamp`). */
+  createdAt?: string;
   /**
    * The name of the agent's default workspace
    * ({@link DEFAULT_WORKSPACE_ANNOTATION}): what a new session's workspace
@@ -436,6 +438,7 @@ export function toAgentRow(
     }));
   const skillIds = gitSkills.map(skill => skill.id);
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  const createdAt = agent.getCreatedTimestamp();
   const defaultWorkspace = defaultWorkspaceName(
     agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
   );
@@ -471,6 +474,7 @@ export function toAgentRow(
     readinessMessage: agent.getReadinessMessage(),
     tenant: tenantOf(namespace),
     ...(createdBy ? { createdBy } : {}),
+    ...(createdAt ? { createdAt } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),

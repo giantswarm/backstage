@@ -55,7 +55,7 @@ import { ModelServingStatus } from '../ModelServingStatus';
 import { OrganizationValue } from '../OrganizationValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
-import { CREATED_BY_ANNOTATION } from '../../lib/tenants';
+import { CREATED_BY_ANNOTATION, creatorOf } from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -739,10 +739,10 @@ export function agentFacts({
   if (defaultWorkspace) {
     facts.push({ label: 'Default workspace', value: defaultWorkspace });
   }
-  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
-  if (createdBy) {
-    facts.push({ label: 'Created by', value: createdBy });
-  }
+  facts.push({
+    label: 'Created by',
+    value: creatorOf(agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim()),
+  });
   if (created) {
     facts.push({
       label: 'Created',

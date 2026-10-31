@@ -1,6 +1,6 @@
 import type { AgentRow } from '../components/AgentsDataProvider';
 import type { SessionRow } from '../components/SessionsDataProvider/helpers';
-import { recentAgents, recentAgentUses } from './recentAgents';
+import { agentLastUsedAt, recentAgents, recentAgentUses } from './recentAgents';
 
 function agent(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   return {
@@ -112,5 +112,40 @@ describe('recentAgentUses', () => {
     expect(
       recentAgentUses(sessions, agents).map(use => use.agent.name),
     ).toEqual(['a299', 'a298', 'a297']);
+  });
+});
+
+describe('agentLastUsedAt', () => {
+  it('takes each agent’s latest session, by its last turn where known', () => {
+    const first = session('s1', 'sre', '2026-10-01T10:00:00Z');
+    const later = session('s2', 'sre', '2026-10-03T10:00:00Z');
+    const old = session('s3', 'docs', '2026-09-01T10:00:00Z');
+    // A turn in docs' old session, after every start.
+    const states = new Map([
+      [
+        old.id,
+        {
+          sessionId: 's3',
+          state: 'completed',
+          changedAt: Date.parse('2026-10-05T10:00:00Z'),
+        },
+      ],
+    ]);
+
+    expect(agentLastUsedAt([first, later, old], states)).toEqual(
+      new Map([
+        ['gazelle/kagent/sre', Date.parse('2026-10-03T10:00:00Z')],
+        ['gazelle/kagent/docs', Date.parse('2026-10-05T10:00:00Z')],
+      ]),
+    );
+  });
+
+  it('leaves out sessions with no known agent or time', () => {
+    expect(
+      agentLastUsedAt([
+        session('s1', undefined, '2026-10-01T10:00:00Z'),
+        session('s2', 'sre', ''),
+      ]).size,
+    ).toBe(0);
   });
 });

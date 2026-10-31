@@ -26,6 +26,15 @@ export const ORGANIZATION_PREFIX = 'org-';
  */
 export const CREATED_BY_ANNOTATION = 'agent-platform.giantswarm.io/created-by';
 
+/**
+ * Who an agent's creator reads as: the recorded email, else the platform — an
+ * agent without the annotation was put there by GitOps automation (the meta
+ * agents), and is the platform's to maintain.
+ */
+export function creatorOf(createdBy: string | undefined): string {
+  return createdBy || 'Platform';
+}
+
 /** The Organization an `org-<name>` namespace is; none for any other. */
 export function organizationOf(namespace: string): string | undefined {
   if (!namespace.startsWith(ORGANIZATION_PREFIX)) {

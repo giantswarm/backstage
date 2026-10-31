@@ -2896,6 +2896,20 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
     });
 
+    it('names the platform as creator of an agent without a recorded one', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts)
+        .getByText('Created by')
+        .closest('dt')?.nextElementSibling;
+      expect(createdBy).toHaveTextContent(/^Platform$/);
+    });
+
     it('keeps the ModelConfig name without a display name, the model below it', async () => {
       stubResources(
         { resource: makeAgent() },

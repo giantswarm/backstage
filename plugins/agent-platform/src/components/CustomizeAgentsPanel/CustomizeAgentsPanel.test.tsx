@@ -125,6 +125,12 @@ jest.mock('../SessionsDataProvider', () => ({
     notUserScopedInstallations: [],
   }),
 }));
+// The sessions' last turns, by session row id: what orders the list by last
+// use beyond a session's start.
+let mockSessionStates = new Map<string, { changedAt?: number }>();
+jest.mock('../../hooks/useFleetSessionStates', () => ({
+  useFleetSessionStates: () => ({ states: mockSessionStates }),
+}));
 let mockMetaAgent: AgentRow | undefined;
 jest.mock('../../hooks/useMetaAgent', () => ({
   useMetaAgent: () => mockMetaAgent,
@@ -317,15 +323,16 @@ describe('CustomizeAgentsPanel', () => {
     const items = within(list).getAllByRole('listitem');
     expect(items).toHaveLength(2);
 
-    // The name is the link; its hit area covers the row.
-    const triageLink = within(items[0]).getByRole('link', {
+    // The name is the link; its hit area covers the row. By name, A–Z, while
+    // the person has used no agent.
+    const triageLink = within(items[1]).getByRole('link', {
       name: 'Support triage',
     });
     expect(triageLink).toHaveAttribute(
       'href',
       '/customize/agents/golem/support/triage',
     );
-    const triageRow = items[0];
+    const triageRow = items[1];
     expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
     // The model, skills and connectors are technical: the agent's page has them.
     expect(within(triageRow).queryByText('Sonnet 4.5')).not.toBeInTheDocument();
@@ -337,8 +344,8 @@ describe('CustomizeAgentsPanel', () => {
     expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     // A Ready agent shows no state; one that needs a look says so inline.
     expect(within(triageRow).queryByText('Ready')).not.toBeInTheDocument();
-    expect(within(items[1]).getByText('Release notes')).toBeInTheDocument();
-    expect(within(items[1]).getByText('Failed')).toBeInTheDocument();
+    expect(within(items[0]).getByText('Release notes')).toBeInTheDocument();
+    expect(within(items[0]).getByText('Failed')).toBeInTheDocument();
     // One environment: no environment fact.
     expect(within(list).queryByText('golem')).not.toBeInTheDocument();
   });
@@ -356,8 +363,8 @@ describe('CustomizeAgentsPanel', () => {
     const items = within(
       screen.getByRole('list', { name: 'Agents' }),
     ).getAllByRole('listitem');
-    expect(within(items[0]).getByText('golem')).toBeInTheDocument();
-    expect(within(items[1]).getByText('lab')).toBeInTheDocument();
+    expect(within(items[0]).getByText('lab')).toBeInTheDocument();
+    expect(within(items[1]).getByText('golem')).toBeInTheDocument();
   });
 
   it('narrows to the search', async () => {
@@ -373,7 +380,7 @@ describe('CustomizeAgentsPanel', () => {
     };
     await renderPanel();
 
-    const [triageItem] = within(
+    const [, triageItem] = within(
       screen.getByRole('list', { name: 'Agents' }),
     ).getAllByRole('listitem');
     const tags = within(triageItem).getByRole('list', { name: 'Tags' });
@@ -404,7 +411,7 @@ describe('CustomizeAgentsPanel', () => {
     };
     await renderPanel();
 
-    const [triageItem] = within(
+    const [, triageItem] = within(
       screen.getByRole('list', { name: 'Agents' }),
     ).getAllByRole('listitem');
     expect(
@@ -1148,13 +1155,13 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     };
     await renderPanel();
 
-    const organization = within(items()[1]).getByText(
+    const organization = within(items()[0]).getByText(
       'Organization: a-rather-long-organization-name',
     );
     expect(organization).not.toHaveAttribute('data-truncate');
     expect(organization.previousElementSibling).toHaveTextContent('Billing');
     // The platform agent's row names none.
-    expect(items()[0]).not.toHaveTextContent('Organization');
+    expect(items()[1]).not.toHaveTextContent('Organization');
   });
 
   it('keeps a not-Ready agent’s state to its few words; its page says why', async () => {
@@ -1171,7 +1178,9 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     // The paragraph used to fill two lines of the row.
     expect(within(costs).queryByText(reason)).not.toBeInTheDocument();
     // A Ready agent says nothing extra.
-    expect(items()[0]).toHaveTextContent(/Support triageSorts tickets/);
+    expect(
+      items().find(item => within(item).queryByText('Support triage')),
+    ).toHaveTextContent(/Support triageSorts tickets/);
   });
 
   it('keeps the one-line rows and the tooltip on a wide viewport', async () => {
@@ -1248,6 +1257,9 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   };
   const listed = (name = 'Agents') =>
     within(screen.getByRole('list', { name })).getAllByRole('listitem');
+  /** The row of the agent named `name`. */
+  const rowOf = (name: string) =>
+    listed().find(item => within(item).queryByRole('link', { name }))!;
   /** The column of a row's name and description. */
   const nameColumnOf = (item: HTMLElement) =>
     within(item).getByRole('link').parentElement!.parentElement!;
@@ -1297,14 +1309,16 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
 
     // The platform's agent belongs to no organization, and its row says
     // nothing of one: no "None" without its label, no info icon.
-    const sre = listed()[0];
-    expect(sre).not.toHaveTextContent(/None|Organization|Platform/);
+    const sre = rowOf('SRE');
+    expect(nameColumnOf(sre)).not.toHaveTextContent(
+      /None|Organization|Platform/,
+    );
     expect(
       within(sre).queryByRole('button', { name: /None/ }),
     ).not.toBeInTheDocument();
     // An organization's agent names it with its label, not to be taken for
     // the environment, beside its name: whose agent it is.
-    const billing = listed()[1];
+    const billing = rowOf('Billing');
     const organization = within(billing).getByText('Organization: acme');
     expect(organization.previousElementSibling).toHaveTextContent(/^Billing$/);
     // The name link's hit area covers the row, the organization included:
@@ -1323,8 +1337,9 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     expect(getComputedStyle(nameColumnOf(sre)).flexBasis).toBe('320px');
     // Not among the facts: both rows have the same fact columns, so they
     // line up from row to row however the facts wrap. The model is not one
-    // of them: the agent's page has it.
-    expect(factsOf(billing)).toEqual(factsOf(sre));
+    // of them: the agent's page has it. Only the creator differs.
+    expect(factsOf(billing)).toEqual([`by ${mockCaller}`]);
+    expect(factsOf(sre)).toEqual(['by Platform']);
     expect(factsOf(billing).join()).not.toMatch(/Opus/);
     expect(factsOf(billing).join()).not.toMatch(/Organization|acme/);
     expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
@@ -1368,13 +1383,13 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     const { unmount } = await renderPanel();
 
     // Another namespace is no organization, in the tooltip either.
-    expect(within(listed()[0]).getByText('namespace sre-team')).toBeVisible();
-    expect(within(listed()[0]).getByRole('link')).toHaveAttribute(
+    expect(within(rowOf('SRE')).getByText('namespace sre-team')).toBeVisible();
+    expect(within(rowOf('SRE')).getByRole('link')).toHaveAttribute(
       'title',
       'SRE\nnamespace sre-team',
     );
-    expect(listed()[1]).toHaveTextContent('Organization: acme');
-    expect(within(listed()[2]).getByRole('link')).toHaveAccessibleDescription(
+    expect(rowOf('Billing')).toHaveTextContent('Organization: acme');
+    expect(within(rowOf('Odd')).getByRole('link')).toHaveAccessibleDescription(
       'Organization: organization none',
     );
     expect(await filterOptions('organization')).toContain(
@@ -1534,12 +1549,10 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       };
       await renderPanel();
 
-      const [first, , third] = listed();
-      expect(within(first).getByText('Claude Code')).toHaveAttribute(
-        'title',
-        'Harness: Claude Code (claude-code)',
-      );
-      expect(within(third).getByText('codex')).toHaveAttribute(
+      expect(
+        within(rowOf('Support triage')).getByText('Claude Code'),
+      ).toHaveAttribute('title', 'Harness: Claude Code (claude-code)');
+      expect(within(rowOf('Coder')).getByText('codex')).toHaveAttribute(
         'title',
         'Harness: codex',
       );
@@ -1624,6 +1637,127 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     ).toBeInTheDocument();
     expect(filterDropdown('model')).toHaveTextContent(
       'Model 2Model 03 and Model 04',
+    );
+  });
+});
+
+describe('CustomizeAgentsPanel sort', () => {
+  const older = row({
+    name: 'Alpha',
+    technicalName: 'alpha',
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+  const newest = row({
+    name: 'Bravo',
+    technicalName: 'bravo',
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+  const middle = row({
+    name: 'Charlie',
+    technicalName: 'charlie',
+    createdAt: '2026-05-01T00:00:00Z',
+  });
+  const names = () =>
+    within(screen.getByRole('list', { name: 'Agents' }))
+      .getAllByRole('link')
+      .map(link => link.textContent);
+  const sortDropdown = () =>
+    screen.getByRole('button', { name: /Sort agents/, hidden: true });
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockAgents = {
+      rows: [older, newest, middle],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    mockSessions = [];
+    mockSessionStates = new Map();
+    mockMetaAgent = undefined;
+  });
+  afterEach(() => localStorage.clear());
+
+  it('sorts by name while the person has used no agent', async () => {
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Name');
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  it('sorts by last use once the person has used an agent, never-used ones last by name', async () => {
+    const charlieSession = sessionWith(middle, '2026-10-02T10:00:00Z');
+    mockSessions = [
+      sessionWith(newest, '2026-10-05T10:00:00Z'),
+      charlieSession,
+    ];
+    // A later turn in the older session puts its agent first.
+    mockSessionStates = new Map([
+      [charlieSession.id, { changedAt: Date.parse('2026-10-09T10:00:00Z') }],
+    ]);
+    await renderPanel();
+
+    expect(sortDropdown()).toHaveTextContent('Last used');
+    expect(names()).toEqual(['Charlie', 'Bravo', 'Alpha']);
+  });
+
+  it('sorts by creation, newest first, and remembers the pick', async () => {
+    mockSessions = [sessionWith(older, '2026-10-05T10:00:00Z')];
+    const { unmount } = await renderPanel();
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+
+    await userEvent.click(sortDropdown());
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Recently added' }),
+    );
+    expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+
+    unmount();
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Recently added');
+    expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+  });
+
+  it('offers no sort for a single agent', async () => {
+    mockAgents = { ...mockAgents, rows: [older] };
+    await renderPanel();
+    expect(
+      screen.queryByRole('button', { name: /Sort agents/, hidden: true }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('CustomizeAgentsPanel creator', () => {
+  beforeEach(() => {
+    mockAgents = {
+      rows: [
+        row({
+          name: 'Mine',
+          technicalName: 'mine',
+          createdBy: 'ana@example.com',
+        }),
+        row({ name: 'Meta', technicalName: 'meta' }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    mockSessions = [];
+    mockMetaAgent = undefined;
+  });
+
+  it('names the creator on each row, the platform where none is recorded', async () => {
+    await renderPanel();
+    // By name, A–Z.
+    const [meta, mine] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(within(mine).getByText('by ana@example.com')).toHaveAttribute(
+      'title',
+      'Created by: ana@example.com',
+    );
+    expect(within(meta).getByText('by Platform')).toHaveAttribute(
+      'title',
+      'Created by: Platform',
     );
   });
 });
