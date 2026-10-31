@@ -1465,7 +1465,7 @@ describe('AddGpuNodePoolPage: the form stands in place (giantswarm/backstage#250
 });
 
 describe('AddGpuNodePoolPage: the selects at scale', () => {
-  it('offers three environments and three clusters without a search', async () => {
+  it('offers type-ahead over three environments and three clusters', async () => {
     const user = setupUser();
     await renderPage({
       clusterCount: 3,
@@ -1478,14 +1478,14 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /^wc3/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: /^inst-1/ }));
     expect(
       await screen.findByRole('option', { name: 'inst-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 clusters and 300 environments', async () => {
@@ -1506,7 +1506,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 
-  it('offers the two presets of I want to serve without a search', async () => {
+  it('offers type-ahead over the two presets and Any of I want to serve', async () => {
     const user = setupUser();
     await renderPage();
     await fillForm(user);
@@ -1516,7 +1516,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /Qwen3 Coder Next/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 presets in I want to serve', async () => {

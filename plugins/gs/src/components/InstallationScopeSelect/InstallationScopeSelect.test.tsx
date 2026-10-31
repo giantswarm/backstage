@@ -234,7 +234,7 @@ describe('InstallationScopeSelect', () => {
     expect(getInstallationScopeSnapshot().scope).toBe('all');
   });
 
-  it('offers three installations without a search, even when searchable', async () => {
+  it('offers type-ahead over three installations when searchable', async () => {
     renderSelect({ searchable: true });
 
     await userEvent.click(trigger());
@@ -242,7 +242,7 @@ describe('InstallationScopeSelect', () => {
     expect(
       await screen.findByRole('option', { name: /wombat/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   describe('at 300 installations', () => {
