@@ -89,6 +89,11 @@ describe('the tag cap', () => {
     expect(draftProblem('new, !!!', full)).toBe('Use letters and numbers.');
   });
 
+  it('is a problem while tags read from elsewhere pass it', () => {
+    expect(draftProblem('', numbered(51))).toBe('At most 50 tags.');
+    expect(draftProblem('', full)).toBeUndefined();
+  });
+
   it('adds no tags past it', () => {
     expect(addTags(numbered(49), ['a', 'b'])).toEqual([...numbered(49), 'a']);
     expect(addTags(full, ['new'])).toEqual(full);

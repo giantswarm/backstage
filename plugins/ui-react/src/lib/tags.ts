@@ -143,13 +143,17 @@ export function commitTagDraft(
 
 /**
  * Why a typed but not yet added text cannot become tags: the first of its
- * comma-separated parts that cannot, else that it would take `tags` past
- * {@link MAX_TAGS}. Undefined when it can, or is empty.
+ * comma-separated parts that cannot, else that `tags` already hold more than
+ * {@link MAX_TAGS} (read from a resource written elsewhere) or the text would
+ * take them past it. Undefined when it can, or is empty.
  */
 export function draftProblem(
   text: string,
   tags: readonly string[],
 ): string | undefined {
+  if (tags.length > MAX_TAGS) {
+    return MAX_TAGS_PROBLEM;
+  }
   for (const part of splitTyped(text)) {
     const problem = tagProblem(normalizeTag(part));
     if (problem) {

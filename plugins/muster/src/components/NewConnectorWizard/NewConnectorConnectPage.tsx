@@ -11,7 +11,6 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { connectorTags } from '../../lib/connectorTags';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
@@ -186,10 +185,10 @@ export function NewConnectorConnectPage() {
     registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
     registeredName ? registeredInstallation : state.installation,
   );
-  // The tags the installation's connectors already use, offered while typing.
+  // The tags the installation's connectors already use, offered while typing:
+  // their own, not the read-only tool-group tag (`connectorTags`).
   const knownTags = useMemo(
-    () =>
-      tagCounts(mcpServers.map(server => ({ tags: connectorTags([server]) }))),
+    () => tagCounts(mcpServers.map(server => ({ tags: server.getTags() }))),
     [mcpServers],
   );
   const canRename = !registeredName || (updateTakesDisplayName && !family);
