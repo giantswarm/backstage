@@ -159,12 +159,14 @@ async function renderShell(
   sessionStates: FleetSessionStatesView = states,
   storage: StorageApi = mockApis.storage(),
   path = '/sessions',
+  alwaysFilterable = false,
 ) {
   return renderInTestApp(
     <SessionsTable
       rows={sessionRows}
       sessionStates={sessionStates}
       searchDebounceMs={0}
+      alwaysFilterable={alwaysFilterable}
     />,
     {
       apis: [[storageApiRef, storage]],
@@ -453,7 +455,7 @@ describe('SessionsTable in the shell layout', () => {
     await renderShell(filterable);
 
     const search = screen.getByRole('searchbox', { name: 'Search sessions' });
-    expect(search).toHaveAttribute('placeholder', 'Search by title or agent');
+    expect(search).toHaveAttribute('placeholder', 'Search sessions');
 
     await user.type(search, 'release writer');
     expect(
@@ -785,6 +787,53 @@ describe('SessionsTable in the shell layout', () => {
         screen.queryByRole('button', { name: 'Load more' }),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
+    });
+
+    it('lists three sessions with search and filters on the overview', async () => {
+      await renderShell(
+        rows.slice(0, 3),
+        states,
+        mockApis.storage(),
+        '/sessions',
+        true,
+      );
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search sessions' }),
+      ).toBeInTheDocument();
+      expect(dropdown('state')).toBeInTheDocument();
+      expect(dropdown('agent')).toBeInTheDocument();
+    });
+
+    it('filters by organization once the agents belong to two', async () => {
+      const inOrg = (row: SessionRow, namespace: string): SessionRow => ({
+        ...row,
+        agentNamespace: namespace,
+      });
+      await renderShell(
+        [
+          inOrg(rows[0], 'org-acme'),
+          inOrg(rows[1], 'kagent'),
+          inOrg(rows[2], 'org-acme'),
+        ],
+        states,
+        mockApis.storage(),
+        '/sessions',
+        true,
+      );
+
+      expect(await optionsOf('organization')).toEqual(['acme 2', 'None 1']);
+      await pick('organization', /^acme/);
+      expect(
+        screen.getAllByRole('rowheader').map(cell => cell.textContent),
+      ).toEqual(['Triage this week', 'Pricing research']);
+    });
+
+    it('draws no Organization dropdown for one organization', async () => {
+      await renderShell(rows, states, mockApis.storage(), '/sessions', true);
+
+      expect(dropdown('agent')).toBeInTheDocument();
+      expect(queryDropdown('organization')).not.toBeInTheDocument();
     });
 
     it('draws one agent’s sessions as an Agent dropdown of one option (T64)', async () => {

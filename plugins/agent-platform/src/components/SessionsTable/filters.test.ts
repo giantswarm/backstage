@@ -8,6 +8,7 @@ import {
   filterSessionsBySelection,
   sessionAgentOptions,
   sessionFacets,
+  sessionOrganization,
   sessionSelectionOf,
   SessionStateFilter,
   SHELL_SESSION_STATE_FILTERS,
@@ -272,6 +273,36 @@ describe('the shell list’s dropdown filters (T92)', () => {
     expect(facets[1].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
     expect(
       sessionFacets(rows, { showStates: false }).map(facet => facet.id),
+    ).toEqual(['agent', 'pinned']);
+  });
+
+  it('offers Organization from two organizations on, named as on the Agents tab', () => {
+    const fleet = withSessionStates(
+      [
+        row('a', 'Issue tracker', { namespace: 'org-acme', name: 'tracker' }),
+        row('b', 'SRE Agent', { namespace: 'kagent', name: 'sre-agent' }),
+        row('c', 'Helper', { namespace: 'org-acme', name: 'helper' }),
+        row('d', 'Unmatched'),
+      ],
+      undefined,
+    );
+    expect(fleet.map(sessionOrganization)).toEqual([
+      'acme',
+      'None',
+      'acme',
+      undefined,
+    ]);
+    expect(
+      sessionFacets(fleet, { showStates: false }).map(facet => facet.id),
+    ).toEqual(['tenant', 'agent', 'pinned']);
+    expect(ids(filterSessionsBySelection(fleet, { tenant: ['acme'] }))).toEqual(
+      ['a', 'c'],
+    );
+    // One organization is no choice: no dropdown, as on the Agents tab.
+    expect(
+      sessionFacets(fleet.slice(0, 1), { showStates: false }).map(
+        facet => facet.id,
+      ),
     ).toEqual(['agent', 'pinned']);
   });
 });

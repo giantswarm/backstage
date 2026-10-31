@@ -29,13 +29,16 @@ jest.mock('../SessionsTable', () => ({
   SessionsTable: ({
     rows,
     hideColumns,
+    alwaysFilterable,
   }: {
     rows: unknown[];
     hideColumns?: string[];
+    alwaysFilterable?: boolean;
   }) => (
     <div
       data-testid="sessions-table"
       data-hidden={hideColumns?.join(',') ?? ''}
+      data-always-filterable={String(Boolean(alwaysFilterable))}
     >
       {rows.length}
     </div>
@@ -411,6 +414,16 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
     expect(
       screen.queryByRole('searchbox', { name: 'Search sessions' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('has the table search and filter however few the sessions', async () => {
+    // As the Customize tabs: the overview's bar is always there.
+    await render();
+
+    expect(await screen.findByTestId('sessions-table')).toHaveAttribute(
+      'data-always-filterable',
+      'true',
+    );
   });
 });
 
