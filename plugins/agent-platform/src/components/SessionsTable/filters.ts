@@ -9,6 +9,7 @@ import {
   type CatalogFacet,
   type CatalogFilterSelection,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { tenantOf } from '../../lib/tenants';
 import {
   SessionTableRow,
   STATE_IDLE_LABEL,
@@ -216,14 +217,24 @@ export function sessionAgentOptions(
 }
 
 /**
+ * The organization a row's agent belongs to, as the Agents tab's
+ * Organization filter names it ({@link tenantOf} the Agent CR's namespace).
+ * Undefined for a row no Agent CR matched.
+ */
+export function sessionOrganization(row: SessionTableRow): string | undefined {
+  return row.agentNamespace ? tenantOf(row.agentNamespace) : undefined;
+}
+
+/**
  * The shell list's filters (T92): the shared catalog dropdowns —
- * `CatalogFilterBar`, the idiom every Customize tab uses — over three facets.
- * State and Agent are multi-selects (picks within one widen, the two narrow
- * each other); Pinned is a dropdown of one option, drawn only once something
- * is pinned, like the Agents tab's Favorites. Each option counts what picking
- * it would show under the search and the other picks.
+ * `CatalogFilterBar`, the idiom every Customize tab uses — over four facets.
+ * State, Organization and Agent are multi-selects (picks within one widen,
+ * facets narrow each other); Pinned is a dropdown of one option, drawn only
+ * once something (not everything) is pinned, like the Agents tab's Favorites. Each option
+ * counts what picking it would show under the search and the other picks.
  */
 export const SESSION_STATE_FACET = 'state';
+export const SESSION_ORGANIZATION_FACET = 'tenant';
 export const SESSION_AGENT_FACET = 'agent';
 export const SESSION_PINNED_FACET = 'pinned';
 
@@ -250,6 +261,11 @@ const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
     order: SHELL_STATE_OPTIONS.map(({ id }) => id),
   },
   {
+    id: SESSION_ORGANIZATION_FACET,
+    label: 'Organization',
+    value: row => sessionOrganization(row),
+  },
+  {
     id: SESSION_AGENT_FACET,
     label: 'Agent',
     value: row => agentKey(row),
@@ -265,7 +281,8 @@ const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
 /**
  * The facets to draw: the agent options named as {@link sessionAgentOptions}
  * names them (none on one agent's own sessions), and State only where the
- * list has states at all.
+ * list has states at all. The bar leaves out any that cannot narrow the list,
+ * one organization for every session among them (`catalogFilterDimensions`).
  */
 export function sessionFacets(
   rows: SessionTableRow[],

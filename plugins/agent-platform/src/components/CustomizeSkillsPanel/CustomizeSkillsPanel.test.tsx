@@ -441,7 +441,7 @@ describe('CustomizeSkillsPanel filters (T49, T64)', () => {
     mockRepositories = [REPO];
   });
 
-  it('offers Source and Usage over three skills of one repository nobody uses', async () => {
+  it('offers no filters over three skills of one repository nobody uses', async () => {
     mockCatalog = {
       ...loaded,
       skills: [skill('a'), skill('b'), skill('c')],
@@ -450,10 +450,10 @@ describe('CustomizeSkillsPanel filters (T49, T64)', () => {
     await renderPanel();
 
     expect(listedRows()).toHaveLength(3);
-    // Always there, if only with one option each (T64).
-    expect(filterDropdown('source')).toHaveTextContent('SourceAll');
-    expect(await filterOptions('source')).toEqual(['giantswarm/skills 3']);
-    expect(await filterOptions('usage')).toEqual(['Not used 3']);
+    // One source and one usage for all: nothing to choose.
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
     // Add skill keeps its place.
     expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
   });

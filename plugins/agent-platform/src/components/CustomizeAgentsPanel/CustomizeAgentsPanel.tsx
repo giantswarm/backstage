@@ -255,36 +255,24 @@ export type CustomizeAgentsPanelProps = {
  * one — a second control for the same thing would be two answers to one
  * question.
  *
- * @param harnesses the fleet's Harnesses ({@link agentHarnesses}); the
- *   Harness facet is offered only when there are two or more.
- * @param tenants how many tenants the rows belong to; the Tenant facet is
- *   offered only from two on, as the Harness one.
+ * The bar draws a facet only when it can narrow the list (one organization
+ * or model for every agent is no choice: `catalogFilterDimensions`).
+ *
+ * @param harnesses the fleet's Harnesses ({@link agentHarnesses}). The
+ *   Harness facet exists only from two on: main's `singleHarness` rule
+ *   (#2858) hides the Harness fact and its filter together, and an agent
+ *   without a Harness is one not read yet, not a second choice.
  * @param isMine whether the person created the row's agent: the "Created by"
  *   facet, which the bar shows only when some row is theirs.
  */
 export function agentFacets(
   isFavorite: (id: string) => boolean,
   harnesses: ReadonlyMap<string, string | undefined>,
-  {
-    tenants = 0,
-    isMine,
-  }: { tenants?: number; isMine?: (row: AgentRow) => boolean } = {},
+  { isMine }: { isMine?: (row: AgentRow) => boolean } = {},
 ): CatalogFacet<AgentRow>[] {
   return [
-    ...(tenants > 1
-      ? [
-          {
-            id: 'tenant',
-            label: 'Organization',
-            value: (row: AgentRow) => row.tenant,
-          },
-        ]
-      : []),
+    { id: 'tenant', label: 'Organization', value: row => row.tenant },
     { id: 'model', label: 'Model', value: row => row.model || undefined },
-    // Sanctioned exception to the bar's dropdown-of-one (T64): main's
-    // `singleHarness` rule (#2858) — most fleets run every agent on one
-    // Harness, so the Harness filter, like its per-agent fact, appears only
-    // from two Harnesses on.
     ...(harnesses.size > 1
       ? [
           {
@@ -651,8 +639,8 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     [capabilitiesFor],
   );
   const facets = useMemo(
-    () => agentFacets(isFavorite, harnesses, { tenants: tenantCount, isMine }),
-    [isFavorite, harnesses, tenantCount, isMine],
+    () => agentFacets(isFavorite, harnesses, { isMine }),
+    [isFavorite, harnesses, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
   // A Harness pick outlives its dropdown when the fleet settles on one

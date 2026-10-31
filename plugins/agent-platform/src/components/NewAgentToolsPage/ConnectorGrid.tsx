@@ -10,7 +10,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   matchesQuery,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -141,7 +141,7 @@ function ConnectorCard({
  * *Read-only* picks the tools it marks read-only today, *All* the whole
  * connector (`server:x`, so tools it adds later too). Tools picked one by one
  * in the catalogue show as a count, neither choice checked. A page at a time,
- * with a search past {@link SEARCH_MIN} connectors.
+ * with a search from `SEARCH_MIN` connectors on.
  */
 export function ConnectorGrid({
   connectors,
@@ -161,7 +161,7 @@ export function ConnectorGrid({
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
   // Kept while a search is in force, so it can still be cleared.
-  const isSearchable = connectors.length > SEARCH_MIN || trimmed !== '';
+  const isSearchable = isSearchableList(connectors.length, trimmed !== '');
   const matching = useMemo(
     () =>
       trimmed === ''

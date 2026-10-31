@@ -17,6 +17,7 @@ import {
   type Fact,
   INITIAL_ROWS,
   isAwaitingData,
+  isSearchableList,
   CatalogNoMatch,
   matchesQuery,
   Mono,
@@ -699,7 +700,7 @@ export function useServerCapabilityCounts(
 /**
  * A server's resources or prompts as stacked rows, a name over its
  * description: a page of {@link INITIAL_ROWS} at a time, and a search over them
- * once there are more than a page — a server's handful is read, not searched.
+ * from `SEARCH_MIN` on (`isSearchableList`), kept while a search is typed.
  * The search starts the paging over. The tab carries the count, so the list
  * states none of its own.
  */
@@ -724,7 +725,7 @@ function CapabilityList<T>({
   row: (item: T) => StackedRowItem;
 }) {
   const [query, setQuery] = useState('');
-  const searchable = items.length > INITIAL_ROWS;
+  const searchable = isSearchableList(items.length, query !== '');
   const shown = searchable
     ? items.filter(item => matchesQuery(query, searchText(item)))
     : items;

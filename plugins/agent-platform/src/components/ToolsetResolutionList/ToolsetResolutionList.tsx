@@ -7,6 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 import {
   CatalogNoMatch,
+  isSearchableList,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -239,20 +240,22 @@ export function ToolsetResolutionList({
     [resolution.status, resolution.tools],
   );
 
-  // Short enough to read at a glance: no search field, nothing collapsed.
+  // Short enough to read at a glance: nothing collapsed.
   const isShort = tools.length <= AUTO_EXPAND_MAX;
+  // The search, from SEARCH_MIN tools on (`isSearchableList`).
+  const hidesSearch = !isSearchableList(tools.length);
   // The selection can shrink the resolution under the threshold while a query
   // is still typed, and the field goes away with it. Two things follow, and
   // both are needed: the query must stop filtering on the very render that
   // hides the field (or the card flashes "No tools match" with nothing left
   // to clear it), and it must not survive to be reapplied if the resolution
   // grows back — the author would meet a pre-filtered list they never typed.
-  const activeQuery = isShort ? '' : trimmed;
+  const activeQuery = hidesSearch ? '' : trimmed;
   useEffect(() => {
-    if (isShort) {
+    if (hidesSearch) {
       setQuery('');
     }
-  }, [isShort]);
+  }, [hidesSearch]);
 
   const groups: CatalogueGroup[] = useMemo(
     () =>
@@ -358,7 +361,7 @@ export function ToolsetResolutionList({
         <Text color="secondary">{emptyText}</Text>
       ) : (
         <>
-          {!isShort && (
+          {!hidesSearch && (
             <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
               <Flex grow basis="240px" direction="column">
                 <SearchField

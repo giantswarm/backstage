@@ -794,6 +794,8 @@ describe('opt-in picker options', () => {
       groupByNamespace: true,
       recentAgentIds: [research.id],
       favoriteAgentIds: [issues.id],
+      // The plain list's keyboard path; the searchable one is tested below.
+      searchable: false,
     });
 
     agentPicker().focus();

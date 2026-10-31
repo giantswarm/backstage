@@ -15,7 +15,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   LoadingIndicator,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -357,7 +357,7 @@ function NewAgentSkillsPageContent() {
   // catalogue long enough to need it; should it shrink back under the
   // threshold, the query goes with the field, so nothing stays filtered by
   // text the author can no longer see or clear.
-  const isSearchable = skills.length > SEARCH_MIN;
+  const isSearchable = isSearchableList(skills.length);
   const trimmed = isSearchable ? query.trim() : '';
   useEffect(() => {
     if (!isSearchable) {
@@ -388,10 +388,10 @@ function NewAgentSkillsPageContent() {
     [skills, trimmed],
   );
 
-  // Source and Usage, as on Customize → Skills (T49, T64): a multi-select
-  // dropdown each, always there — three skills from one repository get a
-  // Source dropdown of one option. Usage waits for the agents rather than
-  // calling every skill unused.
+  // Source and Usage, as on Customize → Skills (T49): a multi-select
+  // dropdown each, where it can narrow the list — skills from one repository
+  // get no Source dropdown. Usage waits for the agents rather than calling
+  // every skill unused.
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const filters = useSkillFilters({
@@ -399,7 +399,10 @@ function NewAgentSkillsPageContent() {
     searched: visibleSkills,
     usage: agentsLoading ? undefined : usage,
   });
-  const hasFilters = filters.dimensions.length > 0;
+  // Under the same rule as the search, and kept while a pick is in force.
+  const hasFilters =
+    filters.dimensions.length > 0 &&
+    isSearchableList(skills.length, filters.isFiltered);
 
   // Search and filters narrow within the grouping rather than replacing it
   // with a flat list: the repo/subfolder a match came from is part of what

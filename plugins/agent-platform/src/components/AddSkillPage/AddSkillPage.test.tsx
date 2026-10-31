@@ -332,7 +332,7 @@ describe('AddSkillPage · the repository select at scale', () => {
   const openRepositories = async () =>
     userEvent.click(screen.getByRole('button', { name: /Repository/ }));
 
-  it('offers three repositories without a search', async () => {
+  it('offers type-ahead over three repositories', async () => {
     mockRepositories = repos(3);
     await renderPage();
 
@@ -340,7 +340,7 @@ describe('AddSkillPage · the repository select at scale', () => {
     expect(
       await screen.findByRole('option', { name: 'acme/skills-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 repositories', async () => {

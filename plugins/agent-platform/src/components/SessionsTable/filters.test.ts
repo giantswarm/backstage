@@ -8,6 +8,7 @@ import {
   filterSessionsBySelection,
   sessionAgentOptions,
   sessionFacets,
+  sessionOrganization,
   sessionSelectionOf,
   SessionStateFilter,
   SHELL_SESSION_STATE_FILTERS,
@@ -267,11 +268,37 @@ describe('the shell list’s dropdown filters (T92)', () => {
 
   it('names states in the shell words and agents as the picker did', () => {
     const facets = sessionFacets(rows, { showStates: true });
-    expect(facets.map(facet => facet.id)).toEqual(['state', 'agent', 'pinned']);
+    expect(facets.map(facet => facet.id)).toEqual([
+      'state',
+      'tenant',
+      'agent',
+      'pinned',
+    ]);
     expect(facets[0].optionLabel?.('waiting')).toBe('Waiting for you');
-    expect(facets[1].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
+    expect(facets[2].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
     expect(
       sessionFacets(rows, { showStates: false }).map(facet => facet.id),
-    ).toEqual(['agent', 'pinned']);
+    ).toEqual(['tenant', 'agent', 'pinned']);
+  });
+
+  it('names a session’s organization as the Agents tab does', () => {
+    const fleet = withSessionStates(
+      [
+        row('a', 'Issue tracker', { namespace: 'org-acme', name: 'tracker' }),
+        row('b', 'SRE Agent', { namespace: 'kagent', name: 'sre-agent' }),
+        row('c', 'Helper', { namespace: 'org-acme', name: 'helper' }),
+        row('d', 'Unmatched'),
+      ],
+      undefined,
+    );
+    expect(fleet.map(sessionOrganization)).toEqual([
+      'acme',
+      'None',
+      'acme',
+      undefined,
+    ]);
+    expect(ids(filterSessionsBySelection(fleet, { tenant: ['acme'] }))).toEqual(
+      ['a', 'c'],
+    );
   });
 });

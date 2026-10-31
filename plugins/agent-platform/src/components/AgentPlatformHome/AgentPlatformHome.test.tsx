@@ -992,7 +992,8 @@ describe('AgentPlatformHome', () => {
       expect(agentPicker()).toHaveTextContent('Choose an agent');
     });
 
-    it('offers no search over a short list of agents', async () => {
+    it('offers no search over two agents', async () => {
+      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [sre, research] });
       await render({ manageAgentsHref: '/customize/agents' });
 
       await userEvent.click(agentPicker());
@@ -1000,7 +1001,7 @@ describe('AgentPlatformHome', () => {
     });
 
     it('keeps Manage agents in the picker while searching', async () => {
-      // Past SEARCH_MIN, where the picker offers its search.
+      // From SEARCH_MIN on, where the picker offers its search.
       const more = Array.from({ length: 7 }, (_, index) => ({
         ...sre,
         id: `gazelle/kagent/helper-${index}`,

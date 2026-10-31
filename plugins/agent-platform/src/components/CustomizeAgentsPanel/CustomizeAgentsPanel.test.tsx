@@ -1324,7 +1324,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     expect(getComputedStyle(nameColumnOf(listed()[0])).flexBasis).toBe('220px');
   });
 
-  it('offers the model dropdown over three agents on one model, none starred', async () => {
+  it('offers no dropdown over three agents on one model, none starred', async () => {
     mockAgents = {
       rows: [
         row({ name: 'A', technicalName: 'a', model: 'Sonnet 4.5' }),
@@ -1338,11 +1338,10 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     await renderPanel();
 
     expect(listed()).toHaveLength(3);
-    // One model is still a dropdown, of one option (T64); nothing starred is
-    // nothing to offer.
-    expect(await filterOptions('model')).toEqual(['Sonnet 4.5 3']);
+    // One model for all is no choice, and nothing starred is nothing to
+    // offer: no filters at all.
     expect(
-      screen.queryByRole('button', { name: /Filter by favorites/ }),
+      screen.queryByRole('group', { name: 'Filters' }),
     ).not.toBeInTheDocument();
   });
 
@@ -1441,8 +1440,28 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       await renderPanel();
 
       expect(listed()).toHaveLength(3);
-      // The singleHarness rule: no dropdown of one, unlike Model.
-      expect(filterDropdown('model')).toBeInTheDocument();
+      // The singleHarness rule: no Harness fact, and no dropdown of one.
+      expect(
+        screen.queryByRole('button', { name: /Filter by harness/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    });
+
+    it('shows neither the Harness nor its filter while one Harness is all some agents report', async () => {
+      mockAgents = {
+        rows: [
+          { ...triage, ...onHarness('claude-code', 'Claude Code') },
+          { ...notes, ...onHarness('claude-code', 'Claude Code') },
+          // No Harness read for this one: not a second Harness to choose.
+          row({ name: 'Coder', technicalName: 'coder' }),
+        ],
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      expect(listed()).toHaveLength(3);
       expect(
         screen.queryByRole('button', { name: /Filter by harness/ }),
       ).not.toBeInTheDocument();

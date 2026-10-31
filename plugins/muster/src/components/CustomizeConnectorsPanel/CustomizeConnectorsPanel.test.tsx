@@ -957,15 +957,16 @@ describe('CustomizeConnectorsPanel', () => {
       expect(screen.queryByText(/were not searched/)).not.toBeInTheDocument();
     });
 
-    it('offers one-option dropdowns over three connectors that sign in alike and all answer', async () => {
+    it('offers no filters over three connectors that sign in alike and all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
       expect(bodyRows()).toHaveLength(3);
-      await screen.findByRole('button', { name: /Filter by connection/ });
-      expect(await filterOptions('sign-in')).toEqual(['No sign-in 3']);
-      expect(await filterOptions('connection')).toEqual(['Connected 3']);
+      // One sign-in and one connection state for all: nothing to choose.
+      expect(
+        screen.queryByRole('group', { name: 'Filters' }),
+      ).not.toBeInTheDocument();
     });
 
     it('filters three connectors by sign-in and by connection', async () => {

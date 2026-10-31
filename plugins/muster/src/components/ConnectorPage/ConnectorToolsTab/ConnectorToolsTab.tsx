@@ -9,7 +9,7 @@ import {
   CatalogNoMatch,
   INITIAL_ROWS,
   LoadingIndicator,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
   StackedRowList,
   useCatalogFilters,
@@ -151,7 +151,7 @@ export interface ConnectorToolsTabProps {
  * page, which holds its schema, the form that runs it and the result. A search
  * and a "What it does" dropdown (only when the tools both read and change
  * things) with a count per choice sit above a long list. A short list
- * (`SEARCH_MIN` or fewer) is read, not searched, so it shows neither, unless
+ * (under `SEARCH_MIN`) is read, not searched, so it shows neither, unless
  * the tab opened with a search; a long one renders a page of tools at a time.
  * The search and filter are seeded once (`useToolSearchState`): from the
  * page's `?q=`, as the Customize list's search links a connector it matched by
@@ -273,10 +273,12 @@ export function ConnectorToolsTab({
     );
   }
 
-  // Three tools are read at a glance; a search and a filter over them is
-  // volume framing, unless a search is already in force.
-  const searchable =
-    all.length > SEARCH_MIN || openedSearched || query.trim() !== '';
+  // A tool or two is read at a glance; kept while a search or filter is in
+  // force (the URL's or a saved view's too), so it can be undone.
+  const searchable = isSearchableList(
+    all.length,
+    openedSearched || query.trim() !== '' || filters.isFiltered,
+  );
 
   return (
     <Flex direction="column" gap="0">

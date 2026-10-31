@@ -369,7 +369,7 @@ describe('ImportModelPage · the selects at scale', () => {
     await userEvent.click(screen.getByRole('button', { name: /Target node/ }));
   };
 
-  it('offers three environments and two nodes without a search', async () => {
+  it('offers type-ahead over three environments, and two nodes plus Best', async () => {
     await render([
       { name: 'gpu', nodes: nodesOf(2) },
       { name: 'lab', nodes: [] },
@@ -380,14 +380,14 @@ describe('ImportModelPage · the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: 'edge' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
 
     await openTargetNodes();
     expect(
       await screen.findByRole('option', { name: /gpu-node-2/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 environments and 300 nodes', async () => {

@@ -27,11 +27,7 @@ import {
   type ToolSummary,
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
-import {
-  countNoun,
-  INITIAL_ROWS,
-  SEARCH_MIN,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { countNoun, INITIAL_ROWS } from '@giantswarm/backstage-plugin-ui-react';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -936,11 +932,9 @@ export function serverSelector(name: string): string {
   return `server:${name}`;
 }
 
-// The list-scale constants and `countNoun` live in ui-react beside `ShowMore`
-// (muster uses them too); re-exported here for this plugin's existing imports.
-// Lists behind disclosures use the higher `AUTO_EXPAND_MAX` (20) instead of
-// `SEARCH_MIN`.
-export { countNoun, INITIAL_ROWS, SEARCH_MIN };
+// `countNoun` and `INITIAL_ROWS` live in ui-react beside `ShowMore` (muster
+// uses them too); re-exported here for this plugin's existing imports.
+export { countNoun, INITIAL_ROWS };
 
 /**
  * Below this many workflows there is nothing to group — one short list reads

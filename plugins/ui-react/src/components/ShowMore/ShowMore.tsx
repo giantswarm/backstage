@@ -12,11 +12,19 @@ import { countNoun } from '../../utils/countNoun';
 export const INITIAL_ROWS = 20;
 
 /**
- * A list shows a search field or a filter bar only when it holds more than
- * this many entries: three entries are read, not searched, and a filter over
- * them is volume framing. Lists that sit behind disclosures use a higher bar.
+ * A list of entities shows its search field and filter bar from this many
+ * entries on: one or two are read, not searched. See {@link isSearchableList}.
  */
-export const SEARCH_MIN = 8;
+export const SEARCH_MIN = 3;
+
+/**
+ * Whether a list of `count` entities shows its search and filters: from
+ * {@link SEARCH_MIN} on, and always while a search or filter is in force, so
+ * whatever narrowed the list can still be undone.
+ */
+export function isSearchableList(count: number, narrowed = false): boolean {
+  return narrowed || count >= SEARCH_MIN;
+}
 
 /**
  * How many agents a "Used by" excerpt shows before *Show all N agents* — the

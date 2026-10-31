@@ -113,9 +113,9 @@ function FilterDropdown({
  * A catalog's filters under its search: one multi-select dropdown per facet,
  * named by its field and listing the facet's values with what each keeps
  * ("acme/skills 31"). Picks within a dropdown widen (any of them), dropdowns
- * narrow each other. Every facet the catalog has values on is drawn — a
- * single-value one is a dropdown of one option — and the row wraps at phone
- * width. State lives in {@link useCatalogFilters}.
+ * narrow each other. Only facets that can narrow the list are drawn
+ * (`catalogFilterDimensions`); with none, the bar draws nothing. The
+ * row wraps at phone width. State lives in {@link useCatalogFilters}.
  */
 export function CatalogFilterBar({
   dimensions,

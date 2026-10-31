@@ -274,6 +274,20 @@ describe('WorkspaceDetailPage', () => {
   });
 
   it('lists the Sessions on the workspace with their cleanup dates, and filters to mine', async () => {
+    // A third session, so the list gets its search and filters (SEARCH_MIN).
+    const detail = docs();
+    detail.sessionDirectories = [
+      ...(detail.sessionDirectories ?? []),
+      {
+        session: 'sess-other',
+        name: 'Tidy the docs',
+        creator: 'ops@example.com',
+        lastTurn: '2026-10-18T09:00:00Z',
+        sizeBytes: 1024 ** 2,
+        cleanupAfter: '2026-11-01T09:00:00Z',
+      },
+    ];
+    mockDetail = { ...mockDetail, data: detail };
     await renderPage('/customize/workspaces/gazelle/lab/ws-docs/sessions');
 
     const table = screen.getByRole('grid');
@@ -291,6 +305,16 @@ describe('WorkspaceDetailPage', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByText('Bump the chart')).toBeNull();
     expect(screen.getByText('Fix the flaky test')).toBeInTheDocument();
+  });
+
+  it('lists two Sessions on the workspace without search or filters', async () => {
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/sessions');
+
+    expect(screen.getByText('Bump the chart')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search sessions' }),
+    ).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Filters' })).toBeNull();
   });
 
   it('shows a failed last synchronization with the manager’s reason', async () => {

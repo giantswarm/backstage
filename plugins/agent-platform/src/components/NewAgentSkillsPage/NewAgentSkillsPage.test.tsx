@@ -367,13 +367,13 @@ describe('NewAgentSkillsPage', () => {
         commit: HEAD,
       }));
 
-    it('shows three skills of one repository as a plain grid', async () => {
-      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+    it('shows two skills of one repository as a plain grid', async () => {
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 2, 'Alpha') });
       await renderStep();
 
       expect(
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
-      ).toHaveLength(3);
+      ).toHaveLength(2);
       // No search, no count, no accordion around the only repository, and
       // no paging chrome.
       expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
@@ -493,22 +493,21 @@ describe('NewAgentSkillsPage', () => {
     });
 
     describe('filters, as on Customize → Skills (T49, T64)', () => {
-      it('offers Source and Usage dropdowns over three unused skills of one repository', async () => {
+      it('offers no filters over three unused skills of one repository', async () => {
         Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
         await renderStep();
 
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
-        // Always there, one option each (T64).
-        expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 3',
-        ]);
-        expect(await filterOptions('usage')).toEqual(['Not used 3']);
+        // One source and one usage for all: nothing to choose.
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
         ).toHaveLength(3);
       });
 
-      it('filters three skills by usage, without a search, and clears', async () => {
+      it('filters three skills by usage, and clears', async () => {
         const user = userEvent.setup();
         const skills = skillsIn(REPO_A, 3, 'Alpha');
         Object.assign(mockCatalog, { skills });
@@ -522,11 +521,10 @@ describe('NewAgentSkillsPage', () => {
           'Used by agents 1',
           'Not used 2',
         ]);
-        // One repository: a Source dropdown of one option.
-        expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 3',
-        ]);
-        expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+        // One repository: no Source dropdown.
+        expect(
+          screen.queryByRole('button', { name: /Filter by source/ }),
+        ).not.toBeInTheDocument();
 
         await user.click(
           screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
@@ -551,13 +549,34 @@ describe('NewAgentSkillsPage', () => {
         expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
       });
 
-      it('holds the Usage dropdown back while the agents load', async () => {
-        Object.assign(mockAgents, { isLoading: true });
+      it('offers no filters over two skills', async () => {
+        const skills = skillsIn(REPO_A, 2, 'Alpha');
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
+        });
         await renderStep();
 
-        await screen.findByRole('checkbox', { name: 'Skill PR review' });
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('holds the Usage dropdown back while the agents load', async () => {
+        Object.assign(mockAgents, { isLoading: true });
+        Object.assign(mockCatalog, {
+          skills: [
+            ...skillsIn(REPO_A, 2, 'Alpha'),
+            ...skillsIn(REPO_B, 1, 'Beta'),
+          ],
+        });
+        await renderStep();
+
+        await screen.findByRole('checkbox', { name: 'Skill Beta 001' });
         expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 1',
+          'giantswarm/agent-skills 2',
           'giantswarm/claude-code 1',
         ]);
         expect(

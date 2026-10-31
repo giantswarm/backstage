@@ -27,17 +27,32 @@ const items: Item[] = [
 ];
 
 describe('catalogFilterDimensions', () => {
-  it('draws every facet the catalog has values on, one value or many', () => {
-    // One model for all is still a dropdown (of one option): T64.
+  it('draws only the facets that can narrow the catalog', () => {
+    // One model for all has nothing to choose: no dropdown.
     const dimensions = catalogFilterDimensions(items, items, facets, {});
     expect(dimensions.map(dimension => dimension.id)).toEqual([
       'repo',
       'usage',
-      'model',
     ]);
-    expect(dimensions[2].options).toEqual([
-      { id: 'opus', label: 'opus', count: 3 },
-    ]);
+  });
+
+  it('draws one value some items lack, as a Favorites filter is', () => {
+    const some = items.map((item, index) => ({
+      ...item,
+      model: index === 0 ? 'opus' : undefined,
+    }));
+    const [model] = catalogFilterDimensions(some, some, facets, {}).filter(
+      dimension => dimension.id === 'model',
+    );
+    expect(model.options).toEqual([{ id: 'opus', label: 'opus', count: 1 }]);
+  });
+
+  it('keeps a facet of one value while it is picked, so it can be undone', () => {
+    expect(
+      catalogFilterDimensions(items, items, facets, { model: ['opus'] }).map(
+        dimension => dimension.id,
+      ),
+    ).toEqual(['repo', 'usage', 'model']);
   });
 
   it('leaves out a facet no item has a value on', () => {
