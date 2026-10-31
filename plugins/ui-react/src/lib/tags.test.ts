@@ -4,6 +4,8 @@ import {
   commitTagDraft,
   draftProblem,
   editDistance,
+  exceedsMaxTags,
+  MAX_TAGS,
   normalizeTag,
   parseTags,
   sameTags,
@@ -13,6 +15,10 @@ import {
   tagCounts,
   tagProblem,
 } from './tags';
+
+/** `count` distinct valid tags. */
+const numbered = (count: number, prefix = 'tag') =>
+  Array.from({ length: count }, (_, index) => `${prefix}-${index}`);
 
 describe('normalizeTag', () => {
   it('turns what was typed into the stored form', () => {
@@ -28,7 +34,7 @@ describe('normalizeTag', () => {
   it('keeps letters outside a-z, so the tag is refused, not stripped', () => {
     expect(normalizeTag('Über')).toBe('über');
     expect(tagProblem(normalizeTag('Über'))).toBe('Use letters and numbers.');
-    expect(draftProblem('ops, über')).toBe('Use letters and numbers.');
+    expect(draftProblem('ops, über', [])).toBe('Use letters and numbers.');
   });
 });
 
@@ -49,12 +55,54 @@ describe('tagProblem', () => {
 
 describe('draftProblem', () => {
   it('names the first part that cannot be a tag', () => {
-    expect(draftProblem('')).toBeUndefined();
-    expect(draftProblem(' Util , On Call ')).toBeUndefined();
-    expect(draftProblem('util, !!!')).toBe('Use letters and numbers.');
-    expect(draftProblem(`${'a'.repeat(64)}`)).toBe(
+    expect(draftProblem('', [])).toBeUndefined();
+    expect(draftProblem(' Util , On Call ', [])).toBeUndefined();
+    expect(draftProblem('util, !!!', [])).toBe('Use letters and numbers.');
+    expect(draftProblem(`${'a'.repeat(64)}`, [])).toBe(
       'Use at most 63 characters.',
     );
+  });
+});
+
+describe('the tag cap', () => {
+  const full = numbered(MAX_TAGS);
+
+  it('is 50', () => {
+    expect(MAX_TAGS).toBe(50);
+  });
+
+  it('counts only the tags not held yet', () => {
+    expect(exceedsMaxTags(numbered(49), ['new'])).toBe(false);
+    expect(exceedsMaxTags(full, ['new'])).toBe(true);
+    expect(exceedsMaxTags(full, ['tag-0'])).toBe(false);
+    expect(exceedsMaxTags([], numbered(51))).toBe(true);
+    // Adding nothing new passes nothing, even over the cap.
+    expect(exceedsMaxTags(numbered(51), [])).toBe(false);
+  });
+
+  it('is a draft problem once the draft would pass it', () => {
+    expect(draftProblem('new', numbered(49))).toBeUndefined();
+    expect(draftProblem('new', full)).toBe('At most 50 tags.');
+    expect(draftProblem('tag-0', full)).toBeUndefined();
+    expect(draftProblem('new, other', numbered(49))).toBe('At most 50 tags.');
+    // A part that cannot be a tag is named first.
+    expect(draftProblem('new, !!!', full)).toBe('Use letters and numbers.');
+  });
+
+  it('adds no tags past it', () => {
+    expect(addTags(numbered(49), ['a', 'b'])).toEqual([...numbered(49), 'a']);
+    expect(addTags(full, ['new'])).toEqual(full);
+  });
+
+  it('leaves a draft that would pass it as typed', () => {
+    expect(commitTagDraft(full, 'New, !!!')).toEqual({
+      tags: full,
+      draft: 'New, !!!',
+    });
+    expect(commitTagDraft(numbered(49), 'new')).toEqual({
+      tags: [...numbered(49), 'new'],
+      draft: '',
+    });
   });
 });
 
@@ -171,6 +219,12 @@ describe('parseTags', () => {
     expect(
       parseTags(`ok,on call,a--b,-x,y_z,ä,${'a'.repeat(64)},${'b'.repeat(63)}`),
     ).toEqual(['ok', 'b'.repeat(63)]);
+  });
+
+  it('keeps more than the cap, so a read never drops tags', () => {
+    expect(parseTags(numbered(MAX_TAGS + 1).join(','))).toEqual(
+      numbered(MAX_TAGS + 1),
+    );
   });
 
   it('is empty without a value or with a blank one', () => {

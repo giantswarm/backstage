@@ -9,6 +9,15 @@ export const TAGS_ANNOTATION = 'ui.giantswarm.io/tags';
 export const MAX_TAG_LENGTH = 63;
 
 /**
+ * The most tags one resource carries. muster and gs-backend
+ * (`MAX_SKILL_TAGS`) refuse more.
+ */
+export const MAX_TAGS = 50;
+
+/** Why more tags cannot be added. */
+export const MAX_TAGS_PROBLEM = `At most ${MAX_TAGS} tags.`;
+
+/**
  * The charts' tag form: lowercase letters and digits, single `-` between.
  * The one tag rule the portal checks against; muster and gs-backend mirror it.
  */
@@ -86,39 +95,70 @@ export function splitDraft(text: string): {
   return { tags, invalid };
 }
 
-/** `tags` with those of `added` it does not hold yet appended, in order. */
+/** Those of `added` that `tags` does not hold yet, once each, in order. */
+function freshTags(tags: readonly string[], added: readonly string[]) {
+  return [...new Set(added)].filter(tag => !tags.includes(tag));
+}
+
+/**
+ * Whether `added` holds tags new to `tags` and adding them would leave more
+ * than {@link MAX_TAGS}.
+ */
+export function exceedsMaxTags(
+  tags: readonly string[],
+  added: readonly string[],
+): boolean {
+  const fresh = freshTags(tags, added).length;
+  return fresh > 0 && tags.length + fresh > MAX_TAGS;
+}
+
+/**
+ * `tags` with those of `added` it does not hold yet appended, in order, up
+ * to {@link MAX_TAGS}.
+ */
 export function addTags(
   tags: readonly string[],
   added: readonly string[],
 ): string[] {
-  return [...tags, ...[...new Set(added)].filter(tag => !tags.includes(tag))];
+  const room = Math.max(MAX_TAGS - tags.length, 0);
+  return [...tags, ...freshTags(tags, added).slice(0, room)];
 }
 
 /**
  * A typed but not yet added text taken into `tags`: the parts that can be
  * tags added, the rest left as the draft. What every tags form does with a
- * draft when it is left (Continue, submit), as the field does on Enter.
+ * draft when it is left (Continue, submit), as the field does on Enter. A
+ * draft that would take `tags` past {@link MAX_TAGS} stays as it is.
  */
 export function commitTagDraft(
   tags: readonly string[],
   draft: string,
 ): { tags: string[]; draft: string } {
   const { tags: valid, invalid } = splitDraft(draft);
+  if (exceedsMaxTags(tags, valid)) {
+    return { tags: [...tags], draft };
+  }
   return { tags: addTags(tags, valid), draft: invalid.join(', ') };
 }
 
 /**
  * Why a typed but not yet added text cannot become tags: the first of its
- * comma-separated parts that cannot. Undefined when it can, or is empty.
+ * comma-separated parts that cannot, else that it would take `tags` past
+ * {@link MAX_TAGS}. Undefined when it can, or is empty.
  */
-export function draftProblem(text: string): string | undefined {
+export function draftProblem(
+  text: string,
+  tags: readonly string[],
+): string | undefined {
   for (const part of splitTyped(text)) {
     const problem = tagProblem(normalizeTag(part));
     if (problem) {
       return problem;
     }
   }
-  return undefined;
+  return exceedsMaxTags(tags, splitDraft(text).tags)
+    ? MAX_TAGS_PROBLEM
+    : undefined;
 }
 
 /** Whether two tag lists hold the same tags, in any order. */

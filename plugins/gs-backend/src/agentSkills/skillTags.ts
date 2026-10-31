@@ -9,7 +9,11 @@
 
 export const MAX_TAG_LENGTH = 63;
 
-/** The most tags a pull request writes on one skill: a bound, not a goal. */
+/**
+ * The most tags a pull request writes on one skill: a bound, not a goal.
+ * Mirrors `MAX_TAGS` in ui-react's `lib/tags.ts`, which a backend plugin
+ * cannot import.
+ */
 export const MAX_SKILL_TAGS = 50;
 
 /** Lowercase letters and digits, single `-` between. */

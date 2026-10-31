@@ -559,7 +559,7 @@ export function mcpServerDetailsProblems(
       message: `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
     });
   }
-  const tagProblem = draftProblem(state.tagDraft);
+  const tagProblem = draftProblem(state.tagDraft, state.tags);
   if (tagProblem) {
     problems.push({ field: 'tags', message: tagProblem });
   }

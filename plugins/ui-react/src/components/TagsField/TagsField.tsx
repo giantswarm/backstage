@@ -10,6 +10,8 @@ import { Button, Flex, Tag, TagGroup, Text, TextField } from '@backstage/ui';
 import { fieldErrorProps } from '../FieldValidation';
 import {
   draftProblem,
+  exceedsMaxTags,
+  MAX_TAGS,
   similarExistingTag,
   splitDraft,
   suggestTags,
@@ -48,8 +50,9 @@ export type TagsFieldProps = {
  * typed as tags, normalized (`On Call` is `on-call`), and the tags so far
  * beneath it, each removable. While typing, the tags already in use are
  * offered as a row to click, the most used first. A new tag close to an
- * existing one gets a hint that swaps it in. Text that cannot be a tag stays
- * in the field with the reason under it.
+ * existing one gets a hint that swaps it in. Text that cannot be a tag, or
+ * would take the tags past `MAX_TAGS`, stays in the field with the reason
+ * under it.
  */
 export function TagsField({
   tags,
@@ -72,7 +75,7 @@ export function TagsField({
 
   const suggestions = useMemo(
     () =>
-      draft.trim()
+      draft.trim() && tags.length < MAX_TAGS
         ? suggestTags(counts, draft, tags).slice(0, MAX_SUGGESTIONS)
         : [],
     [counts, draft, tags],
@@ -95,6 +98,11 @@ export function TagsField({
    */
   const commit = (text: string, rest?: string) => {
     const { tags: valid, invalid } = splitDraft(text);
+    if (exceedsMaxTags(tags, valid)) {
+      onDraftChange(rest === undefined ? text : `${text},${rest}`);
+      setAttempted(true);
+      return;
+    }
     add(valid);
     const kept = invalid.join(', ');
     if (rest === undefined) {
@@ -161,7 +169,7 @@ export function TagsField({
           onKeyDown={onKeyDown}
           placeholder="e.g. util"
           description="Press Enter to add."
-          {...fieldErrorProps(attempted ? draftProblem(draft) : error)}
+          {...fieldErrorProps(attempted ? draftProblem(draft, tags) : error)}
         />
         {suggestions.length > 0 && (
           <TagGroup aria-label="Suggested tags">

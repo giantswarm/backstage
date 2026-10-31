@@ -1524,6 +1524,18 @@ describe('tags', () => {
     ).not.toContain('tags');
   });
 
+  it('blocks Continue on a typed tag past the cap', () => {
+    const full = Array.from({ length: 50 }, (_, index) => `tag-${index}`);
+    expect(
+      mcpServerDetailsProblems(state({ tags: full, tagDraft: 'more' })),
+    ).toContainEqual({ field: 'tags', message: 'At most 50 tags.' });
+    expect(
+      mcpServerDetailsProblems(
+        state({ tags: full.slice(1), tagDraft: 'more' }),
+      ).map(problem => problem.field),
+    ).not.toContain('tags');
+  });
+
   it('reads an edited server’s tags into the form', () => {
     const server = new MCPServer(
       {
