@@ -79,6 +79,12 @@ export function runsLabel(response: WorkflowExecutionListResponse): string {
 /** Tags a row shows before "+N", as on agent rows; the rest are on its page. */
 export const ROW_TAGS_MAX = 3;
 
+/**
+ * The tags column's floor: room for a few short tags on one line. Its share
+ * of a narrow table alone left ~70-100px, so each tag took its own line.
+ */
+const TAGS_COLUMN_MIN_WIDTH = 184;
+
 const SOURCE_LABELS = {
   gitops: 'GitOps',
   manual: 'Manually added',
@@ -169,6 +175,7 @@ function WorkflowRows({
       id: 'tags',
       label: 'Tags',
       defaultWidth: '1.4fr',
+      minWidth: TAGS_COLUMN_MIN_WIDTH,
       cell: row => (
         <Cell>
           <TagList tags={row.tags} max={ROW_TAGS_MAX} />
