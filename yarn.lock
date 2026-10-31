@@ -9197,7 +9197,7 @@ __metadata:
     "@backstage/plugin-events-node": "backstage:^"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.22.0"
     "@giantswarm/backstage-plugin-gs-node": "npm:^0.4.0"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
     js-yaml: "npm:^5.0.0"
   languageName: unknown
   linkType: soft
@@ -9316,7 +9316,7 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
   dependencies:
     "@backstage/cli": "backstage:^"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
   languageName: unknown
   linkType: soft
 
@@ -9332,7 +9332,7 @@ __metadata:
     "@backstage/errors": "backstage:^"
     "@backstage/types": "backstage:^"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.22.0"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
     "@modelcontextprotocol/sdk": "npm:1.32.1"
     node-fetch: "npm:^3.3.2"
     zod: "npm:^4.4.3"
@@ -9390,7 +9390,7 @@ __metadata:
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-platform-capabilities": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:^4.0.0-alpha.60"
@@ -9790,7 +9790,7 @@ __metadata:
     "@fsegurai/codemirror-theme-vscode-dark": "npm:^6.2.2"
     "@fsegurai/codemirror-theme-vscode-light": "npm:^6.2.2"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.22.0"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.11.3"
     "@material-ui/lab": "npm:^4.0.0-alpha.61"
@@ -9835,9 +9835,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@giantswarm/semver-ts@github:giantswarm/semver-ts#v0.2.7":
+"@giantswarm/semver-ts@github:giantswarm/semver-ts#v0.2.10":
   version: 0.2.0
-  resolution: "@giantswarm/semver-ts@https://github.com/giantswarm/semver-ts.git#commit=b4b1b25eed088af216a259fa193937bef5ed9cdb"
+  resolution: "@giantswarm/semver-ts@https://github.com/giantswarm/semver-ts.git#commit=5980966ab6c6d80f140fc7cedb15e0c3c6e56e82"
   checksum: 10c0/07c87bf7a080fc7801f26eb76b077f2d99a924d3bad61ed39a5e9a2c4bce567dfc4bacf37b74248328b5f0be48da286cf495f6b715a66e16ec16418e1d9b733d
   languageName: node
   linkType: hard
@@ -19436,35 +19436,35 @@ __metadata:
   linkType: hard
 
 "@storybook/addon-docs@npm:^10.5.3":
-  version: 10.6.1
-  resolution: "@storybook/addon-docs@npm:10.6.1"
+  version: 10.6.5
+  resolution: "@storybook/addon-docs@npm:10.6.5"
   dependencies:
     "@mdx-js/react": "npm:^3.0.0"
     "@storybook/icons": "npm:^2.0.2"
-    "@storybook/react-dom-shim": "npm:10.6.1"
+    "@storybook/react-dom-shim": "npm:10.6.5"
     react: "npm:^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
     react-dom: "npm:^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
     ts-dedent: "npm:^2.0.0"
     unplugin: "npm:^2.3.5"
   peerDependencies:
     "@types/react": ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    storybook: ^10.6.1
+    storybook: ^10.6.5
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/d88ea18f06e3a0c4065e81829d22266e0f513e9426497e371c2c80a64d1c9d33b8fa28f561629838939828a17a090a33574be2dae7e48689d5c0c92a4cfc3b44
+  checksum: 10c0/876995adada0eebc73bd50f3f155ff9577820d8c66bf104a42fe2179c347bc0a3eb1ec1da18905ef5de2bca19c5505bc559656e8d1da61103af377cfe7c23949
   languageName: node
   linkType: hard
 
-"@storybook/builder-vite@npm:10.6.1":
-  version: 10.6.1
-  resolution: "@storybook/builder-vite@npm:10.6.1"
+"@storybook/builder-vite@npm:10.6.5":
+  version: 10.6.5
+  resolution: "@storybook/builder-vite@npm:10.6.5"
   dependencies:
     ts-dedent: "npm:^2.0.0"
   peerDependencies:
-    storybook: ^10.6.1
+    storybook: ^10.6.5
     vite: ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
-  checksum: 10c0/01c39c3ca6068d261f2134a4a3024d2b572ba3da7a44700176a53511cb3488830810e9af7ccee116cd7bd4c30d92813c3c6c74cce1d95dcb1cd4b40a313dedbc
+  checksum: 10c0/3a3d5db291ac8af256bc0dab8fbe364828cb9a59c76a20087ba9b20ddbe4695fa8a0c6e72d34f6f528f685e4791c3d70f8dbfbf46836ca989e2414c6b0d358c8
   languageName: node
   linkType: hard
 
@@ -19484,32 +19484,32 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@storybook/react-dom-shim@npm:10.6.1":
-  version: 10.6.1
-  resolution: "@storybook/react-dom-shim@npm:10.6.1"
+"@storybook/react-dom-shim@npm:10.6.5":
+  version: 10.6.5
+  resolution: "@storybook/react-dom-shim@npm:10.6.5"
   peerDependencies:
     "@types/react": ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     "@types/react-dom": ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    storybook: ^10.6.1
+    storybook: ^10.6.5
   peerDependenciesMeta:
     "@types/react":
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/37c5109962fa7ada74d14e4377a1c5405b31557c49b4832e1a9ac233952d42be8ead39a60af94d5904825c73b70d05652a62cf5a79a44e2c607de26054cdc895
+  checksum: 10c0/7431d77fdf75a1257085a6a743dad6aef8991ce789cec0a07d7548dd58e47933d3554a8c659a1346f61f47274a1ceedcf4a7182736af492530acdbe650a1dcd2
   languageName: node
   linkType: hard
 
 "@storybook/react-vite@npm:^10.5.3":
-  version: 10.6.1
-  resolution: "@storybook/react-vite@npm:10.6.1"
+  version: 10.6.5
+  resolution: "@storybook/react-vite@npm:10.6.5"
   dependencies:
     "@joshwooding/vite-plugin-react-docgen-typescript": "npm:^0.7.0"
     "@rollup/pluginutils": "npm:^5.0.2"
-    "@storybook/builder-vite": "npm:10.6.1"
-    "@storybook/react": "npm:10.6.1"
+    "@storybook/builder-vite": "npm:10.6.5"
+    "@storybook/react": "npm:10.6.5"
     empathic: "npm:^2.0.0"
     magic-string: "npm:^1.1.0"
     react-docgen: "npm:^8.0.2"
@@ -19518,22 +19518,22 @@ __metadata:
   peerDependencies:
     react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    storybook: ^10.6.1
+    storybook: ^10.6.5
     typescript: ">= 4.9.x"
     vite: ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
   peerDependenciesMeta:
     typescript:
       optional: true
-  checksum: 10c0/23a39d94932d7c28ef847ebaafe59b07bdf94b58c623694c54c7c52b9bb8e6164030fc29bd6d64dffe80f64f4448adb1eecba538aa50e7b4a094c5164f7ef283
+  checksum: 10c0/1396408b00bc64d9e9cc9c505d8d069f8035e9f60f1dd69986a1d2ff7addc237f48e9ac6c5bbb19158da5bfc95dcc036d2ddc9e38d12c4388062b509a6e584d5
   languageName: node
   linkType: hard
 
-"@storybook/react@npm:10.6.1, @storybook/react@npm:^10.5.3":
-  version: 10.6.1
-  resolution: "@storybook/react@npm:10.6.1"
+"@storybook/react@npm:10.6.5, @storybook/react@npm:^10.5.3":
+  version: 10.6.5
+  resolution: "@storybook/react@npm:10.6.5"
   dependencies:
     "@storybook/global": "npm:^5.0.0"
-    "@storybook/react-dom-shim": "npm:10.6.1"
+    "@storybook/react-dom-shim": "npm:10.6.5"
     react-docgen: "npm:^8.0.2"
     react-docgen-typescript: "npm:^2.2.2"
   peerDependencies:
@@ -19541,7 +19541,7 @@ __metadata:
     "@types/react-dom": ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    storybook: ^10.6.1
+    storybook: ^10.6.5
     typescript: ">= 4.9.x"
   peerDependenciesMeta:
     "@types/react":
@@ -19550,7 +19550,7 @@ __metadata:
       optional: true
     typescript:
       optional: true
-  checksum: 10c0/50d8e92320e1a6130b53aed8fbaf9378d6a3a1d1483ceb74f52dd6c775596111040978640e740b246c40b5499597a7e70bbd1b2a4c64946856cc8c4559df1f75
+  checksum: 10c0/0c0f601f7d8dcf19f0460629191b13367a36ba6364db3c458b4f54cd6ae8a208cc34ea7f2001a284b0f5dfd8e382b20bc042817cbc636a67817ccde2524e77a9
   languageName: node
   linkType: hard
 
