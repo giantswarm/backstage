@@ -128,12 +128,12 @@ describe('serverListEntries with tags', () => {
     undefined,
   );
 
-  it('gives a server its tags, a family its members’ tags and muster none', () => {
+  it('gives a server its tags, a family its members’ tags and muster agent-platform', () => {
     expect(rows.map(r => [r.id, r.tags])).toEqual([
       ['kubernetes', ['clusters', 'ops']],
       ['github', []],
       ['jira', ['ticketing', 'ops']],
-      ['muster', []],
+      ['muster', ['agent-platform']],
     ]);
   });
 

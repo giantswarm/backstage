@@ -165,29 +165,18 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
-    it.each(['infrastructure', 'internal'])(
-      'reports the Connectors tab’s %s sub-tab as its subview',
+    it.each(['infrastructure', 'families', 'internal'])(
+      'reports the retired %s sub-tab without a subview, as it redirects',
       sub => {
         expect(
           getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
         ).toEqual({
           page: 'Customize',
           view: 'connectors',
-          subview: sub,
-          path: `/customize/connectors/${sub}`,
+          path: '/customize/connectors/*',
         });
       },
     );
-
-    it('reports the retired Families path without a subview, as it redirects', () => {
-      expect(
-        getTelemetryPageViewPayload('/customize/connectors/families'),
-      ).toEqual({
-        page: 'Customize',
-        view: 'connectors',
-        path: '/customize/connectors/*',
-      });
-    });
 
     it('reports an unknown Customize tab without a view or its text', () => {
       expect(getTelemetryPageViewPayload('/customize/acme')).toEqual({
@@ -432,7 +421,8 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Connector', view: 'redirect' },
       '/customize/connectors/:installation/:server/*',
     ],
-    // An installation named like a sub-tab: two segments name a connector.
+    // An installation named like a retired sub-tab: two segments name a
+    // connector.
     [
       '/customize/connectors/infrastructure/x',
       { page: 'Connector', view: 'tools' },
@@ -672,13 +662,8 @@ describe('getTelemetryPageViewPayload', () => {
     ['/create/', { page: 'Software Templates index', path: '/create' }],
     ['/customize/', { page: 'Customize', path: '/customize' }],
     [
-      '/customize/connectors/infrastructure/',
-      {
-        page: 'Customize',
-        view: 'connectors',
-        subview: 'infrastructure',
-        path: '/customize/connectors/infrastructure',
-      },
+      '/customize/connectors/',
+      { page: 'Customize', view: 'connectors', path: '/customize/connectors' },
     ],
     [
       '/customize/agents/acme-prod/team-payments/invoice-helper/tools/',

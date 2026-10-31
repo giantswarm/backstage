@@ -1,5 +1,6 @@
 import { ToolSummary } from '../apis';
 import { MCPServer } from './k8s';
+import { rowTags } from './connectorTags';
 import {
   MUSTER_SERVER_KEY,
   ServerPageRow,
@@ -35,8 +36,9 @@ export interface ServerListRow {
   displayName: string;
   row: ServerPageRow;
   /**
-   * The row's tags: a server's own, every tag of a family's members, none for
-   * muster.
+   * The row's tags (`rowTags`): the one its tool-group label reads as, then
+   * a server's own or every tag of a family's members; muster's is
+   * `agent-platform`.
    */
   tags: string[];
   /** The row's tools; undefined until the catalogue is read. */
@@ -69,22 +71,6 @@ export function serverPageRows(servers: MCPServer[]): ServerPageRow[] {
     ...partitionServers(servers).flatMap(group => group.rows),
     { kind: 'core' },
   ];
-}
-
-/**
- * The tags of a connector's servers: a server's own, every tag of a family's
- * members, in order and without repeats.
- */
-export function serverTags(servers: readonly MCPServer[]): string[] {
-  return [...new Set(servers.flatMap(server => server.getTags()))];
-}
-
-/** The tags of a row: see {@link ServerListRow.tags}. */
-function rowTags(row: ServerPageRow): string[] {
-  if (row.kind === 'server') {
-    return serverTags([row.server]);
-  }
-  return row.kind === 'family' ? serverTags(row.servers) : [];
 }
 
 /**

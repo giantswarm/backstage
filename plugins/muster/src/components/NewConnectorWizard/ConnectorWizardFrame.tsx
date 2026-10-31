@@ -20,8 +20,8 @@ export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
  * Where leaving the shell connector wizard lands. An edit — a run seeded from
  * a registered connector, its Edit — goes back to that connector's page,
  * where it started. A registration goes to the Customize screen's Connectors
- * tab's own list, Your connectors (also where it goes on after "Add
- * connector", so "Done" ends where adding began).
+ * tab's own list (also where it goes on after "Add connector", so "Done"
+ * ends where adding began).
  */
 export function useConnectorWizardCloseHref(): string {
   const connectors = useConnectorsListHref();
@@ -36,8 +36,8 @@ export function useConnectorWizardCloseHref(): string {
   if (editedPage) {
     return editedPage;
   }
-  // A registered connector carries no tool-group label: it is listed on
-  // Your connectors, the Connectors tab's default sub-tab.
+  // A registered connector carries no tool-group label: the list shows it
+  // among the first.
   return connectors;
 }
 

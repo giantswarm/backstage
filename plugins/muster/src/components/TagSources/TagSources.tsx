@@ -6,7 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
-import { serverTags } from '../../lib/serverList';
+import { connectorTags } from '../../lib/connectorTags';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { selectMusterInstallations } from '../MusterInstanceProvider/selectInstallations';
 import { useMusterInstallations } from '../MusterInstanceProvider/useMusterInstallations';
@@ -41,7 +41,7 @@ function ConnectorTags({ onTags }: TagSourceProps) {
       const key = `${server.cluster}/${server.getFamily() ?? server.getName()}`;
       connectors.set(key, [...(connectors.get(key) ?? []), server]);
     }
-    return [...connectors.values()].map(serverTags);
+    return [...connectors.values()].map(connectorTags);
   }, [resources]);
   useReportTags(isLoading && items.length === 0 ? undefined : items, onTags);
   return null;

@@ -11,10 +11,9 @@ import { lab } from './lab';
 
 /**
  * Connectors (the muster plugin) in the agent shell, as the admin uses them:
- * Customize's Connectors tab — the installation's connectors on three
- * sub-tabs (the customer's own, the infrastructure's, a family one row, and the
- * platform's internal servers with muster itself) — its search over connector
- * and tool names, the muster
+ * Customize's Connectors tab — the installation's connectors in one list, the
+ * registered ones first, a family one row, the platform's own tagged by their
+ * tool-group label — its search over connector and tool names, the muster
  * session behind **Connect to muster**, a connector's page with its tabs, a
  * tool's own page where it is tried, and the per-connector **Sign in** the lab's
  * `Auth Required` fixture exists for — an OAuth-protected server whose
@@ -26,8 +25,7 @@ const scope = `?installation=${lab.installation}`;
 const connectorsPath = `/customize/connectors${scope}`;
 /** The lab installation's connector pages: the installation is in the path. */
 const connectorPages = `/customize/connectors/${lab.installation}`;
-const infrastructurePath = `/customize/connectors/infrastructure${scope}`;
-const internalPath = `/customize/connectors/internal${scope}`;
+const infrastructurePath = `/customize/connectors${scope}&tags=infrastructure`;
 
 /**
  * The family the lab's own cluster joins as `lab.mcpKubernetes`, the way every
@@ -52,31 +50,48 @@ async function openTechnicalDetails(page: Page) {
   }).toPass();
 }
 
-test('Customize · Connectors lists the customer’s connectors first, on their own sub-tab', async ({
+test('Customize · Connectors lists every connector, the registered ones first', async ({
   admin,
 }) => {
-  // The old address lands on Customize's Connectors tab, on its default
-  // sub-tab.
+  // The old address lands on Customize's Connectors tab.
   await open(admin, connectorsPath);
   await expect(admin).toHaveURL(/\/customize\/connectors\?/);
   await expect(
     admin.getByRole('main').getByRole('tab', { name: /^Connectors/ }),
   ).toHaveAttribute('aria-selected', 'true');
+  // One list: the sub-tabs are gone.
   await expect(
     admin.getByRole('tab', { name: /^Your connectors/ }),
-  ).toHaveAttribute('aria-selected', 'true');
+  ).toHaveCount(0);
   await connectToMuster(admin, admin.getByRole('grid'));
   await expect(admin.getByRole('grid').getByRole('columnheader')).toHaveText([
     'Connector',
+    'Tags',
     'Sign-in',
     'Tools',
     'Status',
   ]);
-  // The fixture carries no tool-group label: it is the customer's.
-  await expect(connectorRow(admin, SHOWN.fixture)).toBeVisible();
-  for (const name of [SHOWN.agentManager, SHOWN.kubernetes, SHOWN.muster]) {
-    await expect(connectorRow(admin, name)).toHaveCount(0);
+  for (const name of [
+    SHOWN.fixture,
+    SHOWN.agentManager,
+    SHOWN.kubernetes,
+    SHOWN.muster,
+  ]) {
+    await expect(connectorRow(admin, name)).toBeVisible();
   }
+  // The fixture carries no tool-group label: registered, so listed before
+  // the platform's own.
+  const names = await admin.getByRole('rowheader').allInnerTexts();
+  const at = (name: string) => names.findIndex(text => text.includes(name));
+  expect(at(SHOWN.fixture)).toBeLessThan(at(SHOWN.kubernetes));
+  expect(at(SHOWN.fixture)).toBeLessThan(at(SHOWN.agentManager));
+  // The platform's own carry the tag their label reads as.
+  await expect(connectorRow(admin, SHOWN.kubernetes)).toContainText(
+    'infrastructure',
+  );
+  await expect(connectorRow(admin, SHOWN.muster)).toContainText(
+    'agent-platform',
+  );
   // The fixture asks each person to sign in, right from its row.
   const fixture = connectorRow(admin, SHOWN.fixture);
   await expect(fixture).toContainText('Your own account');
@@ -86,7 +101,7 @@ test('Customize · Connectors lists the customer’s connectors first, on their 
   ).toHaveAttribute('href', '/customize/connectors/new');
 });
 
-test('Infrastructure lists the infrastructure servers, Internal the platform’s servers and muster', async ({
+test('the infrastructure and agent-platform tags list the platform’s own connectors', async ({
   admin,
 }) => {
   await open(admin, infrastructurePath);
@@ -101,26 +116,31 @@ test('Infrastructure lists the infrastructure servers, Internal the platform’s
   await expect(connectorRow(admin, SHOWN.kubernetes)).toBeVisible();
   await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
 
-  await admin.getByRole('tab', { name: /^Internal/ }).click();
-  await expect(admin).toHaveURL(
-    new RegExp(`/customize/connectors/internal\\${scope}$`),
-  );
+  await open(admin, `/customize/connectors${scope}&tags=agent-platform`);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await expect(connectorRow(admin, SHOWN.agentManager)).toBeVisible();
   const muster = connectorRow(admin, SHOWN.muster);
   await expect(muster).toBeVisible();
+  await expect(connectorRow(admin, SHOWN.kubernetes)).toHaveCount(0);
   // Its endpoint is on its page, not its row.
   await expect(
     muster.getByRole('button', { name: 'Copy endpoint' }),
   ).toHaveCount(0);
 });
 
-test('the old Families address lands on Infrastructure, query kept', async ({
+test('the retired sub-tab addresses land on the list filtered by their tag, query kept', async ({
   admin,
 }) => {
-  await open(admin, `/customize/connectors/families${scope}`);
-  await expect(admin).toHaveURL(
-    new RegExp(`/customize/connectors/infrastructure\\${scope}$`),
-  );
+  for (const [path, tag] of [
+    ['infrastructure', 'infrastructure'],
+    ['families', 'infrastructure'],
+    ['internal', 'agent-platform'],
+  ]) {
+    await open(admin, `/customize/connectors/${path}${scope}`);
+    await expect(admin).toHaveURL(
+      new RegExp(`/customize/connectors\\${scope}&tags=${tag}$`),
+    );
+  }
 });
 
 test('the tab’s old mcp-servers address redirects in one hop, its installation moved into the path', async ({
@@ -143,15 +163,6 @@ test('searching a tool name narrows the table to the connectors offering it', as
   await admin
     .getByRole('searchbox', { name: 'Search connectors and tools' })
     .fill('cluster_health');
-
-  // Not one of the customer's own: the search says where it is.
-  await expect(
-    admin.getByText('The search matches 1 connector on Infrastructure.'),
-  ).toBeVisible({ timeout: 60_000 });
-  await admin
-    .getByRole('link', { name: 'Infrastructure', exact: true })
-    .click();
-  await expect(admin).toHaveURL(/\/customize\/connectors\/infrastructure\?/);
 
   const kubernetes = connectorRow(admin, SHOWN.kubernetes);
   await expect(kubernetes, 'kubernetes offers cluster_health').toBeVisible({
@@ -272,7 +283,11 @@ test("a family's row opens its connector page, with the family's tabs", async ({
       .getByRole('navigation', { name: 'Breadcrumb' })
       // Exact: the back arrow's "Back to Connectors" also contains the name.
       .getByRole('link', { name: 'Connectors', exact: true }),
-  ).toHaveAttribute('href', '/customize/connectors/infrastructure');
+  ).toHaveAttribute('href', '/customize/connectors');
+  // An infrastructure family says how its instances work.
+  await expect(
+    admin.getByText(/It has an instance per management cluster/),
+  ).toBeVisible();
   // Tools is the connector page's index: a connector opens on its tools.
   await expect(admin.getByRole('tab', { name: /^Tools/ })).toHaveAttribute(
     'aria-selected',
@@ -388,10 +403,12 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   admin,
 }) => {
   test.setTimeout(120_000);
-  await open(admin, internalPath);
+  await open(admin, `/customize/connectors${scope}&tags=agent-platform`);
   await connectToMuster(admin, admin.getByRole('grid'));
   await connectorRow(admin, SHOWN.muster).getByRole('rowheader').click();
   await expect(admin).toHaveURL(new RegExp(`${connectorPages}/muster$`));
+  // muster's page says it is fixed.
+  await expect(admin.getByText(/cannot be changed here/)).toBeVisible();
   // Its endpoint sits above the tabs, with its copy button.
   await expect(admin.getByText(/^Endpoint https?:\/\//)).toBeVisible();
   await expect(

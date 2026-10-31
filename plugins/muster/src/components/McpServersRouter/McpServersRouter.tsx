@@ -77,7 +77,7 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
 
 /**
  * Routing within the Customize screen's Connectors tab (`/customize/connectors`,
- * whose bare path and sub-tabs are the Customize screen's own): a page per
+ * whose bare path is the Customize screen's own): a page per
  * connector at `<installation>/<server>` (and per tool beneath it), the
  * registration wizard at `new[/auth|/verify]` and a connector's edit, the same
  * wizard prefilled, at `<installation>/<server>/edit[/auth|/verify]`. The
