@@ -185,7 +185,6 @@ function SessionsIndexPageContent() {
                 rows={rows}
                 sessionStates={sessionStates}
                 hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
-                alwaysFilterable
               />
             </Flex>
           </>

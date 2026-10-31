@@ -37,7 +37,7 @@ import {
   INITIAL_ROWS,
   MoreActionsMenu,
   PageSection,
-  SEARCH_MIN,
+  isSearchableList,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
@@ -776,7 +776,7 @@ function RepositoriesTab({
             : []),
         ].join(' ')}
       </Text>
-      {(mirrors.length > SEARCH_MIN || search) && (
+      {isSearchableList(mirrors.length, search !== '') && (
         <SearchField
           aria-label="Search repositories"
           placeholder="Search repositories"
@@ -943,7 +943,7 @@ function SessionsTab({
         14 days after its session's last turn, unless the environment sets
         another time; a new turn moves the date.
       </Text>
-      {(directories.length > SEARCH_MIN || search) && (
+      {isSearchableList(directories.length, search !== '') && (
         <SearchField
           aria-label="Search sessions"
           placeholder="Search sessions"

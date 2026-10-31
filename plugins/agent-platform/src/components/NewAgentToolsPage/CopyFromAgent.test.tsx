@@ -85,14 +85,23 @@ const renderCopy = () =>
 const sourceCards = () => screen.getAllByRole('radio');
 
 describe('CopyFromAgent', () => {
-  it('offers three agents with no search and no reveal control', async () => {
-    fleet(3);
+  it('offers two agents with no search and no reveal control', async () => {
+    fleet(2);
     await renderCopy();
 
-    expect(sourceCards()).toHaveLength(3);
+    expect(sourceCards()).toHaveLength(2);
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
     expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('offers a search from three agents on (SEARCH_MIN)', async () => {
+    fleet(3);
+    await renderCopy();
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+    ).toBeVisible();
   });
 
   it('offers 12 of 300 agents, a page more per click, and a search', async () => {

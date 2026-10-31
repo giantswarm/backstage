@@ -15,7 +15,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   LoadingIndicator,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -357,7 +357,7 @@ function NewAgentSkillsPageContent() {
   // catalogue long enough to need it; should it shrink back under the
   // threshold, the query goes with the field, so nothing stays filtered by
   // text the author can no longer see or clear.
-  const isSearchable = skills.length > SEARCH_MIN;
+  const isSearchable = isSearchableList(skills.length);
   const trimmed = isSearchable ? query.trim() : '';
   useEffect(() => {
     if (!isSearchable) {

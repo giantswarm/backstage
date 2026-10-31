@@ -26,16 +26,12 @@ export type SessionsTableProps = {
   hideColumns?: ReadonlyArray<HideableSessionColumn>;
   /** Replaces the default "No sessions found." message. */
   emptyMessage?: string;
-  /**
-   * Search and filters however few the sessions, as the Customize tabs draw
-   * theirs: the Sessions overview. Otherwise they show past `SEARCH_MIN`.
-   */
-  alwaysFilterable?: boolean;
 };
 
 /**
  * The sessions list: rows grouped by the day they started, the shell's state
- * words and a row menu, with search and filters (see `ShellSessionsTable`).
+ * words and a row menu, with search and filters from `SEARCH_MIN` sessions on (see
+ * `ShellSessionsTable`).
  *
  * The page owns the loading indicator for incremental fleet loading and the
  * per-installation notices; this renders rows, the search field, and the empty

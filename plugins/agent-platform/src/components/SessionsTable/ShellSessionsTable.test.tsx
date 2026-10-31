@@ -159,14 +159,12 @@ async function renderShell(
   sessionStates: FleetSessionStatesView = states,
   storage: StorageApi = mockApis.storage(),
   path = '/sessions',
-  alwaysFilterable = false,
 ) {
   return renderInTestApp(
     <SessionsTable
       rows={sessionRows}
       sessionStates={sessionStates}
       searchDebounceMs={0}
-      alwaysFilterable={alwaysFilterable}
     />,
     {
       apis: [[storageApiRef, storage]],
@@ -762,7 +760,7 @@ describe('SessionsTable in the shell layout', () => {
     }, 20_000);
   });
 
-  describe('at 3 sessions and at 300 (T39)', () => {
+  describe('at 2, 3 and 300 sessions (T39)', () => {
     const fleetOf = (count: number, agents = 3) =>
       Array.from({ length: count }, (_, index) =>
         session(
@@ -773,10 +771,10 @@ describe('SessionsTable in the shell layout', () => {
         ),
       );
 
-    it('lists three sessions bare: no search, no filters, no paging', async () => {
-      await renderShell(rows.slice(0, 3));
+    it('lists two sessions bare: no search, no filters, no paging', async () => {
+      await renderShell(rows.slice(0, 2));
 
-      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(screen.getAllByRole('rowheader')).toHaveLength(2);
       expect(
         screen.queryByRole('searchbox', { name: 'Search sessions' }),
       ).not.toBeInTheDocument();
@@ -789,13 +787,12 @@ describe('SessionsTable in the shell layout', () => {
       expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
     });
 
-    it('lists three sessions with search and filters on the overview', async () => {
+    it('lists three sessions with search and filters (SEARCH_MIN)', async () => {
       await renderShell(
         rows.slice(0, 3),
         states,
         mockApis.storage(),
         '/sessions',
-        true,
       );
 
       expect(
@@ -819,7 +816,6 @@ describe('SessionsTable in the shell layout', () => {
         states,
         mockApis.storage(),
         '/sessions',
-        true,
       );
 
       expect(await optionsOf('organization')).toEqual(['acme 2', 'None 1']);
@@ -830,7 +826,7 @@ describe('SessionsTable in the shell layout', () => {
     });
 
     it('draws no Organization dropdown for one organization', async () => {
-      await renderShell(rows, states, mockApis.storage(), '/sessions', true);
+      await renderShell(rows);
 
       expect(dropdown('agent')).toBeInTheDocument();
       expect(queryDropdown('organization')).not.toBeInTheDocument();

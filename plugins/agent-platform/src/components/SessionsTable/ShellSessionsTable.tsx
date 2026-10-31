@@ -93,7 +93,7 @@ import {
 import type { SessionsTableProps } from './SessionsTable';
 import { sessionStackedRow } from './stackedRows';
 import { sessionStateDotVar } from '../../lib/stableClassNames';
-import { SEARCH_MIN } from '../../lib/toolset';
+import { isSearchableList } from '@giantswarm/backstage-plugin-ui-react';
 
 /** No picks: every facet keeps everything. */
 const NO_SELECTION: CatalogFilterSelection = {};
@@ -720,7 +720,6 @@ export function ShellSessionsTable({
   searchDebounceMs = 150,
   hideColumns,
   emptyMessage = 'No sessions found.',
-  alwaysFilterable = false,
 }: SessionsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
   const navigate = useNavigate();
@@ -858,15 +857,12 @@ export function ShellSessionsTable({
     [matching, start, range.end],
   );
 
-  // The Sessions overview always has them, as the Customize tabs do.
-  // Embedded, only once there is something to narrow down (T39): three
-  // sessions are read, not searched. Kept while a search or filter is in
+  // Search and filters from SEARCH_MIN sessions on, and while either is in
   // force, so whatever narrowed the list can still be undone.
-  const showFilterBar =
-    alwaysFilterable ||
-    stateRows.length > SEARCH_MIN ||
-    search.value !== '' ||
-    filtered;
+  const showFilterBar = isSearchableList(
+    stateRows.length,
+    search.value !== '' || filtered,
+  );
 
   const groups = useMemo((): Array<{
     id: SessionListGroup;

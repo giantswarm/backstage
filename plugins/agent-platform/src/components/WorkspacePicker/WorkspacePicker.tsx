@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Select, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  SEARCH_MIN,
+  isSearchableList,
   matchesQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -157,7 +157,7 @@ export function WorkspacePicker({
     return null;
   }
 
-  const isSearchable = workspaces.length + 1 > SEARCH_MIN;
+  const isSearchable = isSearchableList(workspaces.length);
 
   return (
     <>

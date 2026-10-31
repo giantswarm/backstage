@@ -367,13 +367,13 @@ describe('NewAgentSkillsPage', () => {
         commit: HEAD,
       }));
 
-    it('shows three skills of one repository as a plain grid', async () => {
-      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+    it('shows two skills of one repository as a plain grid', async () => {
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 2, 'Alpha') });
       await renderStep();
 
       expect(
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
-      ).toHaveLength(3);
+      ).toHaveLength(2);
       // No search, no count, no accordion around the only repository, and
       // no paging chrome.
       expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
@@ -508,9 +508,9 @@ describe('NewAgentSkillsPage', () => {
         ).toHaveLength(3);
       });
 
-      it('filters three skills by usage, without a search, and clears', async () => {
+      it('filters two skills by usage, without a search, and clears', async () => {
         const user = userEvent.setup();
-        const skills = skillsIn(REPO_A, 3, 'Alpha');
+        const skills = skillsIn(REPO_A, 2, 'Alpha');
         Object.assign(mockCatalog, { skills });
         Object.assign(mockAgents, {
           rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
@@ -520,21 +520,21 @@ describe('NewAgentSkillsPage', () => {
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
         expect(await filterOptions('usage')).toEqual([
           'Used by agents 1',
-          'Not used 2',
+          'Not used 1',
         ]);
         // One repository: a Source dropdown of one option.
         expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 3',
+          'giantswarm/agent-skills 2',
         ]);
         expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
 
         await user.click(
           screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
         );
-        await pickFilter('usage', 'Not used 2');
+        await pickFilter('usage', 'Not used 1');
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
-        ).toHaveLength(2);
+        ).toHaveLength(1);
         // The pick is out of sight now, so the step says it is still there.
         expect(screen.getByText('1 selected')).toBeInTheDocument();
         expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
@@ -547,7 +547,7 @@ describe('NewAgentSkillsPage', () => {
         );
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
-        ).toHaveLength(3);
+        ).toHaveLength(2);
         expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
       });
 
