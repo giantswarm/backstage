@@ -507,9 +507,9 @@ describe('NewAgentSkillsPage', () => {
         ).toHaveLength(3);
       });
 
-      it('filters two skills by usage, without a search, and clears', async () => {
+      it('filters three skills by usage, and clears', async () => {
         const user = userEvent.setup();
-        const skills = skillsIn(REPO_A, 2, 'Alpha');
+        const skills = skillsIn(REPO_A, 3, 'Alpha');
         Object.assign(mockCatalog, { skills });
         Object.assign(mockAgents, {
           rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
@@ -519,21 +519,20 @@ describe('NewAgentSkillsPage', () => {
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
         expect(await filterOptions('usage')).toEqual([
           'Used by agents 1',
-          'Not used 1',
+          'Not used 2',
         ]);
         // One repository: no Source dropdown.
         expect(
           screen.queryByRole('button', { name: /Filter by source/ }),
         ).not.toBeInTheDocument();
-        expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
 
         await user.click(
           screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
         );
-        await pickFilter('usage', 'Not used 1');
+        await pickFilter('usage', 'Not used 2');
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
-        ).toHaveLength(1);
+        ).toHaveLength(2);
         // The pick is out of sight now, so the step says it is still there.
         expect(screen.getByText('1 selected')).toBeInTheDocument();
         expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
@@ -546,17 +545,38 @@ describe('NewAgentSkillsPage', () => {
         );
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
-        ).toHaveLength(2);
+        ).toHaveLength(3);
         expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
+      });
+
+      it('offers no filters over two skills', async () => {
+        const skills = skillsIn(REPO_A, 2, 'Alpha');
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
+        });
+        await renderStep();
+
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
       });
 
       it('holds the Usage dropdown back while the agents load', async () => {
         Object.assign(mockAgents, { isLoading: true });
+        Object.assign(mockCatalog, {
+          skills: [
+            ...skillsIn(REPO_A, 2, 'Alpha'),
+            ...skillsIn(REPO_B, 1, 'Beta'),
+          ],
+        });
         await renderStep();
 
-        await screen.findByRole('checkbox', { name: 'Skill PR review' });
+        await screen.findByRole('checkbox', { name: 'Skill Beta 001' });
         expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 1',
+          'giantswarm/agent-skills 2',
           'giantswarm/claude-code 1',
         ]);
         expect(

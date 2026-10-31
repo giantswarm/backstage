@@ -157,7 +157,8 @@ export function WorkspacePicker({
     return null;
   }
 
-  const isSearchable = isSearchableList(workspaces.length);
+  // A dropdown: type-ahead by its options, "No workspace" among them.
+  const isSearchable = isSearchableList(workspaces.length + 1);
 
   return (
     <>

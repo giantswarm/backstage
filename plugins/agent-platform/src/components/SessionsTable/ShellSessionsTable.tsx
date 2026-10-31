@@ -632,9 +632,9 @@ function DayList({
 
 /**
  * The list's search and filters: the standard search field, and under it the
- * shared catalog dropdowns (T92) — State, Organization (from two on), Agent
- * and, once something is pinned, Pinned — exactly as the Customize tabs draw
- * them.
+ * shared catalog dropdowns (T92) — State, Organization, Agent and Pinned —
+ * exactly as the Customize tabs draw them: each only where picking from it
+ * can narrow the list (`catalogFilterDimensions`).
  */
 function ShellFilterBar({
   searchField,

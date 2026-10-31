@@ -12,7 +12,7 @@ import {
   MAX_RENDERED_SESSIONS,
   SESSIONS_PAGE_SIZE,
 } from './ShellSessionsTable';
-import { SEARCH_MIN } from '../../lib/toolset';
+import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -489,7 +489,7 @@ describe('SessionsTable in the shell layout', () => {
   it('opens on the state a link asks for, even under SEARCH_MIN', async () => {
     // The needs-input toast's "Show waiting sessions" (T39).
     await renderShell(
-      rows,
+      rows.slice(0, 2),
       states,
       mockApis.storage(),
       '/sessions?state=waiting',

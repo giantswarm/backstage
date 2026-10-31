@@ -273,10 +273,11 @@ export function ConnectorToolsTab({
     );
   }
 
-  // A tool or two is read at a glance; kept while a search is in force.
+  // A tool or two is read at a glance; kept while a search or filter is in
+  // force (the URL's or a saved view's too), so it can be undone.
   const searchable = isSearchableList(
     all.length,
-    openedSearched || query.trim() !== '',
+    openedSearched || query.trim() !== '' || filters.isFiltered,
   );
 
   return (

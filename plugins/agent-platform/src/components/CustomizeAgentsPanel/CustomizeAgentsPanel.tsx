@@ -255,11 +255,13 @@ export type CustomizeAgentsPanelProps = {
  * one — a second control for the same thing would be two answers to one
  * question.
  *
- * The bar draws a facet only when it can narrow the list (one organization,
- * model or Harness for every agent is no choice: `catalogFilterDimensions`).
+ * The bar draws a facet only when it can narrow the list (one organization
+ * or model for every agent is no choice: `catalogFilterDimensions`).
  *
- * @param harnesses the fleet's Harnesses ({@link agentHarnesses}), for the
- *   Harness options' labels.
+ * @param harnesses the fleet's Harnesses ({@link agentHarnesses}). The
+ *   Harness facet exists only from two on: main's `singleHarness` rule
+ *   (#2858) hides the Harness fact and its filter together, and an agent
+ *   without a Harness is one not read yet, not a second choice.
  * @param isMine whether the person created the row's agent: the "Created by"
  *   facet, which the bar shows only when some row is theirs.
  */
@@ -271,12 +273,17 @@ export function agentFacets(
   return [
     { id: 'tenant', label: 'Organization', value: row => row.tenant },
     { id: 'model', label: 'Model', value: row => row.model || undefined },
-    {
-      id: 'harness',
-      label: 'Harness',
-      value: row => row.harness,
-      optionLabel: name => harnessLabel(name, harnesses.get(name)),
-    },
+    ...(harnesses.size > 1
+      ? [
+          {
+            id: 'harness',
+            label: 'Harness',
+            value: (row: AgentRow) => row.harness,
+            optionLabel: (name: string) =>
+              harnessLabel(name, harnesses.get(name)),
+          },
+        ]
+      : []),
     ...(isMine
       ? [
           {
@@ -636,9 +643,8 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     [isFavorite, harnesses, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
-  // A Harness pick would keep its dropdown, of one option, when the fleet
-  // settles on one Harness, and filter nothing while counting as a filter in
-  // force: it is dropped instead.
+  // A Harness pick outlives its dropdown when the fleet settles on one
+  // Harness; it would filter nothing yet still count as a filter in force.
   const { selection, select } = filters;
   const harnessPicked = (selection.harness?.length ?? 0) > 0;
   useEffect(() => {

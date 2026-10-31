@@ -1447,6 +1447,27 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
     });
 
+    it('shows neither the Harness nor its filter while one Harness is all some agents report', async () => {
+      mockAgents = {
+        rows: [
+          { ...triage, ...onHarness('claude-code', 'Claude Code') },
+          { ...notes, ...onHarness('claude-code', 'Claude Code') },
+          // No Harness read for this one: not a second Harness to choose.
+          row({ name: 'Coder', technicalName: 'coder' }),
+        ],
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      expect(listed()).toHaveLength(3);
+      expect(
+        screen.queryByRole('button', { name: /Filter by harness/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    });
+
     it('shows the Harness of each agent and filters three agents by it', async () => {
       mockAgents = {
         rows: [

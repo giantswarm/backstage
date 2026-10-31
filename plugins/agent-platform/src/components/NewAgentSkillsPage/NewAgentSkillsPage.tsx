@@ -399,7 +399,10 @@ function NewAgentSkillsPageContent() {
     searched: visibleSkills,
     usage: agentsLoading ? undefined : usage,
   });
-  const hasFilters = filters.dimensions.length > 0;
+  // Under the same rule as the search, and kept while a pick is in force.
+  const hasFilters =
+    filters.dimensions.length > 0 &&
+    isSearchableList(skills.length, filters.isFiltered);
 
   // Search and filters narrow within the grouping rather than replacing it
   // with a flat list: the repo/subfolder a match came from is part of what
