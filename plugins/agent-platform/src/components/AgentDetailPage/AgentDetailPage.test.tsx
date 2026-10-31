@@ -28,6 +28,7 @@ import {
   formatLocalDateFull,
   getRelativeDate,
 } from '@giantswarm/backstage-plugin-ui-react';
+import type { ServerInfo } from '../../lib/toolset';
 import { AgentDetailPage } from './AgentDetailPage';
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
@@ -287,6 +288,21 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
 // `lib/toolsetReach` covers the words.
 jest.mock('../../hooks/useReachCatalogue', () => ({
   useReachCatalogue: () => undefined,
+}));
+// The installation's connectors, as `serverInfoOf` reads them.
+const mockMusterServers: { servers: ServerInfo[] } = { servers: [] };
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => {
+    const { connectorLabels: labelsOf } =
+      jest.requireActual('../../lib/toolset');
+    return {
+      servers: mockMusterServers.servers,
+      resources: [],
+      labels: labelsOf(mockMusterServers.servers),
+      isLoading: false,
+      isUnavailable: false,
+    };
+  },
 }));
 const READ_ONLY_TOOLSET = {
   declared: {
@@ -2619,6 +2635,38 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(screen.queryByText('System prompt')).toBeNull();
     });
 
+    it('shows the connectors it names as logos, by their display names', async () => {
+      mockMusterServers.servers = [
+        {
+          name: 'github',
+          displayName: 'GitHub',
+          group: 'registered',
+          toolNamePrefix: 'x_github',
+          oauth: false,
+          url: 'https://api.githubcopilot.com/mcp/',
+        },
+      ];
+      mockUseAgentToolset.mockReturnValue({
+        ...READ_ONLY_TOOLSET,
+        declared: {
+          ...READ_ONLY_TOOLSET.declared,
+          selectors: ['server:github'],
+        },
+      });
+      stubResources({ resource: makeAgent() });
+
+      try {
+        await renderShell();
+
+        expect(screen.getByText('Can use GitHub.')).toBeInTheDocument();
+        const logos = screen.getByRole('list', { name: 'Connectors' });
+        expect(
+          within(logos).getByRole('img', { name: 'GitHub' }),
+        ).toBeInTheDocument();
+      } finally {
+        mockMusterServers.servers = [];
+      }
+    });
     it('shows each skill as a readable card that opens its page', async () => {
       mockSkillCatalog.skills = [
         {

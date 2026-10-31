@@ -65,6 +65,17 @@ export {
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
 export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
+export {
+  CONNECTOR_BRANDS,
+  connectorBrandOf,
+  connectorIconOf,
+  resolveConnectorLogo,
+} from './lib/connectorLogo';
+export type {
+  ConnectorBrand,
+  ConnectorLogoResolution,
+  ConnectorLogoSource,
+} from './lib/connectorLogo';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
@@ -120,6 +131,8 @@ export {
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
 export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export { ConnectorLogo } from './components/ConnectorLogo';
+export type { ConnectorLogoProps } from './components/ConnectorLogo';
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';

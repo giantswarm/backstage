@@ -17,6 +17,8 @@ export type AgentToolset = {
   isReading: boolean;
   /** The read answered with a failure (no permission, no such kind, unreachable). */
   isUnreadable: boolean;
+  /** The agent namespace's `RemoteMCPServer`s, once read: what it binds directly. */
+  servers?: RemoteMCPServer[];
 };
 
 /**
@@ -93,6 +95,7 @@ export function useAgentToolset(
         ),
         isReading: !settled,
         isUnreadable: settled && failed,
+        servers: settled ? resources : [],
       },
     [agent, settled, failed, resources],
   );

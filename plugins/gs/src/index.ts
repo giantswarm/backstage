@@ -163,3 +163,9 @@ export type {
   MimirQueryResponse,
   MimirRangeQueryResponse,
 } from './apis/mimir/types';
+// Brand marks the muster plugin's connector logos reuse.
+export {
+  AWSProviderIcon,
+  GrafanaIcon,
+  KubernetesIcon,
+} from './assets/icons/CustomIcons';

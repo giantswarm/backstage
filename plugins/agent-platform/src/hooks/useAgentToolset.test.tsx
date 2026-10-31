@@ -96,7 +96,7 @@ describe('useAgentToolset', () => {
       { gazelle: { namespace: 'kagent' } },
       { enableDiscovery: false, enabled: true },
     );
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       declared: {
         state: 'declared',
         selectors: ['preset:read-only'],
@@ -105,6 +105,7 @@ describe('useAgentToolset', () => {
       isReading: false,
       isUnreadable: false,
     });
+    expect(result.current?.servers).toHaveLength(1);
   });
 
   // Never a premature "implicit full access": until the servers have answered
@@ -114,7 +115,7 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: true,
       isUnreadable: false,
@@ -159,7 +160,7 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: true,
@@ -222,7 +223,7 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
@@ -237,7 +238,7 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       declared: { state: 'implicit-full', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
