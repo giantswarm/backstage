@@ -493,16 +493,15 @@ describe('NewAgentSkillsPage', () => {
     });
 
     describe('filters, as on Customize → Skills (T49, T64)', () => {
-      it('offers Source and Usage dropdowns over three unused skills of one repository', async () => {
+      it('offers no filters over three unused skills of one repository', async () => {
         Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
         await renderStep();
 
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
-        // Always there, one option each (T64).
-        expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 3',
-        ]);
-        expect(await filterOptions('usage')).toEqual(['Not used 3']);
+        // One source and one usage for all: nothing to choose.
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
         ).toHaveLength(3);
@@ -522,10 +521,10 @@ describe('NewAgentSkillsPage', () => {
           'Used by agents 1',
           'Not used 1',
         ]);
-        // One repository: a Source dropdown of one option.
-        expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 2',
-        ]);
+        // One repository: no Source dropdown.
+        expect(
+          screen.queryByRole('button', { name: /Filter by source/ }),
+        ).not.toBeInTheDocument();
         expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
 
         await user.click(

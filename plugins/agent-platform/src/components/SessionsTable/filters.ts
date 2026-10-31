@@ -230,7 +230,7 @@ export function sessionOrganization(row: SessionTableRow): string | undefined {
  * `CatalogFilterBar`, the idiom every Customize tab uses — over four facets.
  * State, Organization and Agent are multi-selects (picks within one widen,
  * facets narrow each other); Pinned is a dropdown of one option, drawn only
- * once something is pinned, like the Agents tab's Favorites. Each option
+ * once something (not everything) is pinned, like the Agents tab's Favorites. Each option
  * counts what picking it would show under the search and the other picks.
  */
 export const SESSION_STATE_FACET = 'state';
@@ -280,9 +280,9 @@ const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
 
 /**
  * The facets to draw: the agent options named as {@link sessionAgentOptions}
- * names them (none on one agent's own sessions), State only where the list
- * has states at all, and Organization only from two organizations on, as on
- * the Agents tab.
+ * names them (none on one agent's own sessions), and State only where the
+ * list has states at all. The bar leaves out any that cannot narrow the list,
+ * one organization for every session among them (`catalogFilterDimensions`).
  */
 export function sessionFacets(
   rows: SessionTableRow[],
@@ -294,13 +294,10 @@ export function sessionFacets(
   const agentLabels = new Map(
     sessionAgentOptions(rows).map(option => [option.id, option.label]),
   );
-  const organizations = new Set(rows.map(sessionOrganization));
-  organizations.delete(undefined);
   return SESSION_FACETS.filter(
     facet =>
       (showStates || facet.id !== SESSION_STATE_FACET) &&
-      (showAgents || facet.id !== SESSION_AGENT_FACET) &&
-      (organizations.size > 1 || facet.id !== SESSION_ORGANIZATION_FACET),
+      (showAgents || facet.id !== SESSION_AGENT_FACET),
   ).map(facet =>
     facet.id === SESSION_AGENT_FACET
       ? { ...facet, optionLabel: value => agentLabels.get(value) ?? value }

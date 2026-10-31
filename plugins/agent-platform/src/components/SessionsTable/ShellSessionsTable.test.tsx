@@ -832,13 +832,13 @@ describe('SessionsTable in the shell layout', () => {
       expect(queryDropdown('organization')).not.toBeInTheDocument();
     });
 
-    it('draws one agent’s sessions as an Agent dropdown of one option (T64)', async () => {
+    it('draws no Agent dropdown over one agent’s sessions', async () => {
       await renderShell(fleetOf(SEARCH_MIN + 1, 1));
 
       expect(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
       ).toBeInTheDocument();
-      expect(await optionsOf('agent')).toEqual([`Agent 0 ${SEARCH_MIN + 1}`]);
+      expect(queryDropdown('agent')).not.toBeInTheDocument();
     });
 
     it('keeps 300 sessions to a bounded window, with search and a way back', async () => {

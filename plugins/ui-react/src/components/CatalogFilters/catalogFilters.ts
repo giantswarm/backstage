@@ -131,11 +131,11 @@ function sortOptions<T>(
 /**
  * The facets to draw, with their options and counts.
  *
- * Every facet some item has a value on is drawn, even when that is one value
- * for the whole catalog — a dropdown of one option still says where the
- * skills come from, and a facet that came and went with the catalog's shape
- * was missed (T64). A facet no item has a value on (no favorites yet) has
- * nothing to offer and is left out, unless a pick on it is still standing.
+ * A facet is drawn only when picking from it can narrow the catalog: two or
+ * more values, or one value that some items lack (Favorites: "Starred").
+ * One value every item shares (one repository, one organization) or no value
+ * at all (no favorites yet) is a dropdown with nothing to choose, and is left
+ * out — unless a pick on it is still standing, so it can be undone.
  * Its options are the catalog's values (not the search's, so options do not
  * come and go while typing); each count is over the search and the other
  * facets' picks.
@@ -156,7 +156,11 @@ export function catalogFilterDimensions<T>(
     // A picked value the catalog no longer holds stays offered, at zero, so
     // the pick that empties the list can be undone.
     const ids = new Set([...catalogCounts.keys(), ...picked]);
-    if (ids.size === 0) {
+    const [only] = ids;
+    const canNarrow =
+      ids.size > 1 ||
+      (ids.size === 1 && (catalogCounts.get(only) ?? 0) < items.length);
+    if (!canNarrow && picked.length === 0) {
       continue;
     }
     const narrowed = searched.filter(item =>

@@ -369,7 +369,9 @@ describe('CustomizeModelsPanel at phone width (T22 C7)', () => {
   });
 
   it('windows 300 models and keeps the provider filter', async () => {
-    mockModelRows = manyModels(300);
+    mockModelRows = manyModels(300).map((each, i) =>
+      i % 2 ? { ...each, provider: 'Ollama' } : each,
+    );
     await renderPanel();
 
     expect(headers()).toEqual(['Model', 'Status']);
@@ -418,13 +420,17 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
     mockServingInstallations = [];
   });
 
-  it('offers a one-option provider dropdown over three models of one provider', async () => {
+  it('offers no provider dropdown over three models of one provider', async () => {
     mockModelRows = [0, 1, 2].map(index => model(index, 'Anthropic'));
     await renderPanel();
 
     expect(bodyRows()).toHaveLength(3);
-    expect(providerDropdown()).toHaveTextContent('ProviderAll');
-    expect(await providerOptions()).toEqual(['Anthropic 3']);
+    expect(
+      screen.queryByRole('button', {
+        name: /Filter by provider/,
+        hidden: true,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters three models by provider, together with the search', async () => {

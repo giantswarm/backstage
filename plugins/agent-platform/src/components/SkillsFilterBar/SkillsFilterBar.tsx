@@ -72,8 +72,8 @@ export type SkillsFilterBarProps = {
 
 /**
  * The skill catalog's filters: a Source dropdown and, once the agents are
- * read, a Usage dropdown — each a multi-select, always shown (one repository
- * is a Source dropdown of one option, T64), with "Clear filters" while
+ * read, a Usage dropdown — each a multi-select, drawn only when it can narrow
+ * the list (one repository is no choice), with "Clear filters" while
  * anything is picked.
  */
 export function SkillsFilterBar({ filters }: SkillsFilterBarProps) {

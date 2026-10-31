@@ -67,7 +67,7 @@ const shown = () =>
     .map(item => item.textContent);
 
 describe('CatalogFilterBar', () => {
-  it('shows a facet of one value as a dropdown of one option', async () => {
+  it('draws nothing when no facet has two options to choose from', () => {
     render(
       <Catalog
         items={[
@@ -77,10 +77,8 @@ describe('CatalogFilterBar', () => {
         ]}
       />,
     );
-    // No item has a tier: nothing to offer, no dropdown.
-    expect(screen.queryByRole('button', { name: /Filter by tier/ })).toBeNull();
-    expect(dropdown('provider')).toHaveTextContent('ProviderAll');
-    expect(await openOptions('provider')).toEqual(['OpenAI 3']);
+    // One provider for all, and no item has a tier: nothing to choose.
+    expect(screen.queryByRole('group', { name: 'Filters' })).toBeNull();
     expect(shown()).toEqual(['a', 'b', 'c']);
   });
 
@@ -179,7 +177,13 @@ describe('CatalogFilterBar', () => {
         () => [{ id: 'provider', label: 'Provider', value: i => i.provider }],
         [],
       );
-      const items = useMemo(() => [{ name: 'a', provider: 'OpenAI' }], []);
+      const items = useMemo(
+        () => [
+          { name: 'a', provider: 'OpenAI' },
+          { name: 'b', provider: 'Anthropic' },
+        ],
+        [],
+      );
       // Searched to nothing: a pick can still be made, and undone.
       const filters = useCatalogFilters({ items, searched: [], facets });
       return (
@@ -198,7 +202,7 @@ describe('CatalogFilterBar', () => {
       );
     }
     render(<Emptied />);
-    expect(await openOptions('provider')).toEqual(['OpenAI 0']);
+    expect(await openOptions('provider')).toEqual(['Anthropic 0', 'OpenAI 0']);
     await pick('OpenAI 0');
     await userEvent.keyboard('{Escape}');
     await userEvent.click(
