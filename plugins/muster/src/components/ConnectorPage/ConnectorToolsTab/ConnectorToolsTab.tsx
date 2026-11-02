@@ -242,12 +242,6 @@ export function ConnectorToolsTab({
       },
     );
   };
-  // A list of one kind has nothing to tell apart; a pick still standing stays
-  // drawn so it can be undone.
-  const effectDimensions = filters.dimensions.filter(
-    dimension => dimension.options.length > 1 || dimension.selected.length > 0,
-  );
-
   if (sessionGate) {
     return <>{sessionGate}</>;
   }
@@ -294,7 +288,7 @@ export function ConnectorToolsTab({
             />
           </Box>
           <CatalogFilterBar
-            dimensions={effectDimensions}
+            dimensions={filters.dimensions}
             onSelect={filters.select}
             onClear={filters.clear}
           />
