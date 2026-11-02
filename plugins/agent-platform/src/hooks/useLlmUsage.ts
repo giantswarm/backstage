@@ -9,17 +9,21 @@ import { useAgents } from '../components/AgentsDataProvider';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { buildLlmUsage, type LlmUsage } from '../lib/llmUsage';
 import {
+  byPersonQueriesFor,
   dailyRangeWindow,
   dailyWindowDayKeys,
   hasCompleteDays,
   llmUsageQueriesFor,
   llmUsageRangeQueriesFor,
+  monthRangeWindow,
   todayDayKey,
   todayPartialQueries,
   todayPartialRange,
+  usageWindowSpec,
   windowDaysOf,
   type LlmUsageQueryOptions,
 } from '../lib/llmUsageQueries';
+import type { UsageWindow } from '../lib/usageWindow';
 
 export type LlmUsageView = {
   usage: LlmUsage | undefined;
@@ -46,6 +50,12 @@ export type LlmUsageOptions = LlmUsageQueryOptions & {
    * range and today's partial count) no other view reads.
    */
   dailyCalls?: boolean;
+  /**
+   * Also query spend and tokens by the person behind the calls, reported as
+   * `usage.byPerson` — the monthly view's by-person table. Off by default:
+   * two more queries only that view reads.
+   */
+  byPerson?: boolean;
 };
 
 /**
@@ -65,6 +75,11 @@ function hasSeries(query: {
 /** Copy for the gateway's own `unknown`: a call it could attribute to no caller. */
 const UNKNOWN_AGENT = 'Unattributed';
 const UNKNOWN_MODEL = 'Unknown model';
+/** Copy for a call whose `user` label names nobody. */
+const UNKNOWN_PERSON = 'No person recorded';
+
+/** How coarsely the clock is read, so a still-open month's queries re-key only every five minutes. */
+const CLOCK_SNAP_MS = 300_000;
 
 /**
  * Everything the Overview and Cost views read, for one installation: by
@@ -95,22 +110,53 @@ export function useLlmUsage(
   installation: string | undefined,
   options: LlmUsageOptions = {},
 ): LlmUsageView {
-  const { org, comparePrevious = false, dailyCalls = false } = options;
-  const windowDays = windowDaysOf(options.days);
+  const {
+    org,
+    month,
+    comparePrevious = false,
+    dailyCalls = false,
+    byPerson = false,
+  } = options;
+  // The clock, snapped: a month still being written grows its range with it,
+  // and the query keys must hold still across a render (see
+  // `todayPartialRange`). A days window and a past month never read it.
+  const nowSnapped = Math.floor(Date.now() / CLOCK_SNAP_MS) * CLOCK_SNAP_MS;
+  const windowDays =
+    month === undefined
+      ? windowDaysOf(options.days)
+      : usageWindowSpec({ month, now: nowSnapped }).windowDays;
+  const window: UsageWindow = useMemo(
+    () =>
+      month === undefined
+        ? { kind: 'days', days: windowDays }
+        : { kind: 'month', month },
+    [month, windowDays],
+  );
   const enabled = Boolean(installation);
   const installationName = installation ?? '';
   const llmUsageQueries = useMemo(
-    () => llmUsageQueriesFor({ days: windowDays, org }),
-    [windowDays, org],
+    () => llmUsageQueriesFor({ days: windowDays, org, month, now: nowSnapped }),
+    [windowDays, org, month, nowSnapped],
   );
+  const personQueries = useMemo(
+    () => byPersonQueriesFor({ days: windowDays, org, month, now: nowSnapped }),
+    [windowDays, org, month, nowSnapped],
+  );
+  // A month still being written has no previous window to compare with.
+  const hasPrevious = llmUsageQueries.previousCost !== undefined;
   const llmUsageRangeQueries = useMemo(
     () => llmUsageRangeQueriesFor({ org }),
     [org],
   );
 
   // Snapped to UTC midnight, so it is stable for the whole day and cannot
-  // re-key the range queries on every render.
-  const range = dailyRangeWindow(Date.now(), windowDays);
+  // re-key the range queries on every render. A month has its own days.
+  const monthRange = useMemo(
+    () =>
+      month === undefined ? undefined : monthRangeWindow(month, nowSnapped),
+    [month, nowSnapped],
+  );
+  const range = monthRange?.range ?? dailyRangeWindow(Date.now(), windowDays);
   const { start, end, step } = range;
   // A one-day window has no complete day to query; today's partial row is
   // the whole chart.
@@ -125,13 +171,15 @@ export function useLlmUsage(
   // join on every render, and re-keying every downstream memo with a new
   // `usage` object.
   const days = useMemo(
-    () => dailyWindowDayKeys({ start, end, step }),
-    [start, end, step],
+    () => monthRange?.days ?? dailyWindowDayKeys({ start, end, step }),
+    [monthRange, start, end, step],
   );
+  // A window that has ended (a past month) has no partial row to fill.
   const today = useMemo(
-    () => todayDayKey({ start, end, step }),
-    [start, end, step],
+    () => (monthRange ? monthRange.today : todayDayKey({ start, end, step })),
+    [monthRange, start, end, step],
   );
+  const hasToday = today !== undefined;
   // Today's bar comes from its own pair of instant queries, scoped to
   // elapsed-time-since-midnight: the range query above deliberately stops at
   // yesterday, because a point in the future makes `increase()` extrapolate a
@@ -140,6 +188,19 @@ export function useLlmUsage(
   // of the blocking `isLoading` below.
   const todayRange = todayPartialRange();
   const todayQueries = todayPartialQueries(todayRange, { org });
+
+  // The by-person rows, the monthly view's: two more vectors, only when a
+  // view asks for them.
+  const costByPerson = useMimirQuery({
+    installationName,
+    query: personQueries.cost,
+    enabled: enabled && byPerson,
+  });
+  const tokensByPerson = useMimirQuery({
+    installationName,
+    query: personQueries.tokens,
+    enabled: enabled && byPerson,
+  });
 
   const cost = useMimirQuery({
     installationName,
@@ -207,7 +268,7 @@ export function useLlmUsage(
   const costToday = useMimirQuery({
     installationName,
     query: todayQueries.costByModel,
-    enabled,
+    enabled: enabled && hasToday,
     // This key moves every five minutes by design, so it must not read as a
     // first load — see the note on `isLoading` below.
     keepPreviousAnswer: true,
@@ -215,7 +276,7 @@ export function useLlmUsage(
   const tokensToday = useMimirQuery({
     installationName,
     query: todayQueries.tokensByType,
-    enabled,
+    enabled: enabled && hasToday,
     // This key moves every five minutes by design, so it must not read as a
     // first load — see the note on `isLoading` below.
     keepPreviousAnswer: true,
@@ -235,19 +296,19 @@ export function useLlmUsage(
   const callsToday = useMimirQuery({
     installationName,
     query: todayQueries.calls,
-    enabled: enabled && dailyCalls,
+    enabled: enabled && dailyCalls && hasToday,
     keepPreviousAnswer: true,
   });
 
   const previousCost = useMimirQuery({
     installationName,
-    query: llmUsageQueries.previousCost,
-    enabled: enabled && comparePrevious,
+    query: llmUsageQueries.previousCost ?? '',
+    enabled: enabled && comparePrevious && hasPrevious,
   });
   const dataBeforePreviousWindow = useMimirQuery({
     installationName,
-    query: llmUsageQueries.dataBeforePreviousWindow,
-    enabled: enabled && comparePrevious,
+    query: llmUsageQueries.dataBeforePreviousWindow ?? '',
+    enabled: enabled && comparePrevious && hasPrevious,
   });
   // Whether the "data starts on …" note may show at all; see `dataStart`.
   const dataBeforeWindow = useMimirQuery({
@@ -285,8 +346,10 @@ export function useLlmUsage(
     // then stays away (`hasSeries`).
     dataBeforeWindow.isLoading ||
     (comparePrevious &&
+      hasPrevious &&
       (previousCost.isLoading || dataBeforePreviousWindow.isLoading)) ||
-    (dailyCalls && callsPerDay.isLoading);
+    (dailyCalls && callsPerDay.isLoading) ||
+    (byPerson && (costByPerson.isLoading || tokensByPerson.isLoading));
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
   // `days` is always supplied it densifies to a row of zeros per day — a chart of empty
@@ -333,6 +396,12 @@ export function useLlmUsage(
       hrefFor,
       unknownAgentLabel: UNKNOWN_AGENT,
       unknownModelLabel: UNKNOWN_MODEL,
+      ...(byPerson && {
+        costByPerson: costByPerson.data?.data?.result,
+        tokensByPerson: tokensByPerson.data?.data?.result,
+        unknownPersonLabel: UNKNOWN_PERSON,
+      }),
+      window,
       days,
       today,
       costToday: costToday.data?.data?.result,
@@ -344,9 +413,10 @@ export function useLlmUsage(
         callsToday: callsToday.data?.data?.result,
       }),
       windowDays,
-      previousCost: comparePrevious
-        ? (previousCost.data?.data?.result ?? [])
-        : undefined,
+      previousCost:
+        comparePrevious && hasPrevious
+          ? (previousCost.data?.data?.result ?? [])
+          : undefined,
       dataBeforeWindow: hasDataBeforeWindow,
       dataBeforePreviousWindow: hasDataBeforePreviousWindow,
     });
@@ -372,7 +442,12 @@ export function useLlmUsage(
     days,
     today,
     windowDays,
+    window,
+    byPerson,
+    costByPerson.data,
+    tokensByPerson.data,
     comparePrevious,
+    hasPrevious,
     previousCost.data,
     hasDataBeforeWindow,
     hasDataBeforePreviousWindow,

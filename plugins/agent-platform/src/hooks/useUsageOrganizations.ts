@@ -4,6 +4,7 @@ import { useAgents } from '../components/AgentsDataProvider';
 import { UNKNOWN_AGENT_LABEL } from '../lib/llmUsage';
 import { organizationsSeenQueryFor } from '../lib/llmUsageQueries';
 import { tenantKindOf, tenantOf } from '../lib/tenants';
+import type { UsageWindow } from '../lib/usageWindow';
 
 export type UsageOrganizationsView = {
   /**
@@ -38,11 +39,13 @@ function compareNamespaces(a: string, b: string): number {
  */
 export function useUsageOrganizations(
   installation: string | undefined,
-  days: number,
+  window: UsageWindow,
 ): UsageOrganizationsView {
   const seen = useMimirQuery({
     installationName: installation ?? '',
-    query: organizationsSeenQueryFor(days),
+    query: organizationsSeenQueryFor(
+      window.kind === 'month' ? { month: window.month } : { days: window.days },
+    ),
     enabled: Boolean(installation),
   });
   const { rows: agents, isLoading: isLoadingAgents } = useAgents();

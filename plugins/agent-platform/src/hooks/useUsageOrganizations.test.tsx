@@ -58,7 +58,9 @@ describe('useUsageOrganizations', () => {
       agent('other', 'org-elsewhere'),
     ];
 
-    const { result } = renderHook(() => useUsageOrganizations('gazelle', 30));
+    const { result } = renderHook(() =>
+      useUsageOrganizations('gazelle', { kind: 'days', days: 30 }),
+    );
 
     expect(result.current.namespaces).toEqual([
       'kagent',
@@ -72,13 +74,17 @@ describe('useUsageOrganizations', () => {
   it('leaves unattributed traffic out: it has no namespace to narrow to', () => {
     mimirState.data = seen('unknown', '', 'org-alpha');
 
-    const { result } = renderHook(() => useUsageOrganizations('gazelle', 30));
+    const { result } = renderHook(() =>
+      useUsageOrganizations('gazelle', { kind: 'days', days: 30 }),
+    );
 
     expect(result.current.namespaces).toEqual(['org-alpha']);
   });
 
   it('asks the gateway for the window, never narrowed to an organization', () => {
-    renderHook(() => useUsageOrganizations('gazelle', 7));
+    renderHook(() =>
+      useUsageOrganizations('gazelle', { kind: 'days', days: 7 }),
+    );
 
     expect(mimirState.lastOptions).toMatchObject({
       installationName: 'gazelle',
@@ -93,7 +99,9 @@ describe('useUsageOrganizations', () => {
   it('starts no query and offers nothing without an installation', () => {
     agentsState.rows = [agent('gazelle', 'org-alpha')];
 
-    const { result } = renderHook(() => useUsageOrganizations(undefined, 30));
+    const { result } = renderHook(() =>
+      useUsageOrganizations(undefined, { kind: 'days', days: 30 }),
+    );
 
     expect(mimirState.lastOptions).toMatchObject({ enabled: false });
     // Without an installation the roster is every installation's, and none
