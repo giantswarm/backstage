@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ConnectorLogo } from './ConnectorLogo';
 
@@ -35,5 +35,21 @@ describe('ConnectorLogo', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
       /PagerDuty\s*All tools/,
     );
+  });
+
+  it('keeps one tooltip open: hovering a logo closes the focused one', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <ConnectorLogo name="PagerDuty" tooltip />
+        <ConnectorLogo name="Slack" tooltip />
+      </>,
+    );
+    await user.tab();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('PagerDuty');
+
+    await user.hover(screen.getByRole('img', { name: 'Slack' }));
+    await waitFor(() => expect(screen.getAllByRole('tooltip')).toHaveLength(1));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Slack');
   });
 });

@@ -1,6 +1,14 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  ReactNode,
+  RefObject,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Avatar, Tooltip, TooltipTrigger } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { TooltipTriggerStateContext } from 'react-aria-components';
 import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type ConnectorLogoSource,
@@ -175,35 +183,60 @@ function LogoTooltip({
 
   return (
     <TooltipTrigger isOpen={open} onOpenChange={setOpen}>
-      {/* Focusable on purpose, the keyboard's way to the name; the image
-          inside carries the role. */}
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <span
-        ref={wrapper}
-        className={className}
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-        tabIndex={0}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onPointerDown={stopRowPress}
-        onPointerUp={stopRowPress}
-        onClick={event => {
-          stopRowPress(event);
-          setOpen(true);
-        }}
-        onKeyDown={event => {
-          if (event.key === 'Escape') {
-            setOpen(false);
-          }
-        }}
-      >
+      <LogoTrigger wrapper={wrapper} className={className}>
         {children}
-      </span>
+      </LogoTrigger>
       <Tooltip triggerRef={wrapper} className={tooltipClassName}>
         {hint}
       </Tooltip>
     </TooltipTrigger>
+  );
+}
+
+/**
+ * Opens and closes through the trigger's react-aria state rather than the
+ * `open` state directly, so opening one closes any other open tooltip — a
+ * focused logo's as well as a bui button's — as every bui tooltip does.
+ */
+function LogoTrigger({
+  wrapper,
+  className,
+  children,
+}: {
+  wrapper: RefObject<HTMLSpanElement>;
+  className: string;
+  children: ReactNode;
+}) {
+  const state = useContext(TooltipTriggerStateContext);
+  const show = () => state?.open(true);
+  const hide = () => state?.close(true);
+
+  return (
+    // Focusable on purpose, the keyboard's way to the name; the image
+    // inside carries the role.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <span
+      ref={wrapper}
+      className={className}
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      tabIndex={0}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      onPointerDown={stopRowPress}
+      onPointerUp={stopRowPress}
+      onClick={event => {
+        stopRowPress(event);
+        show();
+      }}
+      onKeyDown={event => {
+        if (event.key === 'Escape') {
+          hide();
+        }
+      }}
+    >
+      {children}
+    </span>
   );
 }
