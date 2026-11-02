@@ -119,7 +119,9 @@ export function TagsField({
       commit(value.slice(0, last), value.slice(last + 1));
       return;
     }
-    setAttempted(false);
+    // A shown problem follows the text until it is fixed; a new one waits
+    // until the field is left (the `forms` skill).
+    setAttempted(shown => shown && draftProblem(value, tags) !== undefined);
     onDraftChange(value);
   };
 

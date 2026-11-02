@@ -83,4 +83,50 @@ describe('TagsField', () => {
       screen.queryByRole('grid', { name: 'Suggested tags' }),
     ).not.toBeInTheDocument();
   });
+
+  describe('when a problem shows (the forms skill)', () => {
+    it('says nothing while a text that cannot be a tag is first typed', async () => {
+      render(<Field initial={[]} />);
+
+      await userEvent.type(screen.getByRole('textbox'), 'über');
+
+      expect(screen.getByRole('textbox')).not.toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+    });
+
+    it('checks the text on leaving the field, and keeps it typed', async () => {
+      render(<Field initial={[]} />);
+      const field = screen.getByRole('textbox');
+
+      await userEvent.type(field, 'über');
+      await userEvent.tab();
+
+      expect(field).toHaveValue('über');
+      expect(screen.getByText('Use letters and numbers.')).toBeInTheDocument();
+    });
+
+    it('keeps a shown problem while the text stays wrong, and drops it once fixed', async () => {
+      render(<Field initial={[]} />);
+      const field = screen.getByRole('textbox');
+      await userEvent.type(field, 'ü');
+      await userEvent.tab();
+
+      await userEvent.type(field, 'b');
+      expect(screen.getByText('Use letters and numbers.')).toBeInTheDocument();
+
+      await userEvent.clear(field);
+      await userEvent.type(field, 'ok');
+      expect(
+        screen.queryByText('Use letters and numbers.'),
+      ).not.toBeInTheDocument();
+
+      // A new problem in a field that was fine waits until it is left.
+      await userEvent.type(field, 'ü');
+      expect(
+        screen.queryByText('Use letters and numbers.'),
+      ).not.toBeInTheDocument();
+    });
+  });
 });
