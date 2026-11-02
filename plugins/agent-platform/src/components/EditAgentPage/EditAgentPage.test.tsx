@@ -873,6 +873,10 @@ describe('EditAgentPage', () => {
     });
 
     await changeDescriptionAndReview(user);
+
+    expect(
+      screen.getByRole('heading', { name: 'Check and save' }),
+    ).toBeInTheDocument();
   });
 
   it('leaves an untouched edit without asking', async () => {
