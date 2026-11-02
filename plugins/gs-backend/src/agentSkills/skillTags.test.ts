@@ -1,27 +1,4 @@
-import { isValidTag, parseTags, skillTagsOf, withSkillTags } from './skillTags';
-
-describe('parseTags', () => {
-  it('splits, trims, lowercases and dedupes, dropping invalid values', () => {
-    expect(
-      parseTags(' Triage, kubernetes,,triage, on call, -x, ok-1 '),
-    ).toEqual(['triage', 'kubernetes', 'ok-1']);
-  });
-
-  it('is empty for nothing', () => {
-    expect(parseTags(undefined)).toEqual([]);
-    expect(parseTags('')).toEqual([]);
-  });
-});
-
-describe('isValidTag', () => {
-  it.each(['a', 'on-call', 'k8s', 'x'.repeat(63)])('accepts %s', tag =>
-    expect(isValidTag(tag)).toBe(true),
-  );
-  it.each(['', 'On-call', 'on--call', '-a', 'a b', 'x'.repeat(64)])(
-    'refuses %s',
-    tag => expect(isValidTag(tag)).toBe(false),
-  );
-});
+import { SkillTagsError, skillTagsOf, withSkillTags } from './skillTags';
 
 describe('skillTagsOf', () => {
   it('reads metadata.tags', () => {
@@ -75,6 +52,29 @@ describe('withSkillTags', () => {
   });
 
   it('refuses to write tags into a metadata that is not a map', () => {
-    expect(() => withSkillTags({ metadata: 'x' }, ['a'])).toThrow();
+    expect(() => withSkillTags({ metadata: 'x' }, ['a'])).toThrow(
+      SkillTagsError,
+    );
+  });
+
+  it.each([
+    { tags: ['triage', 'kubernetes'] },
+    { tags: 'ops, on call' },
+    { tags: 'ops, über' },
+    { tags: 42 },
+  ])(
+    'refuses to replace a metadata.tags it cannot read whole: %j',
+    metadata => {
+      expect(() => withSkillTags({ metadata }, ['ops'])).toThrow(
+        SkillTagsError,
+      );
+      expect(() => withSkillTags({ metadata }, [])).toThrow(SkillTagsError);
+    },
+  );
+
+  it('replaces a metadata.tags it reads whole, in any case', () => {
+    expect(
+      withSkillTags({ metadata: { tags: 'Ops, ,Triage' } }, ['ops']),
+    ).toEqual({ metadata: { tags: 'ops' } });
   });
 });

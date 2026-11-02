@@ -1,27 +1,20 @@
-/**
- * Tags: free-form keywords people find an agent (or another resource) by
- * (`util`, `marketing`). Stored as the comma-joined `ui.giantswarm.io/tags`
- * annotation; agent-manager takes them as `tags` and checks the same form.
- */
-export const TAGS_ANNOTATION = 'ui.giantswarm.io/tags';
-
-/** The longest tag the charts take. */
-export const MAX_TAG_LENGTH = 63;
+import {
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  parseTags,
+  TAG_PATTERN,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 /**
- * The most tags one resource carries. muster and gs-backend
- * (`MAX_SKILL_TAGS`) refuse more.
+ * Tags in the portal's forms: the stored rule and its reader come from
+ * gs-common, which gs-backend checks against too; this adds how typed text
+ * becomes tags, the problems a form shows, and suggestions.
  */
-export const MAX_TAGS = 50;
+export { MAX_TAG_LENGTH, MAX_TAGS, parseTags, TAG_PATTERN, TAGS_ANNOTATION };
 
 /** Why more tags cannot be added. */
 export const MAX_TAGS_PROBLEM = `At most ${MAX_TAGS} tags.`;
-
-/**
- * The charts' tag form: lowercase letters and digits, single `-` between.
- * The one tag rule the portal checks against; muster and gs-backend mirror it.
- */
-export const TAG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * A tag as typed, in the stored form: lowercase, spaces and underscores as
@@ -48,22 +41,6 @@ export function tagProblem(tag: string): string | undefined {
     return 'Use letters and numbers.';
   }
   return undefined;
-}
-
-/**
- * The tags in a stored annotation value: split on commas, trimmed and
- * lowercased, without empties or repeats. A value that is not a valid tag
- * (see {@link tagProblem}) is left out, so an edit never sends it back.
- */
-export function parseTags(raw: string | undefined): string[] {
-  return [
-    ...new Set(
-      (raw ?? '')
-        .split(',')
-        .map(tag => tag.trim().toLowerCase())
-        .filter(tag => tagProblem(tag) === undefined),
-    ),
-  ];
 }
 
 /** The parts of a typed text a comma separates, trimmed, without empties. */
