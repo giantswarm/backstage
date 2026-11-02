@@ -40,12 +40,9 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { bindsGateway, surfaceName } from '../../lib/toolset';
-import {
-  describeReach,
-  reachedConnectors,
-  reachNeedsCatalogue,
-} from '../../lib/toolsetReach';
+import { connectorLogoSources, connectorMarks } from '../../lib/connectorMarks';
+import { bindsGateway } from '../../lib/toolset';
+import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
@@ -267,15 +264,6 @@ function SkillsSection({
   );
 }
 
-/** One logo in the Connectors section's row. */
-type ConnectorMark = {
-  key: string;
-  name: string;
-  icon?: string;
-  url?: string;
-  detail?: string;
-};
-
 /**
  * What the agent can reach, in the words the composer's reach line uses —
  * read from the toolset it declares; the exact tools are the Tools tab. The
@@ -303,43 +291,25 @@ function ConnectorsSection({
   const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
 
-  // Each muster connector's logo source, by surface name: the first CR of a
-  // family with an icon, else its first URL.
-  const sources = useMemo(() => {
-    const bySurface = new Map<string, { icon?: string; url?: string }>();
-    for (const server of muster.servers) {
-      const name = surfaceName(server);
-      const known = bySurface.get(name);
-      bySurface.set(name, {
-        icon: known?.icon ?? server.icon,
-        url: known?.url ?? server.url,
-      });
-    }
-    return bySurface;
-  }, [muster.servers]);
-
-  const marks: ConnectorMark[] = [
-    ...(hasGateway ? reachedConnectors(declared, groups) : []).map(name => ({
-      key: `server:${name}`,
-      name: muster.labels.get(name) ?? name,
-      ...sources.get(name),
+  const sources = useMemo(
+    () => connectorLogoSources(muster.servers),
+    [muster.servers],
+  );
+  const marks = connectorMarks({
+    toolset: hasGateway ? declared : undefined,
+    groups,
+    sources,
+    labels: muster.labels,
+    direct: direct.map(binding => ({
+      name: binding.server.name,
+      url: servers
+        ?.find(server => server.getName() === binding.server.name)
+        ?.getUrl(),
+      detail: `${describeToolScope(binding)}${
+        binding.requireApproval ? ' · asks you before every call' : ''
+      }`,
     })),
-    ...direct.map((binding, index) => {
-      const name = binding.server.name;
-      const remote = servers?.find(server => server.getName() === name);
-      return {
-        // The server name is not unique: two bindings may scope one server
-        // differently.
-        key: `${name}#${index}`,
-        name: muster.labels.get(name) ?? name,
-        icon: sources.get(name)?.icon,
-        url: remote?.getUrl() ?? sources.get(name)?.url,
-        detail: `${describeToolScope(binding)}${
-          binding.requireApproval ? ' · asks you before every call' : ''
-        }`,
-      };
-    }),
-  ];
+  });
 
   let reach: string;
   if (!hasGateway) {

@@ -32,7 +32,10 @@ import {
   TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { ConnectorLogoStack } from '@giantswarm/backstage-plugin-muster';
+
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useAgentRowConnectors } from '../../hooks/useAgentRowConnectors';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
@@ -81,6 +84,9 @@ export const AGENTS_PAGE_SIZE = 25;
 
 /** Tags a row shows before "+N": the rest are on the agent's page. */
 export const ROW_TAGS_MAX = 3;
+
+/** Connector logos a row shows, "+N" included. */
+export const ROW_CONNECTORS_MAX = 3;
 
 /** The list's order, remembered per browser like `useLastUsedAgent`'s pick. */
 const SORT_STORAGE_KEY = 'gs-agent-platform-agents-sort';
@@ -267,6 +273,17 @@ const useStyles = makeStyles({
     flex: '0 1 auto',
     minWidth: 0,
   },
+  // Three overlapping 24px logos wide, so rows with connectors line their
+  // facts up. The logos sit above the name link's stretched hit area, so each
+  // one's tooltip opens.
+  connectors: {
+    flex: '0 0 60px',
+    display: 'flex',
+    alignSelf: 'center',
+    [PHONE_MEDIA]: {
+      flex: '0 1 auto',
+    },
+  },
   // Fixed-width fact columns line the rows up, as the prototype's do.
   fact: {
     flex: '0 0 150px',
@@ -390,9 +407,9 @@ function organizationText(namespace: string): string {
 /**
  * One agent as the prototype's list row: avatar, name — with its organization
  * and, only when it is not Ready, its state — and what it is for, then its
- * tags, its creator, its Harness and its environment, the organization,
- * Harness and environment when the list has more than one of each. The model,
- * skills and connectors are technical detail, on the agent's own page.
+ * tags, its connectors' logos, its creator, its Harness and its environment,
+ * the organization, Harness and environment when the list has more than one
+ * of each. The model and skills are technical detail, on the agent's own page.
  */
 function AgentListItem({
   row,
@@ -420,6 +437,7 @@ function AgentListItem({
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
+  const connectors = useAgentRowConnectors(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
@@ -569,6 +587,15 @@ function AgentListItem({
             max={ROW_TAGS_MAX}
             className={classes.tags}
           />
+          {connectors.length > 0 && (
+            <span className={classes.connectors}>
+              <ConnectorLogoStack
+                connectors={connectors}
+                max={ROW_CONNECTORS_MAX}
+                className={stretched.above}
+              />
+            </span>
+          )}
           {facts.map(fact => (
             <Text
               key={fact.key}

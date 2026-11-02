@@ -132,6 +132,26 @@ jest.mock('../../hooks/useFleetSessionStates', () => ({
   useFleetSessionStates: () => ({ states: mockSessionStates }),
 }));
 let mockMetaAgent: AgentRow | undefined;
+// The installation's MCPServers behind a row's connector logos: named, one
+// with a URL a brand mark is found for. No catalogue: no row picks single
+// tools.
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: (installation?: string) => ({
+    servers: installation
+      ? [
+          { name: 'jira', displayName: 'Jira' },
+          { name: 'slack', url: 'https://mcp.slack.com/mcp' },
+        ]
+      : [],
+    resources: [],
+    labels: new Map(installation ? [['jira', 'Jira']] : []),
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: () => undefined,
+}));
 jest.mock('../../hooks/useMetaAgent', () => ({
   useMetaAgent: () => mockMetaAgent,
 }));
@@ -1759,5 +1779,91 @@ describe('CustomizeAgentsPanel creator', () => {
       'title',
       'Created by: Platform',
     );
+  });
+});
+
+describe('CustomizeAgentsPanel connectors', () => {
+  function withSelectors(name: string, selectors: string[]): AgentRow {
+    return row({
+      name,
+      technicalName: name.toLowerCase(),
+      toolset: { state: 'declared', carrier: 'c', selectors },
+    });
+  }
+
+  beforeEach(() => {
+    mockAgents = {
+      rows: [
+        withSelectors('A two', ['server:jira', 'server:slack']),
+        withSelectors('B four', [
+          'server:jira',
+          'server:slack',
+          'server:github',
+          'server:pagerduty',
+        ]),
+        row({
+          name: 'C full',
+          technicalName: 'full',
+          toolset: { state: 'implicit-full', carrier: 'c' },
+        }),
+        row({
+          name: 'D direct',
+          technicalName: 'direct',
+          directServers: [{ name: 'weather' }],
+        }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    mockSessions = [];
+    mockMetaAgent = undefined;
+  });
+
+  function rowOf(name: string): HTMLElement {
+    return screen.getByRole('link', { name }).closest('li')!;
+  }
+
+  it("shows a row's connectors as logos by their display names", async () => {
+    await renderPanel();
+    const logos = within(
+      within(rowOf('A two')).getByRole('group', { name: 'Connectors' }),
+    ).getAllByRole('img');
+    expect(logos.map(logo => logo.getAttribute('aria-label'))).toEqual([
+      'Jira',
+      'slack',
+    ]);
+  });
+
+  it('shows two logos and "+N" for more than three connectors', async () => {
+    await renderPanel();
+    const stack = within(rowOf('B four')).getByRole('group', {
+      name: 'Connectors',
+    });
+    expect(within(stack).getAllByRole('img')).toHaveLength(2);
+    expect(within(stack).getByText('+2')).toBeInTheDocument();
+  });
+
+  it('names the rest in the "+N" tooltip', async () => {
+    const user = userEvent.setup();
+    await renderPanel();
+    await user.hover(within(rowOf('B four')).getByText('+2'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      /github\s*pagerduty/,
+    );
+  });
+
+  it('shows directly bound servers too', async () => {
+    await renderPanel();
+    expect(
+      within(rowOf('D direct')).getByRole('img', { name: 'weather' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no logos for full access, as the agent page does', async () => {
+    await renderPanel();
+    expect(
+      within(rowOf('C full')).queryByRole('group', { name: 'Connectors' }),
+    ).not.toBeInTheDocument();
   });
 });

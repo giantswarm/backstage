@@ -31,7 +31,9 @@ import {
 import { canonicalSkillId } from '../../lib/skills';
 import { agentManagerBlocker } from '../../lib/agentManager';
 import type { AgentManagerAvailability } from '../../hooks/useAgentManager';
+import type { DirectServer } from '../../lib/connectorMarks';
 import {
+  isGatewayBinding,
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
   type DeclaredToolset,
@@ -252,6 +254,11 @@ export type AgentRow = {
    */
   toolset?: DeclaredToolset;
   /**
+   * The servers the agent binds directly rather than through the gateway,
+   * with their URLs where `carriers` has them. Absent for none.
+   */
+  directServers?: DirectServer[];
+  /**
    * What the serving layer says about the model behind the agent's
    * ModelConfig — the served model's readiness, or that nothing answers for
    * it any more (`notServing`: the agent's turns fail). Independent of the
@@ -408,7 +415,9 @@ export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
   resolveServing?: ResolveModelServing,
-  carriers?: readonly ToolsetCarrier[],
+  carriers?: readonly (ToolsetCarrier & {
+    getUrl?: () => string | undefined;
+  })[],
   harnesses?: readonly Harness[],
 ): AgentRow {
   const installation = agent.cluster;
@@ -445,6 +454,21 @@ export function toAgentRow(
   const defaultToolchains = defaultToolchainsOf(
     agent.getAnnotations()?.[DEFAULT_TOOLCHAINS_ANNOTATION],
   );
+  const directServers = agent
+    .getMcpBindings()
+    .filter(
+      binding => !isGatewayBinding(agent, binding, MUSTER_MCP_SERVER_NAME),
+    )
+    .map(binding => {
+      const url = carriers
+        ?.find(
+          carrier =>
+            carrier.getNamespace() === namespace &&
+            carrier.getName() === binding.server.name,
+        )
+        ?.getUrl?.();
+      return { name: binding.server.name, ...(url ? { url } : {}) };
+    });
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -479,6 +503,7 @@ export function toAgentRow(
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
+    ...(directServers.length > 0 ? { directServers } : {}),
     ...(carriers
       ? { toolset: toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers) }
       : {}),
