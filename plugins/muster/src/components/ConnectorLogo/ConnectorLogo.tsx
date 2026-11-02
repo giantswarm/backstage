@@ -16,16 +16,16 @@ import {
 } from '../../lib/connectorLogo';
 import { BRAND_MARKS } from './brandMarks';
 
-type StyleProps = { size: number };
+type StyleProps = { size: number; round: boolean };
 
 const useStyles = makeStyles({
   // The letter tile's frame, which every logo keeps.
-  tile: ({ size }: StyleProps) => ({
+  tile: ({ size, round }: StyleProps) => ({
     flex: 'none',
     boxSizing: 'border-box',
     width: size,
     height: size,
-    borderRadius: size / 4,
+    borderRadius: round ? '50%' : size / 4,
     border: '1px solid var(--bui-border-1)',
     backgroundColor: 'transparent',
     display: 'inline-flex',
@@ -54,15 +54,15 @@ const useStyles = makeStyles({
     height: Math.round(size * 0.56),
     color: 'var(--bui-fg-primary)',
   }),
-  trigger: {
+  trigger: ({ round }: StyleProps) => ({
     display: 'inline-flex',
-    borderRadius: 9,
+    borderRadius: round ? '50%' : 9,
     cursor: 'default',
     '&:focus-visible': {
       outline: '2px solid var(--bui-ring, #009fff)',
       outlineOffset: 2,
     },
-  },
+  }),
   tooltip: {
     maxWidth: 280,
     whiteSpace: 'pre-line',
@@ -74,6 +74,8 @@ export type ConnectorLogoProps = ConnectorLogoSource & {
   name: string;
   /** Width and height in px; the list's tile is 36, a page header's 56. */
   size?: number;
+  /** A circle rather than the letter tile's rounded square, as in a stack. */
+  round?: boolean;
   /** Hidden from assistive technology, where the name is written beside it. */
   decorative?: boolean;
   /**
@@ -95,11 +97,12 @@ export function ConnectorLogo({
   icon,
   url,
   size = 36,
+  round = false,
   decorative = false,
   tooltip = false,
   detail,
 }: ConnectorLogoProps) {
-  const classes = useStyles({ size });
+  const classes = useStyles({ size, round });
   const logo = resolveConnectorLogo({ icon, url });
   const a11y = decorative
     ? ({ 'aria-hidden': true } as const)
@@ -152,7 +155,7 @@ export function ConnectorLogo({
  * react-aria's own focusable components, and a phone has no hover. Escape or
  * a press elsewhere closes it; a press on it stays off the row it sits in.
  */
-function LogoTooltip({
+export function LogoTooltip({
   hint,
   className,
   tooltipClassName,
