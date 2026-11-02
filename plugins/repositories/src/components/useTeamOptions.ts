@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { LIST_LIMIT, ListFilters, repositoriesApiRef } from '../apis';
 import { callerTeams, TeamOption, teamOptions } from '../lib/scope';
 import { useManagerInfo } from './useManagerInfo';
@@ -44,12 +45,12 @@ export function useTeamOptions(current = ''): TeamOptions {
   const inventory = useQuery({
     queryKey: ['repositories', 'list', INVENTORY],
     queryFn: () => api.listRepositories(INVENTORY),
-    enabled: !info.isLoading,
+    enabled: !isAwaitingData(info),
   });
   const mine = useQuery({
     queryKey: ['repositories', 'list', MINE],
     queryFn: () => api.listRepositories(MINE),
-    enabled: !info.isLoading,
+    enabled: !isAwaitingData(info),
   });
   const own = useMemo(
     () => callerTeams(info.data, mine.data?.repositories ?? []),
@@ -67,7 +68,8 @@ export function useTeamOptions(current = ''): TeamOptions {
   return {
     own,
     teams,
-    loading: info.isLoading || mine.isLoading || inventory.isLoading,
+    loading:
+      isAwaitingData(info) || isAwaitingData(mine) || isAwaitingData(inventory),
     error: (info.error ?? mine.error ?? inventory.error ?? undefined) as
       Error | undefined,
   };

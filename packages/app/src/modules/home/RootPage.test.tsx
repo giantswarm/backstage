@@ -24,10 +24,7 @@ function renderRootPage(data: object) {
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route path="/" element={<RootPage />} />
-          <Route
-            path="/agent-platform"
-            element={<div data-testid="agent-platform-page" />}
-          />
+          <Route path="/catalog" element={<div data-testid="catalog-page" />} />
         </Routes>
       </MemoryRouter>
     </TestApiProvider>,
@@ -39,13 +36,13 @@ describe('RootPage', () => {
     renderRootPage({ app: { title: 'Test' } });
 
     expect(screen.getByTestId('home-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('agent-platform-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-page')).not.toBeInTheDocument();
   });
 
   it('redirects to app.rootRedirect when it is set', () => {
-    renderRootPage({ app: { rootRedirect: '/agent-platform' } });
+    renderRootPage({ app: { rootRedirect: '/catalog' } });
 
-    expect(screen.getByTestId('agent-platform-page')).toBeInTheDocument();
+    expect(screen.getByTestId('catalog-page')).toBeInTheDocument();
     expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
   });
 
@@ -60,7 +57,7 @@ describe('RootPage', () => {
     renderRootPage({ app: { rootRedirect: 'agent-platform' } });
 
     expect(screen.getByTestId('home-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('agent-platform-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-page')).not.toBeInTheDocument();
     expect(warn).toHaveBeenCalled();
   });
 });

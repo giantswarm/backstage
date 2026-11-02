@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { sessionUsageQueryKey } from '../lib/queryKeys';
@@ -25,9 +26,9 @@ export type SessionUsageView = {
 /**
  * The caller's usage summary for one installation.
  *
- * **Deliberately not polled**, unlike `useSessionStates` right beside it. That
- * one polls on the fast tier because it is what tells the page whether anything
- * is moving; this reports on a 30-day window whose buckets are days, and it is
+ * **Deliberately not polled**, unlike `useFleetSessionStates`. That one polls
+ * on the fast tier because it is what tells the page whether anything is
+ * moving; this reports on a 30-day window whose buckets are days, and it is
  * the most expensive read in the plugin — the backend fans out over every one
  * of a user's sessions to answer it. The default `staleTime` (60s) plus the
  * backend's five-minute cache is the whole freshness story, and `evaluatedAt`
@@ -53,7 +54,7 @@ export function useSessionUsage(
 
   return {
     usage: query.data,
-    isLoading: enabled && query.isLoading,
+    isLoading: enabled && isAwaitingData(query),
     isError: query.isError && query.data === undefined && !isNotDeployed,
     isNotDeployed: query.isError && isNotDeployed,
     error: (query.error as Error | null) ?? undefined,

@@ -9,6 +9,7 @@ import {
   gsAuthApiRef,
   gsFallbackSignInAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
+import type { ShellSignInProvider } from '../agentShell/ShellSignInPage';
 
 /** Shape of one `SignInPage` provider entry (`@backstage/core-components`). */
 export interface SignInProviderConfig {
@@ -17,6 +18,15 @@ export interface SignInProviderConfig {
   message: string;
   apiRef: ApiRef<ProfileInfoApi & BackstageIdentityApi & SessionApi>;
 }
+
+/**
+ * A sign-in card as read from config: the message the deployment wrote, if
+ * any, and the default that stands in for it.
+ */
+type ConfiguredSignInProvider = Omit<SignInProviderConfig, 'message'> & {
+  message: string | undefined;
+  defaultMessage: string;
+};
 
 /**
  * Sign-in cards of the login page. The portal signs in through one OIDC
@@ -37,13 +47,12 @@ export interface SignInProviderConfig {
  * muster) return to that connector. Picking the main card, or signing out,
  * forgets it, so the main card always leads where its title says.
  */
-export function signInProviders(configApi: ConfigApi): SignInProviderConfig[] {
-  const main: SignInProviderConfig = {
+function readSignInProviders(configApi: ConfigApi): ConfiguredSignInProvider[] {
+  const main: ConfiguredSignInProvider = {
     id: 'dex-auth-provider',
     title: configApi.getOptionalString('gs.signInProvider.title') ?? 'Dex',
-    message:
-      configApi.getOptionalString('gs.signInProvider.message') ??
-      'Sign in using Dex',
+    message: configApi.getOptionalString('gs.signInProvider.message'),
+    defaultMessage: 'Sign in using Dex',
     apiRef: gsAuthApiRef,
   };
 
@@ -57,10 +66,40 @@ export function signInProviders(configApi: ConfigApi): SignInProviderConfig[] {
     {
       id: 'dex-fallback-auth-provider',
       title: fallback.getOptionalString('title') ?? 'Other identity provider',
-      message:
-        fallback.getOptionalString('message') ??
-        'Sign in through another identity provider',
+      message: fallback.getOptionalString('message'),
+      defaultMessage: 'Sign in through another identity provider',
       apiRef: gsFallbackSignInAuthApiRef,
     },
   ];
+}
+
+/**
+ * The sign-in cards (see {@link readSignInProviders}) for upstream's classic
+ * `SignInPage`, where each card carries its message, a default one when the
+ * deployment wrote none.
+ */
+export function signInProviders(configApi: ConfigApi): SignInProviderConfig[] {
+  return readSignInProviders(configApi).map(
+    ({ message, defaultMessage, ...provider }) => ({
+      ...provider,
+      message: message ?? defaultMessage,
+    }),
+  );
+}
+
+/**
+ * The sign-in cards (see {@link readSignInProviders}) for the Agent
+ * Platform's sign-in page, with a message only where the deployment wrote
+ * its own: the defaults just repeat the button's "Sign in with <title>", so
+ * neither the default nor a configured copy of it is shown.
+ */
+export function shellSignInProviders(
+  configApi: ConfigApi,
+): ShellSignInProvider[] {
+  return readSignInProviders(configApi).map(
+    ({ message, defaultMessage, ...provider }) => ({
+      ...provider,
+      message: message === defaultMessage ? undefined : message,
+    }),
+  );
 }

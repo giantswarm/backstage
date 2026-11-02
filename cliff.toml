@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/6bd76e24b11b67d6d99715b8f484f454e05abbd9/pkg/gen/input/workflows/internal/file/cliff.toml.template
+#    https://github.com/giantswarm/devctl/blob/88a5399393f41a2aacc8da4ed639e5a0107d85e9/pkg/gen/input/workflows/internal/file/cliff.toml.template
 #
 # git-cliff config for the push-based auto-release flow.
 #
@@ -84,26 +84,22 @@ tag_pattern = '^v[0-9]+\.[0-9]+\.[0-9]+$'
 # commit text -- git-cliff's default regex mode is single-line). This
 # anchoring keeps `(#N)` references that appear inside commit bodies
 # untouched.
-#
-# A feat-rc/fix-rc subject is released as its plain type:
-# `features_always_bump_minor` keys off the type being exactly "feat", and an
-# un-normalised feat-rc would bump patch instead of minor.
 commit_preprocessors = [
   { pattern = '(?m) \(#\d+\)$', replace = "" },
-  { pattern = '^(feat|fix)-rc', replace = "${1}" },
 ]
 
 # Map commit types to changelog groups (Keep-a-Changelog convention):
 # feat -> Added, fix -> Fixed, all "internal change" types -> Changed,
 # security -> Security.
 #
-# `docs` and `style` are marked skip. git-cliff decides the bump from the
-# commits that are NOT skipped: a breaking change bumps the major, `feat` the
-# minor, every other type at least the patch. A skipped commit is left out of
-# the release notes and of the bump, so a docs-only or style-only push to main
-# computes the current version and the workflow tags nothing; the change
-# ships with the next release. `chore` and `ci` keep releasing: a
-# `chore(deps)` bump changes what ships, a `ci` change how it is built.
+# `docs`, `style` and `test` are marked skip: none of them changes what
+# ships. git-cliff decides the bump from the commits that are NOT skipped: a
+# breaking change bumps the major, `feat` the minor, every other type at least
+# the patch. A skipped commit is left out of the release notes and of the
+# bump, so a docs-, style- or test-only push to main computes the current
+# version and the workflow tags nothing; the change ships with the next
+# release. `chore` and `ci` keep releasing: a `chore(deps)` bump changes what
+# ships, a `ci` change how it is built.
 commit_parsers = [
   { message = "^feat",     group = "Added" },
   { message = "^fix",      group = "Fixed" },
@@ -111,7 +107,7 @@ commit_parsers = [
   { message = "^perf",     group = "Changed" },
   { message = "^docs",     skip = true },
   { message = "^chore",    group = "Changed" },
-  { message = "^test",     group = "Changed" },
+  { message = "^test",     skip = true },
   { message = "^build",    group = "Changed" },
   { message = "^ci",       group = "Changed" },
   { message = "^security", group = "Security" },

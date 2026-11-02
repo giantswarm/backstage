@@ -4,11 +4,16 @@ import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import { getHelmChartsFromEntity } from '../utils/entity';
 import { Entity } from '@backstage/catalog-model';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 export function useCatalogEntitiesForDeployments() {
   const catalogApi = useApi(catalogApiRef);
 
-  const { data: catalogEntities, isLoading } = useQuery({
+  const {
+    data: catalogEntities,
+    isPending,
+    fetchStatus,
+  } = useQuery({
     queryKey: ['catalog-entities', 'kind', 'component'],
     queryFn: () =>
       catalogApi.getEntities({
@@ -16,6 +21,7 @@ export function useCatalogEntitiesForDeployments() {
       }),
     select: data => data.items,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return useMemo(() => {
     if (!catalogEntities) {

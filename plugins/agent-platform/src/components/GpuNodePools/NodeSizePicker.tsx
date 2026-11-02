@@ -8,6 +8,7 @@ import {
   Skeleton,
   Text,
 } from '@backstage/ui';
+import { searchableIf } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   cheapestPriced,
@@ -104,6 +105,12 @@ export function NodeSizePicker({
   const cheapest = cheapestPriced(shapes, sizes);
   const priceSources = describePriceSources(shapes);
   const chosenPreset = presetFitOf(presetFit, preset);
+  const presetOptions = [
+    { id: ANY_PRESET, label: 'Any preset — no preference' },
+    ...presets.map(fit =>
+      presetOption(fit, presetFitOf(review?.presetFit, fit.preset), shapes),
+    ),
+  ];
 
   return (
     <Flex
@@ -119,7 +126,7 @@ export function NodeSizePicker({
       >
         <CheckboxGroup
           label="Node size"
-          description="The instance sizes Karpenter may pick, smallest first, with what each leaves a predictor after the node's kubelet reservations and daemonsets, and its on-demand price. Changing them re-runs the dry run."
+          description="Karpenter may pick any of these sizes, smallest first; each shows what it leaves a predictor and its on-demand price. Changing them re-runs the dry run."
           value={sizes}
           onChange={onSizesChange}
           isDisabled={isBusy || !hasShapes}
@@ -141,7 +148,7 @@ export function NodeSizePicker({
               data-testid={pending ? 'sizes-pending' : 'sizes-loading'}
             >
               {pending
-                ? `Pick a cluster — the sizes for ${accelerator}, their prices and the presets each hosts are read from cluster-manager's dry run.`
+                ? `Pick a cluster to see the sizes for ${accelerator}, their prices and the presets each hosts.`
                 : `Reading the sizes for ${accelerator} from cluster-manager…`}
             </Text>
           </>
@@ -176,17 +183,9 @@ export function NodeSizePicker({
       <Flex direction="column" gap="1">
         <Select
           label="I want to serve"
-          description="Preselects the smallest size that hosts the preset and marks the others. Each preset says how it fits the sizes as chosen; the one chosen here blocks Deploy while no size hosts it."
-          options={[
-            { id: ANY_PRESET, label: 'Any preset — no preference' },
-            ...presets.map(fit =>
-              presetOption(
-                fit,
-                presetFitOf(review?.presetFit, fit.preset),
-                shapes,
-              ),
-            ),
-          ]}
+          description="Preselects the smallest size that hosts the preset. Deploy stays blocked while no chosen size hosts it."
+          searchable={searchableIf(presetOptions)}
+          options={presetOptions}
           selectedKey={preset ?? ANY_PRESET}
           onSelectionChange={key =>
             onPresetChange(key && key !== ANY_PRESET ? String(key) : undefined)

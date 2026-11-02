@@ -35,6 +35,14 @@ export const TreeSearch = () => {
   // Keyboard shortcuts: Ctrl/Cmd+F to focus, Ctrl/Cmd+G for next, Ctrl/Cmd+Shift+G for previous
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // A modal dialog keeps focus inside itself, so the tree is out of reach;
+      // leave the keys to the browser and to the dialog.
+      if (
+        e.target instanceof Element &&
+        e.target.closest('[role="dialog"], [role="alertdialog"]')
+      ) {
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
         searchFieldRef.current?.querySelector('input')?.focus();

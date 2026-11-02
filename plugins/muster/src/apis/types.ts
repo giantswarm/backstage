@@ -4,47 +4,6 @@
  * REST proxy.
  */
 
-export interface WorkflowArgDefinition {
-  type: string;
-  required?: boolean;
-  description?: string;
-  default?: unknown;
-}
-
-export interface WorkflowConditionExpectation {
-  success?: boolean;
-  json_path?: Record<string, unknown>;
-}
-
-export interface WorkflowCondition {
-  tool?: string;
-  args?: Record<string, unknown>;
-  from_step?: string;
-  expect?: WorkflowConditionExpectation;
-  expect_not?: WorkflowConditionExpectation;
-}
-
-export interface WorkflowStep {
-  id: string;
-  tool: string;
-  args?: Record<string, unknown>;
-  condition?: WorkflowCondition;
-  allow_failure?: boolean;
-  outputs?: Record<string, unknown>;
-  store?: boolean;
-  description?: string;
-}
-
-export interface Workflow {
-  name: string;
-  description?: string;
-  args?: Record<string, WorkflowArgDefinition>;
-  steps: WorkflowStep[];
-  available?: boolean;
-  createdAt?: string;
-  lastModified?: string;
-}
-
 export interface WorkflowListItem {
   name: string;
   description?: string;
@@ -53,11 +12,6 @@ export interface WorkflowListItem {
 
 export interface WorkflowListResponse {
   workflows: WorkflowListItem[] | null;
-}
-
-export interface WorkflowGetResponse {
-  workflow: Workflow;
-  yaml?: string;
 }
 
 /** Execution status reported by muster; steps additionally use `skipped`. */
@@ -163,6 +117,11 @@ export interface McpUsageServerRow {
   server: string;
   calls: number;
   errors: number;
+  /**
+   * Only where the usage is read for several servers (a family's instances)
+   * or one (its totals); null for the installation-wide read.
+   */
+  p95_seconds: number | null;
 }
 
 /**
@@ -179,6 +138,12 @@ export interface McpUsage {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket holding any sample: where muster's records
+   * start inside the window. Absent when no bucket has one, or when muster
+   * recorded calls in the week before the window.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;
@@ -186,6 +151,10 @@ export interface McpUsage {
     p95_seconds: number | null;
     distinct_tools: number;
   };
+  /**
+   * The busiest 15 tools, or every tool called in the window when the usage
+   * is read for some `servers` only.
+   */
   top_tools: McpUsageToolRow[];
   servers: McpUsageServerRow[];
 }
@@ -229,7 +198,7 @@ export interface McpServerRuntime {
   name: string;
   /**
    * `spec.toolPrefix`: the segment muster puts in this server's exposed tool
-   * names, which is not its name. A server named `gazelle-mcp-marge` with
+   * names, which is not its name. A server named `mcp-marge` with
    * prefix `marge` exposes `x_marge_<tool>`.
    */
   toolPrefix?: string;
@@ -486,14 +455,61 @@ export interface ServerAuthStatus {
    * SSO-managed servers, where only an administrator can fix the connection.
    */
   auth_tool?: string;
+  /**
+   * Why the server is not connected for this session, when muster knows. For
+   * an SSO server whose attempt failed it is that attempt's own account: the
+   * connect error and the forwarded token's issuer and audiences. Never a
+   * token; shown verbatim.
+   */
   error?: string;
+  /**
+   * How the person comes to use the server: a grant of their own (`grant`,
+   * `core_auth_login`), their muster sign-in forwarded or exchanged (`sso`),
+   * or no credential (`none`). Absent from older musters, which say `sso`
+   * through the two flags below.
+   */
+  kind?: 'grant' | 'sso' | 'none';
   token_forwarding_enabled?: boolean;
   token_exchange_enabled?: boolean;
+  /**
+   * muster tried to connect the SSO server with the person's sign-in and it
+   * failed. muster records it per person, not per session, so it can stand
+   * on a server that is connected in this session.
+   */
   sso_attempt_failed?: boolean;
+}
+
+/**
+ * The person's grant of one provider App muster keeps (`aggregator.providerApps`,
+ * each App named after its provider instance), granted once per person with
+ * `core_auth_login app=<name>` and attached by muster to every call of a server
+ * that receives it.
+ */
+export interface ProviderAppAuthStatus {
+  name: string;
+  /**
+   * `pending` while a device-code sign-in waits for the person to enter
+   * `user_code` at `verification_url`.
+   */
+  status: 'connected' | 'auth_required' | 'pending';
+  auth_tool?: string;
+  error?: string;
+  /** The code a pending device-code sign-in waits for; the person's only. */
+  user_code?: string;
+  verification_url?: string;
+  /** RFC 3339: muster gives the code up then. */
+  code_expires_at?: string;
+  /**
+   * Why the person's last device-code sign-in ended without a grant (the code
+   * expired, the provider refused it); cleared by the next sign-in.
+   */
+  last_failure?: string;
 }
 
 export interface AuthStatusResponse {
   servers: ServerAuthStatus[];
+  /** The person's provider App grants; absent from musters without Apps. */
+  providerApps?: ProviderAppAuthStatus[];
   /**
    * Set when muster's `auth://status` could not be read at all (unsupported,
    * unreachable, mid-outage). The proxy answers 200 either way so polling it
@@ -511,8 +527,18 @@ export interface AuthStatusResponse {
  * muster answered something unrecognised and `auth://status` should be re-read.
  */
 export interface ServerSignInResult {
-  status: 'connected' | 'auth_required' | 'error' | 'unknown';
+  /**
+   * `pending`: a provider App's device-code sign-in waits for the person to
+   * enter `deviceCode.userCode` at `deviceCode.verificationUrl`.
+   */
+  status: 'connected' | 'auth_required' | 'pending' | 'error' | 'unknown';
   authUrl?: string;
+  /** The code to enter, when `status` is `pending`. */
+  deviceCode?: {
+    userCode: string;
+    verificationUrl: string;
+    expiresAt?: string;
+  };
   message: string;
   /**
    * How muster identifies itself to the server's authorization server, on
@@ -543,7 +569,6 @@ export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
   listWorkflows(): Promise<WorkflowListResponse>;
-  getWorkflow(name: string): Promise<WorkflowGetResponse>;
   listExecutions(
     options?: ListExecutionsOptions,
   ): Promise<WorkflowExecutionListResponse>;
@@ -557,6 +582,13 @@ export interface MusterApi {
   getMcpUsage(options?: {
     installation?: string;
     hours?: number;
+    /**
+     * Narrows every figure to these MCPServers (a connector, or a family's
+     * instances), and lists every tool they were called with.
+     */
+    servers?: readonly string[];
+    /** Narrows every figure to one tool, by the name muster exposes it as. */
+    tool?: string;
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
@@ -588,6 +620,22 @@ export interface MusterApi {
     installation?: string,
   ): Promise<unknown>;
   /**
+   * {@link callTool} for a tool that reports progress while it works: each
+   * progress notification reaches `onProgress` as it arrives, and the call
+   * lasts as long as the tool keeps reporting. `signal` cancels it. An
+   * answer cut before its result arrived rejects with
+   * {@link MusterAnswerCutError}.
+   */
+  callToolWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<unknown>;
+  /**
    * Ensure a per-user token for the target installation's muster `authProvider`
    * is available, triggering the OAuth/Dex popup if needed. Returns true when a
    * token was obtained (or no provider is configured).
@@ -600,16 +648,20 @@ export interface MusterApi {
   /**
    * Per-server authentication state for the user's muster session
    * (`auth://status`). Cheap enough to poll while a sign-in is in flight.
+   * A status read is never the person's own action, so it never asks them to
+   * sign in: without a live portal session it fails with a session-expired
+   * {@link MusterTokenMintError} instead of opening the login dialog.
    */
   getAuthStatus(installation?: string): Promise<AuthStatusResponse>;
   /**
    * Start the downstream OAuth flow for one aggregated server via muster's
    * `core_auth_login`. Either reports the server as already connected or
    * returns a sign-in URL the user must open in a browser; muster connects the
-   * server for this session once the flow completes.
+   * server for this session once the flow completes. `{ app }` starts the
+   * person's grant of a provider App the same way.
    */
   signInServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult>;
   /**
@@ -618,13 +670,33 @@ export interface MusterApi {
    * tools re-gate until the next sign-in.
    */
   signOutServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult>;
 }
 
+/**
+ * What a sign-in is for: an aggregated server by name, or a provider App
+ * muster keeps (`core_auth_login app=<name>`).
+ */
+export type SignInTarget = string | { app: string };
+
 export interface MusterAuthCredentials {
   token?: string;
+}
+
+export interface MusterAuthCredentialsOptions {
+  /**
+   * Answer from the current session only: refresh it silently if it can be,
+   * and never ask the person to sign in. No token when there is no session.
+   */
+  optional?: boolean;
+  /**
+   * The share of its lifetime (`exp` − `iat`, from 0 to 1) the token must
+   * still have: the session is refreshed silently for it where the provider
+   * can, and its token as it is answers where it cannot.
+   */
+  minLifetimeLeft?: number;
 }
 
 /**
@@ -634,5 +706,24 @@ export interface MusterAuthCredentials {
  * gs auth providers.
  */
 export interface MusterAuthProvidersApi {
-  getCredentials(authProvider: string): Promise<MusterAuthCredentials>;
+  getCredentials(
+    authProvider: string,
+    options?: MusterAuthCredentialsOptions,
+  ): Promise<MusterAuthCredentials>;
+}
+
+/** One progress notification of a tool call. */
+export type MusterToolProgress = {
+  /** Higher than the one before it. */
+  progress: number;
+  total?: number;
+  message?: string;
+};
+
+/**
+ * A streamed tool answer ended before its result: the connection closed
+ * under it. Nothing is known about how far the tool got.
+ */
+export class MusterAnswerCutError extends Error {
+  readonly name = 'MusterAnswerCutError';
 }

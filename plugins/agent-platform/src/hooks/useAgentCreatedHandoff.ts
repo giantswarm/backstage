@@ -5,9 +5,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
  * What the review page hands to the detail page after `create_agent` landed:
  * which agent was just created, and who agent-manager says created it. The
  * detail page then shows the template converging on the platform Harness
- * (`get_agent_status` until ready or failed) — the progress a person expects
- * right after pressing Deploy, which the page's own readiness label only
- * catches up with on its next poll.
+ * (`get_agent_status` until ready) — the progress a person expects right
+ * after pressing Deploy, which the page's own readiness label only catches up
+ * with on its next poll.
  */
 export type AgentCreatedHandoff = {
   installation: string;
@@ -56,12 +56,14 @@ function adopt(
 }
 
 /** The writes after which the detail page shows the template converging. */
-export type AgentWriteAction = 'created' | 'updated' | 'skills-updated';
+export type AgentWriteAction =
+  'created' | 'updated' | 'skills-updated' | 'harness-changed';
 
 const WRITE_ACTIONS: readonly AgentWriteAction[] = [
   'created',
   'updated',
   'skills-updated',
+  'harness-changed',
 ];
 
 /** The router-state key the review page writes and this hook reads. */

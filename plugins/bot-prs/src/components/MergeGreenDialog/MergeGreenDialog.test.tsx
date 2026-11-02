@@ -14,7 +14,17 @@ import { MergeGreenDialog } from './MergeGreenDialog';
 
 const callTool = jest.fn();
 const listServers = jest.fn();
-const musterApi = { callTool, listServers } as unknown as MusterApi;
+// A sweep streams its progress; the stand-in answers it as callTool does.
+const callToolWithProgress = (
+  name: string,
+  args: Record<string, unknown>,
+  { installation }: { installation?: string },
+) => callTool(name, args, installation);
+const musterApi = {
+  callTool,
+  callToolWithProgress,
+  listServers,
+} as unknown as MusterApi;
 
 const summary = {
   total: 2,

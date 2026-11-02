@@ -230,6 +230,7 @@ export function useKServeServingSource(
     return {
       isLoading:
         isProbing || objects.isLoading || nodes.isLoading || podLists.isLoading,
+      isLoadingServedModels: isProbing || objects.isLoading,
       installations: activeInstallations,
       backends: Object.fromEntries(
         activeInstallations.map(installation => [

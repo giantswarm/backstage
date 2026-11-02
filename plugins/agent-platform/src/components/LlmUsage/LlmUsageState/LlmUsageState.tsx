@@ -2,6 +2,7 @@ import { Progress } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
 import type { LlmUsageViewModel } from '../../../hooks/useLlmUsageView';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
+import { usageWindowPhrase } from '../../../lib/usageWindow';
 import { InstallationScopeNote } from '../../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
@@ -21,7 +22,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
     case 'no-installations':
       return (
         <Text variant="body-medium" color="secondary">
-          This portal knows no installations, so there is no usage to read.
+          This portal knows no environments, so there is no usage to read.
         </Text>
       );
 
@@ -36,7 +37,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
         <>
           <InstallationScopeNote component="kagent" />
           <Text variant="body-medium" color="secondary">
-            None of the installations this portal knows run kagent.
+            None of the environments this portal knows run kagent.
           </Text>
         </>
       );
@@ -48,11 +49,13 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       // `mimirEnabled: false`. Not an error: a standalone installation has no
       // Mimir at all, and the sessions tab still works — which is worth saying,
       // because "no metrics" otherwise reads as the whole page being broken.
+      // "Fleet-wide", because the Overview and Cost views render the reader's
+      // own kagent-derived figures right under this where kagent answered.
       return (
         <Text variant="body-medium" color="secondary">
           {installation} has no observability stack this portal can query, so
-          there are no token or cost figures for it. Your sessions still have
-          their own counts.
+          there are no fleet-wide token or cost figures. Your sessions still
+          have their own counts.
         </Text>
       );
 
@@ -68,12 +71,14 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       // Mimir answered and there is genuinely nothing. Worth naming the one
       // reason that is not "nobody used it": an agent that talks to a provider
       // directly never reaches the gateway, so it is invisible here however
-      // busy it is.
+      // busy it is. The window is the one queried, i.e. the selected range.
       return (
         <Text variant="body-medium" color="secondary">
-          No model calls went through {installation}'s LLM gateway in the last{' '}
-          {WINDOW_DAYS} days. Agents configured to call a provider directly do
-          not appear here.
+          No model calls went through {installation}'s LLM gateway{' '}
+          {view.usage?.window
+            ? usageWindowPhrase(view.usage.window)
+            : `over the last ${view.usage?.windowDays ?? WINDOW_DAYS} days`}
+          . Agents configured to call a provider directly do not appear here.
         </Text>
       );
 

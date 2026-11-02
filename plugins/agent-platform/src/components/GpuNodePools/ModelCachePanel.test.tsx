@@ -1,10 +1,16 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
 import type { CacheClaim, ManagedCluster } from '../../lib/clusterManager';
 import {
+  CACHE_READ_ONLY_REASON,
   ModelCachePanel,
   NO_MODEL_CACHE,
   describeTotal,
@@ -118,7 +124,7 @@ describe('ModelCachePanel', () => {
     expect(within(unpriced).getByText('100 GiB')).toBeInTheDocument();
     expect(within(unpriced).getByText('read-only')).toBeInTheDocument();
     expect(screen.getByTestId('cache-read-only')).toHaveTextContent(
-      'inst-2: the installation’s cluster-manager does not offer remove_model_cache yet'.replace(
+      'inst-2: the environment’s cluster-manager does not offer remove_model_cache yet'.replace(
         '’',
         "'",
       ),
@@ -145,7 +151,7 @@ describe('ModelCachePanel', () => {
       screen.getByRole('columnheader', { name: 'Claim' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('columnheader', { name: 'Installation' }),
+      screen.queryByRole('columnheader', { name: 'Environment' }),
     ).not.toBeInTheDocument();
   });
 
@@ -215,5 +221,80 @@ describe('describeTotal', () => {
     ).toBe(
       '$92.82/month across 2 claims at list prices, 1 more without a price (its tier is not known)',
     );
+  });
+});
+
+// T22 B16: nine columns clipped Remove cache, and the read-only reason lived
+// only in `title=`.
+describe('ModelCachePanel at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const ROWS = [row(CLAIM), row({ ...CLAIM, name: 'old-cache' }, 'inst-2')];
+
+  it('lists each claim as a stacked row, Remove cache in its menu, a read-only one saying why', async () => {
+    layout = mockPhoneLayout();
+    const onRemove = jest.fn();
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <ModelCachePanel
+        rows={ROWS}
+        isLoading={false}
+        removable={['inst-1']}
+        onRemove={onRemove}
+      />,
+    );
+
+    expect(screen.queryByRole('grid')).toBeNull();
+    const items = within(
+      screen.getByRole('list', { name: 'Model cache claims' }),
+    ).getAllByRole('listitem');
+    const [removable, readOnly] = items;
+    expect(within(removable).getByText('hf-cache')).toBeVisible();
+    expect(
+      within(removable).getByText('100 GiB gp3 at 500 MiB/s'),
+    ).toBeVisible();
+    for (const fact of ['wc1', 'eu-central-1b', 'inst-1', '$27.37/month']) {
+      expect(within(removable).getByText(fact)).toBeVisible();
+    }
+    expect(
+      within(removable).getByText(
+        'Mounted by the serving slice — every pool of the cluster serves from it',
+      ),
+    ).toBeVisible();
+    expect(within(removable).queryByText(/^Read-only/)).toBeNull();
+
+    // The reason in words, and no menu with nothing to offer.
+    expect(
+      within(readOnly).getByText(`Read-only: ${CACHE_READ_ONLY_REASON}`),
+    ).toBeVisible();
+    expect(within(readOnly).queryByRole('button')).toBeNull();
+
+    await user.click(
+      within(removable).getByRole('button', {
+        name: 'Actions for cache hf-cache on wc1',
+      }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Remove cache…' }),
+    );
+    expect(onRemove).toHaveBeenCalledWith(ROWS[0]);
+  });
+
+  it('keeps the table on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await renderInTestApp(
+      <ModelCachePanel
+        rows={ROWS}
+        isLoading={false}
+        removable={['inst-1']}
+        onRemove={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove cache hf-cache on wc1' }),
+    ).toBeInTheDocument();
   });
 });

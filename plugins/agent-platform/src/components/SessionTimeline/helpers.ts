@@ -1,39 +1,23 @@
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { decodeAgentIdLabel } from '../SessionsDataProvider/helpers';
 
-// Lives in `lib/duration` beside the rail's compact-age formatter; re-exported
-// here so this directory's public surface is unchanged.
-
 /**
- * How much of the agent's internal work the timeline shows.
- *
- * The prototype makes this a real control rather than a fixed state, because
- * seeing "what the agent actually did" is the point of the screen — but a wall of
- * expanded tool payloads is unreadable, so `collapsed` is the default.
+ * A tool's name as a readable phrase, for the plain trace: `github_search_issues`
+ * → `Github search issues`. Lossy on purpose — the exact identifier is one
+ * fold-out away, on the row itself — and left alone when there is nothing to
+ * split, so an unrecognisable name still names the tool.
  */
-export type ActivityDetail = 'hidden' | 'collapsed' | 'expanded';
-
-/** Items that represent the agent's internal work rather than the conversation. */
-const ACTIVITY_KINDS = new Set<TimelineItem['kind']>([
-  'reasoning',
-  'tool-call',
-  'agent-call',
-]);
-
-/**
- * Whether an item is internal activity that `hidden` removes.
- *
- * Approvals are deliberately **not** included: an approval is a decision the user
- * was asked to make, so hiding it would remove the record of their own action, not
- * the agent's working. Nor is a failed turn: it is the outcome of the turn, and
- * hiding it would put the page back to showing a message that went unanswered for
- * no visible reason.
- *
- * Note this governs *hiding* only. Approvals still expand and collapse with the
- * control — see {@link hasExpandableDetail}.
- */
-export function isActivityItem(item: TimelineItem): boolean {
-  return ACTIVITY_KINDS.has(item.kind);
+export function humanizeToolName(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-./]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!words) {
+    return name;
+  }
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**
@@ -111,6 +95,196 @@ export function groupIntoTurns(items: TimelineItem[]): TimelineTurn[] {
     turns.push({ taskIndex: item.taskIndex, at: item.at, items: [item] });
   }
   return turns;
+}
+
+/**
+ * Items a turn's work summary folds away: what the agent did on its way to the
+ * reply. Approvals are not among them — a question is the last thing the agent
+ * said, and a permission request is a decision the person took, so both stay
+ * in the conversation where they can be read.
+ */
+const WORK_KINDS = new Set<TimelineItem['kind']>([
+  'reasoning',
+  'tool-call',
+  'agent-call',
+]);
+
+function isCall(item: TimelineItem): boolean {
+  return item.kind === 'tool-call' || item.kind === 'agent-call';
+}
+
+/**
+ * One piece of a turn as the timeline lays it out: an entry on its own, or a
+ * run of the agent's work folded under one summary line.
+ */
+export type TimelineSegment =
+  | { kind: 'item'; item: TimelineItem }
+  | { kind: 'work'; id: string; items: TimelineItem[] };
+
+/**
+ * Split a turn's items into what reads as conversation and what folds into a
+ * work summary, preserving order.
+ *
+ * Folded per **run** of consecutive work items, not per turn: an agent that
+ * says "let me look" before its calls and answers after them keeps both
+ * sentences where it said them. Every run that holds at least one call folds,
+ * a lone call included (T40): "Used 1 tool" opens onto a list of one exactly as
+ * "Used 3 tools" opens onto three, so the reader learns one gesture rather than
+ * two layouts that depend on how much the agent happened to do. Reasoning on
+ * its own is prose with its own expander, and stays inline.
+ */
+export function segmentTurn(items: TimelineItem[]): TimelineSegment[] {
+  const segments: TimelineSegment[] = [];
+  let run: TimelineItem[] = [];
+  const flush = () => {
+    if (run.some(isCall)) {
+      segments.push({ kind: 'work', id: run[0].id, items: run });
+    } else {
+      for (const item of run) {
+        segments.push({ kind: 'item', item });
+      }
+    }
+    run = [];
+  };
+  for (const item of items) {
+    if (WORK_KINDS.has(item.kind)) {
+      run.push(item);
+      continue;
+    }
+    flush();
+    segments.push({ kind: 'item', item });
+  }
+  flush();
+  return segments;
+}
+
+/**
+ * The approval the session is waiting on the person for, if any: the newest
+ * approval, unanswered, while the session awaits input. Only one can be open
+ * at a time, because kagent suspends until it is answered.
+ *
+ * An unanswered verdict alone does not say this. The parser leaves `verdict`
+ * undefined for a decision worded in a way it does not recognise, and an
+ * approval in a turn that later failed or was canceled never gets one.
+ */
+export function openApprovalId(
+  items: TimelineItem[],
+  isAwaitingPerson: boolean,
+): string | undefined {
+  if (!isAwaitingPerson) {
+    return undefined;
+  }
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'approval') {
+      return item.verdict === undefined ? item.id : undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Whether a segment stays when the person hides tool activity: the
+ * conversation, and the request the agent is waiting on them for.
+ *
+ * Hidden are the work summaries, reasoning and every other permission
+ * request — the how of the agent's work. A question stays answered or not:
+ * it is something the agent said, and the reply under it would otherwise
+ * answer nothing on screen. The open approval ({@link openApprovalId})
+ * always stays, because the turn cannot go on without the person.
+ */
+export function isConversationSegment(
+  segment: TimelineSegment,
+  openApproval?: string,
+): boolean {
+  if (segment.kind === 'work') {
+    return false;
+  }
+  const { item } = segment;
+  if (item.kind === 'reasoning') {
+    return false;
+  }
+  if (item.kind === 'approval') {
+    return item.asks === 'input' || item.id === openApproval;
+  }
+  return true;
+}
+
+export type WorkSummary = {
+  /** The plain summary line, e.g. "Loaded 1 skill · Used 3 tools". */
+  label: string;
+  /** The technical count, e.g. "5 steps · 45 tool calls". */
+  technicalLabel: string;
+};
+
+/** The ADK built-in an agent reads one of its mounted skills with. */
+const LOAD_SKILL_TOOL = 'load_skill';
+
+/**
+ * Which skill a `load_skill` call loaded, for counting distinct skills. Falls
+ * back to the call's id when the arguments do not say, so an unreadable call
+ * still counts as one load rather than collapsing into another.
+ */
+function loadedSkillKey(
+  item: Extract<TimelineItem, { kind: 'tool-call' }>,
+): string {
+  const args = item.args;
+  if (args && typeof args === 'object' && !Array.isArray(args)) {
+    const record = args as Record<string, unknown>;
+    for (const key of ['name', 'skill_name', 'skill']) {
+      if (typeof record[key] === 'string' && record[key]) {
+        return record[key] as string;
+      }
+    }
+  }
+  return item.id;
+}
+
+/**
+ * What a folded run of work amounts to, in the prototype's words.
+ *
+ * Tools are counted by name, not by call — the prototype's "Used 3 tools"
+ * stands over 45 calls — and the exact call count is the technical line's.
+ * Skill loads and delegations are named apart: reading a skill and asking
+ * another agent are different things to have done than running a tool. No
+ * duration: kagent records no per-call timing, and a turn's one timestamp
+ * cannot say how long its work took.
+ */
+export function summarizeWork(items: TimelineItem[]): WorkSummary {
+  const skills = new Set<string>();
+  const tools = new Set<string>();
+  const agents = new Set<string>();
+  let calls = 0;
+  for (const item of items) {
+    if (item.kind === 'tool-call') {
+      if (item.toolName === LOAD_SKILL_TOOL) {
+        skills.add(loadedSkillKey(item));
+      } else {
+        tools.add(item.toolName);
+      }
+      calls += 1;
+    } else if (item.kind === 'agent-call') {
+      agents.add(item.agentId);
+      calls += 1;
+    }
+  }
+  const parts: string[] = [];
+  if (skills.size > 0) {
+    parts.push(`Loaded ${countNoun(skills.size, 'skill')}`);
+  }
+  if (tools.size > 0) {
+    parts.push(`Used ${countNoun(tools.size, 'tool')}`);
+  }
+  if (agents.size > 0) {
+    parts.push(`Asked ${countNoun(agents.size, 'agent')}`);
+  }
+  return {
+    label: parts.join(' · '),
+    technicalLabel: `${countNoun(items.length, 'step')} · ${countNoun(
+      calls,
+      'tool call',
+    )}`,
+  };
 }
 
 /** Whether an item is on the user's side of the conversation. */

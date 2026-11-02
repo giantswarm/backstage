@@ -1,16 +1,10 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-import {
-  HelmRelease,
-  GitRepository,
-  HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-  Kustomization,
-  OCIRepository,
-  useShowErrors,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from '../../hooks/useFluxResources';
+import {
+  FluxResourceCollections,
+  listFluxResources,
+} from '../../utils/fluxResources';
 import { FluxResourceData, collectResourceData } from './utils';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -31,15 +25,7 @@ export type FluxResourcesData = FiltersData<DefaultFluxResourceFilters> & {
   retry: () => void;
   visibleColumns: string[];
   setVisibleColumns: (columns: string[]) => void;
-
-  kustomizations: Kustomization[];
-  helmReleases: HelmRelease[];
-  gitRepositories: GitRepository[];
-  ociRepositories: OCIRepository[];
-  helmRepositories: HelmRepository[];
-  imagePolicies: ImagePolicy[];
-  imageRepositories: ImageRepository[];
-  imageUpdateAutomations: ImageUpdateAutomation[];
+  resources: FluxResourceCollections;
 };
 
 const FluxResourcesDataContext = createContext<FluxResourcesData | undefined>(
@@ -68,20 +54,7 @@ export const FluxResourcesDataProvider = ({
     useFilters<DefaultFluxResourceFilters>();
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
-  const {
-    resources: {
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
-      imagePolicies,
-      imageRepositories,
-      imageUpdateAutomations,
-    },
-    isLoading,
-    errors,
-  } = useFluxResources(activeClusters);
+  const { resources, isLoading, errors } = useFluxResources(activeClusters);
 
   useShowErrors(errors);
 
@@ -90,29 +63,10 @@ export const FluxResourcesDataProvider = ({
       return [];
     }
 
-    const resources = [
-      ...kustomizations,
-      ...helmReleases,
-      ...gitRepositories,
-      ...ociRepositories,
-      ...helmRepositories,
-      ...imagePolicies,
-      ...imageRepositories,
-      ...imageUpdateAutomations,
-    ];
-
-    return resources.map(resource => collectResourceData(resource));
-  }, [
-    isLoading,
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
-  ]);
+    return listFluxResources(resources).map(resource =>
+      collectResourceData(resource),
+    );
+  }, [isLoading, resources]);
 
   const contextValue: FluxResourcesData = useMemo(() => {
     const appliedFilters = Object.values(filters).filter(filter =>
@@ -131,15 +85,7 @@ export const FluxResourcesDataProvider = ({
       visibleColumns,
       setVisibleColumns,
       retry: () => {},
-
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
-      imagePolicies,
-      imageRepositories,
-      imageUpdateAutomations,
+      resources,
 
       filters,
       queryParameters,
@@ -148,15 +94,8 @@ export const FluxResourcesDataProvider = ({
   }, [
     filters,
     fluxResourcesData,
-    gitRepositories,
-    helmReleases,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
     isLoading,
-    kustomizations,
-    ociRepositories,
+    resources,
     queryParameters,
     updateFilters,
     visibleColumns,

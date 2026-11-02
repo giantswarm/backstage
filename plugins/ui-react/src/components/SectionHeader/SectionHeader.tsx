@@ -10,6 +10,16 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '70ch',
     marginBottom: theme.spacing(3),
   },
+  // Spaced by the caller, e.g. a flex gap: no margin under the title or the
+  // description, only the small step between the two.
+  compactTitle: {
+    marginBottom: 0,
+  },
+  compactDescription: {
+    maxWidth: '70ch',
+    marginTop: 'var(--bui-space-1)',
+    marginBottom: 0,
+  },
 }));
 
 export type SectionHeaderProps = {
@@ -36,6 +46,11 @@ export type SectionHeaderProps = {
    * the region takes its accessible name from the title alone.
    */
   id?: string;
+  /**
+   * No margin below the title and description, for a caller that spaces its
+   * parts itself, as `PageSection` does with a flex gap. Defaults to false.
+   */
+  compact?: boolean;
 };
 
 /** Title + description pair used to introduce a page, a card's contents or a group of fields. */
@@ -45,6 +60,7 @@ export function SectionHeader({
   as = 'h3',
   variant = 'title-small',
   id,
+  compact = false,
 }: SectionHeaderProps) {
   const classes = useStyles();
   return (
@@ -54,12 +70,16 @@ export function SectionHeader({
         id={id}
         variant={variant}
         weight="bold"
-        className={classes.title}
+        className={compact ? classes.compactTitle : classes.title}
       >
         {title}
       </Text>
       {description !== undefined && description !== null && (
-        <Text as="p" color="secondary" className={classes.description}>
+        <Text
+          as="p"
+          color="secondary"
+          className={compact ? classes.compactDescription : classes.description}
+        >
           {description}
         </Text>
       )}

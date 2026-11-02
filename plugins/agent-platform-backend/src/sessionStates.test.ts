@@ -508,17 +508,16 @@ describe('SessionStateReader — what counts as a shortfall', () => {
   });
 
   describe('on the kagent API v2 line', () => {
-    /** An AgentInstance as `ListAgentInstances` answers it. */
-    function instance(id: string, overrides: Record<string, unknown> = {}) {
+    /** A Session as `ListSessions` answers it. */
+    function session(id: string, overrides: Record<string, unknown> = {}) {
       return {
         id,
         creator: 'dev@lab.local',
-        harness: { namespace: 'kagent', name: 'kagent' },
-        agentTemplate: { namespace: 'kagent', name: 'sre-agent' },
-        state: 'AGENT_INSTANCE_STATE_SUSPENDED',
+        agent: { namespace: 'kagent', name: 'sre-agent' },
+        state: 'RUNTIME_STATE_SUSPENDED',
         createdAt: '2026-09-11T00:00:00Z',
         updatedAt: '2026-09-11T01:00:00Z',
-        name: `instance ${id}`,
+        name: `session ${id}`,
         contextId: `ctx-${id}`,
         ...overrides,
       };
@@ -532,11 +531,11 @@ describe('SessionStateReader — what counts as a shortfall', () => {
       };
     }
 
-    it('reads the newest task state of a ready or suspended instance', async () => {
+    it('reads the newest task state of a ready or suspended session', async () => {
       listSessions.mockResolvedValue({
-        agentInstances: [
-          instance('a'),
-          instance('b', { state: 'AGENT_INSTANCE_STATE_READY' }),
+        sessions: [
+          session('a'),
+          session('b', { state: 'RUNTIME_STATE_READY' }),
         ],
       });
       listSessionTasks.mockImplementation(async (id: string) =>
@@ -562,15 +561,15 @@ describe('SessionStateReader — what counts as a shortfall', () => {
       expect(listSessionTasks).toHaveBeenCalledTimes(2);
     });
 
-    it('takes a failed, creating or deleting instance’s own state without a task read', async () => {
+    it('takes a failed, creating or deleting session’s own state without a task read', async () => {
       listSessions.mockResolvedValue({
-        agentInstances: [
-          instance('failed', {
-            state: 'AGENT_INSTANCE_STATE_FAILED',
+        sessions: [
+          session('failed', {
+            state: 'RUNTIME_STATE_FAILED',
             failure: { reason: 'ActorFailed', message: 'no worker' },
           }),
-          instance('creating', { state: 'AGENT_INSTANCE_STATE_CREATING' }),
-          instance('ok'),
+          session('creating', { state: 'RUNTIME_STATE_CREATING' }),
+          session('ok'),
         ],
       });
       listSessionTasks.mockResolvedValue(
@@ -591,6 +590,7 @@ describe('SessionStateReader — what counts as a shortfall', () => {
             sessionId: 'failed',
             state: 'failed',
             changedAt: Date.parse('2026-09-11T01:00:00Z'),
+            failureReason: 'other',
           },
           {
             sessionId: 'creating',
@@ -601,6 +601,137 @@ describe('SessionStateReader — what counts as a shortfall', () => {
         ]),
       );
       expect(result.skipped).toBe(0);
+    });
+
+    describe('failure reasons', () => {
+      const providerError =
+        'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 404 Not Found {"code": "model_not_found"}';
+
+      /** A `ListTasksResponse` whose single task failed with `text`. */
+      function failedTask(text: string, state = 'TASK_STATE_FAILED') {
+        return {
+          tasks: [
+            {
+              id: 't1',
+              contextId: 'c1',
+              status: {
+                state,
+                timestamp: '2026-09-11T01:00:00Z',
+                message: {
+                  messageId: 'm1',
+                  role: 'ROLE_AGENT',
+                  parts: [{ text }],
+                },
+              },
+            },
+          ],
+          totalSize: 1,
+        };
+      }
+
+      it('reduces a failed turn’s message to its class and never sends the text', async () => {
+        listSessions.mockResolvedValue({ sessions: [session('a')] });
+        listSessionTasks.mockResolvedValue(failedTask(providerError));
+
+        const result = await reader().read('tok');
+
+        expect(result.states).toEqual([
+          {
+            sessionId: 'a',
+            state: 'failed',
+            changedAt: Date.parse('2026-09-11T01:00:00Z'),
+            failureReason: 'model-unavailable',
+          },
+        ]);
+        const wire = JSON.stringify(result);
+        expect(wire).not.toContain('openai');
+        expect(wire).not.toContain('model_not_found');
+      });
+
+      it('classifies a rejected turn too', async () => {
+        listSessions.mockResolvedValue({ sessions: [session('a')] });
+        listSessionTasks.mockResolvedValue(
+          failedTask(
+            'failed to connect MCP client for kubernetes: 401 Unauthorized',
+            'TASK_STATE_REJECTED',
+          ),
+        );
+
+        const result = await reader().read('tok');
+
+        expect(result.states[0]).toMatchObject({
+          state: 'rejected',
+          failureReason: 'tool-failed',
+        });
+      });
+
+      it('gives no reason to a session that did not fail', async () => {
+        listSessions.mockResolvedValue({ sessions: [session('a')] });
+        listSessionTasks.mockResolvedValue(
+          tasks('TASK_STATE_AUTH_REQUIRED', '2026-09-11T01:00:00Z'),
+        );
+
+        const result = await reader().read('tok');
+
+        expect(result.states).toEqual([
+          {
+            sessionId: 'a',
+            state: 'auth-required',
+            changedAt: Date.parse('2026-09-11T01:00:00Z'),
+          },
+        ]);
+      });
+
+      it('reports a runtime kagent marked lost on a READY session, whatever its newest turn says', async () => {
+        // The contract fixture (session.runtime-lost.json): kagent keeps the
+        // session READY, so its tasks are still read, and the newest turn is
+        // often the question it can now never get an answer to.
+        listSessions.mockResolvedValue({
+          sessions: [
+            session('lost', {
+              state: 'RUNTIME_STATE_READY',
+              failure: {
+                reason: 'RUNTIME_LOST',
+                message: 'runtime lost: node ip-10-0-1-2 is gone',
+              },
+            }),
+          ],
+        });
+        listSessionTasks.mockResolvedValue(
+          tasks('TASK_STATE_INPUT_REQUIRED', '2026-09-11T01:00:00Z'),
+        );
+
+        const result = await reader().read('tok');
+
+        expect(result.states).toEqual([
+          {
+            sessionId: 'lost',
+            state: 'input-required',
+            changedAt: Date.parse('2026-09-11T01:00:00Z'),
+            failureReason: 'runtime-lost',
+          },
+        ]);
+        expect(JSON.stringify(result)).not.toContain('ip-10-0-1-2');
+      });
+
+      it('lets the runtime-lost mark win over a failed turn’s own reason', async () => {
+        listSessions.mockResolvedValue({
+          sessions: [
+            session('lost', {
+              state: 'RUNTIME_STATE_READY',
+              failure: { reason: 'RUNTIME_LOST' },
+            }),
+          ],
+        });
+        listSessionTasks.mockResolvedValue(failedTask(providerError));
+
+        const result = await reader().read('tok');
+
+        expect(result.states[0]).toMatchObject({
+          state: 'failed',
+          failureReason: 'runtime-lost',
+        });
+      });
     });
   });
 });

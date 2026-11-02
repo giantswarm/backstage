@@ -17,11 +17,14 @@ const meta = {
           summary:
             'A link that opens in a new tab (`target="_blank"` + ' +
             '`rel="noopener noreferrer"`) with a trailing “launch” icon that ' +
-            'inherits the surrounding font size.',
+            'inherits the surrounding font size, and “(opens in a new tab)” ' +
+            'for screen readers.',
           whenToUse:
-            'For any link leaving the app (external docs, dashboards, GitHub). ' +
-            'The icon signals “opens elsewhere”; the `rel` attributes are the safe ' +
-            'default so callers don’t have to remember them.',
+            'For any link leaving the app (external docs, dashboards, GitHub), ' +
+            'and for any link inside a form or wizard with input to keep, so ' +
+            'following it leaves the form where it is. The icon signals “opens ' +
+            'elsewhere”; the `rel` attributes are the safe default so callers ' +
+            'don’t have to remember them.',
           migration: 'mui-v4',
         }),
       },

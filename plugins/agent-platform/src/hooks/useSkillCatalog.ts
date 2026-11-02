@@ -4,17 +4,23 @@ import {
   useApi,
 } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { DiscoveredSkill } from '../lib/skills';
+import type { DiscoveredPlugin } from '../lib/plugins';
 
 export type SkillCatalog = {
   skills: DiscoveredSkill[];
+  /** The plugins found in the same repositories, at the same commits. */
+  plugins: DiscoveredPlugin[];
   isLoading: boolean;
   error: Error | null;
   /** Whether any skill repository is configured at all. */
   hasRepositories: boolean;
   /** Configured repositories whose discovery failed (surfaced as a warning). */
   failedRepositories: string[];
+  /** Why each failed repository could not be read, by its URL. */
+  failureMessages?: Record<string, string>;
   /** True when a repo's listing was capped, so some skills may be missing. */
   truncated: boolean;
 };
@@ -22,7 +28,7 @@ export type SkillCatalog = {
 /**
  * Discovers agent skills across every configured repository
  * (`agentPlatform.skills.repositories`) via the gs-backend `/agent-skills`
- * endpoint, and aggregates them. One repository failing does not fail the
+ * endpoint, and aggregates them with the plugins found alongside. One repository failing does not fail the
  * whole catalog — the others still load and the failed ones are reported.
  */
 export function useSkillCatalog(): SkillCatalog {
@@ -35,7 +41,7 @@ export function useSkillCatalog(): SkillCatalog {
   const repositories =
     config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['agent-platform', 'skills', repositories.join(',')],
     enabled: !configIsLoading && repositories.length > 0,
     queryFn: async () => {
@@ -48,12 +54,23 @@ export function useSkillCatalog(): SkillCatalog {
             `${baseUrl}/agent-skills?${params.toString()}`,
           );
           if (!response.ok) {
+            const reason = await response
+              .json()
+              .then(
+                (body: { error?: { message?: unknown } }) =>
+                  body?.error?.message,
+              )
+              .catch(() => undefined);
             throw new Error(
-              `Failed to discover skills in ${repoUrl}: HTTP ${response.status}`,
+              typeof reason === 'string' && reason
+                ? reason
+                : `Failed to discover skills in ${repoUrl}: HTTP ${response.status}`,
             );
           }
           const body = (await response.json()) as {
             skills: DiscoveredSkill[];
+            /** Absent from older backends. */
+            plugins?: DiscoveredPlugin[];
             truncated?: boolean;
           };
           return body;
@@ -61,27 +78,43 @@ export function useSkillCatalog(): SkillCatalog {
       );
 
       const skills: DiscoveredSkill[] = [];
+      const plugins: DiscoveredPlugin[] = [];
       const failedRepositories: string[] = [];
+      const failureMessages: Record<string, string> = {};
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           skills.push(...result.value.skills);
+          plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
         } else {
           failedRepositories.push(repositories[index]);
+          failureMessages[repositories[index]] =
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason);
         }
       });
 
-      return { skills, failedRepositories, truncated };
+      return {
+        skills,
+        plugins,
+        failedRepositories,
+        failureMessages,
+        truncated,
+      };
     },
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return {
     skills: data?.skills ?? [],
+    plugins: data?.plugins ?? [],
     isLoading: configIsLoading || isLoading,
     error: (error as Error) ?? null,
     hasRepositories: repositories.length > 0,
     failedRepositories: data?.failedRepositories ?? [],
+    failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
   };
 }

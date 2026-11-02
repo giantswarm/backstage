@@ -647,6 +647,12 @@ export type ServingSourceSnapshot = {
   /** Discovery or reads still in flight (more may appear). */
   isLoading: boolean;
   /**
+   * The part of `isLoading` the served models depend on: discovery and the
+   * reads that list them, not the GPU node and pod reads that fill in their
+   * details. What a served-models list waits for. Absent, `isLoading`.
+   */
+  isLoadingServedModels?: boolean;
+  /**
    * Installations where this source found a serving layer: a serving
    * backend, or a model-manager that answers but runs no backend yet.
    */
@@ -1178,6 +1184,9 @@ export function mergeServingSnapshots(
   }
   return {
     isLoading: snapshots.some(snapshot => snapshot.isLoading),
+    isLoadingServedModels: snapshots.some(
+      snapshot => snapshot.isLoadingServedModels ?? snapshot.isLoading,
+    ),
     installations: Array.from(installations),
     backends,
     sourceBackends,

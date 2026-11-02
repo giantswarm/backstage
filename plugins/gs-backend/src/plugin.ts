@@ -10,8 +10,11 @@ import {
 } from '@backstage/integration';
 import { registerMcpActions } from './mcpActions';
 import { createRouter } from './router';
-import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
-import { mimirServiceRef } from './services/MimirService';
+import {
+  containerRegistryServiceRef,
+  mimirServiceRef,
+} from '@giantswarm/backstage-plugin-gs-node';
+import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
 
 /**
  * GS backend plugin
@@ -26,6 +29,9 @@ export const gsPlugin = createBackendPlugin({
         httpRouter: coreServices.httpRouter,
         logger: coreServices.logger,
         config: coreServices.rootConfig,
+        auth: coreServices.auth,
+        httpAuth: coreServices.httpAuth,
+        discovery: coreServices.discovery,
         containerRegistry: containerRegistryServiceRef,
         mimir: mimirServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
@@ -35,6 +41,9 @@ export const gsPlugin = createBackendPlugin({
         httpRouter,
         logger,
         config,
+        auth,
+        httpAuth,
+        discovery,
         containerRegistry,
         mimir,
         actionsRegistry,
@@ -50,6 +59,14 @@ export const gsPlugin = createBackendPlugin({
             containerRegistry,
             mimir,
             githubCredentialsProvider,
+            httpAuth,
+            managementClusterVersions: new ManagementClusterVersionsService({
+              config,
+              auth,
+              discovery,
+              logger,
+            }),
+            logger,
           }),
         );
 

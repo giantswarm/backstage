@@ -4,6 +4,7 @@ import {
   isFunctionCallPart,
   isInternalToolName,
   MUSTER_PROXY_LABEL,
+  readUsageReport,
   readNestedTokenUsage,
   readTokenUsage,
   unwrapProxiedCall,
@@ -54,6 +55,70 @@ describe('unwrapProxiedCall', () => {
     const call = { name: 'x_prometheus_execute_query', args: { query: 'up' } };
 
     expect(unwrapProxiedCall(call)).toBe(call);
+  });
+});
+
+describe('readUsageReport', () => {
+  const report = (bag: Record<string, unknown>) =>
+    readUsageReport({ 'kagent.dev/a2a/usage': bag })?.context;
+
+  it("reads an ADK bag as one call's prompt plus output", () => {
+    expect(
+      report({ promptTokenCount: 2_900, candidatesTokenCount: 58 }),
+    ).toEqual({ tokens: 2_958, perCall: true });
+  });
+
+  it('reads a legacy-prefixed bag', () => {
+    expect(
+      readUsageReport({ adk_usage_metadata: { promptTokenCount: 760 } }),
+    ).toEqual({
+      usage: { total: 760, prompt: 760, completion: 0 },
+      context: { tokens: 760, perCall: true },
+    });
+  });
+
+  it('reads a bag that counts only a total', () => {
+    expect(report({ totalTokenCount: 6_000 })).toEqual({
+      tokens: 6_000,
+      perCall: true,
+    });
+  });
+
+  it('reads a claude Harness turn total over several calls as not per call', () => {
+    expect(
+      report({
+        promptTokenCount: 70_958,
+        candidatesTokenCount: 380,
+        totalTokenCount: 71_338,
+        costUsd: 0.13,
+        numTurns: 4,
+      }),
+    ).toEqual({ tokens: 71_338, perCall: false });
+  });
+
+  it('reads a claude Harness turn of exactly one call as per call', () => {
+    expect(
+      report({ promptTokenCount: 900, costUsd: 0.01, numTurns: 1 }),
+    ).toEqual({ tokens: 900, perCall: true });
+  });
+
+  it.each([
+    ['a missing', { costUsd: 0.13 }],
+    ['a fractional', { costUsd: 0.13, numTurns: 2.5 }],
+    ['a string', { numTurns: '1' }],
+  ])(
+    'does not trust a Harness bag with %s call count as one call',
+    (_, extra) => {
+      // Failing closed: a sum over calls must not pass for a context.
+      expect(report({ promptTokenCount: 70_958, ...extra })?.perCall).toBe(
+        false,
+      );
+    },
+  );
+
+  it('reads nothing from a bag that counts no tokens', () => {
+    expect(readUsageReport({ 'kagent.dev/a2a/usage': {} })).toBeUndefined();
+    expect(readUsageReport(undefined)).toBeUndefined();
   });
 });
 

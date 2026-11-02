@@ -1,19 +1,33 @@
 import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import {
+  discoveryApiRef,
+  fetchApiRef,
+  useApi,
+} from '@backstage/core-plugin-api';
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { Skeleton, Text } from '@backstage/ui';
-import { UseQueryResult, useQueries } from '@tanstack/react-query';
+import { UseQueryResult, useQueries, useQuery } from '@tanstack/react-query';
+import {
+  ManagementClusterVersionCell,
+  ManagementClusterVersionsResponse,
+  SUBJECT_TOKEN_HEADER,
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   Cluster,
   isNotFoundError,
   k8sResponseError,
+  NON_PERSISTED_QUERY_META,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  asLoginRequestCallerApi,
+  gsAuthProvidersApiRef,
+} from '../../../apis/auth';
+import { hasUserGesture } from '../../../apis/auth/userGesture';
 import { useInstallations } from '../../../apis/installations';
-import { describeClusterError } from '../../clusters/ClustersDataProvider/utils';
 import { getClusterReleaseVersion } from '../../clusters/utils';
 import { formatVersion } from '../../utils/helpers';
 import { KubernetesVersion, Version } from '../../UI';
@@ -22,11 +36,7 @@ import { KubernetesVersion, Version } from '../../UI';
 const MANAGEMENT_CLUSTER_NAMESPACE = 'org-giantswarm';
 
 /** A version cell's state for one installation. */
-export type VersionCell =
-  | { state: 'loading' }
-  | { state: 'known'; version: string }
-  | { state: 'absent'; reason: string }
-  | { state: 'failed'; reason: string };
+export type VersionCell = { state: 'loading' } | ManagementClusterVersionCell;
 
 export type ManagementClusterVersions = {
   kubernetes: VersionCell;
@@ -41,16 +51,53 @@ const NO_RELEASE: VersionCell = {
   state: 'absent',
   reason: 'The management cluster carries no Giant Swarm release',
 };
-const LOADING: VersionCell = { state: 'loading' };
+const LOADING_CELL: VersionCell = { state: 'loading' };
+const LOADING: ManagementClusterVersions = {
+  kubernetes: LOADING_CELL,
+  release: LOADING_CELL,
+};
 
+/**
+ * Whether a read failed because the person is not signed in: a declined or
+ * failed main sign-in (`RejectedError`), or an expired portal session found
+ * by a background read (`PortalSessionExpiredError`).
+ */
+function isSignedOut(error: Error): boolean {
+  return (
+    error.name === 'RejectedError' || error.name === 'PortalSessionExpiredError'
+  );
+}
+
+/**
+ * A failed read's cell: a short status that fits the column, the error's own
+ * text on hover.
+ */
 function failed(error: Error): VersionCell {
-  return {
-    state: 'failed',
-    reason:
-      error.name === 'RejectedError'
-        ? 'Not signed in to the installation'
-        : describeClusterError(error),
-  };
+  if (isSignedOut(error)) {
+    return {
+      state: 'failed',
+      reason: 'Not signed in',
+      detail: 'Not signed in to the installation: sign in to the portal again',
+    };
+  }
+  if (error.name === 'TimeoutError' || /timed out/i.test(error.message)) {
+    return { state: 'failed', reason: 'Timed out', detail: error.message };
+  }
+  if (error.name === 'ForbiddenError') {
+    return {
+      state: 'failed',
+      reason: 'Access forbidden',
+      detail: error.message,
+    };
+  }
+  if (error.name === 'NotFoundError') {
+    return { state: 'failed', reason: 'API not found', detail: error.message };
+  }
+  return { state: 'failed', reason: 'Read failed', detail: error.message };
+}
+
+function versionOf(cell: VersionCell | undefined) {
+  return cell?.state === 'known' ? cell.version : undefined;
 }
 
 /** A `/version` query's cell; a stable `combine`, so it reruns only when a query changes. */
@@ -61,32 +108,20 @@ function serverVersionCells(
     if (query.isSuccess) {
       return { state: 'known', version: query.data };
     }
-    return query.isError ? failed(query.error) : LOADING;
+    return query.isError ? failed(query.error) : LOADING_CELL;
   });
 }
 
-function versionOf(cell: VersionCell | undefined) {
-  return cell?.state === 'known' ? cell.version : undefined;
-}
-
 /**
- * Each management cluster's versions, read live from the installation: the
- * Kubernetes version its API server serves (`/version`, so every
- * installation the portal is connected to has one) and the Giant Swarm
- * release on its own `Cluster` resource where it carries one. One request
- * per installation and kind; one slow or unreachable installation leaves
- * the others' cells alone.
+ * The versions of the installations only the browser can read as the person
+ * (their own OIDC sign-in, or a `backendUrl` override), one request per
+ * installation and kind through the Kubernetes plugin's client, as before
+ * the backend read the others.
  */
-export function useManagementClusterVersions(): Record<
-  string,
-  ManagementClusterVersions
-> {
+function useBrowserReadVersions(
+  names: string[],
+): Record<string, ManagementClusterVersions> {
   const kubernetesApi = useApi(kubernetesApiRef);
-  const { installations } = useInstallations();
-  const names = useMemo(
-    () => installations.map(installation => installation.name),
-    [installations],
-  );
 
   const serverVersions = useQueries({
     queries: names.map(name => ({
@@ -105,6 +140,7 @@ export function useManagementClusterVersions(): Record<
         const { gitVersion } = await response.json();
         return gitVersion;
       },
+      meta: { ...NON_PERSISTED_QUERY_META },
     })),
     combine: serverVersionCells,
   });
@@ -153,7 +189,7 @@ export function useManagementClusterVersions(): Record<
               ? NO_RELEASE
               : failed(listError.error);
         } else {
-          release = LOADING;
+          release = LOADING_CELL;
         }
       }
 
@@ -162,6 +198,102 @@ export function useManagementClusterVersions(): Record<
     return result;
   }, [names, serverVersions, resources, clustersData, errors]);
 }
+
+const NONE: string[] = [];
+
+/**
+ * Each management cluster's versions, read live from the installations as
+ * the signed-in person: the Kubernetes version its API server serves and the
+ * Giant Swarm release on its own `Cluster` resource where it carries one.
+ * The backend reads every installation it can read as the person in one
+ * request (`GET /api/gs/installations/versions`) and keeps each answer for a
+ * few minutes; the installations it names as `readInBrowser` are read from
+ * the browser. The answer is the signed-in person's (their versions, their
+ * "Access forbidden"), so it is never persisted to the browser's storage,
+ * where the next person to sign in on the same browser would see it.
+ */
+export function useManagementClusterVersions(): Record<
+  string,
+  ManagementClusterVersions
+> {
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
+  const gsAuthProvidersApi = useApi(gsAuthProvidersApiRef);
+  const { installations } = useInstallations();
+
+  const query = useQuery({
+    queryKey: ['installations', 'management-cluster-versions'],
+    queryFn: async (): Promise<ManagementClusterVersionsResponse> => {
+      // Only a read the person starts may open the sign-in. A background
+      // read (a refetch, a remount) asks the main login optionally: it
+      // refreshes silently where it can and, without a session, ends as
+      // not signed in instead of opening Login Required.
+      const optional = !hasUserGesture();
+      const [idToken, baseUrl] = await Promise.all([
+        asLoginRequestCallerApi(
+          'installations-versions',
+          gsAuthProvidersApi.getMainAuthApi(),
+        ).getIdToken({ optional }),
+        discoveryApi.getBaseUrl('gs'),
+      ]);
+      if (!idToken) {
+        const error = new Error(
+          'The portal session expired: sign in to the portal again',
+        );
+        error.name = 'PortalSessionExpiredError';
+        throw error;
+      }
+      const response = await fetchApi.fetch(
+        `${baseUrl}/installations/versions`,
+        { headers: { [SUBJECT_TOKEN_HEADER]: idToken } },
+      );
+      if (!response.ok) {
+        const error = new Error(
+          `The portal could not read the management cluster versions (HTTP ${response.status})`,
+        );
+        if (response.status === 403) {
+          error.name = 'ForbiddenError';
+        }
+        throw error;
+      }
+      return response.json();
+    },
+    meta: { ...NON_PERSISTED_QUERY_META },
+  });
+
+  const browserVersions = useBrowserReadVersions(
+    query.data?.readInBrowser ?? NONE,
+  );
+
+  return useMemo(() => {
+    const result: Record<string, ManagementClusterVersions> = {};
+    // Signed out, the versions read earlier are no longer shown: they were
+    // the signed-in person's.
+    const signedOut = query.isError && isSignedOut(query.error);
+    for (const { name } of installations) {
+      if (query.data && !signedOut) {
+        const versions =
+          query.data.installations[name] ?? browserVersions[name];
+        if (versions) {
+          result[name] = versions;
+        }
+      } else if (query.isError) {
+        const cell = failed(query.error);
+        result[name] = { kubernetes: cell, release: cell };
+      } else {
+        result[name] = LOADING;
+      }
+    }
+    return result;
+  }, [installations, query.data, query.isError, query.error, browserVersions]);
+}
+
+/** Keeps a failed cell within its column: an ellipsis past the width. */
+const FAILED_STYLE = {
+  display: 'inline-block',
+  maxWidth: '16em',
+  verticalAlign: 'bottom',
+} as const;
 
 function CellState({
   cell,
@@ -197,12 +329,15 @@ function CellState({
       );
     case 'failed':
     default:
+      // A short status that fits the column; the full reason on hover.
       return (
         <Text
           as="span"
           color="secondary"
+          truncate
+          style={FAILED_STYLE}
           data-testid={testId}
-          title={shown.reason}
+          title={shown.detail ?? shown.reason}
         >
           {shown.reason}
         </Text>

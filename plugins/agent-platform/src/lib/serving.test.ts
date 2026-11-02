@@ -1,5 +1,7 @@
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   clientLookupOf,
   endpointAuthority,
@@ -715,9 +717,31 @@ describe('mergeServingSnapshots', () => {
     });
   });
 
+  it('waits for the served models of every source, falling back to its isLoading', () => {
+    // A source that reports no `isLoadingServedModels` of its own.
+    const { isLoadingServedModels: _, ...settled } = mergeServingSnapshots([]);
+    const merged = (
+      ...flags: { isLoading: boolean; isLoadingServedModels?: boolean }[]
+    ) => mergeServingSnapshots(flags.map(flag => ({ ...settled, ...flag })));
+
+    expect(
+      merged(
+        { isLoading: true, isLoadingServedModels: false },
+        { isLoading: false, isLoadingServedModels: false },
+      ).isLoadingServedModels,
+    ).toBe(false);
+    expect(
+      merged(
+        { isLoading: true, isLoadingServedModels: false },
+        { isLoading: true },
+      ).isLoadingServedModels,
+    ).toBe(true);
+  });
+
   it('is empty and settled with no sources', () => {
     expect(mergeServingSnapshots([])).toEqual({
       isLoading: false,
+      isLoadingServedModels: false,
       installations: [],
       backends: {},
       backendCapabilities: {},
@@ -1333,7 +1357,7 @@ describe('clientLookupOf', () => {
   it('reads the endpoint, model and identity off a ModelConfig', () => {
     const modelConfig = new ModelConfig(
       {
-        apiVersion: 'kagent.dev/v1alpha3',
+        apiVersion: 'api.kagent.dev/v1alpha3',
         kind: 'ModelConfig',
         metadata: { name: 'qwen3-0-6b', namespace: 'kagent' },
         spec: {
@@ -1341,7 +1365,7 @@ describe('clientLookupOf', () => {
           model: 'qwen3:0.6b',
           ollama: { host: 'http://172.21.0.1:11434' },
         },
-      } as crds.kagent.v1alpha3.ModelConfig,
+      } as ModelConfigInterface,
       'lab',
     );
     expect(clientLookupOf(modelConfig)).toEqual({

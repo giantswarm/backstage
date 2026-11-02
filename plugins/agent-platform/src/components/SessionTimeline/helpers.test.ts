@@ -1,4 +1,9 @@
-import { groupIntoTurns } from './helpers';
+import {
+  groupIntoTurns,
+  humanizeToolName,
+  segmentTurn,
+  summarizeWork,
+} from './helpers';
 import { TimelineItem } from '../../lib/kagentTimeline';
 
 describe('groupIntoTurns', () => {
@@ -38,5 +43,191 @@ describe('groupIntoTurns', () => {
 
   it('returns nothing for an empty timeline', () => {
     expect(groupIntoTurns([])).toEqual([]);
+  });
+});
+
+describe('humanizeToolName', () => {
+  it('turns identifiers into readable phrases', () => {
+    expect(humanizeToolName('github_search_issues')).toBe(
+      'Github search issues',
+    );
+    expect(humanizeToolName('post-message')).toBe('Post message');
+    expect(humanizeToolName('listClusters')).toBe('List clusters');
+  });
+
+  it('leaves a name with nothing to split as itself', () => {
+    expect(humanizeToolName('reconcile')).toBe('Reconcile');
+    expect(humanizeToolName('___')).toBe('___');
+  });
+});
+
+describe('segmentTurn', () => {
+  const at = (kind: TimelineItem['kind'], id: string, extra = {}) =>
+    ({ kind, id, taskIndex: 0, text: 'x', ...extra }) as TimelineItem;
+  const tool = (id: string, toolName = 't') =>
+    at('tool-call', id, { toolName, isPending: false });
+
+  it('folds a run of work that holds a call and more than one step', () => {
+    const segments = segmentTurn([
+      at('user-message', 'u'),
+      at('reasoning', 'r'),
+      tool('a'),
+      at('agent-message', 'm'),
+    ]);
+
+    expect(
+      segments.map(s => (s.kind === 'work' ? s.items.length : s.kind)),
+    ).toEqual(['item', 2, 'item']);
+  });
+
+  it('folds a lone call too, the same way as many (T40)', () => {
+    // No lone-call special case: "Used 1 tool" opens onto a list of one.
+    const segments = segmentTurn([
+      at('user-message', 'u'),
+      tool('a'),
+      at('agent-message', 'm'),
+    ]);
+
+    expect(
+      segments.map(s => (s.kind === 'work' ? s.items.map(i => i.id) : s.kind)),
+    ).toEqual(['item', ['a'], 'item']);
+  });
+
+  it('folds a lone skill load, and a lone delegation, as a run of one', () => {
+    const segments = segmentTurn([
+      tool('s', 'load_skill'),
+      at('agent-message', 'm'),
+      at('agent-call', 'd', { agentId: 'k__NS__sre', isPending: false }),
+    ]);
+
+    expect(segments.map(s => s.kind)).toEqual(['work', 'item', 'work']);
+  });
+
+  it('keeps reasoning on its own inline', () => {
+    const segments = segmentTurn([
+      at('agent-message', 'm'),
+      at('reasoning', 'r1'),
+      at('reasoning', 'r2'),
+    ]);
+
+    expect(segments.every(s => s.kind === 'item')).toBe(true);
+  });
+
+  it('splits on what the agent says between runs, keeping order', () => {
+    const segments = segmentTurn([
+      tool('a'),
+      tool('b'),
+      at('agent-message', 'm'),
+      tool('c'),
+      tool('d'),
+    ]);
+
+    expect(segments.map(s => (s.kind === 'work' ? s.id : 'item'))).toEqual([
+      'a',
+      'item',
+      'c',
+    ]);
+  });
+
+  it('never folds an approval', () => {
+    const segments = segmentTurn([
+      tool('a'),
+      at('approval', 'p', { asks: 'approval' }),
+      tool('b'),
+    ]);
+
+    // The calls on either side fold (each a run of one); the approval between
+    // them stays in the conversation.
+    expect(segments.map(s => s.kind)).toEqual(['work', 'item', 'work']);
+  });
+});
+
+describe('summarizeWork', () => {
+  it('counts tools by name and calls by call, as the prototype does', () => {
+    const items = [
+      { kind: 'reasoning', id: 'r', taskIndex: 0, text: 'x' },
+      {
+        kind: 'tool-call',
+        id: 'a',
+        taskIndex: 0,
+        toolName: 'get',
+        isPending: false,
+      },
+      {
+        kind: 'tool-call',
+        id: 'b',
+        taskIndex: 0,
+        toolName: 'get',
+        isPending: false,
+      },
+      {
+        kind: 'tool-call',
+        id: 'c',
+        taskIndex: 0,
+        toolName: 'post',
+        isPending: false,
+      },
+      {
+        kind: 'agent-call',
+        id: 'd',
+        taskIndex: 0,
+        agentId: 'k__NS__sre',
+        isPending: false,
+      },
+    ] as TimelineItem[];
+
+    expect(summarizeWork(items)).toEqual({
+      label: 'Used 2 tools · Asked 1 agent',
+      technicalLabel: '5 steps · 4 tool calls',
+    });
+  });
+
+  it('speaks in the singular for one', () => {
+    const items = [
+      { kind: 'reasoning', id: 'r', taskIndex: 0, text: 'x' },
+      {
+        kind: 'tool-call',
+        id: 'a',
+        taskIndex: 0,
+        toolName: 'get',
+        isPending: false,
+      },
+    ] as TimelineItem[];
+
+    expect(summarizeWork(items)).toEqual({
+      label: 'Used 1 tool',
+      technicalLabel: '2 steps · 1 tool call',
+    });
+  });
+
+  it('names skill loads apart, counting skills by name', () => {
+    const load = (id: string, args?: unknown) =>
+      ({
+        kind: 'tool-call',
+        id,
+        taskIndex: 0,
+        toolName: 'load_skill',
+        args,
+        isPending: false,
+      }) as TimelineItem;
+    const items = [
+      load('a', { name: 'cluster-triage' }),
+      load('b', { name: 'cluster-triage' }),
+      load('c', { name: 'flux-debugging' }),
+      {
+        kind: 'tool-call',
+        id: 'd',
+        taskIndex: 0,
+        toolName: 'get',
+        isPending: false,
+      },
+    ] as TimelineItem[];
+
+    expect(summarizeWork(items)).toEqual({
+      label: 'Loaded 2 skills · Used 1 tool',
+      technicalLabel: '4 steps · 4 tool calls',
+    });
+    // One load whose arguments name no skill is still one skill loaded.
+    expect(summarizeWork([load('x')]).label).toBe('Loaded 1 skill');
   });
 });

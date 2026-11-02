@@ -1,20 +1,38 @@
-async function readBodyMessage(
-  response: Response,
-): Promise<string | undefined> {
+async function readBody(response: Response): Promise<any> {
   try {
-    const body = await response.json();
-
-    for (const message of [body?.message, body?.error?.message]) {
-      if (typeof message === 'string' && message) {
-        // The caller appends its own full stop.
-        return message.replace(/\.$/, '');
-      }
-    }
+    return await response.json();
   } catch {
-    // Not a JSON error body — fall back to the HTTP status.
+    // Not a JSON error body — callers fall back to the HTTP status.
+    return undefined;
+  }
+}
+
+function bodyMessage(body: any): string | undefined {
+  for (const message of [body?.message, body?.error?.message]) {
+    if (typeof message === 'string' && message) {
+      // The caller appends its own full stop.
+      return message.replace(/\.$/, '');
+    }
   }
 
   return undefined;
+}
+
+function reasonOf(
+  response: Response,
+  body: any,
+  options: { withStatus?: boolean },
+): string {
+  const status = response.statusText
+    ? `HTTP ${response.status} ${response.statusText}`
+    : `HTTP ${response.status}`;
+  const message = bodyMessage(body);
+
+  if (!message) {
+    return status;
+  }
+
+  return options.withStatus ? `${status}: ${message}` : message;
 }
 
 /**
@@ -32,16 +50,7 @@ export async function k8sResponseReason(
   response: Response,
   options: { withStatus?: boolean } = {},
 ): Promise<string> {
-  const status = response.statusText
-    ? `HTTP ${response.status} ${response.statusText}`
-    : `HTTP ${response.status}`;
-  const message = await readBodyMessage(response);
-
-  if (!message) {
-    return status;
-  }
-
-  return options.withStatus ? `${status}: ${message}` : message;
+  return reasonOf(response, await readBody(response), options);
 }
 
 /**
@@ -65,6 +74,13 @@ export function k8sErrorNameForStatus(status: number): string | undefined {
 }
 
 /**
+ * A failed Kubernetes proxy request's `Error`. `notFoundName` is the object a
+ * 404's `Status` names: the apiserver serves the API but has no such object.
+ * A 404 for an API path it does not serve names no object.
+ */
+export type K8sResponseError = Error & { notFoundName?: string };
+
+/**
  * An `Error` for a failed Kubernetes proxy request, named so callers can branch
  * on the outcomes that mean something other than "it broke":
  * `UnauthorizedError` (no valid token — retrying won't help),
@@ -78,10 +94,18 @@ export function k8sErrorNameForStatus(status: number): string | undefined {
 export async function k8sResponseError(
   response: Response,
   description: string,
-): Promise<Error> {
-  const reason = await k8sResponseReason(response);
-  const error = new Error(`${description}. Reason: ${reason}.`);
+): Promise<K8sResponseError> {
+  const body = await readBody(response);
+  const reason = reasonOf(response, body, {});
+  const error: K8sResponseError = new Error(
+    `${description}. Reason: ${reason}.`,
+  );
   error.name = k8sErrorNameForStatus(response.status) ?? error.name;
+
+  const notFoundName = body?.details?.name;
+  if (response.status === 404 && typeof notFoundName === 'string') {
+    error.notFoundName = notFoundName;
+  }
 
   return error;
 }

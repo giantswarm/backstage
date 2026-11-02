@@ -1,8 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
+import { lab } from './lab';
+import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
- * The Serve dialog's Node field against the lab's KServe backend
+ * Serve model's Nodes field (a page of its own,
+ * `/customize/models/hosting/serve`) against the lab's KServe backend
  * (`platform.serving`: the CPU preset `qwen2-5-0-5b-cpu`), as the admin:
  *
  * - no node ticked, and the verdict then names the nodes the model may land
@@ -12,13 +15,13 @@ import { expect, open, test } from './fixtures';
  *   (the LLMInferenceService carries the hostname pin — checked with kubectl
  *   outside this spec);
  * - ticking two ("All 2 nodes that fit") asks one `check_fit` with
- *   `placement: copies` and both `nodes`, and its verdict is the dialog's:
+ *   `placement: copies` and both `nodes`, and its verdict is the page's:
  *   the lab's model-manager refuses the second node, which does not exist,
  *   so Serve stays disabled.
  *
  * model-manager's `list_nodes` reports accelerator nodes only, and the kind
- * node has none: the spec adds the kind node (`AGENTLAB_KIND_NODE`, default
- * `agentlab-control-plane`) and a phantom second node to the kserve
+ * node has none: the spec adds the kind node (`lab.kindNode`) and a phantom
+ * second node to the kserve
  * inventory the page reads, without figures. The phantom's own `check_fit`
  * is answered with the kind node's, so it is offered like a node that fits.
  * Everything else is the lab's own: `check_fit` pinned to the node, the
@@ -31,7 +34,7 @@ import { expect, open, test } from './fixtures';
 const PRESET = 'qwen2-5-0-5b-cpu';
 const PRESET_LABEL = /Qwen2\.5 0\.5B Instruct \(CPU\)/;
 const TARGET = /· KServe$/;
-const KIND_NODE = process.env.AGENTLAB_KIND_NODE ?? 'agentlab-control-plane';
+const KIND_NODE = lab.kindNode;
 const PHANTOM_NODE = 'agentlab-phantom';
 
 function inventoryNode(name: string) {
@@ -125,30 +128,47 @@ function presetRow(page: Page) {
     .filter({ hasText: PRESET });
 }
 
-async function openServeDialog(page: Page) {
+async function openServePage(page: Page) {
+  // Whether the Serving view lists a KServe card, read before Serve model
+  // replaces the view with its own page.
+  const kserve = await page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: /^KServe/ }) })
+    .count();
   await page.getByRole('button', { name: 'Serve model' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Serve model' });
-  await expect(dialog).toBeVisible();
-  await dialog
-    .getByRole('button', { name: /Installation and backend/ })
-    .click();
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/serve/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Serve model' }),
+  ).toBeVisible();
+  // One serving backend on the installation is no choice: the page offers
+  // no picker and serves there.
+  const picker = page.getByRole('button', {
+    name: /Environment and backend/,
+  });
+  if ((await picker.count()) === 0) {
+    test.skip(kserve === 0, 'the lab has no KServe backend (platform.serving)');
+    return;
+  }
+  await picker.click();
   const offered =
     (await page.getByRole('option', { name: TARGET }).count()) > 0;
   if (!offered) {
     await page.keyboard.press('Escape');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('link', { name: 'Cancel' }).click();
   }
   test.skip(!offered, 'the lab has no KServe backend (platform.serving)');
   await page.getByRole('option', { name: TARGET }).click();
-  return dialog;
 }
 
 test.describe.serial('Serve on the ticked nodes', () => {
   test.setTimeout(10 * 60_000);
 
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test.beforeEach(async ({ admin }) => {
     await addNodesToInventory(admin);
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
     await expect(admin.getByRole('article').first()).toBeVisible();
   });
 
@@ -170,23 +190,25 @@ test.describe.serial('Serve on the ticked nodes', () => {
         .getByRole('button', { name: 'Stop serving' })
         .click();
       await expect(row).toHaveCount(0, { timeout: 60_000 });
-      // A fresh page: the dialog judges "serves already" from the served list.
-      await open(admin, '/agent-platform/models/serving');
+      // A fresh page: Serve model judges "serves already" from the served list.
+      await open(admin, '/customize/models/hosting');
       await expect(admin.getByRole('article').first()).toBeVisible();
     }
 
-    const dialog = await openServeDialog(admin);
-    await dialog.getByRole('button', { name: /Preset/ }).click();
+    await openServePage(admin);
+    await admin.getByRole('button', { name: /Preset/ }).click();
     await admin.getByRole('option', { name: PRESET_LABEL }).click();
 
-    const verdict = dialog.getByTestId('serve-fit-verdict');
+    const verdict = admin.getByTestId('serve-fit-verdict');
     await expect(verdict, 'unpinned: the nodes it may land on').toContainText(
       /Fits on \S+/,
       { timeout: 60_000 },
     );
     await expect(verdict).not.toContainText('will be placed');
 
-    const nodes = dialog.getByTestId('serve-nodes');
+    // The nodes are under More options, their default a node that fits (T67).
+    await admin.getByText('More options').click();
+    const nodes = admin.getByTestId('serve-nodes');
     const nodeBox = nodes.getByRole('checkbox', {
       name: new RegExp(KIND_NODE),
     });
@@ -206,9 +228,9 @@ test.describe.serial('Serve on the ticked nodes', () => {
       'the copies check_fit, refusing the phantom',
     ).toContainText(PHANTOM_NODE, { timeout: 60_000 });
     await expect(verdict).toContainText('cannot host a copy');
-    await snapshot(admin, 'serve-node-copies', dialog);
+    await snapshot(admin, 'serve-node-copies');
     await expect(
-      dialog.getByRole('button', { name: 'Serve', exact: true }),
+      admin.getByRole('button', { name: 'Serve', exact: true }),
     ).toBeDisabled();
 
     // One tick: the pin.
@@ -221,14 +243,17 @@ test.describe.serial('Serve on the ticked nodes', () => {
     await expect(verdict).toContainText(`Fits — will be placed on ${node}`, {
       timeout: 60_000,
     });
-    await snapshot(admin, 'serve-node-chosen', dialog);
+    await snapshot(admin, 'serve-node-chosen');
 
-    const serve = dialog.getByRole('button', { name: 'Serve', exact: true });
+    const serve = admin.getByRole('button', { name: 'Serve', exact: true });
     await expect(serve).toBeEnabled();
     await serve.click();
-    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    // Accepted: back on Running models, the toast naming the chosen node.
+    await expect(admin).toHaveURL(/\/customize\/models\/hosting\/?$/, {
+      timeout: 60_000,
+    });
     await expect(
-      admin.getByText(new RegExp(`^Serving ".+" on .+ · ${node} — `)),
+      admin.getByText(new RegExp(`^Serving ".+" on .+ · ${node}$`)),
       'the toast names the chosen node',
     ).toBeVisible();
 

@@ -16,9 +16,20 @@
 // into `ui.giantswarm.io/registered-by` itself on create (muster#1021). Sending
 // annotations through the create tool would in fact fail the registration — its
 // request parsing rejects unknown fields.
+//
+// The name the person typed is kept as the connector's display name (the
+// `ui.giantswarm.io/display-name` annotation) through the tools' own
+// `displayName` argument, which muster takes since v5.43.0 (muster#1518). An
+// older muster refuses it as an unknown field, so the write only sends it to a
+// tool whose input schema declares it ({@link takesDisplayName}).
 
-import type { MCPServer, MCPServerAuth, MCPServerSigV4 } from './k8s';
-import { toYaml } from './gitops';
+import type {
+  MCPServer,
+  MCPServerAuth,
+  MCPServerAuthorizationServer,
+  MCPServerClientCredentialsSecretRef,
+  MCPServerSigV4,
+} from './k8s';
 import {
   AUTH_MODE_LABELS,
   serverAuthMode,
@@ -62,40 +73,18 @@ export type McpServerAuthMode =
  */
 export const SIGV4_SHARED_IDENTITY_WARNING =
   'Every request is signed as muster itself, never as the user making the ' +
-  'call. All users of this server share one AWS identity, and CloudTrail ' +
+  'call. All users of this connector share one AWS identity, and CloudTrail ' +
   'attributes their actions to muster (STS session name muster-aggregator), ' +
   'not to a named engineer.';
 
 /** One `spec.meta` entry, kept as a list so the editor can round-trip order. */
 export type McpServerMetaEntry = { key: string; value: string };
 
-/**
- * `NAME=value` lines → metadata entries, the shape the Details step's textarea
- * edits. A line without `=` is a name with no value yet, so a half-typed entry
- * survives the round trip instead of vanishing under the cursor.
- */
-export function parseMetaEntries(text: string): McpServerMetaEntry[] {
-  return text
-    .split('\n')
-    .filter(line => line.trim())
-    .map(line => {
-      const separator = line.indexOf('=');
-      return separator === -1
-        ? { key: line.trim(), value: '' }
-        : {
-            key: line.slice(0, separator).trim(),
-            value: line.slice(separator + 1).trim(),
-          };
-    });
-}
-
-/** Metadata entries → the `NAME=value` lines they were parsed from. */
-export function formatMetaEntries(entries: McpServerMetaEntry[]): string {
-  return entries.map(({ key, value }) => `${key}=${value}`).join('\n');
-}
-
 export type NewMcpServerFormState = {
-  /** Display name; the slug derives from it. */
+  /**
+   * Display name; the slug derives from it. Sent as `displayName` where it
+   * differs from the slug (see {@link displayNameArgument}).
+   */
   name: string;
   /** Technical name — becomes the MCPServer CR name. */
   slug: string;
@@ -112,6 +101,32 @@ export type NewMcpServerFormState = {
   issuer: string;
   /** `own-account` only: space-separated OAuth scopes for the issuer override. */
   scopes: string;
+  /**
+   * `own-account` only: pinned authorization endpoint, for authorization
+   * servers without RFC 8414 discovery (GitHub-style). Set together with
+   * {@link NewMcpServerFormState.tokenEndpoint} — the CRD requires both.
+   */
+  authorizationEndpoint: string;
+  /** `own-account` only: pinned token endpoint, set with the one above. */
+  tokenEndpoint: string;
+  /**
+   * `own-account` only: name of the Kubernetes Secret holding an out-of-band
+   * registered OAuth client's credentials. Empty means muster registers itself
+   * dynamically (RFC 7591) or identifies by its CIMD URL.
+   */
+  clientSecretName: string;
+  /** `own-account` only: the Secret's namespace. Empty uses muster's default. */
+  clientSecretNamespace: string;
+  /** `own-account` only: key of the client id inside the Secret. */
+  clientIdKey: string;
+  /** `own-account` only: key of the client secret inside the Secret. */
+  clientSecretKey: string;
+  /**
+   * `own-account` only: whether a person's grant lives per login session
+   * (`session`, muster's default) or is reused across their sessions
+   * (`subject`).
+   */
+  grantScope: 'session' | 'subject';
   /** `platform-sso` only: audiences the forwarded token must carry. */
   requiredAudiences: string[];
   /** `sigv4` only: the SigV4 signing region. Required for that mode. */
@@ -131,6 +146,11 @@ export type NewMcpServerFormState = {
 /** The flat definition muster's `core_mcpserver_*` tools take. */
 export type McpServerDefinition = {
   name: string;
+  /**
+   * The `ui.giantswarm.io/display-name` annotation. Omitted keeps (on update)
+   * or sets none (on create); an empty string removes it (on update).
+   */
+  displayName?: string;
   type: McpServerTransport;
   url: string;
   autoStart: boolean;
@@ -149,6 +169,13 @@ export const emptyFormState: NewMcpServerFormState = {
   authMode: 'none',
   issuer: '',
   scopes: '',
+  authorizationEndpoint: '',
+  tokenEndpoint: '',
+  clientSecretName: '',
+  clientSecretNamespace: '',
+  clientIdKey: '',
+  clientSecretKey: '',
+  grantScope: 'session',
   requiredAudiences: [],
   sigv4Region: '',
   sigv4Service: '',
@@ -157,15 +184,18 @@ export const emptyFormState: NewMcpServerFormState = {
 };
 
 /**
- * Whether the state holds anything the user entered. The installation does not
- * count: it mirrors the page header's selector rather than being typed in.
+ * Whether the state holds anything the user entered, compared with what an
+ * untouched registration starts from (`baseline`, the empty form unless the
+ * wizard starts with another sign-in answer). The installation does not count:
+ * it mirrors the page header's selector rather than being typed in.
  */
-export function hasUserInput(state: NewMcpServerFormState): boolean {
-  return (Object.keys(emptyFormState) as Array<keyof NewMcpServerFormState>)
+export function hasUserInput(
+  state: NewMcpServerFormState,
+  baseline: NewMcpServerFormState = emptyFormState,
+): boolean {
+  return (Object.keys(baseline) as Array<keyof NewMcpServerFormState>)
     .filter(key => key !== 'installation')
-    .some(
-      key => JSON.stringify(state[key]) !== JSON.stringify(emptyFormState[key]),
-    );
+    .some(key => JSON.stringify(state[key]) !== JSON.stringify(baseline[key]));
 }
 
 /** `spec.url` pattern from the CRD. */
@@ -224,6 +254,45 @@ function isValidSlug(slug: string): boolean {
   return slug.length <= 63 && DNS_LABEL_PATTERN.test(slug);
 }
 
+/**
+ * The `displayName` to send for what the person typed as the name, or
+ * `undefined` to send none.
+ *
+ * A name that is the technical name already (a plain id like `jira`) needs no
+ * annotation: the resource name reads the same. On create that is all. On an
+ * edit (`stored` is the server's annotation, `undefined` without one) the
+ * argument is only sent when the shown name changes — muster keeps the stored
+ * annotation when it is omitted — and a name changed back to the technical
+ * name removes the annotation rather than repeating the resource name in it.
+ */
+export function displayNameArgument(
+  typed: string,
+  slug: string,
+  edit?: { stored: string | undefined },
+): string | undefined {
+  const name = typed.trim();
+  const technical = slug.trim();
+  if (!edit) {
+    return name && name !== technical ? name : undefined;
+  }
+  if (!name || name === (edit.stored ?? technical)) {
+    return undefined;
+  }
+  return name === technical ? '' : name;
+}
+
+/**
+ * Whether a muster tool takes the `displayName` argument, read from its input
+ * schema as `describe_tool` returns it. muster releases before v5.43.0 do not
+ * declare it — and refuse it as an unknown field — so a tool without a schema
+ * counts as not taking it.
+ */
+export function takesDisplayName(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  return Boolean(inputSchema?.properties?.displayName);
+}
+
 function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
   switch (state.authMode) {
     case 'none':
@@ -233,12 +302,47 @@ function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
     case 'own-account': {
       const auth: MCPServerAuth = { type: 'oauth' };
       // No issuer → RFC 9728 discovery, which is the default and needs no
-      // config. The override only exists for backends without that metadata.
+      // config. The override only exists for backends without that metadata,
+      // and every advanced setting below belongs to it (the CRD requires an
+      // issuer on the authorizationServer block).
       if (state.issuer.trim()) {
-        auth.authorizationServer = {
+        const authorizationServer: MCPServerAuthorizationServer = {
           issuer: state.issuer.trim(),
-          ...(state.scopes.trim() ? { scopes: state.scopes.trim() } : {}),
         };
+        if (state.scopes.trim()) {
+          authorizationServer.scopes = state.scopes.trim();
+        }
+        // The CRD's CEL rule: pinned endpoints are set together. Validation
+        // flags a lone one; composing only the pair keeps the definition
+        // acceptable even mid-typing.
+        const authorizationEndpoint = state.authorizationEndpoint.trim();
+        const tokenEndpoint = state.tokenEndpoint.trim();
+        if (authorizationEndpoint && tokenEndpoint) {
+          authorizationServer.authorizationEndpoint = authorizationEndpoint;
+          authorizationServer.tokenEndpoint = tokenEndpoint;
+        }
+        const secretName = state.clientSecretName.trim();
+        if (secretName) {
+          const secretRef: MCPServerClientCredentialsSecretRef = {
+            name: secretName,
+          };
+          if (state.clientSecretNamespace.trim()) {
+            secretRef.namespace = state.clientSecretNamespace.trim();
+          }
+          if (state.clientIdKey.trim()) {
+            secretRef.clientIdKey = state.clientIdKey.trim();
+          }
+          if (state.clientSecretKey.trim()) {
+            secretRef.clientSecretKey = state.clientSecretKey.trim();
+          }
+          authorizationServer.clientCredentialsSecretRef = secretRef;
+        }
+        // `session` is muster's default, so only `subject` is spelled out —
+        // the same omit-the-default rule as the rest of the composition.
+        if (state.grantScope === 'subject') {
+          authorizationServer.grantScope = 'subject';
+        }
+        auth.authorizationServer = authorizationServer;
       }
       return auth;
     }
@@ -296,7 +400,9 @@ function composeMeta(
 
 /**
  * Wizard state → the definition passed to `core_mcpserver_validate` and
- * `core_mcpserver_create`.
+ * `core_mcpserver_create` — or, with `edit` (the edited server's stored
+ * display name, as {@link displayNameArgument} takes it), the wizard's part of
+ * an update ({@link mergeOntoExisting}).
  *
  * `autoStart: true` so the server connects as soon as it is registered — the
  * flow's promise is that registration is the only step before the tools show
@@ -305,6 +411,7 @@ function composeMeta(
  */
 export function composeMcpServerDefinition(
   state: NewMcpServerFormState,
+  edit?: { stored: string | undefined },
 ): McpServerDefinition {
   const definition: McpServerDefinition = {
     name: state.slug.trim(),
@@ -312,6 +419,10 @@ export function composeMcpServerDefinition(
     url: state.url.trim(),
     autoStart: true,
   };
+  const displayName = displayNameArgument(state.name, state.slug, edit);
+  if (displayName !== undefined) {
+    definition.displayName = displayName;
+  }
   if (state.description.trim()) {
     definition.description = state.description.trim();
   }
@@ -328,48 +439,106 @@ export function composeMcpServerDefinition(
   return definition;
 }
 
+/** The form fields a validation problem can belong to. */
+export type McpServerField =
+  | 'name'
+  | 'slug'
+  | 'description'
+  | 'installation'
+  | 'url'
+  | 'meta'
+  | 'issuer'
+  | 'scopes'
+  | 'authorizationEndpoint'
+  | 'tokenEndpoint'
+  | 'clientSecretName'
+  | 'transport'
+  | 'sigv4Region';
+
+/** One validation problem and the field that shows it. */
+export type McpServerProblem = { field: McpServerField; message: string };
+
+export type McpServerFieldErrors = Partial<Record<McpServerField, string>>;
+
+/** Each field's first problem: what the field shows under itself. */
+export function mcpServerFieldErrors(
+  problems: readonly McpServerProblem[],
+): McpServerFieldErrors {
+  const errors: McpServerFieldErrors = {};
+  for (const { field, message } of problems) {
+    errors[field] ??= message;
+  }
+  return errors;
+}
+
 /**
  * Validation problems of the Details step's fields only, in form order. Split
- * from {@link validateMcpServerAuth} so the auth step can guard "may I be
+ * from {@link mcpServerAuthProblems} so the auth step can guard "may I be
  * shown?" on the details alone — a bad issuer typed on the auth step must not
  * bounce the user back to step 1.
+ */
+export function mcpServerDetailsProblems(
+  state: NewMcpServerFormState,
+): McpServerProblem[] {
+  const problems: McpServerProblem[] = [];
+
+  if (!state.name.trim()) {
+    problems.push({
+      field: 'name',
+      message: 'Enter a name for the connector.',
+    });
+  }
+  if (state.slug.trim()) {
+    if (!isValidSlug(state.slug)) {
+      problems.push({
+        field: 'slug',
+        message:
+          'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-server',
+      });
+    }
+  } else if (state.name.trim()) {
+    // Only flag a missing slug once there's a name (it derives from the name).
+    problems.push({ field: 'slug', message: 'Enter a technical name.' });
+  }
+  if (state.description.trim().length > DESCRIPTION_MAX_LENGTH) {
+    problems.push({
+      field: 'description',
+      message: `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
+    });
+  }
+  if (!state.installation) {
+    problems.push({ field: 'installation', message: 'Choose an environment.' });
+  }
+  if (!state.url.trim()) {
+    problems.push({
+      field: 'url',
+      message: 'Enter the URL, e.g. https://mcp.example.com/mcp.',
+    });
+  } else if (!URL_PATTERN.test(state.url.trim())) {
+    problems.push({
+      field: 'url',
+      message:
+        'URL must be an http(s) URL without spaces, e.g. https://mcp.example.com/mcp',
+    });
+  }
+  problems.push(
+    ...validateMeta(state.meta).map(message => ({
+      field: 'meta' as const,
+      message,
+    })),
+  );
+
+  return problems;
+}
+
+/**
+ * Validation problems of the Details step's fields only, in form order: the
+ * messages of {@link mcpServerDetailsProblems}.
  */
 export function validateMcpServerDetails(
   state: NewMcpServerFormState,
 ): string[] {
-  const errors: string[] = [];
-
-  if (!state.name.trim()) {
-    errors.push('Name is required');
-  }
-  if (state.slug.trim()) {
-    if (!isValidSlug(state.slug)) {
-      errors.push(
-        'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-server',
-      );
-    }
-  } else if (state.name.trim()) {
-    // Only flag a missing slug once there's a name (it derives from the name).
-    errors.push('Technical name is required');
-  }
-  if (state.description.trim().length > DESCRIPTION_MAX_LENGTH) {
-    errors.push(
-      `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
-    );
-  }
-  if (!state.installation) {
-    errors.push('Select an installation');
-  }
-  if (!state.url.trim()) {
-    errors.push('URL is required');
-  } else if (!URL_PATTERN.test(state.url.trim())) {
-    errors.push(
-      'URL must be an http(s) URL without spaces, e.g. https://mcp.example.com/mcp',
-    );
-  }
-  errors.push(...validateMeta(state.meta));
-
-  return errors;
+  return mcpServerDetailsProblems(state).map(problem => problem.message);
 }
 
 /**
@@ -395,19 +564,95 @@ function validateMeta(entries: McpServerMetaEntry[]): string[] {
   return errors;
 }
 
-/** Validation problems of the Authentication step's fields only. */
-export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
-  const errors: string[] = [];
+/** `authorizationEndpoint`/`tokenEndpoint` shape: an https URL, no spaces. */
+const ENDPOINT_PATTERN = /^https:\/\/\S+$/;
+
+/**
+ * Whether any of the advanced authorization-server settings (pinned endpoints,
+ * client-credentials Secret, a non-default grant scope) is filled in — they all
+ * live on the `authorizationServer` block, so they need an issuer to hang off.
+ */
+export function hasAdvancedAuthorizationServer(
+  state: NewMcpServerFormState,
+): boolean {
+  return Boolean(
+    state.authorizationEndpoint.trim() ||
+    state.tokenEndpoint.trim() ||
+    state.clientSecretName.trim() ||
+    state.clientSecretNamespace.trim() ||
+    state.clientIdKey.trim() ||
+    state.clientSecretKey.trim() ||
+    state.grantScope === 'subject',
+  );
+}
+
+/**
+ * Validation problems of the Authentication step's fields only. A rule about
+ * two fields belongs to the one whose change fixes it: the issuer the scopes
+ * and advanced settings need, the empty one of the paired endpoints.
+ */
+export function mcpServerAuthProblems(
+  state: NewMcpServerFormState,
+): McpServerProblem[] {
+  const problems: McpServerProblem[] = [];
 
   if (state.authMode === 'own-account') {
     const issuer = state.issuer.trim();
     if (issuer && !ISSUER_PATTERN.test(issuer)) {
-      errors.push(
-        'Issuer must be an https URL without query or fragment, e.g. https://auth.example.com',
-      );
+      problems.push({
+        field: 'issuer',
+        message:
+          'Issuer must be an https URL without query or fragment, e.g. https://auth.example.com',
+      });
     }
     if (!issuer && state.scopes.trim()) {
-      errors.push('Scopes apply to the issuer override — set an issuer too');
+      problems.push({
+        field: 'issuer',
+        message: 'Scopes apply to the issuer override — set an issuer too',
+      });
+    }
+    if (!issuer && hasAdvancedAuthorizationServer(state)) {
+      problems.push({
+        field: 'issuer',
+        message:
+          'The advanced authorization-server settings apply to the issuer override — set an issuer too',
+      });
+    }
+    const authorizationEndpoint = state.authorizationEndpoint.trim();
+    const tokenEndpoint = state.tokenEndpoint.trim();
+    // The CRD's CEL rule: the pinned endpoints are set together.
+    if (Boolean(authorizationEndpoint) !== Boolean(tokenEndpoint)) {
+      problems.push({
+        field: authorizationEndpoint
+          ? 'tokenEndpoint'
+          : 'authorizationEndpoint',
+        message:
+          'The authorization and token endpoints are pinned together — set both or neither',
+      });
+    }
+    for (const [field, label, endpoint] of [
+      [
+        'authorizationEndpoint',
+        'Authorization endpoint',
+        authorizationEndpoint,
+      ],
+      ['tokenEndpoint', 'Token endpoint', tokenEndpoint],
+    ] as const) {
+      if (endpoint && !ENDPOINT_PATTERN.test(endpoint)) {
+        problems.push({ field, message: `${label} must be an https URL` });
+      }
+    }
+    if (
+      !state.clientSecretName.trim() &&
+      (state.clientSecretNamespace.trim() ||
+        state.clientIdKey.trim() ||
+        state.clientSecretKey.trim())
+    ) {
+      problems.push({
+        field: 'clientSecretName',
+        message:
+          'The client-credentials Secret needs a name for its namespace and keys to point into',
+      });
     }
   }
 
@@ -416,18 +661,31 @@ export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
     // `streamable-http`. Reported here rather than on the Details step so the
     // user reads it next to the choice that caused it; the fix is a step back.
     if (state.transport !== 'streamable-http') {
-      errors.push(
-        'AWS SigV4 signing needs the Streamable HTTP transport — change the transport on the Details step',
-      );
+      problems.push({
+        field: 'transport',
+        message:
+          'AWS SigV4 signing needs the Streamable HTTP transport — change the transport on the Details step',
+      });
     }
     // Not defaultable: the endpoint checks the signature's credential scope, so
     // a guessed region surfaces as a signature error rather than a config one.
     if (!state.sigv4Region.trim()) {
-      errors.push('Signing region is required for AWS SigV4');
+      problems.push({
+        field: 'sigv4Region',
+        message: 'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
+      });
     }
   }
 
-  return errors;
+  return problems;
+}
+
+/**
+ * Validation problems of the Authentication step's fields only: the messages
+ * of {@link mcpServerAuthProblems}.
+ */
+export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
+  return mcpServerAuthProblems(state).map(problem => problem.message);
 }
 
 /**
@@ -464,7 +722,7 @@ export function sigv4Advisories(state: NewMcpServerFormState): string[] {
   );
   if (!hasOperatingRegion) {
     advisories.push(
-      `No ${AWS_REGION_META_KEY} in request metadata. An AWS-hosted server reads the region it operates in from there — a different value from the signing region — and without it answers about its own default region instead of failing. Add it on the Details step.`,
+      `No ${AWS_REGION_META_KEY} in request metadata. An AWS-hosted connector reads the region it operates in from there — a different value from the signing region — and without it answers about its own default region instead of failing. Add it on the Details step.`,
     );
   }
 
@@ -482,85 +740,6 @@ export function validateNewMcpServerForm(
   state: NewMcpServerFormState,
 ): string[] {
   return [...validateMcpServerDetails(state), ...validateMcpServerAuth(state)];
-}
-
-/**
- * The composed definition as an MCPServer manifest — the review step's manual
- * fallback for users who prefer to commit the CR to a GitOps repo instead of
- * registering live. Same namespace default as the GitOps dialog's
- * `toManifestYaml`.
- */
-export function toMcpServerManifestYaml(
-  definition: McpServerDefinition,
-  namespace = 'agent-platform',
-): string {
-  const { name, ...spec } = definition;
-  return toYaml({
-    apiVersion: 'muster.giantswarm.io/v1alpha1',
-    kind: 'MCPServer',
-    metadata: { name, namespace },
-    spec,
-  });
-}
-
-// Quote a CLI argument value for a POSIX shell when it needs it.
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * The composed definition as a `muster create mcpserver` invocation — the
- * review step's CLI fallback. Flag names follow muster's cmd/create.go
- * (auth flags landed with muster#1026).
- *
- * Returns undefined for a definition the CLI cannot express. `muster create
- * mcpserver` has no flags for `auth.sigv4` or `meta` (cmd/create.go as of
- * muster v5.4.0), and `--auth-type=sigv4` alone composes a CR the CRD rejects —
- * so the caller must offer the manifest instead of a command that looks right
- * and fails.
- */
-export function toMusterCliCommand(
-  definition: McpServerDefinition,
-): string | undefined {
-  if (definition.auth?.sigv4 || definition.meta) {
-    return undefined;
-  }
-  const parts = [
-    'muster create mcpserver',
-    definition.name,
-    `--type=${definition.type}`,
-    `--url=${shellQuote(definition.url)}`,
-    `--auto-start=${definition.autoStart}`,
-  ];
-  if (definition.description) {
-    parts.push(`--description=${shellQuote(definition.description)}`);
-  }
-  const auth = definition.auth;
-  if (auth?.type === 'oauth') {
-    parts.push('--auth-type=oauth');
-    if (auth.authorizationServer) {
-      parts.push(
-        `--auth-issuer=${shellQuote(auth.authorizationServer.issuer)}`,
-      );
-      if (auth.authorizationServer.scopes) {
-        parts.push(
-          `--auth-scopes=${shellQuote(auth.authorizationServer.scopes)}`,
-        );
-      }
-    }
-  }
-  if (auth?.forwardToken) {
-    parts.push('--forward-token');
-    if (auth.requiredAudiences?.length) {
-      parts.push(
-        `--required-audiences=${shellQuote(auth.requiredAudiences.join(','))}`,
-      );
-    }
-  }
-  return parts.join(' ');
 }
 
 export type FieldAvailability = {
@@ -592,13 +771,13 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
     authorizationServer = {
       available: false,
       reason:
-        'This server needs no authentication, so there is no authorization server to point at.',
+        'This connector needs no authentication, so there is no authorization server to point at.',
     };
   } else if (platformSso) {
     authorizationServer = {
       available: false,
       reason:
-        'Platform SSO forwards the platform identity token; a per-server authorization server would contradict it and the CRD rejects both together.',
+        'Platform SSO forwards the platform identity token; a per-connector authorization server would contradict it and the CRD rejects both together.',
     };
   } else if (sigv4Mode) {
     authorizationServer = {
@@ -632,7 +811,7 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
     sigv4 = {
       available: false,
       reason:
-        'The signing configuration applies to AWS SigV4 request signing, which this server does not use.',
+        'The signing configuration applies to AWS SigV4 request signing, which this connector does not use.',
     };
   } else if (state.transport !== 'streamable-http') {
     sigv4 = { available: false, reason: SIGV4_TRANSPORT_REQUIREMENT };
@@ -654,16 +833,37 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
 }
 
 /**
- * The wizard's answer for each way a registered server is reached
+ * The way a server registered with each wizard answer is reached
  * ({@link serverAuthMode}, the one classification every surface shares).
- * Token exchange has none: the wizard does not offer it.
+ * One mode per answer: the inverse below needs it injective.
  */
-const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> = {
-  anonymous: 'none',
+export const WIZARD_ANSWER_MODES: Record<McpServerAuthMode, ServerAuthMode> = {
+  none: 'anonymous',
   'own-account': 'own-account',
   'platform-sso': 'platform-sso',
   sigv4: 'sigv4',
 };
+
+/**
+ * The wizard's answer for each way a registered server is reached, the inverse
+ * of {@link WIZARD_ANSWER_MODES}. Token exchange has none: the wizard does not
+ * offer it.
+ */
+export const WIZARD_AUTH_MODES: Partial<
+  Record<ServerAuthMode, McpServerAuthMode>
+> = Object.fromEntries(
+  (
+    Object.entries(WIZARD_ANSWER_MODES) as [McpServerAuthMode, ServerAuthMode][]
+  ).map(([answer, mode]) => [mode, answer] as const),
+);
+
+/**
+ * A wizard answer's name: the name of the mode it registers, so the wizard
+ * calls a mode what the servers table and detail panel call it.
+ */
+export function wizardAuthModeLabel(answer: McpServerAuthMode): string {
+  return AUTH_MODE_LABELS[WIZARD_ANSWER_MODES[answer]];
+}
 
 /**
  * The `spec.auth` keys each wizard answer composes (see `composeAuth`). A key
@@ -681,7 +881,16 @@ const WIZARD_AUTH_KEYS: Record<McpServerAuthMode, string[]> = {
   'platform-sso': ['type', 'forwardToken', 'requiredAudiences'],
   sigv4: ['type', 'sigv4'],
 };
-const WIZARD_AUTHORIZATION_SERVER_KEYS = ['issuer', 'scopes'];
+// `expectedIssuer` stays out: the wizard has no field for it, so a server
+// pinning one keeps being edited as JSON rather than silently losing it.
+const WIZARD_AUTHORIZATION_SERVER_KEYS = [
+  'issuer',
+  'scopes',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+  'clientCredentialsSecretRef',
+  'grantScope',
+];
 const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
 
 /**
@@ -690,7 +899,9 @@ const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
  * carries them whatever it was created with, and they mean the same as the
  * key being absent.
  */
-function withoutCrdDefaults(auth: MCPServerAuth): Record<string, unknown> {
+export function withoutCrdDefaults(
+  auth: MCPServerAuth,
+): Record<string, unknown> {
   const rest: Record<string, unknown> = { ...auth };
   if (rest.type === 'none') {
     delete rest.type;
@@ -736,12 +947,12 @@ const EDIT_AS_JSON_HINT = 'Use “Edit as JSON” to change its definition.';
 export function wizardEditBlocker(server: MCPServer): string | undefined {
   const type = server.getType();
   if (type !== 'streamable-http' && type !== 'sse') {
-    return `The registration wizard only covers remote (streamable-http or SSE) servers. ${EDIT_AS_JSON_HINT}`;
+    return `The registration wizard only covers remote (streamable-http or SSE) connectors. ${EDIT_AS_JSON_HINT}`;
   }
   const mode = serverAuthMode(server);
   const answer = WIZARD_AUTH_MODES[mode];
   if (!answer) {
-    return `This server uses ${inSentence(AUTH_MODE_LABELS[mode])}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
+    return `This connector uses ${inSentence(AUTH_MODE_LABELS[mode])}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
   }
   const auth = server.getAuth();
   const unsupported = auth
@@ -756,7 +967,7 @@ export function wizardEditBlocker(server: MCPServer): string | undefined {
       ]
     : [];
   if (unsupported.length > 0) {
-    return `This server has authentication settings the registration wizard cannot show or keep: ${unsupported.join(', ')}. ${EDIT_AS_JSON_HINT}`;
+    return `This connector has authentication settings the registration wizard cannot show or keep: ${unsupported.join(', ')}. ${EDIT_AS_JSON_HINT}`;
   }
   return undefined;
 }
@@ -765,6 +976,13 @@ export function wizardEditBlocker(server: MCPServer): string | undefined {
 const AUTH_ANSWER_FIELDS = [
   'issuer',
   'scopes',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+  'clientSecretName',
+  'clientSecretNamespace',
+  'clientIdKey',
+  'clientSecretKey',
+  'grantScope',
   'requiredAudiences',
   'sigv4Region',
   'sigv4Service',
@@ -791,15 +1009,16 @@ export const emptyAuthAnswer: McpServerAuthAnswer =
 
 /**
  * A registered server → the wizard state that composes it, so "Edit" opens the
- * registration form pre-filled. The display name is not persisted anywhere, so
- * it starts as the CR name. Only for servers {@link wizardEditBlocker} lets
- * through, whose auth block is exactly one of the wizard's modes.
+ * registration form pre-filled. The name is the server's display name: its
+ * `ui.giantswarm.io/display-name`, else the CR name. Only for servers
+ * {@link wizardEditBlocker} lets through, whose auth block is exactly one of
+ * the wizard's modes.
  */
 export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
   const auth = server.getAuth();
   return {
     ...emptyFormState,
-    name: server.getName(),
+    name: server.getDisplayName(),
     slug: server.getName(),
     description: server.getDescription() ?? '',
     installation: server.cluster,
@@ -808,6 +1027,22 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     authMode: WIZARD_AUTH_MODES[serverAuthMode(server)] ?? 'none',
     issuer: auth?.authorizationServer?.issuer ?? '',
     scopes: auth?.authorizationServer?.scopes ?? '',
+    authorizationEndpoint:
+      auth?.authorizationServer?.authorizationEndpoint ?? '',
+    tokenEndpoint: auth?.authorizationServer?.tokenEndpoint ?? '',
+    clientSecretName:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.name ?? '',
+    clientSecretNamespace:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.namespace ?? '',
+    clientIdKey:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.clientIdKey ?? '',
+    clientSecretKey:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.clientSecretKey ??
+      '',
+    grantScope:
+      auth?.authorizationServer?.grantScope === 'subject'
+        ? 'subject'
+        : 'session',
     requiredAudiences: auth?.requiredAudiences ?? [],
     sigv4Region: auth?.sigv4?.region ?? '',
     sigv4Service: auth?.sigv4?.service ?? '',
@@ -820,7 +1055,15 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
 }
 
 /** Definition fields the wizard composes; it never touches any other. */
-const WIZARD_FIELDS = ['name', 'type', 'url', 'description', 'auth', 'meta'];
+const WIZARD_FIELDS = [
+  'name',
+  'displayName',
+  'type',
+  'url',
+  'description',
+  'auth',
+  'meta',
+];
 
 /**
  * The wizard's definition laid over the server being edited, for
@@ -837,6 +1080,9 @@ const WIZARD_FIELDS = ['name', 'type', 'url', 'description', 'auth', 'meta'];
  *   it would keep the old value.
  * - `description` is only replaced by a non-empty value; muster cannot clear
  *   it through an update, so a cleared description keeps the stored one.
+ * - `displayName` is tri-state like `suspended` (omitted keeps the annotation,
+ *   empty removes it), so it is never carried from what was saved before: it
+ *   is sent only when the wizard changes it.
  * - `autoStart` is always overwritten, omitted meaning false. The server's own
  *   value is sent (missing reads as false, like `getAutoStart()`): the
  *   wizard's `true` is a registration default, and an edit must not turn it on.

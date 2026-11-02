@@ -73,6 +73,8 @@ type YamlEditorProps = {
   readOnly?: boolean;
   /** Syntax of the document; fixed at mount. */
   language?: 'yaml' | 'json';
+  /** Accessible name of the editable content; fixed at mount. */
+  ariaLabel?: string;
 };
 
 export const YamlEditor = ({
@@ -85,6 +87,7 @@ export const YamlEditor = ({
   error = false,
   readOnly = false,
   language = 'yaml',
+  ariaLabel,
 }: YamlEditorProps) => {
   const classes = useStyles();
   const editorRef = useRef(null);
@@ -122,6 +125,9 @@ export const YamlEditor = ({
         ...lintKeymap,
         indentWithTab,
       ]),
+      ariaLabel
+        ? EditorView.contentAttributes.of({ 'aria-label': ariaLabel })
+        : [],
       EditorState.readOnly.of(readOnly),
       EditorState.tabSize.of(2),
       EditorView.lineWrapping,

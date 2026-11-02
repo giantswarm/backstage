@@ -1,5 +1,8 @@
 import {
   ErrorInfoUnion,
+  FluxInstance,
+  FluxObject,
+  FluxReport,
   GitRepository,
   HelmRelease,
   HelmRepository,
@@ -7,10 +10,17 @@ import {
   ImageRepository,
   ImageUpdateAutomation,
   Kustomization,
+  MultiVersionResourceMatcher,
   OCIRepository,
+  ResourceSet,
+  ResourceSetInputProvider,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  FluxResourceCollections,
+  listFluxResources,
+} from '../../utils/fluxResources';
 import { awaitsReconcileHandling } from './awaitsReconcileHandling';
 
 const RECONCILING_INTERVAL = 3000;
@@ -20,231 +30,191 @@ const isNotFoundError = (errorInfo: ErrorInfoUnion): boolean =>
   errorInfo.type !== 'incompatibility' &&
   errorInfo.error.name === 'NotFoundError';
 
+/**
+ * Lists one Flux kind. A cluster without the kind's CRD answers 404; the kind
+ * is then no longer requested from that cluster, and the 404 is not reported
+ * as an error. Other clusters keep being asked: the Flux Operator kinds, for
+ * one, exist only where the operator is installed.
+ */
+export function useFluxKind<R extends FluxObject>(
+  clusters: string | string[] | null,
+  ResourceClass: (new (json: any, cluster: string) => R) & {
+    getGVK(): MultiVersionResourceMatcher;
+  },
+  refetchInterval: number,
+) {
+  const [clustersWithoutKind, setClustersWithoutKind] = useState<string[]>([]);
+
+  const queriedClusters = useMemo(
+    () =>
+      clusters === null
+        ? []
+        : [clusters]
+            .flat()
+            .filter(cluster => !clustersWithoutKind.includes(cluster)),
+    [clusters, clustersWithoutKind],
+  );
+
+  const { resources, isLoading, errors } = useResources(
+    queriedClusters,
+    ResourceClass,
+    {},
+    {
+      refetchInterval,
+      enabled: queriedClusters.length > 0,
+    },
+  );
+
+  const missingOn = errors
+    .filter(isNotFoundError)
+    .map(errorInfo => errorInfo.cluster)
+    .sort()
+    .join(',');
+  useEffect(() => {
+    if (missingOn) {
+      setClustersWithoutKind(previous => [
+        ...new Set([...previous, ...missingOn.split(',')]),
+      ]);
+    }
+  }, [missingOn]);
+
+  const reportedErrors = useMemo(
+    () => errors.filter(errorInfo => !isNotFoundError(errorInfo)),
+    [errors],
+  );
+
+  return { resources, isLoading, errors: reportedErrors };
+}
+
 export function useFluxResources(clusters: string | string[] | null) {
   const [refetchInterval, setRefetchInterval] = useState(
     NON_RECONCILING_INTERVAL,
   );
 
-  const [kustomizationsEnabled, setKustomizationsEnabled] = useState(true);
-  const [helmReleasesEnabled, setHelmReleasesEnabled] = useState(true);
-  const [gitRepositoriesEnabled, setGitRepositoriesEnabled] = useState(true);
-  const [ociRepositoriesEnabled, setOciRepositoriesEnabled] = useState(true);
-  const [helmRepositoriesEnabled, setHelmRepositoriesEnabled] = useState(true);
-  const [imagePoliciesEnabled, setImagePoliciesEnabled] = useState(true);
-  const [imageRepositoriesEnabled, setImageRepositoriesEnabled] =
-    useState(true);
-  const [imageUpdateAutomationsEnabled, setImageUpdateAutomationsEnabled] =
-    useState(true);
-
-  const {
-    resources: kustomizations,
-    isLoading: isLoadingKustomizations,
-    errors: kustomizationsErrors,
-  } = useResources(
-    clusters!,
-    Kustomization,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && kustomizationsEnabled,
-    },
-  );
-
-  const {
-    resources: helmReleases,
-    isLoading: isLoadingHelmReleases,
-    errors: helmReleasesErrors,
-  } = useResources(
-    clusters!,
-    HelmRelease,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && helmReleasesEnabled,
-    },
-  );
-
-  const {
-    resources: gitRepositories,
-    isLoading: isLoadingGitRepositories,
-    errors: gitRepositoriesErrors,
-  } = useResources(
-    clusters!,
-    GitRepository,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && gitRepositoriesEnabled,
-    },
-  );
-
-  const {
-    resources: ociRepositories,
-    isLoading: isLoadingOciRepositories,
-    errors: ociRepositoriesErrors,
-  } = useResources(
-    clusters!,
-    OCIRepository,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && ociRepositoriesEnabled,
-    },
-  );
-
-  const {
-    resources: helmRepositories,
-    isLoading: isLoadingHelmRepositories,
-    errors: helmRepositoriesErrors,
-  } = useResources(
-    clusters!,
+  const kustomizations = useFluxKind(clusters, Kustomization, refetchInterval);
+  const helmReleases = useFluxKind(clusters, HelmRelease, refetchInterval);
+  const gitRepositories = useFluxKind(clusters, GitRepository, refetchInterval);
+  const ociRepositories = useFluxKind(clusters, OCIRepository, refetchInterval);
+  const helmRepositories = useFluxKind(
+    clusters,
     HelmRepository,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && helmRepositoriesEnabled,
-    },
+    refetchInterval,
   );
-
-  const {
-    resources: imagePolicies,
-    isLoading: isLoadingImagePolicies,
-    errors: imagePoliciesErrors,
-  } = useResources(
-    clusters!,
-    ImagePolicy,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && imagePoliciesEnabled,
-    },
-  );
-
-  const {
-    resources: imageRepositories,
-    isLoading: isLoadingImageRepositories,
-    errors: imageRepositoriesErrors,
-  } = useResources(
-    clusters!,
+  const imagePolicies = useFluxKind(clusters, ImagePolicy, refetchInterval);
+  const imageRepositories = useFluxKind(
+    clusters,
     ImageRepository,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && imageRepositoriesEnabled,
-    },
+    refetchInterval,
   );
-
-  const {
-    resources: imageUpdateAutomations,
-    isLoading: isLoadingImageUpdateAutomations,
-    errors: imageUpdateAutomationsErrors,
-  } = useResources(
-    clusters!,
+  const imageUpdateAutomations = useFluxKind(
+    clusters,
     ImageUpdateAutomation,
-    {},
-    {
-      refetchInterval,
-      enabled: Boolean(clusters) && imageUpdateAutomationsEnabled,
-    },
+    refetchInterval,
   );
+  const fluxInstances = useFluxKind(clusters, FluxInstance, refetchInterval);
+  const resourceSets = useFluxKind(clusters, ResourceSet, refetchInterval);
+  const resourceSetInputProviders = useFluxKind(
+    clusters,
+    ResourceSetInputProvider,
+    refetchInterval,
+  );
+  const fluxReports = useFluxKind(clusters, FluxReport, refetchInterval);
 
-  useEffect(() => {
-    if (kustomizationsErrors.some(isNotFoundError)) {
-      setKustomizationsEnabled(false);
-    }
-
-    if (helmReleasesErrors.some(isNotFoundError)) {
-      setHelmReleasesEnabled(false);
-    }
-
-    if (gitRepositoriesErrors.some(isNotFoundError)) {
-      setGitRepositoriesEnabled(false);
-    }
-
-    if (ociRepositoriesErrors.some(isNotFoundError)) {
-      setOciRepositoriesEnabled(false);
-    }
-
-    if (helmRepositoriesErrors.some(isNotFoundError)) {
-      setHelmRepositoriesEnabled(false);
-    }
-
-    if (imagePoliciesErrors.some(isNotFoundError)) {
-      setImagePoliciesEnabled(false);
-    }
-
-    if (imageRepositoriesErrors.some(isNotFoundError)) {
-      setImageRepositoriesEnabled(false);
-    }
-
-    if (imageUpdateAutomationsErrors.some(isNotFoundError)) {
-      setImageUpdateAutomationsEnabled(false);
-    }
-  }, [
-    kustomizationsErrors,
-    helmReleasesErrors,
-    gitRepositoriesErrors,
-    ociRepositoriesErrors,
-    helmRepositoriesErrors,
-    imagePoliciesErrors,
-    imageRepositoriesErrors,
-    imageUpdateAutomationsErrors,
-  ]);
+  const resources: FluxResourceCollections = useMemo(
+    () => ({
+      kustomizations: kustomizations.resources,
+      helmReleases: helmReleases.resources,
+      gitRepositories: gitRepositories.resources,
+      ociRepositories: ociRepositories.resources,
+      helmRepositories: helmRepositories.resources,
+      imagePolicies: imagePolicies.resources,
+      imageRepositories: imageRepositories.resources,
+      imageUpdateAutomations: imageUpdateAutomations.resources,
+      fluxInstances: fluxInstances.resources,
+      resourceSets: resourceSets.resources,
+      resourceSetInputProviders: resourceSetInputProviders.resources,
+      fluxReports: fluxReports.resources,
+    }),
+    [
+      kustomizations.resources,
+      helmReleases.resources,
+      gitRepositories.resources,
+      ociRepositories.resources,
+      helmRepositories.resources,
+      imagePolicies.resources,
+      imageRepositories.resources,
+      imageUpdateAutomations.resources,
+      fluxInstances.resources,
+      resourceSets.resources,
+      resourceSetInputProviders.resources,
+      fluxReports.resources,
+    ],
+  );
 
   const isLoading =
-    isLoadingKustomizations ||
-    isLoadingHelmReleases ||
-    isLoadingGitRepositories ||
-    isLoadingOciRepositories ||
-    isLoadingHelmRepositories ||
-    isLoadingImagePolicies ||
-    isLoadingImageRepositories ||
-    isLoadingImageUpdateAutomations;
+    kustomizations.isLoading ||
+    helmReleases.isLoading ||
+    gitRepositories.isLoading ||
+    ociRepositories.isLoading ||
+    helmRepositories.isLoading ||
+    imagePolicies.isLoading ||
+    imageRepositories.isLoading ||
+    imageUpdateAutomations.isLoading ||
+    fluxInstances.isLoading ||
+    resourceSets.isLoading ||
+    resourceSetInputProviders.isLoading ||
+    fluxReports.isLoading;
 
-  const errors = useMemo(() => {
-    return [
-      ...kustomizationsErrors,
-      ...helmReleasesErrors,
-      ...gitRepositoriesErrors,
-      ...helmRepositoriesErrors,
-      ...ociRepositoriesErrors,
-      ...imagePoliciesErrors,
-      ...imageRepositoriesErrors,
-      ...imageUpdateAutomationsErrors,
-    ].filter(errorInfo => !isNotFoundError(errorInfo));
-  }, [
-    kustomizationsErrors,
-    helmReleasesErrors,
-    gitRepositoriesErrors,
-    helmRepositoriesErrors,
-    ociRepositoriesErrors,
-    imagePoliciesErrors,
-    imageRepositoriesErrors,
-    imageUpdateAutomationsErrors,
-  ]);
+  const errors = useMemo(
+    () => [
+      ...kustomizations.errors,
+      ...helmReleases.errors,
+      ...gitRepositories.errors,
+      ...helmRepositories.errors,
+      ...ociRepositories.errors,
+      ...imagePolicies.errors,
+      ...imageRepositories.errors,
+      ...imageUpdateAutomations.errors,
+      ...fluxInstances.errors,
+      ...resourceSets.errors,
+      ...resourceSetInputProviders.errors,
+      ...fluxReports.errors,
+    ],
+    [
+      kustomizations.errors,
+      helmReleases.errors,
+      gitRepositories.errors,
+      helmRepositories.errors,
+      ociRepositories.errors,
+      imagePolicies.errors,
+      imageRepositories.errors,
+      imageUpdateAutomations.errors,
+      fluxInstances.errors,
+      resourceSets.errors,
+      resourceSetInputProviders.errors,
+      fluxReports.errors,
+    ],
+  );
 
   useEffect(() => {
-    const reconciling =
-      kustomizations.some(k => k.isReconciling()) ||
-      imagePolicies.some(p => p.isReconciling()) ||
-      imageRepositories.some(r => r.isReconciling()) ||
-      imageUpdateAutomations.some(a => a.isReconciling());
+    const reconciling = [
+      ...resources.kustomizations,
+      ...resources.imagePolicies,
+      ...resources.imageRepositories,
+      ...resources.imageUpdateAutomations,
+      ...resources.fluxInstances,
+      ...resources.resourceSets,
+      ...resources.resourceSetInputProviders,
+    ].some(r => r.isReconciling());
 
     // An on-demand reconciliation the controller has not picked up yet also
     // deserves the fast poll: the details panel disables its Reconcile button
     // until the request is handled, and the slow interval would leave it
     // disabled for far longer than the controller actually takes. See
     // `awaitsReconcileHandling` for the cases excluded to keep this bounded.
-    const requestPending = [
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
-      imagePolicies,
-      imageRepositories,
-      imageUpdateAutomations,
-    ].some(resources => resources.some(awaitsReconcileHandling));
+    const requestPending = listFluxResources(resources).some(
+      awaitsReconcileHandling,
+    );
 
     const newInterval =
       reconciling || requestPending
@@ -254,51 +224,10 @@ export function useFluxResources(clusters: string | string[] | null) {
     if (newInterval !== refetchInterval) {
       setRefetchInterval(newInterval);
     }
-  }, [
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
-    refetchInterval,
-    kustomizationsErrors,
-    helmReleasesErrors,
-    gitRepositoriesErrors,
-    helmRepositoriesErrors,
-    ociRepositoriesErrors,
-    imagePoliciesErrors,
-    imageRepositoriesErrors,
-    imageUpdateAutomationsErrors,
-  ]);
+  }, [resources, refetchInterval]);
 
-  return useMemo(() => {
-    return {
-      resources: {
-        kustomizations,
-        helmReleases,
-        gitRepositories,
-        ociRepositories,
-        helmRepositories,
-        imagePolicies,
-        imageRepositories,
-        imageUpdateAutomations,
-      },
-      isLoading,
-      errors,
-    };
-  }, [
-    errors,
-    gitRepositories,
-    helmReleases,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
-    isLoading,
-    kustomizations,
-    ociRepositories,
-  ]);
+  return useMemo(
+    () => ({ resources, isLoading, errors }),
+    [resources, isLoading, errors],
+  );
 }

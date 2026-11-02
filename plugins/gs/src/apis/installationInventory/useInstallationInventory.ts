@@ -33,6 +33,7 @@ import type {
   PlatformComponent,
   PlatformComponents,
 } from './types';
+import { installationsWithComponent } from '../installationScope/scopeSelection';
 import { findHomeInstallation } from './useHomeInstallation';
 
 type AccessState = ClusterAccessState | 'unknown';
@@ -312,15 +313,7 @@ export function useInstallationInventory(): InstallationInventory {
     const nothingKnownYet = entries.some(entry => !entry.muted) && !statusKnown;
 
     const installationsWith = (component: PlatformComponent) =>
-      entries
-        .filter(
-          entry =>
-            !entry.muted &&
-            entry.probe === 'answered' &&
-            entry.components[component] &&
-            entry.accessState === 'healthy',
-        )
-        .map(entry => entry.installation);
+      installationsWithComponent(entries, component);
 
     const refresh = () => {
       // Refetches the active (healthy, mounted) probes now and marks the rest

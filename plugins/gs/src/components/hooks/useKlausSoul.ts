@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { gitHubApiRef } from '../../apis/github';
 import { fetchContent } from './utils/fetchContent';
@@ -21,7 +22,8 @@ export function useKlausSoul(soulUrl: string | undefined) {
   const {
     data: soul,
     error,
-    isLoading,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: ['klaus-soul', rawUrl],
     queryFn: async () => {
@@ -39,6 +41,7 @@ export function useKlausSoul(soulUrl: string | undefined) {
     },
     enabled: Boolean(rawUrl),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return useMemo(
     () => ({

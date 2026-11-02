@@ -18,3 +18,13 @@ export const DIALOG_FORM_STYLE: CSSProperties = {
   flex: 1,
   minHeight: 0,
 };
+
+/**
+ * For a `DialogFooter` with more than two buttons (Cancel, Back, Commit,
+ * Deploy): bui lays the footer out as one row, end-aligned, that never wraps,
+ * so at phone width the buttons would run past the dialog's edge. Wrapped,
+ * they keep their order and the primary stays last.
+ */
+export const DIALOG_FOOTER_WRAP_STYLE: CSSProperties = {
+  flexWrap: 'wrap',
+};

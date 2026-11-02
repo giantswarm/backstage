@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { EmptyState } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { plansApiRef } from '../../apis';
 import { PlanPullRow, ProposedPlansTable } from '../ProposedPlansTable';
 import { PlansErrorAlert } from '../PlansErrorAlert';
@@ -14,10 +15,12 @@ import { PlansErrorAlert } from '../PlansErrorAlert';
 export function ProposedTab({ repo }: { repo: string }) {
   const plansApi = useApi(plansApiRef);
 
-  const { data, isLoading, error } = useQuery({
+  const pulls = useQuery({
     queryKey: ['plans', 'pulls', repo],
     queryFn: () => plansApi.listPulls(repo),
   });
+  const { data, error } = pulls;
+  const isLoading = isAwaitingData(pulls);
 
   // Epic references per open PR, for the cross-link chips. Failure just
   // means no chips.

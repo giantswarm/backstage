@@ -16,7 +16,10 @@ import {
   Link,
   Progress,
 } from '@backstage/core-components';
-import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  GSMarkdownContent,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { roadmapApiRef } from '../../apis';
@@ -108,15 +111,16 @@ export function ItemDetailPage() {
   const schema = useSchema();
   const updateField = useUpdateItemField();
 
-  const { data, isLoading, error } = useQuery({
+  const itemQuery = useQuery({
     queryKey: ['roadmap', 'item', id],
     queryFn: () => roadmapApi.getItem(id!),
     enabled: !!id,
   });
+  const { data, error } = itemQuery;
 
   const boardPath = rootLink ? rootLink() : '..';
 
-  if (isLoading || schema.isLoading) {
+  if (isAwaitingData(itemQuery) || isAwaitingData(schema)) {
     return (
       <Content>
         <Progress />

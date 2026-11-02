@@ -9,6 +9,10 @@ const baseColors: Record<string, { light: string; dark: string }> = {
   purple: { light: '#ddc3fa', dark: '#704ac0' },
   pink: { light: '#f4bae3', dark: '#8d2f50' },
   brown: { light: '#b0a187', dark: '#614423' },
+  indigo: { light: '#cdcbf7', dark: '#47419a' },
+  cyan: { light: '#bfe9f6', dark: '#1f5f73' },
+  lime: { light: '#e3f5b8', dark: '#56691d' },
+  slate: { light: '#d5dde6', dark: '#46566a' },
 };
 
 export function getColor(colorName: string, type: 'light' | 'dark') {

@@ -42,14 +42,26 @@ export type AgentToolset = {
  * the caller waiting forever. Reading the queries also keeps a background
  * refetch from flipping a settled card back to reading.
  */
-export function useAgentToolset(agent: Agent): AgentToolset {
-  const installation = agent.cluster;
-  const namespace = agent.getNamespace();
+export function useAgentToolset(agent: Agent): AgentToolset;
+/**
+ * The same for an agent that may not be read yet, as a page needs before its
+ * early returns: undefined, and nothing read, until there is an agent.
+ */
+export function useAgentToolset(
+  agent: Agent | undefined,
+): AgentToolset | undefined;
+export function useAgentToolset(
+  agent: Agent | undefined,
+): AgentToolset | undefined {
+  // Without an agent there is no installation, and `useResources` reads no
+  // cluster for an empty one.
+  const installation = agent?.cluster ?? '';
+  const namespace = agent?.getNamespace();
   const { resources, queries } = useResources(
     installation,
     RemoteMCPServer,
     { [installation]: { namespace } },
-    { enableDiscovery: false },
+    { enableDiscovery: false, enabled: Boolean(agent) },
   );
 
   // Paused counts as done: offline, the query sits pending with nothing on the
@@ -72,15 +84,16 @@ export function useAgentToolset(agent: Agent): AgentToolset {
   // each time), and depending on it would give every render a new result —
   // which the card's memos, keyed on this one, all hang off.
   return useMemo(
-    () => ({
-      declared: toolsetOfAgent(
-        agent,
-        MUSTER_MCP_SERVER_NAME,
-        settled ? resources : undefined,
-      ),
-      isReading: !settled,
-      isUnreadable: settled && failed,
-    }),
+    () =>
+      agent && {
+        declared: toolsetOfAgent(
+          agent,
+          MUSTER_MCP_SERVER_NAME,
+          settled ? resources : undefined,
+        ),
+        isReading: !settled,
+        isUnreadable: settled && failed,
+      },
     [agent, settled, failed, resources],
   );
 }

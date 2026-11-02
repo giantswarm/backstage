@@ -1,6 +1,7 @@
 import { useId, type ChangeEvent } from 'react';
 import { FieldLabel } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -33,6 +34,10 @@ const useStyles = makeStyles(theme => ({
       opacity: 0.5,
     },
   },
+  invalid: {
+    outline: `2px solid ${theme.palette.error.main}`,
+    outlineOffset: -1,
+  },
 }));
 
 export type SecretTextFieldProps = {
@@ -43,6 +48,8 @@ export type SecretTextFieldProps = {
   onChange: (value: string) => void;
   placeholder?: string;
   isDisabled?: boolean;
+  /** Marks the field invalid and says why, right under it. */
+  error?: string;
 };
 
 /** A masked, never-autofilled input for values that must not be shown. */
@@ -57,7 +64,15 @@ export function SecretTextField(props: SecretTextFieldProps) {
     onChange,
     placeholder,
     isDisabled = false,
+    error,
   } = props;
+  const errorId = `${id}-error`;
+  const descriptionId = `${id}-description`;
+  // What the input is described by: its description, then its problem.
+  const describedBy =
+    [description ? descriptionId : undefined, error ? errorId : undefined]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
   return (
     <div className={classes.root}>
@@ -66,10 +81,13 @@ export function SecretTextField(props: SecretTextFieldProps) {
         label={label}
         secondaryLabel={secondaryLabel}
         description={description}
+        descriptionId={descriptionId}
       />
       <input
         id={id}
-        className={classes.input}
+        className={`${classes.input} ${error ? classes.invalid : ''}`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         type="password"
         // Keeps browsers and password managers from treating a provider API
         // key as a login credential to save or to fill in.
@@ -81,6 +99,7 @@ export function SecretTextField(props: SecretTextFieldProps) {
           onChange(e.target.value)
         }
       />
+      {error && <FieldErrorText id={errorId}>{error}</FieldErrorText>}
     </div>
   );
 }

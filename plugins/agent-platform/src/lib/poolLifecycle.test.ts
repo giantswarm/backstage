@@ -146,6 +146,21 @@ describe('poolPhaseLabel', () => {
         READY_CLUSTER,
       ),
     ).toBe('failed · InstallFailed');
+    // A message that is a sentence stays in the lifecycle panel.
+    for (const message of [
+      'The release could not be installed because the chart was not found in the catalogue.',
+      'helm install timed out: context deadline exceeded',
+    ]) {
+      expect(
+        poolPhaseLabel(
+          pool({
+            phase: 'failed',
+            steps: [{ name: 'release', state: 'failed', message }],
+          }),
+          READY_CLUSTER,
+        ),
+      ).toBe('failed');
+    }
   });
 
   it('derives the phase from poolReleases[].ready on an older cluster-manager', () => {

@@ -53,4 +53,19 @@ describe('deriveSessionTitle', () => {
     // says the helper does not invent a title.
     expect(deriveSessionTitle('   \n  ')).toBe('');
   });
+
+  it('keeps a prompt up to the given maxLength whole', () => {
+    const prompt =
+      'Investigate why the ingress controller keeps restarting on the gazelle management cluster';
+
+    expect(deriveSessionTitle(prompt, 199)).toBe(prompt);
+  });
+
+  it('clips at the given maxLength', () => {
+    const title = deriveSessionTitle(`Debug ${'word '.repeat(60)}`, 199);
+
+    expect(title.endsWith('…')).toBe(true);
+    expect(title.length).toBeLessThanOrEqual(200);
+    expect(title.length).toBeGreaterThan(DERIVED_TITLE_MAX_LENGTH + 1);
+  });
 });

@@ -7,7 +7,7 @@ import {
   KubePodContainerStatusRestartsTotal,
   KubePodStatusPhase,
   KubeDeploymentStatusCondition,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 
 export interface WorkloadDiagnostics {
   waitingReasons: { pod: string; container: string; reason: string }[];

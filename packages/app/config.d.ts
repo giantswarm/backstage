@@ -9,7 +9,7 @@ export interface Config {
     description?: string;
 
     /**
-     * In-app path that `/` redirects to, e.g. `/agent-platform`. Unset renders
+     * In-app path that `/` redirects to, e.g. `/catalog`. Unset renders
      * the home page, and so does a value that does not start with `/` or that
      * is `/` itself. Set it for a single-product deployment whose landing page
      * is one plugin instead of the portal home page. The home page extension
@@ -21,13 +21,56 @@ export interface Config {
     /**
      * The portal's own release, e.g. `2.81.5`: the chart's app version, set
      * by the chart as `APP_CONFIG_app_releaseVersion`; locally `${VERSION}`
-     * in `app-config.yaml`. Shown on the home page and reported to Sentry and
-     * TelemetryDeck, both of which start before sign-in, so it is public.
+     * in `app-config.yaml`. Shown at the bottom of the classic home page and
+     * of the shell's Profile and settings page (`GSReleaseInfo`), and reported
+     * to Sentry and TelemetryDeck, both of which start before sign-in, so it
+     * is public.
      * Optional like the Sentry fields below: unset in local development
      * when `VERSION` is.
      * @visibility frontend
      */
     releaseVersion?: string;
+
+    /**
+     * Which portals this deployment serves. Public: the app decides which of
+     * its pages and navigations exist when it starts, before sign-in.
+     *
+     * - Both on: the Agent Platform shell on its routes (`/`,
+     *   `/sessions/**`, `/usage/**`, `/profile`, `/customize/**`, and the
+     *   old `/agent-platform/**`, which only redirects), the classic Platform Portal
+     *   everywhere else, each cross-linking to the other in a new tab.
+     * - Only `agentPlatform`: the shell is the navigation — `/` is the
+     *   new-session screen for everyone and the rail has no "Platform Portal"
+     *   item. Classic pages stay reachable by URL (in classic chrome, whose
+     *   "Agent Platform" item leads back in the same tab) but nothing in the
+     *   shell links to them.
+     * - Only `platformPortal` (the default): exactly the classic portal, no
+     *   agent shell, no cross-link and nothing of the Agent Platform (its
+     *   pages are routed in the shell only, so none of its routes and no
+     *   sidebar item, whatever `app.extensions` lists). The person's
+     *   `agent-platform-shell` feature flag then opts one browser into the
+     *   shell, as an override for trying it out; it is not offered while
+     *   `agentPlatform` is on.
+     *
+     * The shell's pages (the Customize page and the tabs attached to it,
+     * Sessions, Usage, Profile, and `page:agent-platform`, the old
+     * addresses' redirects) are enabled by default and mounted only where
+     * the shell is on. Both off reads as the default.
+     */
+    portals?: {
+      /**
+       * The classic Platform Portal (clusters, deployments, catalog, …) in
+       * its classic chrome. Default: true.
+       * @visibility frontend
+       */
+      platformPortal?: boolean;
+      /**
+       * The Agent Platform shell. Default: false, so a rollout switches it
+       * on per deployment.
+       * @visibility frontend
+       */
+      agentPlatform?: boolean;
+    };
 
     branding?: {
       /**
@@ -239,6 +282,18 @@ export interface Config {
       appID?: string;
       /** @visibility frontend */
       salt?: string;
+      /**
+       * Sent as `deploymentID` with every signal: the ID of the deployment a
+       * tool set the portal up in (agentlab), whose own signals carry it too.
+       * @visibility frontend
+       */
+      deploymentID?: string;
+      /**
+       * Files the signals as test data, kept apart from the production
+       * numbers. Always on for localhost.
+       * @visibility frontend
+       */
+      testMode?: boolean;
     };
   };
 }

@@ -120,6 +120,7 @@ const GROUP_ORDER: Record<MargeGroup, number> = Object.fromEntries(
     'obsolete',
     'waiting',
     'unclassified',
+    'not_reached',
     'eligible',
     'skipped',
     'refreshed',

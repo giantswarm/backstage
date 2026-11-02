@@ -1,20 +1,48 @@
-import {
-  HARNESS_LABEL,
-  type Harness,
-  type HarnessAgentTemplateSelector,
-  type HarnessRuntime,
+import type {
+  Harness,
+  HarnessRuntime,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+import type { AgentManagerInfo } from './agentManager';
 
 /** agent-manager's platform Harness when `get_info` has not answered. */
 export const DEFAULT_PLATFORM_HARNESS = 'kagent';
 
-/** A Harness an agent can be created on, as the wizard offers it. */
+/**
+ * The words for an agent's Harness wherever a person reads it: the create and
+ * edit form's runtime field, its review and the agent page's facts, so the
+ * two read the same.
+ */
+export const RUNTIME_LABEL = 'Runtime';
+/** The technical term beside {@link RUNTIME_LABEL}. */
+export const RUNTIME_TERM = 'Harness';
+/** What the runtime is, in one sentence. */
+export const RUNTIME_DESCRIPTION = 'What runs the agent.';
+/** The mark on the platform Harness, the one a request naming none gets. */
+export const PLATFORM_DEFAULT_LABEL = 'Platform default';
+
+/**
+ * The platform Harness agent-manager composes when a request names none:
+ * `get_info`'s, else {@link DEFAULT_PLATFORM_HARNESS} while it has not
+ * answered. Right for what a request will get; a page that marks a Harness
+ * as the platform's reads `info?.harness?.name` alone, so it never marks one
+ * on a guess.
+ */
+export function platformHarnessOf(
+  info: Pick<AgentManagerInfo, 'harness'> | undefined,
+): string {
+  return info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
+}
+
+/**
+ * A Harness an agent can be created on, as the wizard offers it. The name is
+ * what `create_agent` takes as `harness` and what the Agent object carries in
+ * `spec.harnessRef.name`.
+ */
 export type HarnessChoice = {
   name: string;
   /** The Harness's `ui.giantswarm.io/display-name`, when an admin set one. */
   displayName?: string;
-  /** The `agent-platform.giantswarm.io/harness` value it admits: what `create_agent` takes. */
-  admits: string;
   runtime?: HarnessRuntime;
   /** The image's repository name, without registry, tag or digest. */
   imageName?: string;
@@ -26,6 +54,15 @@ const RUNTIME_LABELS: Record<HarnessRuntime, string> = {
   codex: 'Codex',
   byo: 'Custom image',
 };
+
+/**
+ * Whether a Harness runtime runs a coding CLI (every runtime but kagent's): an
+ * agent on one reaches its Harness's platform list only, so it picks no
+ * EgressPolicy. Undefined, the runtime is not known yet.
+ */
+export function isCodingRuntime(runtime: HarnessRuntime | undefined): boolean {
+  return runtime !== undefined && runtime !== 'kagent';
+}
 
 export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
   return runtime ? RUNTIME_LABELS[runtime] : 'Unknown runtime';
@@ -40,6 +77,16 @@ export function harnessTitle(choice: HarnessChoice): string {
   return choice.displayName ?? runtimeLabel(choice.runtime);
 }
 
+/**
+ * The platform Harness in one line, as a summary row reads it: its title and
+ * the platform default's mark, or the mark alone until (or unless) it is read.
+ */
+export function platformRuntimeLine(choice: HarnessChoice | undefined): string {
+  return choice
+    ? `${harnessTitle(choice)} · ${PLATFORM_DEFAULT_LABEL}`
+    : PLATFORM_DEFAULT_LABEL;
+}
+
 /** `gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:…` → `claude-harness`. */
 export function imageNameOf(image: string | undefined): string | undefined {
   const repository = image?.split('@')[0];
@@ -47,84 +94,21 @@ export function imageNameOf(image: string | undefined): string | undefined {
   return last?.replace(/:[^:]*$/, '') || undefined;
 }
 
-/**
- * The labels the Generic agent chart (`agenttemplate.labels`) stamps on an
- * AgentTemplate whose value does not depend on the release. The wizard sends
- * no extra `labels`, so these plus the harness label are all of them.
- */
-const FIXED_TEMPLATE_LABELS: Readonly<Record<string, string>> = {
-  app: 'agent',
-  'app.kubernetes.io/name': 'agent',
-  'app.kubernetes.io/managed-by': 'Helm',
-  'application.giantswarm.io/team': 'bumblebee',
-};
-
-/**
- * Labels the template carries with a per-release value (release name, chart
- * version, the HelmRelease helm-controller stamps): present, value unknown.
- */
-const PER_RELEASE_TEMPLATE_LABELS: ReadonlySet<string> = new Set([
-  'app.kubernetes.io/instance',
-  'app.kubernetes.io/version',
-  'helm.sh/chart',
-  'helm.toolkit.fluxcd.io/name',
-  'helm.toolkit.fluxcd.io/namespace',
-]);
-
-/**
- * Whether every requirement of `selector` holds for the AgentTemplate the
- * wizard creates with `harness` = `admits`.
- *
- * An empty `matchLabels` value counts as no requirement: the platform
- * Harness template drops every selector label whose value is empty, which is
- * how agent-platform's values remove the kagent chart's own
- * `kagent.dev/harness` key. A requirement on a per-release label can only be
- * met by `Exists`; any value it asks for is treated as unmet, since no value
- * holds for every agent. An unknown operator is unmet.
- *
- * A best-effort read: agent-manager's `requireHarness` and the Harness's own
- * verdict on the template stay the authoritative checks.
- */
-export function selectorAdmitsAgent(
-  selector: HarnessAgentTemplateSelector,
-  admits: string,
-): boolean {
-  const labels: Record<string, string> = {
-    ...FIXED_TEMPLATE_LABELS,
-    [HARNESS_LABEL]: admits,
+export function harnessChoiceOf(harness: Harness): HarnessChoice {
+  return {
+    name: harness.getName(),
+    ...(harness.getDisplayNameAnnotation() && {
+      displayName: harness.getDisplayNameAnnotation(),
+    }),
+    runtime: harness.getRuntime(),
+    imageName: imageNameOf(harness.getImage()),
   };
-  const has = (key: string) =>
-    key in labels || PER_RELEASE_TEMPLATE_LABELS.has(key);
-
-  const labelsMet = Object.entries(selector.matchLabels ?? {}).every(
-    ([key, value]) => value === '' || labels[key] === value,
-  );
-  const expressionsMet = (selector.matchExpressions ?? []).every(
-    ({ key, operator, values = [] }) => {
-      switch (operator) {
-        case 'Exists':
-          return has(key);
-        case 'DoesNotExist':
-          return !has(key);
-        case 'In':
-          return key in labels && values.includes(labels[key]);
-        case 'NotIn':
-          return (
-            !PER_RELEASE_TEMPLATE_LABELS.has(key) &&
-            !(key in labels && values.includes(labels[key]))
-          );
-        default:
-          return false;
-      }
-    },
-  );
-  return labelsMet && expressionsMet;
 }
 
 /**
- * The Harnesses of `namespace` that admit the agent the wizard creates on
- * them (see {@link selectorAdmitsAgent}), the platform one first and the rest
- * by name.
+ * The Harnesses of `namespace` an agent can be created on: every one of them,
+ * since an Agent names its Harness and nothing admits by label any more. The
+ * platform one first, the rest by name.
  */
 export function harnessChoicesOf(
   harnesses: readonly Harness[],
@@ -133,27 +117,26 @@ export function harnessChoicesOf(
 ): HarnessChoice[] {
   return harnesses
     .filter(harness => harness.getNamespace() === namespace)
-    .flatMap(harness => {
-      const admits = harness.getAdmittedHarnessLabel();
-      const selector = harness.getAgentTemplateSelector();
-      if (!admits || !selector || !selectorAdmitsAgent(selector, admits)) {
-        return [];
-      }
-      return [
-        {
-          name: harness.getName(),
-          ...(harness.getDisplayNameAnnotation() && {
-            displayName: harness.getDisplayNameAnnotation(),
-          }),
-          admits,
-          runtime: harness.getRuntime(),
-          imageName: imageNameOf(harness.getImage()),
-        },
-      ];
-    })
+    .map(harnessChoiceOf)
     .sort(
       (a, b) =>
-        Number(b.admits === platformHarness) -
-          Number(a.admits === platformHarness) || a.name.localeCompare(b.name),
+        Number(b.name === platformHarness) -
+          Number(a.name === platformHarness) || a.name.localeCompare(b.name),
     );
+}
+
+/**
+ * The origins the platform lets agents on a coding Harness reach: agent-manager's
+ * chart value `harness.egress.<harness>`, which it writes for every agent on
+ * that Harness and holds requested origins to (`guardCoding`). agent-manager
+ * does not report it yet (proposed as `get_info.harnessEgress`, keyed by
+ * Harness name, giantswarm/giantswarm#38814), so this answers `undefined` and
+ * the agent form says only that the platform sets the agent's network access.
+ * Once it does, read it here: the form lists what this returns.
+ */
+export function platformEgressOf(
+  _info: AgentManagerInfo | undefined,
+  _harness: string | undefined,
+): string[] | undefined {
+  return undefined;
 }

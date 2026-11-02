@@ -1,5 +1,7 @@
 import { UseQueryResult } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
+import type { K8sResponseError } from './k8sResponseError';
 
 /**
  * Error info for regular fetch errors.
@@ -39,6 +41,18 @@ export function isNotFoundError(errorInfo: ErrorInfoUnion): boolean {
   );
 }
 
+/**
+ * True when a read reached an API the apiserver serves and found no object of
+ * the name it asked for: the object does not exist, or no longer does. Unlike
+ * a plain `NotFoundError`, an API path the apiserver does not serve is not one.
+ */
+export function isObjectNotFound(error: Error | null | undefined): boolean {
+  return (
+    error?.name === 'NotFoundError' &&
+    typeof (error as K8sResponseError).notFoundName === 'string'
+  );
+}
+
 export const mapQueriesToClusters = <T>(
   clusters: string[],
   queries: UseQueryResult<T, unknown>[],
@@ -68,7 +82,7 @@ export const mapQueriesToClusters = <T>(
     }),
   );
 
-  const isLoading = queries.some(query => query.isLoading);
+  const isLoading = queries.some(isAwaitingData);
   const retry = () => {
     for (const query of queries) {
       query.refetch();

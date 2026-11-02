@@ -88,8 +88,7 @@ export function readProvenance(obj: KubeObject): Provenance {
  * false and may be mutated live.
  *
  * Provenance is the only UI restriction: GitOps-managed resources produce a
- * PR/manifest to commit; ad-hoc (manually added) resources allow live CRUD. See
- * the provenance-only safety model ADR in klaus-lab.
+ * PR/manifest to commit; ad-hoc (manually added) resources allow live CRUD.
  *
  * Note this answers "is a reconciler in charge of this object", *not* "is this
  * object's desired state in Git". A HelmRelease applied by hand (or by our

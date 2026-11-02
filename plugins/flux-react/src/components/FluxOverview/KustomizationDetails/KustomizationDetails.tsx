@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
+import { ParentSection } from '../ParentSection';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
 import { findTargetClusterName } from '../../../utils/findTargetClusterName';
@@ -31,16 +32,7 @@ export const KustomizationDetails = ({
     allOCIRepositories,
   );
 
-  const parentKustomization =
-    treeBuilder?.findParentKustomization(kustomization);
-
-  const parentSource = parentKustomization
-    ? findKustomizationSource(
-        parentKustomization,
-        allGitRepositories,
-        allOCIRepositories,
-      )
-    : undefined;
+  const parent = treeBuilder?.findParent(kustomization);
 
   const dependsOn = kustomization.getDependsOn();
   const dependencies = dependsOn
@@ -71,19 +63,12 @@ export const KustomizationDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Parent Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        headingPrefix="Parent "
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
+      />
 
       {source ? (
         <Section heading="Source">

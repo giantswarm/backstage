@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Select } from '@backstage/ui';
+import { searchableIf } from '@giantswarm/backstage-plugin-ui-react';
 import type {
   InstallationInventoryEntry,
   PlatformComponent,
@@ -26,6 +27,13 @@ export type InstallationScopeSelectProps = {
    * before the generic state.
    */
   describe?: (entry: InstallationInventoryEntry) => string | undefined;
+  /** A visible label for the control; without one it is named for assistive technology only. */
+  label?: string;
+  /**
+   * Opt into type-ahead where the list is long enough to need it
+   * (`searchableIf`). Off by default: a plain select, as on main.
+   */
+  searchable?: boolean;
   className?: string;
 };
 
@@ -42,6 +50,8 @@ export type InstallationScopeSelectProps = {
 export function InstallationScopeSelect({
   component,
   describe,
+  label,
+  searchable = false,
   className,
 }: InstallationScopeSelectProps) {
   useInstallationScopeUrlSync();
@@ -95,8 +105,10 @@ export function InstallationScopeSelect({
 
   return (
     <Select
-      aria-label="Installation scope"
+      label={label}
+      aria-label={label ? undefined : 'Installation scope'}
       className={className}
+      searchable={searchable && searchableIf(allOptions)}
       options={allOptions}
       selectedKey={scope}
       onSelectionChange={key => {

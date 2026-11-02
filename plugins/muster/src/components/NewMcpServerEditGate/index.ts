@@ -1,5 +1,7 @@
 export {
-  EDIT_PARAM,
   NewMcpServerEditGate,
-  withEditParam,
+  useConnectorsListHref,
+  useConnectorWizardLinks,
+  type ConnectorWizardLinks,
+  type ConnectorWizardStep,
 } from './NewMcpServerEditGate';

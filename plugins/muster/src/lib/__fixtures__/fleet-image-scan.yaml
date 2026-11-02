@@ -1,0 +1,217 @@
+apiVersion: muster.giantswarm.io/v1alpha1
+kind: Workflow
+metadata:
+  annotations:
+    klaus-lab.giantswarm.io/consumers: gs-sre/fleet-image-scan
+    klaus-lab.giantswarm.io/manual-fallback: none
+    meta.helm.sh/release-name: muster-skill-workflows
+    meta.helm.sh/release-namespace: agent-platform
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.toolkit.fluxcd.io/name: muster-skill-workflows
+    helm.toolkit.fluxcd.io/namespace: flux-giantswarm
+    klaus-lab.giantswarm.io/category: skill-support
+    klaus-lab.giantswarm.io/source-skill: gs-sre.fleet-image-scan
+  name: fleet-image-scan
+  namespace: agent-platform
+spec:
+  args:
+    image:
+      default: quay.io/giantswarm/
+      description: Substring an image reference must contain, anywhere (registry, mirror path or repository). Default quay.io/giantswarm/.
+      required: false
+      type: string
+    management_clusters:
+      description: Management clusters to scan, short names, e.g. ["gazelle","alba"]; each selects <mc>-mcp-kubernetes. Their workload clusters are scanned too.
+      required: true
+      type: array
+  description: |
+    Every object on every cluster of the given management clusters whose pod spec references an image containing a string (default quay.io/giantswarm/, which also catches mirror paths such as <mirror>/quay.io/giantswarm/...) -- the single-call answer to "which clusters still reference quay.io". Read-only.
+
+    Scans Deployments, ReplicaSets (rollback history included), StatefulSets, DaemonSets, CronJobs, Jobs and Pods; container, init and ephemeral container images all count. A row whose owner is itself a row is left out.
+
+    matches = one row per object: management_cluster, cluster, kind, namespace, name, owner, images, replicas (ReplicaSets; 0 = history). failures = clusters not read. Hook-only images are not seen.
+  output:
+    clusters_scanned: '{{ .results.fleet.clusters_scanned }}'
+    failures: '{{ .results.fleet.failures }}'
+    image: '{{ .input.image }}'
+    matches: '{{ .results.fleet.matches }}'
+  steps:
+    - allowFailure: false
+      description: Each management cluster, at most 8 at once; each has its own mcp-kubernetes.
+      forEach:
+        as: mc
+        items: '{{ .input.management_clusters }}'
+        parallelism: 8
+        steps:
+          - allowFailure: true
+            args:
+              allNamespaces: true
+              apiGroup: cluster.x-k8s.io
+              fullOutput: false
+              limit: 500
+              management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+              resourceType: clusters
+            description: The workload clusters of the management cluster, with the management cluster itself first (empty name); the management cluster's own Cluster resource is left out, it is that first entry. A failure is reported under failures.
+            id: clusters
+            jq: '[{name: "", display: $vars.mc}] + [.items[] | select(.name != $vars.mc) | {name: .name, display: .name}]'
+            paginate:
+              maxPages: 10
+            store: false
+            tool: x_kubernetes_list
+          - allowFailure: false
+            condition:
+              template: '{{ kindIs "slice" .results.clusters }}'
+            description: Each cluster in turn, one at a time per management cluster; more at once gets the management cluster's mcp-kubernetes OOM-killed (503).
+            forEach:
+              as: cluster
+              items: '{{ .results.clusters }}'
+              parallelism: 1
+              steps:
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: deployments
+                  description: Deployments whose pod template references the image; images and owner come from the compact summary.
+                  id: deployments
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: replicasets
+                  description: ReplicaSets whose pod template references the image, the scaled-to-zero revisions a rollback restores included; replicas tells history (0) from running.
+                  id: replicasets
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), replicas: (.extra.replicas // 0), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: statefulsets
+                  description: Statefulsets whose pod template references the image; images and owner come from the compact summary.
+                  id: statefulsets
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: daemonsets
+                  description: Daemonsets whose pod template references the image; images and owner come from the compact summary.
+                  id: daemonsets
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: cronjobs
+                  description: Cronjobs whose pod template references the image; images and owner come from the compact summary.
+                  id: cronjobs
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: jobs
+                  description: Jobs whose pod template references the image; images and owner come from the compact summary.
+                  id: jobs
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+                - allowFailure: true
+                  args:
+                    allNamespaces: true
+                    cluster: '{{ .vars.cluster.name }}'
+                    filter:
+                      images:
+                        op: contains
+                        value: '{{ .input.image }}'
+                    limit: 200
+                    management_cluster: '{{ .vars.mc }}-mcp-kubernetes'
+                    resourceType: pods
+                  description: Pods whose spec references the image, ephemeral containers included; a pod whose owner is itself a row is dropped from matches.
+                  id: pods
+                  jq: 'if .pagination.truncated then error("more than 20000 objects, list truncated") else . end | [.items[] | {kind, namespace, name, owner: (.owner // ""), images: [.extra.images[]? | select(contains($input.image))]}]'
+                  paginate:
+                    maxPages: 100
+                  store: false
+                  tool: x_kubernetes_list
+            id: scan
+            store: false
+      id: fleet
+      jq: |-
+        {
+
+          matches: [.[] | .item as $mc | (.results.scan // [])[]
+                    | .item.display as $c
+                    | [.results | to_entries[] | .value | arrays | .[] | select(.images | length > 0)] as $rows
+                    | [$rows[] | "\(.kind)/\(.name)@\(.namespace)"] as $keys
+                    | $rows[]
+                    | select(.owner == "" or ("\(.owner)@\(.namespace)" as $k | any($keys[]; . == $k) | not))
+                    | {management_cluster: $mc, cluster: $c, kind, namespace, name, owner, images}
+                      + (if .kind == "ReplicaSet" then {replicas} else {} end)],
+          failures: ([.[] | select(.status == "failed") | {management_cluster: .item, cluster: "", error}]
+                     + [.[] | .item as $mc | (.results.scan // [])[]
+                        | select(.status == "failed")
+                        | {management_cluster: $mc, cluster: .item.display, error}]),
+          clusters_scanned: ([.[] | (.results.scan // []) | length] | add // 0)
+        }
+      store: false

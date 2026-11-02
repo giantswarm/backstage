@@ -1,6 +1,14 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   applyInstallationScope,
   useInstallationInventory,
@@ -14,6 +22,8 @@ import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { useNotificationRecordPruning } from '../../hooks/useSessionNotificationRecord';
+import { describeReadFailure, type ReadFailure } from '../../lib/readFailure';
 import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
 export type SessionsContextValue = {
@@ -49,6 +59,11 @@ export type SessionsContextValue = {
    */
   unreachableInstallations: string[];
   /**
+   * Why each of `unreachableInstallations` could not be read, and the request
+   * id the backend sent its call with, so the page can name the cause.
+   */
+  readFailures: Record<string, ReadFailure>;
+  /**
    * Installations that reported a session list which is **not** scoped to the
    * signed-in user, because their kagent runs in `unsecure` mode. Rows are still
    * shown; the UI must stop describing them as the user's own.
@@ -63,6 +78,13 @@ export type SessionsContextValue = {
    */
   notReachableInstallations: string[];
 };
+
+/**
+ * How often, at most, pruning the notification record reads an installation's
+ * sessions again. Its own read, made only when the record names a session the
+ * list does not; a list whose read stays incomplete would ask on every change.
+ */
+const PRUNE_READ_INTERVAL_MS = 10 * 60 * 1000;
 
 const SessionsContext = createContext<SessionsContextValue | undefined>(
   undefined,
@@ -90,7 +112,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Which installations run kagent: those whose inventory has the `kagent.dev`
+  // Which installations run kagent: those whose inventory has the `api.kagent.dev`
   // API group and whose access is healthy, home first (gs
   // `useInstallationInventory`, one `GET /apis` per installation shared by every
   // tab), narrowed to the section's scope. Same reason as the other providers,
@@ -202,15 +224,18 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const readSignature = targets
     .map((installation, index) => {
       const query = sessionQueries[index];
+      // `errorUpdatedAt` too: a later failure with another reason or request
+      // id keeps the error's name.
       return `${installation}:${query?.status}:${query?.dataUpdatedAt}:${
-        (query?.error as Error | null)?.name ?? ''
-      }`;
+        query?.errorUpdatedAt
+      }:${(query?.error as Error | null)?.name ?? ''}`;
     })
     .join('|');
 
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
     const unreachable: string[] = [];
+    const readFailures: Record<string, ReadFailure> = {};
 
     targets.forEach((installation, index) => {
       const query = sessionQueries[index];
@@ -253,6 +278,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
         errorName === 'ServiceUnavailableError';
       if (!notDeployed) {
         unreachable.push(installation);
+        readFailures[installation] = describeReadFailure(query.error);
       }
     });
 
@@ -277,7 +303,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       (isProbing ||
         isLoadingAllowlist ||
         !homeSettled ||
-        sessionQueries.some(query => query.isLoading));
+        sessionQueries.some(isAwaitingData));
 
     const sortedRows = sortSessionRows(rows, home);
 
@@ -298,6 +324,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       isLoadingMore: isBusy && rows.length > 0,
       hasInstallations,
       unreachableInstallations: unreachable,
+      readFailures,
       notUserScopedInstallations,
       notReachableInstallations,
     };
@@ -315,6 +342,72 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     allInstallations.length,
     notReachableInstallations,
   ]);
+
+  // The person's notification record keeps entries per session (its origin,
+  // its Notification level, what was seen of it); an entry whose session is
+  // gone is dropped (`useNotificationRecordPruning`). A successful read here
+  // only says which sessions to compare with: pruning reads the installation
+  // again, completely, and only when the record names a session this read
+  // does not list. Looked at again only when an installation's set of
+  // sessions changes, and a fresh read at most once per installation every
+  // PRUNE_READ_INTERVAL_MS.
+  const prune = useNotificationRecordPruning();
+  const pruneRef = useRef(prune);
+  pruneRef.current = prune;
+  const pruneReadAt = useRef(new Map<string, number>());
+  const pruning = useRef(new Set<string>());
+  const compared = useRef(new Map<string, string>());
+  const listedSessions = targets.flatMap((installation, index) => {
+    const query = sessionQueries[index];
+    return query?.status === 'success' && query.data
+      ? [
+          {
+            installation,
+            sessionIds: query.data.map(session => session.sessionId).sort(),
+          },
+        ]
+      : [];
+  });
+  const listedSessionsKey = listedSessions
+    .map(({ installation, sessionIds }) => `${installation}:${sessionIds}`)
+    .join('|');
+  useEffect(() => {
+    const now = Date.now();
+    listedSessions.forEach(({ installation, sessionIds }) => {
+      const listed = sessionIds.join(',');
+      if (compared.current.get(installation) === listed) {
+        return;
+      }
+      const readAt = pruneReadAt.current.get(installation);
+      if (
+        pruning.current.has(installation) ||
+        (readAt !== undefined && now - readAt < PRUNE_READ_INTERVAL_MS)
+      ) {
+        return;
+      }
+      pruning.current.add(installation);
+      compared.current.set(installation, listed);
+      pruneRef
+        .current({
+          installation,
+          listedSessionIds: sessionIds,
+          readComplete: () => kagentApi.listSessionsIfComplete(installation),
+        })
+        .then(didRead => {
+          if (didRead) {
+            pruneReadAt.current.set(installation, Date.now());
+          }
+        })
+        // The record or the sessions could not be read: a later change tries
+        // again.
+        .catch(() => {})
+        .finally(() => pruning.current.delete(installation));
+    });
+    // Keyed on each installation's set of sessions: `listedSessions` is
+    // derived fresh every render, and a refetch that changes nothing changes
+    // nothing here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listedSessionsKey]);
 
   return (
     <SessionsContext.Provider value={value}>

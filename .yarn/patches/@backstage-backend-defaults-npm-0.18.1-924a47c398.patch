@@ -1,0 +1,28 @@
+diff --git a/dist/entrypoints/database/DatabaseManager.cjs.js b/dist/entrypoints/database/DatabaseManager.cjs.js
+index ccf163622dddc233bb253da3d081585dbf451d0f..e9aa678314fc20d0dec3c47a0fb45976b04d3fb7 100644
+--- a/dist/entrypoints/database/DatabaseManager.cjs.js
++++ b/dist/entrypoints/database/DatabaseManager.cjs.js
+@@ -116,11 +116,18 @@ class DatabaseManagerImpl {
+     }
+     const clientPromise = connector.getClient(pluginId, deps);
+     this.databaseCache.set(pluginId, clientPromise);
+-    if (this.config.getOptionalBoolean("keepalive") && process.env.NODE_ENV !== "test") {
+-      clientPromise.then(
+-        (client) => this.startKeepaliveLoop(pluginId, client, deps.logger)
+-      );
+-    }
++    clientPromise.then(
++      (client) => {
++        if (this.config.getOptionalBoolean("keepalive") && process.env.NODE_ENV !== "test") {
++          this.startKeepaliveLoop(pluginId, client, deps.logger);
++        }
++      },
++      () => {
++        if (this.databaseCache.get(pluginId) === clientPromise) {
++          this.databaseCache.delete(pluginId);
++        }
++      }
++    );
+     return clientPromise;
+   }
+   startKeepaliveLoop(pluginId, client, logger) {

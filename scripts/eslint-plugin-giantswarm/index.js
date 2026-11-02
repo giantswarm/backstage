@@ -7,11 +7,15 @@
  * in every package's config, which overrides the root's, and the root's
  * `@typescript-eslint/no-restricted-imports` warns (the MUI migration debt).
  * This id carries the restrictions that fail CI.
+ *
+ * `no-restricted-syntax` is the same trick for ESLint's core rule of that
+ * name, which the eslint-factory configures in every package too.
  */
 const { builtinRules } = require('eslint/use-at-your-own-risk');
 
 module.exports = {
   rules: {
     'no-restricted-imports': builtinRules.get('no-restricted-imports'),
+    'no-restricted-syntax': builtinRules.get('no-restricted-syntax'),
   },
 };

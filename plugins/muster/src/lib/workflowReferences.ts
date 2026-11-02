@@ -1,10 +1,11 @@
 import { MusterWorkflow } from './k8s';
+import { allSteps } from './workflowShape';
 
 /** Prefix muster gives the aggregated tool that runs a workflow by name. */
 export const WORKFLOW_TOOL_PREFIX = 'workflow_';
 
 /**
- * Workflows whose steps (or parallel/forEach sub-steps) call `target` via its
+ * Workflows whose steps (or parallel/forEach sub-steps, at any depth) call `target` via its
  * `workflow_<target>` tool. Cheap because every Workflow CR is already loaded
  * by the MusterDataProvider -- no per-workflow fetch. The target itself is
  * excluded even if it recurses.
@@ -18,15 +19,6 @@ export function findReferencedBy(
     if (workflow.getName() === target) {
       return false;
     }
-    return workflow.getSteps().some(step => {
-      if (step.tool === wanted) {
-        return true;
-      }
-      const subSteps = [
-        ...(step.parallel ?? []),
-        ...(step.forEach?.steps ?? []),
-      ];
-      return subSteps.some(sub => sub.tool === wanted);
-    });
+    return allSteps(workflow.getSteps()).some(step => step.tool === wanted);
   });
 }

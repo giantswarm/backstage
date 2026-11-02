@@ -1,5 +1,6 @@
 import { ConfigReader } from '@backstage/config';
 import { AuthLoginResult } from './authLogin';
+import { MusterAuthRequiredError } from './MusterMcpClient';
 import {
   asConnected,
   looksNotConnected,
@@ -122,6 +123,35 @@ describe('asConnected', () => {
     expect(gateway.logins).toBe(1);
   });
 
+  it("takes muster's auth_required answer as the sign-in, without a login of its own", async () => {
+    const authUrl = 'https://muster.example/oauth/proxy/start?state=y';
+
+    const error = await asConnected(gateway, 'github', 'token', async () => {
+      throw new MusterAuthRequiredError('github', authUrl, [
+        "auth_required: server 'github' requires authentication",
+      ]);
+    }).catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterServerNotConnectedError);
+    expect(error.server).toBe('github');
+    expect(error.authUrl).toBe(authUrl);
+    expect(error.message).toMatch(/Connect 'github'/);
+    expect(gateway.logins).toBe(0);
+  });
+
+  it('says why when muster could not start a sign-in', async () => {
+    const error = await asConnected(gateway, 'github', 'token', async () => {
+      throw new MusterAuthRequiredError('github', undefined, [
+        'Rate limit exceeded. Too many authentication attempts.',
+      ]);
+    }).catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterServerNotConnectedError);
+    expect(error.authUrl).toBeUndefined();
+    expect(error.message).toMatch(/Rate limit exceeded/);
+    expect(gateway.logins).toBe(0);
+  });
+
   it('does not mistake other failures for a missing grant', async () => {
     const error = await asConnected(gateway, 'github', 'token', async () => {
       throw new Error('GitHub responded with 500');
@@ -149,7 +179,7 @@ describe('readMusterServerRef', () => {
       roadmap: {
         muster: {
           installation: 'gazelle',
-          server: 'gazelle-mcp-pro',
+          server: 'mcp-pro',
           toolPrefix: 'pro',
         },
       },

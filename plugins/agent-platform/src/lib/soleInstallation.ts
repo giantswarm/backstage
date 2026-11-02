@@ -41,3 +41,25 @@ export function isSoleInstallation({
   );
   return answered.length === 1;
 }
+
+/**
+ * Whether a list's every installation in view failed to read: one pinned
+ * environment that could not be read, or a fleet where none could. Nothing
+ * was seen then, so the list must not say it is empty ("no model is
+ * running", "no GPU nodes found"); its read warning is the answer. False
+ * while nothing failed, and while any installation in view was read.
+ */
+export function nothingCouldBeRead({
+  installations,
+  unreadable,
+}: {
+  /** The installations in view. */
+  installations: string[];
+  /** Those of them, or others asked, that could not be read. */
+  unreadable: string[];
+}): boolean {
+  return (
+    unreadable.length > 0 &&
+    installations.every(installation => unreadable.includes(installation))
+  );
+}

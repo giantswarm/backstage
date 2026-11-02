@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -16,6 +17,11 @@ export type ServedReadinessLabelProps = {
   reason?: string;
   /** The explanation, on hover. */
   title?: string;
+  /**
+   * The explanation behind an info icon at the end, where a list keeps the
+   * state to a few words (`StatusHint`).
+   */
+  hint?: ReactNode;
 };
 
 /**
@@ -30,6 +36,7 @@ export function ServedReadinessLabel({
   readiness,
   reason,
   title,
+  hint,
 }: ServedReadinessLabelProps) {
   const { label, intent } = SERVED_MODEL_READINESS[readiness];
 
@@ -52,6 +59,7 @@ export function ServedReadinessLabel({
           · {reason}
         </Text>
       )}
+      {hint}
     </Flex>
   );
 }

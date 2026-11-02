@@ -1,23 +1,29 @@
-### What does this PR do?
+### Rationale
 
-(Please set a descriptive PR title. Use this space for additional explanations.)
+(Explain here why this pull request was made.)
 
-### What is the effect of this change to users?
+### Changes
 
-(Remove this section if no end-user facing change)
+(Use this space for a full description of the changes. Include everything reviewers need to know.)
 
-### How does it look like?
+### Effect on end users
 
-(Please add anything that represents the change visually. Screenshots, output, logs, ... Remove if not applicable.)
+<!-- START end-user-summary -->
 
-### Any background context you can provide?
+(Write a short summary for end users here, ideally one sentence. Avoid technical language; use terms from the user interface instead. Remove this section if the PR doesn't change anything end users experience. Keep the START and END markers intact so the summary can be extracted into release notes automatically.)
 
-(Please link issues or summarize. Remove if not applicable.)
+<!-- END end-user-summary -->
 
-### Do the docs need to be updated?
+### Preview
 
-(Yes/No is sufficient. If Yes, please do this in the same PR if possible.)
+(Please add anything that represents the change visually, e.g. screenshots, output or logs. Remove this section if not applicable.)
 
-### Should this change be mentioned in the release notes?
+### Background and context
 
-- [ ] A changeset describing the change and affected packages was added. ([more info](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md))
+(Please reference issues, other PRs, or summarize. Remove this section if not applicable.)
+
+### Ask to reviewers
+
+(Use this section to point reviewers to specific aspects, e.g. where you need feedback or are unsure about a decision.
+
+Remove this section if not applicable.)

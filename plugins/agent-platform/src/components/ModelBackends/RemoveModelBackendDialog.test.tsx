@@ -10,6 +10,7 @@ const write: jest.Mocked<BackendWriteState> = {
   dryRunRemove: jest.fn(),
   remove: jest.fn(),
   isBusy: false,
+  isWriting: false,
   failure: undefined,
   reset: jest.fn(),
 };
@@ -40,6 +41,7 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
 }));
 
 const onRemoved = jest.fn();
+const onOpenChange = jest.fn();
 
 function renderDialog() {
   return render(
@@ -48,7 +50,7 @@ function renderDialog() {
       kind="ollama"
       servedModels={['Llama 3.2 3B', 'smollm2:135m']}
       isOpen
-      onOpenChange={jest.fn()}
+      onOpenChange={onOpenChange}
       onRemoved={onRemoved}
     />,
   );
@@ -88,21 +90,33 @@ describe('RemoveModelBackendDialog', () => {
     );
 
     const confirm = screen.getByRole('button', { name: 'Remove backend' });
-    expect(confirm).toBeDisabled();
-    await userEvent.type(
-      screen.getByLabelText(/Type ollama to confirm/),
-      'ollama',
-    );
+    // Pressable once the plan is in; pressed before the kind is typed, the
+    // field says so and takes the focus.
     expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    expect(write.remove).not.toHaveBeenCalled();
+    const typed = screen.getByRole('textbox', {
+      name: /Type ollama to confirm/,
+    });
+    expect(typed).toHaveAttribute('aria-invalid', 'true');
+    expect(typed).toHaveFocus();
+    expect(
+      screen.getByText('Type ollama to confirm the removal.'),
+    ).toBeInTheDocument();
+
+    await userEvent.type(typed, 'ollama');
+    expect(typed).not.toHaveAttribute('aria-invalid');
     await userEvent.click(confirm);
 
     expect(write.remove).toHaveBeenCalledWith('ollama', 'apply');
-    expect(
-      await screen.findByText('Removed the Ollama backend as you'),
-    ).toBeInTheDocument();
-    expect(onRemoved).toHaveBeenCalledWith(
-      expect.objectContaining({ removed: true }),
+    // The caller's toast is the one confirmation: the dialog closes.
+    await waitFor(() =>
+      expect(onRemoved).toHaveBeenCalledWith(
+        expect.objectContaining({ removed: true }),
+      ),
     );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByText(/as you/)).not.toBeInTheDocument();
   });
 
   it("shows model-manager's refusal verbatim and never enables the confirm", async () => {

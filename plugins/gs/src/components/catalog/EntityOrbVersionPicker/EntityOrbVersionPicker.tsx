@@ -1,18 +1,18 @@
-import { EntityCheckboxesPicker } from '../EntityCheckboxesPicker';
+import { EntitySortedAutocompletePicker } from '../EntitySortedAutocompletePicker';
 import { EntityOrbVersionFilter } from '../filters';
 import { compareOrbVersionsDesc } from '../../utils/build';
 
 /**
  * Filters on the architect orb version the default branch declares. The value
- * set is open-ended, so the options are ordered by a comparator rather than a
- * fixed list: newest orb first.
+ * set is open-ended, so it is a dropdown rather than checkboxes, with the
+ * newest orb first.
  */
 export const EntityOrbVersionPicker = (props: { initialFilter?: string[] }) => {
   const { initialFilter = [] } = props;
 
   return (
-    <EntityCheckboxesPicker
-      label="Architect orb"
+    <EntitySortedAutocompletePicker
+      label="Architect Orb Version"
       name="orbVersions"
       path="metadata.labels.giantswarm.io/architect-orb-version"
       Filter={EntityOrbVersionFilter}

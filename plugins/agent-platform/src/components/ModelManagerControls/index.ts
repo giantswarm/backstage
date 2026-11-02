@@ -1,22 +1,26 @@
-export { PullModelDialog, type PullTarget } from './PullModelDialog';
+export {
+  PullModelPage,
+  type PullModelPageProps,
+  type PullTarget,
+} from './PullModelPage';
 export {
   describeLoadTarget,
-  LoadModelDialog,
+  ServeModelPage,
   loadTargetKey,
-  type LoadModelDialogProps,
+  type ServeModelPageProps,
   type LoadModelSeed,
   type LoadTarget,
-} from './LoadModelDialog';
+} from './ServeModelPage';
 export { describeFit } from '../../lib/modelManagerServe';
 export {
   BEST_NODE,
   describeSearchResult,
-  ImportModelDialog,
+  ImportModelPage,
   NO_PRESET,
   SEARCH_LIMIT,
-  type ImportModelDialogProps,
+  type ImportModelPageProps,
   type ImportTarget,
-} from './ImportModelDialog';
+} from './ImportModelPage';
 export {
   DownloadRowActions,
   type DownloadRowActionsProps,

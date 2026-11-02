@@ -1,39 +1,17 @@
-const MINUTE = 60;
-const HOUR = 3600;
-const DAY = 86400;
+import { getRelativeDate } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Human relative time against the current clock -- "9 days ago", "in 23
- * minutes". Mirrors the mockups' `formatRelative`, but against `Date.now()`
- * (the lab UI shows live CRs, not a fixed snapshot). Returns `undefined` for
+ * minutes" -- in the words `DateComponent`'s relative dates use everywhere
+ * else in the platform (its `getRelativeDate`), as a string for the places
+ * that need one (a cell title, a sentence). Returns `undefined` for
  * missing/invalid input so callers can omit the line entirely.
  */
 export function formatRelativeTime(iso?: string): string | undefined {
-  if (!iso) {
+  if (!iso || Number.isNaN(new Date(iso).getTime())) {
     return undefined;
   }
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) {
-    return undefined;
-  }
-  const diffSeconds = (Date.now() - then) / 1000;
-  const past = diffSeconds >= 0;
-  const abs = Math.abs(diffSeconds);
-
-  let value: number;
-  let unit: string;
-  if (abs < HOUR) {
-    value = Math.max(1, Math.round(abs / MINUTE));
-    unit = 'minute';
-  } else if (abs < DAY) {
-    value = Math.round(abs / HOUR);
-    unit = 'hour';
-  } else {
-    value = Math.round(abs / DAY);
-    unit = 'day';
-  }
-  const label = `${value} ${unit}${value === 1 ? '' : 's'}`;
-  return past ? `${label} ago` : `in ${label}`;
+  return getRelativeDate(iso, new Date());
 }
 
 /** ISO timestamp -> locale string, or `undefined` for missing/invalid input. */

@@ -1,6 +1,8 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
+  EffectBadge,
   ServerSignIn,
+  toolEffect,
   ToolTable,
   toolTableItem,
   type ToolTableItem,
@@ -8,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import {
+  bucketLabel,
   CatalogueGroup,
   countNoun,
   groupWorkflows,
@@ -23,6 +26,12 @@ import { ShowMore } from '../ShowMore';
 /**
  * One catalogue entry as a checkbox row. A workflow is shown under its own
  * name, without the `workflow_` prefix it carries as a tool.
+ *
+ * Every row says what the tool does — Reads or Changes things — as the
+ * Connector Tools tab and the CreateAgentTools artboard do (T60): it is what
+ * the catalogue's effect filter sorts by, and an unannotated tool counts as
+ * changing things. The server's own markers would only repeat the badge, so
+ * the row carries none.
  */
 function toolRowItem(
   tool: ToolSummary,
@@ -34,6 +43,8 @@ function toolRowItem(
   const title = isWorkflow ? workflowNameOf(tool.name) : tool.name;
   return toolTableItem(tool, {
     name: title,
+    annotations: undefined,
+    meta: <EffectBadge effect={toolEffect(tool)} />,
     ariaLabel: `${isWorkflow ? 'Workflow' : 'Tool'} ${title}`,
     mode: {
       kind: 'select',
@@ -75,7 +86,7 @@ function ToolRows({
 
 function pickedSuffix(count: number, whole = false): string {
   if (whole) {
-    return ' · whole server selected';
+    return ' · all tools selected';
   }
   return count > 0 ? ` · ${count} selected` : '';
 }
@@ -108,18 +119,25 @@ function ServerTools({
       <Flex direction="column" gap="2">
         <Alert
           status="info"
-          title={`Sign in to see the tools of ${bucket.name}`}
+          title={`Sign in to see the tools of ${bucketLabel(bucket)}`}
           description={
             wholeServerSelected
-              ? `Selected without a sign-in: the whole server is part of the toolset and resolves for people who have access to ${bucket.name}. For you, the resolved list is incomplete until you sign in. Individual tools can be picked once they are listed.`
-              : `Its tools are listed once your session is signed in to it. The whole server can be selected without signing in — it then resolves for the people who have access to it — but individual tools can only be picked once they are listed.`
+              ? `Selected without a sign-in: it resolves for people with access to ${bucketLabel(
+                  bucket,
+                )}. Sign in to list and pick its tools.`
+              : 'Sign in to list and pick its tools. The whole connector can be selected without it.'
           }
         />
         {/* muster naming the server in servers_requiring_auth is reason enough
             to offer its sign-in — a muster running from configuration rather
             than CRs has no MCPServer resource to go with it. */}
         {signInAvailable && bucket.canSignIn && (
-          <ServerSignIn serverName={bucket.name} installation={installation} />
+          <ServerSignIn
+            noun="connector"
+            serverName={bucket.name}
+            displayName={bucketLabel(bucket)}
+            installation={installation}
+          />
         )}
       </Flex>
     );
@@ -128,7 +146,7 @@ function ServerTools({
     return (
       <ToolRows
         tools={bucket.tools}
-        ariaLabel={`Tools of ${bucket.name}`}
+        ariaLabel={`Tools of ${bucketLabel(bucket)}`}
         noun="tool"
         selected={selected}
         onToggle={onToggle}
@@ -137,9 +155,8 @@ function ServerTools({
   }
   return (
     <Text variant="body-small" color="secondary">
-      No tools listed for this server right now
-      {bucket.state ? ` (${bucket.state})` : ''}. The whole server can still be
-      selected.
+      No tools listed right now{bucket.state ? ` (${bucket.state})` : ''}. The
+      whole connector can still be selected.
     </Text>
   );
 }
@@ -171,12 +188,12 @@ function ServerPanel({
           selector itself as the meta. */}
       <ToolTable
         role="group"
-        ariaLabel={`Whole server ${bucket.name}`}
+        ariaLabel={`Whole connector ${bucketLabel(bucket)}`}
         items={[
           {
             key: selector,
-            name: `Every tool of ${bucket.name}`,
-            ariaLabel: `Server ${bucket.name}`,
+            name: `Every tool of ${bucketLabel(bucket)}`,
+            ariaLabel: `Connector ${bucketLabel(bucket)}`,
             meta: (
               <Text variant="body-x-small" color="secondary">
                 <span className={cardClasses.code}>{selector}</span>
@@ -184,8 +201,8 @@ function ServerPanel({
               </Text>
             ),
             description: bucket.isFamily
-              ? 'A federated family: one tool surface across the management clusters it runs on.'
-              : 'Whatever this server exposes, now and after it adds tools.',
+              ? 'A federated family exposes one tool surface across its management clusters.'
+              : 'It also includes tools added later.',
             mode: {
               kind: 'select',
               role: 'checkbox',
@@ -221,7 +238,7 @@ function serverEntries(
       : countNoun(bucket.tools.length, 'tool');
     return {
       key: `${group.key}/${bucket.name}`,
-      trigger: `${bucket.name}${bucket.isFamily ? ' (family)' : ''} — ${summary}${pickedSuffix(
+      trigger: `${bucketLabel(bucket)} — ${summary}${pickedSuffix(
         pickedTools(bucket.tools, props.selected),
         whole,
       )}`,
@@ -247,20 +264,20 @@ function platformAdministrationEntry(
   const tools = group.platformAdministration;
   return {
     key: `${group.key}/platform-administration`,
-    trigger: `Platform administration — ${countNoun(
+    trigger: `Platform tools — ${countNoun(
       tools.length,
       'tool',
-    )} of muster itself${pickedSuffix(pickedTools(tools, selected))}`,
+    )}${pickedSuffix(pickedTools(tools, selected))}`,
     panel: () => (
       <>
         <Alert
           status="warning"
           title="These tools manage the platform itself"
-          description="muster's own core tools register and control servers, run and change workflows, and read and change configuration. No shipped preset includes them except Full gateway; give them to an agent deliberately, one by one."
+          description="The Agent Platform's own tools register connectors, run and change workflows, and change configuration. Read-only tools includes only those that read; Full gateway includes all of them."
         />
         <ToolRows
           tools={tools}
-          ariaLabel="Platform administration tools"
+          ariaLabel="Platform tools"
           noun="tool"
           selected={selected}
           onToggle={onToggle}
@@ -329,7 +346,7 @@ export function groupSummary(
 ): string {
   const parts: string[] = [];
   if (group.servers.length > 0) {
-    parts.push(countNoun(group.servers.length, 'server'));
+    parts.push(countNoun(group.servers.length, 'connector'));
     const tools = group.servers.reduce(
       (sum, bucket) => sum + bucket.tools.length,
       0,
@@ -344,12 +361,7 @@ export function groupSummary(
     }
   }
   if (group.platformAdministration.length > 0) {
-    parts.push(
-      `${countNoun(
-        group.platformAdministration.length,
-        'platform administration tool',
-      )}`,
-    );
+    parts.push(countNoun(group.platformAdministration.length, 'platform tool'));
   }
   if (group.workflows.length > 0) {
     parts.push(countNoun(group.workflows.length, 'workflow'));
@@ -385,7 +397,7 @@ export type ToolCatalogueProps = {
 /**
  * The gateway's catalogue, grouped the way the platform thinks about it:
  * Infrastructure, Agent Platform (with muster's own core tools as a warned,
- * collapsed *Platform administration* entry), Registered servers and
+ * collapsed *Platform tools* entry), Registered connectors and
  * Workflows (by name prefix). Every group is collapsed until the author opens
  * it or a search matches inside it, and every list of rows shows a first page
  * before the rest, so no state of the page renders hundreds of options at
