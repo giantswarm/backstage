@@ -105,14 +105,15 @@ export function useTokenRates(
   installation: string | undefined,
   scope?: TokenRateScope,
 ): TokenRatesView {
+  const queries = useMemo(tokenRateQueries, []);
   const cost = useMimirQuery({
     installationName: installation ?? '',
-    query: tokenRateQueries.cost,
+    query: queries.cost,
     enabled: Boolean(installation),
   });
   const tokens = useMimirQuery({
     installationName: installation ?? '',
-    query: tokenRateQueries.tokens,
+    query: queries.tokens,
     enabled: Boolean(installation),
   });
 

@@ -12,6 +12,10 @@ import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
 import {
+  MODEL_COST_MAX_DAYS,
+  STREAM_MAX_DURATION_MS,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
   ReachabilityCache,
   reachabilityFields,
 } from '@giantswarm/backstage-plugin-gs-node';
@@ -24,12 +28,20 @@ import {
   KagentInstallationConfig,
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
-  REQUEST_ID_MAX_LENGTH,
+  REQUEST_ID_HEADER,
   SESSION_NAME_MAX_LENGTH,
+  SESSION_SHARE_MAX_TTL_SECONDS,
+  type SessionSharePermissionInput,
 } from './KagentClient';
 import { probeKagentGrpc } from './kagent/reachability';
+import {
+  assertSessionImageBudget,
+  MessageImagePart,
+  readMessageImages,
+} from './messageImages';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
+import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
 
@@ -53,6 +65,13 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /**
+   * The installations' Mimir, queried with the person's token, for their own
+   * model cost. The plugin always passes the shared `mimirServiceRef`; tests
+   * of other routes leave it out, and the cost route then answers `no-mimir`
+   * as for an installation without one.
+   */
+  mimir?: MimirQuerier;
 }
 
 /**
@@ -61,7 +80,7 @@ export interface RouterOptions {
  * probe (`probeKagentGrpc`) makes one unauthenticated `SystemService/GetVersion`
  * call there; behind agentgateway's JWT policy that answers `Unauthenticated`,
  * which is a perfectly good proof that the route exists from where the portal
- * runs. It carries no token and no user data, and never reads an instance.
+ * runs. It carries no token and no user data, and never reads a session.
  */
 export function kagentProbeUrl(installation: KagentInstallationConfig): string {
   return installation.apiBaseUrl;
@@ -76,6 +95,33 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
   }
   return value;
 }
+
+/**
+ * The cost route's `?days=`: a whole number of days up to the Usage screen's
+ * widest window. Required, so the window is always the one the page names.
+ */
+function readCostWindowDays(req: express.Request): number {
+  const raw = singleQueryValue(req.query.days, 'days');
+  const days = Number(raw);
+  if (
+    !raw ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > MODEL_COST_MAX_DAYS
+  ) {
+    throw new InputError(
+      `days must be a whole number from 1 to ${MODEL_COST_MAX_DAYS}`,
+    );
+  }
+  return days;
+}
+
+/**
+ * The body limit of the message routes: the text's ~96 kB worst case plus
+ * `MESSAGE_IMAGES_MAX_TOTAL_BYTES` of images in base64, with headroom, so the
+ * limits a caller meets are the ones `readMessageBody` names.
+ */
+const MESSAGE_BODY_LIMIT = '5mb';
 
 /**
  * A required, non-empty string field from a JSON body.
@@ -100,11 +146,7 @@ function readRequiredString(
   return trimmed;
 }
 
-/**
- * A session title, bounded. Shared by the create and rename routes so the two
- * cannot drift apart — a title accepted by one and refused by the other would be
- * a create the user could not undo by renaming.
- */
+/** A session title, bounded as the controller bounds it. */
 function readSessionName(body: Record<string, unknown>): string {
   const name = readRequiredString(body, 'name');
   if (name.length > SESSION_NAME_MAX_LENGTH) {
@@ -116,26 +158,42 @@ function readSessionName(body: Record<string, unknown>): string {
 }
 
 /**
- * The idempotency key of a create, when the caller supplied one.
+ * The body the share-create route takes: the permission (defaulting to
+ * read-only, the only grant anyone should hand out unthinkingly) and an
+ * optional lifetime in whole seconds.
  *
- * The browser generates one per submission and reuses it on a retry, so a
- * create whose answer was lost does not make a second instance: the controller
- * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
- * fresh one, which makes *its* retry a second create — the honest behaviour
- * for a caller that did not ask for idempotency, and what keeps the body an
- * addition rather than a new requirement.
+ * `ttlSeconds` left out is forwarded as an unset TTL, which the controller
+ * fills with its own maximum share lifetime — so "no TTL" is never "forever"
+ * unless the controller itself is configured that way.
  */
-function readRequestId(body: Record<string, unknown>): string {
-  if (body.requestId === undefined) {
-    return randomUUID();
+function readShareBody(req: express.Request): {
+  permission: SessionSharePermissionInput;
+  ttlSeconds?: number;
+} {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  const permission = body.permission ?? 'read-only';
+  if (permission !== 'read-only' && permission !== 'read-write') {
+    throw new InputError("permission must be 'read-only' or 'read-write'");
   }
-  const requestId = readRequiredString(body, 'requestId');
-  if (requestId.length > REQUEST_ID_MAX_LENGTH) {
-    throw new InputError(
-      `requestId must be at most ${REQUEST_ID_MAX_LENGTH} characters`,
-    );
+
+  let ttlSeconds: number | undefined;
+  if (body.ttlSeconds !== undefined) {
+    const value = body.ttlSeconds;
+    if (
+      typeof value !== 'number' ||
+      !Number.isInteger(value) ||
+      value <= 0 ||
+      value > SESSION_SHARE_MAX_TTL_SECONDS
+    ) {
+      throw new InputError(
+        `ttlSeconds must be a positive integer of at most ${SESSION_SHARE_MAX_TTL_SECONDS}`,
+      );
+    }
+    ttlSeconds = value;
   }
-  return requestId;
+
+  return { permission, ttlSeconds };
 }
 
 /**
@@ -148,6 +206,7 @@ function readMessageBody(req: express.Request): {
   agentName: string;
   messageId: string;
   text: string;
+  images: MessageImagePart[];
 } {
   const body = (req.body ?? {}) as Record<string, unknown>;
 
@@ -173,7 +232,34 @@ function readMessageBody(req: express.Request): {
     );
   }
 
-  return { agentNamespace, agentName, messageId, text };
+  return {
+    agentNamespace,
+    agentName,
+    messageId,
+    text,
+    images: readMessageImages(body.images),
+  };
+}
+
+/**
+ * Hold a message with images to what the session can still carry. Costs one
+ * read of the session's tasks, so only a message that carries images pays
+ * it; a text message cannot take the session past its image budget.
+ */
+async function checkSessionImageBudget(
+  client: KagentClient,
+  sessionId: string,
+  agent: { namespace: string; name: string },
+  userToken: string | undefined,
+  images: readonly MessageImagePart[],
+): Promise<void> {
+  if (images.length === 0) {
+    return;
+  }
+  assertSessionImageBudget(
+    await client.readSessionImageUsage(sessionId, agent, { userToken }),
+    images,
+  );
 }
 
 /**
@@ -259,21 +345,10 @@ function readAnswerBody(req: express.Request): {
 }
 
 /**
- * Upper bound on how long the streaming routes hold their relay open.
- *
- * Not a turn timeout — cutting the stream does not stop the turn, and the
- * frontend reconciles through the poll exactly as if a gateway had cut it. This
- * exists only so an agent that never writes a terminal state cannot pin a socket
- * (and its upstream connection) open for as long as a tab stays on the page.
- * Generous on purpose: a legitimate turn with many tool calls runs many minutes,
- * and every gateway we know of gives up long before this does.
- */
-const STREAM_MAX_DURATION_MS = 30 * 60_000;
-
-/**
  * Relay one upstream event stream to the browser as SSE.
  *
- * Shared by the streaming routes (a message, an answer): `open` opens the
+ * Shared by the streaming routes (a message, an answer, a resubscription to a
+ * running turn): `open` opens the
  * upstream stream under the relay's abort signal, and everything after the
  * headers is the same for both. Failure semantics split at the headers, which
  * is inherent to streaming:
@@ -287,8 +362,15 @@ const STREAM_MAX_DURATION_MS = 30 * 60_000;
  *   or stop. A relay that ends without a terminal event — kagent cut off by a
  *   gateway, this response cut off by the browser's own door, the duration
  *   bound — is not reported as anything, because the turn survives it: the
- *   frontend treats an unterminated stream as "still running" and follows the
- *   poll, the same contract as the unary routes' 202.
+ *   frontend treats an unterminated stream as "still running", resubscribes
+ *   to the turn, and follows the poll when that fails too — the same contract
+ *   as the unary routes' 202.
+ *
+ * The duration bound (`STREAM_MAX_DURATION_MS`, shared with the page) keeps an
+ * agent that never writes a terminal state from pinning a socket open. Each
+ * relay holds it, and the page holds it across a turn's resubscriptions: it
+ * stops resubscribing once it has followed the turn that long, so a chain of
+ * fresh relays cannot get around it.
  *
  * The relay is flush-wrapped because Backstage's root router applies
  * `compression()` globally, which buffers `res.write()` until `res.end()` —
@@ -530,6 +612,16 @@ export async function createRouter(
   // (CJK) — 32,000 of them is ~96 kB, which clears the default by only a few kB
   // once the rest of the body is counted. Too close to rely on: a message the
   // proxy considers valid would be refused with a 413 that explains nothing.
+  //
+  // Everything under a session's `messages` takes more — today the messages
+  // route and its streaming sibling, since `use` matches a path prefix —
+  // because a message may carry images (`MESSAGE_IMAGES_MAX_TOTAL_BYTES`,
+  // base64 in the JSON, so a third more). This parser runs first, and the
+  // general one skips a body already read.
+  router.use(
+    '/kagent/sessions/:sessionId/messages',
+    express.json({ limit: MESSAGE_BODY_LIMIT }),
+  );
   router.use(express.json({ limit: '256kb' }));
 
   router.get('/health', (_, res) => {
@@ -713,53 +805,56 @@ export async function createRouter(
     res.json(result);
   });
 
-  router.get('/kagent/sessions', async (req, res) => {
-    const { client } = resolveInstallation(req);
-    const result = await client.listSessions({
-      userToken: readUserToken(req, { required: true }),
+  /**
+   * The caller's own model cost on one installation over the last `days`
+   * days, as the gateway priced it — what "Your sessions" shows in place of
+   * an estimate.
+   *
+   * **Whose cost is never a parameter.** The person is whoever kagent's
+   * `SystemService/GetCurrentUser` says the forwarded token belongs to, and
+   * the PromQL is built here from that identity, so no query string or header
+   * can point it at someone else. The generic `/api/gs/mimir/query` proxy
+   * takes PromQL from the browser and so cannot make this promise; that is
+   * why this is its own route.
+   *
+   * Every fallback the page acts on is a 200 with `status: 'unavailable'` and
+   * a reason (see `readModelCost`), "no Mimir here" included; only a token
+   * kagent or Mimir refused (401) is an error.
+   */
+  router.get('/usage/model-cost', async (req, res) => {
+    const { config: installationConfig, client } = resolveInstallation(req);
+    const days = readCostWindowDays(req);
+    const userToken = readUserToken(req, { required: true })!;
+    const result = await readModelCost({
+      identity: client,
+      mimir: options.mimir,
+      installation: installationConfig.name,
+      userToken,
+      days,
+      logger,
     });
+    // One person's spend; never store it anywhere shared.
+    res.setHeader('Cache-Control', 'no-store');
     res.json(result);
   });
 
   /**
-   * Start a session for one agent: create its AgentInstance.
+   * The caller's sessions on one installation.
    *
-   * The agent's namespace and name are the AgentTemplate's, as the caller read
-   * them from the resource; the platform Harness is picked in the client from
-   * the template's own status. `name` is required because the controller does
-   * not auto-title — an instance created without one has no title at all; the
-   * frontend derives it from the first prompt (see "Starting a session" in
-   * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
-   * {@link readRequestId}.
-   *
-   * The token is **required**, for the same reason the other writes require it:
-   * the controller decides whose instance this is from the identity the gateway
-   * derived from the token alone.
-   *
-   * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
-   * Harness admits or a `request_id` reused with other parameters is a 409 —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
+   * Each read carries a fresh request id toward the controller route, logged
+   * with a failure and answered in {@link REQUEST_ID_HEADER} — on an error too,
+   * which is the point: the Sessions page names it beside an installation it
+   * could not read, so the failure can be found in the gateway's logs.
    */
-  router.post('/kagent/sessions', async (req, res) => {
+  router.get('/kagent/sessions', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
     const { client } = resolveInstallation(req);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const name = readSessionName(body);
-    const requestId = readRequestId(body);
-
-    const result = await client.createSession(
-      { namespace: agentNamespace, name: agentName },
-      name,
+    const result = await client.listSessions({
+      userToken: readUserToken(req, { required: true }),
       requestId,
-      { userToken: readUserToken(req, { required: true }) },
-    );
-
-    // 201 for a create. The body is the controller's `CreateAgentInstanceResponse`
-    // as JSON: the frontend needs the generated instance id out of it, and this
-    // proxy stays transport.
-    res.status(201).json(result);
+    });
+    res.json(result);
   });
 
   /**
@@ -780,19 +875,21 @@ export async function createRouter(
   });
 
   /**
-   * Delete one session. kagent soft-deletes it, scoped to the forwarded token's
-   * user id — the same scoping the reads rely on.
+   * Delete one session (`SessionService/DeleteSession`), scoped to the caller
+   * like the reads. kagent tears the session's runtime down and marks it
+   * deleted; the record and its tasks stay in kagent's database, but no read
+   * returns it again (it answers 404).
    *
    * The token is **required**, and it is the whole authorization story for this
    * route: kagent decides who the caller is from it, and a controller running in
    * `unsecure` mode would otherwise delete the shared default user's session on
    * behalf of nobody in particular.
    *
-   * Nothing expected reaches a 5xx here. kagent answers 200 even when the session
-   * does not exist or belongs to somebody else (its statement matches no rows), and
-   * `KagentClient` maps an unreachable installation to a 404 — so this route should
-   * never hit `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to
-   * Sentry.
+   * Nothing expected reaches a 5xx here. A session the controller does not find
+   * for this caller — never existed, somebody else's, already deleted — is a
+   * gRPC `NotFound`, which `KagentClient` maps to a 404, as it does an
+   * unreachable installation — so this route should never hit
+   * `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to Sentry.
    */
   router.delete('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -801,8 +898,8 @@ export async function createRouter(
     });
 
     // Pass an empty upstream success through as one, rather than as `res.json()`'s
-    // empty body with a JSON content-type. Only reachable if a future kagent
-    // answers 204 to the delete; today it returns its envelope with a 200.
+    // empty body with a JSON content-type. Not reached today: the controller
+    // answers the session as it moves to deleting, passed through as `{session}`.
     if (result === undefined) {
       res.status(204).end();
       return;
@@ -819,14 +916,15 @@ export async function createRouter(
    * `unsecure` mode this would otherwise rename the shared default user's
    * session on behalf of nobody in particular.
    *
-   * The name is all this takes. On a kagent too old to rename properly the
-   * client reads the session back and echoes its own agent and source into the
-   * upsert — deliberately not something the caller supplies, since those fields
-   * are overwritten by that write and a stale value from a browser would blank a
-   * column nobody asked to touch.
+   * The name is all this takes: it goes to `SessionService/UpdateSessionName`,
+   * which changes the name and nothing else. It is trimmed and bounded here
+   * ({@link readSessionName}) and validated again
+   * by the controller (200 characters, no control characters, no surrounding
+   * whitespace).
    *
    * A rejected name is the caller's mistake and answers 400, not a 5xx —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
+   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry. So does a
+   * session the controller does not find for this caller: 404.
    */
   router.put('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -847,6 +945,76 @@ export async function createRouter(
     res.json(result);
   });
 
+  /**
+   * The shares that exist for one session — the dialog's "active shares" list.
+   *
+   * The controller scopes this to the caller like every other session read, so
+   * the list is the owner's own. Shares carry no token (the controller stores
+   * only a hash), but when a share expires and who holds one is still the
+   * owner's business — hence `no-store`, like the other per-user reads.
+   */
+  router.get('/kagent/sessions/:sessionId/shares', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.listSessionShares(readSessionId(req), {
+      userToken: readUserToken(req, { required: true }),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  /**
+   * Mint a share for one session: a token that grants A2A access to it —
+   * read-only (get, list, subscribe) or read-write (also send and cancel) —
+   * until the share expires or is revoked.
+   *
+   * The token is **in this answer and nowhere else**: the controller stores a
+   * hash, so a token that is not copied now is gone, and `no-store` keeps the
+   * only copy out of every cache between here and the dialog.
+   *
+   * The token is **required**, as on every other write: the controller decides
+   * whose session this is — and therefore who may share it — from the identity
+   * the gateway derived.
+   *
+   * Nothing expected reaches a 5xx: a malformed body is a 400, somebody else's
+   * or a deleted session a 404 — `MiddlewareFactory.error()` forwards anything
+   * `>= 500` to Sentry.
+   */
+  router.post('/kagent/sessions/:sessionId/shares', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const share = readShareBody(req);
+
+    const result = await client.createSessionShare(readSessionId(req), share, {
+      userToken: readUserToken(req, { required: true }),
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    // 201 for a create. The body is the controller's `CreateSessionShareResponse`
+    // as JSON — `{share, token}` — and the token in it is the entire point.
+    res.status(201).json(result);
+  });
+
+  /**
+   * Revoke one share: the token stops granting access as soon as the
+   * controller answers.
+   *
+   * The controller authorizes the revoke by the share id and the caller alone;
+   * the session id in the path is the resource's address for the frontend's
+   * benefit and is not forwarded. Share ids are opaque and pass through
+   * undecorated, like session and task ids.
+   */
+  router.delete(
+    '/kagent/sessions/:sessionId/shares/:shareId',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const rawShareId = req.params.shareId;
+      const result = await client.revokeSessionShare(
+        typeof rawShareId === 'string' ? rawShareId : '',
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    },
+  );
+
   /** The session's A2A tasks — the conversation, its state and token usage. */
   router.get('/kagent/sessions/:sessionId/tasks', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -860,7 +1028,7 @@ export async function createRouter(
    * Stop the turn a session is running: cancel its task server-side.
    *
    * The Stop control in the composer. Cancelling is `A2AService/CancelTask` on
-   * the instance, which ends the run at the harness (or quiesces the actor when
+   * the session, which ends the run at the harness (or quiesces the actor when
    * the runtime cannot) and records the task canceled — so a stopped turn stays
    * stopped when the tab is closed, unlike cutting the stream, which the turn
    * survives. Answers the task as the controller left it: `canceled`, or the
@@ -868,7 +1036,7 @@ export async function createRouter(
    * error and nothing to undo.
    *
    * Task ids are opaque like session ids and pass through undecorated. The
-   * token is **required**: the controller decides whose instance this is from
+   * token is **required**: the controller decides whose session this is from
    * the identity the gateway derived.
    */
   router.post(
@@ -888,28 +1056,32 @@ export async function createRouter(
   /**
    * Send a message to the session's agent — one turn of the conversation.
    *
-   * Session-shaped because the session *is* the conversation: the AgentInstance
-   * binds the agent, and the A2A call names the instance in its metadata. The
-   * agent's namespace and name stay in the body for the contract's sake (the
-   * browser knows them from the resource) but nothing downstream needs them. The
-   * A2A request is built in the client, so the frontend never has to know A2A.
+   * Session-shaped because the session *is* the conversation. The agent's
+   * namespace and name in the body are the A2A route (the gateway's `tenant`),
+   * and the session id is the message's context; the A2A request is built in
+   * the client, so the frontend never has to know A2A.
    *
    * Nothing expected here reaches a 5xx, which `MiddlewareFactory.error()` would
-   * forward to Sentry: a malformed body is a 400, an unknown instance a 404, a
+   * forward to Sentry: a malformed body is a 400, an unknown session a 404, a
    * second message during a turn a 409, and a turn that outruns its timeout a
    * **202** — it is still running, and the conversation poll will show it land.
    */
   router.post('/kagent/sessions/:sessionId/messages', async (req, res) => {
     const { client } = resolveInstallation(req);
 
-    const { agentNamespace, agentName, messageId, text } = readMessageBody(req);
+    const { agentNamespace, agentName, messageId, text, images } =
+      readMessageBody(req);
+    const sessionId = readSessionId(req);
+    const agent = { namespace: agentNamespace, name: agentName };
+    const userToken = readUserToken(req, { required: true });
+    await checkSessionImageBudget(client, sessionId, agent, userToken, images);
 
     try {
       const result = await client.sendMessage(
-        readSessionId(req),
-        { namespace: agentNamespace, name: agentName },
-        { messageId, text },
-        { userToken: readUserToken(req, { required: true }) },
+        sessionId,
+        agent,
+        { messageId, text, images },
+        { userToken },
       );
       res.json(result);
     } catch (error) {
@@ -941,18 +1113,60 @@ export async function createRouter(
     async (req, res) => {
       const { client } = resolveInstallation(req);
 
-      const { agentNamespace, agentName, messageId, text } =
+      const { agentNamespace, agentName, messageId, text, images } =
         readMessageBody(req);
+      const sessionId = readSessionId(req);
+      const agent = { namespace: agentNamespace, name: agentName };
       const userToken = readUserToken(req, { required: true });
+      await checkSessionImageBudget(
+        client,
+        sessionId,
+        agent,
+        userToken,
+        images,
+      );
 
       await relayEventStream(res, logger, signal =>
         client.streamMessage(
-          readSessionId(req),
-          { namespace: agentNamespace, name: agentName },
-          { messageId, text },
+          sessionId,
+          agent,
+          { messageId, text, images },
           { userToken },
           signal,
         ),
+      );
+    },
+  );
+
+  /**
+   * Follow a running turn again, streaming its events from now on: the page's
+   * way back into a turn whose stream ended before the turn did (a controller
+   * rollout cuts every stream in flight; the turns run on).
+   *
+   * `A2AService/SubscribeToTask` as the person — their token, required, and
+   * the controller decides as it does for the stream itself — addressed to the
+   * Agent the body names, like the send routes. Relayed by
+   * {@link relayEventStream}; a subscription that could not open for a reason
+   * a retry may fix answers 200 with one `{error}` frame rather than a 5xx (see
+   * `KagentClient.subscribeToTask`), while a decision — not the person's, no
+   * such task, a task already over — is its 4xx.
+   */
+  router.post(
+    '/kagent/sessions/:sessionId/tasks/:taskId/subscribe',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const agent = {
+        namespace: readRequiredString(body, 'agentNamespace'),
+        name: readRequiredString(body, 'agentName'),
+      };
+      const sessionId = readSessionId(req);
+      const rawTaskId = req.params.taskId;
+      const taskId = typeof rawTaskId === 'string' ? rawTaskId : '';
+      const userToken = readUserToken(req, { required: true });
+
+      await relayEventStream(res, logger, signal =>
+        client.subscribeToTask(sessionId, agent, taskId, { userToken }, signal),
       );
     },
   );
@@ -961,6 +1175,24 @@ export async function createRouter(
   // and the reachability probe calls it, but nothing in the frontend gates on a
   // version string: tolerance lives in the permissive parsing in
   // agent-platform-common, and a feature that needs gating probes by behaviour.
+
+  /**
+   * The namespaces of the Agents the caller may list on one installation
+   * (`AgentService/ListAgents` with no namespace, as the person): where the
+   * roster reads Agents namespace by namespace when the person may not list
+   * them cluster-wide. Only the namespaces are answered; the Agents are read
+   * through the Kubernetes API as the person.
+   */
+  router.get('/kagent/agent-namespaces', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
+    const { client } = resolveInstallation(req);
+    const result = await client.listAgentNamespaces({
+      userToken: readUserToken(req, { required: true }),
+      requestId,
+    });
+    res.json(result);
+  });
 
   /**
    * Identity probe: the claims the controller resolved for the call
@@ -1032,21 +1264,34 @@ export async function createRouter(
    * answers 202, after which only the conversation poll can tell what became of
    * the turn — and if the turn never lands, the page has nothing to show. Over a
    * stream the events arrive as they happen and a cut stream is visible as such.
+   *
+   * A resumed turn that says nothing within the wait for its first event — the
+   * approved tool runs before the agent speaks — is still running: a 202, as on
+   * the unary answer route, and the page follows the poll. Only here: on the
+   * messages stream a silent start stays an error, which the frontend checks
+   * against the history.
    */
   router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
     const { client } = resolveInstallation(req);
     const { agent, answer } = readAnswerBody(req);
     const userToken = readUserToken(req, { required: true });
 
-    await relayEventStream(res, logger, signal =>
-      client.streamAnswer(
-        readSessionId(req),
-        agent,
-        answer,
-        { userToken },
-        signal,
-      ),
-    );
+    try {
+      await relayEventStream(res, logger, signal =>
+        client.streamAnswer(
+          readSessionId(req),
+          agent,
+          answer,
+          { userToken },
+          signal,
+        ),
+      );
+    } catch (error) {
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
+      res.status(202).json({ status: 'pending' });
+    }
   });
 
   // The one served-model call the browser cannot make itself: a try of a

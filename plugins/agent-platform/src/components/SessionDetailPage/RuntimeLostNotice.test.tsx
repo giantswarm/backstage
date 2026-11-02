@@ -1,16 +1,22 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
+
+const newSession = () => ({ onStart: jest.fn() });
+const continueButton = () =>
+  screen.queryByRole('button', { name: 'Continue in a new session' });
 
 const ATENET =
   'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out';
 
 describe('RuntimeLostNotice', () => {
-  it('explains a suspected loss in the portal’s words, with the retry still open', () => {
+  it('explains a suspected loss in the portal’s words, with the retry still open', async () => {
+    const action = newSession();
     render(
       <RuntimeLostNotice
         loss={{ reported: false, cause: ATENET, attempts: 1 }}
         agentName="Grill master"
-        offersNewSession
+        newSession={action}
       />,
     );
 
@@ -18,15 +24,63 @@ describe('RuntimeLostNotice', () => {
       screen.getByText('The agent’s runtime could not be brought back'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/could not restart the runtime that held this session/),
+      screen.getByText(/could not restart the runtime holding this session/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/nothing is missing from the transcript/),
+      screen.getByText(/The transcript above is complete/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /You can send again to retry.*start a new session with Grill master/,
+        /Send again to retry\. If it fails again, continue in a new session with Grill master\. Its first message holds this conversation, with tools named but not their results\./,
       ),
+    ).toBeInTheDocument();
+
+    // Beside the retry, the new session is offered in the notice itself.
+    await userEvent.click(continueButton()!);
+    expect(action.onStart).toHaveBeenCalled();
+  });
+
+  it('words sends that keep timing out as a suspected loss, with the retry still open', async () => {
+    const action = newSession();
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: false, attempts: 2, source: 'send-timeouts' }}
+        agentName="Grill master"
+        newSession={action}
+      />,
+    );
+
+    expect(
+      screen.getByText('This session may not be able to continue'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Neither of your last 2 messages reached the agent: each timed out before it started\. The session’s runtime may be failing to start\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Send again to retry, or continue in a new session with Grill master\./,
+      ),
+    ).toBeInTheDocument();
+    // No words from the runtime, and no second count of the attempts.
+    expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/times in a row/)).not.toBeInTheDocument();
+
+    await userEvent.click(continueButton()!);
+    expect(action.onStart).toHaveBeenCalled();
+  });
+
+  it('counts more than two timed-out sends', () => {
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: false, attempts: 3, source: 'send-timeouts' }}
+        newSession={newSession()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/None of your last 3 messages reached the agent/),
     ).toBeInTheDocument();
   });
 
@@ -35,7 +89,7 @@ describe('RuntimeLostNotice', () => {
       <RuntimeLostNotice
         loss={{ reported: false, cause: ATENET, attempts: 1 }}
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
       />,
     );
 
@@ -49,7 +103,7 @@ describe('RuntimeLostNotice', () => {
     render(
       <RuntimeLostNotice
         loss={{ reported: false, cause: ATENET, attempts: 3 }}
-        offersNewSession
+        newSession={newSession()}
       />,
     );
 
@@ -67,7 +121,7 @@ describe('RuntimeLostNotice', () => {
           attempts: 2,
         }}
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
       />,
     );
 
@@ -75,31 +129,95 @@ describe('RuntimeLostNotice', () => {
       screen.getByText('This session cannot continue'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/kagent has marked this session’s runtime as lost/),
+      screen.getByText(/kagent marked this session’s runtime as lost/),
     ).toBeInTheDocument();
     // No retry on offer: a send fails the same way every time.
     expect(screen.queryByText(/send again/)).not.toBeInTheDocument();
+    expect(continueButton()).toBeInTheDocument();
     expect(
       screen.getByText(
-        /start a new session with Grill master — the button under the message box/,
+        /To carry on, continue in a new session with Grill master\. Its first message holds this conversation, with tools named but not their results\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says what the new session starts with', () => {
+    const { rerender } = render(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        newSession={newSession()}
+        continuation={{ messageCount: 12, includedMessageCount: 12 }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Its first message holds this conversation \(12 messages\), with tools named but not their results\./,
+      ),
+    ).toBeInTheDocument();
+
+    rerender(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        newSession={newSession()}
+        hasQuestion
+        continuation={{ messageCount: 52, includedMessageCount: 40 }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Its first message holds the newest 40 of this conversation's 52 messages, with tools named but not their results, and the open question\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the answer the lost runtime never took, which the new session carries', () => {
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        newSession={newSession()}
+        hasQuestion
+        answer="Cyclists"
+      />,
+    );
+
+    expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /with tools named but not their results, the open question and your answer\./,
       ),
     ).toBeInTheDocument();
   });
 
   it('points at the Sessions list when no new session can be offered here', () => {
+    render(<RuntimeLostNotice loss={{ reported: true, attempts: 0 }} />);
+
+    expect(
+      screen.getByText(
+        /Continue in a new session with the same agent from the Sessions list/,
+      ),
+    ).toBeInTheDocument();
+    expect(continueButton()).not.toBeInTheDocument();
+    expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
+  });
+
+  it('names why no new session can start from this portal', () => {
     render(
       <RuntimeLostNotice
-        loss={{ reported: true, attempts: 0 }}
-        offersNewSession={false}
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        newSessionBlocker="Muster on gazelle has no per-user sign-in in this portal."
       />,
     );
 
     expect(
       screen.getByText(
-        /continued in a new session with the same agent from the Sessions list/,
+        /A new session with Grill master cannot be started from this portal: sessions start through agent-manager as you\. Muster on gazelle has no per-user sign-in in this portal\./,
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sessions list/)).not.toBeInTheDocument();
   });
 
   it('reports a failed start', () => {
@@ -107,7 +225,7 @@ describe('RuntimeLostNotice', () => {
       <RuntimeLostNotice
         loss={{ reported: true, attempts: 1 }}
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
         startError="kagent does not know the agent"
       />,
     );

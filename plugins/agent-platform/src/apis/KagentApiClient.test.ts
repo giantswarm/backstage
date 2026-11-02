@@ -10,7 +10,11 @@ import {
   tasksMalformed,
   tasksV099 as tasksV0_9_9,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
-import { KagentApiClient } from './KagentApiClient';
+import {
+  isResubscribeRetryable,
+  KagentApiClient,
+  TURN_TOKEN_MIN_LIFETIME_LEFT,
+} from './KagentApiClient';
 import { KAGENT_AUTH_HEADER } from './types';
 
 describe('KagentApiClient', () => {
@@ -36,10 +40,15 @@ describe('KagentApiClient', () => {
     });
   }
 
-  function jsonResponse(body: unknown, status = 200) {
+  function jsonResponse(
+    body: unknown,
+    status = 200,
+    headers: Record<string, string> = {},
+  ) {
     return {
       ok: status >= 200 && status < 300,
       status,
+      headers: new Headers(headers),
       json: async () => body,
     } as Response;
   }
@@ -55,6 +64,56 @@ describe('KagentApiClient', () => {
     getCredentials.mockResolvedValue({ token: 'dex-token' });
   });
 
+  describe('listSessionsIfComplete', () => {
+    const record = (id: string) => ({
+      id,
+      name: id,
+      agent: { namespace: 'kagent', name: 'sre-agent' },
+      creator: 'dev@lab.local',
+    });
+
+    it('returns every session of a complete listing', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ sessions: [record('a'), record('b')] }),
+      );
+
+      const sessions = await buildClient().listSessionsIfComplete('gazelle');
+
+      expect(sessions?.map(session => session.sessionId)).toEqual(['a', 'b']);
+    });
+
+    it('returns an empty list for a person without sessions', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}));
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).resolves.toEqual([]);
+    });
+
+    it.each`
+      read                     | body
+      ${'skipped rows'}        | ${{ sessions: [record('a'), { name: 'no id' }] }}
+      ${'a truncated listing'} | ${{ sessions: [record('a')], truncated: true }}
+      ${'an unparseable body'} | ${'<html>'}
+    `('returns nothing for $read', async ({ body }) => {
+      fetchMock.mockResolvedValue(jsonResponse(body));
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws as listSessions does on an in-band error', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, data: null, message: 'database down' }),
+      );
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).rejects.toThrow('database down');
+    });
+  });
+
   describe('listSessions', () => {
     it('targets the installation and forwards the minted token', async () => {
       fetchMock.mockResolvedValue(jsonResponse(v0_9_9));
@@ -67,6 +126,35 @@ describe('KagentApiClient', () => {
       );
       expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
       expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle');
+    });
+
+    it('carries the status, the reason and the request id of a failed read', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message: 'did not respond in time',
+              reason: 'timeout',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-5' },
+        ),
+      );
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toMatchObject(
+        { status: 500, reason: 'timeout', requestId: 'req-5' },
+      );
+    });
+
+    it('marks a token that could not be minted', async () => {
+      getCredentials.mockResolvedValue({ token: undefined });
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toMatchObject(
+        { reason: 'token' },
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('returns normalized sessions', async () => {
@@ -410,6 +498,101 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('getRawSession', () => {
+    const sessionBody = {
+      session: {
+        id: 'abc',
+        name: 'Why is the pod pending?',
+        agent: { namespace: 'kagent', name: 'sre-agent' },
+        creator: 'dev@lab.local',
+        preparedRevision: 'rev-7',
+        aFieldTheNormalizerDoesNotKnow: { kept: true },
+      },
+    };
+    const readable = {
+      id: 'task-1',
+      contextId: 'abc',
+      status: { state: 'TASK_STATE_COMPLETED' },
+      history: [
+        {
+          messageId: 'm-1',
+          role: 'ROLE_USER',
+          parts: [{ text: 'Why is the pod pending?' }],
+        },
+      ],
+    };
+    // Rows the timeline's normalizer drops: an export keeps them.
+    const tasksBody = {
+      tasks: [readable, null, 'not a task', { history: 42 }],
+      totalSize: 1200,
+    };
+
+    function answerBoth() {
+      fetchMock.mockImplementation(async (url: string) =>
+        jsonResponse(url.includes('/tasks?') ? tasksBody : sessionBody),
+      );
+    }
+
+    it('returns both route bodies unchanged, totalSize and every row included', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      answerBoth();
+
+      const raw = await buildClient().getRawSession('gazelle', 'abc');
+
+      expect(raw).toEqual({ sessionBody, tasksBody });
+      // The same body through the timeline's read loses those rows, which is
+      // what the raw read is for.
+      const timelineTasks = await buildClient().listSessionTasks(
+        'gazelle',
+        'abc',
+      );
+      expect(timelineTasks.length).toBeLessThan(tasksBody.tasks.length);
+      warnSpy.mockRestore();
+    });
+
+    it('reads the session, then its tasks, with the installation’s token', async () => {
+      answerBoth();
+
+      await buildClient().getRawSession('gazelle', 'a/b');
+
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb?installation=gazelle',
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb/tasks?installation=gazelle',
+      ]);
+      for (const [, init] of fetchMock.mock.calls) {
+        expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      }
+    });
+
+    it('does not read the tasks of a session it could not read', async () => {
+      // kagent's task listing answers 403 for a session that is not the
+      // caller's; the session read's 404 is what the caller gets instead.
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          { error: { message: 'That session does not exist' } },
+          404,
+        ),
+      );
+
+      await expect(
+        buildClient().getRawSession('gazelle', 'abc'),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails when the tasks read fails', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(sessionBody))
+        .mockResolvedValueOnce(
+          jsonResponse({ error: { message: 'kagent is down' } }, 502),
+        );
+
+      await expect(
+        buildClient().getRawSession('gazelle', 'abc'),
+      ).rejects.toThrow('kagent is down');
+    });
+  });
+
   describe('deleteSession', () => {
     /** kagent's actual success response: a 200 carrying its usual envelope. */
     function deleted() {
@@ -510,118 +693,6 @@ describe('KagentApiClient', () => {
       await expect(
         buildClient().deleteSession('gazelle', 'abc123'),
       ).rejects.toMatchObject({ name: expectedName, message: 'nope' });
-    });
-  });
-
-  describe('createSession', () => {
-    const created = { error: false, data: { id: 'new-session-id' } };
-
-    it('POSTs the agent and title as JSON, with the installation and the token', async () => {
-      fetchMock.mockResolvedValue(jsonResponse(created, 201));
-
-      const result = await buildClient().createSession(
-        'gazelle',
-        { namespace: 'kagent', name: 'sre-agent' },
-        'Why is the ingress failing?',
-        'submission-1',
-      );
-
-      expect(result).toEqual({ sessionId: 'new-session-id' });
-
-      const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(
-        'http://backend/api/agent-platform/kagent/sessions?installation=gazelle',
-      );
-      expect(init.method).toBe('POST');
-      // Without this the backend's `express.json()` never parses the body, and
-      // the route rejects a perfectly good request as malformed.
-      expect(init.headers['Content-Type']).toBe('application/json');
-      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
-      expect(JSON.parse(init.body)).toEqual({
-        agentNamespace: 'kagent',
-        agentName: 'sre-agent',
-        name: 'Why is the ingress failing?',
-        // The idempotency key travels with the create, so the backend can hand
-        // it to the controller and a retried submission yields one instance.
-        requestId: 'submission-1',
-      });
-    });
-
-    it('does not label a rejected request as a missing kagent', async () => {
-      // Same guard as the rename: `throwIfNotOk` renames a 400 to `NotFoundError`
-      // for the reads, where it means "this installation has no kagent" and is
-      // meant to be silent. Here a 400 is a refused title, which the composer has
-      // to show.
-      fetchMock.mockResolvedValue(
-        jsonResponse({ error: { message: 'name must not be empty' } }, 400),
-      );
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'sre-agent' },
-          ' ',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({
-        name: 'Error',
-        message: 'name must not be empty',
-      });
-    });
-
-    it('fails rather than resolve when kagent does not say which session it created', async () => {
-      // The one write whose body is required: without an id there is nowhere to
-      // navigate, so resolving would hand the caller a broken link.
-      fetchMock.mockResolvedValue(jsonResponse({ error: false }, 201));
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'sre-agent' },
-          'Title',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({
-        name: 'UpstreamError',
-        message: expect.stringContaining('did not say which one it created'),
-      });
-    });
-
-    it('fails on an in-band error reported with a 2xx, preferring kagent’s message', async () => {
-      fetchMock.mockResolvedValue(
-        jsonResponse({ error: true, message: 'agent not found' }, 200),
-      );
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'gone' },
-          'Title',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({
-        name: 'UpstreamError',
-        message: 'agent not found',
-      });
-    });
-
-    it('fails on an unreadable body rather than treating it as a sign-in page', async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        status: 201,
-        json: async () => {
-          throw new Error('not JSON');
-        },
-      } as unknown as Response);
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'sre-agent' },
-          'Title',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({ name: 'UpstreamError' });
     });
   });
 
@@ -759,6 +830,22 @@ describe('KagentApiClient', () => {
         messageId: 'msg-1',
         text: 'why is the ingress failing?',
       });
+    });
+
+    it('carries the images of a message, and no images key without any', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+      const images = [
+        { mediaType: 'image/png' as const, data: 'iVBORw0K', name: 'a.png' },
+      ];
+
+      await buildClient().sendMessage('gazelle', 'abc123', AGENT, {
+        ...MESSAGE,
+        images,
+      });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).images).toEqual(
+        images,
+      );
     });
 
     it('sends the agent’s real names rather than anything decoded', async () => {
@@ -1057,6 +1144,138 @@ describe('KagentApiClient', () => {
         ),
       ).rejects.toMatchObject({ name: 'StreamTransportError' });
     });
+
+    it('resolves a 202 with no events, as the unary answer does', async () => {
+      // The backend's "still running": accepted, nothing to relay. Not a
+      // stream that failed to open — a transport failure here would send the
+      // caller to verify, and report the answer as failed when the check
+      // cannot see it yet.
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+      const events: unknown[] = [];
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          event => events.push(event),
+        ),
+      ).resolves.toEqual({});
+      expect(events).toEqual([]);
+    });
+  });
+
+  describe('subscribeToTask', () => {
+    const agent = { namespace: 'kagent', name: 'issue-tracker' };
+
+    /** The backend's relay: SSE `data:` frames, one read each. */
+    function sseResponse(frames: unknown[]) {
+      const chunks = frames.map(frame =>
+        Uint8Array.from(Buffer.from(`data: ${JSON.stringify(frame)}\n\n`)),
+      );
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: {
+          getReader: () => ({
+            read: async () => {
+              const value = chunks.shift();
+              return value ? { done: false, value } : { done: true };
+            },
+          }),
+        },
+      } as unknown as Response;
+    }
+
+    it('POSTs the Agent to the task’s subscribe route as the person, and relays the events', async () => {
+      const snapshot = { task: { id: 'task/1', status: { state: 'WORKING' } } };
+      fetchMock.mockResolvedValue(sseResponse([snapshot]));
+      const events: unknown[] = [];
+
+      await expect(
+        buildClient().subscribeToTask(
+          'gazelle',
+          'abc123',
+          agent,
+          'task/1',
+          event => events.push(event),
+        ),
+      ).resolves.toEqual({});
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/tasks/task%2F1/subscribe?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+      });
+      expect(events).toEqual([snapshot]);
+    });
+
+    it('says how a subscription that delivered events ended', async () => {
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          { task: { id: 'task-1' } },
+          { error: { code: 'Canceled', message: 'closed pool' } },
+        ]),
+      );
+
+      await expect(
+        buildClient().subscribeToTask(
+          'gazelle',
+          'abc123',
+          agent,
+          'task-1',
+          () => {},
+        ),
+      ).resolves.toEqual({ error: 'closed pool' });
+    });
+
+    it('rejects a subscription the controller could not open yet as one worth retrying', async () => {
+      // The backend's in-band answer for a controller mid-rollout.
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          { error: { code: 'Unavailable', message: 'no healthy upstream' } },
+        ]),
+      );
+
+      const failure = await buildClient()
+        .subscribeToTask('gazelle', 'abc123', agent, 'task-1', () => {})
+        .catch(error => error);
+
+      expect(failure).toMatchObject({ name: 'UpstreamError' });
+      expect(isResubscribeRetryable(failure)).toBe(true);
+    });
+
+    it('rejects a decision as one no retry changes', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'That turn does not exist.' } }, 404),
+      );
+
+      const failure = await buildClient()
+        .subscribeToTask('gazelle', 'abc123', agent, 'task-1', () => {})
+        .catch(error => error);
+
+      expect(isResubscribeRetryable(failure)).toBe(false);
+    });
+
+    it('rejects a 5xx before the stream opens as one worth retrying, naming the subscription', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}, 502));
+
+      const failure = await buildClient()
+        .subscribeToTask('gazelle', 'abc123', agent, 'task-1', () => {})
+        .catch(error => error);
+
+      expect(isResubscribeRetryable(failure)).toBe(true);
+      expect(failure.message).toBe(
+        'The subscription to the running turn failed with status 502.',
+      );
+    });
   });
 
   describe('aborting a stream', () => {
@@ -1130,7 +1349,7 @@ describe('KagentApiClient', () => {
 
       control.abort();
 
-      await expect(streaming).resolves.toBeUndefined();
+      await expect(streaming).resolves.toEqual({});
     });
 
     it('reports an abort before any event as a transport failure to verify', async () => {
@@ -1157,16 +1376,56 @@ describe('KagentApiClient', () => {
         name: 'StreamTransportError',
       });
     });
+
+    it("carries the backend's reason on a 5xx before the stream opens", async () => {
+      // The backend's wait for kagent's first event ran out: still a failure
+      // to verify, but one the page counts when it repeats.
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message:
+                "The kagent API for installation 'gazelle' did not respond in time.",
+              reason: 'timeout',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-7' },
+        ),
+      );
+
+      await expect(
+        buildClient().streamMessage(
+          'gazelle',
+          'abc123',
+          agent,
+          message,
+          () => {},
+        ),
+      ).rejects.toMatchObject({
+        name: 'StreamTransportError',
+        status: 500,
+        reason: 'timeout',
+        requestId: 'req-7',
+      });
+    });
   });
 
   describe('getIdentity', () => {
-    it('reads the subject kagent resolved', async () => {
+    it('reads the subject and the email kagent resolved', async () => {
+      // kagent 1.19 answers the token's claims: Dex's opaque subject, and the
+      // email agent-manager records as an agent's creator.
       fetchMock.mockResolvedValue(
-        jsonResponse({ sub: 'marian@giantswarm.io' }),
+        jsonResponse({
+          sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+          email: 'dev@lab.local',
+        }),
       );
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
-        sub: 'marian@giantswarm.io',
+        sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+        email: 'dev@lab.local',
       });
     });
 
@@ -1206,7 +1465,47 @@ describe('KagentApiClient', () => {
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
         sub: undefined,
+        email: 'marian@example.com',
       });
+    });
+  });
+
+  describe('listAgentNamespaces', () => {
+    it('asks the backend as the person and answers the namespaces', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ namespaces: ['kagent', 'org-a'] }),
+      );
+
+      await expect(
+        buildClient().listAgentNamespaces('gazelle'),
+      ).resolves.toEqual(['kagent', 'org-a']);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain(
+        '/kagent/agent-namespaces?installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
+    });
+  });
+
+  describe('getModelCost', () => {
+    it('asks for the installation and window only, with the person’s token', async () => {
+      const body = {
+        status: 'unavailable',
+        windowDays: 7,
+        reason: 'no-spend',
+      };
+      fetchMock.mockResolvedValue(jsonResponse(body));
+
+      await expect(buildClient().getModelCost('gazelle', 7)).resolves.toEqual(
+        body,
+      );
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/usage/model-cost?days=7&installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
     });
   });
 
@@ -1407,10 +1706,175 @@ describe('KagentApiClient — streamMessage on a lost runtime', () => {
       ]),
     );
 
+    // How it ended goes back too: a lost runtime's words are what keep the
+    // caller from resubscribing to a turn that failed with them.
     await expect(
       client().streamMessage('gazelle', 'abc123', AGENT, MESSAGE, onEvent),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ error: ATENET });
     expect(onEvent).toHaveBeenCalledTimes(2);
     expect(onEvent).toHaveBeenLastCalledWith(runtimeFailed);
+  });
+});
+
+describe('KagentApiClient — the token a turn goes out with', () => {
+  const MINUTE = 60_000;
+  const T0 = new Date('2026-10-19T06:30:00Z').getTime();
+  const AGENT = { namespace: 'kagent', name: 'repo-manager' };
+  const MESSAGE = { messageId: 'msg-1', text: 'watch the release' };
+  const ANSWER = {
+    messageId: 'msg-2',
+    taskId: 'task-1',
+    decision: 'approve' as const,
+  };
+
+  /** A 30-minute Dex ID token issued at `issuedAt`. */
+  function idToken(name: string, issuedAt: number): string {
+    const b64url = (value: object) =>
+      btoa(JSON.stringify(value))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    const iat = Math.floor(issuedAt / 1000);
+    return `${b64url({ alg: 'RS256' })}.${b64url({
+      name,
+      iat,
+      exp: iat + 30 * 60,
+    })}.signature`;
+  }
+
+  function minutesLeft(token: string): number {
+    const exp = JSON.parse(atob(token.split('.')[1])).exp as number;
+    return (exp * 1000 - Date.now()) / MINUTE;
+  }
+
+  const fetchMock = jest.fn();
+  // The session's token, as Backstage caches it: issued at T0, kept until its
+  // last 3 minutes.
+  const cachedToken = idToken('cached', T0);
+  // The portal's auth providers: a request with `minLifetimeLeft` gets a
+  // token refreshed first when the cached one has less of its lifetime left.
+  const getCredentials = jest.fn(
+    async (_provider: string, options?: { minLifetimeLeft?: number }) => {
+      const left = (T0 + 30 * MINUTE - Date.now()) / (30 * MINUTE);
+      return options?.minLifetimeLeft && left < options.minLifetimeLeft
+        ? { token: idToken('refreshed', Date.now()) }
+        : { token: cachedToken };
+    },
+  );
+
+  function buildClient(
+    authProviders: Pick<KubernetesAuthProvidersApi, 'getCredentials'> = {
+      getCredentials,
+    },
+  ) {
+    return new KagentApiClient({
+      discoveryApi: {
+        getBaseUrl: async () => 'http://backend/api/agent-platform',
+      },
+      fetchApi: { fetch: fetchMock } as unknown as FetchApi,
+      kubernetesApi: {
+        getCluster: async () => ({
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-gazelle',
+        }),
+      } as unknown as KubernetesApi,
+      kubernetesAuthProvidersApi:
+        authProviders as unknown as KubernetesAuthProvidersApi,
+    });
+  }
+
+  function sentToken(): string {
+    const [, init] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    return init.headers[KAGENT_AUTH_HEADER];
+  }
+
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+    fetchMock.mockReset();
+    getCredentials.mockClear();
+    // 202: accepted and still running, for the unary and streaming routes
+    // alike, so no stream has to be faked.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 202,
+      headers: new Headers(),
+      json: async () => ({}),
+    } as Response);
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // 24 of the cached token's 30 minutes left: Backstage would keep it for
+    // another 21.
+    jest.setSystemTime(T0 + 6 * MINUTE);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    warnSpy.mockRestore();
+  });
+
+  it.each([
+    [
+      'sendMessage',
+      (client: KagentApiClient) =>
+        client.sendMessage('gazelle', 's1', AGENT, MESSAGE),
+    ],
+    [
+      'streamMessage',
+      (client: KagentApiClient) =>
+        client.streamMessage('gazelle', 's1', AGENT, MESSAGE, () => {}),
+    ],
+    [
+      'streamAnswer',
+      (client: KagentApiClient) =>
+        client.streamAnswer('gazelle', 's1', AGENT, ANSWER, () => {}),
+    ],
+    [
+      'answerConfirmation',
+      (client: KagentApiClient) =>
+        client.answerConfirmation('gazelle', 's1', AGENT, ANSWER),
+    ],
+  ])(
+    '%s asks for a token with 25 of its 30 minutes left, and sends one',
+    async (_name, send) => {
+      await send(buildClient());
+
+      expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle', {
+        minLifetimeLeft: TURN_TOKEN_MIN_LIFETIME_LEFT,
+      });
+      expect(sentToken()).not.toBe(cachedToken);
+      expect(minutesLeft(sentToken())).toBeGreaterThanOrEqual(25);
+      expect(warnSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps reads on the session's cached token", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => ({ data: [] }),
+    } as Response);
+
+    await buildClient().listSessions('gazelle');
+
+    expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle');
+    expect(sentToken()).toBe(cachedToken);
+  });
+
+  it('still sends a turn whose token could not be refreshed, and says so', async () => {
+    // Auth providers that ignore the minimum (Backstage's own), or a refresh
+    // that failed: the cached token is all there is.
+    jest.setSystemTime(T0 + 20 * MINUTE);
+    await buildClient({
+      getCredentials: async () => ({ token: cachedToken }),
+    }).sendMessage('gazelle', 's1', AGENT, MESSAGE);
+
+    expect(sentToken()).toBe(cachedToken);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "kagent turn on installation 'gazelle' sent with a token that has 33% of its lifetime left",
+      ),
+    );
   });
 });

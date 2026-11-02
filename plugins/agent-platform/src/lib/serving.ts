@@ -542,19 +542,6 @@ export const NO_SERVING_CAPABILITIES: ServingCapabilities = {
   search: false,
 };
 
-/** Whether any per-model operation is offered — decides the actions column. */
-export function hasServedModelActions(
-  capabilities: ServingCapabilities | undefined,
-): boolean {
-  return Boolean(
-    capabilities &&
-    (capabilities.load ||
-      capabilities.unload ||
-      capabilities.delete ||
-      capabilities.wire),
-  );
-}
-
 /** A GPU-carrying node as the capacity panel shows it. */
 export type GpuNode = {
   /** Stable unique key: installation + node name (+ backend for a backend host). */
@@ -659,6 +646,12 @@ export type GpuCapacityUnavailableReason = 'forbidden' | 'error';
 export type ServingSourceSnapshot = {
   /** Discovery or reads still in flight (more may appear). */
   isLoading: boolean;
+  /**
+   * The part of `isLoading` the served models depend on: discovery and the
+   * reads that list them, not the GPU node and pod reads that fill in their
+   * details. What a served-models list waits for. Absent, `isLoading`.
+   */
+  isLoadingServedModels?: boolean;
   /**
    * Installations where this source found a serving layer: a serving
    * backend, or a model-manager that answers but runs no backend yet.
@@ -961,18 +954,6 @@ export function findServedModel(
 }
 
 /**
- * {@link findServedModel} by endpoint alone. Kept for callers that know
- * nothing but a base URL; prefer the lookup form where the client's model id
- * is at hand, or a multi-model host cannot be resolved.
- */
-export function findServedModelForEndpoint(
-  endpoint: string | undefined,
-  candidates: ServedModel[],
-): ServedModel | undefined {
-  return findServedModel({ endpoint }, candidates);
-}
-
-/**
  * Whether two rows *of different sources* describe the same served model on
  * the same installation and backend. A row with a namespace is a Kubernetes
  * object — a KServe LLMInferenceService read as a CR, the same object in a
@@ -1203,6 +1184,9 @@ export function mergeServingSnapshots(
   }
   return {
     isLoading: snapshots.some(snapshot => snapshot.isLoading),
+    isLoadingServedModels: snapshots.some(
+      snapshot => snapshot.isLoadingServedModels ?? snapshot.isLoading,
+    ),
     installations: Array.from(installations),
     backends,
     sourceBackends,

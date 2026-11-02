@@ -1,0 +1,519 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import type { AgentRow } from '../AgentsDataProvider';
+import {
+  WorkspaceManagerError,
+  type Workspace,
+} from '../../lib/workspaceManager';
+import { NewSessionComposer } from './NewSessionComposer';
+
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
+}));
+
+const NOW = new Date('2026-10-21T08:00:00Z');
+
+function workspace(overrides: Partial<Workspace>): Workspace {
+  return {
+    name: 'platform-mix',
+    organization: 'agentlab-org',
+    sources: [],
+    sync: { schedule: 'nightly' },
+    resourceVersion: '1',
+    createdAt: '2026-10-01T00:00:00Z',
+    repositories: 9,
+    sessions: 0,
+    lastSync: { time: '2026-10-21T04:00:00Z', result: 'Succeeded' },
+    ...overrides,
+  };
+}
+
+const mix = workspace({});
+const mcp = workspace({ name: 'platform-mcp', repositories: 1 });
+
+/** The workspaces each installation offers; none unless a test says so. */
+const mockWorkspacesOf = jest.fn<Workspace[], [string]>(() => []);
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: (installation: string) => ({
+    workspaces: mockWorkspacesOf(installation),
+    isLoading: false,
+  }),
+}));
+
+/** The toolchains the installation offers; none unless a test says so. */
+let mockToolchains: unknown[] = [];
+jest.mock('../../hooks/useToolchainManager', () => ({
+  useToolchains: () => ({
+    isAvailable: true,
+    isLoading: false,
+    list: { data: { toolchains: mockToolchains } },
+  }),
+}));
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: () => ({
+    info: { capabilities: { toolchains: true } },
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+jest.mock('../../hooks/useWorkspaceManager', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceManager'),
+  useWorkspaceManagerClient: () => undefined,
+}));
+/** `list_providers` as the test moves it along. */
+const mockProviders = {
+  data: [{ name: 'github', kind: 'github', connected: false }],
+};
+jest.mock('../../hooks/useWorkspaceEditor', () => ({
+  useWorkspaceProviders: () => mockProviders,
+}));
+
+/** muster's sign-in for the provider's App, as the test moves it along. */
+const mockSignIn = {
+  isWaiting: false,
+  isConnected: false,
+  isPending: false,
+  signInTabOpened: false,
+  authUrl: 'https://muster.example/sign-in',
+  error: undefined as string | undefined,
+  signIn: jest.fn(),
+};
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
+  ServerSignIn: () => null,
+  useServerSignIn: () => mockSignIn,
+}));
+
+function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
+  return {
+    id: 'gazelle/kagent/claude-code',
+    installation: 'gazelle',
+    namespace: 'kagent',
+    name: 'Claude Code',
+    technicalName: 'claude-code',
+    description: 'Writes and changes code',
+    skillCount: 0,
+    readiness: 'ready',
+    ...overrides,
+  };
+}
+
+const claude = agentRow();
+const onStart = jest.fn();
+
+function renderComposer(
+  props: Partial<Parameters<typeof NewSessionComposer>[0]> = {},
+) {
+  const all = {
+    agents: [claude],
+    isStarting: false,
+    onStart,
+    offersWorkspaces: true,
+    ...props,
+  };
+  const view = render(<NewSessionComposer {...all} />);
+  return {
+    ...view,
+    rerenderWith: (next: Partial<Parameters<typeof NewSessionComposer>[0]>) =>
+      view.rerender(<NewSessionComposer {...all} {...next} />),
+  };
+}
+
+const field = () => screen.getByRole('textbox', { name: 'Prompt' });
+const startButton = () => screen.getByRole('button', { name: 'Start' });
+const workspacePicker = () => screen.getByRole('button', { name: /Workspace/ });
+
+beforeEach(() => {
+  jest.useFakeTimers({ now: NOW, advanceTimers: true });
+  window.localStorage.clear();
+  onStart.mockReset();
+  mockWorkspacesOf.mockReset();
+  mockWorkspacesOf.mockReturnValue([]);
+  mockToolchains = [];
+  Object.assign(mockSignIn, { isWaiting: false, isConnected: false });
+  mockProviders.data = [{ name: 'github', kind: 'github', connected: false }];
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+describe('NewSessionComposer workspaces', () => {
+  it('offers the agent’s installation’s workspaces with their size and last sync', async () => {
+    mockWorkspacesOf.mockReturnValue([mcp, mix]);
+    renderComposer();
+
+    expect(mockWorkspacesOf).toHaveBeenCalledWith('gazelle');
+    expect(workspacePicker()).toHaveTextContent('No workspace');
+    await userEvent.click(workspacePicker());
+    const listbox = screen.getByRole('listbox');
+    expect(
+      within(listbox)
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual([
+      'platform-mcp1 repository · synchronized 4 h ago',
+      'platform-mix9 repositories · synchronized 4 h ago',
+      'No workspace',
+    ]);
+  });
+
+  it('starts in the chosen workspace and presets it next time with this agent', async () => {
+    mockWorkspacesOf.mockReturnValue([mcp, mix]);
+    const { unmount } = renderComposer();
+
+    await userEvent.click(workspacePicker());
+    await userEvent.click(screen.getByRole('option', { name: /platform-mix/ }));
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'List the repositories',
+      [],
+      'platform-mix',
+      undefined,
+    );
+
+    unmount();
+    renderComposer();
+    expect(workspacePicker()).toHaveTextContent('platform-mix');
+    expect(screen.getByText('Last used with Claude Code')).toBeInTheDocument();
+  });
+
+  describe('on an agent with a default workspace', () => {
+    const withDefault = agentRow({ defaultWorkspace: 'platform-mcp' });
+
+    it('presets the default when nothing was chosen with the agent, and starts in it', async () => {
+      mockWorkspacesOf.mockReturnValue([mcp, mix]);
+      renderComposer({ agents: [withDefault] });
+
+      expect(workspacePicker()).toHaveTextContent('platform-mcp');
+      expect(screen.getByText('Claude Code’s default')).toBeInTheDocument();
+      await userEvent.type(field(), 'List the repositories');
+      await userEvent.click(startButton());
+      expect(onStart).toHaveBeenCalledWith(
+        withDefault,
+        'List the repositories',
+        [],
+        'platform-mcp',
+        undefined,
+      );
+    });
+
+    it('presets the last choice with the agent before the default', () => {
+      mockWorkspacesOf.mockReturnValue([mcp, mix]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [withDefault.id]: 'platform-mix' }),
+      );
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('platform-mix');
+      expect(
+        screen.getByText('Last used with Claude Code'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps a last choice of "No workspace" over the default', async () => {
+      mockWorkspacesOf.mockReturnValue([mcp, mix]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [withDefault.id]: '' }),
+      );
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('No workspace');
+      await userEvent.type(field(), 'Hello');
+      await userEvent.click(startButton());
+      expect(onStart).toHaveBeenCalledWith(
+        withDefault,
+        'Hello',
+        [],
+        undefined,
+        undefined,
+      );
+    });
+
+    it('falls back to the default when the last choice is no longer listed', () => {
+      mockWorkspacesOf.mockReturnValue([mcp]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [withDefault.id]: 'gone' }),
+      );
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('platform-mcp');
+    });
+
+    it('presets none when the default is not listed for the person', () => {
+      mockWorkspacesOf.mockReturnValue([mix]);
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('No workspace');
+    });
+  });
+
+  it('remembers "No workspace" too', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { unmount } = renderComposer();
+    expect(workspacePicker()).toHaveTextContent('platform-mix');
+
+    await userEvent.click(workspacePicker());
+    await userEvent.click(screen.getByRole('option', { name: 'No workspace' }));
+    unmount();
+    renderComposer();
+
+    expect(workspacePicker()).toHaveTextContent('No workspace');
+  });
+
+  it('is labelled like the agent picker where the pickers head the box', () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    renderComposer({ pickerPlacement: 'top', pickerLabel: () => 'Agent' });
+
+    expect(screen.getByText('Workspace')).toBeInTheDocument();
+  });
+
+  it('starts with the toolchains the person changed, beside the workspace', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    mockToolchains = [
+      {
+        name: 'go',
+        source: 'agent-toolchains',
+        repository: 'giantswarm/agent-toolchains',
+        version: 'v0.2.0',
+        image: 'gsoci.azurecr.io/giantswarm/agent-toolchains/go:0.2.0',
+        versions: ['v0.2.0', 'v0.1.0'],
+      },
+    ];
+    renderComposer({
+      agents: [agentRow({ defaultToolchains: [{ name: 'go' }] })],
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Toolchains: go latest' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /go version/ }));
+    await userEvent.click(screen.getByRole('option', { name: '0.1.0' }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.type(field(), 'build it');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ id: claude.id }),
+      'build it',
+      [],
+      undefined,
+      ['go@0.1.0'],
+    );
+  });
+
+  it("starts with the agent's defaults, naming no toolchain, when nothing was changed", async () => {
+    mockToolchains = [
+      {
+        name: 'go',
+        source: 'agent-toolchains',
+        repository: 'giantswarm/agent-toolchains',
+        version: 'v0.2.0',
+        image: 'gsoci.azurecr.io/giantswarm/agent-toolchains/go:0.2.0',
+        versions: ['v0.2.0'],
+      },
+    ];
+    renderComposer();
+
+    await userEvent.type(field(), 'build it');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'build it',
+      [],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('is not there where the installation offers no workspace', () => {
+    renderComposer();
+
+    expect(screen.queryByRole('button', { name: /Workspace/ })).toBeNull();
+  });
+
+  it('never appears without offersWorkspaces, as on agent creation', () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    renderComposer({ offersWorkspaces: false });
+
+    expect(screen.queryByRole('button', { name: /Workspace/ })).toBeNull();
+    expect(mockWorkspacesOf).not.toHaveBeenCalled();
+  });
+
+  it('says the access check while the start runs', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    rerenderWith({ isStarting: true });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Checking access to platform-mix…',
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Then your directory is prepared: 9 repositories. Seconds.',
+    );
+  });
+
+  it('names every unreadable repository on a refusal, keeps the prompt, and starts without the workspace on request', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    rerenderWith({
+      error: new WorkspaceManagerError('refused', 'refused', [
+        'agentlab-org/secret-api',
+        'agentlab-org/billing',
+      ]),
+    });
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(
+      'You cannot read 2 repositories of platform-mix',
+    );
+    expect(alert).toHaveTextContent(
+      'agentlab-org/secret-api, agentlab-org/billing',
+    );
+    expect(screen.queryByText('Session not started')).toBeNull();
+    expect(field()).toHaveValue('List the repositories');
+
+    onStart.mockClear();
+    await userEvent.click(
+      within(alert).getByRole('button', { name: 'Start without workspace' }),
+    );
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'List the repositories',
+      [],
+      undefined,
+      undefined,
+    );
+    expect(workspacePicker()).toHaveTextContent('No workspace');
+  });
+
+  it('says a workspace that has not synced yet', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    rerenderWith({
+      error: new WorkspaceManagerError(
+        'refused',
+        'workspace platform-mix has not synced yet',
+      ),
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'platform-mix cannot be used yet',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'workspace platform-mix has not synced yet',
+    );
+  });
+
+  it('shows the provider sign-in for an unconnected provider and starts again once connected', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    const notConnected = new WorkspaceManagerError(
+      'not_connected',
+      'sign in to github first',
+      [],
+      [{ provider: 'github', signIn: 'core_auth_login server=github-app' }],
+    );
+    rerenderWith({ error: notConnected });
+
+    const card = screen.getByTestId('provider-connect-github');
+    expect(card).toHaveTextContent('Sign in to GitHub to use platform-mix');
+    await userEvent.click(
+      within(card).getByRole('button', { name: /Continue with GitHub/ }),
+    );
+    expect(mockSignIn.signIn).toHaveBeenCalled();
+
+    onStart.mockClear();
+    mockSignIn.isWaiting = true;
+    rerenderWith({ error: notConnected });
+    expect(card).toHaveTextContent(
+      'The session starts as soon as you are back.',
+    );
+    expect(onStart).not.toHaveBeenCalled();
+    // muster reports the grant this card started: the start goes again, once.
+    mockSignIn.isWaiting = false;
+    mockSignIn.isConnected = true;
+    rerenderWith({ error: notConnected });
+    rerenderWith({ error: notConnected });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'List the repositories',
+      [],
+      'platform-mix',
+      undefined,
+    );
+    // Should that start not get under way, the person starts it.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Start the session' }),
+    );
+    expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts nothing by itself without a sign-in made here', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    onStart.mockClear();
+    // The manager still asks for the grant while muster and list_providers
+    // already read it held: no retry, which would only ask again.
+    mockSignIn.isConnected = true;
+    mockProviders.data = [{ name: 'github', kind: 'github', connected: true }];
+    rerenderWith({
+      error: new WorkspaceManagerError(
+        'not_connected',
+        'sign in to github first',
+        [],
+        [{ provider: 'github', signIn: 'core_auth_login app=github' }],
+      ),
+    });
+
+    expect(
+      within(screen.getByTestId('provider-connect-github')).getByRole(
+        'button',
+        { name: /Continue with GitHub/ },
+      ),
+    ).toBeInTheDocument();
+    expect(onStart).not.toHaveBeenCalled();
+  });
+});

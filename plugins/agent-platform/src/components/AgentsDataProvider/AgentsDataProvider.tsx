@@ -1,33 +1,54 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
+import { useQueryClient, type Query } from '@tanstack/react-query';
+import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
 import {
   Agent,
+  Harness,
   isNotFoundError,
+  type KubeObjectInterface,
   ModelConfig,
   RemoteMCPServer,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   applyInstallationScope,
+  installationsSwitchedOffWithComponent,
+  type InventoryFailure,
   useInstallationInventory,
   useInstallations,
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
+import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
+import {
+  kagentAgentNamespacesQueryKey,
+  musterAgentManagerInfoQueryKey,
+  musterServersQueryKey,
+} from '../../lib/queryKeys';
+import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
   AgentRow,
+  agentManagerSessionGate,
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
+  type KagentMissing,
   ResolveModelServing,
+  selectAgentsInventoryFailure,
+  selectKagentMissing,
+  selectUnknownPin,
+  TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
 } from './helpers';
@@ -65,22 +86,74 @@ export type AgentsContextValue = {
    * an empty result is distinguishable from a partial/failed one.
    */
   unreachableInstallations: string[];
+  /**
+   * Installations in scope where the person may list agents in no namespace:
+   * the cluster-wide list and every namespaced one were refused. Not a
+   * failure to read -- no tenant binds them there -- so they are not in
+   * `unreachableInstallations`.
+   */
+  noAccessInstallations: string[];
+  /**
+   * No agent is listed and every environment in scope answered without
+   * kagent: none can be listed or created there, whatever else is still
+   * loading. `undefined` otherwise -- including while one of them is still
+   * being asked, and under "All environments" while one switched off in
+   * Cluster access runs kagent. Read as is: it already holds only when there
+   * are no rows.
+   */
+  kagentMissing: KagentMissing | undefined;
+  /**
+   * Under "All environments", the environments switched off in Cluster access
+   * that run kagent: their agents are not read until one is switched back on.
+   * Empty under a pinned scope.
+   */
+  kagentSwitchedOff: string[];
+  /**
+   * The pinned environment, when the portal knows none by that name (a stale
+   * `?installation=` deep link).
+   */
+  unknownPin: string | undefined;
+  /**
+   * The environment that could not be asked whether it runs kagent and so
+   * explains what is (not) listed, for the inventory gate to name with its
+   * remedy (`selectAgentsInventoryFailure`).
+   */
+  inventoryFailure: InventoryFailure | undefined;
+  /**
+   * Reads the agents again on every installation in scope, with what muster
+   * says about their namespaces; resolves once those reads have answered.
+   * The way forward from `unreachableInstallations`.
+   */
+  retry: () => Promise<void>;
 };
 
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent `AgentTemplate`s across every installation in the section's
- * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
+ * Lists kagent `Agent`s across every installation in the section's
+ * scope that runs kagent (all namespaces, or the agent namespaces one by one
+ * where the person may not list them cluster-wide) and exposes them as plain
+ * rows. Model
  * references are resolved against the ModelConfigs queried by
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
  * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
  */
+/**
+ * The Agents list's interval: {@link getAgentsRefetchInterval}, tightened to
+ * the transitional tier while the installation's list does not show an agent
+ * deployed from this tab yet.
+ */
+function agentsRefetchInterval(query: Query<KubeObjectInterface[]>): number {
+  return awaitsDeployedAgent(query)
+    ? TRANSITIONAL_REFETCH_INTERVAL_MS
+    : getAgentsRefetchInterval(query);
+}
+
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query installations whose inventory has the `kagent.dev` API group and
+  // Only query installations whose inventory has the `api.kagent.dev` API group and
   // whose access is healthy, home first (gs `useInstallationInventory`, one
   // `GET /apis` per installation shared by every tab), narrowed to the
   // section's scope: every one of them under "All installations", the pinned
@@ -97,6 +170,31 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     scope,
   );
   const isProbing = inventory.isLoading || inventory.isProbing;
+  // What the inventory says about the scope beyond the installations to
+  // query, read by every page that explains an empty agents list. Each
+  // derived fresh each render, so the value memo is keyed on their contents.
+  const kagentMissing = selectKagentMissing(inventory.entries, scope);
+  const kagentMissingKey = kagentMissing
+    ? `${kagentMissing.installations.join(',')}|${kagentMissing.canChooseAnother}`
+    : '';
+  const kagentSwitchedOff = installationsSwitchedOffWithComponent(
+    inventory.entries,
+    scope,
+    'kagent',
+  );
+  const kagentSwitchedOffKey = kagentSwitchedOff.join(',');
+  const unknownPin = selectUnknownPin(inventory, scope);
+  // The inputs of `selectAgentsInventoryFailure` beyond the rows: which
+  // entries failed and why, and which one is the home.
+  const inventoryFailuresKey = `${inventory.home ?? ''}|${inventory.entries
+    .filter(entry => entry.probe === 'failed')
+    .map(
+      entry =>
+        `${entry.installation}:${entry.muted}:${entry.error?.name ?? ''}:${
+          entry.error?.message ?? ''
+        }`,
+    )
+    .join(',')}`;
 
   // allInstallations/scopedInstallations are derived fresh each render; key
   // memos/effects on their contents rather than their (unstable) identity.
@@ -124,6 +222,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const [carriersByInstallation, setCarriersByInstallation] = useState<
     Record<string, RemoteMCPServer[]>
   >({});
+  const [harnessesByInstallation, setHarnessesByInstallation] = useState<
+    Record<string, Harness[]>
+  >({});
 
   // Home first, literally: the home installation is queried alone, and the
   // others only once it has answered (rows, an empty list, or a failure), so
@@ -140,19 +241,44 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ? scopedInstallations
     : scopedInstallations.filter(installation => installation === home);
 
-  // Single AgentTemplate version (v1alpha3), so skip API version discovery — it
+  // Single Agent version (v1alpha3), so skip API version discovery — it
   // adds round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.
   // The refetch interval is two-tier and evaluated per installation — see
   // `getAgentsRefetchInterval`. It keeps agent readiness fresh without polling
   // the whole fleet fast: only installations with an agent that is still
-  // converging get the short interval.
-  const { resources, clustersData, isLoading, errors } = useResources(
-    queriedInstallations,
-    Agent,
-    {},
-    { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
+  // converging, or one just deployed from this portal that the list does not
+  // show yet (`awaitsDeployedAgent`), get the short interval.
+  //
+  // A person whose kagent reads come from a namespaced RoleBinding may not list
+  // Agents, Harnesses or RemoteMCPServers cluster-wide: each read lists those
+  // installations again, namespace by namespace, with the same options
+  // (`useNamespacedFallback`), so they answer with what the person may read
+  // instead of "couldn't read".
+  const agentsOptions = {
+    enableDiscovery: false,
+    refetchInterval: agentsRefetchInterval,
+  };
+  const { resources, clustersData, isLoading, errors, refusedInstallations } =
+    useNamespacedFallback(
+      useResources(queriedInstallations, Agent, {}, agentsOptions),
+      Agent,
+      agentsOptions,
+    );
+  const refusedKey = (refusedInstallations ?? []).join(',');
+
+  const baselineOptions = {
+    enableDiscovery: false,
+    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+  };
+
+  // The Harnesses the agents name, for what the list calls each one. A failed
+  // read leaves the rows with the Harness name alone.
+  const harnesses = useNamespacedFallback(
+    useResources(queriedInstallations, Harness, {}, baselineOptions),
+    Harness,
+    baselineOptions,
   );
 
   // The toolset carriers: on API v2 an agent's `X-Muster-Toolset` header lives
@@ -162,11 +288,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // not while an agent converges. A failure here is not "the installation could
   // not be read": the agents are the rows; a missing server list just leaves
   // each row's toolset unresolved.
-  const carriers = useResources(
-    queriedInstallations,
+  const carriers = useNamespacedFallback(
+    useResources(queriedInstallations, RemoteMCPServer, {}, baselineOptions),
     RemoteMCPServer,
-    {},
-    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
+    baselineOptions,
   );
 
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
@@ -221,7 +346,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   }, [clustersData, errors]);
 
   useEffect(() => {
-    // A 404 means the kagent.dev API group isn't installed on that cluster —
+    // A 404 means the api.kagent.dev API group isn't installed on that cluster —
     // kagent was uninstalled since the (hour-long) inventory answered. Treat it
     // as a successful empty read (zero agents), not a "couldn't read" failure:
     // the cluster is reachable and we can list it, there just are no Agents.
@@ -298,6 +423,37 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carriersSignature]);
 
+  const harnessesSignature = useMemo(
+    () =>
+      harnesses.clustersData
+        .map(
+          ({ cluster, data }) =>
+            `${cluster}:${data
+              .map(
+                item =>
+                  `${item.metadata?.namespace ?? ''}/${
+                    item.metadata?.name ?? ''
+                  }@${item.metadata?.resourceVersion ?? ''}`,
+              )
+              .join(',')}`,
+        )
+        .sort()
+        .join('|'),
+    [harnesses.clustersData],
+  );
+
+  useEffect(() => {
+    const next: Record<string, Harness[]> = {};
+    for (const { cluster } of harnesses.clustersData) {
+      next[cluster] = [];
+    }
+    for (const harness of harnesses.resources) {
+      next[harness.cluster]?.push(harness);
+    }
+    setHarnessesByInstallation(prev => ({ ...prev, ...next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harnessesSignature]);
+
   // Prune cached entries for installations that have durably left the scoped
   // set (session-expired, degraded, removed from config, or outside a pinned
   // scope). They are no longer queried, so they'd never produce a
@@ -326,23 +482,78 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         ? prev
         : kept;
     });
+    setHarnessesByInstallation(prev => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([cluster]) => scoped.has(cluster)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length
+        ? prev
+        : kept;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
+  // Sessions start through agent-manager as the person, so an agent on an
+  // installation where that cannot happen carries the reason, and every
+  // session picker leaves it out (`isStartableAgent`). Asked only of the
+  // installations that have agents: no other row needs the answer.
+  const agentManager = useAgentManagerAvailability(
+    Object.keys(agentsByInstallation).filter(
+      cluster => agentsByInstallation[cluster].length > 0,
+    ),
+  );
+
+  // Everything an installation's agent read is made of: its Agent lists,
+  // cluster-wide and per namespace (one key prefix), and muster's and the
+  // controller's answers on which namespaces to read. Active queries refetch;
+  // a failed one with `retry: false` included.
+  const queryClient = useQueryClient();
+  const retry = useCallback(async () => {
+    const { group, plural } = Agent;
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: musterInstallationsQueryKey(),
+      }),
+      ...scopedInstallations.flatMap(installation => [
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            queryKey[0] === 'cluster' &&
+            queryKey[1] === installation &&
+            queryKey[2] === 'list' &&
+            queryKey[3] === group &&
+            queryKey[5] === plural,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterServersQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterAgentManagerInfoQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: kagentAgentNamespacesQueryKey(installation),
+        }),
+      ]),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, scopedInstallationsKey]);
+
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
-      Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
-        agents.map(agent =>
-          toAgentRow(
+      Object.entries(agentsByInstallation).flatMap(([cluster, agents]) => {
+        const sessionGate = agentManagerSessionGate(agentManager, cluster);
+        return agents.map(agent => ({
+          ...toAgentRow(
             agent,
             modelConfigsFor(cluster),
             resolveServing,
             // Undefined until the installation's servers have answered once, so
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
+            harnessesByInstallation[cluster],
           ),
-        ),
-      ),
+          ...sessionGate,
+        }));
+      }),
       home,
     );
 
@@ -353,9 +564,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // it. And if we're still showing an installation's last-known agents, don't
     // also claim we couldn't read it.
     const scopedSet = new Set(scopedInstallations);
-    const unreachableInstallations = erroredInstallations.filter(
+    const refused = new Set(refusedKey ? refusedKey.split(',') : []);
+    const unlisted = erroredInstallations.filter(
       cluster =>
         scopedSet.has(cluster) && !agentsByInstallation[cluster]?.length,
+    );
+    const unreachableInstallations = unlisted.filter(
+      cluster => !refused.has(cluster),
+    );
+    const noAccessInstallations = unlisted.filter(cluster =>
+      refused.has(cluster),
     );
 
     // The fleet-wide query reports "loading" until every installation settles,
@@ -365,6 +583,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // the "no installations configured" empty state instead of a spinner.
     const hasInstallations = allInstallations.length > 0;
     const isBusy = hasInstallations && (isProbing || isLoading || !homeSettled);
+    const isRowsLoading = isBusy && rows.length === 0;
 
     // "More rows may still arrive", from two independent sources.
     //
@@ -393,17 +612,33 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
       rows,
       scope,
       installations: scopedInstallations,
-      isLoading: isBusy && rows.length === 0,
+      isLoading: isRowsLoading,
       isLoadingMore:
         rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
       hasInstallations,
       unreachableInstallations,
+      noAccessInstallations,
+      kagentMissing: rows.length === 0 ? kagentMissing : undefined,
+      kagentSwitchedOff,
+      unknownPin,
+      inventoryFailure: selectAgentsInventoryFailure(inventory, scope, {
+        unknownPin,
+        // Nothing listed, nothing loading, and nowhere to read agents from.
+        listsNothing:
+          !isRowsLoading &&
+          rows.length === 0 &&
+          scopedInstallations.length === 0,
+      }),
+      retry,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     agentsByInstallation,
+    agentManager,
     carriersByInstallation,
+    harnessesByInstallation,
     erroredInstallations,
+    refusedKey,
     isLoading,
     isProbing,
     homeSettled,
@@ -413,6 +648,11 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     resolveServing,
     allInstallationsKey,
     scopedInstallationsKey,
+    kagentMissingKey,
+    kagentSwitchedOffKey,
+    unknownPin,
+    inventoryFailuresKey,
+    retry,
   ]);
 
   return (

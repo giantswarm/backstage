@@ -75,6 +75,80 @@ describe('getMcpTools', () => {
     expect(Object.keys(result.tools)).toEqual(['my_tool']);
   });
 
+  /**
+   * muster runs every aggregated server's tool as the caller; without the
+   * person's token it would run them under its own identity, shared by every
+   * portal user.
+   */
+  it.each([
+    [{}, 'muster'],
+    [{ muster: { serverName: 'gateway' } }, 'gateway'],
+  ])(
+    'leaves a muster entry without an authProvider out (%j)',
+    async (extra, musterName) => {
+      createMCPClientMock.mockImplementation(() =>
+        Promise.resolve(makeGoodClient()),
+      );
+      const logger = mockLogger();
+
+      const config = new ConfigReader({
+        ...extra,
+        aiChat: {
+          mcp: [
+            { name: 'good', url: 'http://good.example.com/mcp' },
+            {
+              name: musterName,
+              url: 'http://muster.example.com/mcp',
+              headers: { 'X-Static': 'shared' },
+            },
+          ],
+        },
+      });
+
+      const result = await getMcpTools(
+        config,
+        {},
+        undefined,
+        logger,
+        clientCache,
+      );
+
+      expect(result.connectedServers).toEqual(['good']);
+      expect(createMCPClientMock).toHaveBeenCalledTimes(1);
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.stringContaining('shared identity'),
+      );
+    },
+  );
+
+  it("connects muster with the person's token when it has an authProvider", async () => {
+    createMCPClientMock.mockImplementation(() =>
+      Promise.resolve(makeGoodClient()),
+    );
+
+    const config = new ConfigReader({
+      aiChat: {
+        mcp: [
+          {
+            name: 'muster',
+            url: 'http://muster.example.com/mcp',
+            authProvider: 'dex',
+          },
+        ],
+      },
+    });
+
+    const result = await getMcpTools(
+      config,
+      { dex: 'user-token' },
+      undefined,
+      mockLogger(),
+      clientCache,
+    );
+
+    expect(result.connectedServers).toEqual(['muster']);
+  });
+
   it('does not hang the chat request when an MCP server never completes the connection handshake', async () => {
     createMCPClientMock.mockImplementation(({ name }: { name: string }) => {
       if (name === 'hanging') {

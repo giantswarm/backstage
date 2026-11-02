@@ -91,7 +91,7 @@ export type ActivityRowProps = {
    * reasoning — unframed, since a box around thoughts reads as a payload.
    */
   variant?: 'card' | 'plain';
-  /** Applies on mount; the list remounts entries when the global toggle changes. */
+  /** Whether the row starts open; read on mount only. */
   defaultExpanded?: boolean;
 };
 

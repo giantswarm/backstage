@@ -1,4 +1,11 @@
-import { expect, open, test } from './fixtures';
+import {
+  deleteCurrentSession,
+  expect,
+  open,
+  openReadyAgent,
+  startSessionButton,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 import type { Page } from '@playwright/test';
 
@@ -9,8 +16,7 @@ import type { Page } from '@playwright/test';
  * request per row, so the list could say nothing about what a session was
  * doing. On kagent API v2 the backend reads each session's task list **status
  * only** and answers one summary for the caller (`GET /kagent/session-states`),
- * which the switcher rail already groups by; this column renders the same
- * summary as a sortable cell.
+ * which this column renders.
  *
  * **The first test is entirely real** — a session started through the portal on
  * the lab's kagent, and the state the backend derives for it. **The second
@@ -35,64 +41,35 @@ async function snapshot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
 }
 
-/** Deletes the session on screen through its actions menu — the portal's own path. */
-async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
-  await page.getByRole('menuitem', { name: /Delete session/ }).click();
-  const dialog = page.getByRole('dialog', { name: /Delete session/ });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Delete session' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/sessions$/, {
-    timeout: 60_000,
-  });
-}
+/**
+ * The shell's four words for a session that has run (`SESSION_STATE_LABELS`,
+ * which `describeSessionState` maps every kagent task state onto).
+ */
+const STATE_LABELS = ['Waiting for you', 'Working', 'Idle', 'Failed'];
 
-/** The labels `describeSessionState` can render for a session that has run. */
-const STATE_LABELS = [
-  'Submitted',
-  'Working',
-  'Waiting for input',
-  'Authentication required',
-  'Completed',
-  'Failed',
-  'Canceled',
-  'Rejected',
-];
+/** The shell's lists show search and filters only past this many rows (ui-react's `SEARCH_MIN`). */
+const SEARCH_MIN = 8;
 
 test('a session started in the portal reports its state on the list', async ({
   admin,
+  labAgent,
 }) => {
-  test.setTimeout(6 * 60_000);
+  test.setTimeout(10 * 60_000);
 
   // --- An agent to start from --------------------------------------------
-  await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts creates one; run it first, or create a fixture agent',
-  );
-  await agents.first().click();
-  await expect(
-    admin.getByRole('button', { name: 'Start a session' }),
-  ).toBeVisible();
+  await openReadyAgent(admin, labAgent);
 
   let sessionPath: string | undefined;
   let failure: unknown;
   try {
     // --- A session of its own, so the row asserted on is this test's ------
-    await admin.getByRole('button', { name: 'Start a session' }).click();
+    await startSessionButton(admin).click();
     const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
     await expect(promptBox).toBeVisible();
     await promptBox.fill(prompt);
     await admin.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(admin).toHaveURL(
-      new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
+      new RegExp(`/sessions/${lab.installation}/[^/]+$`),
       { timeout: 60_000 },
     );
     sessionPath = new URL(admin.url()).pathname;
@@ -110,11 +87,12 @@ test('a session started in the portal reports its state on the list', async ({
     ).toBeVisible({ timeout: 3 * 60_000 });
 
     // --- The list says what it is doing -----------------------------------
-    await open(admin, '/agent-platform/sessions');
-    await expect(
-      admin.getByRole('columnheader', { name: /State/ }),
-      'the list has a State column',
-    ).toBeVisible();
+    await open(admin, '/sessions');
+    // One table per day the sessions started on, each with a State column.
+    const stateHeader = admin
+      .getByRole('grid', { name: 'Today' })
+      .getByRole('columnheader', { name: /State/ });
+    await expect(stateHeader, 'the list has a State column').toBeVisible();
 
     // Found by the id in the row's link, never by the title: kagent derives a
     // session's title from the conversation rather than from the prompt sent —
@@ -133,12 +111,27 @@ test('a session started in the portal reports its state on the list', async ({
     ).toBeVisible({ timeout: 90_000 });
     await snapshot(admin, 'state-column-live');
 
-    // --- Sorting by it ----------------------------------------------------
-    await admin.getByRole('columnheader', { name: /State/ }).click();
-    await expect(
-      admin.getByRole('columnheader', { name: /State/ }),
-      'the column sorts, so what needs a person can come to the top',
-    ).toHaveAttribute('aria-sort', /ascending|descending/);
+    // --- Narrowing by it -------------------------------------------------
+    // The shell lists sessions per day, newest first, and brings what needs a
+    // person forward with the State dropdown (the one filter style), not a
+    // sortable column. Like every list, it offers search and filters only
+    // past `SEARCH_MIN` (8) rows: a short list is read, not filtered.
+    const sessionRows = await admin
+      .getByRole('row')
+      .filter({ has: admin.locator('a[href*="/sessions/"]') })
+      .count();
+    const stateFilter = admin.getByRole('button', { name: /Filter by state/ });
+    if (sessionRows > SEARCH_MIN) {
+      await expect(
+        stateFilter,
+        'a list past SEARCH_MIN rows offers the State filter',
+      ).toBeVisible();
+    } else {
+      await expect(
+        stateFilter,
+        'a list of SEARCH_MIN rows or fewer offers no filters',
+      ).toHaveCount(0);
+    }
   } catch (error) {
     failure = error;
   }
@@ -170,12 +163,11 @@ test('the list distinguishes the three ways a state can be missing', async ({
   // Four sessions, one per outcome the column renders differently. Both reads
   // behind the list are answered here: a failed task read and a session the
   // summary never evaluated are not states the lab can be put into.
-  const instance = (id: string, name: string) => ({
+  const session = (id: string, name: string) => ({
     id,
-    creator: 'admin@lab.local',
-    harness: { namespace: 'kagent', name: 'kagent' },
-    agentTemplate: { namespace: 'kagent', name: 'e2e-state-column' },
-    state: 'AGENT_INSTANCE_STATE_READY',
+    creator: lab.users.admin.email,
+    agent: { namespace: 'kagent', name: 'e2e-state-column' },
+    state: 'RUNTIME_STATE_READY',
     createdAt: '2026-09-18T09:00:00Z',
     updatedAt: '2026-09-18T09:05:00Z',
     name,
@@ -191,11 +183,11 @@ test('the list distinguishes the three ways a state can be missing', async ({
       }
       await route.fulfill({
         json: {
-          agentInstances: [
-            instance('e2e-waiting', 'Waiting on a human'),
-            instance('e2e-idle', 'Never run'),
-            instance('e2e-unreadable', 'Could not be read'),
-            instance('e2e-unevaluated', 'Never evaluated'),
+          sessions: [
+            session('e2e-waiting', 'Waiting on a human'),
+            session('e2e-idle', 'Never run'),
+            session('e2e-unreadable', 'Could not be read'),
+            session('e2e-unevaluated', 'Never evaluated'),
           ],
         },
       });
@@ -222,12 +214,12 @@ test('the list distinguishes the three ways a state can be missing', async ({
     },
   );
 
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
 
   await expect(
     admin.getByRole('row').filter({ hasText: 'Waiting on a human' }),
     'a state kagent reported is named',
-  ).toContainText('Waiting for input');
+  ).toContainText('Waiting for you');
 
   await expect(
     admin.getByRole('row').filter({ hasText: 'Never run' }),
@@ -242,7 +234,7 @@ test('the list distinguishes the three ways a state can be missing', async ({
     'a read that failed is unknown, which is not the same as terminal',
   ).toContainText('Unknown');
   await expect(
-    unknown.getByTitle(/not the same as finished/),
+    unknown.getByTitle(/not the same as idle/),
     'and says so on hover',
   ).toBeVisible();
 

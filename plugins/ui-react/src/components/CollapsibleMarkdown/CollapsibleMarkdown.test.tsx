@@ -1,10 +1,14 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { renderInTestApp } from '@backstage/test-utils';
 import { CollapsibleMarkdown } from './CollapsibleMarkdown';
+import {
+  mockCollapsibleLayout,
+  type MockedCollapsibleLayout,
+} from '../../testUtils';
 
 const TOGGLE_LABELS = { expand: 'Show all', collapse: 'Show less' };
 
-// jsdom lays nothing out and has no ResizeObserver. The stub reports this
-// height for every observed element, as the observer's first notification.
+// jsdom lays nothing out: the content measures this height.
 let contentHeight = 0;
 
 function stubContentHeight(height: number) {
@@ -16,29 +20,17 @@ function stubBottom(element: Element, bottom: number) {
 }
 
 describe('CollapsibleMarkdown', () => {
-  const RealResizeObserver = globalThis.ResizeObserver;
+  const RealScrollIntoView = Element.prototype.scrollIntoView;
+  let layout: MockedCollapsibleLayout;
 
-  beforeAll(() => {
-    globalThis.ResizeObserver = class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback(
-          [
-            {
-              target,
-              contentRect: { width: 600, height: contentHeight },
-            } as unknown as ResizeObserverEntry,
-          ],
-          this as unknown as ResizeObserver,
-        );
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
+  beforeEach(() => {
+    layout = mockCollapsibleLayout({ contentHeight: () => contentHeight });
   });
 
+  afterEach(() => layout.restore());
+
   afterAll(() => {
-    globalThis.ResizeObserver = RealResizeObserver;
+    Element.prototype.scrollIntoView = RealScrollIntoView;
   });
 
   it('renders the markdown', () => {
@@ -164,5 +156,48 @@ describe('CollapsibleMarkdown', () => {
     fireEvent.focusIn(link);
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('expands when a #heading link points past the cut', async () => {
+    stubContentHeight(1000);
+    const scrolledTo: Element[] = [];
+    Element.prototype.scrollIntoView = function scrollIntoView(this: Element) {
+      scrolledTo.push(this);
+    };
+
+    await renderInTestApp(
+      <CollapsibleMarkdown
+        content={'[Upgrading](#upgrading)\n\n## Upgrading\n\nRead first.'}
+        toggleLabels={TOGGLE_LABELS}
+      />,
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Show all' });
+    stubBottom(
+      document.getElementById(toggle.getAttribute('aria-controls')!)!,
+      250,
+    );
+    const heading = screen.getByRole('heading', { name: 'Upgrading' });
+    stubBottom(heading, 400);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Upgrading' }));
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await waitFor(() => expect(scrolledTo).toEqual([heading]));
+
+    // The heading keeps focus while the card collapses again, as in Safari,
+    // where clicking a button does not move focus.
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(heading).toHaveFocus();
+    fireEvent.click(screen.getByRole('link', { name: 'Upgrading' }));
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await waitFor(() => expect(scrolledTo).toEqual([heading, heading]));
   });
 });

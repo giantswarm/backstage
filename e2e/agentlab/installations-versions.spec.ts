@@ -12,20 +12,30 @@ import { lab } from './lab';
  * cells are the lab's. The kind cluster's API server answers `/version`; it
  * runs no Giant Swarm management cluster, so its release is "—".
  *
+ * With AGENTLAB_BROWSER_READ_INSTALLATION naming a second installation of
+ * the lab's config that the backend cannot read as the person (a
+ * `backendUrl` override), its row is read from the browser.
+ *
  * The standalone agent-platform chart turns the Installations page off; the
  * suite is skipped with the reason until AGENTLAB_INSTALLATIONS_PAGE=1 says
  * the lab's Backstage names `page:gs/installations` in `app.extensions`.
  */
-const INSTALLATION_ENTITY = {
+const BROWSER_READ_INSTALLATION =
+  process.env.AGENTLAB_BROWSER_READ_INSTALLATION;
+
+const installationEntity = (name: string) => ({
   apiVersion: 'backstage.io/v1alpha1',
   kind: 'Resource',
   metadata: {
-    name: lab.installation,
+    name,
     namespace: 'default',
     labels: { 'giantswarm.io/provider': 'kind' },
   },
   spec: { type: 'installation', owner: 'group:default/platform-admins' },
-};
+});
+const INSTALLATIONS = [lab.installation, BROWSER_READ_INSTALLATION].filter(
+  (name): name is string => Boolean(name),
+);
 
 const ENTITIES = '**/api/catalog/entities?*';
 const TYPE_FACET = '**/api/catalog/entity-facets?facet=spec.type*';
@@ -56,8 +66,10 @@ test.describe('installations: management cluster versions', () => {
       }
       const response = await route.fetch();
       const entities: { metadata: { name: string } }[] = await response.json();
-      if (!entities.some(e => e.metadata.name === lab.installation)) {
-        entities.push(INSTALLATION_ENTITY);
+      for (const name of INSTALLATIONS) {
+        if (!entities.some(e => e.metadata.name === name)) {
+          entities.push(installationEntity(name));
+        }
       }
       await route.fulfill({ response, json: entities });
     });
@@ -102,6 +114,44 @@ test.describe('installations: management cluster versions', () => {
     // Both columns of every row come from one request.
     admin.off('request', onRequest);
     expect(versionRequests).toHaveLength(1);
+  });
+
+  test('never writes the person’s versions to the browser’s storage', async ({
+    admin,
+  }) => {
+    await open(admin, '/installations');
+    await expect(
+      admin.getByTestId(`version-kubernetes-${lab.installation}`),
+    ).toHaveText(/^1\.\d+\.\d+/, { timeout: 120_000 });
+    // The persister writes on a throttle; give it time to.
+    await admin.waitForTimeout(3_000);
+
+    const stored = await admin.evaluate(() =>
+      Object.keys(localStorage).map(key => localStorage.getItem(key) ?? ''),
+    );
+    expect(
+      stored.filter(value => value.includes('management-cluster-versions')),
+    ).toEqual([]);
+  });
+
+  test('reads in the browser an installation the backend leaves to it', async ({
+    admin,
+  }) => {
+    test.skip(
+      !BROWSER_READ_INSTALLATION,
+      'needs AGENTLAB_BROWSER_READ_INSTALLATION: an installation of the lab config with a backendUrl override',
+    );
+    const answer = admin.waitForResponse(response =>
+      response.url().includes('/api/gs/installations/versions'),
+    );
+    await open(admin, '/installations');
+    const body = await (await answer).json();
+    expect(body.readInBrowser).toContain(BROWSER_READ_INSTALLATION);
+    expect(body.installations[lab.installation]).toBeDefined();
+
+    await expect(
+      admin.getByTestId(`version-kubernetes-${BROWSER_READ_INSTALLATION}`),
+    ).toHaveText(/^1\.\d+\.\d+/, { timeout: 120_000 });
   });
 
   test('finds the installation by its Kubernetes version in the search', async ({

@@ -19,6 +19,15 @@ import {
   subscribeSignedInConfig,
 } from '@giantswarm/backstage-plugin-gs-react';
 
+/**
+ * The currency an installation shows costs in: an ISO 4217 code and, for any
+ * code but USD, the amount of it one USD buys (the gateway prices in USD).
+ */
+export type InstallationCurrency = {
+  code: string;
+  usdRate?: number;
+};
+
 export type InstallationConfig = {
   name: string;
   pipeline?: string;
@@ -35,6 +44,8 @@ export type InstallationConfig = {
    * installations set false to opt out of metrics-backed features.
    */
   mimirEnabled?: boolean;
+  /** Defaults to USD; see {@link InstallationCurrency}. */
+  currency?: InstallationCurrency;
   apiVersionOverrides?: { [pluralKind: string]: string };
 };
 

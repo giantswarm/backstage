@@ -1,7 +1,9 @@
 import {
   encodeKagentAgentId,
   KagentSession,
+  type KagentSessionWorkspace,
   readReportedRuntimeLoss,
+  SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
@@ -75,6 +77,30 @@ export type SessionRow = {
    * which a list does not have.
    */
   runtimeLost?: boolean;
+  /**
+   * The Agent revision the session runs on, kept for its whole life. A page
+   * that knows the Agent's current revision tells a session started before
+   * the last change (to its Harness, prompt or skills) by it.
+   */
+  preparedRevision?: string;
+  /**
+   * The session runs on an earlier revision of its agent than the current
+   * one. Set only by a page that knows that agent's current revision (see
+   * {@link markEarlierRevisions}); a fleet-wide list never sets it.
+   */
+  earlierRevision?: boolean;
+  /**
+   * The workspace the session works in, by its volume; its name is
+   * workspace-manager's to tell (`useWorkspaceNames`). Absent for a session
+   * started without one.
+   */
+  workspace?: KagentSessionWorkspace;
+  /**
+   * The workspace's name, or "workspace" where the person cannot see it by
+   * name; joined onto the row by a list that resolves it (`useWorkspaceNames`),
+   * absent while it is read and for a session without a workspace.
+   */
+  workspaceName?: string;
 };
 
 /**
@@ -83,8 +109,8 @@ export type SessionRow = {
  *
  * We match on this *encode* side rather than decoding an `agent_id`, because
  * encoding is lossless and decoding is not. The one encoder is shared with
- * `normalizeAgentInstance`, which derives a session's `agentId` from its
- * template the same way, so the two sides of the join cannot drift.
+ * `normalizeSessionRecord`, which derives a session's `agentId` from its
+ * Agent the same way, so the two sides of the join cannot drift.
  */
 export function toAgentIdentifier(namespace: string, name: string): string {
   return encodeKagentAgentId(namespace, name);
@@ -159,7 +185,29 @@ export function toSessionRow(
     agentModel: match?.modelName,
     createdAt: session.createdAt,
     runtimeLost: readReportedRuntimeLoss(session) !== undefined,
+    preparedRevision: session.preparedRevision,
+    ...(session.workspace && { workspace: session.workspace }),
   };
+}
+
+/**
+ * Mark the rows of one agent's sessions prepared on a revision other than
+ * `currentRevision`, the Agent's latest successful one. Without a current
+ * revision, or for a row that does not say its own, nothing is marked: an
+ * unknown is not an earlier one.
+ */
+export function markEarlierRevisions(
+  rows: SessionRow[],
+  currentRevision: string | undefined,
+): SessionRow[] {
+  if (!currentRevision) {
+    return rows;
+  }
+  return rows.map(row =>
+    row.preparedRevision && row.preparedRevision !== currentRevision
+      ? { ...row, earlierRevision: true }
+      : row,
+  );
 }
 
 /** Sort key for a timestamp, placing unknown values last in either direction. */
@@ -169,6 +217,79 @@ function timestampValue(value: string | undefined): number | undefined {
   }
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * When a session was last active, epoch ms: the later of its start and the
+ * moment its state last moved — a message sent, a reply finished, a question
+ * asked. kagent does not move a session's `updatedAt` on a turn
+ * (kagent-dev/kagent#2397), so the derived state's `changedAt` is the only
+ * record of activity after the start. Undefined when neither is known.
+ */
+export function lastActiveAt(
+  row: SessionRow,
+  state?: SessionStateEntry,
+): number | undefined {
+  const times = [timestampValue(row.createdAt), state?.changedAt].filter(
+    (time): time is number => time !== undefined && !Number.isNaN(time),
+  );
+  return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+/**
+ * The start of the reader's local calendar day `daysBack` days before `now`,
+ * epoch ms. The session lists' day groups (the rail's Today / Previous 7 days,
+ * the Sessions page's Today / Yesterday) and the palette's "Today" all cut on
+ * it, so a session never sits under Today in one place and not another.
+ */
+export function localDayStart(now: Date, daysBack: number = 0): number {
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - daysBack,
+  ).getTime();
+}
+
+/**
+ * The first of `buckets` whose window holds `activeAt` (epoch ms), each
+ * bucket reaching back to the local day start `daysBack` days ago; `fallback`
+ * past the last one, and for an unknown time. A time later than `now` (clock
+ * skew) lands in the first bucket.
+ */
+export function dayBucket<G extends string>(
+  activeAt: number | undefined,
+  now: Date,
+  buckets: ReadonlyArray<{ id: G; daysBack: number }>,
+  fallback: G,
+): G {
+  if (activeAt === undefined || Number.isNaN(activeAt)) {
+    return fallback;
+  }
+  const bucket = buckets.find(
+    ({ daysBack }) => activeAt >= localDayStart(now, daysBack),
+  );
+  return bucket?.id ?? fallback;
+}
+
+/**
+ * The one recency order of the session lists (T100 M1): most recently active
+ * first (see {@link lastActiveAt}), a session with no known time last, the
+ * title breaking ties. The rail and the Sessions page both sort with this, so
+ * the same two sessions never read in opposite orders.
+ */
+export function byLastActive<T extends Pick<SessionRow, 'title'>>(
+  activeAtOf: (row: T) => number | undefined,
+): (a: T, b: T) => number {
+  return (a, b) => {
+    const aTime = activeAtOf(a);
+    const bTime = activeAtOf(b);
+    if (aTime !== bTime) {
+      if (aTime === undefined) return 1;
+      if (bTime === undefined) return -1;
+      return bTime - aTime;
+    }
+    return a.title.localeCompare(b.title);
+  };
 }
 
 /**
@@ -200,39 +321,7 @@ export function sortSessionRows(
   });
 }
 
-/**
- * Sort rows for the table, by column id and direction.
- *
- * Timestamp columns compare parsed times so string ordering can't mislead, and
- * rows with an unknown timestamp always sort last — in *both* directions, since
- * "unknown" is not "oldest".
- */
-export function sortSessionsBy<T extends SessionRow>(
-  rows: T[],
-  sort: { column: unknown; direction: 'ascending' | 'descending' },
-): T[] {
-  const column = String(sort.column);
-  const factor = sort.direction === 'ascending' ? 1 : -1;
-
-  return [...rows].sort((a, b) => {
-    if (column === 'createdAt') {
-      const aTime = timestampValue(a[column]);
-      const bTime = timestampValue(b[column]);
-      if (aTime === bTime) {
-        return a.title.localeCompare(b.title);
-      }
-      if (aTime === undefined) return 1;
-      if (bTime === undefined) return -1;
-      return (aTime - bTime) * factor;
-    }
-
-    const aValue = String(a[column as keyof T] ?? '');
-    const bValue = String(b[column as keyof T] ?? '');
-    return aValue.localeCompare(bValue) * factor;
-  });
-}
-
-/** Free-text search over the title and the agent name. */
+/** Free-text search over the title, the agent, the environment and the workspace. */
 export function sessionSearchFn<T extends SessionRow>(
   rows: T[],
   search: string,
@@ -245,6 +334,7 @@ export function sessionSearchFn<T extends SessionRow>(
     row =>
       row.title.toLowerCase().includes(needle) ||
       row.agentName.toLowerCase().includes(needle) ||
-      row.installation.toLowerCase().includes(needle),
+      row.installation.toLowerCase().includes(needle) ||
+      Boolean(row.workspaceName?.toLowerCase().includes(needle)),
   );
 }

@@ -1,6 +1,10 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { screen, waitFor, within } from '@testing-library/react';
+import {
+  useOwnPageHeader,
+  usePageHeaderActionsSlot,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { GSPageLayout } from './GSPageLayout';
 
 // Routed content that registers a header action, the way a tab's index page
@@ -92,6 +96,36 @@ describe('GSPageLayout', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'New agent' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the registered actions to content that claims the header', async () => {
+    // Routed content that renders the slot itself, the way `WizardFrame`'s
+    // sticky footer does: the action must appear there, once, and not in the
+    // PluginHeader too. The registering step is a sibling of the footer, like
+    // a wizard step beside the frame's footer.
+    function FrameFooter() {
+      useOwnPageHeader();
+      const actions = usePageHeaderActionsSlot();
+      return <footer aria-label="Wizard footer">{actions}</footer>;
+    }
+    await renderInTestApp(
+      <GSPageLayout title="Agent Platform" tabs={tabs}>
+        <TabContent />
+        <FrameFooter />
+      </GSPageLayout>,
+      {
+        mountPath: '/agent-platform',
+        initialRouteEntries: ['/agent-platform/list'],
+      },
+    );
+
+    const buttons = screen.getAllByRole('button', { name: 'New agent' });
+    expect(buttons).toHaveLength(1);
+    expect(
+      within(
+        screen.getByRole('contentinfo', { name: 'Wizard footer' }),
+      ).getByRole('button', { name: 'New agent' }),
     ).toBeInTheDocument();
   });
 

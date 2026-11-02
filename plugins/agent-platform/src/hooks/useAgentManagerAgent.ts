@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   AgentManagerError,
@@ -41,32 +43,68 @@ export type AgentManagerAgentState = {
  * `get_agent`: the agent as agent-manager reads it — the values the edit form
  * is pre-filled from, the skills with their pins, the declared toolset and how
  * the agent is managed. Read as the signed-in person; never persisted.
+ *
+ * With `freshOnMount`, a cached reading from before this reader mounted is not
+ * handed out: the agent is read again and reported loading until that read
+ * lands. For a form seeded once from the agent — the edit wizard — where a
+ * stale baseline is wrong twice over: the form shows the old values, and a
+ * save diffs against them (live round 2, R2: opening the wizard right after a
+ * save prefilled the pre-save description). Once a fresh reading has been
+ * handed out, a later failed re-read does not take it back.
  */
 export function useAgentManagerAgent(
   installation: string | undefined,
   namespace: string,
   name: string,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; freshOnMount?: boolean } = {},
 ): AgentManagerAgentState {
   const client = useAgentManagerClient(installation);
+  const freshOnMount = options.freshOnMount ?? false;
   const enabled =
     (options.enabled ?? true) &&
     Boolean(client) &&
     Boolean(namespace) &&
     Boolean(name);
+  const queryKey = musterAgentManagerAgentQueryKey(
+    installation ?? '',
+    namespace,
+    name,
+  );
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: musterAgentManagerAgentQueryKey(
-      installation ?? '',
-      namespace,
-      name,
-    ),
-    enabled,
-    queryFn: () => client!.getAgent(namespace, name),
-    // A refused read stays refused; the mutations invalidate this on success.
-    retry: false,
-    staleTime: 15_000,
-  });
+  const { data, error, isPending, fetchStatus, isFetchedAfterMount, status } =
+    useQuery({
+      queryKey,
+      enabled,
+      queryFn: () => client!.getAgent(namespace, name),
+      // A refused read stays refused; the mutations invalidate this on success.
+      retry: false,
+      // A fresh reader treats whatever is cached as stale, so it is read again
+      // on mount — or when the reader is enabled later, which a 15s staleTime
+      // would skip. Not again on focus: the reading only matters at seed time.
+      ...(freshOnMount
+        ? { staleTime: 0, refetchOnWindowFocus: false }
+        : { staleTime: 15_000 }),
+    });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
+
+  // Latched per agent, so a background re-read that fails later does not
+  // withdraw the reading a form was already seeded from.
+  const freshFor = useRef<string | undefined>(undefined);
+  const keyId = queryKey.join('/');
+  if (freshOnMount && isFetchedAfterMount && status === 'success') {
+    freshFor.current = keyId;
+  }
+  if (freshOnMount) {
+    const isFresh = freshFor.current === keyId;
+    return {
+      agent: isFresh ? data : undefined,
+      isLoading: enabled && !isFresh && (isLoading || !isFetchedAfterMount),
+      failure:
+        !isFresh && isFetchedAfterMount && error
+          ? classifyReadFailure(error)
+          : undefined,
+    };
+  }
 
   return {
     agent: data,

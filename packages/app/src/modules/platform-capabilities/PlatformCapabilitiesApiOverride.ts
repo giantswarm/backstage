@@ -19,7 +19,7 @@ export const PlatformCapabilitiesApiOverride = ApiBlueprint.make({
       deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
       factory: ({ gsAuthProvidersApi }) =>
         new PlatformCapabilitiesMainAuth(
-          getOptionalMainAuthApi(gsAuthProvidersApi),
+          getOptionalMainAuthApi(gsAuthProvidersApi, 'platform-capabilities'),
         ),
     }),
 });

@@ -1,0 +1,1 @@
+export { EditModelPage } from './EditModelPage';

@@ -97,3 +97,27 @@ export function issueRefOf(item: {
   }
   return { owner, repo, number: item.number };
 }
+
+/** One read of the board: the items fetched for one status column. */
+export interface ColumnRead {
+  column: string;
+  items: RoadmapItem[] | undefined;
+}
+
+/**
+ * The board's items from its per-column reads, each item once. A card moved
+ * to another column sits in two reads until both have refetched: the copy
+ * whose status is the column it was read for wins.
+ */
+export function mergeColumnReads(reads: ColumnRead[]): RoadmapItem[] {
+  const byId = new Map<string, RoadmapItem>();
+  for (const { column, items } of reads) {
+    for (const item of items ?? []) {
+      const status = item.fields[STATUS_FIELD] ?? NO_STATUS;
+      if (!byId.has(item.id) || status === column) {
+        byId.set(item.id, item);
+      }
+    }
+  }
+  return [...byId.values()];
+}

@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  FieldErrorText,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   ModelCacheRow,
@@ -55,7 +59,7 @@ function RefusalDetails({
         <Text variant="body-small">
           {refused.models.length === 0
             ? 'A pod of the serving namespace mounts the claim: it is deleted once the pod is gone.'
-            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, on the Serving page:`}
+            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, under Running models:`}
         </Text>
         {refused.models.map(model =>
           servingPath ? (
@@ -86,7 +90,9 @@ function RefusalDetails({
  * `remove_model_cache` for the one claim as the person; the structured
  * refusal names the models whose predictors mount it, each a link to the
  * Serving page, with **Check again**. A Remove cut short (`partial`) stays
- * open with **Continue**, the same call again.
+ * open with **Continue**, the same call again. Remove and Check again stay
+ * pressable: pressed before the loss is acknowledged, the checkbox says so
+ * and takes the focus (`useFieldValidation`), like the app's other forms.
  */
 export function RemoveModelCacheDialog({
   row,
@@ -99,6 +105,9 @@ export function RemoveModelCacheDialog({
   const [acknowledged, setAcknowledged] = useState(false);
   const [partial, setPartial] = useState<NodePoolWriteResult>();
   const servingRoute = useRouteRef(servingRouteRef);
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
+  const acknowledgeErrorId = `${useId()}-error`;
 
   useEffect(() => {
     if (!isOpen) {
@@ -131,8 +140,21 @@ export function RemoveModelCacheDialog({
     claim: claim.name,
   };
 
+  // A box left unticked says nothing until Remove: the one thing to check is
+  // whether it is ticked, and leaving it unticked is not a mistake yet.
+  const acknowledgeError = validation.errorFor(
+    'acknowledge',
+    acknowledged
+      ? undefined
+      : 'Acknowledge that the cached weights go with the cache.',
+  );
+
   /** Remove, Check again and Continue after a partial answer: the same call. */
   const remove = async () => {
+    if (!acknowledged) {
+      validation.reveal();
+      return;
+    }
     try {
       const result = await write.removeCache(input, { mode: 'apply' });
       if (result.partial) {
@@ -156,10 +178,10 @@ export function RemoveModelCacheDialog({
       confirmLabel="Remove cache"
       busyLabel="Removing…"
       isBusy={isBusy}
-      isConfirmDisabled={!acknowledged || Boolean(partial)}
+      isConfirmDisabled={Boolean(partial)}
       onConfirm={remove}
     >
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="3" ref={scope}>
         <Text variant="body-medium" data-testid="remove-cache-what">
           Deletes claim {claim.namespace}/{claim.name}
           {size
@@ -175,8 +197,8 @@ export function RemoveModelCacheDialog({
         </Text>
         <Text variant="body-small" color="secondary">
           {claim.mounted
-            ? "The cluster's serving slice mounts this claim: it switches to serve from the node's disk — every pool of the cluster — and every model served on the cluster downloads and compiles again at its next start. A later pool with the cache on creates the claim anew."
-            : 'Nothing mounts this claim: the serving slice is not changed. A later pool with the cache on creates the claim anew.'}
+            ? "The cluster's serving slice mounts this claim: every pool switches to serving from the node's disk, and every model downloads and compiles again at its next start. A later pool with the cache on creates a new claim."
+            : 'Nothing mounts this claim. A later pool with the cache on creates a new claim.'}
         </Text>
         <Flex direction="column" gap="1" data-testid="served-models">
           <Text variant="body-small" color="secondary">
@@ -215,7 +237,7 @@ export function RemoveModelCacheDialog({
                     variant="secondary"
                     size="small"
                     onPress={remove}
-                    isDisabled={isBusy || !acknowledged}
+                    isDisabled={isBusy}
                   >
                     {isBusy ? 'Checking…' : 'Check again'}
                   </Button>
@@ -240,9 +262,21 @@ export function RemoveModelCacheDialog({
             server={CLUSTER_MANAGER_SERVER}
           />
         )}
-        <Checkbox isSelected={acknowledged} onChange={setAcknowledged}>
-          {ACKNOWLEDGE_LOSS}
-        </Checkbox>
+        <Flex direction="column" gap="1">
+          <Checkbox
+            isSelected={acknowledged}
+            onChange={setAcknowledged}
+            isInvalid={Boolean(acknowledgeError)}
+            aria-describedby={acknowledgeError ? acknowledgeErrorId : undefined}
+          >
+            {ACKNOWLEDGE_LOSS}
+          </Checkbox>
+          {acknowledgeError && (
+            <FieldErrorText id={acknowledgeErrorId}>
+              {acknowledgeError}
+            </FieldErrorText>
+          )}
+        </Flex>
       </Flex>
     </ConfirmDialog>
   );

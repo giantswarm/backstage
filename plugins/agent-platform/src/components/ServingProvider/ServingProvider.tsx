@@ -231,6 +231,23 @@ export function ServingProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Whether a reachable installation has a serving layer this portal can see, or
+ * one that could not be asked. A model-manager that answers counts, backends or
+ * not: it ships with none, and the Serving view is where one is registered.
+ */
+export function hasServingLayer(
+  serving: Pick<
+    ServingContextValue,
+    'installations' | 'unreachableInstallations'
+  >,
+): boolean {
+  return (
+    serving.installations.length > 0 ||
+    serving.unreachableInstallations.length > 0
+  );
+}
+
 export function useServing(): ServingContextValue {
   const ctx = useContext(ServingContext);
   if (!ctx) {

@@ -21,7 +21,11 @@ import {
   TargetClusterKindFilter,
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
-import { collectDeploymentData, DeploymentData } from './utils';
+import {
+  collectDeploymentData,
+  DeploymentData,
+  findShownClusters,
+} from './utils';
 import { mergeWorkloads, workloadToDeploymentData } from './mimirUtils';
 import {
   App,
@@ -113,8 +117,37 @@ export const DeploymentsDataProvider = ({
     retry: retryOCIRepositories,
   } = useResources(activeInstallations, OCIRepository);
 
+  // The Mimir workload queries are scoped to the clusters this page shows:
+  // the one cluster of a cluster's own deployments tab, otherwise each
+  // installation's management cluster and the target clusters of its Apps and
+  // HelmReleases, known once those lists have loaded (`undefined` until then).
+  const clustersByInstallation = useMemo(() => {
+    if (clusterName) {
+      return Object.fromEntries(
+        activeInstallations.map(installationName => [
+          installationName,
+          [clusterName],
+        ]),
+      );
+    }
+    if (isLoadingApps || isLoadingHelmReleases) {
+      return undefined;
+    }
+    return findShownClusters(activeInstallations, [
+      ...appResources,
+      ...helmReleaseResources,
+    ]);
+  }, [
+    activeInstallations,
+    clusterName,
+    isLoadingApps,
+    isLoadingHelmReleases,
+    appResources,
+    helmReleaseResources,
+  ]);
+
   const { workloads: mimirWorkloads, isLoading: isLoadingMimirWorkloads } =
-    useMimirWorkloads({ installations: activeInstallations });
+    useMimirWorkloads({ clustersByInstallation });
 
   const isLoading =
     isLoadingApps ||

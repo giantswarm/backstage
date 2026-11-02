@@ -69,12 +69,17 @@ function configure(names: string[]) {
   );
 }
 
-function renderScope(url = '/agent-platform/agents') {
+function renderScope(
+  url: string | { pathname: string; state: unknown } = '/agent-platform/agents',
+) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[url]}>{children}</MemoryRouter>
   );
   return renderHook(
-    () => ({ scope: useInstallationScope(), search: useLocation().search }),
+    () => {
+      const { search, state } = useLocation();
+      return { scope: useInstallationScope(), search, state };
+    },
     { wrapper },
   );
 }
@@ -135,6 +140,19 @@ describe('useInstallationScope', () => {
     expect(
       window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
     ).toBeNull();
+  });
+
+  it('keeps the router state when setScope writes the URL', () => {
+    configure(['golem', 'wombat', 'snail']);
+    const { result } = renderScope({
+      pathname: '/agent-platform/sessions/wombat/s1',
+      state: { newSession: 'hello' },
+    });
+
+    act(() => result.current.scope.setScope('wombat'));
+
+    expect(result.current.search).toBe('?installation=wombat');
+    expect(result.current.state).toEqual({ newSession: 'hello' });
   });
 
   it('lets the URL win while it carries the parameter', () => {
@@ -208,6 +226,97 @@ describe('useInstallationScope', () => {
     expect(result.current.scope.installations.map(e => e.installation)).toEqual(
       ['golem'],
     );
+  });
+
+  describe('and a pin naming an installation the portal does not know', () => {
+    it('falls back to the one installation and overwrites the stale pin on a single-installation portal', () => {
+      // The lab regression: localStorage held `lab`, the portal knows only
+      // `agent-platform`, and with no selector there was nothing to click.
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'lab');
+      configure(['golem']);
+      mockInventory = { entries: [golem], home: 'golem', isLoading: false };
+
+      const { result } = renderScope();
+
+      // On the very first render, not a commit later.
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.scope.isSingleInstallation).toBe(true);
+      expect(
+        result.current.scope.installations.map(e => e.installation),
+      ).toEqual(['golem']);
+      expect(getInstallationScopeSnapshot()).toEqual({
+        scope: ALL_INSTALLATIONS,
+        restored: false,
+      });
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
+      expect(result.current.search).toBe('');
+    });
+
+    it('falls back to all on a portal with a selector too', () => {
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'lab');
+      configure(['golem', 'wombat', 'snail']);
+
+      const { result } = renderScope();
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
+    });
+
+    it('waits for the installations config before judging a stored pin', () => {
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'lab');
+      mockInventory = { entries: [], home: undefined, isLoading: true };
+
+      renderScope();
+
+      expect(window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY)).toBe(
+        'lab',
+      );
+      expect(getInstallationScopeSnapshot()).toEqual({
+        scope: 'lab',
+        restored: true,
+      });
+    });
+
+    it('drops a deep link to an unknown installation on a single-installation portal', () => {
+      // No selector to get out with, so the URL cannot be allowed to strand
+      // the section either.
+      configure(['golem']);
+      mockInventory = { entries: [golem], home: 'golem', isLoading: false };
+
+      const { result } = renderScope('/agent-platform/agents?installation=lab');
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('');
+    });
+
+    it('drops an unknown installation pinned in this session on a single-installation portal', () => {
+      configure(['golem']);
+      mockInventory = { entries: [golem], home: 'golem', isLoading: false };
+      const { result } = renderScope();
+
+      act(() => result.current.scope.setScope('lab'));
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
+    });
+
+    it('keeps a deep link to an unknown installation where a selector can undo it', () => {
+      // The section's note says "knows no installation named …" and the
+      // selector is the way out; quietly widening a link to all installations
+      // would show other installations' data under it.
+      configure(['golem', 'wombat', 'snail']);
+
+      const { result } = renderScope('/agent-platform/agents?installation=lab');
+
+      expect(result.current.scope.scope).toBe('lab');
+      expect(result.current.search).toBe('?installation=lab');
+    });
   });
 
   describe('and the Cluster access widget', () => {

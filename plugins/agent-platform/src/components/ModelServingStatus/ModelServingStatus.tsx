@@ -175,7 +175,7 @@ export function ServingShortcutButton({
       }
     } catch (failure) {
       toastApi.post({
-        title: `${label} failed for ${serving.name}`,
+        title: `Could not ${label.toLowerCase()} ${serving.name}`,
         description: (failure as Error).message,
         status: 'danger',
         timeout: TOAST_TIMEOUT_MS * 2,

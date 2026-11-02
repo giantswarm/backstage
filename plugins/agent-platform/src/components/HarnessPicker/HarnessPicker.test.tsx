@@ -15,7 +15,10 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => ({
-    info: { harness: { name: 'kagent' } },
+    info: {
+      harness: { name: 'kagent' },
+      namespaces: { default: 'kagent', managed: ['kagent', 'org-acme'] },
+    },
     isLoading: false,
     error: null,
   }),
@@ -23,16 +26,12 @@ jest.mock('../../hooks/useAgentManager', () => ({
 
 function harness(
   name: string,
-  runtime: 'kagent' | 'claude',
-  {
-    namespace = 'kagent',
-    displayName = undefined as string | undefined,
-    admits = name,
-  } = {},
+  runtime: 'kagent' | 'claude' | 'codex',
+  { namespace = 'kagent', displayName = undefined as string | undefined } = {},
 ): Harness {
   return new Harness(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'Harness',
       metadata: {
         name,
@@ -42,11 +41,6 @@ function harness(
         }),
       },
       spec: {
-        allowedAgentTemplates: {
-          selector: {
-            matchLabels: { 'agent-platform.giantswarm.io/harness': admits },
-          },
-        },
         [runtime]: {},
         workload: { image: `registry.example/${name}-harness@sha256:0123` },
       },
@@ -56,15 +50,21 @@ function harness(
 }
 
 let formHarness: string | undefined;
+/** The tenant the wizard creates in, its model the tenant's; unset, it never learns one. */
+let probeTenant: string | undefined;
 
 function Probe() {
-  const { state, setInstallation, selectModelConfig } = useNewAgentForm();
+  const { state, setInstallation, setTenantChoices, selectModelConfig } =
+    useNewAgentForm();
   useEffect(() => {
     setInstallation('gazelle');
-    selectModelConfig('opus', 'kagent');
+    if (probeTenant) {
+      setTenantChoices([probeTenant]);
+    }
+    selectModelConfig('opus', probeTenant ?? 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  formHarness = state.harness?.admits;
+  formHarness = state.harness?.name;
   return (
     <button type="button" onClick={() => selectModelConfig('sonnet', 'demo')}>
       Pick a model in demo
@@ -89,8 +89,28 @@ async function render() {
   );
 }
 
+/**
+ * The Harnesses each namespace lists for the person: a namespace missing from
+ * `readable` refuses the read (403).
+ */
+function listingByNamespace(readable: Record<string, Harness[]>) {
+  mockUseResources.mockImplementation(
+    (
+      _installations,
+      _resource,
+      options: Record<string, { namespace: string }>,
+    ) => {
+      const namespace = options.gazelle?.namespace;
+      return namespace && readable[namespace]
+        ? listing(readable[namespace])
+        : listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]);
+    },
+  );
+}
+
 beforeEach(() => {
   formHarness = undefined;
+  probeTenant = undefined;
   mockUseResources.mockReset();
 });
 
@@ -106,9 +126,7 @@ describe('HarnessPicker', () => {
     expect(card).toHaveTextContent('Platform default');
     expect(card).toHaveTextContent('Harness kagent');
     expect(
-      screen.getByText(
-        'What runs the agent: the only Harness in kagent on gazelle.',
-      ),
+      screen.getByText('The only Harness in kagent on gazelle runs the agent.'),
     ).toBeInTheDocument();
   });
 
@@ -119,15 +137,57 @@ describe('HarnessPicker', () => {
     expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
   });
 
-  it("says so when the namespace's Harnesses could not be read", async () => {
+  it("says so when the platform tenant's Harnesses could not be read, and keeps the platform Harness", async () => {
+    probeTenant = 'kagent';
     mockUseResources.mockReturnValue(
       listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]),
     );
     await render();
 
-    expect(screen.getByText("Couldn't read the runtimes")).toBeInTheDocument();
+    expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
+    expect(
+      screen.getByText(/so the agent runs on the platform Harness\.$/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
+
+  it.each([
+    ["an Organization's editor (no read of the platform namespace)", {}],
+    [
+      'an admin (who reads more runtimes there)',
+      {
+        kagent: [
+          harness('kagent', 'kagent'),
+          harness('claude', 'claude'),
+          harness('codex', 'codex'),
+        ],
+      },
+    ],
+  ])(
+    'offers %s the platform Harness only when creating in the Organization, with no warning',
+    async (_who, readable: Record<string, Harness[]>) => {
+      probeTenant = 'org-acme';
+      // The tenant's first agent: agent-manager has not copied the platform
+      // Harness there yet.
+      listingByNamespace({ ...readable, 'org-acme': [] });
+      await render();
+
+      expect(
+        screen.queryByText('Could not read the runtimes'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      const cards = screen.getAllByRole('listitem');
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toHaveTextContent('Platform default');
+      expect(cards[0]).toHaveTextContent('Harness kagent');
+      expect(
+        screen.getByText(
+          'The agents of the acme organization run on the platform Harness.',
+        ),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("titles a card by the Harness's display name when an admin set one", async () => {
     mockUseResources.mockReturnValue(
@@ -164,7 +224,7 @@ describe('HarnessPicker', () => {
 
     expect(formHarness).toBeUndefined();
     expect(screen.getByRole('status')).toHaveTextContent(
-      "The Harness claude you picked doesn't serve this model's namespace",
+      "The Harness claude does not serve this model's namespace",
     );
   });
 
@@ -201,6 +261,42 @@ describe('HarnessPicker', () => {
     expect(formHarness).toBeUndefined();
   });
 
+  it('offers a Codex card where the namespace holds a codex Harness, and records its pick', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex'),
+      ]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    const codex = screen.getByRole('radio', { name: 'Codex, Harness codex' });
+    expect(codex).toHaveTextContent('Codex');
+    expect(codex).toHaveTextContent('codex-harness');
+    expect(codex).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(codex);
+    expect(formHarness).toBe('codex');
+  });
+
+  it('offers no Codex card in a namespace without a codex Harness', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex', { namespace: 'other' }),
+      ]),
+    );
+    await render();
+
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(
+      screen.queryByRole('radio', { name: /Codex/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('says the runtimes are loading while the list is being read', async () => {
     mockUseResources.mockReturnValue(listing([], [], true));
     await render();
@@ -209,48 +305,24 @@ describe('HarnessPicker', () => {
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
-  it('selects only the clicked card when two Harnesses admit the same value', async () => {
+  it('selects only the clicked card when two Harnesses share a runtime', async () => {
     mockUseResources.mockReturnValue(
       listing([
         harness('kagent', 'kagent'),
-        harness('claude-go', 'claude', { admits: 'claude' }),
-        harness('claude-rust', 'claude', { admits: 'claude' }),
+        harness('claude-go', 'claude'),
+        harness('claude-rust', 'claude'),
       ]),
     );
     const user = userEvent.setup();
     await render();
 
     await user.click(screen.getByRole('radio', { name: /Harness claude-go/ }));
-    expect(formHarness).toBe('claude');
+    expect(formHarness).toBe('claude-go');
     expect(
       screen.getByRole('radio', { name: /Harness claude-go/ }),
     ).toHaveAttribute('aria-checked', 'true');
     expect(
       screen.getByRole('radio', { name: /Harness claude-rust/ }),
-    ).toHaveAttribute('aria-checked', 'false');
-    expect(
-      screen.getByRole('radio', { name: /Harness claude-go/ }),
-    ).toHaveAccessibleDescription(
-      'Admits the same agents as claude-rust: the agent runs on both.',
-    );
-  });
-
-  it('treats a second Harness admitting the platform value as its own pick', async () => {
-    mockUseResources.mockReturnValue(
-      listing([
-        harness('kagent', 'kagent'),
-        harness('kagent-canary', 'kagent', { admits: 'kagent' }),
-      ]),
-    );
-    const user = userEvent.setup();
-    await render();
-
-    const canary = screen.getByRole('radio', { name: /Harness kagent-canary/ });
-    await user.click(canary);
-    expect(formHarness).toBe('kagent');
-    expect(canary).toHaveAttribute('aria-checked', 'true');
-    expect(
-      screen.getByRole('radio', { name: /Harness kagent,/ }),
     ).toHaveAttribute('aria-checked', 'false');
   });
 
@@ -265,9 +337,23 @@ describe('HarnessPicker', () => {
 
     expect(
       screen.getByText(
-        "Some runtimes couldn't be loaded; the list may be incomplete.",
+        'Could not read some runtimes, so the list may be incomplete.',
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('shows no limits for a Claude Code Harness', async () => {
+    const user = userEvent.setup();
+    mockUseResources.mockReturnValue(
+      listing([harness('kagent', 'kagent'), harness('claude', 'claude')]),
+    );
+    await render();
+
+    await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
+
+    expect(formHarness).toBe('claude');
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
+    expect(screen.queryByText(/per turn/)).toBeNull();
   });
 });

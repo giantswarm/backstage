@@ -1,9 +1,14 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
-import { ServerPrompts, ServerResources } from './serverDetail';
+import {
+  resourceUriLabel,
+  ServerPrompts,
+  ServerResources,
+} from './serverDetail';
 
 function makeServer(spec: Record<string, unknown> = {}): MCPServer {
   return new MCPServer(
@@ -68,6 +73,27 @@ describe('ServerResources', () => {
     });
   });
 
+  it('titles a nameless resource by the last segment of its URI, keeping the full URI', async () => {
+    const filterResources = jest.fn().mockResolvedValue({
+      total: 1,
+      filtered_count: 1,
+      truncated: false,
+      resources: [{ uri: 'file:///repo/docs/guides/setup.md', server: 'pro' }],
+    });
+
+    await render(<ServerResources server={makeServer()} />, {
+      filterResources,
+    });
+
+    const row = within(
+      await screen.findByRole('list', { name: 'Resources' }),
+    ).getByRole('listitem');
+    expect(within(row).getByText('setup.md')).toBeInTheDocument();
+    expect(
+      within(row).getByText('file:///repo/docs/guides/setup.md'),
+    ).toBeInTheDocument();
+  });
+
   it('distinguishes an empty result from a broken one', async () => {
     const filterResources = jest.fn().mockResolvedValue({
       total: 0,
@@ -121,6 +147,11 @@ describe('ServerPrompts', () => {
     await render(<ServerPrompts server={makeServer()} />, { filterPrompts });
 
     expect(await screen.findByText('triage_issue')).toBeInTheDocument();
+    expect(screen.queryByText(/prompt\(s\)/)).toBeNull();
+    const row = within(screen.getByRole('list', { name: 'Prompts' })).getByRole(
+      'listitem',
+    );
+    expect(within(row).getByText('Triage an issue.')).toBeInTheDocument();
     expect(filterPrompts).toHaveBeenCalledWith({
       installation: 'gazelle',
       server: 'pro',
@@ -165,5 +196,151 @@ describe('ServerPrompts', () => {
     await render(<ServerPrompts server={makeServer()} />, { filterPrompts });
 
     expect(await screen.findByText(/No prompts exposed/)).toBeInTheDocument();
+  });
+});
+
+describe('resource and prompt lists at scale', () => {
+  const resources = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      uri: `doc://item-${index + 1}`,
+      name: `Item ${index + 1}`,
+      server: 'pro',
+    }));
+  const prompts = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      name: `x_pro_prompt_${index + 1}`,
+      description: index === 249 ? 'The needle.' : 'A prompt.',
+      server: 'pro',
+    }));
+
+  it('lists three resources with no search and no reveal control', async () => {
+    const filterResources = jest.fn().mockResolvedValue({
+      total: 3,
+      filtered_count: 3,
+      truncated: false,
+      resources: resources(3),
+    });
+
+    await render(<ServerResources server={makeServer()} />, {
+      filterResources,
+    });
+
+    expect(await screen.findByText('doc://item-3')).toBeInTheDocument();
+    // The tab carries the count; the list repeats none of its own.
+    expect(screen.queryByText(/resource\(s\)/)).toBeNull();
+    expect(
+      within(screen.getByRole('list', { name: 'Resources' })).getAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(3);
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('pages 200 of 300 resources twenty at a time, saying the list is partial', async () => {
+    const filterResources = jest.fn().mockResolvedValue({
+      total: 300,
+      filtered_count: 200,
+      truncated: true,
+      resources: resources(200),
+    });
+
+    await render(<ServerResources server={makeServer()} />, {
+      filterResources,
+    });
+
+    expect(await screen.findByText('doc://item-20')).toBeInTheDocument();
+    expect(screen.queryByText('doc://item-21')).toBeNull();
+    expect(screen.getAllByText(/^doc:\/\/item-/)).toHaveLength(20);
+    expect(
+      screen.getByText(
+        'This list is incomplete: muster returned 200 of 300 resources.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show 20 more resources' }),
+    ).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search resources' }),
+      'item-150',
+    );
+    expect(screen.getAllByText(/^doc:\/\/item-/)).toHaveLength(1);
+    expect(screen.getByText('doc://item-150')).toBeInTheDocument();
+  });
+
+  it('lists three prompts with no search and no reveal control', async () => {
+    const filterPrompts = jest.fn().mockResolvedValue({
+      total: 3,
+      filtered_count: 3,
+      truncated: false,
+      prompts: prompts(3),
+    });
+
+    await render(<ServerPrompts server={makeServer()} />, { filterPrompts });
+
+    expect(await screen.findByText('prompt_3')).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('pages 300 prompts twenty at a time and searches them', async () => {
+    const filterPrompts = jest.fn().mockResolvedValue({
+      total: 300,
+      filtered_count: 300,
+      truncated: false,
+      prompts: prompts(300),
+    });
+
+    await render(<ServerPrompts server={makeServer()} />, { filterPrompts });
+
+    expect(await screen.findByText('prompt_20')).toBeInTheDocument();
+    expect(screen.getAllByText(/^prompt_\d+$/)).toHaveLength(20);
+    expect(screen.getByText('20 prompts shown, 280 more')).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search prompts' }),
+      'needle',
+    );
+    expect(screen.getAllByText(/^prompt_\d+$/)).toHaveLength(1);
+    expect(screen.getByText('prompt_250')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+  });
+});
+
+describe('resourceUriLabel', () => {
+  it.each([
+    ['roadmap://schema', 'schema'],
+    ['file:///repo/docs/setup.md', 'setup.md'],
+    ['https://example.com/a/b/', 'b'],
+    ['doc://', 'doc://'],
+  ])('labels %s as %s', (uri, label) => {
+    expect(resourceUriLabel(uri)).toBe(label);
+  });
+});
+
+describe('capability search', () => {
+  it('does not match a field the entry lacks', async () => {
+    // Optional fields once joined as the string "undefined", so a search for
+    // it matched every resource without a name or description.
+    const filterResources = jest.fn().mockResolvedValue({
+      total: 25,
+      filtered_count: 25,
+      truncated: false,
+      resources: Array.from({ length: 25 }, (_, index) => ({
+        uri: `doc://item-${index + 1}`,
+        server: 'pro',
+      })),
+    });
+
+    await render(<ServerResources server={makeServer()} />, {
+      filterResources,
+    });
+
+    await userEvent.type(
+      await screen.findByRole('searchbox', { name: 'Search resources' }),
+      'undefined',
+    );
+    expect(screen.queryByText(/^doc:\/\/item-/)).toBeNull();
   });
 });

@@ -173,11 +173,6 @@ app:
   extensions:
     - page:repositories
     - api:repositories
-  routes:
-    bindings:
-      # The catalog's Create… lands on Create repository; no scaffolder
-      # template is registered for repositories.
-      catalog.createComponent: repositories.create
 repositories:
   muster:
     installation: <installation> # a name in muster.installations

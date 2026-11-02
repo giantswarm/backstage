@@ -1,4 +1,9 @@
-import { findStatusOption, groupByAssignee, issueRefOf } from './board';
+import {
+  findStatusOption,
+  groupByAssignee,
+  issueRefOf,
+  mergeColumnReads,
+} from './board';
 import { RoadmapItem } from '../apis';
 
 function item(overrides: Partial<RoadmapItem>): RoadmapItem {
@@ -61,5 +66,42 @@ describe('groupByAssignee', () => {
       { assignee: 'ben', items: [shared, solo] },
     ]);
     expect(unassigned).toEqual([orphan]);
+  });
+});
+
+describe('mergeColumnReads', () => {
+  it('joins the column reads in column order', () => {
+    const a = item({ id: 'a', fields: { Status: 'Backlog' } });
+    const b = item({ id: 'b', fields: { Status: 'Done' } });
+    expect(
+      mergeColumnReads([
+        { column: 'Backlog', items: [a] },
+        { column: 'Done', items: undefined },
+        { column: 'Done', items: [b] },
+      ]),
+    ).toEqual([a, b]);
+  });
+
+  it('keeps one copy of a moved card, the one its column read', () => {
+    // Moved from Backlog to Done: the Backlog read still holds the card,
+    // patched to its new status, until it refetches.
+    const patched = item({
+      id: 'a',
+      title: 'patched',
+      fields: { Status: 'Done' },
+    });
+    const fresh = item({ id: 'a', title: 'fresh', fields: { Status: 'Done' } });
+    expect(
+      mergeColumnReads([
+        { column: 'Backlog', items: [patched] },
+        { column: 'Done', items: [fresh] },
+      ]),
+    ).toEqual([fresh]);
+    expect(
+      mergeColumnReads([
+        { column: 'Done', items: [fresh] },
+        { column: 'Backlog', items: [patched] },
+      ]),
+    ).toEqual([fresh]);
   });
 });

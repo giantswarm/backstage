@@ -20,11 +20,12 @@ const meta = {
         component: componentDocs({
           summary:
             'A trail of links to the ancestors of a page, the current page last ' +
-            'and plain, above the page title.',
+            'and plain, above the page title. A back arrow before the trail ' +
+            'leads to the nearest linked ancestor; with none, it is left out.',
           whenToUse:
-            'On a page nested more than one level below a list: a tool page ' +
-            'beneath its server beneath the servers list. For a page one level ' +
-            'down, a single back link ("← Agents") is enough.',
+            'On every page below a list: a tool page beneath its server ' +
+            'beneath the servers list, or an agent beneath the agents list. ' +
+            '`ShellPage` renders it from its `breadcrumbs`.',
           migration: 'bui',
         }),
       },
@@ -43,5 +44,11 @@ export const OneLevel: Story = {
       { label: 'MCP Servers', href: '#servers' },
       { label: 'kubernetes' },
     ],
+  },
+};
+
+export const NoLinkedAncestor: Story = {
+  args: {
+    items: [{ label: 'Workflows' }, { label: 'rotate_certificates' }],
   },
 };

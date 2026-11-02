@@ -100,6 +100,15 @@ export function deriveTokenRates(
 }
 
 /**
+ * A token count as the estimate prices it: a negative or non-finite count is
+ * none. {@link estimateCost} and the basis line that names its counts
+ * (`describeCostBasis`) both go through this, so they cannot disagree.
+ */
+export function pricedTokenCount(tokens: number): number {
+  return Number.isFinite(tokens) ? Math.max(tokens, 0) : 0;
+}
+
+/**
  * Estimated USD for a pair of token counts.
  *
  * Prefers the per-type rates, which price input and output separately the way
@@ -115,8 +124,8 @@ export function estimateCost(
     return undefined;
   }
 
-  const input = Number.isFinite(inputTokens) ? Math.max(inputTokens, 0) : 0;
-  const output = Number.isFinite(outputTokens) ? Math.max(outputTokens, 0) : 0;
+  const input = pricedTokenCount(inputTokens);
+  const output = pricedTokenCount(outputTokens);
 
   // Both halves or neither: pricing input at the real input rate and output at
   // a blend of the two would be worse than blending both, because output costs

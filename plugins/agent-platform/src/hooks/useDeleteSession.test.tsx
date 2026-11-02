@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
   QueryClient,
@@ -13,6 +14,7 @@ import { useDeleteSession } from './useDeleteSession';
 const deleteSession = jest.fn();
 
 const kagentApi = { deleteSession } as unknown as KagentApi;
+const analyticsApi = mockApis.analytics.mock();
 
 function renderWith() {
   const queryClient = new QueryClient({
@@ -21,7 +23,12 @@ function renderWith() {
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+    <TestApiProvider
+      apis={[
+        [kagentApiRef, kagentApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -45,6 +52,7 @@ function invalidationFor(
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   deleteSession.mockReset();
   deleteSession.mockResolvedValue(undefined);
 });
@@ -58,6 +66,13 @@ describe('useDeleteSession', () => {
     });
 
     expect(deleteSession).toHaveBeenCalledWith('gazelle', 'abc');
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionDeleted',
+        attributes: {},
+      }),
+    );
   });
 
   it('refreshes the sessions list', async () => {
@@ -114,6 +129,7 @@ describe('useDeleteSession', () => {
     await waitFor(() =>
       expect(result.current.error?.message).toBe('kagent said no'),
     );
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('does not refresh anything when the delete failed', async () => {

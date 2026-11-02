@@ -31,12 +31,23 @@ export function assertErrorsContext(value: any): asserts value is ErrorsStatus {
 
 export interface ErrorsProviderProps {
   children: ReactNode;
+  /**
+   * Leaves an error out of the list when it returns true, for errors the
+   * page expects, such as a resource that is already gone.
+   */
+  ignoreError?: (item: ErrorItem) => boolean;
 }
 
-export const ErrorsProvider = ({ children }: ErrorsProviderProps) => {
+export const ErrorsProvider = ({
+  children,
+  ignoreError,
+}: ErrorsProviderProps) => {
   const errorsRef = useRef<ErrorItem[]>([]);
   const [_updatedAt, setUpdatedAt] = useState(new Date());
   const errors = errorsRef.current;
+  const visibleErrors = ignoreError
+    ? errors.filter(item => !ignoreError(item))
+    : errors;
 
   const contextValue = useMemo(
     () => ({ errorsRef, setUpdatedAt }),
@@ -65,10 +76,10 @@ export const ErrorsProvider = ({ children }: ErrorsProviderProps) => {
 
   return (
     <ErrorsContext.Provider value={contextValue}>
-      {errors.length > 0 ? (
+      {visibleErrors.length > 0 ? (
         <Box marginBottom={2}>
           <Errors
-            errors={errors}
+            errors={visibleErrors}
             onRetry={handleRetry}
             onDismiss={handleDismiss}
           />

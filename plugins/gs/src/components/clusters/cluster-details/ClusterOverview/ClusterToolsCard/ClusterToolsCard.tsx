@@ -13,11 +13,6 @@ const defaultLinks = [
     url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}',
   },
   {
-    label: 'Alerts',
-    icon: 'NotificationsNone',
-    url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2',
-  },
-  {
     label: 'Web UI',
     icon: 'Public',
     url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}',
@@ -32,13 +27,18 @@ const defaultLinks = [
 ];
 
 export function ClusterToolsCard() {
-  const { config } = useSignedInConfig();
+  const { config, isLoading } = useSignedInConfig();
   const { cluster, installationName } = useCurrentCluster();
 
   const clusterDetailsTemplateData = useClusterDetailsTemplateData(
     installationName,
     cluster,
   );
+
+  if (isLoading) {
+    // Show the configured links or the defaults, never one after the other.
+    return null;
+  }
 
   const linksConfig = config?.getOptionalConfigArray(
     'gs.clusterDetails.resources',

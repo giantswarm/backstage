@@ -71,6 +71,36 @@ describe('toolsOfWorkflow', () => {
     ]);
   });
 
+  it('collects the tools of a nested forEach', () => {
+    const nested = workflow('nested', {
+      steps: [
+        {
+          id: 'outer',
+          forEach: {
+            items: '{{ .input.xs }}',
+            steps: [
+              { id: 'first', tool: 'x_a_list' },
+              {
+                id: 'inner',
+                condition: { tool: 'x_c_check', expect: { success: true } },
+                forEach: {
+                  items: '{{ .results.first }}',
+                  steps: [{ id: 'call', tool: 'x_b_get' }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(toolsOfWorkflow(nested, [nested]).sort()).toEqual([
+      'x_a_list',
+      'x_b_get',
+      'x_c_check',
+    ]);
+  });
+
   it('follows the workflows it calls, each once', () => {
     const outer = workflow('outer', {
       steps: [{ id: 'a', tool: 'workflow_inner' }],

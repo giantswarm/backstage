@@ -34,7 +34,7 @@ describe('toPortalEvent', () => {
   });
 
   it.each([
-    ['an unlisted action', 'AgentPlatform.agentDeleted', { mode: 'deploy' }],
+    ['an unlisted action', 'AgentPlatform.agentArchived', { mode: 'deploy' }],
     ['a value outside the set', 'AgentPlatform.agentCreated', { mode: 'x' }],
     ['a missing attribute', 'AgentPlatform.agentCreated', {}],
     [

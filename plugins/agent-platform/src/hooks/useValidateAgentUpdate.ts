@@ -1,9 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-
-import type { AgentUpdate } from '../lib/agentManager';
+import type { AgentUpdate, WriteMode } from '../lib/agentManager';
 import { musterValidateAgentUpdateQueryKey } from '../lib/queryKeys';
-import { useAgentManagerClient } from './useAgentManager';
-import { classifyReadFailure } from './useAgentManagerAgent';
+import { useAgentManagerDryRun } from './useAgentManagerDryRun';
 import type { ValidateAgentState } from './useValidateAgent';
 
 /**
@@ -13,27 +10,18 @@ import type { ValidateAgentState } from './useValidateAgent';
  * is written. Re-read whenever the update changes; never persisted.
  *
  * `undefined` disables the read: the edit form passes it while nothing has
- * changed yet, the Update skills dialog while it is closed.
+ * changed yet, the Update skills dialog while it is closed. `mode` is the
+ * write's: `commit` for an agent applied from git.
  */
 export function useValidateAgentUpdate(
   installation: string | undefined,
   update: AgentUpdate | undefined,
+  mode: WriteMode = 'apply',
 ): ValidateAgentState {
-  const client = useAgentManagerClient(installation);
-  const signature = update ? JSON.stringify(update) : '';
-  const enabled = Boolean(client) && Boolean(update);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: musterValidateAgentUpdateQueryKey(installation ?? '', signature),
-    enabled,
-    queryFn: () => client!.validateUpdate(update!),
-    // A refused dry run stays refused; retrying only delays the message.
-    retry: false,
-  });
-
-  return {
-    result: data,
-    isLoading: enabled && isLoading,
-    failure: error ? classifyReadFailure(error) : undefined,
-  };
+  const signature = update ? JSON.stringify({ mode, update }) : '';
+  return useAgentManagerDryRun(
+    installation,
+    musterValidateAgentUpdateQueryKey(installation ?? '', signature),
+    update ? client => client.validateUpdate(update, mode) : undefined,
+  );
 }

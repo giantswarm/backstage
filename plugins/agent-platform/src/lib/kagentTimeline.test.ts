@@ -14,9 +14,14 @@ import {
   tasksClaudeHarnessFailed as claudeHarnessFailed,
   tasksEmptyNoData as emptyNoData,
   tasksFailed as failed,
+  tasksKagent4a91c273 as kagent4a91c273,
   tasksMalformed as malformed,
   tasksV099 as kagentPrefixed,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from './__fixtures__/workspaceNotice';
 
 /** Parse a fixture the way the client does, then build its timeline. */
 function timelineFor(fixture: unknown): ReturnType<typeof buildTimeline> {
@@ -134,6 +139,87 @@ describe('buildTimeline', () => {
       total: 1420 + 890 + 3100,
       prompt: 1180 + 760 + 2600,
       completion: 240 + 130 + 500,
+    });
+  });
+
+  it("reads the context from the newest turn's largest call, without delegated usage", () => {
+    // The context indicator's numerator. The fixture's newest task is still
+    // working and has reported nothing, so the last *measured* turn is the
+    // first; its calls counted 1420 and 890 — and the subagent's 3100 are its
+    // own session's context, so they are not in it.
+    expect(timelineFor(kagentPrefixed).context).toEqual({
+      tokens: 1420,
+      perCall: true,
+    });
+  });
+
+  it("takes an ADK turn's largest call, not the sum of its calls", () => {
+    // ADK writes one bag per model call, each re-sending the growing context
+    // (2958, 3885, 5362 here, prompt plus output). Summing them — 12k — is
+    // what once showed a session's context as several times the window.
+    expect(timelineFor(kagent4a91c273).context).toEqual({
+      tokens: 5362,
+      perCall: true,
+    });
+  });
+
+  /** One ADK turn whose agent messages carry the given usage bags, in order. */
+  function adkTurn(id: string, bags: Record<string, unknown>[]): A2aTaskWire {
+    return {
+      id,
+      kind: 'task',
+      status: { state: 'completed', timestamp: '2026-10-15T10:00:00Z' },
+      history: bags.map((bag, index) => ({
+        kind: 'message',
+        messageId: `${id}-${index}`,
+        role: 'agent',
+        parts: [{ kind: 'text', text: `call ${index}` }],
+        metadata: { 'kagent.dev/a2a/usage': bag },
+      })),
+    } as A2aTaskWire;
+  }
+
+  it('is not undercut by a smaller call after the largest', () => {
+    // A summarizer or sub-agent call recorded late in the turn.
+    const turn = adkTurn('t', [
+      { promptTokenCount: 400_000, candidatesTokenCount: 2_000 },
+      { promptTokenCount: 1_000, candidatesTokenCount: 200 },
+    ]);
+
+    expect(buildTimeline([turn]).context).toEqual({
+      tokens: 402_000,
+      perCall: true,
+    });
+  });
+
+  it('counts a bag that reports only a total', () => {
+    const turn = adkTurn('t', [
+      { promptTokenCount: 2_900 },
+      { promptTokenCount: 3_802 },
+      { totalTokenCount: 6_000 },
+    ]);
+
+    expect(buildTimeline([turn]).context).toEqual({
+      tokens: 6_000,
+      perCall: true,
+    });
+  });
+
+  it("replaces the previous turn's reading with the newest turn's", () => {
+    const first = adkTurn('first', [{ promptTokenCount: 90_000 }]);
+    const second = adkTurn('second', [{ promptTokenCount: 30_000 }]);
+
+    expect(buildTimeline([first, second]).context?.tokens).toBe(30_000);
+  });
+
+  it('reports no context when no turn reported any usage', () => {
+    expect(timelineFor(askUserPending).context).toBeUndefined();
+  });
+
+  it("marks a claude Harness turn's total as not one call's", () => {
+    expect(timelineFor(claudeHarness).context).toEqual({
+      tokens: 71338,
+      perCall: false,
     });
   });
 
@@ -1251,5 +1337,125 @@ describe('buildTimeline — attachments', () => {
     expect((second as { preview: object }).preview).toBe(
       (first as { preview: object }).preview,
     );
+  });
+});
+
+describe('buildTimeline — workspace setup notices', () => {
+  it('reads a notice as a status of its turn, never as the agent’s reply', () => {
+    const { items } = timelineFor(sessionWithNotices);
+    expect(items.map(item => `${item.taskIndex}:${item.kind}`)).toEqual([
+      '0:user-message',
+      '0:workspace-notice',
+      '0:agent-message',
+      '1:user-message',
+      '1:workspace-notice',
+      '1:agent-message',
+    ]);
+    const replies = items.filter(item => item.kind === 'agent-message');
+    expect(replies.map(item => 'text' in item && item.text)).toEqual([
+      'No, the `gh` CLI is not installed here.',
+      "I'm Claude.",
+    ]);
+  });
+
+  it('carries the parsed notice and the message’s id', () => {
+    const notices = timelineFor(sessionWithNotices).items.filter(
+      item => item.kind === 'workspace-notice',
+    );
+    expect(notices).toEqual([
+      expect.objectContaining({
+        messageId: 'notice-1',
+        notice: expect.objectContaining({
+          severity: 'warning',
+          entries: [expect.objectContaining({ kind: 'stale' })],
+        }),
+      }),
+      expect.objectContaining({
+        messageId: 'notice-2',
+        notice: expect.objectContaining({
+          severity: 'info',
+          entries: [expect.objectContaining({ kind: 'recovered' })],
+        }),
+      }),
+    ]);
+  });
+
+  it('leaves a reply that starts with the same words a reply', () => {
+    // "Explain our workspace setup", answered as an output artifact (API v2),
+    // and again by a later history message of the same turn: neither opens
+    // the turn, so neither is a notice.
+    const reply = 'Workspace setup here uses mirrors of each repository.';
+    const { items } = timelineFor({
+      tasks: [
+        {
+          id: 'task-1',
+          contextId: 'ctx-1',
+          status: {
+            state: 'TASK_STATE_COMPLETED',
+            message: {
+              messageId: 'status-1',
+              role: 'ROLE_AGENT',
+              parts: [{ text: reply }],
+            },
+          },
+          artifacts: [{ artifactId: 'reply-1', parts: [{ text: reply }] }],
+          history: [
+            {
+              messageId: 'user-1',
+              role: 'ROLE_USER',
+              parts: [{ text: 'Explain our workspace setup.' }],
+            },
+          ],
+        },
+        {
+          id: 'task-2',
+          contextId: 'ctx-1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+          history: [
+            {
+              messageId: 'user-2',
+              role: 'ROLE_USER',
+              parts: [{ text: 'And the mirrors?' }],
+            },
+            {
+              messageId: 'said-2',
+              role: 'ROLE_AGENT',
+              parts: [{ text: 'Let me look.' }],
+            },
+            {
+              messageId: 'reply-2',
+              role: 'ROLE_AGENT',
+              parts: [{ text: reply }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(items.some(item => item.kind === 'workspace-notice')).toBe(false);
+    expect(
+      items
+        .filter(item => item.kind === 'agent-message')
+        .map(item => item.messageId),
+    ).toEqual(expect.arrayContaining(['reply-1', 'reply-2']));
+  });
+
+  it('leaves the person’s message that says the same words a message', () => {
+    const { items } = timelineFor({
+      tasks: [
+        {
+          id: 'task-1',
+          contextId: 'ctx-1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+          history: [
+            {
+              messageId: 'user-1',
+              role: 'ROLE_USER',
+              parts: [{ text: NOTICE_STALE }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(kinds(items)).toEqual(['user-message']);
   });
 });

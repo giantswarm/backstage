@@ -1,26 +1,25 @@
-import { RouteTabs, RouteTabSpec } from '@giantswarm/backstage-plugin-ui-react';
+import type { RouteTabSpec } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
- * The tabs, in reading order: what the agent is, what it can reach, what it
- * knows, what it has been used for. Overview is the index — its path is empty —
- * so the three-segment URL every link in the portal already points at keeps
- * rendering the agent without a redirect.
- */
-const TABS: RouteTabSpec[] = [
-  { id: 'overview', path: '', title: 'Overview' },
-  { id: 'tools', path: 'tools', title: 'Tools' },
-  { id: 'skills', path: 'skills', title: 'Skills' },
-  { id: 'sessions', path: 'sessions', title: 'Sessions' },
-];
-
-/**
- * The detail page's tab strip, its content driven by the page's router rather
- * than by TabPanels -- the same shape as the second-level tab rows in
- * ModelsRouter and UsageRouter.
+ * The agent page's tabs, per the prototype: the agent in plain words (with
+ * its skills folded in), the reader's sessions with it, its tools and its
+ * usage. Drawn by `ShellPage` as the page's own strip.
  *
- * Unlike those, this strip needs no `px` of its own: it renders inside the page's
- * `<Content>`, which already applies the gutter they have to reproduce by hand.
+ * Tools is there only for an agent with tools (`toolsetHasTools`): bound to
+ * the muster gateway and not declaring `preset:none`. The tab resolves the
+ * gateway toolset, and a chat-only agent has nothing for it to show.
  */
-export function AgentDetailTabs() {
-  return <RouteTabs tabs={TABS} />;
+export function agentTabs({ hasTools }: { hasTools: boolean }): RouteTabSpec[] {
+  return [
+    { id: 'overview', path: '', title: 'Overview' },
+    { id: 'sessions', path: 'sessions', title: 'Sessions' },
+    ...(hasTools ? [{ id: 'tools', path: 'tools', title: 'Tools' }] : []),
+    { id: 'usage', path: 'usage', title: 'Usage' },
+  ];
 }
+
+/**
+ * Every tab an agent page can offer, Tools included: the one list of them,
+ * so the app's telemetry names the same set the page routes.
+ */
+export const AGENT_PAGE_TABS: RouteTabSpec[] = agentTabs({ hasTools: true });

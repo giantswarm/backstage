@@ -5,7 +5,7 @@ import {
   KarpenterNodePoolsLimit,
   KarpenterNodePoolsUsage,
   KarpenterNodesAllocatable,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { MimirQueryResponse } from '../../apis/mimir/types';
 import { sanitizePromQLValue } from './promql';
 

@@ -14,9 +14,9 @@ and **one** state map.
 
 Both the frontend plugin and the backend need them: the frontend to render a
 session's state badge and timeline, the backend to derive the same state
-server-side for the session switcher rail (fanning out over task reads too large
-to do in the browser). A second copy would drift, and the first symptom would be
-the rail disagreeing with the badge on the page it is attached to.
+server-side for the session lists and the shell's rail (fanning out over task
+reads too large to do in the browser). A second copy would drift, and the first
+symptom would be a list disagreeing with the badge on the session's page.
 
 Consumers:
 

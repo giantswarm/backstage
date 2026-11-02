@@ -24,8 +24,8 @@ export function InstallationChip({ installation }: InstallationChipProps) {
       data-testid="installation-chip"
       title={
         pipeline
-          ? `Installation ${installation} (${pipeline})`
-          : `Installation ${installation}`
+          ? `Environment ${installation} (${pipeline})`
+          : `Environment ${installation}`
       }
     >
       {installation}

@@ -1,4 +1,8 @@
-export { AddGpuNodePoolDialog, clusterMarks } from './AddGpuNodePoolDialog';
+export {
+  AddGpuNodePoolPage,
+  clusterMarks,
+  type AddGpuNodePoolPageProps,
+} from './AddGpuNodePoolPage';
 export { GpuNodePoolsPanel, sortGpuNodePoolsBy } from './GpuNodePoolsPanel';
 export {
   PartialWriteOutcome,
@@ -36,4 +40,8 @@ export {
   ACKNOWLEDGE_LOSS,
   type RemoveModelCacheDialogProps,
 } from './RemoveModelCacheDialog';
-export { openedPoolOf, useGpuNodePoolControls } from './GpuNodePoolControls';
+export {
+  OPENED_POOL_KEY,
+  openedPoolOf,
+  useGpuNodePoolControls,
+} from './GpuNodePoolControls';

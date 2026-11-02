@@ -30,9 +30,8 @@ export function useRenameSession(installation: string, sessionId: string) {
   const queryClient = useQueryClient();
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Housekeeping on a session; sessionStarted measures sessions.',
+    // Never the name: it is the person's own text.
+    event: () => ({ name: 'AgentPlatform.sessionRenamed', attributes: {} }),
     mutationFn: async (name: string) => {
       await kagentApi.renameSession(installation, sessionId, name);
 

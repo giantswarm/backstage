@@ -1,5 +1,14 @@
-import { changedFields, editStateOf, hasChanges, updateOf } from './agentEdit';
+import {
+  changedFields,
+  editStateOf,
+  editStateOfForm,
+  formStateOfAgent,
+  hasChanges,
+  updateOf,
+} from './agentEdit';
 import type { AgentManagerAgent, AgentSkillEntry } from './agentManager';
+import type { DiscoveredSkill } from './skills';
+import type { DiscoveredPlugin } from './plugins';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -41,6 +50,10 @@ describe('editStateOf', () => {
       modelConfig: 'opus-4-7',
       toolset: ['preset:read-only'],
       skills: [PR_REVIEW, OCI_SKILL],
+      plugins: [],
+      egressText: '',
+      egressPolicyRefs: [],
+      defaultWorkspace: '',
     });
     // No runtime: every agent runs on the platform Harness.
     expect(Object.keys(editStateOf(agent()))).not.toContain('runtime');
@@ -70,6 +83,83 @@ describe('editStateOf', () => {
 });
 
 describe('updateOf', () => {
+  it('sets, changes and removes the default workspace, qualified with the agent namespace', () => {
+    const plain = agent();
+    expect(
+      updateOf(plain, { ...editStateOf(plain), defaultWorkspace: 'platform' }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      defaultWorkspace: 'kagent/platform',
+    });
+    const withDefault = agent({ defaultWorkspace: 'kagent/platform' });
+    expect(editStateOf(withDefault).defaultWorkspace).toBe('platform');
+    expect(changedFields(withDefault, editStateOf(withDefault))).toEqual([]);
+    expect(
+      updateOf(withDefault, {
+        ...editStateOf(withDefault),
+        defaultWorkspace: '',
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      defaultWorkspace: '',
+    });
+  });
+
+  it('replaces the whole egress list, and clears it with an empty list', () => {
+    const withEgress = agent({ egress: ['https://github.com:443'] });
+    expect(editStateOf(withEgress).egressText).toBe('https://github.com:443');
+    expect(
+      updateOf(withEgress, {
+        ...editStateOf(withEgress),
+        egressText: 'https://github.com:443\nhttps://*.githubusercontent.com',
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
+    });
+    expect(
+      updateOf(withEgress, { ...editStateOf(withEgress), egressText: ' \n' }),
+    ).toEqual({ namespace: 'kagent', name: 'pr-reviewer', egress: [] });
+    expect(
+      changedFields(withEgress, {
+        ...editStateOf(withEgress),
+        egressText: '  https://github.com:443  ',
+      }),
+    ).toEqual([]);
+  });
+
+  it('replaces the picked EgressPolicies, clears them with an empty list, and ignores their order', () => {
+    const picking = agent({ egressPolicyRefs: ['github'] });
+    expect(editStateOf(picking).egressPolicyRefs).toEqual(['github']);
+    expect(
+      updateOf(picking, {
+        ...editStateOf(picking),
+        egressPolicyRefs: ['github', 'go-modules'],
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egressPolicyRefs: ['github', 'go-modules'],
+    });
+    expect(
+      updateOf(picking, { ...editStateOf(picking), egressPolicyRefs: [] }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egressPolicyRefs: [],
+    });
+    const two = agent({ egressPolicyRefs: ['github', 'go-modules'] });
+    expect(
+      changedFields(two, {
+        ...editStateOf(two),
+        egressPolicyRefs: ['go-modules', 'github'],
+      }),
+    ).toEqual([]);
+  });
+
   it('sends nothing but the identity when nothing changed', () => {
     const current = agent();
     const update = updateOf(current, editStateOf(current));
@@ -177,5 +267,233 @@ describe('updateOf', () => {
     });
     expect('force' in update).toBe(false);
     expect('runtime' in update).toBe(false);
+  });
+});
+
+describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
+  const REPO = 'https://github.com/giantswarm/agent-skills';
+  const CATALOG_PR_REVIEW: DiscoveredSkill = {
+    name: 'PR review',
+    description: 'Review pull requests.',
+    // Written the other way round from the agent's entry: same repository.
+    repoUrl: `${REPO}.git`,
+    path: 'pr-review',
+    ref: 'main',
+    commit: OTHER,
+  };
+  const CATALOG_INCIDENT: DiscoveredSkill = {
+    ...CATALOG_PR_REVIEW,
+    name: 'Incident responder',
+    path: 'incident',
+  };
+  const seed = (current: AgentManagerAgent) =>
+    formStateOfAgent(current, {
+      installation: 'gazelle',
+      catalog: [CATALOG_PR_REVIEW, CATALOG_INCIDENT],
+      platformHarness: 'kagent',
+    });
+
+  it('prefills the wizard with the agent, its fixed parts and its pins', () => {
+    const state = seed(agent({ harness: 'kagent' }));
+
+    expect(state).toMatchObject({
+      name: 'PR reviewer',
+      slug: 'pr-reviewer',
+      description: 'Reviews pull requests.',
+      systemMessage: 'You review pull requests.',
+      installation: 'gazelle',
+      modelConfigName: 'opus-4-7',
+      modelConfigNamespace: 'kagent',
+      // The platform Harness is the wizard's "no pick".
+      harness: undefined,
+      toolset: ['preset:read-only'],
+    });
+    // The listed skill is the catalog's card, at the agent's pin — not the head.
+    expect(state.selectedSkills).toEqual([
+      { ...CATALOG_PR_REVIEW, commit: HEAD },
+    ]);
+    // The OCI skill no repository lists is kept as it is.
+    expect(state.keptSkills).toEqual([OCI_SKILL]);
+  });
+
+  it('keeps a Harness of its own by name', () => {
+    expect(seed(agent({ harness: 'claude-code' })).harness).toEqual({
+      name: 'claude-code',
+    });
+  });
+
+  it('is no change at all when nothing is touched', () => {
+    const current = agent();
+    const update = updateOf(current, editStateOfForm(current, seed(current)));
+
+    expect(hasChanges(update)).toBe(false);
+  });
+
+  it('names an agent without a display name by its technical name, which is not a change', () => {
+    const current = agent({ displayName: undefined });
+    const state = seed(current);
+
+    expect(state.name).toBe('pr-reviewer');
+    expect(changedFields(current, editStateOfForm(current, state))).toEqual([]);
+    expect(
+      updateOf(current, editStateOfForm(current, { ...state, name: 'PR bot' }))
+        .displayName,
+    ).toBe('PR bot');
+  });
+
+  it('writes untouched skills back verbatim and appends a new one at its card commit', () => {
+    const current = agent();
+    const state = seed(current);
+    const update = updateOf(
+      current,
+      editStateOfForm(current, {
+        ...state,
+        selectedSkills: [...state.selectedSkills, CATALOG_INCIDENT],
+      }),
+    );
+
+    expect(update.skills).toEqual([
+      PR_REVIEW,
+      OCI_SKILL,
+      {
+        name: 'Incident responder',
+        path: 'incident',
+        git: { url: `${REPO}.git`, commit: OTHER },
+      },
+    ]);
+  });
+
+  it('drops a deselected skill and a removed kept one', () => {
+    const current = agent();
+    const state = seed(current);
+    const update = updateOf(
+      current,
+      editStateOfForm(current, {
+        ...state,
+        selectedSkills: [],
+        keptSkills: [],
+      }),
+    );
+
+    expect(update.skills).toEqual([]);
+  });
+
+  describe('plugins', () => {
+    const REVIEW_ENTRY = {
+      path: 'plugins/review',
+      git: { url: REPO, commit: HEAD },
+      skills: ['go-review'],
+    };
+    const ELSEWHERE = {
+      oci: 'gsoci.azurecr.io/giantswarm/plugins/ops@sha256:0123',
+      skills: ['runbook'],
+    };
+    const CATALOG_REVIEW: DiscoveredPlugin = {
+      name: 'review',
+      repoUrl: `${REPO}.git`,
+      path: 'plugins/review',
+      ref: 'main',
+      commit: OTHER,
+      format: 'agent-plugins',
+      skills: [
+        { name: 'go-review', description: '' },
+        { name: 'helm-review', description: '' },
+      ],
+    };
+    const CATALOG_COMMITS: DiscoveredPlugin = {
+      ...CATALOG_REVIEW,
+      name: 'commits',
+      path: 'plugins/commits',
+      format: 'claude-code',
+      skills: [],
+    };
+    const withPlugins = () => agent({ plugins: [REVIEW_ENTRY, ELSEWHERE] });
+    const seedPlugins = (current: AgentManagerAgent) =>
+      formStateOfAgent(current, {
+        installation: 'gazelle',
+        catalog: [],
+        pluginCatalog: [CATALOG_REVIEW, CATALOG_COMMITS],
+      });
+
+    it('selects a listed plugin at its pin with its skills and keeps the rest', () => {
+      const state = seedPlugins(withPlugins());
+      expect(state.selectedPlugins).toEqual([
+        { plugin: { ...CATALOG_REVIEW, commit: HEAD }, skills: ['go-review'] },
+      ]);
+      expect(state.keptPlugins).toEqual([ELSEWHERE]);
+    });
+
+    it('is no change when untouched', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, seedPlugins(current)),
+      );
+      expect(hasChanges(update)).toBe(false);
+    });
+
+    it('keeps the pin when the selection changes and appends a new plugin at its card commit', () => {
+      const current = withPlugins();
+      const state = seedPlugins(current);
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...state,
+          selectedPlugins: [
+            {
+              plugin: state.selectedPlugins[0].plugin,
+              skills: ['go-review', 'helm-review'],
+            },
+            { plugin: CATALOG_COMMITS, skills: [] },
+          ],
+        }),
+      );
+      expect(update.plugins).toEqual([
+        { ...REVIEW_ENTRY, skills: ['go-review', 'helm-review'] },
+        ELSEWHERE,
+        { path: 'plugins/commits', git: { url: `${REPO}.git`, commit: OTHER } },
+      ]);
+      expect(update.skills).toBeUndefined();
+    });
+
+    it('clears the list when every plugin is dropped', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...seedPlugins(current),
+          selectedPlugins: [],
+          keptPlugins: [],
+        }),
+      );
+      expect(update.plugins).toEqual([]);
+    });
+  });
+
+  it('round-trips the Tools step’s Nothing outside the chat (T81)', () => {
+    // An agent declaring no tools opens as Nothing outside the chat…
+    const chatOnly = agent({ toolset: ['preset:none'] });
+    const state = seed(chatOnly);
+    expect(state.toolset).toEqual([]);
+    expect(state.toolsChatOnly).toBe(true);
+    expect(
+      hasChanges(updateOf(chatOnly, editStateOfForm(chatOnly, state))),
+    ).toBe(false);
+
+    // …one declaring no toolset at all does not, and stays untouched…
+    const implicit = agent({ toolset: undefined, implicitFullAccess: true });
+    const implicitState = seed(implicit);
+    expect(implicitState.toolsChatOnly).toBe(false);
+    expect(
+      hasChanges(updateOf(implicit, editStateOfForm(implicit, implicitState))),
+    ).toBe(false);
+
+    // …until Nothing outside the chat is picked for it: then it declares none.
+    expect(
+      updateOf(
+        implicit,
+        editStateOfForm(implicit, { ...implicitState, toolsChatOnly: true }),
+      ).toolset,
+    ).toEqual(['preset:none']);
   });
 });

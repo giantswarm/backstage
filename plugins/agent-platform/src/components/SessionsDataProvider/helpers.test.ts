@@ -3,11 +3,11 @@ import { AgentRow } from '../AgentsDataProvider';
 import {
   buildAgentIndex,
   decodeAgentIdLabel,
+  markEarlierRevisions,
   SESSION_TITLE_FALLBACK,
   sessionSearchFn,
   SessionRow,
   sortSessionRows,
-  sortSessionsBy,
   toAgentIdentifier,
   toSessionRow,
 } from './helpers';
@@ -193,60 +193,6 @@ describe('sortSessionRows', () => {
   });
 });
 
-describe('sortSessionsBy', () => {
-  function row(overrides: Partial<SessionRow>): SessionRow {
-    return {
-      id: 'gazelle/x',
-      sessionId: 'x',
-      installation: 'gazelle',
-      title: 'x',
-      agentName: '',
-      ...overrides,
-    };
-  }
-
-  const rows = [
-    row({ id: 'old', createdAt: '2026-07-20T10:00:00Z', title: 'b' }),
-    row({ id: 'new', createdAt: '2026-07-23T10:00:00Z', title: 'a' }),
-    row({ id: 'unknown', title: 'c' }),
-  ];
-
-  it('sorts a timestamp column ascending', () => {
-    const sorted = sortSessionsBy(rows, {
-      column: 'createdAt',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => r.id)).toEqual(['old', 'new', 'unknown']);
-  });
-
-  it('sorts a timestamp column descending', () => {
-    const sorted = sortSessionsBy(rows, {
-      column: 'createdAt',
-      direction: 'descending',
-    });
-
-    expect(sorted.map(r => r.id)).toEqual(['new', 'old', 'unknown']);
-  });
-
-  it('keeps unknown timestamps last in both directions', () => {
-    // "Unknown" is not "oldest", so it must not lead the ascending sort.
-    for (const direction of ['ascending', 'descending'] as const) {
-      const sorted = sortSessionsBy(rows, { column: 'createdAt', direction });
-      expect(sorted[sorted.length - 1].id).toBe('unknown');
-    }
-  });
-
-  it('sorts a text column', () => {
-    const sorted = sortSessionsBy(rows, {
-      column: 'title',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => r.title)).toEqual(['a', 'b', 'c']);
-  });
-});
-
 describe('sessionSearchFn', () => {
   const rows: SessionRow[] = [
     {
@@ -318,5 +264,32 @@ describe('toSessionRow — the runtime kagent reports lost', () => {
         new Map(),
       ).runtimeLost,
     ).toBe(false);
+  });
+});
+
+describe('markEarlierRevisions', () => {
+  const row = (sessionId: string, preparedRevision?: string): SessionRow => ({
+    ...toSessionRow(session({ sessionId, preparedRevision }), new Map()),
+  });
+
+  it('carries the revision a session was prepared on onto its row', () => {
+    expect(row('a', 'rev-1').preparedRevision).toBe('rev-1');
+  });
+
+  it("marks only the sessions prepared on another revision than the agent's current one", () => {
+    const rows = markEarlierRevisions(
+      [row('old', 'rev-1'), row('new', 'rev-2'), row('unknown')],
+      'rev-2',
+    );
+    expect(rows.map(r => r.earlierRevision)).toEqual([
+      true,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('marks nothing without a current revision', () => {
+    const rows = [row('old', 'rev-1')];
+    expect(markEarlierRevisions(rows, undefined)).toBe(rows);
   });
 });

@@ -1,0 +1,1 @@
+export { SkillDetailPage } from './SkillDetailPage';

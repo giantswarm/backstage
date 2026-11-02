@@ -21,5 +21,17 @@ export interface Config {
         password: string;
       }[];
     };
+
+    githubRawContent?: {
+      /**
+       * Repository owners (GitHub organizations or users) the
+       * `/github/raw-content` proxy attaches the portal's GitHub
+       * credentials for. URLs under any other owner are fetched without
+       * credentials, so only their public content is reachable.
+       * Defaults to ["giantswarm"].
+       * @visibility backend
+       */
+      allowedOwners?: string[];
+    };
   };
 }

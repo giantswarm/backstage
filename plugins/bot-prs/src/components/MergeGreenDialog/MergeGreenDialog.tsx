@@ -7,6 +7,7 @@ import {
   actionsArgument,
   GREEN_GROUP,
   MargeAnswerLostError,
+  MargeRateLimitError,
   MERGE_GREEN_STEPS,
   rowsOf,
   type BotPrRow,
@@ -14,7 +15,9 @@ import {
 import { greenByTeam, refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
 import { LostAnswerAlert } from '../LostAnswerAlert';
+import { RateLimitAlert, useIsBefore } from '../RateLimitAlert';
 import { OutcomeTable } from '../OutcomeTable';
+import { SweepProgress } from '../SweepProgress';
 
 export type MergeGreenDialogProps = {
   installation: string;
@@ -123,7 +126,11 @@ export function MergeGreenDialog({
   const lost = failed
     .filter(run => run.error instanceof MargeAnswerLostError)
     .map(run => run.team);
-  const refused = failed.filter(run => !lost.includes(run.team));
+  const refused = failed.filter(
+    run =>
+      !lost.includes(run.team) && !(run.error instanceof MargeRateLimitError),
+  );
+  const isRateLimited = useIsBefore(sweeps.rateLimitReset);
   const notConnected = sweeps.notConnected;
 
   const onConfirm = async () => {
@@ -162,7 +169,10 @@ export function MergeGreenDialog({
       isBusy={isApplying}
       isDone={applied}
       isConfirmDisabled={
-        isPreviewing || applyCount === 0 || Boolean(notConnected)
+        isRateLimited ||
+        isPreviewing ||
+        applyCount === 0 ||
+        Boolean(notConnected)
       }
       onConfirm={onConfirm}
       width="min(92vw, 880px)"
@@ -173,10 +183,19 @@ export function MergeGreenDialog({
           its team&apos;s policy. A PR that is no longer green is left alone.
         </Text>
       )}
+      {sweeps.isPending ? (
+        <SweepProgress progress={sweeps.progress} showTeam={teams.length > 1} />
+      ) : null}
       {notConnected ? (
         <ConnectMargeAlert
           installation={installation}
           message={notConnected.message}
+        />
+      ) : null}
+      {sweeps.rateLimitReset ? (
+        <RateLimitAlert
+          resetAt={sweeps.rateLimitReset}
+          notReached={sweeps.notReached}
         />
       ) : null}
       {refused.length > 0 && !notConnected ? (

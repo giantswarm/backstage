@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import { musterToolsetResolutionQueryKey } from '../lib/queryKeys';
@@ -57,7 +58,7 @@ export function useToolsetResolution(
   const enabled =
     Boolean(installation) && Boolean(musterApi) && selectors.length > 0;
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterToolsetResolutionQueryKey(installation ?? '', selectors),
     enabled,
     queryFn: () =>
@@ -69,6 +70,7 @@ export function useToolsetResolution(
     // A refused toolset stays refused; retrying only delays the message.
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (!musterApi) {
     return { ...empty, isLoading: false, status: 'unavailable' };

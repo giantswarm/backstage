@@ -1,10 +1,17 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Alert, Cell, CellText, Link, Table, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
+import {
+  INITIAL_ROWS,
+  ShowMore,
+  usePhoneColumns,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { UnpricedModelRow } from '../../../lib/llmUsage';
 import { formatCount } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
+import { NameCell } from '../NameCell';
 
 const useStyles = makeStyles((_theme: Theme) => ({
   number: {
@@ -26,7 +33,9 @@ const STATUS_MEANING: Record<string, string> = {
 };
 
 /**
- * The compact warning, for a view that shows cost figures but not the detail.
+ * The compact warning, beside the Cost tab's headline spend — the detail
+ * table ({@link PricingCoverageNote}) sits further down the same tab, so
+ * `costHref` is only for a view that shows cost figures without the detail.
  *
  * Renders nothing when every lookup resolved — the healthy state is silence,
  * not a green tick nobody needs. When it does render, it is the *only* thing
@@ -37,10 +46,17 @@ const STATUS_MEANING: Record<string, string> = {
 export function PricingCoverageAlert({
   rows,
   costHref,
+  scopeNote,
 }: {
   rows: UnpricedModelRow[];
   /** Link to the Cost tab, where {@link PricingCoverageNote} names the models. */
   costHref?: string;
+  /**
+   * A sentence after the description, for a view narrowed to one
+   * organization: the lookups carry no organization, so the warning is every
+   * organization's.
+   */
+  scopeNote?: string;
 }) {
   if (rows.length === 0) {
     return null;
@@ -57,7 +73,7 @@ export function PricingCoverageAlert({
       title={`${count} ${count === 1 ? 'model has' : 'models have'} no usable price`}
       description={`Every cost figure here understates the real bill by whatever ${
         count === 1 ? 'that model' : 'those models'
-      } spent. Token counts are unaffected.`}
+      } spent. Token counts are unaffected.${scopeNote ? ` ${scopeNote}` : ''}`}
       customActions={
         costHref ? (
           <Link href={costHref}>Which models, and why</Link>
@@ -76,6 +92,7 @@ export function PricingCoverageAlert({
  */
 export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
   const classes = useStyles();
+  const isPhone = usePhoneLayout();
 
   const columnConfig: ColumnConfig<UnpricedModelRow>[] = [
     {
@@ -83,7 +100,20 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       label: 'Answered model',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.responseModel} />,
+      // At phone width the Requested model column is hidden and named here
+      // instead, so the alias a client sent stays on the row.
+      cell: row => (
+        <NameCell
+          title={row.responseModel}
+          description={
+            isPhone &&
+            row.requestModel !== '—' &&
+            row.requestModel !== row.responseModel
+              ? `Requested as ${row.requestModel}`
+              : undefined
+          }
+        />
+      ),
     },
     {
       id: 'requestModel',
@@ -95,8 +125,9 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       id: 'status',
       label: 'Why',
       isSortable: true,
+      // The meaning wraps at phone width rather than being cut to a line.
       cell: row => (
-        <CellText
+        <NameCell
           title={row.status}
           description={STATUS_MEANING[row.status] ?? undefined}
         />
@@ -113,6 +144,12 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       ),
     },
   ];
+  // At phone width the model and why it is unpriced (T22 B10); the lookup
+  // count is a ranking aid, and the table opens sorted by it.
+  const shownColumns = usePhoneColumns(columnConfig, [
+    'responseModel',
+    'status',
+  ]);
 
   const { tableProps } = useTable<UnpricedModelRow>({
     mode: 'complete',
@@ -130,9 +167,22 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
     <UsageCard
       title="Models with no usable price"
       wide
-      note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values. The cost figures above then start counting them."
+      note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values."
     >
-      <Table<UnpricedModelRow> {...tableProps} columnConfig={columnConfig} />
+      {/* A page of the sorted models at a time, like the other usage tables. */}
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="model"
+      >
+        {visible => (
+          <Table<UnpricedModelRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+          />
+        )}
+      </ShowMore>
     </UsageCard>
   );
 }

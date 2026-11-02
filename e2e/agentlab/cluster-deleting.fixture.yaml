@@ -1,0 +1,178 @@
+# The Cluster API and App objects cluster-deleting.spec.ts reads: a kind lab
+# has no Cluster API, so the CRDs are the minimum the portal discovers.
+# wc-live is a cluster with its App whose control plane does not exist;
+# wc-deleting is held in deletion by a finalizer, its App already gone.
+#
+#   kubectl apply -f cluster-deleting.fixture.yaml
+#   kubectl delete cluster.cluster.x-k8s.io -n org-lab wc-deleting --wait=false
+#
+# Clean up: remove the finalizer from wc-deleting, then delete the rest.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusters.cluster.x-k8s.io
+  labels:
+    agentlab.test/fixture: cluster-deleting
+spec:
+  group: cluster.x-k8s.io
+  names:
+    kind: Cluster
+    plural: clusters
+    singular: cluster
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+    - name: v1beta2
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kubeadmcontrolplanes.controlplane.cluster.x-k8s.io
+  labels:
+    agentlab.test/fixture: cluster-deleting
+spec:
+  group: controlplane.cluster.x-k8s.io
+  names:
+    kind: KubeadmControlPlane
+    plural: kubeadmcontrolplanes
+    singular: kubeadmcontrolplane
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+    - name: v1beta2
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: awsclusters.infrastructure.cluster.x-k8s.io
+  labels:
+    agentlab.test/fixture: cluster-deleting
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: AWSCluster
+    plural: awsclusters
+    singular: awscluster
+  scope: Namespaced
+  versions:
+    - name: v1beta2
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: apps.application.giantswarm.io
+  labels:
+    agentlab.test/fixture: cluster-deleting
+spec:
+  group: application.giantswarm.io
+  names:
+    kind: App
+    plural: apps
+    singular: app
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: wc-live
+  namespace: org-lab
+  labels:
+    app: cluster-aws
+    app.kubernetes.io/version: 3.0.0
+    release.giantswarm.io/version: 31.0.0
+    giantswarm.io/organization: lab
+    cluster.x-k8s.io/cluster-name: wc-live
+    agentlab.test/fixture: cluster-deleting
+  annotations:
+    cluster.giantswarm.io/description: e2e fixture (wc-live)
+spec:
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: wc-live
+    namespace: org-lab
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    kind: AWSCluster
+    name: wc-live
+    namespace: org-lab
+---
+apiVersion: application.giantswarm.io/v1alpha1
+kind: App
+metadata:
+  name: wc-live
+  namespace: org-lab
+  labels:
+    agentlab.test/fixture: cluster-deleting
+spec:
+  name: cluster-aws
+  namespace: org-lab
+  version: 3.0.0
+  catalog: cluster
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: wc-deleting
+  namespace: org-lab
+  finalizers:
+    - agentlab.test/hold
+  labels:
+    app: cluster-aws
+    app.kubernetes.io/version: 3.0.0
+    release.giantswarm.io/version: 31.0.0
+    giantswarm.io/organization: lab
+    cluster.x-k8s.io/cluster-name: wc-deleting
+    agentlab.test/fixture: cluster-deleting
+  annotations:
+    cluster.giantswarm.io/description: e2e fixture (wc-deleting)
+spec:
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: wc-deleting
+    namespace: org-lab
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    kind: AWSCluster
+    name: wc-deleting
+    namespace: org-lab

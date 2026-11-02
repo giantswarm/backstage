@@ -1,0 +1,59 @@
+import type { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { Stat, StatGrid } from '@giantswarm/backstage-plugin-ui-react';
+import { formatCount, formatTokens } from '../../../lib/formatNumbers';
+
+export type SessionKpiTilesProps = {
+  /** The kagent fan-out's answer for the resolved installation. */
+  usage: SessionUsageResponse;
+  /** The window the figures cover: the response's own, floored by the caller. */
+  windowDays: number;
+};
+
+/**
+ * The Overview's KPI row for an installation **without gateway metrics**:
+ * what kagent alone can answer — the reader's own sessions, their token
+ * totals, and the agents those sessions used. A headline teaser of the Your
+ * sessions tab, which carries the full breakdown.
+ *
+ * Every figure here is the reader's own (kagent lists only the caller's
+ * sessions), which each tile says — where the gateway tiles these stand in
+ * for are everyone's.
+ *
+ * **No cost.** Money has one home per scope (see
+ * `design-context/implementation/usage-metrics-ia.md`): everyone's spend on the
+ * Cost tab, the reader's own on Your sessions. There is no gateway spend to
+ * tease here, and the runtime-reported cost is the reader's own, so it stays
+ * on Your sessions (and on the Cost tab's gateway-less state) rather than
+ * adding a second cost figure to the Overview.
+ */
+export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
+  const { totals } = usage;
+  const agents = usage.byAgent.filter(entry => entry.agentId !== null).length;
+  const windowNote = `the last ${windowDays} days`;
+
+  return (
+    <StatGrid>
+      <Stat
+        variant="tile"
+        label="Your sessions"
+        hint={`Counts your sessions with at least one turn over ${windowNote}, from kagent. Other users' sessions cannot be counted here.`}
+        value={formatCount(totals.sessions)}
+        sub="yours — see Your sessions for the breakdown"
+      />
+      <Stat
+        variant="tile"
+        label="Your tokens"
+        hint={`Shows kagent's token total for your turns over ${windowNote}. It can exceed input + output because thinking tokens count only in the total.`}
+        value={formatTokens(totals.totalTokens)}
+        sub={`across ${formatCount(totals.turns)} turns`}
+      />
+      <Stat
+        variant="tile"
+        label="Your agents"
+        hint={`Counts the distinct agents in your sessions over ${windowNote}. Other users' agents need the gateway metrics.`}
+        value={formatCount(agents)}
+        sub="agents your sessions used"
+      />
+    </StatGrid>
+  );
+}

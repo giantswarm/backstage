@@ -38,4 +38,26 @@ describe('AttachmentEntry', () => {
 
     expect(screen.getByRole('img', { name: 'chart.png' })).toBeInTheDocument();
   });
+
+  it('shows what the person sent as a thumbnail that opens at full size', async () => {
+    const item = {
+      ...imageItem('shot.png', 'data:image/png;base64,AAAA'),
+      isUser: true,
+    };
+    render(<AttachmentEntry item={item} />);
+    const thumbnail = screen.getByRole('img', { name: 'shot.png' });
+    const agentImage = render(
+      <AttachmentEntry
+        item={imageItem('chart.png', 'data:image/png;base64,BBBB')}
+      />,
+    );
+
+    // One class more than an image the agent sent: the thumbnail's bounds.
+    expect(thumbnail.classList.length).toBeGreaterThan(
+      agentImage.getByRole('img', { name: 'chart.png' }).classList.length,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enlarge shot.png' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('shot.png');
+  });
 });

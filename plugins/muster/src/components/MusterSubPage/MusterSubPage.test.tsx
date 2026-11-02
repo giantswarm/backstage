@@ -52,7 +52,7 @@ const musterApi = {
 } as unknown as MusterApi;
 
 const CONTEXT =
-  'The MCP servers of an installation are read through its Kubernetes API.';
+  'The connectors of an installation are read through its Kubernetes API.';
 
 function renderSubPage() {
   return renderInTestApp(

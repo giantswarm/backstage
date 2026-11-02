@@ -4,7 +4,7 @@ import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
 import MiddleEllipsis from 'react-middle-ellipsis';
 import { getCommitURL, getReleaseNotesURL } from '../../utils/helpers';
 import { ColorWrapper } from '../ColorWrapper';
-import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, shortSha } from '@giantswarm/backstage-plugin-ui-react';
 
 const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
   ({ theme }) => ({
@@ -46,18 +46,14 @@ const TruncatedVersion = ({ label, commitHash }: TruncatedVersionProps) => {
     ? label.slice(0, label.length - commitHash.length)
     : null;
 
-  if (prefix) {
+  // The commit is shortened like every SHA the portal shows; the full
+  // version stays in the wrapper's title.
+  if (prefix && commitHash) {
     return (
-      <>
-        <Box component="span" flexShrink={0}>
-          {prefix}
-        </Box>
-        <Box component="span" overflow="hidden" minWidth={0}>
-          <MiddleEllipsis>
-            <span>{commitHash}</span>
-          </MiddleEllipsis>
-        </Box>
-      </>
+      <Box component="span" flexShrink={0}>
+        {prefix}
+        {shortSha(commitHash)}
+      </Box>
     );
   }
 

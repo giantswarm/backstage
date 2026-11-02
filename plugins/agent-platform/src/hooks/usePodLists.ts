@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   k8sResponseError,
   Pod,
@@ -93,7 +94,7 @@ export function usePodLists(requests: PodListRequest[]): PodLists {
       errors: results.map(
         result => (result.error as Error | null) ?? undefined,
       ),
-      isLoading: results.some(result => result.isLoading),
+      isLoading: results.some(result => isAwaitingData(result)),
     }),
   });
 

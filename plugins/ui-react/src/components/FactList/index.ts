@@ -1,2 +1,2 @@
-export { FactList } from './FactList';
-export type { Fact, FactListProps } from './FactList';
+export { FactList, useFactTextVariant } from './FactList';
+export type { Fact, FactListProps, FactTextVariant } from './FactList';

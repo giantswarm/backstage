@@ -1,4 +1,5 @@
 import { Button, Flex } from '@backstage/ui';
+import { saveFile } from '@giantswarm/backstage-plugin-ui-react';
 import { dump } from 'js-yaml';
 
 import { manifestFilename, type Manifest } from '../../lib/clusterManager';
@@ -6,7 +7,8 @@ import { CodeBlock } from '../CodeBlock';
 
 /**
  * cluster-manager's rendered manifests as the review shows them: each as YAML
- * with Copy and Download, for the person who applies it another way.
+ * with Download beside the code block's own copy control, for the person who
+ * applies it another way.
  */
 export function ManifestList({ manifests }: { manifests: Manifest[] }) {
   return (
@@ -21,14 +23,7 @@ export function ManifestList({ manifests }: { manifests: Manifest[] }) {
               <Button
                 size="small"
                 variant="tertiary"
-                onPress={() => navigator.clipboard?.writeText(content)}
-              >
-                Copy
-              </Button>
-              <Button
-                size="small"
-                variant="tertiary"
-                onPress={() => downloadText(filename, content)}
+                onPress={() => saveFile(content, filename, 'text/yaml')}
               >
                 Download
               </Button>
@@ -38,13 +33,4 @@ export function ManifestList({ manifests }: { manifests: Manifest[] }) {
       })}
     </>
   );
-}
-
-function downloadText(filename: string, content: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/yaml' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }

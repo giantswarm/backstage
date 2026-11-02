@@ -8,14 +8,13 @@ import {
   useTable,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import type {
   ModelConfig,
   ModelConfigReadiness,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { modelDetailRouteRef } from '../../routes';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   stopRowPress,
   useVisibleSort,
@@ -90,6 +89,16 @@ export type ModelRow = {
   readiness: ModelConfigReadiness;
   /** The controller's own explanation, for the status tooltip. */
   readinessMessage?: string;
+  /**
+   * The type of the condition that failed (`getFailedCondition`), e.g.
+   * `ResolvedRefs` while `Accepted` holds: what the status label names.
+   */
+  failedCondition?: string;
+  /**
+   * The controller has not reconciled the latest change yet, so
+   * `readinessMessage` describes the previous spec (see `modelStatus`).
+   */
+  isStale?: boolean;
   /** The in-cluster served model behind `endpoint`, when known. */
   servedBy?: ModelServedBy;
 };
@@ -98,6 +107,8 @@ export function toModelRow(
   modelConfig: ModelConfig,
   servedBy?: ModelServedBy,
 ): ModelRow {
+  const isStale = modelConfig.isStale();
+  const failedCondition = modelConfig.getFailedCondition()?.type;
   return {
     id: `${modelConfig.cluster}/${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
     installation: modelConfig.cluster,
@@ -109,6 +120,8 @@ export function toModelRow(
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
     readinessMessage: modelConfig.getReadinessMessage(),
+    ...(failedCondition ? { failedCondition } : {}),
+    ...(isStale ? { isStale } : {}),
     ...(servedBy ? { servedBy } : {}),
   };
 }
@@ -281,7 +294,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       // Room for the label beside the sort arrow: it is the initial sort.
       defaultWidth: '0.75fr',
@@ -312,7 +325,7 @@ export type ModelsTableProps = {
  */
 export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
   const navigate = useNavigate();
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   // All three parameters are needed: a ModelConfig name is only unique within
   // a namespace on one installation. Undefined when the route isn't bound, in

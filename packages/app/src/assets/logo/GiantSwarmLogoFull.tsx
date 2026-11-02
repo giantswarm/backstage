@@ -2,6 +2,13 @@ import { useId } from 'react';
 import { GiantSwarmAntPaths } from './GiantSwarmAnt';
 
 /**
+ * The wordmark's color in the brand file (`giantswarm/brand`
+ * `logo/standard/giant-swarm-logo.svg`). Set it as the lockup's `color` where
+ * the logo must show exactly as the brand file draws it.
+ */
+export const GIANT_SWARM_WORDMARK_COLOR = '#234A61';
+
+/**
  * The Giant Swarm horizontal lockup — the only permitted logo form per the
  * styleguide. Vendored from `giantswarm/brand` (`logo/standard`), which matches
  * the lockup currently used on giantswarm.io.

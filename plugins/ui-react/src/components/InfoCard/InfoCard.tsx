@@ -11,8 +11,20 @@ import { makeStyles } from '@material-ui/core/styles';
 import classNames from 'classnames';
 
 const useStyles = makeStyles({
+  // A card in a grid or flex row keeps to its track: without `min-width: 0`
+  // an unbroken title or link widens it past its column.
   root: {
     height: '100%',
+    minWidth: 0,
+  },
+  // The title shares its row with the header actions; it wraps, even inside
+  // an unbroken path or link, instead of pushing the actions out.
+  title: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  headerActions: {
+    flexShrink: 0,
   },
   footer: {
     display: 'flex',
@@ -22,6 +34,8 @@ const useStyles = makeStyles({
 
 export interface InfoCardProps {
   title?: ReactNode;
+  /** The title's heading level, by where the card sits in the page outline. */
+  titleAs?: 'h2' | 'h3' | 'h4';
   headerActions?: ReactNode;
   footerActions?: ReactNode;
   children?: ReactNode;
@@ -29,7 +43,14 @@ export interface InfoCardProps {
 }
 
 export function InfoCard(props: InfoCardProps) {
-  const { title, headerActions, footerActions, children, className } = props;
+  const {
+    title,
+    titleAs = 'h3',
+    headerActions,
+    footerActions,
+    children,
+    className,
+  } = props;
   const classes = useStyles();
 
   return (
@@ -37,11 +58,16 @@ export function InfoCard(props: InfoCardProps) {
       {title && (
         <CardHeader>
           <Flex justify="between" align="center">
-            <Text as="h3" variant="title-x-small" weight="bold">
+            <Text
+              as={titleAs}
+              variant="title-x-small"
+              weight="bold"
+              className={classes.title}
+            >
               {title}
             </Text>
             {headerActions && (
-              <Flex align="center" gap="1">
+              <Flex align="center" gap="1" className={classes.headerActions}>
                 {headerActions}
               </Flex>
             )}

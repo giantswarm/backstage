@@ -9,470 +9,819 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  it('should return correct payload for catalog index page', () => {
-    const result = getTelemetryPageViewPayload('/catalog');
-    expect(result).toEqual({
-      page: 'Catalog index',
-      path: '/catalog',
+  describe('catalog', () => {
+    it('should return correct payload for catalog index page', () => {
+      expect(getTelemetryPageViewPayload('/catalog')).toEqual({
+        page: 'Catalog index',
+        path: '/catalog',
+      });
+    });
+
+    it('reports an entity page by its kind and its route, not its names', () => {
+      expect(
+        getTelemetryPageViewPayload('/catalog/acme/component/payments-api'),
+      ).toEqual({
+        page: 'Catalog entity',
+        entityKind: 'component',
+        tab: 'overview',
+        path: '/catalog/:namespace/:kind/:name',
+      });
+    });
+
+    it('reports an entity page’s tab', () => {
+      expect(
+        getTelemetryPageViewPayload(
+          '/catalog/acme/component/payments-api/pull-requests',
+        ),
+      ).toEqual({
+        page: 'Catalog entity',
+        entityKind: 'component',
+        tab: 'pull-requests',
+        path: '/catalog/:namespace/:kind/:name/pull-requests',
+      });
+    });
+
+    it('reports the pages below a tab as that tab', () => {
+      expect(
+        getTelemetryPageViewPayload(
+          '/catalog/acme/component/payments-api/docs/runbooks/outage',
+        ),
+      ).toEqual({
+        page: 'Catalog entity',
+        entityKind: 'component',
+        tab: 'docs',
+        path: '/catalog/:namespace/:kind/:name/docs/*',
+      });
+    });
+
+    it('reports an unknown kind and tab without their text', () => {
+      expect(
+        getTelemetryPageViewPayload('/catalog/acme/acme-kind/x/acme-tab'),
+      ).toEqual({
+        page: 'Catalog entity',
+        entityKind: 'other',
+        tab: 'other',
+        path: '/catalog/:namespace/:kind/:name/*',
+      });
+    });
+
+    it('should return correct payload for catalog graph page', () => {
+      expect(getTelemetryPageViewPayload('/catalog-graph')).toEqual({
+        page: 'Catalog graph',
+        path: '/catalog-graph',
+      });
+    });
+
+    it('should return correct payload for docs index page', () => {
+      expect(getTelemetryPageViewPayload('/docs')).toEqual({
+        page: 'Docs index',
+        path: '/docs',
+      });
+    });
+
+    it('reports an entity’s docs by its kind and its route', () => {
+      expect(
+        getTelemetryPageViewPayload('/docs/acme/component/payments-api'),
+      ).toEqual({
+        page: 'Docs entity',
+        entityKind: 'component',
+        path: '/docs/:namespace/:kind/:name',
+      });
+      expect(
+        getTelemetryPageViewPayload(
+          '/docs/acme/component/payments-api/runbooks/outage',
+        ),
+      ).toEqual({
+        page: 'Docs entity',
+        entityKind: 'component',
+        path: '/docs/:namespace/:kind/:name/*',
+      });
     });
   });
 
-  it('should return correct payload for catalog entity page', () => {
-    const result = getTelemetryPageViewPayload(
-      '/catalog/default/component/my-component',
-    );
-    expect(result).toEqual({
-      page: 'Catalog entity',
-      entityNamespace: 'default',
-      entityKind: 'component',
-      entityName: 'my-component',
-      tab: 'overview',
-      path: '/catalog/default/component/my-component',
+  describe('scaffolder', () => {
+    it('should return correct payload for software templates index page', () => {
+      expect(getTelemetryPageViewPayload('/create')).toEqual({
+        page: 'Software Templates index',
+        path: '/create',
+      });
     });
-  });
 
-  it('should return correct payload for catalog entity page with tab', () => {
-    const result = getTelemetryPageViewPayload(
-      '/catalog/default/component/my-component/pull-requests',
-    );
-    expect(result).toEqual({
-      page: 'Catalog entity',
-      entityNamespace: 'default',
-      entityKind: 'component',
-      entityName: 'my-component',
-      tab: 'pull-requests',
-      path: '/catalog/default/component/my-component/pull-requests',
-    });
-  });
-
-  it('should return correct payload for catalog graph page', () => {
-    const result = getTelemetryPageViewPayload('/catalog-graph');
-    expect(result).toEqual({
-      page: 'Catalog graph',
-      path: '/catalog-graph',
-    });
-  });
-
-  it('should return correct payload for docs index page', () => {
-    const result = getTelemetryPageViewPayload('/docs');
-    expect(result).toEqual({
-      page: 'Docs index',
-      path: '/docs',
-    });
-  });
-
-  it('should return correct payload for docs entity page', () => {
-    const result = getTelemetryPageViewPayload(
-      '/docs/default/component/my-component',
-    );
-    expect(result).toEqual({
-      page: 'Docs entity',
-      entityNamespace: 'default',
-      entityKind: 'component',
-      entityName: 'my-component',
-      path: '/docs/default/component/my-component',
-    });
-  });
-
-  it('should return correct payload for software templates index page', () => {
-    const result = getTelemetryPageViewPayload('/create');
-    expect(result).toEqual({
-      page: 'Software Templates index',
-      path: '/create',
-    });
-  });
-
-  it('should return correct payload for software template page', () => {
-    const result = getTelemetryPageViewPayload(
-      '/create/default/template/my-template',
-    );
-    expect(result).toEqual({
-      page: 'Software Template',
-      templateNamespace: 'default',
-      templateName: 'my-template',
-      path: '/create/default/template/my-template',
-    });
-  });
-
-  it('should return correct payload for settings page', () => {
-    const result = getTelemetryPageViewPayload('/settings');
-    expect(result).toEqual({
-      page: 'Settings',
-      path: '/settings',
-    });
-  });
-
-  it('should return correct payload for settings page with tab', () => {
-    const result = getTelemetryPageViewPayload('/settings/feature-flags');
-    expect(result).toEqual({
-      page: 'Settings',
-      path: '/settings/feature-flags',
-    });
-  });
-
-  it('should return correct payload for installations index page', () => {
-    const result = getTelemetryPageViewPayload('/installations');
-    expect(result).toEqual({
-      page: 'Installations index',
-      path: '/installations',
-    });
-  });
-
-  it('should return correct payload for clusters index page', () => {
-    const result = getTelemetryPageViewPayload('/clusters');
-    expect(result).toEqual({
-      page: 'Clusters index',
-      path: '/clusters',
-    });
-  });
-
-  it('should return correct payload for cluster details page', () => {
-    const result = getTelemetryPageViewPayload(
-      '/clusters/installation/org-demo/demo-cluster',
-    );
-    expect(result).toEqual({
-      page: 'Cluster details',
-      installation: 'installation',
-      clusterNamespace: 'org-demo',
-      clusterName: 'demo-cluster',
-      tab: 'overview',
-      path: '/clusters/installation/org-demo/demo-cluster',
-    });
-  });
-
-  it('should return correct payload for cluster details page with tab', () => {
-    const result = getTelemetryPageViewPayload(
-      '/clusters/installation/org-demo/demo-cluster/ssh-access',
-    );
-    expect(result).toEqual({
-      page: 'Cluster details',
-      installation: 'installation',
-      clusterNamespace: 'org-demo',
-      clusterName: 'demo-cluster',
-      tab: 'ssh-access',
-      path: '/clusters/installation/org-demo/demo-cluster/ssh-access',
-    });
-  });
-
-  it('should return correct payload for deployment details page', () => {
-    const result = getTelemetryPageViewPayload(
-      '/deployments/gorilla/helmrelease/org-demo/my-app',
-    );
-    expect(result).toEqual({
-      page: 'Deployment details',
-      installation: 'gorilla',
-      deploymentKind: 'helmrelease',
-      deploymentNamespace: 'org-demo',
-      deploymentName: 'my-app',
-      tab: 'overview',
-      path: '/deployments/gorilla/helmrelease/org-demo/my-app',
-    });
-  });
-
-  it('should return correct payload for deployment details page with tab', () => {
-    const result = getTelemetryPageViewPayload(
-      '/deployments/gorilla/helmrelease/org-demo/my-app/resources',
-    );
-    expect(result).toEqual({
-      page: 'Deployment details',
-      installation: 'gorilla',
-      deploymentKind: 'helmrelease',
-      deploymentNamespace: 'org-demo',
-      deploymentName: 'my-app',
-      tab: 'resources',
-      path: '/deployments/gorilla/helmrelease/org-demo/my-app/resources',
-    });
-  });
-
-  it('should return correct payload for flux index page', () => {
-    const result = getTelemetryPageViewPayload('/flux');
-    expect(result).toEqual({
-      page: 'Flux index',
-      path: '/flux',
-    });
-  });
-
-  it('should return correct payload for flux tree view', () => {
-    const result = getTelemetryPageViewPayload('/flux/tree');
-    expect(result).toEqual({
-      page: 'Flux',
-      view: 'tree',
-      path: '/flux/tree',
-    });
-  });
-
-  it('should return correct payload for flux list view', () => {
-    const result = getTelemetryPageViewPayload('/flux/list');
-    expect(result).toEqual({
-      page: 'Flux',
-      view: 'list',
-      path: '/flux/list',
-    });
-  });
-
-  it('should return correct payload for AI Chat page', () => {
-    const result = getTelemetryPageViewPayload('/ai-chat');
-    expect(result).toEqual({
-      page: 'AI Chat',
-      path: '/ai-chat',
-    });
-  });
-
-  it('should return correct payload for AI Chat history sub-route', () => {
-    const result = getTelemetryPageViewPayload('/ai-chat/history');
-    expect(result).toEqual({
-      page: 'AI Chat',
-      view: 'history',
-      path: '/ai-chat/history',
-    });
-  });
-
-  it.each([
-    ['/agent-platform/mcp-servers', { page: 'MCP Servers' }],
-    [
-      '/agent-platform/mcp-servers/new',
-      { page: 'MCP server registration', view: 'server' },
-    ],
-    [
-      '/agent-platform/mcp-servers/new/auth',
-      { page: 'MCP server registration', view: 'auth' },
-    ],
-    [
-      '/agent-platform/mcp-servers/kubernetes',
-      { page: 'MCP server', view: 'tools' },
-    ],
-    [
-      '/agent-platform/mcp-servers/kubernetes/details',
-      { page: 'MCP server', view: 'details' },
-    ],
-    [
-      '/agent-platform/mcp-servers/kubernetes/instances',
-      { page: 'MCP server', view: 'instances' },
-    ],
-    [
-      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
-      { page: 'MCP tool' },
-    ],
-    // A server named like a wizard step is not one: only `new` is.
-    [
-      '/agent-platform/mcp-servers/newsroom',
-      { page: 'MCP server', view: 'tools' },
-    ],
-    ['/agent-platform/workflows', { page: 'Workflows' }],
-    [
-      '/agent-platform/workflows/my-workflow',
-      { page: 'Workflow', view: 'overview' },
-    ],
-    [
-      '/agent-platform/workflows/my-workflow/run',
-      { page: 'Workflow', view: 'run' },
-    ],
-    // The old section's paths, one name and no view, not the Agents page.
-    ['/agent-platform/muster', { page: 'Muster (removed)' }],
-    [
-      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods',
-      { page: 'Muster (removed)' },
-    ],
-    // Not the old section: only `muster` itself is.
-    ['/agent-platform/musterish', { page: 'Agents', view: 'musterish' }],
-  ])(
-    'should report muster tab path %s under its own page name',
-    (path, payload) => {
-      expect(getTelemetryPageViewPayload(path)).toEqual({ ...payload, path });
-    },
-  );
-
-  it('should return correct payload for the sessions tab', () => {
-    // Reported as its own page rather than falling through to the generic
-    // agent-platform case, which would label it `page: 'Agents'`.
-    const result = getTelemetryPageViewPayload('/agent-platform/sessions');
-    expect(result).toEqual({
-      page: 'Sessions index',
-      path: '/agent-platform/sessions',
-    });
-  });
-
-  it('should return correct payload for one session', () => {
-    // No `view`: the path carries an installation name and an opaque session id,
-    // so echoing them would emit a page name per session — and record which
-    // installations a user reads.
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/sessions/gazelle/019f8a13-c6c2-73af-a1d9-ab0abeeb6734',
-    );
-    expect(result).toEqual({
-      page: 'Session detail',
-      path: '/agent-platform/sessions/gazelle/019f8a13-c6c2-73af-a1d9-ab0abeeb6734',
-    });
-  });
-
-  describe('the Models tab', () => {
-    // Without cases of its own the whole tab fell through to the generic
-    // agent-platform branch as `page: 'Agents'`, merging its numbers into the
-    // Agents page's — and the detail path put an installation, a namespace and
-    // a model name into `view`, one signal name per model.
-    it('names the tab index', () => {
-      expect(getTelemetryPageViewPayload('/agent-platform/models')).toEqual({
-        page: 'Models index',
-        path: '/agent-platform/models',
+    it('reports a template’s form by its route, not its names', () => {
+      expect(
+        getTelemetryPageViewPayload('/create/templates/acme/acme-cluster'),
+      ).toEqual({
+        page: 'Software Template',
+        path: '/create/templates/:namespace/:templateName',
       });
     });
 
     it.each([
-      ['/agent-platform/models/serving', 'serving'],
-      ['/agent-platform/models/capacity', 'capacity'],
-      ['/agent-platform/models/new', 'new'],
-      // The paths an older release's links still carry, before the redirect to
-      // the tab root lands.
-      ['/agent-platform/models/configs', 'configs'],
-      // Deeper than a view, and still reported as what it belongs to.
-      ['/agent-platform/models/configs/new', 'configs'],
-    ])('reports %s as its view', (pathname, view) => {
+      [
+        '/create/tasks/0c4b2f5e-9a3d-4f1e-8b7a-2d6c1e0f9a3b',
+        '/create/tasks/:taskId',
+      ],
+      ['/create/tasks', '/create/tasks'],
+      ['/create/acme/template/acme-cluster', '/create/*'],
+    ])('reports %s as %s', (pathname, route) => {
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
-        page: 'Models',
-        view,
-        path: pathname,
-      });
-    });
-
-    it('names one model without naming it in page or view', () => {
-      const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
-
-      expect(getTelemetryPageViewPayload(pathname)).toEqual({
-        page: 'Model detail',
-        path: pathname,
+        page: 'Software Template',
+        path: route,
       });
     });
   });
 
-  it('should return correct payload for one agent', () => {
-    // No `view`: the path names an installation, a namespace and an agent, so
-    // echoing them would emit a page name per agent — and record which
-    // installations a user reads.
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
-    );
-    expect(result).toEqual({
-      page: 'Agent detail',
-      path: '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
+  it.each([
+    ['/settings', '/settings'],
+    ['/settings/feature-flags', '/settings/feature-flags'],
+    ['/settings/acme', '/settings/*'],
+  ])('reports the settings page %s as %s', (pathname, route) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      page: 'Settings',
+      path: route,
     });
   });
 
-  it.each(['tools', 'skills', 'sessions'])(
-    "should name the agent detail page's %s tab without naming the agent",
-    tab => {
-      const pathname = `/agent-platform/agents/gazelle/agent-platform/pr-reviewer/${tab}`;
-      // The tab is a fixed, public name, so it is safe to report as a `view`
-      // where the installation and agent segments are not.
-      expect(getTelemetryPageViewPayload(pathname)).toEqual({
-        page: 'Agent detail',
+  describe('Customize', () => {
+    it('should return correct payload for the customize page', () => {
+      expect(getTelemetryPageViewPayload('/customize')).toEqual({
+        page: 'Customize',
+        path: '/customize',
+      });
+    });
+
+    it.each([
+      'agents',
+      'skills',
+      'connectors',
+      'models',
+      'workflows',
+      'workspaces',
+    ])('reports the %s Customize tab as its view', tab => {
+      expect(getTelemetryPageViewPayload(`/customize/${tab}`)).toEqual({
+        page: 'Customize',
         view: tab,
-        path: pathname,
+        path: `/customize/${tab}`,
+      });
+    });
+
+    it.each(['infrastructure', 'internal'])(
+      'reports the Connectors tab’s %s sub-tab as its subview',
+      sub => {
+        expect(
+          getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
+        ).toEqual({
+          page: 'Customize',
+          view: 'connectors',
+          subview: sub,
+          path: `/customize/connectors/${sub}`,
+        });
+      },
+    );
+
+    it('reports the retired Families path without a subview, as it redirects', () => {
+      expect(
+        getTelemetryPageViewPayload('/customize/connectors/families'),
+      ).toEqual({
+        page: 'Customize',
+        view: 'connectors',
+        path: '/customize/connectors/*',
+      });
+    });
+
+    it('reports an unknown Customize tab without a view or its text', () => {
+      expect(getTelemetryPageViewPayload('/customize/acme')).toEqual({
+        page: 'Customize',
+        path: '/customize/*',
+      });
+    });
+  });
+
+  describe('classic portal pages', () => {
+    it('should return correct payload for installations index page', () => {
+      expect(getTelemetryPageViewPayload('/installations')).toEqual({
+        page: 'Installations index',
+        path: '/installations',
+      });
+    });
+
+    it('should return correct payload for clusters index page', () => {
+      expect(getTelemetryPageViewPayload('/clusters')).toEqual({
+        page: 'Clusters index',
+        path: '/clusters',
+      });
+    });
+
+    it('reports a cluster page by its route, not its names', () => {
+      expect(
+        getTelemetryPageViewPayload('/clusters/acme-prod/org-acme/payments01'),
+      ).toEqual({
+        page: 'Cluster details',
+        tab: 'overview',
+        path: '/clusters/:installationName/:namespace/:name',
+      });
+    });
+
+    it('reports a cluster page’s tab', () => {
+      expect(
+        getTelemetryPageViewPayload(
+          '/clusters/acme-prod/org-acme/payments01/ssh-access',
+        ),
+      ).toEqual({
+        page: 'Cluster details',
+        tab: 'ssh-access',
+        path: '/clusters/:installationName/:namespace/:name/ssh-access',
+      });
+    });
+
+    it('reports a deployment page by its kind and its route, not its names', () => {
+      expect(
+        getTelemetryPageViewPayload(
+          '/deployments/acme-prod/helmrelease/org-acme/payments-api',
+        ),
+      ).toEqual({
+        page: 'Deployment details',
+        deploymentKind: 'helmrelease',
+        tab: 'overview',
+        path: '/deployments/:installationName/:kind/:namespace/:name',
+      });
+    });
+
+    it('reports a deployment page’s tab, and an unknown one without its text', () => {
+      expect(
+        getTelemetryPageViewPayload(
+          '/deployments/acme-prod/app/org-acme/payments-api/routes',
+        ),
+      ).toEqual({
+        page: 'Deployment details',
+        deploymentKind: 'app',
+        tab: 'routes',
+        path: '/deployments/:installationName/:kind/:namespace/:name/routes',
+      });
+      expect(
+        getTelemetryPageViewPayload(
+          '/deployments/acme-prod/app/org-acme/payments-api/acme-tab',
+        ),
+      ).toEqual({
+        page: 'Deployment details',
+        deploymentKind: 'app',
+        tab: 'other',
+        path: '/deployments/:installationName/:kind/:namespace/:name/*',
+      });
+    });
+
+    it.each<[string, Record<string, string>]>([
+      ['/flux', { page: 'Flux index', path: '/flux' }],
+      ['/flux/tree', { page: 'Flux', view: 'tree', path: '/flux/tree' }],
+      ['/flux/list', { page: 'Flux', view: 'list', path: '/flux/list' }],
+      ['/flux/acme', { page: 'Flux', view: 'other', path: '/flux/*' }],
+      ['/ai-chat', { page: 'AI Chat', path: '/ai-chat' }],
+      [
+        '/ai-chat/history',
+        { page: 'AI Chat', view: 'history', path: '/ai-chat/history' },
+      ],
+      ['/ai-chat/acme', { page: 'AI Chat', view: 'other', path: '/ai-chat/*' }],
+    ])('reports %s', (pathname, payload) => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
+    });
+  });
+
+  // Each page of the Agent Platform keeps the page and view names it carried
+  // at its old `/agent-platform/…` address, so the numbers stay continuous
+  // across the move (giantswarm/giantswarm#38510); `path` is its route.
+  it.each<[string, Record<string, string>, string]>([
+    ['/sessions', { page: 'Sessions index' }, '/sessions'],
+    [
+      '/sessions/acme-prod/0c4b2f5e-9a3d-4f1e-8b7a-2d6c1e0f9a3b',
+      { page: 'Session detail' },
+      '/sessions/:installation/:sessionId',
+    ],
+    ['/usage', { page: 'Usage', view: 'overview' }, '/usage'],
+    ['/usage/cost', { page: 'Usage', view: 'cost' }, '/usage/cost'],
+    [
+      '/usage/your-sessions',
+      { page: 'Usage', view: 'conversations' },
+      '/usage/your-sessions',
+    ],
+    // The view's path before it took its label, never released: no view.
+    ['/usage/conversations', { page: 'Usage', view: 'redirect' }, '/usage/*'],
+    [
+      '/usage/connectors',
+      { page: 'Usage', view: 'connectors' },
+      '/usage/connectors',
+    ],
+    ['/usage/whatever', { page: 'Usage', view: 'redirect' }, '/usage/*'],
+    ['/profile', { page: 'Profile' }, '/profile'],
+    ['/profile/', { page: 'Profile' }, '/profile'],
+    ['/profile/whatever', { page: 'Profile' }, '/profile/*'],
+    ['/sessions/', { page: 'Sessions index' }, '/sessions'],
+    ['/usage/', { page: 'Usage', view: 'overview' }, '/usage'],
+    [
+      '/customize/agents/new',
+      { page: 'Agents', view: 'agents/new' },
+      '/customize/agents/new',
+    ],
+    [
+      '/customize/agents/new/skills',
+      { page: 'Agents', view: 'agents/new/skills' },
+      '/customize/agents/new/skills',
+    ],
+    [
+      '/customize/agents/new/review',
+      { page: 'Agents', view: 'agents/new/review' },
+      '/customize/agents/new/review',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper',
+      { page: 'Agent detail' },
+      '/customize/agents/:installation/:namespace/:name',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/tools',
+      { page: 'Agent detail', view: 'tools' },
+      '/customize/agents/:installation/:namespace/:name/tools',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/sessions',
+      { page: 'Agent detail', view: 'sessions' },
+      '/customize/agents/:installation/:namespace/:name/sessions',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/usage',
+      { page: 'Agent detail', view: 'usage' },
+      '/customize/agents/:installation/:namespace/:name/usage',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/skills',
+      { page: 'Agent detail', view: 'redirect' },
+      '/customize/agents/:installation/:namespace/:name/*',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/edit',
+      { page: 'Agent edit' },
+      '/customize/agents/:installation/:namespace/:name/edit',
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/edit/tools',
+      { page: 'Agent edit', view: 'tools' },
+      '/customize/agents/:installation/:namespace/:name/edit/tools',
+    ],
+    ['/customize/skills/new', { page: 'Add skill' }, '/customize/skills/new'],
+    [
+      '/customize/skills/edit/acme/agent-skills/ticket-triage',
+      { page: 'Edit skill' },
+      '/customize/skills/edit/*',
+    ],
+    [
+      '/customize/skills/acme/agent-skills/ticket-triage',
+      { page: 'Skill detail' },
+      '/customize/skills/*',
+    ],
+    [
+      '/customize/skills/acme/agent-skills/ticket-triage/used-by',
+      { page: 'Skill detail', view: 'used-by' },
+      '/customize/skills/*/used-by',
+    ],
+    [
+      '/customize/skills/-/git.acme.example/platform/skills/-/ticket-triage',
+      { page: 'Skill detail' },
+      '/customize/skills/*',
+    ],
+    [
+      '/customize/skills/-/git.acme.example/platform/skills/-/ticket-triage/instructions',
+      { page: 'Skill detail', view: 'instructions' },
+      '/customize/skills/*/instructions',
+    ],
+    [
+      '/customize/connectors/new',
+      { page: 'Connector registration', view: 'server' },
+      '/customize/connectors/new',
+    ],
+    [
+      '/customize/connectors/new/auth',
+      { page: 'Connector registration', view: 'auth' },
+      '/customize/connectors/new/auth',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/edit',
+      { page: 'Connector registration', view: 'server' },
+      '/customize/connectors/:installation/:server/edit',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/edit/verify',
+      { page: 'Connector registration', view: 'verify' },
+      '/customize/connectors/:installation/:server/edit/verify',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira',
+      { page: 'Connector', view: 'tools' },
+      '/customize/connectors/:installation/:server',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/details',
+      { page: 'Connector', view: 'details' },
+      '/customize/connectors/:installation/:server/details',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/usage',
+      { page: 'Connector', view: 'usage' },
+      '/customize/connectors/:installation/:server/usage',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/whatever',
+      { page: 'Connector', view: 'redirect' },
+      '/customize/connectors/:installation/:server/*',
+    ],
+    // An installation named like a sub-tab: two segments name a connector.
+    [
+      '/customize/connectors/infrastructure/x',
+      { page: 'Connector', view: 'tools' },
+      '/customize/connectors/:installation/:server',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice',
+      { page: 'Connector tool', view: 'overview' },
+      '/customize/connectors/:installation/:server/tools/:tool',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/run',
+      { page: 'Connector tool', view: 'run' },
+      '/customize/connectors/:installation/:server/tools/:tool/run',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/usage',
+      { page: 'Connector tool', view: 'usage' },
+      '/customize/connectors/:installation/:server/tools/:tool/usage',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/x',
+      { page: 'Connector tool', view: 'redirect' },
+      '/customize/connectors/:installation/:server/tools/:tool/*',
+    ],
+    // muster's own tools have no Usage tab: the address only redirects.
+    [
+      '/customize/connectors/acme-prod/muster/tools/core_service_list/usage',
+      { page: 'Connector tool', view: 'redirect' },
+      '/customize/connectors/:installation/:server/tools/:tool/*',
+    ],
+    [
+      '/customize/connectors/acme-prod/muster/tools/core_service_list/run',
+      { page: 'Connector tool', view: 'run' },
+      '/customize/connectors/:installation/:server/tools/:tool/run',
+    ],
+    [
+      '/customize/workflows/acme-prod/rotate-payments-keys',
+      { page: 'Workflow', view: 'overview' },
+      '/customize/workflows/:installation/:name',
+    ],
+    [
+      '/customize/workflows/acme-prod/rotate-payments-keys/run',
+      { page: 'Workflow', view: 'run' },
+      '/customize/workflows/:installation/:name/run',
+    ],
+    [
+      '/customize/workflows/acme-prod/rotate-payments-keys/x',
+      { page: 'Workflow', view: 'redirect' },
+      '/customize/workflows/:installation/:name/*',
+    ],
+    [
+      '/customize/workspaces/new',
+      { page: 'Create workspace' },
+      '/customize/workspaces/new',
+    ],
+    [
+      '/customize/workspaces/gazelle/acme/platform-mcp/edit',
+      { page: 'Edit workspace' },
+      '/customize/workspaces/:installation/:organization/:name/edit',
+    ],
+    [
+      '/customize/workspaces/gazelle/acme/platform-mcp',
+      { page: 'Workspace detail' },
+      '/customize/workspaces/:installation/:organization/:name',
+    ],
+    [
+      '/customize/workspaces/gazelle/acme/platform-mcp/sessions',
+      { page: 'Workspace detail', view: 'sessions' },
+      '/customize/workspaces/:installation/:organization/:name/sessions',
+    ],
+    [
+      '/customize/workspaces/gazelle/acme/platform-mcp/x',
+      { page: 'Workspace detail', view: 'redirect' },
+      '/customize/workspaces/:installation/:organization/:name/*',
+    ],
+    [
+      '/customize/toolchains/new',
+      { page: 'Create toolchain' },
+      '/customize/toolchains/new',
+    ],
+    [
+      '/customize/toolchains/gazelle/go',
+      { page: 'Toolchain detail' },
+      '/customize/toolchains/:installation/:name',
+    ],
+    [
+      '/customize/models/new',
+      { page: 'Models', view: 'new' },
+      '/customize/models/new',
+    ],
+    [
+      '/customize/models/hosting',
+      { page: 'Models', view: 'serving' },
+      '/customize/models/hosting',
+    ],
+    [
+      '/customize/models/hosting/capacity',
+      { page: 'Models', view: 'capacity' },
+      '/customize/models/hosting/capacity',
+    ],
+    [
+      '/customize/models/hosting/cache',
+      { page: 'Models', view: 'cache' },
+      '/customize/models/hosting/cache',
+    ],
+    [
+      '/customize/models/hosting/x',
+      { page: 'Models', view: 'redirect' },
+      '/customize/models/hosting/*',
+    ],
+    [
+      '/customize/models/hosting/serve',
+      { page: 'Serve model' },
+      '/customize/models/hosting/serve',
+    ],
+    [
+      '/customize/models/hosting/import',
+      { page: 'Import model' },
+      '/customize/models/hosting/import',
+    ],
+    [
+      '/customize/models/hosting/pull',
+      { page: 'Pull model' },
+      '/customize/models/hosting/pull',
+    ],
+    [
+      '/customize/models/hosting/add-backend',
+      { page: 'Add model backend' },
+      '/customize/models/hosting/add-backend',
+    ],
+    [
+      '/customize/models/hosting/capacity/add-pool',
+      { page: 'Add GPU node pool' },
+      '/customize/models/hosting/capacity/add-pool',
+    ],
+    [
+      '/customize/models/acme-prod/team-payments/acme-llm',
+      { page: 'Model detail' },
+      '/customize/models/:installation/:namespace/:name',
+    ],
+    [
+      '/customize/models/acme-prod/team-payments/acme-llm/usage',
+      { page: 'Model detail', view: 'usage' },
+      '/customize/models/:installation/:namespace/:name/usage',
+    ],
+    [
+      '/customize/models/acme-prod/team-payments/acme-llm/edit',
+      { page: 'Model edit' },
+      '/customize/models/:installation/:namespace/:name/edit',
+    ],
+  ])('reports %s under its page name', (pathname, payload, route) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      ...payload,
+      path: route,
+    });
+  });
+
+  // The old tree only redirects, in one hop; the page the visit lands on
+  // reports itself right after, so these neither count as that page nor open
+  // a dimension with their segments.
+  it.each([
+    '/agent-platform/sessions',
+    '/agent-platform/agents/acme-prod/team-payments/invoice-helper/tools',
+    '/agent-platform/connectors/acme-jira',
+    '/agent-platform/mcp-servers/acme-jira',
+    '/agent-platform/models/serving',
+    '/agent-platform/usage/overview',
+    '/agent-platform/profile',
+  ])('reports the old address %s as a redirect', pathname => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      page: 'Agent Platform redirect',
+      path: '/agent-platform/*',
+    });
+  });
+
+  it('reports the old tree’s root as a redirect', () => {
+    expect(getTelemetryPageViewPayload('/agent-platform')).toEqual({
+      page: 'Agent Platform redirect',
+      path: '/agent-platform',
+    });
+  });
+
+  it.each([
+    ['/agents', '/agents'],
+    ['/agents/new', '/agents/*'],
+    ['/agents/acme-prod/team-payments/invoice-helper', '/agents/*'],
+  ])('reports the older short path %s as a redirect', (pathname, route) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      page: 'Agents redirect',
+      path: route,
+    });
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ['/plans', { page: 'Plans index', path: '/plans' }],
+    // No `view`: the only varying segment is a pull request number, so
+    // echoing it would emit a page name per plan.
+    ['/plans/pr/22', { page: 'Plan detail', path: '/plans/pr/:number' }],
+    ['/bot-prs', { page: 'Bot PRs', path: '/bot-prs' }],
+    ['/product', { page: 'Product magazine', path: '/product' }],
+    ['/roadmap', { page: 'Roadmap index', path: '/roadmap' }],
+    [
+      '/roadmap/items/PVTI_abc123',
+      { page: 'Roadmap item', path: '/roadmap/items/:id' },
+    ],
+    // Seen in Sentry: the item route is navigated to with an empty id while
+    // the board is still resolving. It must not fall through to 'Unknown
+    // page'.
+    ['/roadmap/items/', { page: 'Roadmap item', path: '/roadmap/items/:id' }],
+    ['/hive', { page: 'Hive now', path: '/hive' }],
+    ['/hive/now', { page: 'Hive now', path: '/hive/now' }],
+    ['/hive/history', { page: 'Hive history', path: '/hive/history' }],
+    ['/hive/roadmap', { page: 'Hive roadmap', path: '/hive/roadmap' }],
+    [
+      '/hive/roadmap/items/PVTI_x',
+      { page: 'Hive roadmap item', path: '/hive/roadmap/items/:id' },
+    ],
+    ['/hive/plans', { page: 'Hive plans', path: '/hive/plans' }],
+    [
+      '/hive/plans/pr/22',
+      { page: 'Hive plan detail', path: '/hive/plans/pr/:number' },
+    ],
+    ['/hive/knowledge', { page: 'Hive knowledge', path: '/hive/knowledge' }],
+    ['/metrics', { page: 'Metrics', path: '/metrics' }],
+    ['/search', { page: 'Search', path: '/search' }],
+  ])('reports %s', (pathname, payload) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
+  });
+
+  // A trailing slash is the same page, as the router has it: the index, not
+  // a detail page, and never an unknown one.
+  it.each<[string, Record<string, string>]>([
+    ['/catalog/', { page: 'Catalog index', path: '/catalog' }],
+    ['/catalog-graph/', { page: 'Catalog graph', path: '/catalog-graph' }],
+    ['/docs/', { page: 'Docs index', path: '/docs' }],
+    ['/create/', { page: 'Software Templates index', path: '/create' }],
+    ['/customize/', { page: 'Customize', path: '/customize' }],
+    [
+      '/customize/connectors/infrastructure/',
+      {
+        page: 'Customize',
+        view: 'connectors',
+        subview: 'infrastructure',
+        path: '/customize/connectors/infrastructure',
+      },
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/tools/',
+      {
+        page: 'Agent detail',
+        view: 'tools',
+        path: '/customize/agents/:installation/:namespace/:name/tools',
+      },
+    ],
+    [
+      '/installations/',
+      { page: 'Installations index', path: '/installations' },
+    ],
+    ['/clusters/', { page: 'Clusters index', path: '/clusters' }],
+    ['/deployments/', { page: 'Deployments index', path: '/deployments' }],
+    ['/flux/', { page: 'Flux index', path: '/flux' }],
+    ['/ai-chat/', { page: 'AI Chat', path: '/ai-chat' }],
+    ['/plans/', { page: 'Plans index', path: '/plans' }],
+    ['/roadmap/', { page: 'Roadmap index', path: '/roadmap' }],
+    ['/hive/', { page: 'Hive now', path: '/hive' }],
+    ['/hive/now/', { page: 'Hive now', path: '/hive/now' }],
+    ['/hive/history/', { page: 'Hive history', path: '/hive/history' }],
+    ['/hive/roadmap/', { page: 'Hive roadmap', path: '/hive/roadmap' }],
+    ['/bot-prs/', { page: 'Bot PRs', path: '/bot-prs' }],
+    ['/product/', { page: 'Product magazine', path: '/product' }],
+    ['/metrics/', { page: 'Metrics', path: '/metrics' }],
+    ['/search/', { page: 'Search', path: '/search' }],
+  ])('reports %s as the page without the slash', (pathname, payload) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ['/api-docs', { page: 'API docs', path: '/api-docs' }],
+    ['/repositories', { page: 'Repositories', path: '/repositories' }],
+    [
+      '/repositories/create',
+      { page: 'Create repository', path: '/repositories/create' },
+    ],
+    ['/repositories/acme', { page: 'Repositories', path: '/repositories/*' }],
+  ])('reports %s', (pathname, payload) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
+  });
+
+  it('reports a roadmap address deeper than an item as no item', () => {
+    expect(getTelemetryPageViewPayload('/roadmap/items/a/b/c')).toEqual({
+      page: 'Roadmap item',
+      path: '/roadmap/*',
+    });
+  });
+
+  // `Object.prototype`'s keys are no views: the view comes from the closed
+  // set's own keys, never from what an object inherits.
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+    'reports the hosting address %s as a redirect',
+    key => {
+      expect(
+        getTelemetryPageViewPayload(`/customize/models/hosting/${key}`),
+      ).toEqual({
+        page: 'Models',
+        view: 'redirect',
+        path: '/customize/models/hosting/*',
       });
     },
   );
 
-  // The edit form used to fall through to the generic agent-platform case,
-  // which echoes the rest of the path into `view` — one signal name per agent,
-  // in the dimension TelemetryDeck aggregates on. `path` still carries the
-  // whole pathname here, as it does for every page; what this pins is that the
-  // agent does not reach `page` or `view`.
-  it('counts the agent edit page as one page, not one per agent', () => {
-    const pathname =
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit';
-
+  // A path that only starts like a page (`/docsx`) is no page: it reports
+  // as unknown, so a registered route there would reach Sentry as untracked
+  // rather than send a page name with an unknown `path`.
+  it.each([
+    '/catalog-import',
+    '/catalogx',
+    '/docsx',
+    '/createx',
+    '/settingsx',
+    '/clustersx',
+    '/deploymentsx',
+    '/fluxx',
+    '/ai-chatx',
+    '/plansx',
+    '/roadmapx',
+  ])('reports %s as unknown', pathname => {
     expect(getTelemetryPageViewPayload(pathname)).toEqual({
-      page: 'Agent edit',
-      path: pathname,
-    });
-  });
-
-  // The create flow sits under `agents/` too and is not an agent detail view:
-  // `agents/new`, `agents/new/skills` and `agents/new/review` keep reporting
-  // through the generic agent-platform case.
-  it('should not treat the create flow as an agent detail page', () => {
-    expect(
-      getTelemetryPageViewPayload('/agent-platform/agents/new/review'),
-    ).toEqual({
-      page: 'Agents',
-      view: 'agents/new/review',
-      path: '/agent-platform/agents/new/review',
-    });
-  });
-
-  it('should return correct payload for plans index page', () => {
-    const result = getTelemetryPageViewPayload('/plans');
-    expect(result).toEqual({
-      page: 'Plans index',
-      path: '/plans',
-    });
-  });
-
-  it('should return correct payload for one plan', () => {
-    // No `view`: the only varying segment is a pull request number, so echoing
-    // it would emit a page name per plan.
-    const result = getTelemetryPageViewPayload('/plans/pr/22');
-    expect(result).toEqual({
-      page: 'Plan detail',
-      path: '/plans/pr/22',
-    });
-  });
-
-  it('should return correct payload for roadmap index page', () => {
-    const result = getTelemetryPageViewPayload('/roadmap');
-    expect(result).toEqual({
-      page: 'Roadmap index',
-      path: '/roadmap',
-    });
-  });
-
-  it('should return correct payload for one roadmap item', () => {
-    const result = getTelemetryPageViewPayload('/roadmap/items/PVTI_abc123');
-    expect(result).toEqual({
-      page: 'Roadmap item',
-      path: '/roadmap/items/PVTI_abc123',
-    });
-  });
-
-  // Seen in Sentry: the item route is navigated to with an empty id while the
-  // board is still resolving. It must not fall through to 'Unknown page'.
-  it('should return correct payload for the item route with no id', () => {
-    const result = getTelemetryPageViewPayload('/roadmap/items/');
-    expect(result).toEqual({
-      page: 'Roadmap item',
-      path: '/roadmap/items/',
-    });
-  });
-
-  it('should return correct payload for metrics page', () => {
-    const result = getTelemetryPageViewPayload('/metrics');
-    expect(result).toEqual({
-      page: 'Metrics',
-      path: '/metrics',
-    });
-  });
-
-  it('should return correct payload for search page', () => {
-    const result = getTelemetryPageViewPayload('/search');
-    expect(result).toEqual({
-      page: 'Search',
-      path: '/search',
-    });
-  });
-
-  it('should return Unknown page payload for unknown paths', () => {
-    const result = getTelemetryPageViewPayload('/unknown');
-    expect(result).toEqual({
       page: 'Unknown page',
-      path: '/unknown',
+      path: 'unknown',
     });
   });
 
-  // Guard rail: every registered top-level route must map to a named page.
-  // A registered route that falls through to 'Unknown page' is reported to
-  // Sentry as an "Untracked page view" warning on every visit (see
-  // TelemetryDeckAnalyticsApi.captureEvent). When you add a new page/route,
-  // add a case to getTelemetryPageViewPayload and list a representative path
-  // here so a forgotten mapping fails CI instead of flooding Sentry.
+  it('reports an unknown path as unknown, never the path itself', () => {
+    expect(
+      getTelemetryPageViewPayload('/acme-prod/team-payments/invoice-helper'),
+    ).toEqual({
+      page: 'Unknown page',
+      path: 'unknown',
+    });
+  });
+
+  // The rule the mapping is there for: no name or id from the path reaches
+  // an attribute (docs/telemetry.md). Each path is built from made-up names
+  // of the shape real ones have, and none of them may appear in any value.
+  it.each([
+    '/catalog/acme/component/payments-api/docs/payments-runbook',
+    '/docs/acme/component/payments-api/payments-runbook',
+    '/create/templates/acme/acme-cluster',
+    '/create/tasks/0c4b2f5e-9a3d-4f1e-8b7a-2d6c1e0f9a3b',
+    '/clusters/acme-prod/org-acme/payments01/acme-tab',
+    '/deployments/acme-prod/acme-kind/org-acme/payments-api/acme-tab',
+    '/sessions/acme-prod/0c4b2f5e-9a3d-4f1e-8b7a-2d6c1e0f9a3b',
+    '/customize/agents/acme-prod/team-payments/invoice-helper/acme-tab',
+    '/customize/agents/acme-prod/team-payments/invoice-helper/edit/tools',
+    '/customize/models/acme-prod/team-payments/acme-llm/acme-tab',
+    '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice',
+    '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/acme-tab',
+    '/customize/workflows/acme-prod/rotate-payments-keys/acme-tab',
+    '/customize/skills/acme/payments-skills/invoice-triage/used-by',
+    '/customize/skills/edit/acme/payments-skills/invoice-triage',
+    '/customize/acme-tab',
+    '/agent-platform/agents/acme-prod/team-payments/invoice-helper',
+    '/agents/acme-prod/team-payments/invoice-helper',
+    '/settings/acme-tab',
+    '/flux/acme-tab',
+    '/ai-chat/acme-tab',
+    '/usage/acme-tab',
+    '/profile/acme-tab',
+    '/plans/acme-tab',
+    '/roadmap/acme-tab',
+    '/hive/plans/acme-tab',
+    '/acme-prod/payments-api',
+  ])('carries no name or id from %s', pathname => {
+    const values = Object.values(getTelemetryPageViewPayload(pathname));
+    for (const value of values) {
+      expect(value).not.toMatch(
+        /acme|payments|invoice|0c4b2f5e|rotate|team-|org-/,
+      );
+    }
+  });
+
+  // Guard rail: every registered top-level route must map to a named page
+  // and a route. A registered route that falls through to 'Unknown page' is
+  // reported to Sentry as an "Untracked page view" warning on every visit
+  // (see TelemetryDeckAnalyticsApi.captureEvent). When you add a new
+  // page/route, add a case to getTelemetryPageViewPayload and list a
+  // representative path here so a forgotten mapping fails CI instead of
+  // flooding Sentry.
   describe('all known top-level routes resolve to a named page', () => {
     const knownTopLevelPaths = [
       '/',
@@ -482,92 +831,127 @@ describe('getTelemetryPageViewPayload', () => {
       '/docs',
       '/docs/default/component/my-component',
       '/create',
-      '/create/default/template/my-template',
+      '/create/templates/default/my-template',
+      '/create/tasks/abc',
       '/settings',
+      '/settings/general',
+      '/customize',
+      '/customize/agents',
+      '/customize/skills',
+      '/customize/connectors',
+      '/customize/connectors/infrastructure',
+      '/customize/connectors/families',
+      '/customize/connectors/internal',
+      '/customize/models',
+      '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/customize/models/gazelle/agent-platform/gpt-4o/usage',
+      '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
+      '/customize/workflows',
+      '/customize/workspaces',
+      '/customize/toolchains',
+      '/customize/toolchains/new',
+      '/customize/toolchains/gazelle/go',
+      '/customize/workspaces/new',
+      '/customize/workspaces/gazelle/acme/platform-mcp/edit',
+      '/customize/workspaces/gazelle/acme/platform-mcp',
+      '/customize/workspaces/gazelle/acme/platform-mcp/details',
+      '/customize/agents/new',
+      '/customize/agents/new/skills',
+      '/customize/agents/new/tools',
+      '/customize/agents/new/review',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/tools',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/sessions',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/usage',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/edit',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/edit/skills',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/edit/tools',
+      '/customize/agents/gazelle/agent-platform/pr-reviewer/edit/review',
+      '/customize/skills/new',
+      '/customize/skills/edit/giantswarm/agent-skills/ticket-triage',
+      '/customize/skills/giantswarm/agent-skills/ticket-triage',
+      '/customize/skills/giantswarm/agent-skills/ticket-triage/instructions',
+      '/customize/skills/giantswarm/agent-skills/ticket-triage/used-by',
+      '/customize/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
+      '/customize/connectors/new',
+      '/customize/connectors/new/auth',
+      '/customize/connectors/new/verify',
+      '/customize/connectors/gazelle/kubernetes',
+      '/customize/connectors/gazelle/kubernetes/details',
+      '/customize/connectors/gazelle/kubernetes/usage',
+      '/customize/connectors/gazelle/kubernetes/used-by',
+      '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods',
+      '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods/run',
+      '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods/usage',
+      '/customize/connectors/gazelle/jira/edit',
+      '/customize/connectors/gazelle/jira/edit/auth',
+      '/customize/connectors/gazelle/jira/edit/verify',
+      '/customize/workflows/gazelle/my-workflow',
+      '/customize/workflows/gazelle/my-workflow/run',
+      '/customize/workflows/gazelle/my-workflow/usage',
+      '/customize/workflows/gazelle/my-workflow/details',
+      '/customize/models/new',
+      '/customize/models/gazelle/agent-platform/gpt-4o/edit',
+      '/customize/models/hosting',
+      '/customize/models/hosting/capacity',
+      '/customize/models/hosting/cache',
+      '/customize/models/hosting/serve',
+      '/customize/models/hosting/import',
+      '/customize/models/hosting/pull',
+      '/customize/models/hosting/add-backend',
+      '/customize/models/hosting/capacity/add-pool',
+      '/sessions',
+      '/sessions/gazelle/abc123',
+      '/usage',
+      '/usage/cost',
+      '/usage/your-sessions',
+      '/usage/connectors',
+      '/profile',
+      // The old tree, redirect-only until the end of 2026.
+      '/agent-platform',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
+      '/agent-platform/connectors/kubernetes',
+      '/agents',
+      '/agents/new',
       '/installations',
       '/clusters',
       '/clusters/installation/org-demo/demo-cluster',
+      '/clusters/installation/org-demo/demo-cluster/node-pools',
       '/deployments',
       '/deployments/gorilla/helmrelease/org-demo/my-app',
+      '/deployments/gorilla/app/org-demo/my-app/routes',
       '/flux',
       '/flux/tree',
       '/ai-chat',
       '/ai-chat/history',
-      '/agent-platform/mcp-servers',
-      '/agent-platform/mcp-servers/new',
-      '/agent-platform/mcp-servers/new/verify',
-      '/agent-platform/mcp-servers/kubernetes',
-      '/agent-platform/mcp-servers/kubernetes/details',
-      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
-      '/agent-platform/workflows',
-      '/agent-platform/workflows/my-workflow',
-      '/agent-platform/workflows/my-workflow/run',
-      '/agent-platform',
-      '/agent-platform/agents/new',
-      '/agent-platform/agents/new/skills',
-      '/agent-platform/agents/new/review',
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/tools',
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/skills',
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
-      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
-      '/agent-platform/sessions',
-      '/agent-platform/sessions/gazelle/abc123',
-      '/agent-platform/usage',
-      '/agent-platform/usage/overview',
-      '/agent-platform/usage/cost',
-      '/agent-platform/usage/conversations',
-      '/agent-platform/usage/mcp',
       // Pre-existing gaps in this list, closed while adding the one above.
-      '/agent-platform/models',
-      '/agent-platform/models/serving',
-      '/agent-platform/models/new',
-      '/agent-platform/models/gazelle/agent-platform/gpt-4o',
-      '/agent-platform/models/capacity',
       '/plans',
       '/bot-prs',
       '/plans/pr/22',
       '/roadmap',
       '/roadmap/items/PVTI_abc123',
+      '/product',
+      '/hive',
+      '/hive/now',
+      '/hive/history',
+      '/hive/roadmap',
+      '/hive/roadmap/items/PVTI_x',
+      '/hive/plans',
+      '/hive/plans/pr/22',
+      '/hive/knowledge',
+      '/api-docs',
+      '/repositories',
+      '/repositories/create',
       '/metrics',
       '/search',
     ];
 
     it.each(knownTopLevelPaths)('%s', pathname => {
-      expect(getTelemetryPageViewPayload(pathname).page).not.toBe(
-        'Unknown page',
-      );
+      const payload = getTelemetryPageViewPayload(pathname);
+      expect(payload.page).not.toBe('Unknown page');
+      // A route template, with every segment of a fixed set and a
+      // placeholder for the rest: never `unknown`, never a `*` at the top.
+      expect(payload.path).toMatch(/^\/([a-z-]+(\/.*)?)?$/);
     });
-  });
-});
-
-describe('Usage sub-tabs', () => {
-  it('reports the bare Usage path unchanged, for continuity', () => {
-    expect(getTelemetryPageViewPayload('/agent-platform/usage')).toEqual({
-      page: 'Usage',
-      path: '/agent-platform/usage',
-    });
-  });
-
-  it.each([
-    ['overview', '/agent-platform/usage/overview'],
-    ['cost', '/agent-platform/usage/cost'],
-    ['conversations', '/agent-platform/usage/conversations'],
-    ['mcp', '/agent-platform/usage/mcp'],
-  ])('reports the %s view under page Usage', (view, path) => {
-    expect(getTelemetryPageViewPayload(path)).toEqual({
-      page: 'Usage',
-      view,
-      path,
-    });
-  });
-
-  it('does not let a Usage view fall through to the generic Agents case', () => {
-    // Without the prefix case above the generic '/agent-platform' one, every
-    // Usage view would report as `page: 'Agents', view: 'usage/cost'` —
-    // merging the tab's numbers into the Agents page's.
-    expect(
-      getTelemetryPageViewPayload('/agent-platform/usage/cost'),
-    ).not.toMatchObject({ page: 'Agents' });
   });
 });

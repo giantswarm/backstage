@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, Ref } from 'react';
 import { Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import classNames from 'classnames';
@@ -36,6 +36,12 @@ export interface EmptyStateCardProps {
   /** Richer content than a button — a prompt composer, say. */
   children?: ReactNode;
   className?: string;
+  /**
+   * The title's heading element, made focusable (`tabIndex={-1}`), for a page
+   * that moves focus to it — e.g. when the card replaces a list whose last row
+   * held the focus.
+   */
+  titleRef?: Ref<HTMLHeadingElement>;
 }
 
 /**
@@ -51,6 +57,7 @@ export function EmptyStateCard({
   actions,
   children,
   className,
+  titleRef,
 }: EmptyStateCardProps) {
   const classes = useStyles();
 
@@ -61,6 +68,8 @@ export function EmptyStateCard({
           <Flex direction="column" align="center" gap="2">
             <Text
               as="h2"
+              ref={titleRef}
+              tabIndex={titleRef ? -1 : undefined}
               variant="title-small"
               weight="bold"
               className={classes.copy}

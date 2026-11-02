@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   Navigate,
   Route,
@@ -5,169 +6,354 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
-import { Box, Tab, TabList, Tabs } from '@backstage/ui';
-import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
+import { Flex } from '@backstage/ui';
+import {
+  ALL_INSTALLATIONS,
+  useInstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
+import {
+  ShellPage,
+  useSplatBasePath,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import { ServingProvider, useServing } from '../ServingProvider';
+import {
+  hasServingLayer,
+  ServingProvider,
+  useServing,
+} from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
-import { ModelConfigsPage } from '../ModelConfigsPage';
 import { NewModelPage } from '../NewModelPage';
-import { ModelDetailPage } from '../ModelDetailPage';
+import { EditModelPage } from '../EditModelPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
-
-// The serving layer's two views, as a second-level tab row under the Agent
-// Platform page's "Models" tab. The ModelConfigs list is not among them: it is
-// the tab's own page, at `/agent-platform/models`.
-const SERVING_VIEWS = [
-  { path: 'serving', title: 'Serving' },
-  { path: 'capacity', title: 'GPU capacity' },
-] as const;
+import { ModelCachePage } from '../ModelCachePage';
+import { EnvironmentSelect } from '../EnvironmentSelect';
+import {
+  InstallationScopeNote,
+  useUnknownScopePin,
+} from '../InstallationScopeNote';
+import {
+  AddGpuNodePoolRoute,
+  AddModelBackendRoute,
+  ImportModelRoute,
+  PullModelRoute,
+  ServeModelRoute,
+} from '../HostingFlowRoutes';
+import {
+  ModelHostingKpis,
+  type ModelHostingKpisScope,
+} from '../ModelHostingKpis';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
+import { CustomizeModelPage } from '../CustomizeModelPage';
+import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
+import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { isLegacyServeLink } from '../../lib/modelManagerServe';
+import { nothingCouldBeRead } from '../../lib/soleInstallation';
+import {
+  gpuCapacityRouteRef,
+  modelCacheRouteRef,
+  newModelRouteRef,
+  servingRouteRef,
+} from '../../routes';
+import { RouteRefRedirect } from '../RouteRefRedirect';
 
 /**
- * The ModelConfigs list, its create flow and one model used to live under a
- * `configs` view of their own (`/models/configs`, `.../configs/new`,
- * `.../configs/<installation>/<namespace>/<name>`). Redirect those so a
- * bookmarked model or a link from an older release still resolves.
+ * Model hosting's tabs inside the shell, named per the prototype where the
+ * view holds what the name says:
  *
- * `..` climbs one *route* -- however many segments -- back to the tab root.
+ * - **Running models** — the Serving view: the served models, grouped by the
+ *   backend that serves them. The backends are those groups' headers (with
+ *   Add and Remove), so the prototype's separate Backends tab is folded in
+ *   here rather than repeated as a list of the same data.
+ * - **GPU pools** — the GPU capacity view: cluster-manager's pools and the
+ *   node inventory. Without cluster-manager it lists nodes only, so it keeps
+ *   its old name, "GPU capacity".
+ * - **Model cache** — the cache volumes cluster-manager lists, offered where
+ *   an installation runs cluster-manager (or while that is being asked).
  */
-const LegacyConfigsRedirect = () => {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: '..', search }} replace />;
-};
+function shellHostingTabs(clusterManager: boolean) {
+  return [
+    // The bare `hosting`.
+    { id: 'serving', path: '', title: 'Running models' },
+    {
+      id: 'capacity',
+      path: 'capacity',
+      title: clusterManager ? 'GPU pools' : 'GPU capacity',
+    },
+    ...(clusterManager
+      ? [{ id: 'cache', path: 'cache', title: 'Model cache' }]
+      : []),
+  ];
+}
 
-const LegacyNewRedirect = () => {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: '../new', search }} replace />;
-};
-
-const LegacyDetailRedirect = () => {
-  const { installation = '', namespace = '', name = '' } = useParams();
-  const { search } = useLocation();
+/**
+ * One Model hosting tab: its headline figures — only those about what the
+ * tab lists (`ModelHostingKpis`'s scope), so the row does not repeat on every
+ * tab — above the view.
+ *
+ * Under a pinned environment the portal does not know (a stale deep link)
+ * the views read nothing, and their empty states ("No serving layer", "No
+ * GPU inventory") would say something else about the same state: the scope
+ * note stands alone instead, and the header's Environment control is the
+ * way out.
+ */
+const HostingView = ({
+  kpis,
+  children,
+}: {
+  kpis: ModelHostingKpisScope | undefined;
+  children: ReactNode;
+}) => {
+  const unknownPin = useUnknownScopePin();
+  if (unknownPin) {
+    return <InstallationScopeNote />;
+  }
   return (
-    <Navigate
-      to={{
-        pathname: `../${[installation, namespace, name]
-          .map(encodeURIComponent)
-          .join('/')}`,
-        search,
-      }}
-      replace
-    />
-  );
-};
-
-// The routed view, and the tab strip above it.
-//
-// The two serving views only exist once a reachable installation has a serving
-// layer this portal can see (or could not be asked). A model-manager that
-// answers counts, backends or not: it ships with none, and the Serving view is
-// where one is registered. Their routes stay mounted regardless, so a deep
-// link renders the view's own empty state.
-//
-// The strip is dropped in exactly one case: the list, on a portal with no
-// serving layer. That is the only place a lone "Model configs" tab would lead
-// back to the page it is already on. It is kept everywhere else, including a
-// deep-linked Serving page on such a portal -- that tab is then the only way
-// back to the list, and hiding it would strand the reader on a page whose own
-// empty state tells them nothing is served here.
-const ModelsViews = () => {
-  const basePath = useSplatBasePath();
-  const { pathname } = useLocation();
-  const { installations, unreachableInstallations } = useServing();
-  const hasServingLayer =
-    installations.length > 0 || unreachableInstallations.length > 0;
-  const onList = pathname.replace(/\/$/, '') === basePath;
-  const showTabs = hasServingLayer || !onList;
-
-  return (
-    <>
-      {/* Inset the tab strip by the page gutter so it lines up with the level-1
-          header tabs and the content below. `px="5"` is hand-matched to the
-          horizontal padding the bui PluginHeader / Content apply (bui space-5 =
-          20px), the same value UsageRouter uses; if bui ever changes that
-          gutter both have to follow. */}
-      {showTabs && (
-        <Box px="5">
-          <Tabs>
-            <TabList>
-              {/* `prefix`, though this tab's href is the root every other
-                  view hangs off: bui picks the active tab by the *most* path
-                  segments matched, so Serving still wins on its own path. What
-                  prefix buys is the create and detail pages, which are the
-                  list's own sub-routes and keep it highlighted. */}
-              <Tab id="configs" href={basePath} matchStrategy="prefix">
-                Model configs
-              </Tab>
-              {hasServingLayer &&
-                SERVING_VIEWS.map(view => (
-                  <Tab
-                    key={view.path}
-                    id={view.path}
-                    href={`${basePath}/${view.path}`}
-                    matchStrategy="prefix"
-                  >
-                    {view.title}
-                  </Tab>
-                ))}
-            </TabList>
-          </Tabs>
-        </Box>
-      )}
-      <Routes>
-        <Route index element={<ModelConfigsPage />} />
-        <Route path="new" element={<NewModelPage />} />
-        {/* `new` (one segment) can never be swallowed by the three-segment
-            detail path: react-router matches on segment count. */}
-        <Route
-          path=":installation/:namespace/:name"
-          element={<ModelDetailPage />}
-        />
-        <Route path="serving" element={<ServingPage />} />
-        <Route path="capacity" element={<GpuCapacityPage />} />
-      </Routes>
-    </>
+    <Flex direction="column" gap="5">
+      <ModelHostingSharedIdentityNote />
+      {kpis && <ModelHostingKpis scope={kpis} />}
+      {children}
+    </Flex>
   );
 };
 
 /**
- * Content of the "Models" tab. Mounted as the tab's content (a descendant
- * `<Routes>`), so the paths here are relative — no leading slash — matching
- * AgentsRouter.
+ * Model hosting: the serving layer's views under the platform-standard page
+ * frame (`ShellPage`) — breadcrumbs "Customize / Models / Model hosting", the
+ * screen's title at the standard
+ * scale, the views as its routed tabs and, above each view, the headline
+ * figures about what it lists (`ModelHostingKpis`: the whole row on Running
+ * models, the GPU tiles on GPU pools, the cache tile on Model cache). The
+ * actions a view registers (`ModelHostingActions`: Serve model, Add GPU node
+ * pool…) land in this header's slot, top right.
  *
- * The providers wrap every view once, so switching views neither remounts them
- * nor refetches: the Model configs list needs the serving snapshot for its
- * "Served by" column as much as the Serving view does, and the served-model
- * rows (with the auto-wiring that completes a serve) keep running whichever
- * view is open — a model served from the Serving view still gets its
- * ModelConfig while the user waits for it on the Model configs view.
+ * The figures show where a serving layer is in view. The tabs show where one
+ * is in view or an environment is pinned: picking one in the header that
+ * runs no serving layer changes the view's content, not the frame, so the
+ * other tabs stay one click away. Only "All installations" on a portal
+ * without a serving layer drops the strip; a deep link there keeps the frame
+ * and lets the view's own empty state speak. The Model cache tab is offered
+ * where cluster-manager runs, and kept while it is the open view, so a
+ * switch of environment never leaves a view without its tab.
  *
- * The legacy redirects are siblings of the views, not routes inside them, so the
- * tab strip never renders for a location that is about to change. They can sit
- * inside the providers: no provider here writes to the URL, so nothing races
- * the redirect.
+ * The views read the section's installation scope, the one Customize's
+ * Environment control sets, so the same control leads this header, before
+ * the view's actions; `EnvironmentSelect` hides itself with one
+ * installation. No `component`: the views read KServe, model-manager and
+ * cluster-manager, and no one platform component stands for them. With
+ * `kserve`, an environment that runs kagent and model-manager but not KServe
+ * would read "no KServe here" over the models it serves.
+ *
+ * An older release's pool link (`?serve=1&installation=…`) names the serve
+ * *target* in `installation`, and the Running models view forwards it at
+ * once. The control is left out for it: its URL sync would adopt the target
+ * as the section's scope for every tab.
+ */
+const ShellModelHosting = () => {
+  const basePath = useSplatBasePath();
+  const { pathname, search } = useLocation();
+  const { scope } = useInstallationScope();
+  const serving = useServing();
+  const servingLayer = hasServingLayer(serving);
+  const clusterManager = useClusterManagerAvailability(
+    serving.reachableInstallations ?? [],
+  );
+  const onCache = pathname.replace(/\/$/, '') === `${basePath}/cache`;
+  const offersCache =
+    clusterManager.available.length > 0 || clusterManager.isLoading || onCache;
+  const showTabs = servingLayer || scope !== ALL_INSTALLATIONS;
+  // Every environment in view failed to read its served models: a "Models
+  // running: 0" tile would claim what the warning below says was not seen.
+  const servedModelsUnread = nothingCouldBeRead({
+    installations: serving.installations ?? [],
+    unreadable: serving.unreachableInstallations ?? [],
+  });
+  const legacyServeLink = isLegacyServeLink(new URLSearchParams(search));
+  const { customize, models } = useCustomizePaths();
+
+  return (
+    <ShellPage
+      title="Model hosting"
+      breadcrumbs={[
+        { label: 'Customize', href: customize },
+        { label: 'Models', href: models },
+        { label: 'Model hosting' },
+      ]}
+      description="Run models on your own GPUs, so data stays in your clusters."
+      actions={legacyServeLink ? undefined : <EnvironmentSelect />}
+      tabs={showTabs ? shellHostingTabs(offersCache) : undefined}
+      // As Usage's tabs: a switch keeps `?installation=`, so each view's
+      // address names the environment it shows.
+      tabsSearch={search}
+    >
+      <Routes>
+        <Route
+          index
+          element={
+            <HostingView
+              kpis={servingLayer && !servedModelsUnread ? 'all' : undefined}
+            >
+              <ServingPage />
+            </HostingView>
+          }
+        />
+        <Route
+          path="capacity"
+          element={
+            <HostingView kpis={servingLayer ? 'gpu' : undefined}>
+              <GpuCapacityPage />
+            </HostingView>
+          }
+        />
+        <Route
+          path="cache"
+          element={
+            <HostingView kpis={servingLayer ? 'cache' : undefined}>
+              <ModelCachePage />
+            </HostingView>
+          }
+        />
+        {/* A guess lands on the first view, the nearest valid parent,
+            rather than on the frame over an empty page. Absolute, from the
+            splat base path: a relative target inside a splat route would
+            append. */}
+        <Route
+          path="*"
+          element={<Navigate to={{ pathname: basePath, search }} replace />}
+        />
+      </Routes>
+    </ShellPage>
+  );
+};
+
+/**
+ * The Models tab's providers. They wrap every view, so switching views
+ * neither remounts them nor refetches (every route below renders this same
+ * element type, which React keeps across a switch): the served-model rows
+ * (with the auto-wiring that completes a serve) keep running whichever view
+ * is open — a model served from Running models still gets its ModelConfig
+ * while the user waits for it on the list.
+ */
+const ModelsProviders = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider>
+    <ModelConfigsProvider>
+      <ServingProvider>
+        <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
+      </ServingProvider>
+    </ModelConfigsProvider>
+  </QueryClientProvider>
+);
+
+/** A view under the tab's providers. */
+const withProviders = (element: ReactNode) => (
+  <ModelsProviders>{element}</ModelsProviders>
+);
+
+/** Model hosting's views below `hosting`, by their path segment. */
+const HOSTING_VIEW_ROUTES = {
+  capacity: gpuCapacityRouteRef,
+  cache: modelCacheRouteRef,
+};
+
+/**
+ * `new` and `hosting` are reserved words here: an address that starts with
+ * one is never a model on an installation named so, however deep it goes
+ * (react-router ranks three dynamic segments above `new` and `hosting/*`).
+ * Such an address lands on its nearest valid parent: Connect a model, or the
+ * Model hosting view it names (Running models for any other).
+ */
+function ModelRoute({ children }: { children: ReactNode }) {
+  const { installation = '', namespace = '' } = useParams();
+  const reserved = installation.toLowerCase();
+  if (reserved === 'new') {
+    return <RouteRefRedirect routeRef={newModelRouteRef} />;
+  }
+  if (reserved === 'hosting') {
+    const view = namespace.toLowerCase();
+    return (
+      <RouteRefRedirect
+        routeRef={
+          Object.hasOwn(HOSTING_VIEW_ROUTES, view)
+            ? HOSTING_VIEW_ROUTES[view as keyof typeof HOSTING_VIEW_ROUTES]
+            : servingRouteRef
+        }
+      />
+    );
+  }
+  return <>{children}</>;
+}
+
+/** An unknown step of a model's edit: the edit itself, its nearest parent. */
+const EditRedirect = () => <Navigate to="." replace />;
+
+/**
+ * Content of the Customize screen's Models tab below its list (a descendant
+ * `<Routes>`, so the paths here are relative — no leading slash — matching
+ * AgentsRouter): one model's page at `<installation>/<namespace>/<name>` with
+ * its tabs, its edit at `…/<name>/edit`, the create flow at `new` and Model
+ * hosting at `hosting/…`, its create flows framing themselves. `new` and
+ * `hosting` are reserved words: no installation can be named so.
+ *
+ * One `<Routes>`, so react-router ranks every path against the model page's
+ * three dynamic segments: a static segment outranks a dynamic one at the
+ * same depth, and `ModelRoute` keeps any deeper address under `new` or
+ * `hosting` from reading as a model on an installation named so.
+ * ModelsRouter.test.tsx holds the rankings.
+ *
+ * The model's page mounts only the agent-platform data it reads
+ * (`CustomizeModelPage`); the views share the tab's providers. Both share one
+ * query client, so the list's reads are cache hits on the page.
  */
 export const ModelsRouter = () => {
   return (
-    <QueryClientProvider>
-      <ModelConfigsProvider>
-        <ServingProvider>
-          <ServedModelRowsProvider>
-            <Routes>
-              <Route path="configs" element={<LegacyConfigsRedirect />} />
-              <Route path="configs/new" element={<LegacyNewRedirect />} />
-              <Route
-                path="configs/:installation/:namespace/:name"
-                element={<LegacyDetailRedirect />}
-              />
-              <Route path="*" element={<ModelsViews />} />
-            </Routes>
-          </ServedModelRowsProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
-    </QueryClientProvider>
+    <Routes>
+      <Route path="new" element={withProviders(<NewModelPage />)} />
+      <Route
+        path="hosting/serve"
+        element={withProviders(<ServeModelRoute />)}
+      />
+      <Route
+        path="hosting/import"
+        element={withProviders(<ImportModelRoute />)}
+      />
+      <Route path="hosting/pull" element={withProviders(<PullModelRoute />)} />
+      <Route
+        path="hosting/add-backend"
+        element={withProviders(<AddModelBackendRoute />)}
+      />
+      <Route
+        path="hosting/capacity/add-pool"
+        element={withProviders(<AddGpuNodePoolRoute />)}
+      />
+      <Route path="hosting/*" element={withProviders(<ShellModelHosting />)} />
+      <Route
+        path=":installation/:namespace/:name/edit"
+        element={withProviders(
+          <ModelRoute>
+            <EditModelPage />
+          </ModelRoute>,
+        )}
+      />
+      <Route
+        path=":installation/:namespace/:name/edit/*"
+        element={
+          <ModelRoute>
+            <EditRedirect />
+          </ModelRoute>
+        }
+      />
+      <Route
+        path=":installation/:namespace/:name/*"
+        element={
+          <ModelRoute>
+            <CustomizeModelPage />
+          </ModelRoute>
+        }
+      />
+      <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
+    </Routes>
   );
 };

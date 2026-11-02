@@ -1,4 +1,3 @@
-import { MarkdownContent } from '@backstage/core-components';
 import { LayoutTemplate } from '@backstage/plugin-scaffolder-react';
 import CloseIcon from '@material-ui/icons/Close';
 import {
@@ -16,6 +15,7 @@ import {
 import { useTemplateString } from '../../hooks';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ConfigurationDocs,
   ConfigurationDocsOptions,
@@ -175,7 +175,7 @@ export const StepLayout: LayoutTemplate = ({
           ) : null}
           {note ? (
             <Typography variant="body2">
-              <MarkdownContent content={note} />
+              <GSMarkdownContent content={note} />
             </Typography>
           ) : null}
         </Box>

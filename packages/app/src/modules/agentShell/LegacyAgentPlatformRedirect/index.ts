@@ -1,0 +1,1 @@
+export { LegacyAgentPlatformRedirect } from './LegacyAgentPlatformRedirect';

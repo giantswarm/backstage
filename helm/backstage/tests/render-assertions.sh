@@ -14,12 +14,32 @@
 # * the metrics port, env and network policy leg, without which the backend
 #   starts with metrics on but nothing can scrape it;
 # * the pg config with the postgresql engine, without which the backend
-#   silently runs on in-memory sqlite beside an idle CNPG cluster;
+#   silently runs on in-memory sqlite beside an idle CNPG cluster, and its TLS
+#   against the mounted CNPG CA, without which the backend connects in clear
+#   text and CNPG accepts it;
 # * the base64 guard on the `data` Secrets, without which a plaintext value
 #   renders and the install fails with "illegal base64 data at input byte N".
 # * the arm64 node selector with the toleration for the pool's
 #   `kubernetes.io/arch=arm64:NoSchedule` taint, without which the pod stays
-#   Pending, or lands on any pool when only the toleration renders.
+#   Pending, or lands on any pool when only the toleration renders;
+# * the startupProbe, without which a backend that never finishes starting
+#   (its database unreachable) stays unready and is never restarted.
+# * the server shutdown delay, without which every rollout answers the
+#   requests the gateway still routes to the stopping pod with Envoy's
+#   "upstream connect error or disconnect/reset before headers".
+# * the image's bundled config files ahead of the chart's own --config flags,
+#   without which an install that sets only appConfig exits at start with
+#   "Missing required config value";
+# * the CNPG PodMonitor gated on its toggle and on the cluster serving the
+#   kind, without which an install on a cluster without the Prometheus
+#   Operator CRDs fails and rolls back the database with it.
+# * the VerticalPodAutoscaler gated on its toggle and on the cluster serving
+#   the kind, without which a default install on a cluster without the VPA
+#   CRD fails with "no matches for kind VerticalPodAutoscaler".
+# * the plugins' database pools, fixed so a scale rolls no pod, and the render
+#   check that the pods of a rollout fit the CNPG cluster's max_connections,
+#   without which a surge pod fails its start with "remaining connection slots
+#   are reserved for roles with the SUPERUSER attribute".
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -167,6 +187,15 @@ if [ -z "${app_version}" ] ||
   failed=1
 fi
 
+echo "--> the backend keeps serving while the gateway drops a stopping pod"
+if ! grep -A1 -- 'name: APP_CONFIG_backend_lifecycle_serverShutdownDelay' "${work_dir}/no-fragment.yaml" |
+  grep -q -- 'value: "10s"'; then
+  echo "FAIL: shutdown-delay: APP_CONFIG_backend_lifecycle_serverShutdownDelay is not \"10s\""
+  failed=1
+fi
+render no-shutdown-delay --set backstage.serverShutdownDelay=
+refute no-shutdown-delay 'APP_CONFIG_backend_lifecycle_serverShutdownDelay'
+
 echo "--> observability.otel.endpoint set: the OTLP variables render"
 render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm
 expect otel 'value: "http://otlp-gateway.kube-system.svc:4317"'
@@ -240,17 +269,126 @@ for want in 'client: pg' 'pluginDivisionMode: schema' 'host: ${POSTGRES_HOST}' '
   fi
 done
 expect postgresql 'mountPath: "/app/app-config-database.yaml"'
-# Later --config files win: the operator's appConfig and extraAppConfig come
-# after the chart's pg block, so a database block of theirs still applies.
-config_order=$(container_args postgresql | grep -v -- '^--config$' | paste -sd, -)
-if [ "${config_order}" != "app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
-  echo "FAIL: postgresql: the --config order is [${config_order}], want the database config first"
+# The CA path is relative to the config file: both must stay in /app.
+database_ssl=$(yq -o=json -I=0 '.backend.database.connection.ssl' <<<"${database_config}")
+if [ "${database_ssl}" != '{"ca":{"$file":"database-ca-certificate/ca.crt"},"rejectUnauthorized":true}' ]; then
+  echo "FAIL: postgresql: connection.ssl is ${database_ssl}, want the mounted CA with rejectUnauthorized"
   failed=1
 fi
+expect postgresql 'mountPath: /app/database-ca-certificate/ca.crt'
+ca_secret=$(yq -r 'select(.kind == "Deployment") | .spec.template.spec.volumes[] | select(.name == "database-server-ca") | .secret.secretName' "${work_dir}/postgresql.yaml")
+if [ "${ca_secret}" != "backstage-cnpg-ca" ]; then
+  echo "FAIL: postgresql: the database-server-ca volume mounts [${ca_secret}], want the CNPG cluster's CA Secret backstage-cnpg-ca"
+  failed=1
+fi
+# Later --config files win: the operator's appConfig and extraAppConfig come
+# after the chart's pg block, so a database block of theirs still applies.
+# The image's bundled files come first, the base layer the chart's flags
+# override.
+config_order=$(container_args postgresql | grep -v -- '^--config$' | paste -sd, -)
+if [ "${config_order}" != "app-config.yaml,app-config.production.yaml,app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
+  echo "FAIL: postgresql: the --config order is [${config_order}], want the bundled files, then the database config first"
+  failed=1
+fi
+
+echo "--> database.postgresql: fixed plugin pools, and the pods of a rollout fit max_connections or the render fails"
+# Every plugin holds its own pool, and a pod two connections beside them
+# (events' LISTEN, the schema check): two pods per replica (the terminating
+# ones still hold theirs) plus the surge, times that, stay within
+# max_connections less the reserved slots.
+database_config_json() {
+  yq 'select(.kind == "ConfigMap" and .metadata.name == "backstage-database-config") | .data["app-config-database.yaml"]' "${work_dir}/$1.yaml" |
+    yq -o=json -I=0 "$2"
+}
+expect_json() {
+  local name=$1 path=$2 want=$3
+  local got
+  got=$(database_config_json "${name}" "${path}")
+  if [ "${got}" != "${want}" ]; then
+    echo "FAIL: ${name}: ${path} is ${got}, want ${want}"
+    failed=1
+  fi
+}
+expect_json postgresql '.backend.database.knexConfig' '{"pool":{"max":2,"min":0}}'
+expect_json postgresql '.backend.database.plugin' '{"catalog":{"knexConfig":{"pool":{"max":10}}},"scaffolder":{"knexConfig":{"pool":{"max":5}}},"search":{"knexConfig":{"pool":{"max":5}}}}'
+cnpg_spec() {
+  yq -o=json -I=0 "select(.kind == \"Cluster\") | $2" "${work_dir}/$1.yaml"
+}
+got=$(cnpg_spec postgresql '.spec.postgresql.parameters')
+if [ "${got}" != '{"max_connections":"400","superuser_reserved_connections":"3"}' ]; then
+  echo "FAIL: postgresql: the CNPG parameters are ${got}, want max_connections 400 with 3 reserved"
+  failed=1
+fi
+got=$(cnpg_spec postgresql '.spec.resources.limits.memory')
+if [ "${got}" != '"1Gi"' ]; then
+  echo "FAIL: postgresql: the CNPG memory limit is ${got}, want 1Gi for 400 connections"
+  failed=1
+fi
+# A scale changes no database config, so it rolls no pod.
+render pool-one --set database.engine=postgresql
+render pool-scaled --set database.engine=postgresql --set replicas=2
+if [ -z "$(annotation pool-one checksum/configmaps)" ] || [ "$(annotation pool-one checksum/configmaps)" != "$(annotation pool-scaled checksum/configmaps)" ]; then
+  echo "FAIL: pool-scaled: replicas 1 -> 2 changes the configmaps checksum"
+  failed=1
+fi
+# 66 connections a pod: 22 plugins × 2, catalog 10, scaffolder 5, search 5, plus 2.
+# replicas 2: 2 × 2 + 1 surge = 5 pods, 330 of 397.
+render_fails pool-replicas-3 '7 backend pods during a rollout (2 × replicas 3, terminating ones included, plus the surge) × 66 connections each (25 plugins with database.postgresql.pool.max 2 or their database.postgresql.pool.plugins entry, plus 2) = 462, more than maxConnections 400 less superuserReservedConnections 3 = 397' --set database.engine=postgresql --set replicas=3
+render pool-replicas-3-raised --set database.engine=postgresql --set replicas=3 --set database.postgresql.maxConnections=500
+render pool-no-surge --set database.engine=postgresql --set replicas=3 --set strategy.rollingUpdate.maxSurge=0
+render_fails pool-percent '8 backend pods' --set database.engine=postgresql --set replicas=3 --set-string 'strategy.rollingUpdate.maxSurge=50%'
+render pool-recreate --set database.engine=postgresql --set replicas=2 --set strategy.type=Recreate --set database.postgresql.pool.max=3
+render_fails pool-recreate-large '4 backend pods' --set database.engine=postgresql --set replicas=2 --set strategy.type=Recreate --set database.postgresql.pool.max=4
+render_fails pool-plugin-large '5 backend pods' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.plugins.catalog=40
+render_fails pool-new-plugin '5 backend pods' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.pluginsWithDatabase=32
+
+echo "--> backstage.args: the image's bundled config files by default, an explicit list replaces them"
+render args-default --set-string 'backstage.appConfig=app: portal'
+got=$(container_args args-default | paste -sd, -)
+if [ "${got}" != "--config,app-config.yaml,--config,app-config.production.yaml,--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-default: the args are [${got}], want the bundled files, then the appConfig"
+  failed=1
+fi
+render args-explicit --set-string 'backstage.appConfig=app: portal' --set 'backstage.args={--config,app-config.yaml}'
+got=$(container_args args-explicit | paste -sd, -)
+if [ "${got}" != "--config,app-config.yaml,--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-explicit: the args are [${got}], want the explicit list, then the appConfig"
+  failed=1
+fi
+# The managed installations pin `args: []` to keep the bundled files out.
+printf 'backstage:\n  args: []\n' >"${work_dir}/args-empty-values.yaml"
+render args-empty --set-string 'backstage.appConfig=app: portal' --values "${work_dir}/args-empty-values.yaml"
+got=$(container_args args-empty | paste -sd, -)
+if [ "${got}" != "--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-empty: the args are [${got}], want the appConfig alone"
+  failed=1
+fi
+
+echo "--> CNPG PodMonitor: rendered with the tenant label when on and the cluster serves the kind, absent otherwise"
+render podmonitor-default --set database.engine=postgresql --api-versions monitoring.coreos.com/v1/PodMonitor
+expect podmonitor-default 'kind: PodMonitor'
+expect podmonitor-default 'observability.giantswarm.io/tenant: giantswarm'
+expect podmonitor-default 'kind: Cluster'
+render podmonitor-off --set database.engine=postgresql --set database.postgresql.podMonitor.enabled=false --api-versions monitoring.coreos.com/v1/PodMonitor
+refute podmonitor-off 'kind: PodMonitor'
+expect podmonitor-off 'kind: Cluster'
+render podmonitor-no-crd --set database.engine=postgresql
+refute podmonitor-no-crd 'kind: PodMonitor'
+expect podmonitor-no-crd 'kind: Cluster'
+
+echo "--> VerticalPodAutoscaler: rendered when on and the cluster serves the kind, absent otherwise"
+render vpa-default --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler
+expect vpa-default 'kind: VerticalPodAutoscaler'
+render vpa-off --set resources.verticalPodAutoscaler.enabled=false --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler
+refute vpa-off 'kind: VerticalPodAutoscaler'
+render vpa-no-crd
+refute vpa-no-crd 'kind: VerticalPodAutoscaler'
+expect vpa-no-crd 'kind: Deployment'
 
 echo "--> database.engine=sqlite (default): no pg config, mount or flag"
 refute sqlite 'backstage-database-config'
 refute sqlite 'app-config-database.yaml'
+refute sqlite 'database-ca-certificate'
 
 echo "--> base64 values in the data Secrets: rendered as they are"
 render base64 --set authSessionSecret=c2Vzc2lvbg== --set sentry.backend.dsn=ZHNu --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
@@ -314,6 +452,27 @@ expect_scheduling arch-covered-equal '[{"kubernetes.io/arch":"arm64"},[{"effect"
 render arch-noexecute --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists' --set 'tolerations[0].effect=NoExecute'
 expect_scheduling arch-noexecute "[{\"kubernetes.io/arch\":\"arm64\"},[{\"effect\":\"NoExecute\",\"key\":\"kubernetes.io/arch\",\"operator\":\"Exists\"},${arm64_toleration}]]"
 render_fails arch-conflict 'architecture=arm64 conflicts with nodeSelector' --set architecture=arm64 --set-string 'nodeSelector.kubernetes\.io/arch=amd64'
+
+# The container's startupProbe in compact JSON, `null` when it does not render.
+startup_probe() {
+  yq -o=json -I=0 'select(.kind == "Deployment") | .spec.template.spec.containers[0].startupProbe' "${work_dir}/$1.yaml"
+}
+
+echo "--> startupProbe: on the readiness endpoint, ten minutes by default, timing from probes.startup"
+render startup-default
+got=$(startup_probe startup-default)
+want='{"httpGet":{"path":"/.backstage/health/v1/readiness","port":7007},"periodSeconds":10,"timeoutSeconds":5,"failureThreshold":60}'
+if [ "${got}" != "${want}" ]; then
+  echo "FAIL: startup-default: startupProbe is ${got}, want ${want}"
+  failed=1
+fi
+render startup-tuned --set probes.startup.periodSeconds=5 --set probes.startup.timeoutSeconds=2 --set probes.startup.failureThreshold=120
+got=$(startup_probe startup-tuned)
+want='{"httpGet":{"path":"/.backstage/health/v1/readiness","port":7007},"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":120}'
+if [ "${got}" != "${want}" ]; then
+  echo "FAIL: startup-tuned: startupProbe is ${got}, want ${want}"
+  failed=1
+fi
 
 if [ "${failed}" -ne 0 ]; then
   exit 1

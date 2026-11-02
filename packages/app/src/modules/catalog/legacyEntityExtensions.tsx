@@ -5,27 +5,52 @@
  * These are converted from legacy components using helpers from
  * @backstage/plugin-catalog-react/alpha.
  */
-import { compatWrapper } from '@backstage/core-compat-api';
+import {
+  compatWrapper,
+  convertLegacyRouteRef,
+} from '@backstage/core-compat-api';
 import {
   convertLegacyEntityContentExtension,
   EntityCardBlueprint,
+  EntityContentBlueprint,
 } from '@backstage/plugin-catalog-react/alpha';
 import {
   EntityCircleCIContent,
   isCircleCIAvailable,
 } from '@backstage/plugin-circleci';
-import { EntityGithubPullRequestsContent } from '@roadiehq/backstage-plugin-github-pull-requests';
+import {
+  EntityGithubPullRequestsContent,
+  githubPullRequestsPlugin,
+} from '@roadiehq/backstage-plugin-github-pull-requests';
 import {
   EntityGrafanaDashboardsCard,
   isDashboardSelectorAvailable,
 } from '@backstage-community/plugin-grafana';
+import { hasGithubLogin } from '../auth/hasGithubLogin';
 
+/**
+ * The Pull Requests tab on Components. It reads GitHub as the signed-in
+ * person, so on a portal without a GitHub login (`hasGithubLogin`) its filter
+ * matches no entity and the tab is not offered, instead of opening a login
+ * dialog that cannot succeed.
+ *
+ * Built with `EntityContentBlueprint` directly instead of
+ * `convertLegacyEntityContentExtension`, whose filter is fixed before the
+ * APIs exist; the route ref and loader are the converter's.
+ */
 export const GitHubPullRequestsEntityContent =
-  convertLegacyEntityContentExtension(EntityGithubPullRequestsContent, {
+  EntityContentBlueprint.makeWithOverrides({
     name: 'pull-requests',
-    filter: 'kind:component',
-    path: '/pull-requests',
-    title: 'Pull Requests',
+    factory: (originalFactory, { apis }) =>
+      originalFactory({
+        filter: hasGithubLogin(apis) ? 'kind:component' : () => false,
+        path: '/pull-requests',
+        title: 'Pull Requests',
+        routeRef: convertLegacyRouteRef(
+          githubPullRequestsPlugin.routes.entityContent,
+        ),
+        loader: async () => compatWrapper(<EntityGithubPullRequestsContent />),
+      }),
   });
 
 export const CircleCIEntityContent = convertLegacyEntityContentExtension(

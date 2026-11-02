@@ -6,6 +6,9 @@ import {
   describeSessionState,
   findNewestStatefulTaskIndex,
   parsePart,
+  readUrlElicitationRequest,
+  unwrapProxiedCall,
+  type UrlElicitationRequest,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
@@ -35,13 +38,31 @@ export type PendingConfirmation = {
   /**
    * What is being asked. `'input'` is a question put through `ask_user`;
    * `'approval'` is "may I run this tool", which takes a yes/no rather than an
-   * answer. ADK wraps both in the same confirmation request.
+   * answer. ADK wraps both in the same confirmation request. `'sign-in'` is an
+   * MCP server's sign-in link (a URL elicitation):
+   * the person opens it, then the agent continues.
    */
-  asks: 'input' | 'approval';
-  /** The tool the agent proposed to run, for an `'approval'`. */
+  asks: 'input' | 'approval' | 'sign-in';
+  /**
+   * The tool the agent proposed to run, for an `'approval'`. Proxied calls are
+   * looked through: a call made through muster's `call_tool` names the inner
+   * tool here, with {@link via} keeping the fact that it was proxied.
+   */
   toolName?: string;
-  /** The questions, for an `'input'`. Empty for an approval. */
+  /** The proxy the proposed call would travel through, when it would. */
+  via?: string;
+  /** The proposed call's arguments, for an `'approval'` — what Allow would run. */
+  args?: unknown;
+  /** The questions, for an `'input'`. Empty otherwise. */
   questions: AskUserQuestion[];
+  /** The sign-in, for a `'sign-in'`. */
+  signIn?: UrlElicitationRequest;
+  /**
+   * The `messageId` of the task status message that asks, when it has one.
+   * Tells this request apart from a later one in the same task: answering
+   * resumes the task, so a follow-up question keeps its `taskId`.
+   */
+  askedIn?: string;
 };
 
 /** The `questions` array out of an `ask_user` call's arguments. */
@@ -153,6 +174,17 @@ export function readPendingConfirmation(
     if (!Array.isArray(parts)) {
       return undefined;
     }
+    const statusMessageId = (statusMessage as { messageId?: unknown })
+      .messageId;
+    const askedIn =
+      typeof statusMessageId === 'string' && statusMessageId
+        ? { askedIn: statusMessageId }
+        : {};
+
+    const signIn = readUrlElicitationRequest(statusMessage);
+    if (signIn) {
+      return { taskId, asks: 'sign-in', questions: [], signIn, ...askedIn };
+    }
 
     for (const rawPart of parts) {
       const part = parsePart(rawPart);
@@ -190,11 +222,26 @@ export function readPendingConfirmation(
         return undefined;
       }
 
+      if (isQuestion) {
+        return { taskId, asks: 'input', toolName, questions, ...askedIn };
+      }
+
+      // The proposed call, looked through muster's `call_tool` wrapper the same
+      // way the timeline looks through executed calls — so the approval card can
+      // say which tool would actually run and via which connector, and show the
+      // arguments Allow would send.
+      const effective = unwrapProxiedCall({
+        name: toolName,
+        args: proposedRecord?.args,
+      });
       return {
         taskId,
-        asks: isQuestion ? 'input' : 'approval',
-        toolName,
+        asks: 'approval',
+        toolName: effective.name ?? toolName,
+        ...(effective.via !== undefined && { via: effective.via }),
+        ...(effective.args !== undefined && { args: effective.args }),
         questions,
+        ...askedIn,
       };
     }
 

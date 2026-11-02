@@ -4,9 +4,13 @@ import { createBackend } from '@backstage/backend-defaults';
 import {
   configureFetchProxy,
   customHttpAuthServiceFactory,
+  databaseServiceFactory,
+  githubUrlReaderFactory,
   rootLogger,
+  startBackend,
 } from '@internal/backend-common';
 import { brandingPlugin } from './branding';
+import { telemetryConfigPlugin } from './telemetry';
 
 // global-agent never reaches native fetch, which the catalog, the scaffolder
 // and most plugins read URLs with: give it the same GLOBAL_AGENT_* proxy.
@@ -17,6 +21,14 @@ const backend = createBackend();
 // Override default httpAuth to read tokens from X-Backstage-Token header,
 // avoiding conflicts with ingress-level Basic auth on the Authorization header.
 backend.add(customHttpAuthServiceFactory);
+
+// Retry each plugin's first database connection until the database is
+// reachable, so a backend started before its CNPG primary still starts.
+backend.add(databaseServiceFactory);
+
+// Read GitHub files and trees from branches with a slash in their name
+// (`blob/feat/x/...`), which the default GitHub reader splits wrongly.
+backend.add(githubUrlReaderFactory);
 
 backend.add(import('@backstage/plugin-app-backend'));
 backend.add(import('@backstage/plugin-proxy-backend'));
@@ -68,6 +80,12 @@ backend.add(rootLogger);
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
 
+// Postgres search engine: the index lives in the search plugin's database, so
+// it survives a restart and is one index for every replica. The module
+// registers itself only on Postgres 12 or newer; on sqlite (the dev server,
+// the lab) the in-memory engine stays.
+backend.add(import('@backstage/plugin-search-backend-module-pg'));
+
 // search collators
 backend.add(import('@backstage/plugin-search-backend-module-catalog'));
 backend.add(import('@backstage/plugin-search-backend-module-techdocs'));
@@ -79,8 +97,16 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 backend.add(import('@backstage/plugin-notifications-backend'));
 backend.add(import('@backstage/plugin-signals-backend'));
 
+// user settings plugin (per-user roaming UI state — pinned sessions, favorite
+// agents, … — persisted in the DB; the frontend storageApi override in
+// packages/app/src/modules/app/AppOverrides.tsx reads and writes it)
+backend.add(import('@backstage/plugin-user-settings-backend'));
+
 // branding plugin (decoupled from gs so it works in deployments without gs)
 backend.add(brandingPlugin);
+
+// warns at startup when telemetry is enabled without an app ID
+backend.add(telemetryConfigPlugin);
 
 // giantswarm plugin
 backend.add(import('@giantswarm/backstage-plugin-gs-backend'));
@@ -116,4 +142,4 @@ if (process.env.PAGERDUTY_TOKEN) {
   backend.add(import('@pagerduty/backstage-plugin-backend'));
 }
 
-backend.start();
+startBackend(backend);

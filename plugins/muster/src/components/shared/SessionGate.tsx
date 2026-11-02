@@ -1,4 +1,4 @@
-import { Button, CircularProgress } from '@material-ui/core';
+import { Button } from '@backstage/ui';
 import Lock from '@material-ui/icons/Lock';
 import { Gate } from '@giantswarm/backstage-plugin-ui-react';
 import type { MusterSession } from '../MusterInstanceProvider/useMusterSession';
@@ -36,17 +36,11 @@ export function SessionGate({
         copy.action ? (
           <Button
             size="small"
-            variant="contained"
-            color="primary"
-            disabled={session.connecting}
-            startIcon={
-              session.connecting ? (
-                <CircularProgress size={14} color="inherit" />
-              ) : (
-                <Lock style={{ fontSize: 14 }} />
-              )
-            }
-            onClick={session.connect}
+            variant="primary"
+            isPending={session.connecting}
+            isDisabled={session.connecting}
+            iconStart={<Lock fontSize="inherit" />}
+            onPress={session.connect}
           >
             {session.connecting ? 'Connecting…' : copy.action}
           </Button>
