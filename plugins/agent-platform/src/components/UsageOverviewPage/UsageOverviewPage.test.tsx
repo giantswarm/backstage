@@ -91,8 +91,14 @@ const view: LlmUsageViewModel & { usage: LlmUsage | undefined } = {
   notReachable: [],
 };
 
+/** What the page last asked the usage view for: the window and the scope. */
+let viewOptions: Record<string, unknown> | undefined;
+
 jest.mock('../../hooks/useLlmUsageView', () => ({
-  useLlmUsageView: () => view,
+  useLlmUsageView: (options: Record<string, unknown>) => {
+    viewOptions = options;
+    return view;
+  },
 }));
 
 /** Enough of a `SessionUsageResponse` for the sessions tile and the fallback. */
@@ -190,6 +196,32 @@ describe('UsageOverviewPage', () => {
     sessionUsageState.usage = sessionUsage();
     sessionUsageState.isNotDeployed = false;
     sessionUsageState.isError = false;
+  });
+
+  it('narrows to the organization the URL names, says so, and keeps the scope on the Cost link', async () => {
+    renderPage('/usage?organization=org-acme&window=7d');
+
+    expect(
+      await screen.findByText(
+        /Shows the model use of the acme organization on/,
+      ),
+    ).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ days: 7, org: 'org-acme' });
+    expect(screen.getByRole('link', { name: 'see Cost' })).toHaveAttribute(
+      'href',
+      '/usage/cost?organization=org-acme&window=7d',
+    );
+    // The request metric carries no organization: the two figures from it
+    // say they are every organization's.
+    expect(screen.getAllByText('all organizations')).toHaveLength(2);
+  });
+
+  it('asks for every organization by default, with nothing of the kind on the strip', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Spend')).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ days: 30, org: undefined });
+    expect(screen.queryByText('all organizations')).toBeNull();
   });
 
   it('renders the KPI tiles from the gateway totals', async () => {

@@ -1,14 +1,24 @@
 import { useLocation } from 'react-router-dom';
 import { LastDaysSelect } from '@giantswarm/backstage-plugin-ui-react';
 import { EnvironmentSelect } from '../EnvironmentSelect';
+import { OrganizationSelect } from './OrganizationSelect';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
+import { useUsageOrganization } from '../../hooks/useUsageOrganization';
+import { useUsageOrganizations } from '../../hooks/useUsageOrganizations';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { USAGE_WINDOW_OPTIONS } from '../../lib/usageWindow';
 
 /**
  * The Usage screen's scope controls: which environment (installation) it
- * reads, and over which window.
+ * reads, which organization's agents, and over which window.
+ *
+ * The Organization control shows on the gateway views only (Overview and
+ * Cost): the gateway labels every call with the namespace its agent runs in,
+ * so those views narrow to one organization by a matcher on their queries;
+ * Your sessions is the reader's own slice and Connectors is muster's, and
+ * neither has an organization to narrow by. It shows from two organizations
+ * on, or when a link names one: one organization is no choice to offer.
  *
  * The Environment control appears **only when the portal knows more than one
  * installation** (decision O5); `EnvironmentSelect` owns that gate and
@@ -39,11 +49,23 @@ export function UsageScopeBar() {
   // query any window directly, so everything stays selectable there.
   const { pathname } = useLocation();
   const isSessionsView = /\/your-sessions\/?$/.test(pathname);
+  const isConnectorsView = /\/connectors\/?$/.test(pathname);
+  const isGatewayView = !isSessionsView && !isConnectorsView;
 
   const { installation } = useUsageInstallation();
   const { usage } = useSessionUsage(installation, {
     enabled: isSessionsView,
   });
+
+  // The organizations to offer: read only where the control can show, so the
+  // other views start no query for it.
+  const { namespace, setNamespace } = useUsageOrganization();
+  const { namespaces } = useUsageOrganizations(
+    isGatewayView ? installation : undefined,
+    days,
+  );
+  const offersOrganizations =
+    isGatewayView && (namespaces.length > 1 || namespace !== undefined);
 
   // Undefined until a response carries a usable window — no response yet, a
   // response whose `windowDays` the reader coerced to 0, or another view —
@@ -66,6 +88,13 @@ export function UsageScopeBar() {
   return (
     <>
       <EnvironmentSelect component="kagent" />
+      {offersOrganizations && (
+        <OrganizationSelect
+          namespaces={namespaces}
+          value={namespace}
+          onChange={setNamespace}
+        />
+      )}
       <LastDaysSelect
         options={USAGE_WINDOW_OPTIONS}
         value={days}

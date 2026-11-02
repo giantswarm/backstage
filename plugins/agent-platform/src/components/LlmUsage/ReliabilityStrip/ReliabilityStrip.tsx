@@ -32,15 +32,27 @@ const useStyles = makeStyles((theme: Theme) => ({
  *
  * `windowDays` is the window the figures were queried over (the selected time
  * range), which every hint names.
+ *
+ * `narrowedTo` is the organization the view is narrowed to, in a sentence
+ * (`the acme organization`), when it is. The durations and the speed follow
+ * the scope; the error rate and the 429 count cannot, because the request
+ * metric carries no organization, so they say they are every organization's.
  */
 export function ReliabilityStrip({
   reliability,
   windowDays,
+  narrowedTo,
 }: {
   reliability: LlmReliability;
   windowDays: number;
+  narrowedTo?: string;
 }) {
   const classes = useStyles();
+
+  const everyOrganization = narrowedTo
+    ? ` Counted across every organization, not only ${narrowedTo}: the request metric carries no organization.`
+    : '';
+  const listenerWide = narrowedTo ? 'all organizations' : undefined;
 
   // A tone only once there is enough traffic for a rate to mean anything: one
   // failure out of three calls is 33% and not yet a signal.
@@ -79,13 +91,15 @@ export function ReliabilityStrip({
         label="Error rate"
         value={formatPercent(reliability.errorRatePct)}
         tone={errorTone()}
-        hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over the last ${windowDays} days.`}
+        sub={listenerWide}
+        hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over the last ${windowDays} days.${everyOrganization}`}
       />
       <Stat
         label="Rate limited"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
-        hint={`Counts requests answered 429 over the last ${windowDays} days by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.`}
+        sub={listenerWide}
+        hint={`Counts requests answered 429 over the last ${windowDays} days by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.${everyOrganization}`}
       />
     </div>
   );

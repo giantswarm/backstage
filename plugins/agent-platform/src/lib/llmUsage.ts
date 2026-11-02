@@ -5,6 +5,7 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { deriveTokenRates, type TokenRates } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
+import { tenantKindOf, tenantOf, type TenantKind } from './tenants';
 import { usageDataStart, type UsageDataStart } from './usageWindow';
 
 /**
@@ -94,6 +95,39 @@ export type LlmAgentModelRow = {
   costUsd: number | undefined;
 };
 
+/**
+ * What a row of the by-organization table is: an Organization's tenant, the
+ * platform tenant (the shared agents, no organization), another namespace
+ * agents run in, or traffic attributed to no namespace at all.
+ */
+export type LlmOrganizationRowKind = TenantKind | 'unattributed';
+
+/**
+ * One organization's traffic: every agent of its namespace, the cost centre
+ * of giantswarm/giantswarm#36698 (D8). Reduced from the same vectors as the
+ * by-agent rows, so the two tables cannot disagree.
+ */
+export type LlmOrganizationRow = {
+  id: string;
+  /** The raw `agent_namespace` label; empty for unattributed traffic. */
+  namespace: string;
+  kind: LlmOrganizationRowKind;
+  /**
+   * What to show under the label "Organization": the organization's name,
+   * `None` for the platform, `namespace <name>` for another namespace, the
+   * caller's word for unattributed traffic.
+   */
+  label: string;
+  /** The line under the label: the namespace, where the label is not it. */
+  description?: string;
+  tokens: number;
+  calls: number;
+  /** As {@link LlmAgentRow.costUsd}: `undefined` when nothing was priced. */
+  costUsd: number | undefined;
+  /** Percentage of the window's total spend. `undefined` when nothing was priced. */
+  sharePct: number | undefined;
+};
+
 export type UnpricedModelRow = {
   id: string;
   requestModel: string;
@@ -170,6 +204,8 @@ export type LlmUsage = {
   tokenTypes: TokenTypeTotals;
   byAgent: LlmAgentRow[];
   byModel: LlmModelRow[];
+  /** The same traffic rolled up by the namespace the agents run in. */
+  byOrganization: LlmOrganizationRow[];
   /** Every agent and model pair, for a breakdown of one agent or one model. */
   byAgentModel: LlmAgentModelRow[];
   costPerDay: LlmDailySeries;
@@ -428,6 +464,89 @@ function identifyAgent(
   return {
     kind: 'removed',
     label: namespace ? `${namespace}/${agent}` : agent,
+  };
+}
+
+/**
+ * The namespace a sample's traffic is charged to, or `''` for traffic the
+ * gateway placed in no namespace (`agent_namespace` missing, or its own
+ * `unknown`).
+ *
+ * The namespace alone, as the organization scope's queries narrow by it, so
+ * a row's figures are exactly its narrowed view's. A call the gateway could
+ * match to no agent still counts for its namespace here, where the by-agent
+ * table marks it unattributed: the namespace is the cost centre whether or
+ * not the agent is known.
+ */
+function organizationKey(labels: Record<string, string>): string {
+  const namespace = labels.agent_namespace ?? '';
+  return namespace === UNKNOWN_AGENT_LABEL ? '' : namespace;
+}
+
+/**
+ * Roll the same three vectors up by the namespace the agents run in: the
+ * organization's tenant, which is the cost centre (giantswarm/giantswarm#36698,
+ * D8). An Organization's `org-<name>` namespace reads as the organization,
+ * the `kagent` namespace as the platform (no organization), any other
+ * namespace by its name, and traffic in no namespace as `unknownLabel`. No
+ * join is needed: the namespace is the identity.
+ */
+export function reduceByOrganization(options: {
+  cost: MimirMetricSample[] | undefined;
+  tokens: MimirMetricSample[] | undefined;
+  calls: MimirMetricSample[] | undefined;
+  unknownLabel: string;
+}): LlmOrganizationRow[] {
+  const { cost, tokens, calls, unknownLabel } = options;
+
+  const costByNamespace = sumBy(cost, organizationKey);
+  const tokensByNamespace = sumBy(tokens, organizationKey);
+  const callsByNamespace = sumBy(calls, organizationKey);
+  const totalCost = optionalSum(costByNamespace);
+
+  const keys = new Set([
+    ...costByNamespace.keys(),
+    ...tokensByNamespace.keys(),
+    ...callsByNamespace.keys(),
+  ]);
+
+  const rows: LlmOrganizationRow[] = [];
+  for (const namespace of keys) {
+    const costUsd = optionalTotal(costByNamespace, namespace);
+    rows.push({
+      id: namespace || 'unattributed',
+      namespace,
+      ...identifyOrganization(namespace, unknownLabel),
+      tokens: tokensByNamespace.get(namespace) ?? 0,
+      calls: callsByNamespace.get(namespace) ?? 0,
+      costUsd,
+      sharePct: percent(costUsd, totalCost),
+    });
+  }
+
+  return rows.sort(
+    (a, b) =>
+      (b.costUsd ?? 0) - (a.costUsd ?? 0) ||
+      b.tokens - a.tokens ||
+      a.label.localeCompare(b.label),
+  );
+}
+
+/** What a namespace is under the label "Organization", and the name to show. */
+function identifyOrganization(
+  namespace: string,
+  unknownLabel: string,
+): Pick<LlmOrganizationRow, 'kind' | 'label' | 'description'> {
+  if (namespace === '') {
+    return { kind: 'unattributed', label: unknownLabel };
+  }
+  const kind = tenantKindOf(namespace);
+  return {
+    kind,
+    label: tenantOf(namespace),
+    // The organization's name is not its namespace, so the namespace goes
+    // under it; for the platform and another namespace the label says it.
+    description: kind === 'organization' ? namespace : undefined,
   };
 }
 
@@ -829,6 +948,12 @@ export function buildLlmUsage(options: {
     calls,
     unknownLabel: options.unknownModelLabel,
   });
+  const byOrganization = reduceByOrganization({
+    cost,
+    tokens,
+    calls,
+    unknownLabel: options.unknownAgentLabel,
+  });
 
   const modelLabel = (labels: Record<string, string>) =>
     labels.gen_ai_response_model || options.unknownModelLabel;
@@ -890,6 +1015,7 @@ export function buildLlmUsage(options: {
     tokenTypes,
     byAgent,
     byModel,
+    byOrganization,
     byAgentModel: reduceByAgentModel({ cost, tokens, calls }),
     costPerDay,
     tokensPerDay,
