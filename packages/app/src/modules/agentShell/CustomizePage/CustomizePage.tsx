@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import {
   Navigate,
   Route,
@@ -422,16 +422,19 @@ function CustomizeTabPage({ tab }: { tab: CustomizeTab }) {
 function CustomizeScreen({ tab }: { tab: CustomizeTab }) {
   // One Tags pick for every tab: seeded from `?tags=` (a tag link from a
   // detail page), carried to the tab switched to, never written back.
+  // Re-seeded while rendering, not in an effect: the tab content the new
+  // address keys mounts in the same pass and reads the tags once.
   const { search } = useLocation();
-  const linkedTags = tagsOfSearch(search).join(',');
-  const [tags, setTags] = useState<readonly string[]>(() =>
-    tagsOfSearch(search),
-  );
-  useEffect(() => {
-    if (linkedTags) {
-      setTags(linkedTags.split(','));
+  const linked = tagsOfSearch(search);
+  const linkedKey = linked.join(',');
+  const [tags, setTags] = useState<readonly string[]>(linked);
+  const [seededFrom, setSeededFrom] = useState(linkedKey);
+  if (linkedKey !== seededFrom) {
+    setSeededFrom(linkedKey);
+    if (linked.length > 0) {
+      setTags(linked);
     }
-  }, [linkedTags]);
+  }
   return (
     <SharedTagsProvider tags={tags} onTagsChange={setTags}>
       <CustomizeMusterProvider>

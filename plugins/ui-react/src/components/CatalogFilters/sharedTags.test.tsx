@@ -29,6 +29,13 @@ describe('the tags query parameter', () => {
     expect(tagsOfSearch('?q=x')).toEqual([]);
   });
 
+  it('reads them as stored tags: lowercased, invalid ones left out', () => {
+    expect(tagsOfSearch('?tags=Util,%C3%BCber,on%20call,ops')).toEqual([
+      'util',
+      'ops',
+    ]);
+  });
+
   it('sets or drops the tags, keeping the rest', () => {
     expect(withTagsSearch('?q=x', ['util', 'ops'])).toBe('?q=x&tags=util,ops');
     expect(withTagsSearch('?q=x&tags=util', [])).toBe('?q=x');

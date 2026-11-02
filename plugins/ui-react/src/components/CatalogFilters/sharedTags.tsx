@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
 
+import { parseTags } from '../../lib/tags';
 import { TAGS_FACET_ID } from './tagsFacet';
 
 /**
@@ -8,17 +9,14 @@ import { TAGS_FACET_ID } from './tagsFacet';
  */
 export const TAGS_SEARCH_PARAM = TAGS_FACET_ID;
 
-/** The tags a query string picks (`?tags=a,b`), in order, without repeats. */
+/**
+ * The tags a query string picks (`?tags=a,b`), read as a stored value is
+ * (`parseTags`): in order, lowercased, without repeats or invalid ones.
+ */
 export function tagsOfSearch(search: string): string[] {
-  const raw = new URLSearchParams(search).get(TAGS_SEARCH_PARAM) ?? '';
-  return [
-    ...new Set(
-      raw
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(Boolean),
-    ),
-  ];
+  return parseTags(
+    new URLSearchParams(search).get(TAGS_SEARCH_PARAM) ?? undefined,
+  );
 }
 
 /**
