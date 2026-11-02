@@ -538,9 +538,8 @@ describe('useLlmUsage over a calendar month', () => {
 
     // The organization changes: the keys move, and the held answer is the
     // other scope's — not to be shown under this scope's caption.
-    for (const query of Object.values(
-      llmUsageQueriesFor({ month, org: 'org-acme' }),
-    )) {
+    const acme = llmUsageQueriesFor({ month, org: 'org-acme' });
+    for (const query of Object.values(acme)) {
       if (typeof query === 'string') {
         held.add(query);
       }
@@ -548,7 +547,14 @@ describe('useLlmUsage over a calendar month', () => {
     rerender({ org: 'org-acme' });
     expect(result.current.isLoading).toBe(true);
 
-    // The new scope's answers arrive.
+    // The answers arrive one by one: the page waits for the last of them, or
+    // the new scope's spend would show beside the old scope's latency.
+    held.clear();
+    held.add(acme.durationP50);
+    rerender({ org: 'org-acme' });
+    expect(result.current.isLoading).toBe(true);
+
+    // The last of the new scope's answers arrives.
     held.clear();
     rerender({ org: 'org-acme' });
     expect(result.current.isLoading).toBe(false);

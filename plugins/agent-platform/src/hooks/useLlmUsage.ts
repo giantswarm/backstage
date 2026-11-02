@@ -339,17 +339,34 @@ export function useLlmUsage(
   // previous answer across a re-key (see `cost`), which is right when only
   // the clock moved and wrong when the scope did: another organization's or
   // window's numbers must not show under this one's caption, not even for a
-  // round trip. So a held answer counts as loading until the scope it was
-  // fetched for is this one. `cost` stands for all ten: they re-key together.
+  // round trip. The keys move together but the answers arrive one by one, so
+  // the page waits for the last held query, not the first: the new scope's
+  // spend beside the old scope's latency is a mixed page. A held answer
+  // counts as loading until the scope it was fetched for is this one. Only
+  // queries that run are asked: a disabled one holds its placeholder for good.
+  const anyHeld =
+    cost.isPlaceholderData ||
+    tokens.isPlaceholderData ||
+    calls.isPlaceholderData ||
+    p50.isPlaceholderData ||
+    p95.isPlaceholderData ||
+    outputTokensPerSecond.isPlaceholderData ||
+    requestsByStatus.isPlaceholderData ||
+    unpricedLookups.isPlaceholderData ||
+    (rangeEnabled &&
+      (costPerDay.isPlaceholderData || tokensPerDay.isPlaceholderData)) ||
+    (rangeEnabled && dailyCalls && callsPerDay.isPlaceholderData) ||
+    (byPerson &&
+      (costByPerson.isPlaceholderData || tokensByPerson.isPlaceholderData));
   const scope = `${installationName}\n${org ?? ''}\n${month ?? `${windowDays}d`}`;
   const answeredScope = useRef(scope);
   useEffect(() => {
-    if (!cost.isPlaceholderData && cost.data !== undefined) {
+    if (enabled && !anyHeld && cost.data !== undefined) {
       answeredScope.current = scope;
     }
-  }, [cost.isPlaceholderData, cost.data, scope]);
+  }, [enabled, anyHeld, cost.data, scope]);
   const heldFromAnotherScope =
-    cost.isPlaceholderData && answeredScope.current !== scope;
+    enabled && anyHeld && answeredScope.current !== scope;
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);

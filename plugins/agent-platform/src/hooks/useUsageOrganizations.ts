@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useMimirQuery } from '@giantswarm/backstage-plugin-gs';
 import { useAgents } from '../components/AgentsDataProvider';
 import { UNKNOWN_AGENT_LABEL } from '../lib/llmUsage';
@@ -54,7 +54,20 @@ export function useUsageOrganizations(
   });
   const { rows: agents, isLoading: isLoadingAgents } = useAgents();
 
-  const seenResult = seen.data?.data?.result;
+  // The hold is for the clock alone. A list held across a change of
+  // installation or window is another scope's, and an organization picked
+  // from it may not exist here; it counts as no answer, as before the hold.
+  const scope = `${installation ?? ''}\n${window.kind === 'month' ? window.month : `${window.days}d`}`;
+  const answeredScope = useRef(scope);
+  useEffect(() => {
+    if (!seen.isPlaceholderData && seen.data !== undefined) {
+      answeredScope.current = scope;
+    }
+  }, [seen.isPlaceholderData, seen.data, scope]);
+  const heldFromAnotherScope =
+    seen.isPlaceholderData && answeredScope.current !== scope;
+
+  const seenResult = heldFromAnotherScope ? undefined : seen.data?.data?.result;
   const namespaces = useMemo(() => {
     const set = new Set<string>();
     for (const sample of seenResult ?? []) {
@@ -77,6 +90,8 @@ export function useUsageOrganizations(
 
   return {
     namespaces,
-    isLoading: Boolean(installation) && (seen.isLoading || isLoadingAgents),
+    isLoading:
+      Boolean(installation) &&
+      (seen.isLoading || heldFromAnotherScope || isLoadingAgents),
   };
 }

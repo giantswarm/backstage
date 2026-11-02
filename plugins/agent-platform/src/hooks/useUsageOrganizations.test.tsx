@@ -5,8 +5,15 @@ import { useUsageOrganizations } from './useUsageOrganizations';
 const mimirState: {
   data: { data: { result: { metric: Record<string, string> }[] } } | undefined;
   isLoading: boolean;
+  /** Whether `data` is the previous key's answer, held while the new key fetches. */
+  isPlaceholderData: boolean;
   lastOptions: Record<string, unknown> | undefined;
-} = { data: undefined, isLoading: false, lastOptions: undefined };
+} = {
+  data: undefined,
+  isLoading: false,
+  isPlaceholderData: false,
+  lastOptions: undefined,
+};
 
 // Only the query hook is stubbed: the query builder reads the metric
 // constants from the same package.
@@ -14,7 +21,11 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useMimirQuery: (options: Record<string, unknown>) => {
     mimirState.lastOptions = options;
-    return { data: mimirState.data, isLoading: mimirState.isLoading };
+    return {
+      data: mimirState.data,
+      isLoading: mimirState.isLoading,
+      isPlaceholderData: mimirState.isPlaceholderData,
+    };
   },
 }));
 
@@ -45,9 +56,38 @@ describe('useUsageOrganizations', () => {
   beforeEach(() => {
     mimirState.data = undefined;
     mimirState.isLoading = false;
+    mimirState.isPlaceholderData = false;
     mimirState.lastOptions = undefined;
     agentsState.rows = [];
     agentsState.isLoading = false;
+  });
+
+  it('offers a list held across the clock, not one held from another installation', () => {
+    mimirState.data = seen('org-alpha');
+    const { result, rerender } = renderHook(
+      ({ installation }: { installation: string }) =>
+        useUsageOrganizations(installation, { kind: 'days', days: 30 }),
+      { initialProps: { installation: 'gazelle' } },
+    );
+    expect(result.current.namespaces).toEqual(['org-alpha']);
+
+    // A month's query re-keys with the clock: the list stays.
+    mimirState.isPlaceholderData = true;
+    rerender({ installation: 'gazelle' });
+    expect(result.current.namespaces).toEqual(['org-alpha']);
+    expect(result.current.isLoading).toBe(false);
+
+    // Another installation: gazelle's list is not its, and an organization
+    // picked from it might not exist there.
+    rerender({ installation: 'graveler' });
+    expect(result.current.namespaces).toEqual([]);
+    expect(result.current.isLoading).toBe(true);
+
+    mimirState.isPlaceholderData = false;
+    mimirState.data = seen('org-beta');
+    rerender({ installation: 'graveler' });
+    expect(result.current.namespaces).toEqual(['org-beta']);
+    expect(result.current.isLoading).toBe(false);
   });
 
   it('joins the namespaces the gateway saw with the roster’s, platform first, then organizations by name, then other namespaces', () => {
