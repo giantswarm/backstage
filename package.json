@@ -24,7 +24,7 @@
     "lint": "backstage-cli repo lint --since origin/main && yarn run lint:e2e",
     "lint:all": "backstage-cli repo lint && yarn run lint:e2e",
     "lint:e2e": "eslint e2e",
-    "prettier:check": "prettier --check .",
+    "prettier:check": "prettier --check . --cache --cache-strategy content --cache-location node_modules/.cache/prettier/check",
     "prettier:fix": "prettier --write .",
     "ci:lint": "yarn run lint:all && yarn run prettier:check",
     "ci:patches": "yarn patch-package --error-on-fail",

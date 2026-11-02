@@ -44,7 +44,10 @@ jobs:
   # tsc, the lint and jest running at once, that outgrew the memory and the
   # kernel killed Postgres (exit 137) early in Verify, and the oversubscribed
   # CPUs pushed the heaviest render tests past jest's 5 s (#3045 bounded them
-  # to 4 workers and 2 lint threads: 11.4 GiB at the peak).
+  # to 4 workers and 2 lint threads: 11.4 GiB at the peak). On #3326, jest
+  # alone with 6 workers and no coverage peaked at 10.4 GiB; the lint took
+  # the same 101 s alone as beside jest, bound by its 2 threads, so phase 2
+  # gives it 4: it runs beside the single-threaded tsc on 8 CPUs.
   # `ci:verify` runs in two phases now: jest alone first, with the whole job to
   # itself (JEST_MAX_WORKERS workers, no coverage), then tsc and the lint side
   # by side. Each phase peaks lower than the three did together, and the end
@@ -65,8 +68,8 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
     environment:
-      BACKSTAGE_CLI_CONCURRENCY: "2"
-      JEST_MAX_WORKERS: "6"
+      BACKSTAGE_CLI_CONCURRENCY: "4"
+      JEST_MAX_WORKERS: "7"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
