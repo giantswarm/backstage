@@ -67,7 +67,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - bot-prs, repositories, muster and agent-platform: helpers that no page calls any more are gone with the tests that kept them alive (`ageDays`, `formatAge`, `resultFindings`, `familyCoverage`, `presenceByMc`, `orderPresenceDegradedFirst`, `hasServedModelActions`, `findServedModelForEndpoint`, `notableCapabilities`, `resolveModelLabel`, `UNLABELED`). Nothing a person sees changes.
 
-- gs, muster, agent-platform, agent-platform-common, platform-capabilities, plans and repositories-backend: helpers exported only for their tests are now private or gone (`orderInstallations`, `homeFirst`, `hostNodeDescription`, `bodyArguments`, `listArguments`, `ACTION_STATE_WORDS`, `isCommentable`, `validateNewMcpServerForm`, `deriveSessionState`). Their tests now check the same rules through the hook, route or component that uses them. Nothing a person sees changes.
+- gs, muster, agent-platform, agent-platform-common, platform-capabilities, platform-capabilities-backend, plans and repositories-backend: helpers exported only for their tests are now private or gone (`orderInstallations`, `homeFirst`, `hostNodeDescription`, `bodyArguments`, `listArguments`, `writeArguments`, `actionsArguments`, `ACTION_STATE_WORDS`, `isCommentable`, `validateNewMcpServerForm`, `deriveSessionState`). Their tests now check the same rules through the hook, route or component that uses them. Nothing a person sees changes.
 
 ## [0.138.0] - 2026-06-21
 
