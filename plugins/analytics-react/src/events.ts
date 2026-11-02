@@ -6,6 +6,8 @@
  * one value of a closed set, so free text (prompts, entity names, URLs, search
  * terms) cannot reach an event: customer portals send the same events.
  */
+import { COUNT_BUCKETS, COUNT_BUCKETS_OR_UNKNOWN } from './countBucket';
+
 export type PortalEventSpec = {
   /** What happened, in one sentence; the public list of events shows it. */
   description: string;
@@ -57,8 +59,8 @@ export const portalEvents = defineEvents({
   },
   'AgentPlatform.messageSent': {
     description:
-      'A message was sent to the agent in a session, a first message included, and the agent took it.',
-    attributes: {},
+      "A message was sent to the agent in a session, a first message included, and the agent took it; with the session's number of turns once the message's turn is read back, that turn included (`unknown` when the session's turns were never read).",
+    attributes: { turns: COUNT_BUCKETS_OR_UNKNOWN },
   },
   'AgentPlatform.questionAnswered': {
     description:
@@ -81,6 +83,29 @@ export const portalEvents = defineEvents({
     description:
       'A session was exported to a file, whole, from its actions menu; the number of its tasks is given in coarse buckets.',
     attributes: { tasks: ['0', '1-9', '10-99', '100+'] },
+  },
+  'AgentPlatform.agentViewed': {
+    description:
+      "An agent's page was opened, with the number of skills it has and of tools it can call through the person viewing it: its toolset as muster resolves it for them, plus the tools it lists on servers it binds directly (`unknown` when the toolset could not be resolved, or a directly bound server allows all its tools). Sent once per opening, when both are known.",
+    attributes: { skills: COUNT_BUCKETS, tools: COUNT_BUCKETS_OR_UNKNOWN },
+  },
+  'AgentPlatform.sessionViewed': {
+    description:
+      "A session's page was opened, with the number of turns the session has. Sent once per opening, when the session and its turns are read.",
+    attributes: { turns: COUNT_BUCKETS },
+  },
+  'AgentPlatform.customizeViewed': {
+    description:
+      'The Customize page was opened, with the number of agents, skills, connectors, models, workflows, workspaces and toolchains it counts for the installations in scope. Sent once per opening, not per tab, when every count is read, or 30 seconds after the opening with the counts still being read as `unknown`; a count that could not be read is `unknown` too.',
+    attributes: {
+      agents: COUNT_BUCKETS_OR_UNKNOWN,
+      skills: COUNT_BUCKETS_OR_UNKNOWN,
+      connectors: COUNT_BUCKETS_OR_UNKNOWN,
+      models: COUNT_BUCKETS_OR_UNKNOWN,
+      workflows: COUNT_BUCKETS_OR_UNKNOWN,
+      workspaces: COUNT_BUCKETS_OR_UNKNOWN,
+      toolchains: COUNT_BUCKETS_OR_UNKNOWN,
+    },
   },
   'AgentPlatform.sessionPinChanged': {
     description:

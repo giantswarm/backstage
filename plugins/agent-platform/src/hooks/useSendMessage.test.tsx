@@ -6,6 +6,7 @@ import {
   InvalidateQueryFilters,
   QueryClient,
   QueryClientProvider,
+  useQuery,
 } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
@@ -179,14 +180,81 @@ describe('useSendMessage', () => {
       expect.any(Function),
       expect.any(AbortSignal),
     );
-    // Reported without the text.
+    // Reported without the text; the session's turns were never read here.
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.messageSent',
-        attributes: {},
+        attributes: { turns: 'unknown' },
       }),
     );
+  });
+
+  describe('the turns it reports', () => {
+    it('counts the conversation the page reads back after the turn, the turn included', async () => {
+      listSessionTasks.mockResolvedValueOnce([]);
+      const queryClient = new QueryClient({
+        defaultOptions: { mutations: { retry: false } },
+      });
+      const wrapper = ({ children }: PropsWithChildren<{}>) => (
+        <TestApiProvider
+          apis={[
+            [kagentApiRef, kagentApi],
+            [analyticsApiRef, analyticsApi],
+          ]}
+        >
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </TestApiProvider>
+      );
+      // The page's conversation read, which the turn's end re-reads.
+      const { result } = renderHook(
+        () => ({
+          tasks: useQuery({
+            queryKey: TASKS_KEY,
+            queryFn: () => listSessionTasks('gazelle', 'abc'),
+          }),
+          send: useSendMessage('gazelle', 'abc', AGENT),
+        }),
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.tasks.data).toEqual([]));
+      listSessionTasks.mockResolvedValue([settledTask('task-1')]);
+
+      await act(async () => {
+        await result.current.send.sendMessage('hello');
+      });
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.messageSent',
+          attributes: { turns: '1' },
+        }),
+      );
+    });
+
+    it('adds the turn to a conversation the page left behind during it', async () => {
+      const { result, queryClient } = renderWith();
+      queryClient.setQueryData(TASKS_KEY, [
+        settledTask('task-1'),
+        settledTask('task-2'),
+        settledTask('task-3'),
+        settledTask('task-4'),
+      ]);
+
+      await act(async () => {
+        await result.current.sendMessage('hello');
+      });
+
+      // Four read before the turn, and the turn: five.
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.messageSent',
+          attributes: { turns: '5-9' },
+        }),
+      );
+    });
   });
 
   it('sends the images as the API takes them, and keeps them on the pending message', async () => {

@@ -44,6 +44,10 @@ export type {
   CustomizeCounts,
   CustomizeDataValue,
 } from './components/CustomizeDataProvider';
+export {
+  useTrackCustomizeView,
+  type MusterViewCounts,
+} from './hooks/useTrackCustomizeView';
 export { CustomizeAgentsPanel } from './components/CustomizeAgentsPanel';
 export type { CustomizeAgentsPanelProps } from './components/CustomizeAgentsPanel';
 export {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import {
   applyInstallationScope,
   useInstallationInventory,
@@ -12,7 +12,10 @@ import {
   musterToolchainSourcesQueryKey,
   musterToolchainsQueryKey,
 } from '../lib/queryKeys';
-import { TOOLCHAIN_MANAGER_SERVER } from '../lib/toolchainManager';
+import {
+  TOOLCHAIN_MANAGER_SERVER,
+  type ToolchainList,
+} from '../lib/toolchainManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import { useMusterServerAvailability } from './useMusterServerAvailability';
 
@@ -99,6 +102,46 @@ export function useScopedToolchainInstallations(): {
     hasToolchains = false;
   }
   return { installations, sharedIdentity, hasToolchains };
+}
+
+/**
+ * How many toolchains the installations in scope offer, as the Toolchains tab
+ * lists them, each installation's list in the tab's own cached read: `0`
+ * where none has the toolchain-manager, `'loading'` while a list is read, and
+ * `undefined` when none could be read (a failure, or a grant or an install
+ * the person has yet to give).
+ */
+export function useScopedToolchainCount(): number | 'loading' | undefined {
+  const { installations, hasToolchains } = useScopedToolchainInstallations();
+  const musterApi = useMusterPluginApi();
+  const lists = useQueries({
+    queries: installations.map(installation => ({
+      queryKey: musterToolchainsQueryKey(installation),
+      queryFn: (): Promise<ToolchainList> =>
+        new ToolchainManagerClient(musterApi!, installation).listToolchains(),
+      enabled: Boolean(musterApi),
+      retry: false,
+    })),
+  });
+
+  if (hasToolchains === false) {
+    return 0;
+  }
+  if (hasToolchains === undefined) {
+    return 'loading';
+  }
+  if (!musterApi) {
+    return undefined;
+  }
+  if (lists.some(list => list.isPending)) {
+    return 'loading';
+  }
+  const read = lists.flatMap(list =>
+    list.data && !list.data.status ? [list.data.toolchains.length] : [],
+  );
+  return read.length > 0
+    ? read.reduce((sum, count) => sum + count, 0)
+    : undefined;
 }
 
 /** The toolchains an installation offers, where it has the toolchain-manager. */

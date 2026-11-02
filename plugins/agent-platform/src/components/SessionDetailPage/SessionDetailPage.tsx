@@ -30,6 +30,10 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import {
+  countBucket,
+  useTrackedView,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -415,6 +419,18 @@ export function SessionDetailPage() {
     justCreated: Boolean(handoff),
   });
   const cancellation = useCancelTask(installation, sessionId);
+
+  // How long the sessions people open are: once per opening, when the
+  // session and its turns are read, and not again as the conversation polls.
+  useTrackedView(
+    detail && hasConversation
+      ? {
+          name: 'AgentPlatform.sessionViewed',
+          attributes: { turns: countBucket(taskCount) },
+        }
+      : undefined,
+    `${installation}/${sessionId}`,
+  );
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.

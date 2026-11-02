@@ -1,4 +1,12 @@
 export {
+  COUNT_BUCKETS,
+  COUNT_BUCKETS_OR_UNKNOWN,
+  countBucket,
+  countBucketOrUnknown,
+  type CountBucket,
+  type CountBucketOrUnknown,
+} from './countBucket';
+export {
   defineEvents,
   isPortalEventShaped,
   portalEvents,
@@ -14,3 +22,4 @@ export {
   type MutationTracking,
   type TrackedMutationOptions,
 } from './useTrackedMutation';
+export { useTrackedView } from './useTrackedView';

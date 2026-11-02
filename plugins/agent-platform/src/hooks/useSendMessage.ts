@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import {
+  countBucketOrUnknown,
+  useTrackedMutation,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import {
   A2aTaskWire,
   countSendTimeout,
@@ -116,8 +119,16 @@ export function useSendMessage(
     [queryClient, installation, sessionId],
   );
   const mutation = useTrackedMutation({
-    // Neither the text nor its images: only that a message went.
-    event: () => ({ name: 'AgentPlatform.messageSent', attributes: {} }),
+    // Neither the text nor its images: that a message went, and how many
+    // turns the session has with it.
+    event: () => ({
+      name: 'AgentPlatform.messageSent',
+      attributes: {
+        turns: countBucketOrUnknown(
+          turnsWithSentMessage(queryClient, installation, sessionId),
+        ),
+      },
+    }),
     mutationFn: async (message: PendingMessage) => {
       if (!agent) {
         // Not a user-facing path: the composer is withheld when the session's
@@ -246,6 +257,27 @@ export function useSendMessage(
       reset,
     ],
   );
+}
+
+/**
+ * The session's turns once a sent message's turn is over, that turn included:
+ * the conversation `useStreamedTurn` re-read after it, or, when nothing
+ * re-read it because the page was left during the turn (the read is marked
+ * stale instead), the conversation from before it and this turn. Undefined
+ * when the conversation was never read.
+ */
+function turnsWithSentMessage(
+  queryClient: QueryClient,
+  installation: string,
+  sessionId: string,
+): number | undefined {
+  const queryKey = sessionTasksQueryKey(installation, sessionId);
+  const tasks = queryClient.getQueryData<A2aTaskWire[]>(queryKey);
+  if (!tasks) {
+    return undefined;
+  }
+  const isLeftBehind = queryClient.getQueryState(queryKey)?.isInvalidated;
+  return tasks.length + (isLeftBehind ? 1 : 0);
 }
 
 /** What {@link useSendMessage} hands to the composer. */
