@@ -9124,7 +9124,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-auth-backend-module-gs@npm:^0.16.0, @giantswarm/backstage-plugin-auth-backend-module-gs@workspace:plugins/auth-backend-module-gs":
+"@giantswarm/backstage-plugin-auth-backend-module-gs@npm:^0.17.0, @giantswarm/backstage-plugin-auth-backend-module-gs@workspace:plugins/auth-backend-module-gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-auth-backend-module-gs@workspace:plugins/auth-backend-module-gs"
   dependencies:
@@ -23779,7 +23779,7 @@ __metadata:
     "@backstage/plugin-scaffolder-backend": "backstage:^"
     "@backstage/plugin-scaffolder-backend-module-github": "backstage:^"
     "@backstage/plugin-scaffolder-backend-module-notifications": "backstage:^"
-    "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.16.0"
+    "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.17.0"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.13.0"
     "@internal/backend-common": "workspace:^"
     "@roadiehq/scaffolder-backend-module-utils": "npm:^4.1.1"
@@ -23831,7 +23831,7 @@ __metadata:
     "@backstage/plugin-user-settings-backend": "backstage:^"
     "@giantswarm/backstage-plugin-agent-platform-backend": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.18.0"
-    "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.16.0"
+    "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.17.0"
     "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.7.0"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.11.0"
     "@giantswarm/backstage-plugin-muster-backend": "workspace:^"
