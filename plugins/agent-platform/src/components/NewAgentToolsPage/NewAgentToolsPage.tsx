@@ -449,12 +449,20 @@ export function NewAgentToolsPage() {
 
   // The catalogue's search and its All / Reads / Changes things filter, both
   // from SEARCH_MIN entries on (`isSearchableList`): its tools and workflows,
-  // not the connectors that only group them.
+  // and the connectors awaiting sign-in, which are found by their name.
   const [query, setQuery] = useState('');
+  const awaitingSignIn = groups.reduce(
+    (count, group) =>
+      count + group.servers.filter(bucket => bucket.needsSignIn).length,
+    0,
+  );
   const isShortCatalogue =
     !isCatalogueLoading &&
     !isSearchableList(
-      inventory.tools + inventory.platformAdministration + inventory.workflows,
+      awaitingSignIn +
+        inventory.tools +
+        inventory.platformAdministration +
+        inventory.workflows,
     );
   // Dropped when the catalogue shrinks under the bar (a re-read after a
   // sign-out), so neither is reapplied if it grows back.
