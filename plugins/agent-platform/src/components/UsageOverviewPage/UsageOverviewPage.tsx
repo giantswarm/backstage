@@ -10,6 +10,7 @@ import { useUsageOrganization } from '../../hooks/useUsageOrganization';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useCurrency } from '../../lib/formatNumbers';
 import { tenantInSentence } from '../../lib/tenants';
+import { usageWindowNoun, usageWindowPhrase } from '../../lib/usageWindow';
 import {
   CALLS_SERIES,
   type LlmDailySeries,
@@ -125,7 +126,8 @@ function topAgentRows(usage: LlmUsage): TopAgentsRow[] {
  */
 export function UsageOverviewPage() {
   const classes = useStyles();
-  const { days } = useUsageWindow();
+  const { window, days } = useUsageWindow();
+  const month = window.kind === 'month' ? window.month : undefined;
   // The organization scope narrows every gateway figure to one
   // organization's agents, as on the Cost tab; the reliability strip stays
   // the whole listener's, whose metrics carry no namespace.
@@ -133,7 +135,12 @@ export function UsageOverviewPage() {
   // No `comparePrevious`: the change against the previous window is a money
   // trend, and it lives on the Cost tab with the extra query it costs. The
   // daily calls feed the heatmap, which only this view draws.
-  const view = useLlmUsageView({ days, org: namespace, dailyCalls: true });
+  const view = useLlmUsageView({
+    days,
+    month,
+    org: namespace,
+    dailyCalls: true,
+  });
   const whose = namespace
     ? `the model use of ${tenantInSentence(namespace)}`
     : "everyone's model use";
@@ -172,7 +179,12 @@ export function UsageOverviewPage() {
 
   // Today's bar is real use so far — queried over elapsed-time-since-midnight
   // rather than extrapolated to a whole day.
-  const windowNote = `The last ${days} days.`;
+  const windowNoun = usageWindowNoun(window);
+  const windowNote = `${windowNoun.charAt(0).toUpperCase()}${windowNoun.slice(1)}.`;
+  // The heatmap's last row is today's, still filling up — unless the window
+  // has ended (a past month), whose last day is whole.
+  const partialToday = usage?.partialDay !== undefined;
+  const heatmapNote = `Every user's calls through the gateway, by UTC day${partialToday ? "; today's so far" : ''}.`;
 
   return (
     <UsageColumn>
@@ -185,13 +197,13 @@ export function UsageOverviewPage() {
         <Text as="p" variant="body-medium" color="secondary">
           {installation ? (
             <>
-              Shows {whose} on <strong>{installation}</strong> over the last{' '}
-              {days} days.
+              Shows {whose} on <strong>{installation}</strong>{' '}
+              {usageWindowPhrase(window)}.
               {isResolvedFromAll &&
                 ' It shows one environment at a time; switch it in the Environment control.'}
             </>
           ) : (
-            `Shows ${whose} over the last ${days} days.`
+            `Shows ${whose} ${usageWindowPhrase(window)}.`
           )}
         </Text>
 
@@ -225,7 +237,8 @@ export function UsageOverviewPage() {
             <UsageKpiTiles
               usage={usage}
               currency={currency}
-              windowDays={days}
+              windowDays={usage.windowDays}
+              window={window}
               sessions={sessions}
               costHref={costRoute ? `${costRoute()}${search}` : undefined}
             />
@@ -239,8 +252,8 @@ export function UsageOverviewPage() {
                   <ActivityHeatmap
                     title={HEATMAP_TITLE}
                     days={callDays}
-                    partialLast
-                    note="Every user's calls through the gateway, by UTC day; today's so far."
+                    partialLast={partialToday}
+                    note={heatmapNote}
                   />
                 )
               )}
@@ -258,6 +271,7 @@ export function UsageOverviewPage() {
               <ReliabilityStrip
                 reliability={usage.reliability}
                 windowDays={usage.windowDays}
+                windowLabel={windowNoun}
                 narrowedTo={namespace ? tenantInSentence(namespace) : undefined}
               />
             </UsageCard>

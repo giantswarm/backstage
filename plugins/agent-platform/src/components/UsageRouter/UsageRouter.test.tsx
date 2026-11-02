@@ -5,9 +5,14 @@ import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { LAST_DAYS_SELECT_CLASS_NAME } from '@giantswarm/backstage-plugin-ui-react';
 import { usageRouteRef } from '../../routes';
+import {
+  previousUsageMonth,
+  usageMonthLabel,
+  usageMonthOf,
+} from '../../lib/usageWindow';
 import { UsageRouter } from './UsageRouter';
+import { USAGE_WINDOW_SELECT_CLASS_NAME } from './UsageWindowSelect';
 
 // The views are irrelevant here — this is about the tab's routing, which
 // second-level tabs it offers and the scope controls above them — and stubbing
@@ -342,6 +347,41 @@ describe('UsageRouter', () => {
       expect(organizationsState.lastInstallation).toBeUndefined();
     });
 
+    it('offers the calendar months after the days, and sets one in the URL', async () => {
+      const month = previousUsageMonth(usageMonthOf(Date.now()));
+      const user = userEvent.setup();
+      renderTab('/usage/cost');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      await chooseWindow(user, usageMonthLabel(month));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          `/usage/cost?window=${month}`,
+        );
+      });
+      expect(timeRange()).toHaveTextContent(usageMonthLabel(month));
+    });
+
+    it('disables the months on Your sessions and Connectors, saying why, and reads a deep-linked month there as the default', async () => {
+      const month = previousUsageMonth(usageMonthOf(Date.now()));
+      const user = userEvent.setup();
+      renderTab(`/usage/your-sessions?window=${month}`);
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      // The view reads days only, so the control shows the default, not the
+      // month the link named.
+      expect(timeRange()).toHaveTextContent('Last 30 days');
+      await user.click(timeRange());
+      const option = screen.getByRole('option', {
+        name: usageMonthLabel(month),
+      });
+      expect(option).toHaveAttribute('aria-disabled', 'true');
+      expect(option).toHaveAccessibleDescription(
+        'kagent reports session usage over days back from today only',
+      );
+    });
+
     it('offers the time window on the gateway views and sets it in the URL', async () => {
       const user = userEvent.setup();
       renderTab('/usage');
@@ -466,7 +506,7 @@ describe('UsageRouter', () => {
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
       // The select, by the root class it owns.
       const select = timeRange().closest<HTMLElement>(
-        `.${LAST_DAYS_SELECT_CLASS_NAME}`,
+        `.${USAGE_WINDOW_SELECT_CLASS_NAME}`,
       )!;
       expect(select).toHaveTextContent(/^Time range/);
       const row = select.parentElement!;
