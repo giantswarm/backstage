@@ -1,6 +1,7 @@
 import { Select } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  DEFAULT_USAGE_WINDOW_DAYS,
   formatUsageWindow,
   parseUsageWindow,
   USAGE_WINDOW_OPTIONS,
@@ -24,8 +25,8 @@ const useStyles = makeStyles({
   },
 });
 
-/** The default days window's key, for a window the URL leaves out. */
-const DEFAULT_KEY = '30d';
+/** The default days window's key, which `formatUsageWindow` keeps out of the URL. */
+const DEFAULT_KEY = `${DEFAULT_USAGE_WINDOW_DAYS}d`;
 
 export type UsageWindowSelectProps = {
   value: UsageWindow;

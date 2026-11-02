@@ -26,6 +26,11 @@ function previousQueries() {
 const pending = new Set<string>();
 /** Queries reported as failed, by query string. */
 const failed = new Set<string>();
+/**
+ * Queries whose answer is a placeholder, by query string: the previous key's
+ * answer, held by `keepPreviousAnswer` while the new key fetches.
+ */
+const held = new Set<string>();
 /** Every query the hook issued while enabled. */
 const issued = new Set<string>();
 /** Answers by query string; an empty vector otherwise. */
@@ -56,6 +61,7 @@ function stub({ query, enabled = true }: { query: string; enabled?: boolean }) {
     isLoading: pending.has(query),
     error: failed.has(query) ? new Error('mimir') : null,
     isAvailable: true,
+    isPlaceholderData: held.has(query),
   };
 }
 
@@ -71,6 +77,7 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
 beforeEach(() => {
   pending.clear();
   failed.clear();
+  held.clear();
   issued.clear();
   answers.clear();
 });
@@ -142,9 +149,6 @@ describe('useLlmUsage', () => {
  * same way the hook does so the test cannot drift from it.
  */
 function pendingTodayQueries(): string[] {
-  const { todayPartialQueries, todayPartialRange } = jest.requireActual<
-    typeof import('../lib/llmUsageQueries')
-  >('../lib/llmUsageQueries');
   const queries = todayPartialQueries(todayPartialRange());
   return [queries.costByModel, queries.tokensByType];
 }
@@ -330,9 +334,6 @@ describe('useLlmUsage daily calls (the Overview heatmap)', () => {
         .dailyRangeWindow(Date.now(), 7).end,
     );
     answers.set(callsPerDay, [{ metric: {}, values: [[end, '42']] }]);
-    const { todayPartialQueries, todayPartialRange } = jest.requireActual<
-      typeof import('../lib/llmUsageQueries')
-    >('../lib/llmUsageQueries');
     answers.set(todayPartialQueries(todayPartialRange()).calls, [
       { metric: {}, value: [end, '5'] },
     ]);
@@ -506,5 +507,51 @@ describe('useLlmUsage over a calendar month', () => {
     expect(result.current.isLoading).toBe(false);
     expect(llmUsageQueriesFor({ month: current }).previousCost).toBeUndefined();
     expect(result.current.usage?.totals).not.toHaveProperty('previousCostUsd');
+  });
+
+  it('holds the answers across the clock in the month still being written', () => {
+    const current = usageMonthOf(Date.now());
+    const { result, rerender } = renderHook(() =>
+      useLlmUsage('gazelle', { month: current }),
+    );
+    expect(result.current.isLoading).toBe(false);
+
+    // Five minutes pass: every window query re-keys, and react-query holds
+    // the previous answer as a placeholder while the new key fetches. The
+    // page must not fall back to a spinner for that.
+    for (const query of issued) {
+      held.add(query);
+    }
+    rerender();
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.usage).toBeDefined();
+  });
+
+  it('reads an answer held from another scope as loading', () => {
+    const { result, rerender } = renderHook(
+      (options: { org?: string }) =>
+        useLlmUsage('gazelle', { month, ...options }),
+      { initialProps: {} },
+    );
+    expect(result.current.isLoading).toBe(false);
+
+    // The organization changes: the keys move, and the held answer is the
+    // other scope's — not to be shown under this scope's caption.
+    for (const query of Object.values(
+      llmUsageQueriesFor({ month, org: 'org-acme' }),
+    )) {
+      if (typeof query === 'string') {
+        held.add(query);
+      }
+    }
+    rerender({ org: 'org-acme' });
+    expect(result.current.isLoading).toBe(true);
+
+    // The new scope's answers arrive.
+    held.clear();
+    rerender({ org: 'org-acme' });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.usage).toBeDefined();
   });
 });

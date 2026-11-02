@@ -131,6 +131,28 @@ describe('buildLlmUsage', () => {
     expect(usage).not.toHaveProperty('window');
   });
 
+  it('names the partial day, and keeps a stale today vector out of a window that has ended', () => {
+    const todayVector = [
+      sample(
+        { gen_ai_response_model: 'model-today', gen_ai_token_type: 'input' },
+        '5',
+      ),
+    ];
+    const open = buildLlmUsage({
+      ...base,
+      today: '2026-10-31',
+      costToday: todayVector,
+    });
+    expect(open.partialDay).toBe('2026-10-31');
+    expect(open.costPerDay.series).toContain('model-today');
+
+    // A past month: its today queries are off, but react-query may still
+    // hold the days window's answer for them.
+    const ended = buildLlmUsage({ ...base, costToday: todayVector });
+    expect(ended).not.toHaveProperty('partialDay');
+    expect(ended.costPerDay.series).not.toContain('model-today');
+  });
+
   it('names no data start from today when the window has ended', () => {
     // A past month has no today: the records starting "today" is not a
     // thing it can say.

@@ -112,8 +112,15 @@ export type UsageWindowSpec = {
 /** A point in time named either by an offset from the evaluation or absolutely. */
 type DataBeforeAt = { offsetSeconds?: number; at?: number };
 
-/** How coarsely a still-open month's elapsed range is snapped; see {@link todayPartialRange}. */
-const MONTH_SNAP_SECONDS = 300;
+const DAY_SECONDS = 86400;
+
+/**
+ * How coarsely the clock is read where a query's range grows with it — today's
+ * partial bar ({@link todayPartialRange}) and a month still being written
+ * ({@link usageWindowSpec}) — so their query keys move every five minutes, not
+ * per render. The hook that reads the clock for them snaps to the same grid.
+ */
+export const CLOCK_SNAP_SECONDS = 300;
 
 /**
  * The query shape of a window: a days window grows the counters over the last
@@ -146,7 +153,7 @@ export function usageWindowSpec({
   if (bounds.current) {
     const elapsed = Math.floor(now / 1000) - bounds.start;
     const snapped =
-      Math.floor(elapsed / MONTH_SNAP_SECONDS) * MONTH_SNAP_SECONDS;
+      Math.floor(elapsed / CLOCK_SNAP_SECONDS) * CLOCK_SNAP_SECONDS;
     return {
       range: `${Math.max(snapped, 60)}s`,
       windowDays: Math.floor(elapsed / DAY_SECONDS) + 1,
@@ -364,8 +371,6 @@ export function llmUsageRangeQueriesFor({
   };
 }
 
-const DAY_SECONDS = 86400;
-
 export type RangeWindow = { start: string; end: string; step: string };
 
 /** Today's UTC midnight, in Unix seconds. */
@@ -410,9 +415,6 @@ export function hasCompleteDays(range: RangeWindow): boolean {
   return Number(range.start) <= Number(range.end);
 }
 
-/** How coarsely {@link todayPartialRange} is snapped. See its docblock. */
-const PARTIAL_SNAP_SECONDS = 300;
-
 /**
  * How much of today has elapsed, as a PromQL duration, for the instant query
  * that supplies today's partial bar.
@@ -439,8 +441,7 @@ const PARTIAL_SNAP_SECONDS = 300;
  */
 export function todayPartialRange(now: number = Date.now()): string {
   const elapsed = Math.floor(now / 1000) - todayMidnight(now);
-  const snapped =
-    Math.floor(elapsed / PARTIAL_SNAP_SECONDS) * PARTIAL_SNAP_SECONDS;
+  const snapped = Math.floor(elapsed / CLOCK_SNAP_SECONDS) * CLOCK_SNAP_SECONDS;
   return `${Math.max(snapped, 60)}s`;
 }
 

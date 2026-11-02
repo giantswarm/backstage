@@ -47,6 +47,10 @@ export function useUsageOrganizations(
       window.kind === 'month' ? { month: window.month } : { days: window.days },
     ),
     enabled: Boolean(installation),
+    // In a month still being written the query re-keys with the clock every
+    // five minutes (`usageWindowSpec`): hold the options across that, so the
+    // control neither empties nor vanishes for a round trip.
+    keepPreviousAnswer: true,
   });
   const { rows: agents, isLoading: isLoadingAgents } = useAgents();
 

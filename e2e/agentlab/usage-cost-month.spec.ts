@@ -110,11 +110,14 @@ function timeRange(page: Page) {
   return page.getByRole('main').getByRole('button', { name: /Time range/ });
 }
 
-/** The table row that carries `text` in its header cell. */
+/**
+ * The table row whose header cell reads exactly `text`, as `usage-cost.spec.ts`
+ * finds its rows: a substring would take the organization "alpha" for its
+ * agent "org-alpha/alpha-planner" as well.
+ */
 function rowWith(page: Page, text: string) {
   return page
-    .getByRole('rowheader')
-    .filter({ hasText: text })
+    .getByText(text, { exact: true })
     .locator('xpath=ancestor::*[@role="row"]');
 }
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   useMimirQuery,
@@ -10,6 +10,7 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import { buildLlmUsage, type LlmUsage } from '../lib/llmUsage';
 import {
   byPersonQueriesFor,
+  CLOCK_SNAP_SECONDS,
   dailyRangeWindow,
   dailyWindowDayKeys,
   hasCompleteDays,
@@ -78,8 +79,8 @@ const UNKNOWN_MODEL = 'Unknown model';
 /** Copy for a call whose `user` label names nobody. */
 const UNKNOWN_PERSON = 'No person recorded';
 
-/** How coarsely the clock is read, so a still-open month's queries re-key only every five minutes. */
-const CLOCK_SNAP_MS = 300_000;
+/** The clock's grid in milliseconds; see {@link CLOCK_SNAP_SECONDS}. */
+const CLOCK_SNAP_MS = CLOCK_SNAP_SECONDS * 1000;
 
 /**
  * Everything the Overview and Cost views read, for one installation: by
@@ -87,7 +88,8 @@ const CLOCK_SNAP_MS = 300_000;
  * the organization `options` name.
  *
  * Thirteen queries (two more with `comparePrevious`, two more with
- * `dailyCalls`): eleven instant and two range, written out one call at a time.
+ * `dailyCalls`, two more with `byPerson`): eleven instant and two range,
+ * written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
  * helper either, because a helper that calls a hook is unverifiable by
@@ -184,63 +186,79 @@ export function useLlmUsage(
   // elapsed-time-since-midnight: the range query above deliberately stops at
   // yesterday, because a point in the future makes `increase()` extrapolate a
   // partial day into a whole one. Re-keys every five minutes
-  // (`PARTIAL_SNAP_SECONDS`), not per render — which is why these two stay out
+  // (`CLOCK_SNAP_SECONDS`), not per render — which is why these two stay out
   // of the blocking `isLoading` below.
   const todayRange = todayPartialRange();
   const todayQueries = todayPartialQueries(todayRange, { org });
 
+  // The ten window queries, from here to `unpricedLookups`, re-key with the
+  // clock in a month still being written (`usageWindowSpec`). Each holds its
+  // previous answer across that (`keepPreviousAnswer`), as the today queries
+  // do, rather than report a first load every five minutes; the hold across
+  // a change of scope is undone below (`heldFromAnotherScope`).
+  //
   // The by-person rows, the monthly view's: two more vectors, only when a
   // view asks for them.
   const costByPerson = useMimirQuery({
     installationName,
     query: personQueries.cost,
     enabled: enabled && byPerson,
+    keepPreviousAnswer: true,
   });
   const tokensByPerson = useMimirQuery({
     installationName,
     query: personQueries.tokens,
     enabled: enabled && byPerson,
+    keepPreviousAnswer: true,
   });
 
   const cost = useMimirQuery({
     installationName,
     query: llmUsageQueries.cost,
     enabled,
+    keepPreviousAnswer: true,
   });
   const tokens = useMimirQuery({
     installationName,
     query: llmUsageQueries.tokens,
     enabled,
+    keepPreviousAnswer: true,
   });
   const calls = useMimirQuery({
     installationName,
     query: llmUsageQueries.calls,
     enabled,
+    keepPreviousAnswer: true,
   });
   const p50 = useMimirQuery({
     installationName,
     query: llmUsageQueries.durationP50,
     enabled,
+    keepPreviousAnswer: true,
   });
   const p95 = useMimirQuery({
     installationName,
     query: llmUsageQueries.durationP95,
     enabled,
+    keepPreviousAnswer: true,
   });
   const outputTokensPerSecond = useMimirQuery({
     installationName,
     query: llmUsageQueries.outputTokensPerSecond,
     enabled,
+    keepPreviousAnswer: true,
   });
   const requestsByStatus = useMimirQuery({
     installationName,
     query: llmUsageQueries.requestsByStatus,
     enabled,
+    keepPreviousAnswer: true,
   });
   const unpricedLookups = useMimirQuery({
     installationName,
     query: llmUsageQueries.unpricedLookups,
     enabled,
+    keepPreviousAnswer: true,
   });
   const costPerDay = useMimirRangeQuery({
     installationName,
@@ -317,6 +335,22 @@ export function useLlmUsage(
     enabled,
   });
 
+  // What the answers are for, the clock aside. The window queries hold their
+  // previous answer across a re-key (see `cost`), which is right when only
+  // the clock moved and wrong when the scope did: another organization's or
+  // window's numbers must not show under this one's caption, not even for a
+  // round trip. So a held answer counts as loading until the scope it was
+  // fetched for is this one. `cost` stands for all ten: they re-key together.
+  const scope = `${installationName}\n${org ?? ''}\n${month ?? `${windowDays}d`}`;
+  const answeredScope = useRef(scope);
+  useEffect(() => {
+    if (!cost.isPlaceholderData && cost.data !== undefined) {
+      answeredScope.current = scope;
+    }
+  }, [cost.isPlaceholderData, cost.data, scope]);
+  const heldFromAnotherScope =
+    cost.isPlaceholderData && answeredScope.current !== scope;
+
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
@@ -331,6 +365,7 @@ export function useLlmUsage(
   // worth gating the page on; `keepPreviousAnswer` holds the last answer while they
   // refetch.
   const isLoading =
+    heldFromAnotherScope ||
     cost.isLoading ||
     tokens.isLoading ||
     calls.isLoading ||

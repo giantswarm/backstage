@@ -3252,11 +3252,14 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 `/usage` has routed tabs, Overview at the bare path; an unknown view redirects
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
-environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
-select labelled "Time range" with the options "Last 7 days", "Last 30 days"
-and "Last 90 days", the same label, box and height as the Environment select
-beside it.
+environment and the window: the last 7, 30 or 90 days, or a calendar month
+(`?window=7d`, `?window=2026-10`; `lib/usageWindow.ts`). The window control is
+`UsageWindowSelect`: a select labelled "Time range" with "Last 7 days", "Last
+30 days" and "Last 90 days", then this month so far and the two before it, the
+same label, box and height as the Environment select beside it. In a month
+still being written the gateway queries re-key with the clock every five
+minutes; `useLlmUsage` holds the previous answer across that
+(`keepPreviousAnswer`) and reports a change of scope as loading.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |

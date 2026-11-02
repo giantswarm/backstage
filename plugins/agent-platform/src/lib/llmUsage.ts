@@ -227,6 +227,11 @@ export type LlmUsage = {
   windowDays: number;
   /** The window the vectors cover, when the view named one; `windowDays` alone otherwise. */
   window?: UsageWindow;
+  /**
+   * The day still being written, whose row of the daily series is partial;
+   * none for a window that has ended, whose last row is a whole day.
+   */
+  partialDay?: string;
   totals: LlmUsageTotals;
   tokenTypes: TokenTypeTotals;
   byAgent: LlmAgentRow[];
@@ -1053,7 +1058,7 @@ export function buildLlmUsage(options: {
       label: modelLabel,
       days: options.days,
     }),
-    { day: options.today ?? '', samples: options.costToday, label: modelLabel },
+    { day: options.today, samples: options.costToday, label: modelLabel },
   );
   const tokensPerDay = applyTodayPartial(
     reduceDaily(options.tokensPerDay, {
@@ -1061,7 +1066,7 @@ export function buildLlmUsage(options: {
       days: options.days,
     }),
     {
-      day: options.today ?? '',
+      day: options.today,
       samples: options.tokensToday,
       label: typeLabel,
     },
@@ -1077,7 +1082,7 @@ export function buildLlmUsage(options: {
             days: options.days,
           }),
           {
-            day: options.today ?? '',
+            day: options.today,
             samples: options.callsToday,
             label: callsLabel,
           },
@@ -1086,6 +1091,7 @@ export function buildLlmUsage(options: {
   return {
     windowDays: options.windowDays ?? WINDOW_DAYS,
     ...(options.window && { window: options.window }),
+    ...(options.today !== undefined && { partialDay: options.today }),
     totals: {
       costUsd: totalCost,
       tokens: totalTokens,
@@ -1166,11 +1172,18 @@ export function hasAnyLlmUsage(usage: LlmUsage | undefined): boolean {
 export function applyTodayPartial(
   daily: LlmDailySeries,
   options: {
-    day: string;
+    /** Today's key; none for a window that has ended, which has no partial row. */
+    day: string | undefined;
     samples: MimirMetricSample[] | undefined;
     label: (labels: Record<string, string>) => string;
   },
 ): LlmDailySeries {
+  // A window that has ended carries none of today, whatever the today
+  // vectors hold: their queries are off for it, but react-query may still
+  // have the days window's answer for them.
+  if (options.day === undefined) {
+    return daily;
+  }
   const today = sumBy(options.samples, labels => options.label(labels));
   if (today.size === 0) {
     return daily;

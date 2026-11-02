@@ -181,6 +181,10 @@ export function UsageOverviewPage() {
   // rather than extrapolated to a whole day.
   const windowNoun = usageWindowNoun(window);
   const windowNote = `${windowNoun.charAt(0).toUpperCase()}${windowNoun.slice(1)}.`;
+  // The heatmap's last row is today's, still filling up — unless the window
+  // has ended (a past month), whose last day is whole.
+  const partialToday = usage?.partialDay !== undefined;
+  const heatmapNote = `Every user's calls through the gateway, by UTC day${partialToday ? "; today's so far" : ''}.`;
 
   return (
     <UsageColumn>
@@ -248,8 +252,8 @@ export function UsageOverviewPage() {
                   <ActivityHeatmap
                     title={HEATMAP_TITLE}
                     days={callDays}
-                    partialLast
-                    note="Every user's calls through the gateway, by UTC day; today's so far."
+                    partialLast={partialToday}
+                    note={heatmapNote}
                   />
                 )
               )}
