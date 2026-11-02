@@ -19,13 +19,13 @@ const MODEL = 'lab-model';
 type Series = { labels: Record<string, string>; value: number };
 
 /** One Prometheus instant vector, as Mimir's query API answers it. */
-function vector(series: Series[]) {
+function vector(points: Series[]) {
   const at = Math.floor(Date.now() / 1000);
   return {
     status: 'success',
     data: {
       resultType: 'vector',
-      result: series.map(({ labels, value }) => ({
+      result: points.map(({ labels, value }) => ({
         metric: labels,
         value: [at, String(value)],
       })),
