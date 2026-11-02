@@ -530,7 +530,11 @@ function ConnectorsTable({
     },
   ];
 
-  // Never empty: muster's own row is always there.
+  // The list is never empty (the platform's own connectors and muster are
+  // always there), so where none is registered yet, it says how to add one.
+  const hasRegistered = listRows.some(listRow => isRegisteredRow(listRow.row));
+  const showAddPrompt =
+    !hasRegistered && search.trim() === '' && !filters.isFiltered;
   let list;
   if (rows.length === 0) {
     // A search that found nothing says what it could not look at, where the
@@ -600,6 +604,12 @@ function ConnectorsTable({
         onSelect={filters.select}
         onClear={filters.clear}
       />
+      {showAddPrompt && (
+        <EmptyStateCard
+          title="No connectors added yet"
+          description="Add a connector to give agents its tools. The platform's own connectors are listed below."
+        />
+      )}
       {!hasSession && (
         <SessionGate
           session={session}
