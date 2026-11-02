@@ -17,6 +17,7 @@
     "test": "backstage-cli repo test --watchAll=false",
     "test:watch": "backstage-cli repo test",
     "test:all": "backstage-cli repo test --coverage --maxWorkers=${JEST_MAX_WORKERS:-40%} --workerIdleMemoryLimit=1024MB",
+    "ci:test": "backstage-cli repo test --maxWorkers=${JEST_MAX_WORKERS:-40%} --workerIdleMemoryLimit=1024MB --watchAll=false",
     "test:e2e": "scripts/no-core-dumps.sh playwright test",
     "test:e2e:agentlab": "playwright install chromium && scripts/no-core-dumps.sh playwright test --config e2e/agentlab/playwright.config.ts",
     "fix": "backstage-cli repo fix",
