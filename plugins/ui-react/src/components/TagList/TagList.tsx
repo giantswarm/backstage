@@ -8,6 +8,18 @@ import { makeStyles } from '@material-ui/core/styles';
  */
 const TAG_MAX_WIDTH = '12rem';
 
+/**
+ * The tags a list row or card shows before "+N", alike on every catalog tab;
+ * the rest are on the resource's page.
+ */
+export const ROW_TAGS_MAX = 3;
+
+/**
+ * A table's Tags column floor: room for a few short tags on one line. Its
+ * share of a narrow table alone left ~70-100px, so each tag took its own line.
+ */
+export const TAGS_COLUMN_MIN_WIDTH = 184;
+
 const useStyles = makeStyles({
   list: {
     display: 'flex',

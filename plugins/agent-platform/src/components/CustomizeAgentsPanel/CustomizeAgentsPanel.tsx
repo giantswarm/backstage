@@ -21,6 +21,7 @@ import {
   tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
+  ROW_TAGS_MAX,
   TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -60,9 +61,6 @@ const ROW_AVATAR_SIZE: AvatarSize = 96;
  * the tab is how a specific agent is found.
  */
 export const AGENTS_PAGE_SIZE = 25;
-
-/** Tags a row shows before "+N": the rest are on the agent's page. */
-export const ROW_TAGS_MAX = 3;
 
 /** Two lines, then an ellipsis: what a phone row shows of a long text. */
 const TWO_LINES = {

@@ -7,6 +7,7 @@ import {
   countNoun,
   EmptyStateCard,
   LoadingIndicator,
+  ROW_TAGS_MAX,
   TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
@@ -45,10 +46,6 @@ export type CustomizeSkillsPanelProps = {
  * searching is how a specific skill is found.
  */
 export const SKILL_CARDS_SHOWN = 24;
-
-/** Tags a card shows before "+N", as an agent row does; the rest are on the
- * skill's page. */
-export const CARD_TAGS_MAX = 3;
 
 const useStyles = makeStyles({
   // The prototype's tinted note above the catalog.
@@ -188,7 +185,7 @@ function SkillCard({ card }: { card: Row }) {
           {card.description}
         </Text>
       )}
-      <TagList tags={card.tags} max={CARD_TAGS_MAX} />
+      <TagList tags={card.tags} max={ROW_TAGS_MAX} />
       <div className={classes.footer}>
         <Text variant="body-x-small" color="secondary">
           {card.source}
