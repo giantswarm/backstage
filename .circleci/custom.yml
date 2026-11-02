@@ -72,7 +72,10 @@ workflows:
     # control-plane catalog. Gated on the same jobs as the generated
     # push-chart-release (operations-platform): the build-chart archive and the
     # released image, so both catalogs publish the same tested archive (the
-    # chart tests ran on the PR that the tag was cut from).
+    # chart tests ran on the PR that the tag was cut from). Like every
+    # generated chart job it requires pin-version and attaches the workspace,
+    # so it stamps the version resolved once at the start of the workflow
+    # (.pipeline_version) instead of resolving its own.
     - architect/push-to-app-catalog:
         executor: app-build-suite
         context: architect
@@ -80,7 +83,9 @@ workflows:
         app_catalog: control-plane-catalog
         app_catalog_test: control-plane-test-catalog
         chart: backstage
+        attach_workspace: true
         requires:
+        - pin-version
         - build-chart
         - push-to-registries-release
         filters:
