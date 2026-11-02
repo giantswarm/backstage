@@ -382,11 +382,17 @@ const BASE_STATE: NewAgentFormState = {
 
 /** Fills the step-1 fields the Tools step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
-  const { setName, setInstallation, selectModelConfig, isComplete } =
-    useNewAgentForm();
+  const {
+    setName,
+    setInstallation,
+    setTenantChoices,
+    selectModelConfig,
+    isComplete,
+  } = useNewAgentForm();
   useEffect(() => {
     setName('Reviewer');
     setInstallation('gazelle');
+    setTenantChoices(['kagent']);
     selectModelConfig('opus', 'kagent');
     // One-shot seeding.
     // eslint-disable-next-line react-hooks/exhaustive-deps

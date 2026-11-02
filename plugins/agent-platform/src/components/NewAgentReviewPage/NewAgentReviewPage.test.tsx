@@ -272,6 +272,7 @@ function Seed({
     setSystemMessage,
     setEgressText,
     setInstallation,
+    setTenantChoices,
     selectModelConfig,
     selectHarness,
     toggleSkill,
@@ -286,6 +287,7 @@ function Seed({
       setEgressText(egressText);
     }
     setInstallation('gazelle');
+    setTenantChoices(['kagent']);
     selectModelConfig('opus-4-7', 'kagent');
     selectHarness(harness);
     if (withSkill) {
