@@ -7,7 +7,11 @@ import {
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PageHeaderActionsProvider,
+  type TagSourceProps,
+  TagVocabularyProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent } from '../../lib/agentManager';
@@ -117,15 +121,13 @@ jest.mock('../EgressPolicyPicker', () => ({
   EgressPolicyPicker: () => <p>egress policy picker</p>,
 }));
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
-// The fleet's agents, for the tags they already use; none by default.
+// The tags the shell's vocabulary reports; none by default.
 let mockAgentTags: string[][] = [];
-jest.mock('../AgentsDataProvider', () => ({
-  AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
-  useAgents: () => ({
-    rows: mockAgentTags.map(tags => ({ tags })),
-    isLoading: false,
-  }),
-}));
+function MockTagSource({ onTags }: TagSourceProps) {
+  useEffect(() => onTags(mockAgentTags), [onTags]);
+  return null;
+}
+const TAG_SOURCES = [MockTagSource];
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 
 /** The form's tags, as the state holds them. */
@@ -139,12 +141,14 @@ async function renderPage(
   provider: Omit<ComponentProps<typeof NewAgentFormProvider>, 'children'> = {},
 ) {
   await renderInTestApp(
-    <PageHeaderActionsProvider>
-      <NewAgentFormProvider {...provider}>
-        <NewAgentPage />
-        <TagsProbe />
-      </NewAgentFormProvider>
-    </PageHeaderActionsProvider>,
+    <TagVocabularyProvider sources={TAG_SOURCES}>
+      <PageHeaderActionsProvider>
+        <NewAgentFormProvider {...provider}>
+          <NewAgentPage />
+          <TagsProbe />
+        </NewAgentFormProvider>
+      </PageHeaderActionsProvider>
+    </TagVocabularyProvider>,
     {
       mountedRoutes: {
         '/customize/agents': agentsRouteRef,

@@ -83,11 +83,6 @@ jest.mock('../DefaultWorkspacePicker', () => ({
 }));
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
-// The fleet's agents, read for the tags they use: none here.
-jest.mock('../AgentsDataProvider', () => ({
-  AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
-  useAgents: () => ({ rows: [], isLoading: false }),
-}));
 
 /** Every name the Tools step was rendered with, in order. */
 let toolsStepNames: string[] = [];
