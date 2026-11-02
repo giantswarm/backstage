@@ -63,6 +63,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Agent wizard, Tools step: every tool muster lists for the person appears, also past muster's first page of 50 tools, so connectors no longer show 0 tools on a large catalogue; a failure to read any page shows as the catalogue's error. An organization's MCP server (`org-<name>/<server>`) lists its tools on its own tile, for a person who may see it, instead of on an extra one beside an empty tile (#3191).
 - Agents: in the create wizard, an agent of an Organization's tenant shows the platform Harness as its only runtime, the one the tenant runs on, and a person who may not read the platform namespace no longer sees "Could not read the runtimes" there. The wizard also creates the agent in the tenant it names: a model preselected before the tenant was known no longer puts it in the platform tenant (#3189).
 
+### Refactored
+
+- bot-prs, repositories, muster and agent-platform: helpers that no page calls any more are gone with the tests that kept them alive (`ageDays`, `formatAge`, `resultFindings`, `familyCoverage`, `presenceByMc`, `orderPresenceDegradedFirst`, `hasServedModelActions`, `findServedModelForEndpoint`, `notableCapabilities`, `resolveModelLabel`, `UNLABELED`). Nothing a person sees changes.
+
 ## [0.138.0] - 2026-06-21
 
 ### Changed
