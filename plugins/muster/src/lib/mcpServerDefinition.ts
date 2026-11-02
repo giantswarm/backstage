@@ -528,10 +528,12 @@ export function mcpServerFieldErrors(
  * Validation problems of the Details step's fields only, in form order. Split
  * from {@link mcpServerAuthProblems} so the auth step can guard "may I be
  * shown?" on the details alone — a bad issuer typed on the auth step must not
- * bounce the user back to step 1.
+ * bounce the user back to step 1. `storedTags` are an edited server's tags as
+ * read: left unchanged, they are not written, so they are not checked.
  */
 export function mcpServerDetailsProblems(
   state: NewMcpServerFormState,
+  { storedTags = [] }: { storedTags?: readonly string[] } = {},
 ): McpServerProblem[] {
   const problems: McpServerProblem[] = [];
 
@@ -559,7 +561,7 @@ export function mcpServerDetailsProblems(
       message: `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
     });
   }
-  const tagProblem = draftProblem(state.tagDraft, state.tags);
+  const tagProblem = draftProblem(state.tagDraft, state.tags, storedTags);
   if (tagProblem) {
     problems.push({ field: 'tags', message: tagProblem });
   }

@@ -203,7 +203,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
     description: description.trim() ? undefined : 'Enter a description.',
-    tags: draftProblem(tagDraft, tags),
+    tags: draftProblem(tagDraft, tags, baselineTags),
     instructions: instructions.trim() ? undefined : 'Enter the instructions.',
   };
   const isValid = Object.values(fieldErrors).every(problem => !problem);

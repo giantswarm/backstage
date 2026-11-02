@@ -290,7 +290,9 @@ export function NewMcpServerFormProvider({
   }, [initialState]);
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
-    const detailsProblems = mcpServerDetailsProblems(state);
+    const detailsProblems = mcpServerDetailsProblems(state, {
+      storedTags: base?.tags,
+    });
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
     const validationErrors = problems.map(problem => problem.message);

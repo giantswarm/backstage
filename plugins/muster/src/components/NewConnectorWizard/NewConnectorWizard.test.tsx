@@ -894,6 +894,30 @@ describe('shell connector wizard', () => {
       );
     });
 
+    it('saves an edit on a muster without tags, whatever tags the connector carries', async () => {
+      // More than MAX_TAGS, written outside the portal: a reader keeps them.
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/tags': Array.from(
+          { length: 51 },
+          (_, index) => `tag-${index}`,
+        ).join(','),
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByLabelText(/^Server address/);
+      await waitFor(() => expect(describeTool).toHaveBeenCalled());
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+      expect(toolCalls('core_mcpserver_update')[0][1]).not.toHaveProperty(
+        'tags',
+      );
+    });
+
     it('replaces the tags on save when one is removed', async () => {
       musterTakesTags();
       const server = registered();

@@ -94,6 +94,19 @@ describe('the tag cap', () => {
     expect(draftProblem('', full)).toBeUndefined();
   });
 
+  it('is no problem for stored tags past it that are left as they are', () => {
+    expect(draftProblem('', numbered(51), numbered(51))).toBeUndefined();
+    expect(draftProblem('', numbered(51).reverse(), numbered(51))).toBe(
+      undefined,
+    );
+    expect(draftProblem('', numbered(52), numbered(51))).toBe(
+      'At most 50 tags.',
+    );
+    expect(draftProblem('new', numbered(51), numbered(51))).toBe(
+      'At most 50 tags.',
+    );
+  });
+
   it('adds no tags past it', () => {
     expect(addTags(numbered(49), ['a', 'b'])).toEqual([...numbered(49), 'a']);
     expect(addTags(full, ['new'])).toEqual(full);

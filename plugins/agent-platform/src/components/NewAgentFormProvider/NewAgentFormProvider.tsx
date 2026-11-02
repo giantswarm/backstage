@@ -21,6 +21,7 @@ import type {
 } from '../../lib/agentManager';
 import {
   changedFields,
+  editStateOf,
   editStateOfForm,
   skillEntryKey,
 } from '../../lib/agentEdit';
@@ -582,7 +583,11 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
-    fieldErrors.tags = draftProblem(state.tagDraft ?? '', state.tags);
+    fieldErrors.tags = draftProblem(
+      state.tagDraft ?? '',
+      state.tags,
+      edit ? editStateOf(edit.agent).tags : [],
+    );
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
