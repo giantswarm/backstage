@@ -354,16 +354,10 @@ function NewAgentSkillsPageContent() {
   const [query, setQuery] = useState('');
   // A handful of skills is read at a glance: no search field and no count of
   // the selection (every card shows its own state). The field comes with a
-  // catalogue long enough to need it; should it shrink back under the
-  // threshold, the query goes with the field, so nothing stays filtered by
-  // text the author can no longer see or clear.
-  const isSearchable = isSearchableList(skills.length);
-  const trimmed = isSearchable ? query.trim() : '';
-  useEffect(() => {
-    if (!isSearchable) {
-      setQuery('');
-    }
-  }, [isSearchable]);
+  // catalogue long enough to need it, and stays while a query is typed, so
+  // the text that narrows the list can still be seen and cleared.
+  const trimmed = query.trim();
+  const isSearchable = isSearchableList(skills.length, trimmed !== '');
   // A single repository needs no accordion around it, and a short catalogue
   // opens every repository it spans. Both read the whole catalogue, not the
   // matches, so the layout does not change shape on a keystroke.

@@ -217,8 +217,8 @@ export type ToolsetResolutionListProps = {
  * opens as its counts: every section collapsed behind a one-line inventory,
  * the same disclosure structure the Tools step's catalogue uses, and a search
  * that opens the sections its matches are in. A resolution small enough to fit
- * on the screen ({@link AUTO_EXPAND_MAX}) skips all of that and simply shows
- * itself.
+ * on the screen ({@link AUTO_EXPAND_MAX}) opens every section; the search and
+ * inventory line are there from `SEARCH_MIN` tools on (`isSearchableList`).
  *
  * Renders the resolution's other outcomes — an unknown preset, an aggregator
  * that predates toolsets, a failed read — as the messages they deserve rather
