@@ -21,15 +21,18 @@
 #
 # Both phases run even when the first fails, so one run reports every failure.
 # The last lines of the log are the inputs for tuning the two variables: each
-# phase's duration, and the cgroup's peak anonymous memory with its OOM
-# events. (memory.peak is no use: the page cache fills it up to the limit.)
+# phase's duration and peak anonymous memory, and the cgroup's OOM events.
+# (memory.peak is no use: the page cache fills it up to the limit.)
 set -u
 
 cgroup=/sys/fs/cgroup
-peak_file=""
+peak_file=$(mktemp)
 sampler=""
-if [ -r "$cgroup/memory.stat" ]; then
-  peak_file=$(mktemp)
+
+# Samples the cgroup's anonymous memory every 2 s into $peak_file, keeping the
+# maximum. A no-op outside the Docker executor (no cgroup v2 memory.stat).
+sample_start() {
+  [ -r "$cgroup/memory.stat" ] || return 0
   echo 0 > "$peak_file"
   (
     peak=0
@@ -43,27 +46,38 @@ if [ -r "$cgroup/memory.stat" ]; then
     done
   ) &
   sampler=$!
-fi
+}
+
+# Stops the sampler and prints the phase's peak. $1: the phase's name.
+sample_stop() {
+  [ -n "$sampler" ] || return 0
+  kill "$sampler" 2>/dev/null
+  wait "$sampler" 2>/dev/null
+  sampler=""
+  echo "ci:verify: $1 peak anonymous memory $(( $(cat "$peak_file") / 1048576 )) MiB (sampled every 2 s)"
+}
 
 yarn run ci:patches || exit $?
 
+sample_start
 phase1_start=$(date +%s)
 yarn run ci:test
 test_status=$?
 phase1_end=$(date +%s)
+sample_stop "tests:"
 
+sample_start
 concurrently --group --timings --names tsc,lint -c blue,magenta \
   "yarn run tsc --noEmit" \
   "yarn run ci:lint"
 phase2_status=$?
 phase2_end=$(date +%s)
+sample_stop "tsc + lint:"
 
 echo "ci:verify: tests $((phase1_end - phase1_start)) s, tsc + lint $((phase2_end - phase1_end)) s"
-if [ -n "$sampler" ]; then
-  kill "$sampler" 2>/dev/null
-  echo "ci:verify: cgroup peak anonymous memory $(( $(cat "$peak_file") / 1048576 )) MiB, sampled every 2 s"
+if [ -r "$cgroup/memory.events" ]; then
   echo "ci:verify: cgroup memory events: $(tr '\n' ' ' < "$cgroup/memory.events")"
-  rm -f "$peak_file"
 fi
+rm -f "$peak_file"
 
 [ "$test_status" -eq 0 ] && [ "$phase2_status" -eq 0 ]
