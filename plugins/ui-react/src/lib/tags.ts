@@ -267,3 +267,43 @@ export function similarExistingTag(
         a.localeCompare(b),
     )[0];
 }
+
+/** What a form's Tags field changes in the form's state. */
+export type TagsFieldUpdaters = {
+  /** Adds tags not yet present (already normalized and valid). */
+  addTags: (tags: readonly string[]) => void;
+  removeTag: (tag: string) => void;
+  setTagDraft: (draft: string) => void;
+  /** Adds what the draft can, leaving the rest typed ({@link commitTagDraft}). */
+  commitTagDraft: () => void;
+};
+
+/**
+ * The Tags field's updaters over a form state that holds `tags` and
+ * `tagDraft`, for a form provider's context. Stable for a stable `setState`.
+ */
+export function tagsFieldUpdaters<
+  S extends { tags: string[]; tagDraft?: string },
+>(setState: (update: (prev: S) => S) => void): TagsFieldUpdaters {
+  return {
+    addTags: added =>
+      setState(prev => {
+        const next = addTags(prev.tags, added);
+        return next.length > prev.tags.length ? { ...prev, tags: next } : prev;
+      }),
+    removeTag: tag =>
+      setState(prev => ({
+        ...prev,
+        tags: prev.tags.filter(each => each !== tag),
+      })),
+    setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
+    commitTagDraft: () =>
+      setState(prev => {
+        if (!prev.tagDraft?.trim()) {
+          return prev;
+        }
+        const committed = commitTagDraft(prev.tags, prev.tagDraft);
+        return { ...prev, tags: committed.tags, tagDraft: committed.draft };
+      }),
+  };
+}

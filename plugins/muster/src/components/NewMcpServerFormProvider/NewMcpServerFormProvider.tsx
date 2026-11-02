@@ -8,8 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  addTags as addTagsTo,
-  commitTagDraft as commitDraft,
+  tagsFieldUpdaters,
+  type TagsFieldUpdaters,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { MCPServer } from '../../lib/k8s';
@@ -37,17 +37,11 @@ import {
   type NewMcpServerFormState,
 } from '../../lib/mcpServerDefinition';
 
-export type NewMcpServerFormContextValue = {
+export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
   state: NewMcpServerFormState;
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
-  /** Adds tags not yet present (already normalized and valid). */
-  addTags: (tags: readonly string[]) => void;
-  removeTag: (tag: string) => void;
-  setTagDraft: (draft: string) => void;
-  /** Adds what the tags draft can, leaving the rest typed (see `commitTagDraft`). */
-  commitTagDraft: () => void;
   setInstallation: (installation: string | undefined) => void;
   setUrl: (url: string) => void;
   setTransport: (transport: McpServerTransport) => void;
@@ -289,6 +283,11 @@ export function NewMcpServerFormProvider({
     setState(restored?.state ?? initialState);
   }, [initialState]);
 
+  const tagUpdaters = useMemo(
+    () => tagsFieldUpdaters<NewMcpServerFormState>(setState),
+    [],
+  );
+
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     const detailsProblems = mcpServerDetailsProblems(state, {
       storedTags: base?.tags,
@@ -312,31 +311,7 @@ export function NewMcpServerFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
-      addTags: tags =>
-        setState(prev => {
-          const next = addTagsTo(prev.tags, tags);
-          return next.length > prev.tags.length
-            ? { ...prev, tags: next }
-            : prev;
-        }),
-      removeTag: tag =>
-        setState(prev => ({
-          ...prev,
-          tags: prev.tags.filter(each => each !== tag),
-        })),
-      setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
-      commitTagDraft: () =>
-        setState(prev => {
-          if (!prev.tagDraft.trim()) {
-            return prev;
-          }
-          const committed = commitDraft(prev.tags, prev.tagDraft);
-          return {
-            ...prev,
-            tags: committed.tags,
-            tagDraft: committed.draft,
-          };
-        }),
+      ...tagUpdaters,
       setInstallation: installation =>
         setState(prev => ({ ...prev, installation })),
       setUrl: url => setState(prev => ({ ...prev, url })),
@@ -418,6 +393,7 @@ export function NewMcpServerFormProvider({
     markSaved,
     startEdit,
     reset,
+    tagUpdaters,
   ]);
 
   return (

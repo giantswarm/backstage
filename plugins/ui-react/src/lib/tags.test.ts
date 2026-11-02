@@ -14,6 +14,7 @@ import {
   suggestTags,
   tagCounts,
   tagProblem,
+  tagsFieldUpdaters,
 } from './tags';
 
 /** `count` distinct valid tags. */
@@ -262,5 +263,33 @@ describe('parseTags', () => {
   it('is empty without a value or with a blank one', () => {
     expect(parseTags(undefined)).toEqual([]);
     expect(parseTags(' ')).toEqual([]);
+  });
+});
+
+describe('tagsFieldUpdaters', () => {
+  function form(initial: { tags: string[]; tagDraft?: string; name: string }) {
+    let state = initial;
+    const updaters = tagsFieldUpdaters<typeof state>(update => {
+      state = update(state);
+    });
+    return { updaters, read: () => state };
+  }
+
+  it('adds, removes and commits tags, keeping the rest of the state', () => {
+    const { updaters, read } = form({ tags: ['ops'], name: 'x' });
+    const before = read();
+    updaters.addTags(['ops']);
+    expect(read()).toBe(before);
+
+    updaters.addTags(['util']);
+    updaters.removeTag('ops');
+    updaters.setTagDraft('On Call, über');
+    updaters.commitTagDraft();
+
+    expect(read()).toEqual({
+      tags: ['util', 'on-call'],
+      tagDraft: 'über',
+      name: 'x',
+    });
   });
 });
