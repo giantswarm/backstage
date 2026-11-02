@@ -6,10 +6,10 @@ import {
   DateComponent,
   PageSection,
   TagList,
-  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MusterWorkflow } from '../../../lib/k8s';
 import { workflowsRouteRef } from '../../../routes';
+import { withInstallationQuery } from '../../../lib/installationLink';
 import { ServerPrefixInfo } from '../../../lib/toolGrouping';
 import { WorkflowFlowCanvas } from '../WorkflowFlowCanvas';
 
@@ -199,7 +199,13 @@ export function WorkflowOverviewTab({
         <TagList
           tags={workflow.getTags()}
           getHref={
-            workflowsPath ? tag => tagHref(workflowsPath, tag) : undefined
+            // On the workflow's own installation, as for a connector's.
+            workflowsPath
+              ? tag =>
+                  withInstallationQuery(workflowsPath, workflow.cluster, {
+                    tags: tag,
+                  })
+              : undefined
           }
         />
         {created && (
