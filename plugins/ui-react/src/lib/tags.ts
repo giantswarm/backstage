@@ -194,7 +194,9 @@ export function suggestTags(
   typed: string,
   picked: readonly string[],
 ): string[] {
-  const needle = normalizeTag(typed);
+  // Only the part being typed: earlier comma-separated parts are kept in the
+  // draft when they cannot be tags.
+  const needle = normalizeTag(typed.slice(typed.lastIndexOf(',') + 1));
   return [...counts.keys()]
     .filter(tag => !picked.includes(tag) && tag.includes(needle))
     .sort(
@@ -224,7 +226,15 @@ export function editDistance(a: string, b: string): number {
 const MIN_PREFIX_LENGTH = 3;
 /** Both tags must be this long before a small edit distance counts. */
 const MIN_FUZZY_LENGTH = 4;
-const MAX_FUZZY_DISTANCE = 2;
+/**
+ * The edits two tags may differ by: one below {@link LONG_TAG_LENGTH}
+ * characters, where two would be half of `pods` (`prod`), else two.
+ */
+const LONG_TAG_LENGTH = 7;
+
+function maxFuzzyDistance(shorter: string): number {
+  return shorter.length >= LONG_TAG_LENGTH ? 2 : 1;
+}
 
 function singular(tag: string): string {
   if (tag.endsWith('ies') && tag.length > 3) {
@@ -250,7 +260,7 @@ export function areSimilarTags(a: string, b: string): boolean {
   }
   return (
     shorter.length >= MIN_FUZZY_LENGTH &&
-    editDistance(a, b) <= MAX_FUZZY_DISTANCE
+    editDistance(a, b) <= maxFuzzyDistance(shorter)
   );
 }
 

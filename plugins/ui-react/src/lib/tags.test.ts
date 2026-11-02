@@ -170,6 +170,15 @@ describe('suggestTags', () => {
     expect(suggestTags(counts, '', ['util'])).toEqual(['ops', 'marketing']);
     expect(suggestTags(counts, 'xyz', [])).toEqual([]);
   });
+
+  it('matches only the part typed after a kept invalid one', () => {
+    expect(suggestTags(counts, 'über, mark', [])).toEqual(['marketing']);
+    expect(suggestTags(counts, 'über, ', [])).toEqual([
+      'util',
+      'ops',
+      'marketing',
+    ]);
+  });
 });
 
 describe('similarity', () => {
@@ -191,6 +200,11 @@ describe('similarity', () => {
     expect(areSimilarTags('ai', 'aiops')).toBe(false);
     expect(areSimilarTags('ops', 'dps')).toBe(false);
     expect(areSimilarTags('sales', 'legal')).toBe(false);
+    // Under seven characters, one edit: two would be half the word.
+    expect(areSimilarTags('pods', 'prod')).toBe(false);
+    expect(areSimilarTags('core', 'cost')).toBe(false);
+    expect(areSimilarTags('data', 'dash')).toBe(false);
+    expect(areSimilarTags('infra', 'imfra')).toBe(true);
   });
 
   it('names the closest existing tag for a new one, or none', () => {
