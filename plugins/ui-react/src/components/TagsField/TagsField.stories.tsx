@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { Flex } from '@backstage/ui';
 import { TagsField } from './TagsField';
-import { addTags, draftProblem } from '../../lib/tags';
+import { addTags } from '../../lib/tags';
 import { componentDocs } from '../../storybook/docs';
 
 const COUNTS: ReadonlyMap<string, number> = new Map([
@@ -22,7 +22,7 @@ function TagsForm({ initial }: { initial: string[] }) {
       <TagsField
         tags={tags}
         draft={draft}
-        error={draftProblem(draft, tags)}
+        error={undefined}
         counts={COUNTS}
         onDraftChange={setDraft}
         onAdd={added => setTags(current => addTags(current, added))}

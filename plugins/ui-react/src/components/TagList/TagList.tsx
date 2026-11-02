@@ -26,6 +26,8 @@ const useStyles = makeStyles({
   badge: {
     maxWidth: TAG_MAX_WIDTH,
     minWidth: 0,
+    // bui's small badge is 10px, too small to read a tag by.
+    fontSize: 'var(--bui-font-size-2)',
   },
   // bui's pressable `Tag`: a deeper tint on hover and its focus ring, on a
   // badge that otherwise reads the same as a plain one.
@@ -108,7 +110,7 @@ export function TagList({ tags, max, getHref, id, className }: TagListProps) {
       {hidden > 0 && (
         // Not a tag's name, so never a key a tag could take.
         <li key="__more" className={classes.item}>
-          <Badge size="small">
+          <Badge size="small" className={classes.badge}>
             <span aria-hidden>{`+${hidden}`}</span>
             <VisuallyHidden>{`${hidden} more tags`}</VisuallyHidden>
           </Badge>
