@@ -177,6 +177,10 @@ describe('findServedModel', () => {
     };
     expect(findServedModel(lemonade, [qwenSmall])).toBeUndefined();
     expect(findServedModel(lemonade, [qwenSmall, qwenBig])).toBeUndefined();
+    // No port at all is the scheme's default (:80), another server too.
+    expect(
+      findServedModel({ endpoint: 'http://172.21.0.1/v1' }, [qwenSmall]),
+    ).toBeUndefined();
     // Ollama's own port, with one model there: the single-candidate rule
     // applies as before — on that server.
     expect(

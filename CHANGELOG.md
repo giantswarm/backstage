@@ -64,7 +64,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Refactored
 
-- bot-prs, repositories, muster and agent-platform: helpers that no page calls any more are gone with the tests that kept them alive (`ageDays`, `formatAge`, `resultFindings`, `familyCoverage`, `presenceByMc`, `orderPresenceDegradedFirst`, `hasServedModelActions`, `findServedModelForEndpoint`, `notableCapabilities`, `resolveModelLabel`). Nothing a person sees changes.
+- bot-prs, repositories, muster and agent-platform: helpers that no page calls any more are gone with the tests that kept them alive (`ageDays`, `formatAge`, `resultFindings`, `familyCoverage`, `presenceByMc`, `orderPresenceDegradedFirst`, `hasServedModelActions`, `findServedModelForEndpoint`, `notableCapabilities`, `resolveModelLabel`, `UNLABELED`). Nothing a person sees changes.
 
 ## [0.138.0] - 2026-06-21
 

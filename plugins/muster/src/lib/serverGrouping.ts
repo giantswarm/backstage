@@ -1,8 +1,5 @@
 import { MCPServer, TOOL_GROUP_ORDER, ToolGroupKey } from './k8s';
 
-/** Placeholder for a missing family / management-cluster label. */
-export const UNLABELED = '—';
-
 /**
  * A server family: the MCPServer CRs sharing one `spec.family.name`, i.e. the
  * same server federated across management clusters. Rendered as one row with
