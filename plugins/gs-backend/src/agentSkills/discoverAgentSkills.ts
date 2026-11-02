@@ -16,6 +16,11 @@ export interface DiscoveredSkill {
   name: string;
   /** Frontmatter `description` (empty string when absent). */
   description: string;
+  /**
+   * Frontmatter `metadata.tags`, a comma-joined string, parsed (see
+   * `skillTagsOf`): valid tags only, empty when absent.
+   */
+  tags: string[];
   /** Canonical repository URL the skill lives in. */
   repoUrl: string;
   /** Subdirectory within the repo that is the skill root; '' at repo root. */
@@ -546,15 +551,16 @@ export async function discoverAgentSkills(options: {
       const known = previousByDir.get(dir);
       if (read === undefined && known) {
         // Reused from the snapshot at this commit.
-        return { ...known, ...base };
+        return { ...known, tags: known.tags ?? [], ...base };
       }
       if (read?.status === 'fulfilled') {
         contents.set(dir, read.value);
-        const { name, description } = parseFrontmatter(read.value);
+        const { name, description, tags } = parseFrontmatter(read.value);
         return {
           ...base,
           name: name?.trim() || fallbackName,
           description: description?.trim() ?? '',
+          tags,
           contentReadable: true,
         };
       }
@@ -562,6 +568,7 @@ export async function discoverAgentSkills(options: {
         ...base,
         name: known?.name ?? fallbackName,
         description: known?.description ?? '',
+        tags: known?.tags ?? [],
         contentReadable: false,
       };
     })

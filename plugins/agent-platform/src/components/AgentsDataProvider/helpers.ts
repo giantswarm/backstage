@@ -184,6 +184,8 @@ export type AgentRow = {
    */
   technicalName: string;
   description: string;
+  /** Keywords to find the agent by (`Agent.getTags()`); empty when none. */
+  tags: string[];
   /**
    * Human-readable model label resolved from the referenced ModelConfig: its
    * display name, else its `spec.model`, else its resource name. `undefined`
@@ -451,6 +453,7 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
+    tags: agent.getTags(),
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     harness: harnessName,

@@ -12,17 +12,26 @@ describe('parseFrontmatter', () => {
       parseFrontmatter(
         '---\nname: demo\ndescription: A demo skill.\n---\n\nBody text.',
       ),
-    ).toEqual({ name: 'demo', description: 'A demo skill.' });
+    ).toEqual({ name: 'demo', description: 'A demo skill.', tags: [] });
+  });
+
+  it('reads metadata.tags, dropping invalid entries', () => {
+    expect(
+      parseFrontmatter(
+        '---\nname: demo\nmetadata:\n  tags: "Triage, kubernetes, not valid!"\n---\n',
+      ).tags,
+    ).toEqual(['triage', 'kubernetes']);
   });
 
   it('returns empty when there is no frontmatter', () => {
-    expect(parseFrontmatter('# Just a heading\n')).toEqual({});
+    expect(parseFrontmatter('# Just a heading\n')).toEqual({ tags: [] });
   });
 
   it('ignores non-string / missing fields', () => {
     expect(parseFrontmatter('---\nname: demo\n---\n')).toEqual({
       name: 'demo',
       description: undefined,
+      tags: [],
     });
   });
 
@@ -127,7 +136,8 @@ describe('discoverAgentSkills', () => {
         { path: 'some/dir', type: 'tree' },
       ],
       {
-        'demo/SKILL.md': '---\nname: Demo\ndescription: A demo.\n---\nbody',
+        'demo/SKILL.md':
+          '---\nname: Demo\ndescription: A demo.\nmetadata:\n  tags: triage, k8s\n---\nbody',
         'sre/incident/SKILL.md': '---\nname: Incident responder\n---\nbody',
       },
     ) as unknown as typeof fetch;
@@ -144,6 +154,7 @@ describe('discoverAgentSkills', () => {
       {
         name: 'Demo',
         description: 'A demo.',
+        tags: ['triage', 'k8s'],
         repoUrl: 'https://github.com/giantswarm/agent-skills',
         path: 'demo',
         ref: 'main',
@@ -154,6 +165,7 @@ describe('discoverAgentSkills', () => {
       {
         name: 'Incident responder',
         description: '',
+        tags: [],
         repoUrl: 'https://github.com/giantswarm/agent-skills',
         path: 'sre/incident',
         ref: 'main',
@@ -461,6 +473,7 @@ describe('discoverAgentSkills', () => {
             {
               name: 'Ok skill',
               description: 'Was readable.',
+              tags: [],
               repoUrl: 'https://github.com/giantswarm/agent-skills',
               path: 'ok',
               ref: 'main',
@@ -655,6 +668,7 @@ describe('discoverAgentSkills', () => {
             {
               name: 'Demo',
               description: '',
+              tags: [],
               repoUrl: 'https://github.com/giantswarm/agent-skills',
               path: 'demo',
               ref: 'main',

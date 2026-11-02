@@ -34,7 +34,9 @@ import {
   ShellPageBadgeSkeleton,
   StatusDot,
   type StatusDotTone,
+  TagList,
   useSplatBasePath,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
@@ -46,9 +48,14 @@ import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef } from '../../routes';
-import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
+import {
+  INFRASTRUCTURE_FAMILY_NOTE,
+  MUSTER_PAGE_DESCRIPTION,
+  rowTags,
+} from '../../lib/connectorTags';
 import {
   familyGroups,
+  familyToolGroup,
   findServerRow,
   fleetManagementClusters,
   partitionServers,
@@ -141,6 +148,33 @@ const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
 };
 
 /**
+ * The line under the connector's name: its description; for muster, what it
+ * is and that it is fixed; for an infrastructure family, that it has an
+ * instance per management cluster.
+ */
+function connectorMeta(
+  row: ServerPageRow,
+  description: string | undefined,
+): string | undefined {
+  if (row.kind === 'core') {
+    return MUSTER_PAGE_DESCRIPTION;
+  }
+  if (
+    row.kind === 'family' &&
+    familyToolGroup(row.servers) === 'infrastructure'
+  ) {
+    if (!description) {
+      return INFRASTRUCTURE_FAMILY_NOTE;
+    }
+    const sentence = /[.!?]$/.test(description.trim())
+      ? description.trim()
+      : `${description.trim()}.`;
+    return `${sentence} ${INFRASTRUCTURE_FAMILY_NOTE}`;
+  }
+  return description;
+}
+
+/**
  * The connector's state beside its name: a dot and its words, as the
  * Customize list and the agent, model and session headers draw a state. The
  * words stay muster's own (`serverStateLabel`, `familyHealthLabel`), with the
@@ -193,8 +227,8 @@ function ConnectorPageContent({
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
   const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector, where its crumb and a removal lead.
-  const listPath = paths.listOf(serverRowKey(row), row);
+  // The list, where its crumb, its tags and a removal lead.
+  const listPath = paths.connectors;
   const { activeInstallationInfo } = useMusterInstance();
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
@@ -455,6 +489,18 @@ function ConnectorPageContent({
   // The Details tab's plain facts; the address and the rest of the MCPServer
   // are in its Technical details.
   const facts: Fact[] = [];
+  const tags = rowTags(row);
+  if (tags.length > 0) {
+    facts.push({
+      label: 'Tags',
+      value: (
+        <TagList
+          tags={tags}
+          getHref={listPath ? tag => tagHref(listPath, tag) : undefined}
+        />
+      ),
+    });
+  }
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });
   }
@@ -546,11 +592,7 @@ function ConnectorPageContent({
           />
         }
         badges={<StatusBadge row={row} />}
-        meta={
-          row.kind === 'core'
-            ? MUSTER_PAGE_DESCRIPTION
-            : representative?.getDescription()
-        }
+        meta={connectorMeta(row, representative?.getDescription())}
         description={
           endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined
         }
@@ -758,10 +800,7 @@ function ConnectorPageBody({
     useMusterInstance();
   const { installation = '' } = useParams();
   const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector: known from a cached row (or for
-  // muster) even while loading; otherwise the crumb has no link rather than
-  // one to a sub-tab that does not list it.
-  const listPath = paths.listOf(key, row);
+  const listPath = paths.connectors;
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,

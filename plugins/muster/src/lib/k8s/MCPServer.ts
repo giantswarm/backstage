@@ -2,6 +2,10 @@ import {
   KubeObject,
   KubeObjectInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Label muster sets on every aggregated MCPServer CR identifying the target
@@ -289,6 +293,14 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
    */
   getDisplayName(): string {
     return this.getDisplayNameAnnotation() ?? this.getName();
+  }
+
+  /**
+   * The connector's tags (`ui.giantswarm.io/tags`), as on agents. None when
+   * the annotation is missing; a value that is not a valid tag is left out.
+   */
+  getTags(): string[] {
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
   }
 
   /**

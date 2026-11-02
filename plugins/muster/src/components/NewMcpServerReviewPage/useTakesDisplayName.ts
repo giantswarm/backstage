@@ -2,7 +2,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 
 import { musterApiRef, type MusterApi } from '../../apis';
-import { takesDisplayName } from '../../lib/mcpServerDefinition';
+import { takesDisplayName, takesTags } from '../../lib/mcpServerDefinition';
 import { toolDescriptionQuery } from '../shared/useToolDescription';
 
 /**
@@ -37,6 +37,25 @@ export function useTakesDisplayName(
     ...displayNameSupportQuery(musterApi, tool, installation),
     enabled,
     select: detail => takesDisplayName(detail.inputSchema),
+  });
+  return data ?? false;
+}
+
+/**
+ * Whether the installation's muster `tool` takes `tags`, read from its input
+ * schema like {@link useTakesDisplayName}. False until the schema is read, and
+ * when it cannot be read: an older muster refuses the argument.
+ */
+export function useTakesTags(
+  tool: string,
+  installation: string | undefined,
+  { enabled = true }: { enabled?: boolean } = {},
+): boolean {
+  const musterApi = useApi(musterApiRef);
+  const { data } = useQuery({
+    ...displayNameSupportQuery(musterApi, tool, installation),
+    enabled: enabled && Boolean(installation),
+    select: detail => takesTags(detail.inputSchema),
   });
   return data ?? false;
 }

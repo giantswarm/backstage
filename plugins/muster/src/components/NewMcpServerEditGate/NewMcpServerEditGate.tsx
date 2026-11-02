@@ -39,8 +39,7 @@ export type ConnectorWizardLinks = (
 ) => string | undefined;
 
 /**
- * The Connectors tab's list — the customer's own connectors, its default
- * sub-tab — where leaving the wizard lands. The wizard is routed under the
+ * The Connectors tab's list, where leaving the wizard lands. The wizard is routed under the
  * tab, so the tab's own route always resolves here.
  */
 export function useConnectorsListHref(): string {

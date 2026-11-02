@@ -24,9 +24,9 @@ on `localhost` always does.
 ## Page views
 
 Every navigation sends one `pageview` signal with the page's name (`page`, for
-example `Session detail`), for some pages the tab or step shown (`view`, and
-`subview` on the Connectors tab), and as `path` the template of the route the
-page matched, not the address in the browser:
+example `Session detail`), for some pages the tab or step shown (`view`), and
+as `path` the template of the route the page matched, not the address in the
+browser:
 
 | Address in the browser                              | `path` sent                                              |
 | --------------------------------------------------- | -------------------------------------------------------- |

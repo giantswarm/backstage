@@ -67,6 +67,8 @@ export * from './StatusDot';
 export * from './StatusHint';
 export * from './StatusLabel';
 export * from './SyncMark';
+export * from './TagList';
+export * from './TagsField';
 export * from './StructuredMetadataList';
 export * from './TechnicalDetailsFoldOut';
 export * from './TextAreaField';

@@ -12,7 +12,6 @@ import { musterApiRef } from '../../apis';
 import type { AuthStatusResponse } from '../../apis/types';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
-import type { ConnectorGroup } from '../../lib/connectorGroups';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
 
 const mockNavigate = jest.fn();
@@ -61,6 +60,7 @@ function makeServer(
     toolGroup?: string;
     family?: string;
     displayName?: string;
+    tags?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -69,13 +69,12 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name,
-        ...(options.displayName
-          ? {
-              annotations: {
-                'ui.giantswarm.io/display-name': options.displayName,
-              },
-            }
-          : {}),
+        annotations: {
+          ...(options.displayName
+            ? { 'ui.giantswarm.io/display-name': options.displayName }
+            : {}),
+          ...(options.tags ? { 'ui.giantswarm.io/tags': options.tags } : {}),
+        },
         labels: options.toolGroup
           ? { [TOOL_GROUP_LABEL]: options.toolGroup }
           : {},
@@ -172,14 +171,14 @@ const SSO_REFUSED =
 
 let queryClient: QueryClient;
 
-async function renderPanel(search = '', group?: ConnectorGroup) {
+async function renderPanel(search = '') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
   return renderInTestApp(
     <QueryClientProvider client={client}>
-      <CustomizeConnectorsPanel search={search} group={group} />
+      <CustomizeConnectorsPanel search={search} />
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
@@ -235,9 +234,8 @@ describe('CustomizeConnectorsPanel', () => {
     expect(
       within(rowOf('web-search')).getByText('No sign-in'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('row', { name: /^muster/ }),
-    ).not.toBeInTheDocument();
+    // muster itself is listed too, after the registered connectors.
+    expect(rowOf('muster')).toBeInTheDocument();
   });
 
   it('signs in from the row without opening the connector', async () => {
@@ -865,7 +863,8 @@ describe('CustomizeConnectorsPanel', () => {
       await renderPanel();
 
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
-      expect(bodyRows()).toHaveLength(3);
+      // And muster itself.
+      expect(bodyRows()).toHaveLength(4);
       expect(
         screen.queryByRole('button', { name: /^Show \d+ more/ }),
       ).not.toBeInTheDocument();
@@ -887,7 +886,7 @@ describe('CustomizeConnectorsPanel', () => {
         within(bodyRows()[0]).getByText('connector-000'),
       ).toBeInTheDocument();
       expect(
-        screen.getByText('20 connectors shown, 280 more'),
+        screen.getByText('20 connectors shown, 281 more'),
       ).toBeInTheDocument();
 
       await user.click(
@@ -957,28 +956,33 @@ describe('CustomizeConnectorsPanel', () => {
       expect(screen.queryByText(/were not searched/)).not.toBeInTheDocument();
     });
 
-    it('offers one-option dropdowns over three connectors that sign in alike and all answer', async () => {
+    it('offers a one-option dropdown over connectors that all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
-      expect(bodyRows()).toHaveLength(3);
+      // And muster itself.
+      expect(bodyRows()).toHaveLength(4);
       await screen.findByRole('button', { name: /Filter by connection/ });
-      expect(await filterOptions('sign-in')).toEqual(['No sign-in 3']);
-      expect(await filterOptions('connection')).toEqual(['Connected 3']);
+      expect(await filterOptions('sign-in')).toEqual([
+        'No sign-in 3',
+        'Company login 1',
+      ]);
+      expect(await filterOptions('connection')).toEqual(['Connected 4']);
     });
 
     it('filters three connectors by sign-in and by connection', async () => {
       await renderPanel();
 
       await screen.findByRole('button', { name: /Filter by connection/ });
+      // muster itself signs in with the company login and answers.
       expect(await filterOptions('sign-in')).toEqual([
-        'Company login 1',
+        'Company login 2',
         'No sign-in 1',
         'Your own account 1',
       ]);
       expect(await filterOptions('connection')).toEqual([
-        'Connected 2',
+        'Connected 3',
         'Sign-in needed 1',
       ]);
 
@@ -993,6 +997,41 @@ describe('CustomizeConnectorsPanel', () => {
       // A second sign-in kind widens the list.
       await pickFilter('sign-in', 'Your own account 1');
       expect(bodyRows()).toHaveLength(2);
+    });
+
+    it('filters by tags, after the type’s own facets, and searches them', async () => {
+      mockServers = [
+        makeServer('jira', { tags: 'ticketing,ops,support,triage' }),
+        makeServer('pagerduty', { tags: 'ops' }),
+        makeServer('web-search'),
+      ];
+      await renderPanel();
+
+      await screen.findByRole('button', { name: /Filter by connection/ });
+      expect(
+        filterDropdown('connection').compareDocumentPosition(
+          filterDropdown('tags'),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // A row shows three tags, then "+N".
+      const jira = within(rowOf('jira')).getByRole('list', { name: 'Tags' });
+      expect(within(jira).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(jira).getByText('1 more tags')).toBeInTheDocument();
+
+      await pickFilter('tags', 'ops 2');
+      expect(bodyRows()).toHaveLength(2);
+      expect(screen.queryByRole('row', { name: /^web-search/ })).toBeNull();
+    });
+
+    it('finds a connector by a tag', async () => {
+      mockServers = [
+        makeServer('jira', { tags: 'ticketing' }),
+        makeServer('web-search'),
+      ];
+      await renderPanel('ticket');
+
+      expect(await screen.findByRole('row', { name: /^jira/ })).toBeVisible();
+      expect(screen.queryByRole('row', { name: /^web-search/ })).toBeNull();
     });
 
     it('says when a search and a filter leave nothing, and clears the filter', async () => {
@@ -1026,12 +1065,13 @@ describe('CustomizeConnectorsPanel', () => {
 
       await screen.findByRole('button', { name: /Filter by connection/ });
       expect(await filterOptions('connection')).toEqual([
-        'Connected 240',
+        'Connected 241',
         'Not connected 60',
       ]);
       expect(await filterOptions('sign-in')).toEqual([
         'No sign-in 200',
         'Your own account 100',
+        'Company login 1',
       ]);
       await userEvent.click(
         screen.getByRole('button', { name: 'Show 20 more connectors' }),
@@ -1047,12 +1087,13 @@ describe('CustomizeConnectorsPanel', () => {
       expect(await filterOptions('sign-in')).toEqual([
         'No sign-in 40',
         'Your own account 20',
+        'Company login 0',
       ]);
 
       // Both connection states: everything again; then one sign-in kind.
-      await pickFilter('connection', 'Connected 240');
+      await pickFilter('connection', 'Connected 241');
       expect(
-        screen.getByText('20 connectors shown, 280 more'),
+        screen.getByText('20 connectors shown, 281 more'),
       ).toBeInTheDocument();
       await pickFilter('sign-in', 'Your own account 100');
       expect(
@@ -1066,7 +1107,7 @@ describe('CustomizeConnectorsPanel', () => {
         ),
       );
       expect(
-        screen.getByText('20 connectors shown, 280 more'),
+        screen.getByText('20 connectors shown, 281 more'),
       ).toBeInTheDocument();
     }, 20_000);
   });
@@ -1079,7 +1120,11 @@ describe('CustomizeConnectorsPanel', () => {
     afterEach(() => layout.restore());
 
     const list = () => screen.getByRole('list', { name: 'Connectors' });
-    const items = () => within(list()).getAllByRole('listitem');
+    // The rows, not the tag items inside them.
+    const items = () =>
+      within(list())
+        .getAllByRole('listitem')
+        .filter(item => item.parentElement === list());
     const itemOf = (name: string) =>
       within(list()).getByRole('link', { name }).closest('li') as HTMLElement;
 
@@ -1089,7 +1134,8 @@ describe('CustomizeConnectorsPanel', () => {
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
       // No table to squeeze: its columns froze at 75px and clipped Sign in.
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
-      expect(items()).toHaveLength(3);
+      // And muster itself.
+      expect(items()).toHaveLength(4);
 
       const github = itemOf('github');
       expect(
@@ -1219,7 +1265,8 @@ describe('CustomizeConnectorsPanel', () => {
       await renderPanel();
 
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
-      expect(items()).toHaveLength(3);
+      // And muster itself.
+      expect(items()).toHaveLength(4);
       expect(
         screen.queryByRole('button', { name: /^Show \d+ more|fewer/ }),
       ).not.toBeInTheDocument();
@@ -1235,7 +1282,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(items()).toHaveLength(20);
       expect(within(items()[0]).getByText('connector-000')).toBeInTheDocument();
       expect(
-        screen.getByText('20 connectors shown, 280 more'),
+        screen.getByText('20 connectors shown, 281 more'),
       ).toBeInTheDocument();
       await userEvent.click(
         screen.getByRole('button', { name: 'Show 20 more connectors' }),
@@ -1262,14 +1309,14 @@ describe('CustomizeConnectorsPanel', () => {
     });
   });
 
-  it('says when muster has no connector', async () => {
+  it('lists muster alone when muster has no other connector', async () => {
     mockServers = [];
     await renderPanel();
 
-    expect(screen.getByText('No connectors yet')).toBeInTheDocument();
+    expect(rowOf('muster')).toBeInTheDocument();
   });
 
-  describe('sub-tabs', () => {
+  describe('one list, tagged by tool group', () => {
     const fleet = () => [
       ...servers(),
       makeServer('agent-manager', {
@@ -1294,33 +1341,47 @@ describe('CustomizeConnectorsPanel', () => {
       mockServers = fleet();
     });
 
-    it('lists only the customer’s connectors by default', async () => {
+    it('lists every connector, the registered ones first, each part by name', async () => {
       await renderPanel();
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
-      for (const name of ['crm', 'github', 'kubernetes', 'web-search']) {
-        expect(rowOf(name)).toBeInTheDocument();
-      }
-      for (const name of [
+      const names = screen
+        .getAllByRole('rowheader')
+        .map(cell => within(cell).getByRole('link').textContent);
+      expect(names).toEqual([
+        'crm',
+        'github',
+        'kubernetes',
+        'web-search',
         'agent-manager',
-        'prometheus',
         'lone-capi',
         'muster',
-      ]) {
-        expect(
-          screen.queryByRole('row', { name: new RegExp(`^${name}`) }),
-        ).not.toBeInTheDocument();
-      }
+        'prometheus',
+      ]);
     });
 
-    it('lists every infrastructure server, families and single ones, on Infrastructure', async () => {
-      await renderPanel('', 'infrastructure');
+    it('tags the platform’s own connectors by their tool group', async () => {
+      await renderPanel();
       expect(
-        screen.getByText(/the infrastructure the platform runs on/),
+        within(rowOf('prometheus')).getByText('infrastructure'),
       ).toBeInTheDocument();
+      expect(
+        within(rowOf('lone-capi')).getByText('infrastructure'),
+      ).toBeInTheDocument();
+      expect(
+        within(rowOf('agent-manager')).getByText('agent-platform'),
+      ).toBeInTheDocument();
+      expect(
+        within(rowOf('muster')).getByText('agent-platform'),
+      ).toBeInTheDocument();
+    });
+
+    it('finds the platform’s own connectors by their derived tag', async () => {
+      await renderPanel('infrastructure');
       expect(rowOf('prometheus')).toBeInTheDocument();
       expect(rowOf('lone-capi')).toBeInTheDocument();
-      // The header row, then the two connectors.
-      expect(screen.getAllByRole('row')).toHaveLength(3);
+      expect(
+        screen.queryByRole('row', { name: /^github/ }),
+      ).not.toBeInTheDocument();
     });
 
     it('lists muster among the internal servers, without its endpoint', async () => {
@@ -1331,7 +1392,7 @@ describe('CustomizeConnectorsPanel', () => {
           endpoint: 'https://muster.gazelle.example.test/mcp',
         },
       };
-      await renderPanel('', 'internal');
+      await renderPanel();
 
       expect(rowOf('agent-manager')).toBeInTheDocument();
       const muster = rowOf('muster');
@@ -1356,7 +1417,7 @@ describe('CustomizeConnectorsPanel', () => {
           reachable: false,
         },
       };
-      await renderPanel('', 'internal');
+      await renderPanel();
       const muster = rowOf('muster');
       expect(within(muster).getByText('No sign-in')).toBeInTheDocument();
       expect(within(muster).getByText('Not connected')).toBeInTheDocument();
@@ -1365,43 +1426,18 @@ describe('CustomizeConnectorsPanel', () => {
 
     it('claims no state for muster while its installation is undescribed', async () => {
       mockInstance = { activeInstallationInfo: undefined };
-      await renderPanel('', 'internal');
+      await renderPanel();
       const muster = rowOf('muster');
       expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
       expect(within(muster).queryByText('No sign-in')).not.toBeInTheDocument();
     });
 
-    it('says where a search matches when this sub-tab is empty', async () => {
-      mockServers = fleet().filter(
-        server => server.getToolGroup() !== undefined,
-      );
-      await renderPanel('prometheus');
-      expect(await screen.findByText('No connectors yet')).toBeInTheDocument();
-      expect(screen.getByText(/The search matches/)).toHaveTextContent(
-        'The search matches 1 connector on Infrastructure.',
-      );
-    });
-
     it('says muster is not connected without a session', async () => {
       mockAuthenticated = false;
-      await renderPanel('', 'internal');
+      await renderPanel();
       expect(
         within(rowOf('muster')).getByText('Not connected'),
       ).toBeInTheDocument();
-    });
-
-    it('points a search that finds nothing here to the sub-tabs where it does', async () => {
-      await renderPanel('manager');
-      expect(
-        await screen.findByText(/No connectors or tools match/),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/The search matches/)).toHaveTextContent(
-        'The search matches 1 connector on Internal.',
-      );
-      expect(screen.getByRole('link', { name: 'Internal' })).toHaveAttribute(
-        'href',
-        '/customize/connectors/internal',
-      );
     });
   });
 });

@@ -21,7 +21,9 @@
 // `ui.giantswarm.io/display-name` annotation) through the tools' own
 // `displayName` argument, which muster takes since v5.43.0 (muster#1518). An
 // older muster refuses it as an unknown field, so the write only sends it to a
-// tool whose input schema declares it ({@link takesDisplayName}).
+// tool whose input schema declares it ({@link takesDisplayName}). Tags
+// (`ui.giantswarm.io/tags`) go the same way, through the tools' `tags`
+// argument where its schema declares one ({@link takesTags}).
 
 import type {
   MCPServer,
@@ -30,6 +32,7 @@ import type {
   MCPServerClientCredentialsSecretRef,
   MCPServerSigV4,
 } from './k8s';
+import { draftProblem, sameTags } from '@giantswarm/backstage-plugin-ui-react';
 import {
   AUTH_MODE_LABELS,
   serverAuthMode,
@@ -89,6 +92,13 @@ export type NewMcpServerFormState = {
   /** Technical name — becomes the MCPServer CR name. */
   slug: string;
   description: string;
+  /** Keywords to find the connector by, normalized and unique, as added. */
+  tags: string[];
+  /**
+   * What the Tags field holds but has not added yet. Not part of the
+   * connector; kept here so a draft that cannot be a tag blocks Continue.
+   */
+  tagDraft: string;
   /** Installation (management cluster) the server is registered on. */
   installation: string | undefined;
   url: string;
@@ -151,6 +161,11 @@ export type McpServerDefinition = {
    * or sets none (on create); an empty string removes it (on update).
    */
   displayName?: string;
+  /**
+   * The `ui.giantswarm.io/tags` annotation, the whole list. Omitted keeps (on
+   * update) or sets none (on create); an empty list removes them (on update).
+   */
+  tags?: string[];
   type: McpServerTransport;
   url: string;
   autoStart: boolean;
@@ -163,6 +178,8 @@ export const emptyFormState: NewMcpServerFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
+  tagDraft: '',
   installation: undefined,
   url: '',
   transport: 'streamable-http',
@@ -279,6 +296,34 @@ export function displayNameArgument(
     return undefined;
   }
   return name === technical ? '' : name;
+}
+
+/**
+ * The `tags` to send for the tags added, or `undefined` to send none: on
+ * create, any there are; on an edit (`stored` is the server's tags), the whole
+ * list only when it differs, as muster keeps the stored tags when it is
+ * omitted.
+ */
+export function tagsArgument(
+  tags: readonly string[],
+  edit?: { stored: readonly string[] },
+): string[] | undefined {
+  if (!edit) {
+    return tags.length > 0 ? [...tags] : undefined;
+  }
+  return sameTags(tags, edit.stored) ? undefined : [...tags];
+}
+
+/**
+ * Whether a muster tool takes the `tags` argument, read from its input schema
+ * as `describe_tool` returns it. Older muster releases do not declare it — and
+ * refuse it as an unknown field — so a tool without a schema counts as not
+ * taking it.
+ */
+export function takesTags(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  return Boolean(inputSchema?.properties?.tags);
 }
 
 /**
@@ -401,8 +446,8 @@ function composeMeta(
 /**
  * Wizard state → the definition passed to `core_mcpserver_validate` and
  * `core_mcpserver_create` — or, with `edit` (the edited server's stored
- * display name, as {@link displayNameArgument} takes it), the wizard's part of
- * an update ({@link mergeOntoExisting}).
+ * display name, as {@link displayNameArgument} takes it, and its tags), the
+ * wizard's part of an update ({@link mergeOntoExisting}).
  *
  * `autoStart: true` so the server connects as soon as it is registered — the
  * flow's promise is that registration is the only step before the tools show
@@ -411,7 +456,7 @@ function composeMeta(
  */
 export function composeMcpServerDefinition(
   state: NewMcpServerFormState,
-  edit?: { stored: string | undefined },
+  edit?: { stored: string | undefined; tags?: readonly string[] },
 ): McpServerDefinition {
   const definition: McpServerDefinition = {
     name: state.slug.trim(),
@@ -422,6 +467,13 @@ export function composeMcpServerDefinition(
   const displayName = displayNameArgument(state.name, state.slug, edit);
   if (displayName !== undefined) {
     definition.displayName = displayName;
+  }
+  const tags = tagsArgument(
+    state.tags,
+    edit ? { stored: edit.tags ?? [] } : undefined,
+  );
+  if (tags !== undefined) {
+    definition.tags = tags;
   }
   if (state.description.trim()) {
     definition.description = state.description.trim();
@@ -444,6 +496,7 @@ export type McpServerField =
   | 'name'
   | 'slug'
   | 'description'
+  | 'tags'
   | 'installation'
   | 'url'
   | 'meta'
@@ -505,6 +558,10 @@ export function mcpServerDetailsProblems(
       field: 'description',
       message: `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
     });
+  }
+  const tagProblem = draftProblem(state.tagDraft, state.tags);
+  if (tagProblem) {
+    problems.push({ field: 'tags', message: tagProblem });
   }
   if (!state.installation) {
     problems.push({ field: 'installation', message: 'Choose an environment.' });
@@ -1021,6 +1078,7 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     name: server.getDisplayName(),
     slug: server.getName(),
     description: server.getDescription() ?? '',
+    tags: server.getTags(),
     installation: server.cluster,
     url: server.getUrl() ?? '',
     transport: server.getType() === 'sse' ? 'sse' : 'streamable-http',
@@ -1058,6 +1116,7 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
 const WIZARD_FIELDS = [
   'name',
   'displayName',
+  'tags',
   'type',
   'url',
   'description',
@@ -1083,6 +1142,8 @@ const WIZARD_FIELDS = [
  * - `displayName` is tri-state like `suspended` (omitted keeps the annotation,
  *   empty removes it), so it is never carried from what was saved before: it
  *   is sent only when the wizard changes it.
+ * - `tags` likewise: omitted keeps them, a list replaces them, so they are
+ *   sent only when the wizard changes them.
  * - `autoStart` is always overwritten, omitted meaning false. The server's own
  *   value is sent (missing reads as false, like `getAutoStart()`): the
  *   wizard's `true` is a registration default, and an edit must not turn it on.

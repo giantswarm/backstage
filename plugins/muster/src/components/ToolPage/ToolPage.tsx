@@ -296,8 +296,7 @@ function ToolPageContent() {
         { label: 'Customize', href: paths.customize },
         {
           label: 'Connectors',
-          // The sub-tab that lists the tool's connector.
-          href: paths.customize ? paths.listOf(key, row) : listHref,
+          href: paths.customize ? paths.connectors : listHref,
         },
         // No "Tools" crumb: Tools is the connector page's index, so it
         // would repeat the connector's own link.

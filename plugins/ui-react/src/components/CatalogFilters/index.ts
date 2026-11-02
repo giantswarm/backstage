@@ -4,6 +4,15 @@ export {
   catalogFilterKey,
   isCatalogFiltered,
 } from './catalogFilters';
+export { TAGS_FACET_ID, tagsFacet } from './tagsFacet';
+export {
+  SharedTagsProvider,
+  TAGS_SEARCH_PARAM,
+  tagHref,
+  tagsOfSearch,
+  useSharedTags,
+  withTagsSearch,
+} from './sharedTags';
 export type {
   CatalogFacet,
   CatalogFilterDimension,

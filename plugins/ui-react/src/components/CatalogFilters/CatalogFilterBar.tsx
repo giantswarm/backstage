@@ -7,6 +7,13 @@ import type {
 } from './catalogFilters';
 
 /**
+ * The widest a dropdown's trigger, and an option's label in its list, grow.
+ * Past it a value is cut to one line with an ellipsis and read whole on hover:
+ * a 63-character tag would otherwise stretch the list across the page.
+ */
+const FILTER_VALUE_MAX_WIDTH = '16rem';
+
+/**
  * A dropdown takes its share of the row and wraps to the next one before it
  * gets narrower than 10rem: side by side on a desktop, two to a row on a
  * phone, never wider than a field name and two picks need. bui's Select
@@ -16,7 +23,7 @@ const DROPDOWN_STYLE: CSSProperties = {
   flex: '1 1 10rem',
   width: 'auto',
   minWidth: 0,
-  maxWidth: '16rem',
+  maxWidth: FILTER_VALUE_MAX_WIDTH,
 };
 
 /** The field name inside the trigger, before what is picked. */
@@ -37,7 +44,10 @@ const OPTION_STYLE: CSSProperties = {
 
 const OPTION_LABEL_STYLE: CSSProperties = {
   minWidth: 0,
-  overflowWrap: 'anywhere',
+  maxWidth: FILTER_VALUE_MAX_WIDTH,
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
 };
 
 const OPTION_COUNT_STYLE: CSSProperties = {
@@ -74,7 +84,7 @@ function FilterDropdown({
       placeholder="All"
       // The trigger reads "Source  All", "Source  acme/skills", or with more
       // picks "Source 3  acme/skills, gs/skills, and …" (react-aria's list
-      // format, cut off with an ellipsis). Named for assistive technology by
+      // format, cut off with bui's ellipsis at FILTER_VALUE_MAX_WIDTH). Named for assistive technology by
       // aria-label and the picks themselves.
       icon={
         <span aria-hidden style={FIELD_NAME_STYLE}>
@@ -100,7 +110,9 @@ function FilterDropdown({
         >
           {/* Read as "acme/skills 31": the space is collapsed in the row. */}
           <span style={OPTION_STYLE}>
-            <span style={OPTION_LABEL_STYLE}>{option.label}</span>{' '}
+            <span style={OPTION_LABEL_STYLE} title={option.label}>
+              {option.label}
+            </span>{' '}
             <span style={OPTION_COUNT_STYLE}>{option.count}</span>
           </span>
         </SelectItem>

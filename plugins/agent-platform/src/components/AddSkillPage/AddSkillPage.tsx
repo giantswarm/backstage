@@ -11,8 +11,14 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  addTags,
+  commitTagDraft,
+  draftProblem,
   EmptyStateCard,
+  sameTags,
   searchableIf,
+  tagCounts,
+  TagsField,
   TextAreaField,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -29,9 +35,12 @@ import {
   type SkillPullRequest,
 } from '../../hooks/useProposeSkill';
 import type { SkillContent } from '../../hooks/useSkillContent';
+import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { uniqueSkills } from '../../lib/customize';
 import {
   canProposeSkillTo,
   repoSlug,
+  skillTags,
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -147,6 +156,29 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const [instructions, setInstructions] = useState(
     edit?.content.instructions ?? '',
   );
+  /** The edited skill's tags, as its SKILL.md reads now. */
+  const baselineTags = useMemo(
+    () => edit?.content.tags ?? (edit ? skillTags(edit.skill) : []),
+    [edit],
+  );
+  const [tags, setTags] = useState<string[]>(baselineTags);
+  /** What the Tags field holds but has not added yet. */
+  const [tagDraft, setTagDraft] = useState('');
+  // A draft that can be tags counts as added: submitting adds it, as the
+  // agent form's Continue does.
+  const submittedTags = useMemo(
+    () => commitTagDraft(tags, tagDraft).tags,
+    [tags, tagDraft],
+  );
+  // The tags the catalog's skills already use, offered while typing a tag.
+  const { skills: catalogSkills } = useSkillCatalog();
+  const knownTags = useMemo(
+    () =>
+      tagCounts(
+        uniqueSkills(catalogSkills).map(skill => ({ tags: skillTags(skill) })),
+      ),
+    [catalogSkills],
+  );
   const { proposeSkill, isProposing, error, result } = useProposeSkill();
 
   useEffect(() => {
@@ -171,6 +203,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
     description: description.trim() ? undefined : 'Enter a description.',
+    tags: draftProblem(tagDraft, tags),
     instructions: instructions.trim() ? undefined : 'Enter the instructions.',
   };
   const isValid = Object.values(fieldErrors).every(problem => !problem);
@@ -179,7 +212,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const isChanged =
     !edit ||
     description.trim() !== edit.content.description.trim() ||
-    instructions.trim() !== edit.content.instructions.trim();
+    instructions.trim() !== edit.content.instructions.trim() ||
+    !sameTags(submittedTags, baselineTags);
   const validation = useFieldValidation();
   const { reveal, errorFor, fieldProps, textFieldProps } = validation;
   const repositoryError = useSelectFieldError(
@@ -194,12 +228,22 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     if (!isChanged) {
       return;
     }
+    setTags(submittedTags);
+    setTagDraft('');
     try {
       await proposeSkill({
         repoUrl,
         skillName,
         description: description.trim(),
         instructions: instructions.trim(),
+        // Only a change: an edit that leaves them keeps the file's as written.
+        ...((
+          edit
+            ? !sameTags(submittedTags, baselineTags)
+            : submittedTags.length > 0
+        )
+          ? { tags: submittedTags }
+          : {}),
         ...(edit
           ? {
               kind: 'update' as const,
@@ -220,6 +264,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     skillName,
     description,
     instructions,
+    submittedTags,
+    baselineTags,
     edit,
   ]);
 
@@ -244,6 +290,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               instructions.trim() !== edit.content.instructions.trim()
                 ? instructions
                 : undefined,
+            tags: sameTags(submittedTags, baselineTags)
+              ? undefined
+              : submittedTags,
           }
         : {
             kind: 'create',
@@ -251,8 +300,18 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             name: skillName,
             description,
             instructions,
+            ...(submittedTags.length > 0 ? { tags: submittedTags } : {}),
           },
-    [edit, repoUrl, repositories, skillName, description, instructions],
+    [
+      edit,
+      repoUrl,
+      repositories,
+      skillName,
+      description,
+      instructions,
+      submittedTags,
+      baselineTags,
+    ],
   );
 
   // Memoized so the frame's footer slot only updates when the handlers change,
@@ -385,6 +444,15 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             value={description}
             onChange={setDescription}
             {...textFieldProps('description', fieldErrors.description)}
+          />
+          <TagsField
+            tags={tags}
+            draft={tagDraft}
+            error={errorFor('tags', fieldErrors.tags)}
+            counts={knownTags}
+            onDraftChange={setTagDraft}
+            onAdd={added => setTags(prev => addTags(prev, added))}
+            onRemove={tag => setTags(prev => prev.filter(each => each !== tag))}
           />
           <TextAreaField
             label="Instructions"

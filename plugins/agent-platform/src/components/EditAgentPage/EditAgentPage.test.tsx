@@ -201,7 +201,7 @@ const AGENT: AgentManagerAgent = {
 const GITOPS_AGENT: AgentManagerAgent = { ...AGENT, managed: 'gitops' };
 
 const INFO: Partial<AgentManagerInfo> = {
-  capabilities: { create: true, validate: true, commit: false },
+  capabilities: { create: true, validate: true, commit: false, tags: true },
   harness: { name: 'kagent' },
 };
 
@@ -780,6 +780,86 @@ describe('EditAgentPage', () => {
         screen.queryByRole('button', { name: /Default workspace/ }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it('keeps the agent’s tags and an added one on the review, through the dry run', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+    });
+
+    const tags = await screen.findByRole('textbox', { name: /^Tags/ });
+    await user.type(tags, 'go');
+    // Leaving the field with Continue adds what is typed.
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+
+    const tagsRow = () =>
+      within(screen.getByLabelText('Summary')).getByText('Tags', {
+        selector: 'dt',
+      }).nextElementSibling;
+    expect(tagsRow()).toHaveTextContent('review, go');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    expect(tagsRow()).toHaveTextContent('review, go');
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    )[0];
+    expect(dryRunArgs).toMatchObject({ tags: ['review', 'go'] });
+  });
+
+  it('says None for tags all removed, and sends the empty list', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+    });
+
+    const tags = await screen.findByRole('grid', { name: 'Tags' });
+    await user.click(
+      within(within(tags).getByRole('row', { name: /review/ })).getByRole(
+        'button',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+
+    expect(
+      within(screen.getByLabelText('Summary')).getByText('Tags', {
+        selector: 'dt',
+      }).nextElementSibling,
+    ).toHaveTextContent('None');
+    await waitFor(() =>
+      expect(
+        callsOf(callTool, 'x_agent-manager_validate_agent'),
+      ).not.toHaveLength(0),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    )[0];
+    expect(dryRunArgs).toMatchObject({ tags: [] });
+  });
+
+  it('offers no Tags field and sends no tags where agent-manager takes none', async () => {
+    await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+      info: { ...INFO, capabilities: { tags: false } },
+    });
+
+    await screen.findByRole('button', { name: 'Continue' });
+    expect(
+      screen.queryByRole('textbox', { name: /^Tags/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('leaves an untouched edit without asking', async () => {

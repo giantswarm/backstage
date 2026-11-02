@@ -3,10 +3,15 @@ import {
   type CatalogFacet,
   CatalogFilterBar,
   type CatalogFilters,
+  tagsFacet,
   useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { skillSource } from '../../lib/customize';
-import { canonicalSkillId, type DiscoveredSkill } from '../../lib/skills';
+import {
+  canonicalSkillId,
+  type DiscoveredSkill,
+  skillTags,
+} from '../../lib/skills';
 
 export const SKILL_USAGE_LABELS = {
   used: 'Used by agents',
@@ -14,8 +19,9 @@ export const SKILL_USAGE_LABELS = {
 } as const;
 
 /**
- * The skill catalog's facets: the repository a skill comes from, and — once
- * the agents are read — whether any agent mounts it. `usage` is the agents per
+ * The skill catalog's facets: the repository a skill comes from, whether any
+ * agent mounts it (once the agents are read), and its tags (drawn only once
+ * some skill has one). `usage` is the agents per
  * canonical skill id (`agentsBySkill`); without it there is no usage facet,
  * rather than one that calls every skill unused while the agents load.
  */
@@ -38,6 +44,7 @@ export function skillFacets(
           },
         ]
       : []),
+    tagsFacet(skillTags),
   ];
 }
 
@@ -53,7 +60,7 @@ export type UseSkillFiltersOptions = {
 export type SkillFilters = CatalogFilters<DiscoveredSkill>;
 
 /**
- * The skill catalog's filter state — Source and Usage — for the Customize
+ * The skill catalog's filter state — Source, Usage and Tags — for the Customize
  * Skills tab and the agent wizard's skill step alike (T49, T60). Draw it with
  * {@link SkillsFilterBar}; `filtered` is what the picks leave of `searched`.
  */
@@ -71,10 +78,10 @@ export type SkillsFilterBarProps = {
 };
 
 /**
- * The skill catalog's filters: a Source dropdown and, once the agents are
- * read, a Usage dropdown — each a multi-select, always shown (one repository
- * is a Source dropdown of one option, T64), with "Clear filters" while
- * anything is picked.
+ * The skill catalog's filters: a Source dropdown, a Usage dropdown once the
+ * agents are read, and a Tags dropdown once a skill has tags — each a
+ * multi-select (one repository is a Source dropdown of one option, T64), with
+ * "Clear filters" while anything is picked.
  */
 export function SkillsFilterBar({ filters }: SkillsFilterBarProps) {
   return (

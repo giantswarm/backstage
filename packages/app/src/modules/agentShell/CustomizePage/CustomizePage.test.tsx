@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
+import { useSharedTags } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type MockedLayout,
   mockDesktopLayout,
@@ -25,12 +26,26 @@ let mockMusterCounts: Record<string, unknown>;
 let mockCanAddSkill = false;
 
 function mockPanel(name: string) {
-  return (props: { search: string }) => (
-    <p>{`${name} panel, search “${props.search}”${
-      // Anything beyond the search would be a filter the page hands down.
-      Object.keys(props).length > 1 ? ', with more props' : ''
-    }`}</p>
-  );
+  return function MockPanel(props: { search: string }) {
+    // What a panel's Tags facet starts from, and a way to change it.
+    const shared = useSharedTags();
+    return (
+      <>
+        <p>{`${name} panel, search “${props.search}”${
+          // Anything beyond the search would be a filter the page hands down.
+          Object.keys(props).length > 1 ? ', with more props' : ''
+        }`}</p>
+        {shared && shared.tags.length > 0 && (
+          <>
+            <p>{`${name} panel, tags ${shared.tags.join(',')}`}</p>
+            <button type="button" onClick={() => shared.setTags(['ops'])}>
+              Pick ops
+            </button>
+          </>
+        )}
+      </>
+    );
+  };
 }
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
@@ -90,25 +105,27 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
     CustomizeMusterProvider: ({ children }: { children: ReactNode }) =>
       children,
     useMusterCustomizeCounts: () => mockMusterCounts,
-    CONNECTOR_GROUPS: [
-      { id: 'yours', path: '', title: 'Your connectors' },
-      { id: 'infrastructure', path: 'infrastructure', title: 'Infrastructure' },
-      { id: 'internal', path: 'internal', title: 'Internal' },
-    ],
-    connectorGroupInfo: (group: string) =>
-      ({
-        yours: { id: 'yours', path: '', title: 'Your connectors' },
-        infrastructure: {
-          id: 'infrastructure',
-          path: 'infrastructure',
-          title: 'Infrastructure',
-        },
-        internal: { id: 'internal', path: 'internal', title: 'Internal' },
-      })[group],
-    LEGACY_CONNECTOR_GROUP_PATHS: { families: 'infrastructure' },
-    CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
-      <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
-    ),
+    RETIRED_CONNECTOR_GROUP_TAGS: {
+      infrastructure: 'infrastructure',
+      families: 'infrastructure',
+      internal: 'agent-platform',
+    },
+    CustomizeConnectorsPanel: function MockConnectorsPanel(props: {
+      search: string;
+    }) {
+      const shared = useSharedTags();
+      return (
+        <>
+          <p>{`Connectors panel, search “${props.search}”`}</p>
+          {shared && shared.tags.length > 0 && (
+            <p>{`Connectors panel, tags ${shared.tags.join(',')}`}</p>
+          )}
+          <button type="button" onClick={() => shared?.setTags(['ops'])}>
+            Pick ops on connectors
+          </button>
+        </>
+      );
+    },
     CustomizeWorkflowsPanel: ({
       createAssist,
       ...props
@@ -188,7 +205,6 @@ describe('CustomizePage', () => {
     };
     mockMusterCounts = {
       connectors: 7,
-      connectorGroups: { yours: 3, infrastructure: 2, internal: 2 },
       workflows: 2,
     };
     mockCanAddSkill = false;
@@ -224,7 +240,8 @@ describe('CustomizePage', () => {
       'Connectors',
       'gazelle/jira/edit',
     ],
-    // An installation named like a sub-tab: deeper, so a connector's page.
+    // An installation named like a retired sub-tab: deeper, so a connector's
+    // page.
     ['/customize/connectors/internal/jira', 'Connectors', 'internal/jira'],
   ])(
     "routes %s below the tab's list to the plugin's sub-page, without the tab strip",
@@ -266,7 +283,7 @@ describe('CustomizePage', () => {
 
   // The strip has its final width before the counts arrive, so no tab
   // moves under the pointer when they do.
-  it('holds the place of each count still loading, the sub-tabs’ too', async () => {
+  it('holds the place of each count still loading', async () => {
     mockCustomizeData = {
       ...mockCustomizeData,
       counts: {
@@ -277,11 +294,6 @@ describe('CustomizePage', () => {
     };
     mockMusterCounts = {
       connectors: 'loading',
-      connectorGroups: {
-        yours: 'loading',
-        infrastructure: 'loading',
-        internal: 'loading',
-      },
       workflows: 'loading',
     };
     await renderCustomize('/customize/connectors');
@@ -290,15 +302,7 @@ describe('CustomizePage', () => {
       .getAllByRole('tab')
       .filter(tab => tab.querySelector('[data-count="loading"]'))
       .map(tab => tab.textContent?.trim());
-    expect(loading).toEqual([
-      'Agents',
-      'Connectors',
-      'Models',
-      'Workflows',
-      'Your connectors',
-      'Infrastructure',
-      'Internal',
-    ]);
+    expect(loading).toEqual(['Agents', 'Connectors', 'Models', 'Workflows']);
     expect(screen.getByRole('tab', { name: 'Skills (71)' })).toBeVisible();
   });
 
@@ -555,6 +559,37 @@ describe('CustomizePage', () => {
     });
   });
 
+  describe('the Tags pick', () => {
+    it('opens the tab with the tags of ?tags= picked', async () => {
+      await renderCustomize('/customize/skills?tags=util');
+
+      expect(screen.getByText('Skills panel, tags util')).toBeInTheDocument();
+    });
+
+    it('goes with a switch to another tab, as it was last picked', async () => {
+      await renderCustomize('/customize/agents?tags=util');
+      await userEvent.click(screen.getByRole('button', { name: 'Pick ops' }));
+
+      expect(screen.getByRole('tab', { name: /^Skills/ })).toHaveAttribute(
+        'href',
+        '/customize/skills?tags=ops',
+      );
+      await userEvent.click(screen.getByRole('tab', { name: /^Skills/ }));
+
+      expect(screen.getByText('Skills panel, tags ops')).toBeInTheDocument();
+    });
+
+    it('is nothing without ?tags=', async () => {
+      await renderCustomize('/customize/agents');
+
+      expect(screen.queryByText(/panel, tags/)).toBeNull();
+      expect(screen.getByRole('tab', { name: /^Skills/ })).toHaveAttribute(
+        'href',
+        '/customize/skills',
+      );
+    });
+  });
+
   it('opens the Agents tab at /customize, keeping the query string', async () => {
     await renderCustomize('/customize?installation=golem');
 
@@ -695,83 +730,55 @@ describe('CustomizePage', () => {
     await waitFor(() => expect(document.title).toBe('Workflows · Customize'));
   });
 
-  describe('the Connectors tab’s sub-tabs', () => {
-    const subTabs = () =>
-      screen
-        .getAllByRole('tab')
-        .filter(tab =>
-          /^(Your connectors|Infrastructure|Internal)/.test(
-            tab.textContent ?? '',
-          ),
-        )
-        .map(tab => [tab.textContent, tab.getAttribute('href')]);
-
-    it('opens on the customer’s own connectors, at the tab’s own address', async () => {
+  describe('the Connectors tab', () => {
+    it('is one list at the tab’s own address, without sub-tabs', async () => {
       await renderCustomize('/customize/connectors?installation=golem');
 
-      expect(subTabs()).toEqual([
-        ['Your connectors (3)', '/customize/connectors?installation=golem'],
-        [
-          'Infrastructure (2)',
-          '/customize/connectors/infrastructure?installation=golem',
-        ],
-        ['Internal (2)', '/customize/connectors/internal?installation=golem'],
-      ]);
       expect(
-        screen.getByText('Connectors panel, search “”, yours'),
+        screen.getByText('Connectors panel, search “”'),
       ).toBeInTheDocument();
-      expect(screen.getByTestId('location')).toHaveTextContent(
-        '/customize/connectors?installation=golem',
+      expect(
+        screen.queryByRole('tab', {
+          name: /^(Your connectors|Infrastructure|Internal)/,
+        }),
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.title).toBe('Connectors · Customize'),
       );
     });
 
     it.each([
-      ['infrastructure', 'Infrastructure'],
-      ['internal', 'Internal'],
-    ])(
-      'shows the %s sub-tab at its own path, named in the document title',
-      async (path, title) => {
-        await renderCustomize(`/customize/connectors/${path}`);
+      [
+        '/customize/connectors/infrastructure?installation=golem',
+        '/customize/connectors?installation=golem&tags=infrastructure',
+      ],
+      [
+        '/customize/connectors/internal?installation=golem',
+        '/customize/connectors?installation=golem&tags=agent-platform',
+      ],
+      // Infrastructure was "Families" before.
+      [
+        '/customize/connectors/families?installation=golem',
+        '/customize/connectors?installation=golem&tags=infrastructure',
+      ],
+      [
+        '/customize/connectors/internal/',
+        '/customize/connectors?tags=agent-platform',
+      ],
+    ])('sends the retired sub-tab %s to %s', async (from, to) => {
+      await renderCustomize(from);
 
-        expect(
-          screen.getByText(`Connectors panel, search “”, ${path}`),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByRole('tab', { name: /^Connectors/ }),
-        ).toHaveAttribute('aria-selected', 'true');
-        await waitFor(() =>
-          expect(
-            screen.getByRole('tab', { name: new RegExp(`^${title}`) }),
-          ).toHaveAttribute('aria-selected', 'true'),
-        );
-        await waitFor(() =>
-          expect(document.title).toBe(`${title} · Connectors · Customize`),
-        );
-        // Add connector stays: what it adds lands on Your connectors.
-        expect(
-          screen.getByRole('link', { name: 'Add connector' }),
-        ).toBeInTheDocument();
-      },
-    );
-
-    it('keeps the search when switching sub-tabs', async () => {
-      await renderCustomize('/customize/connectors');
-      await userEvent.type(
-        screen.getByRole('searchbox', { name: 'Search connectors and tools' }),
-        'kube',
+      await waitFor(() =>
+        expect(screen.getByTestId('location').textContent).toBe(to),
       );
-      await userEvent.click(
-        screen.getByRole('tab', { name: /^Infrastructure/ }),
-      );
-
       expect(
         await screen.findByText(
-          'Connectors panel, search “kube”, infrastructure',
+          `Connectors panel, tags ${to.split('tags=')[1]}`,
         ),
       ).toBeInTheDocument();
     });
 
-    it("hands a path deeper than a sub-tab to muster's sub-page", async () => {
+    it("hands a path deeper than a retired sub-tab to muster's sub-page", async () => {
       await renderCustomize(
         '/customize/connectors/infrastructure/anything?installation=golem',
       );
@@ -779,48 +786,6 @@ describe('CustomizePage', () => {
       expect(
         screen.getByText('Connectors sub-page at infrastructure/anything'),
       ).toBeInTheDocument();
-    });
-
-    it.each([
-      // Infrastructure was "Families": an old link lands on it.
-      [
-        '/customize/connectors/families?installation=golem',
-        '/customize/connectors/infrastructure?installation=golem',
-      ],
-      [
-        '/customize/connectors/families/',
-        '/customize/connectors/infrastructure',
-      ],
-    ])('sends %s to %s', async (from, to) => {
-      await renderCustomize(from);
-
-      await waitFor(() =>
-        expect(screen.getByTestId('location').textContent).toBe(to),
-      );
-    });
-
-    it.each([
-      ['/customize/connectors/', 'Your connectors', 'yours'],
-      ['/customize/connectors/internal/', 'Internal', 'internal'],
-    ])(
-      'shows %s, with its trailing slash, as its sub-tab',
-      async (path, title, group) => {
-        await renderCustomize(path);
-
-        expect(
-          await screen.findByText(`Connectors panel, search “”, ${group}`),
-        ).toBeInTheDocument();
-        await waitFor(() =>
-          expect(
-            screen.getByRole('tab', { name: new RegExp(`^${title}`) }),
-          ).toHaveAttribute('aria-selected', 'true'),
-        );
-      },
-    );
-
-    it('draws no sub-tabs on the other tabs', async () => {
-      await renderCustomize('/customize/models');
-      expect(subTabs()).toEqual([]);
     });
   });
 });
