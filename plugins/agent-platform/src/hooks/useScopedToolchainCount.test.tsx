@@ -6,6 +6,8 @@ import { useScopedToolchainCount } from './useToolchainManager';
 
 let mockMusterInstallations: string[];
 let mockAvailable: string[];
+/** Installations whose muster did not say whether it has the server. */
+let mockUnknown: string[];
 let mockAvailabilityLoading: boolean;
 let mockMusterApi: object | undefined;
 const mockListToolchains = jest.fn();
@@ -25,8 +27,12 @@ jest.mock('./useMusterServerAvailability', () => ({
     available: mockAvailable,
     sharedIdentity: [],
     isLoading: mockAvailabilityLoading,
-    presenceOf: (installation: string) =>
-      mockAvailable.includes(installation) ? 'available' : 'missing',
+    presenceOf: (installation: string) => {
+      if (mockUnknown.includes(installation)) {
+        return 'unknown';
+      }
+      return mockAvailable.includes(installation) ? 'available' : 'missing';
+    },
   }),
 }));
 jest.mock('./useMusterPluginApi', () => ({
@@ -66,6 +72,7 @@ describe('useScopedToolchainCount', () => {
   beforeEach(() => {
     mockMusterInstallations = ['gazelle', 'otter'];
     mockAvailable = ['gazelle', 'otter'];
+    mockUnknown = [];
     mockAvailabilityLoading = false;
     mockMusterApi = {};
     mockListToolchains.mockReset();
@@ -98,31 +105,41 @@ describe('useScopedToolchainCount', () => {
     expect(renderCount().result.current).toBe('loading');
   });
 
-  it('is unknown, not 0, when no list could be read', async () => {
-    mockListToolchains.mockImplementation(async (installation: string) => {
-      if (installation === 'gazelle') {
-        throw new Error('unreachable');
-      }
-      // A grant the person has yet to give: no list.
-      return { status: 'grant_required', toolchains: [] };
-    });
+  it('waits for every installation to say whether it has one', async () => {
+    // One has answered with the toolchain-manager, another is still asked.
+    mockAvailable = ['gazelle'];
+    mockAvailabilityLoading = true;
+    mockListToolchains.mockResolvedValue(toolchains(3));
+
+    const { result } = renderCount();
+
+    await waitFor(() => expect(mockListToolchains).toHaveBeenCalled());
+    expect(result.current).toBe('loading');
+  });
+
+  it('is unknown, not a partial count, when an installation could not be asked', () => {
+    mockAvailable = ['gazelle'];
+    mockUnknown = ['otter'];
+    mockListToolchains.mockResolvedValue(toolchains(3));
+
+    expect(renderCount().result.current).toBeUndefined();
+  });
+
+  it.each([
+    ['a list failed', () => Promise.reject(new Error('unreachable'))],
+    [
+      'a grant is still to be given',
+      () => Promise.resolve({ status: 'grant_required', toolchains: [] }),
+    ],
+  ])('is unknown, not a partial count, when %s', async (_, otter) => {
+    mockListToolchains.mockImplementation((installation: string) =>
+      installation === 'otter' ? otter() : Promise.resolve(toolchains(2)),
+    );
 
     const { result } = renderCount();
 
     await waitFor(() => expect(result.current).toBeUndefined());
-  });
-
-  it('leaves out an installation it could not read', async () => {
-    mockListToolchains.mockImplementation(async (installation: string) => {
-      if (installation === 'gazelle') {
-        throw new Error('unreachable');
-      }
-      return toolchains(2);
-    });
-
-    const { result } = renderCount();
-
-    await waitFor(() => expect(result.current).toBe(2));
+    expect(mockListToolchains).toHaveBeenCalledTimes(2);
   });
 
   it('cannot count without the muster plugin', () => {

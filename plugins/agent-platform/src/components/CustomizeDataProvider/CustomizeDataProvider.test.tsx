@@ -6,7 +6,11 @@ import {
 } from './CustomizeDataProvider';
 
 let mockAgentsLoading = false;
+let mockAgentsLoadingMore = false;
+let mockUnreachable: string[] = [];
 let mockModelsLoading = false;
+/** Some installations' models are in, others are still read. */
+let mockModelsPartial = false;
 let mockSkillsLoading = false;
 let mockWorkspacesLoading = false;
 let mockWorkspaceFailures: Record<string, string> = {};
@@ -18,6 +22,8 @@ jest.mock('../AgentsDataProvider', () => ({
   AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
   useAgents: () => ({
     isLoading: mockAgentsLoading,
+    isLoadingMore: mockAgentsLoadingMore,
+    unreachableInstallations: mockUnreachable,
     rows: mockAgentsLoading
       ? []
       : [{ namespace: 'support' }, { namespace: 'engineering' }],
@@ -26,7 +32,7 @@ jest.mock('../AgentsDataProvider', () => ({
 jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
   useModelConfigs: () => ({
-    isLoading: mockModelsLoading,
+    isLoading: mockModelsLoading || mockModelsPartial,
     installations: ['golem'],
     modelConfigsFor: () =>
       mockModelsLoading
@@ -91,6 +97,20 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
+function SettledProbe() {
+  const { settledCounts } = useCustomizeData();
+  return <pre data-testid="settled">{JSON.stringify(settledCounts)}</pre>;
+}
+
+function readSettled() {
+  render(
+    <CustomizeDataProvider>
+      <SettledProbe />
+    </CustomizeDataProvider>,
+  );
+  return JSON.parse(screen.getByTestId('settled').textContent ?? '');
+}
+
 function Probe() {
   const data = useCustomizeData();
   return (
@@ -116,7 +136,10 @@ function read() {
 describe('CustomizeDataProvider', () => {
   beforeEach(() => {
     mockAgentsLoading = false;
+    mockAgentsLoadingMore = false;
+    mockUnreachable = [];
     mockModelsLoading = false;
+    mockModelsPartial = false;
     mockSkillsLoading = false;
     mockWorkspacesLoading = false;
     mockSkills = [{ name: 'triage', repoUrl: SKILLS, path: 'triage' }];
@@ -167,6 +190,36 @@ describe('CustomizeDataProvider', () => {
         skills: 'loading',
         workspaces: 'loading',
       },
+    });
+  });
+
+  describe('the settled counts', () => {
+    it('are the counts once every installation answered', () => {
+      expect(readSettled()).toEqual({
+        agents: 2,
+        models: 1,
+        skills: 1,
+        workspaces: 3,
+      });
+    });
+
+    // The strip shows a growing number; a report sent once must not.
+    it('stay loading while some installations are still read', () => {
+      mockAgentsLoadingMore = true;
+      mockModelsPartial = true;
+      expect(readSettled()).toEqual({
+        agents: 'loading',
+        models: 'loading',
+        skills: 1,
+        workspaces: 3,
+      });
+    });
+
+    it('leave out a total an unread installation or repository would make short', () => {
+      mockUnreachable = ['otter'];
+      mockFailedRepositories = ['https://github.com/example/more-skills'];
+      mockWorkspaceFailures = { otter: 'unreachable' };
+      expect(readSettled()).toEqual({ models: 1 });
     });
   });
 });

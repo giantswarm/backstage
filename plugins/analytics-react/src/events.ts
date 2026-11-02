@@ -86,17 +86,17 @@ export const portalEvents = defineEvents({
   },
   'AgentPlatform.agentViewed': {
     description:
-      "An agent's page was opened, with the number of skills it has and of tools it can call through the person viewing it: its toolset as muster resolves it for them, plus the tools it lists on servers it binds directly (`unknown` when the toolset could not be resolved, or a directly bound server allows all its tools). Sent once per opening, when both are known.",
+      "An agent's page was opened, with the number of skills it has and of tools it can call through the person viewing it: its declared toolset as muster resolves it for them, plus the tools it lists on servers it binds directly (`unknown` when it declares no toolset, the toolset could not be resolved, or a directly bound server allows all its tools). Sent once per opening, when both are known.",
     attributes: { skills: COUNT_BUCKETS, tools: COUNT_BUCKETS_OR_UNKNOWN },
   },
   'AgentPlatform.sessionViewed': {
     description:
-      "A session's page was opened, with the number of turns the session has. Sent once per opening, when the session and its turns are read.",
+      "A session's page was opened, with the number of turns the session has. Sent once per opening, when the session is read and its turns were read within the last minute, not from an older cache.",
     attributes: { turns: COUNT_BUCKETS },
   },
   'AgentPlatform.customizeViewed': {
     description:
-      'The Customize page was opened, with the number of agents, skills, connectors, models, workflows, workspaces and toolchains it counts for the installations in scope. Sent once per opening, not per tab, when every count is read, or 30 seconds after the opening with the counts still being read as `unknown`; a count that could not be read is `unknown` too.',
+      'The Customize page was opened, with the number of agents, skills, connectors, models, workflows, workspaces and toolchains it counts for the installations in scope. Sent once per opening, not per tab, when every installation in scope has answered for every count, or 30 seconds after the opening with the counts still being read as `unknown`; a count an installation or repository could not be read for is `unknown` too, never a partial total.',
     attributes: {
       agents: COUNT_BUCKETS_OR_UNKNOWN,
       skills: COUNT_BUCKETS_OR_UNKNOWN,

@@ -11,7 +11,7 @@ import {
   SendTimeouts,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isFirstEventTimeout, kagentApiRef } from '../apis';
-import { useStreamedTurn } from './useStreamedTurn';
+import { findTurnTask, useStreamedTurn } from './useStreamedTurn';
 import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
 import { ComposerImage, toMessageImages } from '../lib/messageImages';
 
@@ -121,11 +121,16 @@ export function useSendMessage(
   const mutation = useTrackedMutation({
     // Neither the text nor its images: that a message went, and how many
     // turns the session has with it.
-    event: () => ({
+    event: (_data, message) => ({
       name: 'AgentPlatform.messageSent',
       attributes: {
         turns: countBucketOrUnknown(
-          turnsWithSentMessage(queryClient, installation, sessionId),
+          turnsWithSentMessage(
+            queryClient,
+            installation,
+            sessionId,
+            message.messageId,
+          ),
         ),
       },
     }),
@@ -261,23 +266,23 @@ export function useSendMessage(
 
 /**
  * The session's turns once a sent message's turn is over, that turn included:
- * the conversation `useStreamedTurn` re-read after it, or, when nothing
- * re-read it because the page was left during the turn (the read is marked
- * stale instead), the conversation from before it and this turn. Undefined
- * when the conversation was never read.
+ * the conversation as last read, plus the turn when that read does not hold
+ * it yet — the page was left during the turn, so nothing re-read it after.
+ * Undefined when the conversation was never read.
  */
 function turnsWithSentMessage(
   queryClient: QueryClient,
   installation: string,
   sessionId: string,
+  sentMessageId: string,
 ): number | undefined {
-  const queryKey = sessionTasksQueryKey(installation, sessionId);
-  const tasks = queryClient.getQueryData<A2aTaskWire[]>(queryKey);
+  const tasks = queryClient.getQueryData<A2aTaskWire[]>(
+    sessionTasksQueryKey(installation, sessionId),
+  );
   if (!tasks) {
     return undefined;
   }
-  const isLeftBehind = queryClient.getQueryState(queryKey)?.isInvalidated;
-  return tasks.length + (isLeftBehind ? 1 : 0);
+  return tasks.length + (findTurnTask(tasks, { sentMessageId }) ? 0 : 1);
 }
 
 /** What {@link useSendMessage} hands to the composer. */

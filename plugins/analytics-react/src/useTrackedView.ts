@@ -21,14 +21,21 @@ export function useTrackedView(
 ): void {
   const analytics = useAnalytics();
   const reportedFor = useRef<string | undefined>(undefined);
+  // The event as of this render, read when the effect runs: the effect
+  // itself waits only for the event to become known or the key to change,
+  // not for every new event object a polling page builds.
+  const latest = useRef(event);
+  latest.current = event;
+  const isKnown = event !== undefined;
 
   useEffect(() => {
-    if (!event || reportedFor.current === openKey) {
+    const current = latest.current;
+    if (!current || reportedFor.current === openKey) {
       return;
     }
     reportedFor.current = openKey;
-    analytics.captureEvent(event.name, event.name, {
-      attributes: event.attributes,
+    analytics.captureEvent(current.name, current.name, {
+      attributes: current.attributes,
     });
-  }, [analytics, event, openKey]);
+  }, [analytics, isKnown, openKey]);
 }

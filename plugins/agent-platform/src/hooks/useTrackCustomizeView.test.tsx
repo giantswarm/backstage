@@ -14,7 +14,7 @@ import {
 let mockCounts: CustomizeCounts;
 let mockToolchainCount: RouteTabCount | undefined;
 jest.mock('../components/CustomizeDataProvider', () => ({
-  useCustomizeData: () => ({ counts: mockCounts }),
+  useCustomizeData: () => ({ settledCounts: mockCounts }),
 }));
 jest.mock('./useToolchainManager', () => ({
   useScopedToolchainCount: () => mockToolchainCount,

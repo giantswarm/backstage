@@ -25,6 +25,10 @@ describe('countBucket', () => {
     expect(countBucket(count)).toBe(bucket);
   });
 
+  it.each([-1, NaN])('puts %s in 0, never in the largest bucket', count => {
+    expect(countBucket(count)).toBe('0');
+  });
+
   it('puts every count in a listed bucket', () => {
     for (let count = 0; count <= 120; count++) {
       expect(COUNT_BUCKETS).toContain(countBucket(count));

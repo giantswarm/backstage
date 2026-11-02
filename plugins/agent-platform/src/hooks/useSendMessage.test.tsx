@@ -220,7 +220,9 @@ describe('useSendMessage', () => {
         { wrapper },
       );
       await waitFor(() => expect(result.current.tasks.data).toEqual([]));
-      listSessionTasks.mockResolvedValue([settledTask('task-1')]);
+      listSessionTasks.mockImplementation(async () => [
+        taskHolding(sentMessageId(), 'completed'),
+      ]);
 
       await act(async () => {
         await result.current.send.sendMessage('hello');
@@ -254,6 +256,38 @@ describe('useSendMessage', () => {
           attributes: { turns: '5-9' },
         }),
       );
+    });
+
+    it('does not count the turn twice when a poll read it before the page was left', async () => {
+      const { result, queryClient } = renderWith();
+      const earlier = [
+        settledTask('task-1'),
+        settledTask('task-2'),
+        settledTask('task-3'),
+      ];
+      queryClient.setQueryData(TASKS_KEY, earlier);
+      // A poll mid-turn reads the turn's task; nothing re-reads after it.
+      // Three turns before it and this one: four, not five.
+      streamMessage.mockImplementation(
+        async (_installation, _session, _agent, message) => {
+          queryClient.setQueryData(TASKS_KEY, [
+            ...earlier,
+            taskHolding(message.messageId, 'working'),
+          ]);
+        },
+      );
+
+      await act(async () => {
+        await result.current.sendMessage('hello');
+      });
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.messageSent',
+          attributes: { turns: '2-4' },
+        }),
+      );
+      expect(queryClient.getQueryData<unknown[]>(TASKS_KEY)).toHaveLength(4);
     });
   });
 

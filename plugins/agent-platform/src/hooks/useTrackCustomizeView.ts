@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   countBucketOrUnknown,
   type CountBucketOrUnknown,
@@ -41,15 +41,16 @@ function bucketOf(
  * installations in scope. Undefined until every count is read, or
  * {@link CUSTOMIZE_VIEW_DEADLINE_MS} has passed.
  *
- * The counts are the tab strip's, plus the toolchains the Toolchains tab
- * lists, read here in that tab's cached read since the strip does not count
- * them. Connectors and workflows are muster's (its Connectors tab counts
+ * The counts are the tab strip's once complete (`settledCounts`: every
+ * installation in scope answered, and an unread one makes the count
+ * unknown rather than short), plus the toolchains the Toolchains tab lists,
+ * read here in that tab's cached read since the strip does not count them. Connectors and workflows are muster's (its Connectors tab counts
  * every sub-tab), passed in by the page, which mounts muster's provider.
  */
 export function useCustomizeViewEvent(
   muster: MusterViewCounts,
 ): PortalEvent | undefined {
-  const { counts } = useCustomizeData();
+  const { settledCounts: counts } = useCustomizeData();
   const toolchains = useScopedToolchainCount();
   const [isOverdue, setOverdue] = useState(false);
   useEffect(() => {
@@ -60,26 +61,48 @@ export function useCustomizeViewEvent(
     return () => clearTimeout(timer);
   }, []);
 
-  const attributes = {
-    agents: bucketOf(counts.agents, isOverdue),
-    skills: bucketOf(counts.skills, isOverdue),
-    connectors: bucketOf(muster.connectors, isOverdue),
-    models: bucketOf(counts.models, isOverdue),
-    workflows: bucketOf(muster.workflows, isOverdue),
-    workspaces: bucketOf(counts.workspaces, isOverdue),
-    toolchains: bucketOf(toolchains, isOverdue),
-  };
-  const values = Object.values(attributes);
-  if (values.some(value => value === undefined)) {
-    return undefined;
-  }
-  return {
-    name: 'AgentPlatform.customizeViewed',
-    attributes: attributes as Record<
-      keyof typeof attributes,
-      CountBucketOrUnknown
-    >,
-  };
+  const agents = bucketOf(counts.agents, isOverdue);
+  const skills = bucketOf(counts.skills, isOverdue);
+  const connectors = bucketOf(muster.connectors, isOverdue);
+  const models = bucketOf(counts.models, isOverdue);
+  const workflows = bucketOf(muster.workflows, isOverdue);
+  const workspaces = bucketOf(counts.workspaces, isOverdue);
+  const toolchainBucket = bucketOf(toolchains, isOverdue);
+
+  // Memoized on the buckets, so a poll that changes nothing they say hands
+  // the tracker the same event.
+  return useMemo(
+    () =>
+      agents &&
+      skills &&
+      connectors &&
+      models &&
+      workflows &&
+      workspaces &&
+      toolchainBucket
+        ? {
+            name: 'AgentPlatform.customizeViewed',
+            attributes: {
+              agents,
+              skills,
+              connectors,
+              models,
+              workflows,
+              workspaces,
+              toolchains: toolchainBucket,
+            },
+          }
+        : undefined,
+    [
+      agents,
+      skills,
+      connectors,
+      models,
+      workflows,
+      workspaces,
+      toolchainBucket,
+    ],
+  );
 }
 
 /**

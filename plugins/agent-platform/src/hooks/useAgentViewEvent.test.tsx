@@ -128,21 +128,16 @@ describe('useAgentViewEvent', () => {
     expect(render(undefined, undefined)).toBeUndefined();
   });
 
-  it('resolves an agent without a declared toolset as the full preset it reaches', () => {
-    mockUseToolsetResolution.mockReturnValue(
-      resolution({ tools: resolvedTools(150) }),
-    );
-
-    const event = render(makeAgent(), {
+  it('reports the tools of an agent without a declared toolset as unknown, asking muster nothing', () => {
+    const event = render(makeAgent({ skills: 1 }), {
       declared: { state: 'implicit-full', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
     });
 
-    expect(mockUseToolsetResolution).toHaveBeenCalledWith('gazelle', [
-      'preset:full',
-    ]);
-    expect(event?.attributes).toEqual({ skills: '0', tools: '100+' });
+    // The Tools tab does not resolve it either: no read only for usage data.
+    expect(mockUseToolsetResolution).toHaveBeenCalledWith('gazelle', []);
+    expect(event?.attributes).toEqual({ skills: '1', tools: 'unknown' });
   });
 
   it('counts no tools for preset:none, without asking muster', () => {

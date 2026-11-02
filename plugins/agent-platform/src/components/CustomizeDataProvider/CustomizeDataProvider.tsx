@@ -31,6 +31,13 @@ export type CustomizeCounts = {
 export type CustomizeDataValue = {
   counts: CustomizeCounts;
   /**
+   * The same counts once complete: `'loading'` until every installation in
+   * scope has answered, where `counts` already shows the ones that have, and
+   * absent when an installation could not be read and nothing was. For a
+   * report sent once, which must not go out with a partial total.
+   */
+  settledCounts: CustomizeCounts;
+  /**
    * Whether any skill repository is configured; `undefined` until the
    * signed-in config is known.
    */
@@ -64,6 +71,16 @@ function skillCountOf(catalog: SkillCatalog): RouteTabCount | undefined {
   return unreadable ? undefined : uniqueSkills(catalog.skills).length;
 }
 
+/** The skills of every repository; unknown when one could not be read. */
+function settledSkillCountOf(catalog: SkillCatalog): RouteTabCount | undefined {
+  if (catalog.isLoading) {
+    return 'loading';
+  }
+  return catalog.error !== null || catalog.failedRepositories.length > 0
+    ? undefined
+    : uniqueSkills(catalog.skills).length;
+}
+
 const CustomizeDataContext = createContext<CustomizeDataValue | undefined>(
   undefined,
 );
@@ -94,8 +111,8 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
   } = useWorkspacesData();
   const { hasToolchains } = useScopedToolchainInstallations();
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
-  const workspacesUnread =
-    workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
+  const hasWorkspaceFailures = Object.keys(workspaceFailures).length > 0;
+  const workspacesUnread = workspaceCount === 0 && hasWorkspaceFailures;
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
@@ -144,6 +161,25 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
             : workspaceCount;
         })(),
       },
+      settledCounts: {
+        agents: (() => {
+          if (agents.isLoading || agents.isLoadingMore) {
+            return 'loading';
+          }
+          // An installation that could not be read leaves the total short.
+          return agents.unreachableInstallations.length > 0
+            ? undefined
+            : agents.rows.length;
+        })(),
+        models: modelsLoading ? 'loading' : modelRows.length,
+        skills: settledSkillCountOf(skillCatalog),
+        workspaces: (() => {
+          if (workspacesLoading) {
+            return 'loading';
+          }
+          return hasWorkspaceFailures ? undefined : workspaceCount;
+        })(),
+      },
       hasWorkspaces,
       hasToolchains,
       hasSkillRepositories: skillCatalog.isLoading
@@ -162,6 +198,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
       workspacesLoading,
       workspaceCount,
       workspacesUnread,
+      hasWorkspaceFailures,
     ],
   );
 

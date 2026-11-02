@@ -407,6 +407,7 @@ const loadedView: SessionDetailView = {
   isAgentWorking: true,
   taskCount: tasks.length,
   hasConversation: true,
+  isConversationCurrent: true,
   isLoading: false,
   isNotFound: false,
   error: undefined,
@@ -4245,6 +4246,16 @@ describe('SessionDetailPage', () => {
 
       expect(viewEvents(captureEvent)).toEqual([]);
 
+      // An earlier visit's cache, shown while the opening read is on its way:
+      // its turns may be out of date, so they are not reported.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        taskCount: 3,
+        isConversationCurrent: false,
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      expect(viewEvents(captureEvent)).toEqual([]);
+
       mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 7 });
       await userEvent.click(screen.getByRole('button', { name: 'poll' }));
       mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 12 });
@@ -4268,6 +4279,7 @@ describe('SessionDetailPage', () => {
         timeline: emptyTimeline,
         taskCount: 0,
         hasConversation: false,
+        isConversationCurrent: false,
       });
       await renderInTestApp(<SessionDetailPage />, {
         apis: [[analyticsApiRef, analyticsApi]],

@@ -408,6 +408,7 @@ export function SessionDetailPage() {
     tasks,
     taskCount,
     hasConversation,
+    isConversationCurrent,
     isLoading,
     isNotFound,
     error,
@@ -421,16 +422,21 @@ export function SessionDetailPage() {
   const cancellation = useCancelTask(installation, sessionId);
 
   // How long the sessions people open are: once per opening, when the
-  // session and its turns are read, and not again as the conversation polls.
-  useTrackedView(
-    detail && hasConversation
-      ? {
-          name: 'AgentPlatform.sessionViewed',
-          attributes: { turns: countBucket(taskCount) },
-        }
-      : undefined,
-    `${installation}/${sessionId}`,
+  // session and a current read of its turns are in hand (not an older cache
+  // the opening read is about to replace), and not again as it polls.
+  const turnsBucket =
+    detail && isConversationCurrent ? countBucket(taskCount) : undefined;
+  const viewEvent = useMemo(
+    () =>
+      turnsBucket
+        ? {
+            name: 'AgentPlatform.sessionViewed' as const,
+            attributes: { turns: turnsBucket },
+          }
+        : undefined,
+    [turnsBucket],
   );
+  useTrackedView(viewEvent, `${installation}/${sessionId}`);
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.

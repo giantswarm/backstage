@@ -24,9 +24,14 @@ export const COUNT_BUCKETS_OR_UNKNOWN = [...COUNT_BUCKETS, 'unknown'] as const;
 
 export type CountBucketOrUnknown = (typeof COUNT_BUCKETS_OR_UNKNOWN)[number];
 
-/** The bucket a count falls in; a negative or fractional count rounds into one. */
+/**
+ * The bucket a count falls in; a fractional count rounds into one. Anything
+ * below 1 is `0`, and so is NaN, which would otherwise fail every comparison
+ * and pass for the largest bucket. A count that can be missing goes through
+ * {@link countBucketOrUnknown} instead.
+ */
 export function countBucket(count: number): CountBucket {
-  if (count < 1) {
+  if (!(count >= 1)) {
     return '0';
   }
   if (count < 2) {
