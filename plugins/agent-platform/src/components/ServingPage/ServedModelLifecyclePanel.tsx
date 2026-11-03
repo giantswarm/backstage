@@ -7,7 +7,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
-import { formatSeconds } from '../../lib/lifecycle';
+import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { modelLifecycleSteps } from '../../lib/modelLifecycle';
 import {
   requestAuthOf,
@@ -96,8 +96,8 @@ export function describeTry(
       : `no answer without a token (${result.without.error ?? 'unreachable'})`;
   let asPerson: string;
   if (result.with.status === 200) {
-    asPerson = `${result.with.status} as you in ${formatSeconds(
-      result.with.latencyMs / 1000,
+    asPerson = `${result.with.status} as you in ${formatMilliseconds(
+      result.with.latencyMs,
     )}${result.with.content ? ` — “${result.with.content}”` : ''}`;
   } else if (result.with.status > 0) {
     asPerson = `${result.with.status} as you${
