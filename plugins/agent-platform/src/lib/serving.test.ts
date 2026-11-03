@@ -2,6 +2,7 @@ import {
   ModelConfig,
   ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { formatLocalDateFull } from '@giantswarm/backstage-plugin-ui-react';
 import {
   clientLookupOf,
   endpointAuthority,
@@ -18,6 +19,8 @@ import {
   notLoadedReadiness,
   overlayServedModel,
   resolveClientServing,
+  scheduledEviction,
+  servedReadinessMessage,
   servedObjectOfHostname,
   servedObjectOfRoute,
   SERVED_MODEL_READINESS,
@@ -1377,5 +1380,63 @@ describe('clientLookupOf', () => {
       model: 'qwen3:0.6b',
       modelConfig: { name: 'qwen3-0-6b', namespace: 'kagent' },
     });
+  });
+});
+
+describe('scheduledEviction / servedReadinessMessage', () => {
+  const now = new Date('2026-09-02T10:05:00Z');
+  const loaded = {
+    readiness: 'ready' as const,
+    readinessMessage: 'Loaded in memory.',
+  };
+
+  it('tells when a loaded model goes, relative to now, the date and time after it', () => {
+    expect(
+      servedReadinessMessage(
+        { ...loaded, loadedUntil: '2026-09-02T13:05:00Z' },
+        now,
+      ),
+    ).toBe(
+      `Loaded in memory; evicts in about 3 hours (${formatLocalDateFull(
+        '2026-09-02T13:05:00Z',
+      )}).`,
+    );
+    // Tomorrow reads as tomorrow, not as a time today.
+    expect(
+      servedReadinessMessage(
+        { ...loaded, loadedUntil: '2026-09-03T13:05:00Z' },
+        now,
+      ),
+    ).toMatch(/^Loaded in memory; evicts in 1 day \(/);
+  });
+
+  it('keeps the message as given when there is no eviction to tell', () => {
+    for (const loadedUntil of [
+      undefined,
+      'not a time',
+      // Passed: the row outlived its eviction by a poll.
+      '2026-09-02T10:04:00Z',
+      // Ollama's `keep_alive: -1`: kept loaded, not "in over 292 years".
+      '2318-12-24T10:05:00Z',
+    ]) {
+      expect(scheduledEviction(loadedUntil, now)).toBeUndefined();
+      expect(servedReadinessMessage({ ...loaded, loadedUntil }, now)).toBe(
+        'Loaded in memory.',
+      );
+    }
+    expect(scheduledEviction('2026-09-02T13:05:00Z', now)).toEqual(
+      new Date('2026-09-02T13:05:00Z'),
+    );
+    // Only a loaded model is evicted.
+    expect(
+      servedReadinessMessage(
+        {
+          readiness: 'notReady',
+          readinessMessage: 'Not ready.',
+          loadedUntil: '2026-09-02T13:05:00Z',
+        },
+        now,
+      ),
+    ).toBe('Not ready.');
   });
 });
