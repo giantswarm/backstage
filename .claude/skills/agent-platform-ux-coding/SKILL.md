@@ -114,9 +114,9 @@ them and never invent a palette.
   selection allowed). The PO-ruled instance is the command palette's
   result-type chips.
 - The Usage time range is a select, not a direct choice (PO, 2026-10-23,
-  reversing the earlier 7 | 30 | 90 toggle): `LastDaysSelect` (`ui-react`),
-  labelled "Time range", options "Last 7 days", "Last 30 days", "Last 90
-  days". Beside the Environment select it has the same label, box and height.
+  reversing the earlier 7 | 30 | 90 toggle): `UsageWindowSelect`
+  (`agent-platform`), labelled "Time range", options "Last 7 days", "Last 30
+  days", "Last 90 days", then this month so far and the two months before it. Beside the Environment select it has the same label, box and height.
   A window that cannot be chosen is a disabled option with the reason as its
   description, not a tooltip and not a note beside the control.
 
