@@ -30,10 +30,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import {
-  countBucket,
-  useTrackedView,
-} from '@giantswarm/backstage-plugin-analytics-react';
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -424,17 +421,16 @@ export function SessionDetailPage() {
   // How long the sessions people open are: once per opening, when the
   // session and a current read of its turns are in hand (not an older cache
   // the opening read is about to replace), and not again as it polls.
-  const turnsBucket =
-    detail && isConversationCurrent ? countBucket(taskCount) : undefined;
+  const turns = detail && isConversationCurrent ? taskCount : undefined;
   const viewEvent = useMemo(
     () =>
-      turnsBucket
-        ? {
+      turns === undefined
+        ? undefined
+        : {
             name: 'AgentPlatform.sessionViewed' as const,
-            attributes: { turns: turnsBucket },
-          }
-        : undefined,
-    [turnsBucket],
+            attributes: { turns },
+          },
+    [turns],
   );
   useTrackedView(viewEvent, `${installation}/${sessionId}`);
 

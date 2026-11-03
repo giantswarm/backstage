@@ -1,13 +1,7 @@
 export {
-  COUNT_BUCKETS,
-  COUNT_BUCKETS_OR_UNKNOWN,
-  countBucket,
-  countBucketOrUnknown,
-  type CountBucket,
-  type CountBucketOrUnknown,
-} from './countBucket';
-export {
+  COUNT,
   defineEvents,
+  isCount,
   isPortalEventShaped,
   portalEvents,
   toPortalEvent,

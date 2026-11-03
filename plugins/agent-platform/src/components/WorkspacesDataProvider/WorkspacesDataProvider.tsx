@@ -68,6 +68,13 @@ export type WorkspacesData = {
   rows: WorkspaceRow[];
   /** Some installation's list has not answered yet. */
   isLoading: boolean;
+  /**
+   * How many workspaces the person has in scope, across every Organization
+   * (`rows` holds only the picked one's): `'loading'` until the inventory and
+   * every installation in scope answered, `undefined` when one could not be
+   * read (see `failures`), so never a partial total.
+   */
+  totalCount: number | 'loading' | undefined;
   /** Why an installation's workspaces could not be read, by installation. */
   failures: Record<string, string>;
   /**
@@ -267,6 +274,13 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     isAvailable = false;
   }
 
+  let totalCount: number | 'loading' | undefined = allRows.length;
+  if (isLoading || isInventoryPending) {
+    totalCount = 'loading';
+  } else if (Object.keys(failures).length > 0) {
+    totalCount = undefined;
+  }
+
   const value = useMemo<WorkspacesData>(
     () => ({
       isAvailable,
@@ -284,6 +298,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
           (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
         ),
       isLoading,
+      totalCount,
       failures,
       signIns,
       retry,
@@ -296,6 +311,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       installations,
       isAvailable,
       isLoading,
+      totalCount,
       organization,
       organizations,
       setOrganization,

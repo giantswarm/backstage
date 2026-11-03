@@ -107,12 +107,13 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     isAvailable: hasWorkspaces,
     isLoading: workspacesLoading,
     rows: { length: workspaceCount },
+    totalCount: workspaceTotal,
     failures: workspaceFailures,
   } = useWorkspacesData();
   const { hasToolchains } = useScopedToolchainInstallations();
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
-  const hasWorkspaceFailures = Object.keys(workspaceFailures).length > 0;
-  const workspacesUnread = workspaceCount === 0 && hasWorkspaceFailures;
+  const workspacesUnread =
+    workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
@@ -173,12 +174,8 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
         })(),
         models: modelsLoading ? 'loading' : modelRows.length,
         skills: settledSkillCountOf(skillCatalog),
-        workspaces: (() => {
-          if (workspacesLoading) {
-            return 'loading';
-          }
-          return hasWorkspaceFailures ? undefined : workspaceCount;
-        })(),
+        // Every Organization's, where the strip counts the picked one's.
+        workspaces: workspaceTotal,
       },
       hasWorkspaces,
       hasToolchains,
@@ -198,7 +195,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
       workspacesLoading,
       workspaceCount,
       workspacesUnread,
-      hasWorkspaceFailures,
+      workspaceTotal,
     ],
   );
 

@@ -1,12 +1,11 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import type { RouteTabCount } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { CustomizeCounts } from '../components/CustomizeDataProvider';
 import {
-  CUSTOMIZE_VIEW_DEADLINE_MS,
   type MusterViewCounts,
   useTrackCustomizeView,
 } from './useTrackCustomizeView';
@@ -20,7 +19,7 @@ jest.mock('./useToolchainManager', () => ({
   useScopedToolchainCount: () => mockToolchainCount,
 }));
 
-const MUSTER: MusterViewCounts = { connectors: 7, workflows: 0 };
+const MUSTER: MusterViewCounts = { connectors: 27, workflows: 0 };
 
 function renderTracking(muster: MusterViewCounts = MUSTER) {
   const analyticsApi = mockApis.analytics.mock();
@@ -38,15 +37,11 @@ function renderTracking(muster: MusterViewCounts = MUSTER) {
 
 describe('useTrackCustomizeView', () => {
   beforeEach(() => {
-    mockCounts = { agents: 3, skills: 71, models: 1, workspaces: 0 };
-    mockToolchainCount = 12;
+    mockCounts = { agents: 23, skills: 137, models: 12, workspaces: 0 };
+    mockToolchainCount = 4;
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('reports every count in its bucket once all are read', () => {
+  it('reports every count as its exact number once all are read', () => {
     const { captureEvent } = renderTracking();
 
     expect(captureEvent).toHaveBeenCalledTimes(1);
@@ -54,20 +49,21 @@ describe('useTrackCustomizeView', () => {
       expect.objectContaining({
         action: 'AgentPlatform.customizeViewed',
         attributes: {
-          agents: '2-4',
-          skills: '50-99',
-          connectors: '5-9',
-          models: '1',
-          workflows: '0',
-          workspaces: '0',
-          toolchains: '10-19',
+          agents: 23,
+          skills: 137,
+          connectors: 27,
+          models: 12,
+          workflows: 0,
+          workspaces: 0,
+          toolchains: 4,
         },
       }),
     );
   });
 
-  it('waits for a count still being read, and reports once when it lands', () => {
+  it('waits for every count still loading, however long, and reports once when the last lands', () => {
     mockCounts = { ...mockCounts, agents: 'loading' };
+    mockToolchainCount = 'loading';
     const { captureEvent, rerender } = renderTracking({
       ...MUSTER,
       connectors: 'loading',
@@ -75,7 +71,8 @@ describe('useTrackCustomizeView', () => {
 
     expect(captureEvent).not.toHaveBeenCalled();
 
-    mockCounts = { ...mockCounts, agents: 4 };
+    mockCounts = { ...mockCounts, agents: 24 };
+    mockToolchainCount = 4;
     rerender({ ...MUSTER, connectors: 'loading' });
     expect(captureEvent).not.toHaveBeenCalled();
 
@@ -87,55 +84,26 @@ describe('useTrackCustomizeView', () => {
     expect(captureEvent).toHaveBeenCalledTimes(1);
     expect(captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        attributes: expect.objectContaining({
-          agents: '2-4',
-          connectors: '5-9',
-        }),
+        attributes: expect.objectContaining({ agents: 24, connectors: 27 }),
       }),
     );
   });
 
-  it('reports a count that could not be read as unknown, not 0', () => {
-    mockCounts = { ...mockCounts, skills: undefined };
+  it('leaves out a count that could not be read, never sending it as 0 or text', () => {
+    mockCounts = { ...mockCounts, workspaces: undefined };
     mockToolchainCount = undefined;
 
     const { captureEvent } = renderTracking();
 
     expect(captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        attributes: expect.objectContaining({
-          skills: 'unknown',
-          toolchains: 'unknown',
-        }),
-      }),
-    );
-  });
-
-  it('stops waiting at the deadline, with what is still being read as unknown', () => {
-    jest.useFakeTimers();
-    mockToolchainCount = 'loading';
-    const { captureEvent } = renderTracking({
-      ...MUSTER,
-      workflows: 'loading',
-    });
-
-    act(() => {
-      jest.advanceTimersByTime(CUSTOMIZE_VIEW_DEADLINE_MS - 1);
-    });
-    expect(captureEvent).not.toHaveBeenCalled();
-
-    act(() => {
-      jest.advanceTimersByTime(1);
-    });
-
-    expect(captureEvent).toHaveBeenCalledTimes(1);
-    expect(captureEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attributes: expect.objectContaining({
-          agents: '2-4',
-          workflows: 'unknown',
-          toolchains: 'unknown',
-        }),
+        attributes: {
+          agents: 23,
+          skills: 137,
+          connectors: 27,
+          models: 12,
+          workflows: 0,
+        },
       }),
     );
   });

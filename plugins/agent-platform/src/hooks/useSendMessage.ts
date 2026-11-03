@@ -1,8 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import {
-  countBucketOrUnknown,
-  useTrackedMutation,
-} from '@giantswarm/backstage-plugin-analytics-react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import {
@@ -121,19 +118,18 @@ export function useSendMessage(
   const mutation = useTrackedMutation({
     // Neither the text nor its images: that a message went, and how many
     // turns the session has with it.
-    event: (_data, message) => ({
-      name: 'AgentPlatform.messageSent',
-      attributes: {
-        turns: countBucketOrUnknown(
-          turnsWithSentMessage(
-            queryClient,
-            installation,
-            sessionId,
-            message.messageId,
-          ),
-        ),
-      },
-    }),
+    event: (_data, message) => {
+      const turns = turnsWithSentMessage(
+        queryClient,
+        installation,
+        sessionId,
+        message.messageId,
+      );
+      return {
+        name: 'AgentPlatform.messageSent',
+        attributes: turns === undefined ? {} : { turns },
+      };
+    },
     mutationFn: async (message: PendingMessage) => {
       if (!agent) {
         // Not a user-facing path: the composer is withheld when the session's

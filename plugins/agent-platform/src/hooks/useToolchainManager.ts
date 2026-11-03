@@ -5,7 +5,6 @@ import {
   useInstallationInventory,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import { ToolchainManagerClient } from '../apis/ToolchainManagerClient';
 import {
@@ -37,7 +36,7 @@ export function useToolchainManagerClient(
 
 /** {@link useToolchainManagerClient} outside a hook, for a list of installations. */
 function toolchainManagerClientFor(
-  musterApi: MusterApi | undefined,
+  musterApi: ReturnType<typeof useMusterPluginApi>,
   installation: string | undefined,
 ): ToolchainManagerClient | undefined {
   return musterApi && installation

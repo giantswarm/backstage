@@ -785,7 +785,7 @@ describe('AgentDetailPage', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Sessions' }));
     await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
 
-    // Buckets only: neither the agent, its skills nor its tools by name.
+    // Counts only: neither the agent, its skills nor its tools by name.
     const views = jest
       .mocked(analyticsApi.captureEvent)
       .mock.calls.map(([event]) => event)
@@ -793,7 +793,7 @@ describe('AgentDetailPage', () => {
     expect(views).toEqual([
       expect.objectContaining({
         action: 'AgentPlatform.agentViewed',
-        attributes: { skills: '1', tools: '2-4' },
+        attributes: { skills: 1, tools: 3 },
       }),
     ]);
   });

@@ -86,7 +86,7 @@ describe('useAgentViewEvent', () => {
     mockUseToolsetResolution.mockReturnValue(resolution({ status: 'idle' }));
   });
 
-  it('counts the skills and the tools the toolset resolves to, in buckets', () => {
+  it('counts the skills and the tools the toolset resolves to', () => {
     mockUseToolsetResolution.mockReturnValue(
       resolution({ tools: resolvedTools(12) }),
     );
@@ -102,7 +102,7 @@ describe('useAgentViewEvent', () => {
     ]);
     expect(event).toEqual({
       name: 'AgentPlatform.agentViewed',
-      attributes: { skills: '2-4', tools: '10-19' },
+      attributes: { skills: 3, tools: 12 },
     });
   });
 
@@ -128,7 +128,7 @@ describe('useAgentViewEvent', () => {
     expect(render(undefined, undefined)).toBeUndefined();
   });
 
-  it('reports the tools of an agent without a declared toolset as unknown, asking muster nothing', () => {
+  it('leaves out the tools of an agent without a declared toolset, asking muster nothing', () => {
     const event = render(makeAgent({ skills: 1 }), {
       declared: { state: 'implicit-full', carrier: 'pr-reviewer' },
       isReading: false,
@@ -137,14 +137,14 @@ describe('useAgentViewEvent', () => {
 
     // The Tools tab does not resolve it either: no read only for usage data.
     expect(mockUseToolsetResolution).toHaveBeenCalledWith('gazelle', []);
-    expect(event?.attributes).toEqual({ skills: '1', tools: 'unknown' });
+    expect(event?.attributes).toEqual({ skills: 1 });
   });
 
   it('counts no tools for preset:none, without asking muster', () => {
     const event = render(makeAgent(), declared(['preset:none']));
 
     expect(mockUseToolsetResolution).toHaveBeenCalledWith('gazelle', []);
-    expect(event?.attributes).toEqual({ skills: '0', tools: '0' });
+    expect(event?.attributes).toEqual({ skills: 0, tools: 0 });
   });
 
   it('counts no tools for an agent without the gateway', () => {
@@ -154,7 +154,7 @@ describe('useAgentViewEvent', () => {
       isUnreadable: false,
     });
 
-    expect(event?.attributes).toEqual({ skills: '0', tools: '0' });
+    expect(event?.attributes).toEqual({ skills: 0, tools: 0 });
   });
 
   it('adds the tools listed on a directly bound server', () => {
@@ -172,7 +172,7 @@ describe('useAgentViewEvent', () => {
       declared(['server:github']),
     );
 
-    expect(event?.attributes).toHaveProperty('tools', '5-9');
+    expect(event?.attributes).toHaveProperty('tools', 5);
   });
 
   it.each<[string, ToolsetResolution]>([
@@ -180,25 +180,25 @@ describe('useAgentViewEvent', () => {
     ['the resolution failed', resolution({ status: 'error', error: 'x' })],
     ['muster refused a preset', resolution({ status: 'unknown-preset' })],
     ['muster predates toolsets', resolution({ status: 'unsupported' })],
-  ])('reports the tools as unknown when %s', (_, answer) => {
+  ])('leaves the tools out when %s', (_, answer) => {
     mockUseToolsetResolution.mockReturnValue(answer);
 
     const event = render(makeAgent({ skills: 1 }), declared(['server:github']));
 
-    expect(event?.attributes).toEqual({ skills: '1', tools: 'unknown' });
+    expect(event?.attributes).toEqual({ skills: 1 });
   });
 
-  it('reports the tools as unknown when the carrier cannot be read', () => {
+  it('leaves the tools out when the carrier cannot be read', () => {
     const event = render(makeAgent(), {
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: true,
     });
 
-    expect(event?.attributes).toHaveProperty('tools', 'unknown');
+    expect(event?.attributes).toEqual({ skills: 0 });
   });
 
-  it('reports the tools as unknown when a directly bound server allows all of its tools', () => {
+  it('leaves the tools out when a directly bound server allows all of its tools', () => {
     mockUseToolsetResolution.mockReturnValue(
       resolution({ tools: resolvedTools(3) }),
     );
@@ -208,6 +208,6 @@ describe('useAgentViewEvent', () => {
       declared(['server:github']),
     );
 
-    expect(event?.attributes).toHaveProperty('tools', 'unknown');
+    expect(event?.attributes).toEqual({ skills: 0 });
   });
 });

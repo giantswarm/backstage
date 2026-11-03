@@ -4261,11 +4261,11 @@ describe('SessionDetailPage', () => {
       mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 12 });
       await userEvent.click(screen.getByRole('button', { name: 'poll' }));
 
-      // The bucket, not the number, and neither the session nor its id.
+      // The number, and neither the session nor its id.
       expect(viewEvents(captureEvent)).toEqual([
         expect.objectContaining({
           action: 'AgentPlatform.sessionViewed',
-          attributes: { turns: '5-9' },
+          attributes: { turns: 7 },
         }),
       ]);
     });

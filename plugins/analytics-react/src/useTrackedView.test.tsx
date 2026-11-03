@@ -6,7 +6,7 @@ import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import type { PortalEvent } from './events';
 import { useTrackedView } from './useTrackedView';
 
-function viewed(turns: '0' | '1' | '2-4'): PortalEvent {
+function viewed(turns: number): PortalEvent {
   return { name: 'AgentPlatform.sessionViewed', attributes: { turns } };
 }
 
@@ -36,48 +36,48 @@ describe('useTrackedView', () => {
   it('reports the event once it is known', () => {
     const { captureEvent, rerender } = renderView({ event: undefined });
 
-    rerender({ event: viewed('1') });
+    rerender({ event: viewed(1) });
 
     expect(captureEvent).toHaveBeenCalledTimes(1);
     expect(captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionViewed',
-        attributes: { turns: '1' },
+        attributes: { turns: 1 },
       }),
     );
   });
 
   it('reports nothing more on re-renders, polls and refetches', () => {
-    const { captureEvent, rerender } = renderView({ event: viewed('1') });
+    const { captureEvent, rerender } = renderView({ event: viewed(1) });
 
-    rerender({ event: viewed('1') });
-    rerender({ event: viewed('2-4') });
+    rerender({ event: viewed(1) });
+    rerender({ event: viewed(3) });
     rerender({ event: undefined });
-    rerender({ event: viewed('2-4') });
+    rerender({ event: viewed(3) });
 
     expect(captureEvent).toHaveBeenCalledTimes(1);
   });
 
   it('reports again when the mounted page opens something else', () => {
     const { captureEvent, rerender } = renderView({
-      event: viewed('1'),
+      event: viewed(1),
       openKey: 'a',
     });
 
     rerender({ event: undefined, openKey: 'b' });
-    rerender({ event: viewed('0'), openKey: 'b' });
-    rerender({ event: viewed('2-4'), openKey: 'b' });
+    rerender({ event: viewed(0), openKey: 'b' });
+    rerender({ event: viewed(3), openKey: 'b' });
 
     expect(captureEvent).toHaveBeenCalledTimes(2);
     expect(captureEvent).toHaveBeenLastCalledWith(
-      expect.objectContaining({ attributes: { turns: '0' } }),
+      expect.objectContaining({ attributes: { turns: 0 } }),
     );
   });
 
   it('reports again when the page is opened anew', () => {
-    const first = renderView({ event: viewed('1') });
+    const first = renderView({ event: viewed(1) });
     first.unmount();
-    const second = renderView({ event: viewed('1') });
+    const second = renderView({ event: viewed(1) });
 
     expect(first.captureEvent).toHaveBeenCalledTimes(1);
     expect(second.captureEvent).toHaveBeenCalledTimes(1);

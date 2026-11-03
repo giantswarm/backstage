@@ -1,10 +1,6 @@
 import { useMemo } from 'react';
 import type { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
-import {
-  countBucket,
-  countBucketOrUnknown,
-  type PortalEvent,
-} from '@giantswarm/backstage-plugin-analytics-react';
+import type { PortalEvent } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
   type DeclaredToolset,
@@ -105,7 +101,7 @@ function directToolCount(agent: Agent): number | undefined {
  * `preset:` selector stands for any number of tools. Resolved here in the
  * Tools tab's own cached read, so opening that tab afterwards reads nothing
  * again. An agent that declares no toolset reaches everything the gateway
- * gives the viewer, which the page never resolves: its tools are unknown.
+ * gives the viewer, which the page never resolves: its tools are left out.
  */
 export function useAgentViewEvent(
   agent: Agent | undefined,
@@ -126,6 +122,7 @@ export function useAgentViewEvent(
     if (gateway === READING || skillCount === undefined) {
       return undefined;
     }
+    // Left out when either part cannot be known: never a partial number.
     const tools =
       gateway === undefined || direct === undefined
         ? undefined
@@ -133,8 +130,8 @@ export function useAgentViewEvent(
     return {
       name: 'AgentPlatform.agentViewed',
       attributes: {
-        skills: countBucket(skillCount),
-        tools: countBucketOrUnknown(tools),
+        skills: skillCount,
+        ...(tools === undefined ? {} : { tools }),
       },
     };
   }, [gateway, direct, skillCount]);

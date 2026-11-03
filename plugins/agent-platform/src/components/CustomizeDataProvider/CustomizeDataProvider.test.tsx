@@ -61,11 +61,19 @@ jest.mock('../WorkspacesDataProvider', () => ({
   WorkspacesDataProvider: ({ children }: { children: ReactNode }) => children,
   useWorkspacesData: () =>
     mockWorkspacesLoading
-      ? { isAvailable: undefined, isLoading: true, rows: [], failures: {} }
+      ? {
+          isAvailable: undefined,
+          isLoading: true,
+          rows: [],
+          totalCount: 'loading',
+          failures: {},
+        }
       : {
           isAvailable: true,
           isLoading: false,
+          // The picked Organization's three, of five in all.
           rows: Object.keys(mockWorkspaceFailures).length ? [] : [{}, {}, {}],
+          totalCount: Object.keys(mockWorkspaceFailures).length ? undefined : 5,
           failures: mockWorkspaceFailures,
         },
 }));
@@ -194,12 +202,12 @@ describe('CustomizeDataProvider', () => {
   });
 
   describe('the settled counts', () => {
-    it('are the counts once every installation answered', () => {
+    it('are the counts once every installation answered, every Organization’s workspaces', () => {
       expect(readSettled()).toEqual({
         agents: 2,
         models: 1,
         skills: 1,
-        workspaces: 3,
+        workspaces: 5,
       });
     });
 
@@ -211,7 +219,7 @@ describe('CustomizeDataProvider', () => {
         agents: 'loading',
         models: 'loading',
         skills: 1,
-        workspaces: 3,
+        workspaces: 5,
       });
     });
 

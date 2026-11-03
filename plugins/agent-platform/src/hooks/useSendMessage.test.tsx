@@ -180,12 +180,13 @@ describe('useSendMessage', () => {
       expect.any(Function),
       expect.any(AbortSignal),
     );
-    // Reported without the text; the session's turns were never read here.
+    // Reported without the text; the session's turns were never read here,
+    // so they are left out.
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.messageSent',
-        attributes: { turns: 'unknown' },
+        attributes: {},
       }),
     );
   });
@@ -231,7 +232,7 @@ describe('useSendMessage', () => {
       expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'AgentPlatform.messageSent',
-          attributes: { turns: '1' },
+          attributes: { turns: 1 },
         }),
       );
     });
@@ -253,7 +254,7 @@ describe('useSendMessage', () => {
       expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'AgentPlatform.messageSent',
-          attributes: { turns: '5-9' },
+          attributes: { turns: 5 },
         }),
       );
     });
@@ -284,7 +285,7 @@ describe('useSendMessage', () => {
       expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'AgentPlatform.messageSent',
-          attributes: { turns: '2-4' },
+          attributes: { turns: 4 },
         }),
       );
       expect(queryClient.getQueryData<unknown[]>(TASKS_KEY)).toHaveLength(4);
