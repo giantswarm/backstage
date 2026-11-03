@@ -577,7 +577,7 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
     api.filterTools.mockClear();
   });
 
-  it('offers a one-option dropdown over three workflows whose last runs all went the same way', async () => {
+  it('offers no last-run dropdown over three workflows whose last runs all went the same way', async () => {
     mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
       makeWorkflow(name, 2),
     );
@@ -596,7 +596,9 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
       }),
     );
     expect(rows()).toHaveLength(3);
-    expect(await lastRunOptions()).toEqual(['Succeeded 3']);
+    expect(
+      screen.queryByRole('button', { name: /Filter by last run/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters three workflows by their last run, the newest run deciding', async () => {

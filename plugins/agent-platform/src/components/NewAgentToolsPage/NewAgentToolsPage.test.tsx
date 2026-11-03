@@ -901,7 +901,7 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('tool:x_kubernetes_get_pods');
     });
 
-    it('lists three connectors plainly, without a search or paging', async () => {
+    it('lists three connectors with a search, without paging (SEARCH_MIN)', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -912,9 +912,7 @@ describe('NewAgentToolsPage', () => {
       expect(
         screen.getAllByRole('group', { name: /^Connector / }),
       ).toHaveLength(3);
-      expect(
-        screen.queryByLabelText('Search connectors'),
-      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Search connectors')).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /more connectors/ }),
       ).not.toBeInTheDocument();
@@ -1220,11 +1218,27 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('');
     });
 
-    it('has no search or filter over a three-entry catalogue', async () => {
+    it('counts a connector awaiting sign-in among the searchable entries', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
-        baseTools: [TOOLS[0], TOOLS[2], TOOLS[4]],
+        baseTools: [TOOLS[0], TOOLS[4]],
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+
+      // A tool, a workflow and `pro`, which lists no tools until signed in to.
+      expect(screen.getByLabelText('Search tools')).toBeInTheDocument();
+    });
+
+    it('has no search or filter over a two-entry catalogue', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        baseTools: [TOOLS[0]],
       });
       await renderStep({ api });
       const user = userEvent.setup();

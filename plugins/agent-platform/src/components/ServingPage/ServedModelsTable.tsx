@@ -19,6 +19,7 @@ import {
   CatalogNoMatch,
   countNoun,
   INITIAL_ROWS,
+  isSearchableList,
   matchesQuery,
   ShowMore,
   type StackedRowItem,
@@ -1374,13 +1375,6 @@ function ServedModelsGroupTable({
   );
 }
 
-/**
- * How many rows, across every group, before the page offers a model search:
- * one Ollama or LM Studio backend easily holds 50 pulled models, three are
- * read at a glance.
- */
-const SERVED_MODELS_SEARCH_MIN = INITIAL_ROWS;
-
 /** Whether a row is the model a search names: its served name, its display name, or its source. */
 function matchesServedModel(query: string, row: ServedModelRow): boolean {
   return matchesQuery(
@@ -1460,7 +1454,7 @@ export function ServedModelsTable({
   // force so it can still be cleared.
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
-  const isSearchable = rows.length > SERVED_MODELS_SEARCH_MIN || trimmed !== '';
+  const isSearchable = isSearchableList(rows.length, trimmed !== '');
   const matching = useMemo(
     () =>
       trimmed === ''

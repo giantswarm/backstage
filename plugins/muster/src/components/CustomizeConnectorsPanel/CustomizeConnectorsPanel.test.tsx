@@ -985,19 +985,23 @@ describe('CustomizeConnectorsPanel', () => {
       expect(screen.queryByText(/were not searched/)).not.toBeInTheDocument();
     });
 
-    it('offers a one-option dropdown over connectors that all answer', async () => {
+    it('offers no connection filter over connectors that all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
       // And muster itself.
       expect(bodyRows()).toHaveLength(4);
-      await screen.findByRole('button', { name: /Filter by connection/ });
+      // muster signs in with the company login, the rest with none.
+      await screen.findByRole('button', { name: /Filter by sign-in/ });
       expect(await filterOptions('sign-in')).toEqual([
         'No sign-in 3',
         'Company login 1',
       ]);
-      expect(await filterOptions('connection')).toEqual(['Connected 4']);
+      // One connection state for all: nothing to choose.
+      expect(
+        screen.queryByRole('button', { name: /Filter by connection/ }),
+      ).not.toBeInTheDocument();
     });
 
     it('filters three connectors by sign-in and by connection', async () => {
@@ -1036,9 +1040,11 @@ describe('CustomizeConnectorsPanel', () => {
       ];
       await renderPanel();
 
-      await screen.findByRole('button', { name: /Filter by connection/ });
+      // All answer, so no connection filter; muster's company login makes
+      // the sign-in one.
+      await screen.findByRole('button', { name: /Filter by sign-in/ });
       expect(
-        filterDropdown('connection').compareDocumentPosition(
+        filterDropdown('sign-in').compareDocumentPosition(
           filterDropdown('tags'),
         ) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();

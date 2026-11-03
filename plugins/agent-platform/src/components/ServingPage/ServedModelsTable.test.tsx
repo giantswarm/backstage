@@ -1274,8 +1274,8 @@ describe('ServedModelsTable · at scale', () => {
     within(screen.getByTestId(`served-models-group-${key}`)).getAllByRole('row')
       .length - 1;
 
-  it('shows three models with no search and no reveal control', async () => {
-    await renderTable(<ServedModelsTable rows={rows} />);
+  it('shows two models with no search and no reveal control', async () => {
+    await renderTable(<ServedModelsTable rows={rows.slice(0, 2)} />);
 
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
