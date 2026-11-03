@@ -60,9 +60,7 @@ const useStyles = makeStyles({
     fontSize: SIZES[size].icon,
   }),
   // Long enough for a sentence, and never wider than a phone allows.
-  // Multi-line hints (a reason plus warnings) keep their line breaks. The
-  // tooltip keeps bui's own width: bui's `Tooltip` drops a `className`, so a
-  // class on it would apply nothing.
+  // Multi-line hints (a reason plus warnings) keep their line breaks.
   popoverContent: {
     display: 'block',
     maxWidth: 'min(280px, calc(100vw - 48px))',
