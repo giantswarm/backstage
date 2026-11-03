@@ -30,7 +30,6 @@ function workspace(name: string, organization: string): Workspace {
     sources: [
       { provider: 'github', owner: 'example-org', repositories: [name] },
     ],
-    sync: { schedule: 'nightly' },
     resourceVersion: '1',
     createdAt: '2026-10-01T00:00:00Z',
     lastSync: { time: '2026-10-14T03:00:00Z', result: 'Succeeded' },

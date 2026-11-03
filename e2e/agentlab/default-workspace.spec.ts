@@ -55,7 +55,6 @@ async function stageWorkspace(page: Page) {
               name: WORKSPACE,
               organization: answer?.organizations?.[0] ?? 'lab',
               sources: [],
-              sync: { schedule: 'nightly' },
               resourceVersion: '1',
               createdAt: NOW,
               repositories: 3,
