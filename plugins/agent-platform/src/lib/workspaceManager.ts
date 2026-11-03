@@ -3,8 +3,8 @@
  *
  * workspace-manager manages workspaces: the sources an agent Session works on
  * (one owner on one provider instance each, selected by name, language and
- * topics), synced on a cycle into bare mirrors on the workspace's one
- * read-write-many volume, with a directory per Session on it. It checks on
+ * topics), synced into bare mirrors on the workspace's one read-write-many
+ * volume, with a directory per Session on it. It checks on
  * every call that the caller is a member of the workspace's Organization;
  * `authorize_workspace` checks, with the provider App token muster attaches
  * for the person, that they read every repository before a Session starts. The
@@ -69,24 +69,6 @@ export type WorkspaceSource = {
   includeForks?: boolean;
 };
 
-export type Weekday =
-  | 'monday'
-  | 'tuesday'
-  | 'wednesday'
-  | 'thursday'
-  | 'friday'
-  | 'saturday'
-  | 'sunday';
-
-/**
- * When the mirrors are fetched: nightly (the default), weekly, or custom
- * weekdays at an hour (UTC). A workspace also syncs after every change and on
- * request.
- */
-export type WorkspaceSyncCycle =
-  | { schedule: 'nightly' | 'weekly' }
-  | { schedule: 'custom'; weekdays: Weekday[]; hour: number };
-
 /** The volume's sizing overrides, as Kubernetes quantities (`8Gi`). */
 export type WorkspaceSizing = {
   /** Replaces the computed headroom when larger. */
@@ -100,10 +82,10 @@ export type SyncTrigger =
   | 'change'
   | 'request'
   | 'retry'
+  /** Cleanup only: a Session directory reached its cleanup date. */
   | 'cleanup'
   | 'deletion'
-  | 'sessionDeleted'
-  | 'schedule';
+  | 'sessionDeleted';
 
 /** The last sync cycle's outcome. */
 export type LastSync = {
@@ -151,7 +133,6 @@ export type Workspace = {
   /** The Organization the workspace belongs to, for good. */
   organization: string;
   sources: WorkspaceSource[];
-  sync: WorkspaceSyncCycle;
   sizing?: WorkspaceSizing;
   /** What `update_workspace` refuses a stale write against. */
   resourceVersion: string;
@@ -159,8 +140,6 @@ export type Workspace = {
   /** Being deleted: no new Session starts on it. */
   deleting?: boolean;
   lastSync?: LastSync;
-  /** When the schedule starts the next cycle; absent while deleting. */
-  nextSync?: string;
   activeSync?: ActiveSync;
   syncRequest?: SyncRequest;
   /** The number of repositories the last sync resolved. */
@@ -245,8 +224,6 @@ export type CreateWorkspaceInput = {
   /** The caller must be a member. */
   organization: string;
   sources: WorkspaceSource[];
-  /** Nightly when omitted. */
-  sync?: WorkspaceSyncCycle;
   sizing?: WorkspaceSizing;
 };
 
@@ -254,8 +231,6 @@ export type UpdateWorkspaceInput = {
   name: string;
   /** Replace the current sources. */
   sources: WorkspaceSource[];
-  /** Kept when omitted. */
-  sync?: WorkspaceSyncCycle;
   /** Kept when omitted; `{}` clears the overrides. */
   sizing?: WorkspaceSizing;
   /** From `get_workspace`: the update is refused when it changed since. */
