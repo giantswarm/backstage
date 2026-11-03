@@ -10,6 +10,7 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
+import { AVERAGE_RATE_CAVEAT } from '../../lib/costBasis';
 import {
   formatCount,
   formatMoney,
@@ -369,11 +370,13 @@ export function ByAgentTable({
         {showsEstimate && hasRate && (
           <>
             Cost is estimated: your token counts priced at{' '}
-            {rateWindowDays ? `${lastDaysNoun(rateWindowDays)} of ` : ''}
-            {installation ?? 'this environment'}&apos;s observed cost per token
-            — <strong>a blend across every model</strong>, not each agent&apos;s
-            own. Session pages use each session&apos;s own model rate, so the
-            figures differ. It is not a billed figure.
+            {installation ?? 'this environment'}&apos;s average cost per token
+            {rateWindowDays
+              ? ` over ${lastDaysNoun(rateWindowDays)}`
+              : ''} — <strong>a blend across every model</strong>, not each
+            agent&apos;s own. {AVERAGE_RATE_CAVEAT} Session pages use each
+            session&apos;s own model rate, so the figures differ. It is not a
+            billed figure.
           </>
         )}
         {showsEstimate && !hasRate && (

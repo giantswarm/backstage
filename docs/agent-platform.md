@@ -3396,6 +3396,39 @@ that falls back to the ModelConfig's resource name and never matches
 `gen_ai_response_model`. It is the agent's model now: kagent pins no model to a
 session.
 
+#### The rate counts each token once, and is the window's mix
+
+The gateway's `input` token type already holds the cache reads and writes:
+since v1.5.0, agentgateway normalises every provider's input count to include
+them (agentgateway#2880) and records them again as `input_cache_read` and
+`input_cache_write`. `deriveTokenRates` therefore divides the spend by `input`
+plus `output` (plus any type it does not know), never by the sum of all four.
+Summing them counted cached input twice and halved the rate: on `gazelle`,
+claude-sonnet-5-5 read $0.30/1M where $0.59/1M was right
+(giantswarm/giantswarm#38457).
+
+An older gateway leaves the cache types out of `input`, and subtracting them
+there would inflate the rate about tenfold. The totals tell the two apart:
+inside `input`, the cache types cannot exceed it (on `gazelle` they sit at
+99.8–99.998% of it per agent and model), while outside it a cache-heavy mix
+has them at many times `input`. So `deriveTokenRates` subtracts them only when
+they are at most 1% above `input`. A 7-day window that straddles the upgrade
+holds both conventions and can be off either way until it rolls past.
+
+Even counted once, the blend is the window's token mix, not the session's.
+Over a week most input is cache reads, which Claude models price at a tenth of
+fresh input, so the rate undercharges a session that reads little from cache.
+The issue's one-turn session (9,800 input, 1,000 output, billed $0.0296)
+estimates at $0.0064. A long session, whose own mix is mostly cache reads like
+the window's, comes out close. Pricing the two apart takes spend by token type,
+which the cost metric does not carry (see below).
+
+The estimate stays a 7-day average, and says so wherever it shows: the cost
+popover's basis line (`describeCostBasis`) and the Your sessions note
+(`ByAgentTable`) call it the average cost per token over the last 7 days and
+add `AVERAGE_RATE_CAVEAT`: "An average can be low for short sessions that read
+little from cache."
+
 **A model without a usable price contributes no cost, not an error.** Only
 `agentgateway_cost_catalog_lookups_total` tells zero spend from unpriced spend,
 which is why the Cost tab has a pricing-coverage alert and an unpriced-models
@@ -3482,7 +3515,8 @@ it out of its debug log (`redactQuery`).
   `dailyWindowDayKeys` and `todayDayKey` take the range instead of reading the
   clock, so they cannot straddle midnight.
 - **The cost metric has no `gen_ai_token_type`.** Tokens split four ways
-  (`input`, `output`, `input_cache_read`, `input_cache_write`); spend does not.
+  (`input`, `output`, `input_cache_read`, `input_cache_write`, the two cache
+  types also counted in `input`); spend does not.
   `deriveTokenRates` returns only `blended`; its per-type branch waits for a
   gateway release that adds the label. Check with
   `count by (gen_ai_token_type) (agentgateway_gen_ai_client_cost_usd_total)`.

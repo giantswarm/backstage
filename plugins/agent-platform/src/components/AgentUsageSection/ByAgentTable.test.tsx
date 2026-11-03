@@ -116,7 +116,7 @@ describe('ByAgentTable', () => {
 
     expect(
       screen.getByText(
-        /priced at the last 7 days of gazelle's observed cost per token/,
+        /priced at gazelle's average cost per token over the last 7 days/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/\b7d\b/)).not.toBeInTheDocument();
@@ -180,6 +180,22 @@ describe('ByAgentTable', () => {
       expect(
         screen.getByText(/^No actual cost: the gateway on gazelle/),
       ).toHaveTextContent(/Cost is estimated/);
+    });
+
+    it('says the estimate is a weekly average that can be low', () => {
+      render(
+        <ByAgentTable
+          rows={ROWS}
+          emptyMessage="none"
+          rates={{ blended: 3 / 1_000_000 }}
+          rateWindowDays={7}
+          installation="gazelle"
+        />,
+      );
+
+      expect(screen.getByText(/^Cost is estimated/)).toHaveTextContent(
+        "Cost is estimated: your token counts priced at gazelle's average cost per token over the last 7 days — a blend across every model, not each agent's own. An average can be low for short sessions that read little from cache.",
+      );
     });
 
     it('holds a skeleton while it is not known whether there is one', () => {
