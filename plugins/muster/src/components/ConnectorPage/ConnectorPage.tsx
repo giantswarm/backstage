@@ -35,7 +35,6 @@ import {
   ShellPageBadgeSkeleton,
   StatusDot,
   type StatusDotTone,
-  StatusHint,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -83,6 +82,7 @@ import {
   portalOnlyStatus,
   ServerAuthActions,
   serverStateLabel,
+  StatusWithHint,
   SessionGate,
   useConnectorGroupPaths,
   useServerSignIn,
@@ -188,15 +188,13 @@ function StatusBadge({
    */
   portalOnly?: ExplainedStatusText;
 }) {
-  if (portalOnly) {
+  if (row.kind === 'server' && portalOnly) {
     return (
-      <Flex align="center" gap="1">
-        <StatusDot tone={portalOnly.tone} label={portalOnly.label} />
-        <StatusHint
-          subject={displayName}
-          explanation={portalOnly.explanation}
-        />
-      </Flex>
+      <StatusWithHint
+        {...portalOnly}
+        subject={displayName}
+        title={row.server.getStateExplanation()}
+      />
     );
   }
   if (row.kind === 'server') {
@@ -308,7 +306,9 @@ function ConnectorPageContent({
     { noun: 'connector' },
   );
   // muster's report of this person's sign-in where it was read, so the badge
-  // and the Customize list agree on "Portal only".
+  // and the Customize list agree on "Portal only"; without one (no muster
+  // session, still loading) nobody signed in, and the badge keeps muster's
+  // state.
   const portalOnly = singular
     ? portalOnlyStatus(
         singular,

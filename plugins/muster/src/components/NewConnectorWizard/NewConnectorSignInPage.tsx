@@ -133,14 +133,12 @@ function GrantScopeChoice({
   } else if (grantScope === 'subject') {
     description = 'A sign-in lasts until the person signs out of it.';
   }
-  let warning: string | undefined;
-  if (!hasIssuer) {
-    warning =
-      'Without the issuer URL a sign-in covers one session only: the portal, or one agent conversation.';
-  } else if (grantScope === 'session') {
-    warning =
-      'A sign-in covers one session only: a sign-in in the portal does not reach agents, and each agent conversation needs its own.';
-  }
+  // Why the choice is disabled is the description's to say; the warning only
+  // says what a session sign-in means.
+  const warning =
+    grantScope === 'session'
+      ? 'A sign-in covers one session only: the portal, or one agent conversation.'
+      : undefined;
   return (
     <Flex direction="column" gap="3">
       <RadioGroup
@@ -410,7 +408,10 @@ export function NewConnectorSignInPage() {
                 Advanced: sign-in settings for apps muster can&apos;t look up
               </span>
             }
+            // An issuer opens it too: the grant-scope choice above depends on
+            // it and sends people here for it.
             defaultExpanded={
+              Boolean(state.issuer.trim()) ||
               hasAdvancedAuthorizationServer(state) ||
               (validation.submitted && hasAdvancedProblem)
             }

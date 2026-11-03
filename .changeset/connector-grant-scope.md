@@ -13,6 +13,8 @@ and say so where it does not.
   picked, the wizard warns: "Agents will ask you to sign in again in every
   conversation." Editing a connector keeps the grant scope it already has.
 - The Connectors list and the connector page show "Portal only", with an
-  explanation in a hint, for a connector whose sign-in serves one muster
-  session, instead of a plain green "Connected". The scope comes from muster's
-  `auth://status` (`grant_scope`) and falls back to the MCPServer spec.
+  explanation in a hint, for a connector the person signed in to whose sign-in
+  serves this muster session only, instead of a plain green "Connected". The
+  Connectors list's Connection filter has a matching "Portal only" bucket. The
+  scope comes from muster's `auth://status` (`grant_scope`) and falls back to
+  the MCPServer spec.

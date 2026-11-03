@@ -726,6 +726,15 @@ describe('ConnectorPage', () => {
       );
     });
 
+    it('keeps muster’s state until muster reports this session signed in', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
+      await renderAt(`${BASE}/grafana-cloud`, { api });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+
     it('reads Connected where muster reports the grant as the person’s', async () => {
       await renderAt(`${BASE}/grafana-cloud`, {
         api: signedIn({ grant_scope: 'subject' }),

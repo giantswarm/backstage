@@ -11,16 +11,15 @@ import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
 import {
+  type ExplainedStatusText,
   isConnecting,
   isSsoRefused,
   needsSignIn,
+  PORTAL_ONLY_LABEL,
   portalOnlyStatus,
   SSO_REFUSED_STATUS,
   type StatusText,
 } from '../shared';
-
-/** A row's state, with the sentence a hint beside it says, where it has one. */
-export type ConnectorStatusText = StatusText & { explanation?: string };
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -79,7 +78,7 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): ConnectorStatusText {
+): ExplainedStatusText {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(
@@ -129,10 +128,17 @@ export function connectorStatus(
 
 /** Whether a person can reach a connector's tools now, in a few buckets. */
 export type ConnectorReach =
-  'connected' | 'partial' | 'sign-in' | 'not-connected' | 'deactivated';
+  | 'connected'
+  | 'portal-only'
+  | 'partial'
+  | 'sign-in'
+  | 'not-connected'
+  | 'deactivated';
 
 export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
   connected: 'Connected',
+  // Named as the row's state, so the filter and the row agree.
+  'portal-only': PORTAL_ONLY_LABEL,
   partial: 'Partly connected',
   'sign-in': 'Sign-in needed',
   'not-connected': 'Not connected',
@@ -142,6 +148,7 @@ export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
 /** The order the Connection filter offers its buckets in. */
 export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
   'connected',
+  'portal-only',
   'partial',
   'sign-in',
   'not-connected',
@@ -150,8 +157,9 @@ export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
 
 /**
  * A row's {@link connectorStatus} as a filter bucket (T49): the many states
- * muster reports fold into whether the tools answer, answer for some of a
- * family, wait on this person's sign-in, do not answer, or are switched off.
+ * muster reports fold into whether the tools answer, answer in the portal
+ * only (a sign-in serving this session), answer for some of a family, wait on
+ * this person's sign-in, do not answer, or are switched off.
  */
 export function connectorReach(
   entry: ServerListEntry,
@@ -181,6 +189,9 @@ export function connectorReach(
   }
   if (authStatus && isConnecting(authStatus)) {
     return 'not-connected';
+  }
+  if (portalOnlyStatus(server, entry.displayName, authStatus)) {
+    return 'portal-only';
   }
   return mcpServerStateSeverity(server.getState()) === 'ok'
     ? 'connected'

@@ -88,7 +88,21 @@ describe('connectorStatus', () => {
     expect(
       connectorStatus(entry, { name: 'grafana-cloud', status: 'connected' }),
     ).toEqual(portalOnly);
-    expect(connectorStatus(entry)).toEqual(portalOnly);
+    // Only on muster's word that this session is connected: without a report
+    // (loading, no muster session) nobody signed in, and a failed connection
+    // is no working sign-in.
+    const connected = { label: 'Connected', tone: 'success' };
+    expect(connectorStatus(entry)).toEqual(connected);
+    for (const status of [
+      'disconnected',
+      'unreachable',
+      'failed',
+      'error',
+    ] as const) {
+      expect(
+        connectorStatus(entry, { name: 'grafana-cloud', status }),
+      ).not.toHaveProperty('label', 'Portal only');
+    }
     // A sign-in muster still asks for comes first.
     expect(
       connectorStatus(entry, {
@@ -242,6 +256,20 @@ describe('connectorReach', () => {
         status: 'reauth_required',
       }),
     ).toBe('sign-in');
+  });
+
+  it('files a sign-in serving this session only under its own bucket', () => {
+    const entry = single(oauthServer('grafana-cloud'));
+    expect(
+      connectorReach(entry, { name: 'grafana-cloud', status: 'connected' }),
+    ).toBe('portal-only');
+    expect(connectorReach(entry)).toBe('connected');
+    expect(
+      connectorReach(single(oauthServer('github', 'subject')), {
+        name: 'github',
+        status: 'connected',
+      }),
+    ).toBe('connected');
   });
 
   it('files an SSO server that refused the sign-in under not connected, never sign-in', () => {

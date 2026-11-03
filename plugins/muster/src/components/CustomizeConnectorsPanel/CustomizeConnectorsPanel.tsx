@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo } from 'react';
+import { Fragment, type ReactNode, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
@@ -27,8 +27,6 @@ import {
   StackedRow,
   type StackedRowItem,
   StackedRowList,
-  StatusDot,
-  StatusHint,
   isAwaitingData,
   stopRowPress,
   useCatalogFilters,
@@ -58,6 +56,8 @@ import {
   SessionGate,
   SignInStatusActions,
   SignInStatusText,
+  StatusWithHint,
+  type ExplainedStatusText,
   useConnectorGroupPaths,
   useServerPageLinks,
   useServerSignInStatus,
@@ -71,7 +71,6 @@ import {
   type ConnectorReach,
   connectorReach,
   connectorStatus,
-  type ConnectorStatusText,
   musterAuthLabel,
   musterReach,
   type MusterSessionState,
@@ -109,7 +108,7 @@ type Row = {
   auth: string;
   tools?: string;
   /** The row's state, from muster's sign-in report and the server's own. */
-  status: ConnectorStatusText;
+  status: ExplainedStatusText;
   /** The muster server to sign in to, where muster asks this person to. */
   signInServer?: string;
   /** Why that sign-in cannot help now (a deactivated connector). */
@@ -185,28 +184,28 @@ function ConnectorStatusCell({
   installation: string;
 }) {
   if (!hasSignIn(row)) {
+    if (!row.status.label) {
+      return <Cell />;
+    }
+    const status = (
+      <StatusWithHint {...row.status} subject={row.entry.displayName} />
+    );
     // Pressing a plain state opens the connector, like the rest of the row;
-    // the hint beside it must not.
+    // a state with a hint keeps the press, as a sign-in's does.
     return (
       <Cell>
-        <PlainStatus
-          status={row.status}
-          subject={row.entry.displayName}
-          stopPress
-        />
+        {row.status.explanation ? (
+          <StopRowPress>{status}</StopRowPress>
+        ) : (
+          status
+        )}
       </Cell>
     );
   }
   return (
     <Cell>
       {/* The row opens the connector; the sign-in and the hint must not. */}
-      <span
-        onPointerDown={stopRowPress}
-        onPointerUp={stopRowPress}
-        onClick={stopRowPress}
-        onKeyDown={stopRowPress}
-        role="presentation"
-      >
+      <StopRowPress>
         <ServerSignInStatus
           noun="connector"
           serverName={row.signInServer}
@@ -215,49 +214,23 @@ function ConnectorStatusCell({
           status={row.status}
           signInGate={row.signInGate}
         />
-      </span>
+      </StopRowPress>
     </Cell>
   );
 }
 
-/**
- * A row's state without a sign-in: the dot and its words, and the hint with
- * its explanation where the state has one ("Portal only"). In a table row the
- * hint keeps its press to itself (`stopPress`), since the row opens the
- * connector.
- */
-function PlainStatus({
-  status: { label, tone, explanation },
-  subject,
-  stopPress = false,
-}: {
-  status: ConnectorStatusText;
-  subject: string;
-  stopPress?: boolean;
-}) {
-  if (!label) {
-    return null;
-  }
-  if (!explanation) {
-    return <StatusDot tone={tone} label={label} />;
-  }
+/** Keeps a press inside to itself: the row around it opens the connector. */
+function StopRowPress({ children }: { children: ReactNode }) {
   return (
-    <Flex align="center" gap="1">
-      <StatusDot tone={tone} label={label} />
-      {stopPress ? (
-        <span
-          onPointerDown={stopRowPress}
-          onPointerUp={stopRowPress}
-          onClick={stopRowPress}
-          onKeyDown={stopRowPress}
-          role="presentation"
-        >
-          <StatusHint subject={subject} explanation={explanation} />
-        </span>
-      ) : (
-        <StatusHint subject={subject} explanation={explanation} />
-      )}
-    </Flex>
+    <span
+      onPointerDown={stopRowPress}
+      onPointerUp={stopRowPress}
+      onClick={stopRowPress}
+      onKeyDown={stopRowPress}
+      role="presentation"
+    >
+      {children}
+    </span>
   );
 }
 
@@ -344,10 +317,7 @@ function ConnectorStackedRow({
       {...(row.status.label
         ? {
             status: (
-              <PlainStatus
-                status={row.status}
-                subject={row.entry.displayName}
-              />
+              <StatusWithHint {...row.status} subject={row.entry.displayName} />
             ),
           }
         : {})}

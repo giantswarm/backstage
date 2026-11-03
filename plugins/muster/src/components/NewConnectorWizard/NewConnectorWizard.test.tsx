@@ -803,6 +803,10 @@ describe('shell connector wizard', () => {
           name: 'Again in every conversation (session)',
         }),
       ).toBeChecked();
+      // The issuer the choice depends on is on screen, Advanced open.
+      expect(
+        screen.getByLabelText(/^Where people sign in \(issuer URL\)/),
+      ).toHaveValue('https://auth.example.com');
       expect(
         screen.getByText(
           'Agents will ask you to sign in again in every conversation.',
