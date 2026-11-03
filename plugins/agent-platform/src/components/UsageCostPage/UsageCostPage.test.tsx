@@ -3,6 +3,11 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { usageRouteRef } from '../../routes';
 import type { LlmUsage } from '../../lib/llmUsage';
 import { formatDayWithYear } from '../../lib/formatDay';
+import {
+  previousUsageMonth,
+  usageMonthLabel,
+  usageMonthOf,
+} from '../../lib/usageWindow';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageCostPage } from './UsageCostPage';
 
@@ -13,6 +18,7 @@ jest.mock('../LlmUsage', () => ({
   CostPerDayCard: () => <div>cost-per-day</div>,
   LlmByAgentTable: () => <div>by-agent-table</div>,
   LlmByModelTable: () => <div>by-model-table</div>,
+  LlmByPersonTable: () => <div>by-person-table</div>,
   LlmByOrganizationTable: ({
     hrefFor,
     rows,
@@ -237,6 +243,43 @@ describe('UsageCostPage with gateway metrics', () => {
     expect(
       screen.getByRole('link', { name: 'Show all organizations' }),
     ).toHaveAttribute('href', '/usage/cost?window=7d');
+  });
+
+  it('reports a calendar month, with the by-person table, when a link names one', async () => {
+    const month = previousUsageMonth(usageMonthOf(Date.now()));
+    const label = usageMonthLabel(month);
+    view.usage = { ...usage(), window: { kind: 'month', month } };
+
+    renderPage(`/usage/cost?window=${month}`);
+
+    expect(
+      await caption(
+        new RegExp(
+          `Shows the spend of every organization on gazelle in ${label}, for everyone`,
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ month, byPerson: true });
+    expect(screen.getByText('by-person-table')).toBeInTheDocument();
+    expect(screen.getByText('by-organization-table')).toBeInTheDocument();
+    // The change against the month before, not against "the previous N days".
+    expect(
+      screen.getByText(
+        `▲ 25% vs ${usageMonthLabel(previousUsageMonth(month))}`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no by-person table in a days window', async () => {
+    renderPage('/usage/cost?window=7d');
+
+    expect(await screen.findByText('by-agent-table')).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({
+      days: 7,
+      month: undefined,
+      byPerson: false,
+    });
+    expect(screen.queryByText('by-person-table')).toBeNull();
   });
 
   it('names the platform as the scope in a sentence', async () => {

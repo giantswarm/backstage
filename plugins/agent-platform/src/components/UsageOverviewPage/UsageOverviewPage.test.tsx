@@ -70,6 +70,7 @@ function usage(overrides: Partial<LlmUsage['totals']> = {}): LlmUsage {
         { day: '2026-10-11', calls: 12 },
       ],
     },
+    partialDay: '2026-10-11',
     reliability: {
       totalRequests: 1_234,
       errorRequests: 5,
@@ -400,6 +401,29 @@ describe('UsageOverviewPage', () => {
       within(grid).getByRole('button', {
         name: /^Sun, .*11.* \(today, so far\): 12 model calls$/,
       }),
+    ).toBeInTheDocument();
+  });
+
+  it('calls no day partial in a window that has ended', async () => {
+    // A past month: its last day is whole, and nothing is "so far".
+    const ended = usage();
+    delete ended.partialDay;
+    view.usage = ended;
+
+    renderPage();
+
+    const grid = await screen.findByRole('group', {
+      name: /^Model calls per day:/,
+    });
+    expect(
+      within(grid).getByRole('button', {
+        name: /^Sun, .*11.*: 12 model calls$/,
+      }),
+    ).toBeInTheDocument();
+    expect(within(grid).queryByRole('button', { name: /so far/ })).toBeNull();
+    expect(screen.queryByText(/today's so far/)).toBeNull();
+    expect(
+      screen.getByText("Every user's calls through the gateway, by UTC day."),
     ).toBeInTheDocument();
   });
 
