@@ -24,9 +24,9 @@ export type ConfirmationAnswer = {
   /** The user's words, for the transcript. */
   text?: string;
   /**
-   * The status message that asked (`PendingConfirmation.askedIn`). Kept here
-   * only: never sent, it tells the question this answers apart from a later
-   * one in the same task.
+   * The status message that asked (`PendingConfirmation.askedIn`). It tells
+   * the question this answers apart from a later one in the same task: the
+   * backend refuses the answer (409) once the task asks in another message.
    */
   askedIn?: string;
 };
