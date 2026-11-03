@@ -95,10 +95,12 @@ jest.mock('../ModelHostingSharedIdentity', () => ({
 // Whether an installation in view runs cluster-manager: what offers the GPU
 // pools and the Model cache tab.
 let mockClusterManager: string[] = [];
+// Whether muster's server lists are still being read.
+let mockClusterManagerLoading = false;
 jest.mock('../../hooks/useClusterManager', () => ({
   useClusterManagerAvailability: () => ({
     available: mockClusterManager,
-    isLoading: false,
+    isLoading: mockClusterManagerLoading,
   }),
 }));
 
@@ -170,6 +172,7 @@ describe('ModelsRouter', () => {
   beforeEach(() => {
     mockSharedIdentity = { clusterManager: [], modelManager: [] };
     mockClusterManager = [];
+    mockClusterManagerLoading = false;
     scopeState.scope = 'all';
     mockUnknownPin = undefined;
     mockUseServing.mockReset();
@@ -407,21 +410,23 @@ describe('ModelsRouter', () => {
       );
     });
 
-    it('draws no tabs at all installations with neither a serving layer nor cluster-manager', async () => {
+    it('draws no tabs at all installations while cluster-manager is still being asked', async () => {
       mockUseServing.mockReturnValue(noServingLayer);
-      mockClusterManager = [];
+      mockClusterManagerLoading = true;
       renderTab('/customize/models/hosting');
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
+      // A portal with neither would otherwise flash a strip on every load.
       expect(screen.queryAllByRole('tab')).toEqual([]);
     });
 
-    it('shows no figures on a portal without a serving layer', async () => {
+    it('shows no figures and no tabs at all installations on a portal with neither a serving layer nor cluster-manager', async () => {
       mockUseServing.mockReturnValue(noServingLayer);
       renderTab('/customize/models/hosting');
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
       expect(screen.queryByText(/^hosting-kpis/)).toBeNull();
+      expect(screen.queryAllByRole('tab')).toEqual([]);
     });
   });
 

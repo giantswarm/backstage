@@ -18,11 +18,7 @@ import {
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import {
-  hasServingLayer,
-  ServingProvider,
-  useServing,
-} from '../ServingProvider';
+import { ServingProvider, useServing } from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { NewModelPage } from '../NewModelPage';
 import { EditModelPage } from '../EditModelPage';
@@ -47,9 +43,9 @@ import {
 } from '../ModelHostingKpis';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { CustomizeModelPage } from '../CustomizeModelPage';
-import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useModelHosting } from '../../hooks/useModelHosting';
 import { isLegacyServeLink } from '../../lib/modelManagerServe';
 import { nothingCouldBeRead } from '../../lib/soleInstallation';
 import {
@@ -130,13 +126,17 @@ const HostingView = ({
  * actions a view registers (`ModelHostingActions`: Serve model, Add GPU node
  * pool…) land in this header's slot, top right.
  *
- * The figures show where a serving layer is in view. The tabs show where one
- * is in view, where cluster-manager answers, or where an environment is
- * pinned: picking one in the header that runs no serving layer changes the
- * view's content, not the frame, so the other tabs stay one click away. Only
- * "All installations" on a portal with neither a serving layer nor
- * cluster-manager drops the strip; a deep link there keeps the frame and lets
- * the view's own empty state speak. The Model cache tab is offered
+ * The figures show where a serving layer is in view. The tabs show where
+ * Model hosting is offered (`useModelHosting`: a serving layer, or
+ * cluster-manager reachable as the person) or an environment is pinned:
+ * picking one in the header that runs no serving layer changes the view's
+ * content, not the frame, so the other tabs stay one click away. Only "All
+ * installations" on a portal offering neither drops the strip; a deep link
+ * there keeps the frame and lets the view's own empty state speak. At "All
+ * installations" without a serving layer the strip waits for cluster-manager's
+ * server lists: drawn while they are read, it would flash on every portal
+ * without cluster-manager, so on one with it the strip appears a moment after
+ * the view instead. The Model cache tab is offered
  * where cluster-manager runs, and kept while it is the open view, so a
  * switch of environment never leaves a view without its tab.
  *
@@ -158,19 +158,15 @@ const ShellModelHosting = () => {
   const { pathname, search } = useLocation();
   const { scope } = useInstallationScope();
   const serving = useServing();
-  const servingLayer = hasServingLayer(serving);
-  const clusterManager = useClusterManagerAvailability(
-    serving.reachableInstallations ?? [],
-  );
+  const hosting = useModelHosting(serving);
+  const { servingLayer, clusterManager } = hosting;
+  const runsClusterManager = clusterManager.available.length > 0;
   const onCache = pathname.replace(/\/$/, '') === `${basePath}/cache`;
-  const offersCache =
-    clusterManager.available.length > 0 || clusterManager.isLoading || onCache;
-  // cluster-manager's views (GPU pools, Model cache) stand without a serving
-  // layer: where it answers, the tabs are the way to them at every scope.
-  const showTabs =
-    servingLayer ||
-    clusterManager.available.length > 0 ||
-    scope !== ALL_INSTALLATIONS;
+  const offersCache = runsClusterManager || clusterManager.isLoading || onCache;
+  // Where Model hosting is offered (`useModelHosting`: a serving layer, or
+  // cluster-manager reachable as the person), the tabs are the way to its
+  // views at every scope. Not while that is still being read: see above.
+  const showTabs = hosting.available || scope !== ALL_INSTALLATIONS;
   // Every environment in view failed to read its served models: a "Models
   // running: 0" tile would claim what the warning below says was not seen.
   const servedModelsUnread = nothingCouldBeRead({

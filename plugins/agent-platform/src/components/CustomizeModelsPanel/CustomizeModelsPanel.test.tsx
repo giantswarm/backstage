@@ -64,6 +64,14 @@ jest.mock('../ModelConfigsProvider', () => ({
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: agents, isLoading: false }),
 }));
+// The installations whose muster offers cluster-manager as the person.
+let mockClusterManager: string[] = [];
+jest.mock('../../hooks/useClusterManager', () => ({
+  useClusterManagerAvailability: () => ({
+    available: mockClusterManager,
+    isLoading: false,
+  }),
+}));
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: { installations: string[] }) =>
     serving.installations.length > 0,
@@ -107,6 +115,7 @@ describe('CustomizeModelsPanel', () => {
     mockModelsLoading = false;
     mockUnreachableInstallations = [];
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
   it('lists the models with their usage and state', async () => {
@@ -213,6 +222,19 @@ describe('CustomizeModelsPanel', () => {
 
     mockServingInstallations = ['golem'];
     await renderPanel();
+    expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
+      'href',
+      '/customize/models/hosting',
+    );
+    expect(
+      screen.queryByRole('link', { name: 'How to turn it on' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers model hosting where cluster-manager runs without a serving layer', async () => {
+    mockClusterManager = ['golem'];
+    await renderPanel();
+    // GPU pools and the model cache are managed there.
     expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
       'href',
       '/customize/models/hosting',
@@ -470,6 +492,7 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
   beforeEach(() => {
     mockModelsLoading = false;
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
   it('offers a one-option provider dropdown over three models of one provider', async () => {
