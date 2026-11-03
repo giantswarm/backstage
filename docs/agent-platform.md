@@ -3385,13 +3385,21 @@ session.
 #### The rate counts each token once, and is the window's mix
 
 The gateway's `input` token type already holds the cache reads and writes:
-agentgateway normalises every provider's input count to include them
-(agentgateway#2880) and records them again as `input_cache_read` and
+since v1.5.0, agentgateway normalises every provider's input count to include
+them (agentgateway#2880) and records them again as `input_cache_read` and
 `input_cache_write`. `deriveTokenRates` therefore divides the spend by `input`
 plus `output` (plus any type it does not know), never by the sum of all four.
 Summing them counted cached input twice and halved the rate: on `gazelle`,
 claude-sonnet-5-5 read $0.30/1M where $0.59/1M was right
 (giantswarm/giantswarm#38457).
+
+An older gateway leaves the cache types out of `input`, and subtracting them
+there would inflate the rate about tenfold. The totals tell the two apart:
+inside `input`, the cache types cannot exceed it (on `gazelle` they sit at
+99.8–99.998% of it per agent and model), while outside it a cache-heavy mix
+has them at many times `input`. So `deriveTokenRates` subtracts them only when
+they are at most 1% above `input`. A 7-day window that straddles the upgrade
+holds both conventions and can be off either way until it rolls past.
 
 Even counted once, the blend is the window's token mix, not the session's.
 Over a week most input is cache reads, which Claude models price at a tenth of

@@ -14,8 +14,8 @@
  */
 
 /**
- * Token types whose spend is input spend. Their *tokens* are not added up:
- * see {@link CACHE_TOKEN_TYPES}.
+ * Token types whose spend is input spend. Their *tokens* are added up only
+ * where `input` leaves the cache types out: see {@link CACHE_TOKEN_TYPES}.
  */
 const INPUT_TOKEN_TYPES = ['input', 'input_cache_read', 'input_cache_write'];
 const OUTPUT_TOKEN_TYPES = ['output'];
@@ -23,20 +23,33 @@ const OUTPUT_TOKEN_TYPES = ['output'];
 /**
  * Token types the gateway counts **inside** `input` as well as on their own.
  *
- * agentgateway normalises every provider's input count to include the tokens
- * read from and written to cache (`CacheTokenConvention::include_cache_tokens`,
- * agentgateway#2880), then records the cache counts again under these types.
- * So `input` is every input token, and adding these to it counts cached input
- * twice. On `gazelle` (2026-11-03) the two cache types summed to `input` to
- * within 0.01% for every model, and adding them halved the rate
- * (giantswarm/giantswarm#38457).
+ * Since v1.5.0 (agentgateway#2880), agentgateway normalises every provider's
+ * input count to include the tokens read from and written to cache
+ * (`CacheTokenConvention::include_cache_tokens`), then records the cache
+ * counts again under these types. So `input` is every input token, and adding
+ * these to it counts cached input twice. On `gazelle` (2026-11-03) the two
+ * cache types summed to `input` to within 0.01% for every model, and adding
+ * them halved the rate (giantswarm/giantswarm#38457).
+ *
+ * An older gateway left them out of `input` — Anthropic's own convention —
+ * and so does a window that reaches back before an upgrade, in part. The
+ * totals say which: see {@link inputIncludesCache}.
  */
 const CACHE_TOKEN_TYPES = ['input_cache_read', 'input_cache_write'];
+
+/**
+ * How far the cache types may exceed `input` and still count as inside it.
+ * `increase()` extrapolates each series on its own, so totals that hold the
+ * same calls drift a little apart: on `gazelle` every agent and model scope
+ * had the cache types at 99.8–99.998% of `input`. Under the old convention a
+ * cache-heavy mix has them at many times `input`, far from this line.
+ */
+const CACHE_IN_INPUT_TOLERANCE = 1.01;
 
 export type TokenRates = {
   /**
    * USD per input token, the spend of `input`, `input_cache_read` and
-   * `input_cache_write` over the `input` count that holds all three — because
+   * `input_cache_write` over the input tokens, each counted once — because
    * the counts we apply it to (kagent's `promptTokenCount`) are one undivided
    * number.
    *
@@ -78,9 +91,35 @@ function sumAll(totals: Record<string, number>): number {
   return Object.values(totals).reduce((acc, value) => acc + (value ?? 0), 0);
 }
 
-/** Every token the totals hold, each once: the cache types are in `input`. */
+/**
+ * Whether the totals count the cache types inside `input`, as agentgateway
+ * v1.5.0 and later do. They cannot exceed `input` when they are part of it,
+ * so cache types well above `input` are the old convention, where `input` is
+ * fresh input alone.
+ *
+ * A window straddling the upgrade holds both conventions, and no reading of
+ * the totals is right for both parts: the rate can be off either way until
+ * the window has rolled past the upgrade.
+ */
+function inputIncludesCache(totals: Record<string, number>): boolean {
+  return (
+    sumTypes(totals, CACHE_TOKEN_TYPES) <=
+    (totals.input ?? 0) * CACHE_IN_INPUT_TOLERANCE
+  );
+}
+
+/** Every token the totals hold, each once. */
 function sumDistinctTokens(totals: Record<string, number>): number {
-  return sumAll(totals) - sumTypes(totals, CACHE_TOKEN_TYPES);
+  return inputIncludesCache(totals)
+    ? sumAll(totals) - sumTypes(totals, CACHE_TOKEN_TYPES)
+    : sumAll(totals);
+}
+
+/** Every input token the totals hold, each once. */
+function sumInputTokens(totals: Record<string, number>): number {
+  return inputIncludesCache(totals)
+    ? (totals.input ?? 0)
+    : sumTypes(totals, INPUT_TOKEN_TYPES);
 }
 
 /**
@@ -118,7 +157,7 @@ export function deriveTokenRates(
   return {
     input: ratio(
       sumTypes(costByType, INPUT_TOKEN_TYPES),
-      tokensByType.input ?? 0,
+      sumInputTokens(tokensByType),
     ),
     output: ratio(
       sumTypes(costByType, OUTPUT_TOKEN_TYPES),

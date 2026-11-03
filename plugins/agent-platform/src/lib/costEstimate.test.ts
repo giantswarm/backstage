@@ -26,6 +26,34 @@ describe('deriveTokenRates', () => {
     expect(rates.blended).toBeCloseTo(19 / 12_000_000);
   });
 
+  it('adds the cache types to an input count that leaves them out', () => {
+    // A gateway before v1.5.0: `input` is fresh input alone, and the cache
+    // types are far above it.
+    const rates = deriveTokenRates(
+      { input: 3, input_cache_read: 1, output: 15 },
+      { input: 1_000_000, input_cache_read: 10_000_000, output: 1_000_000 },
+    );
+
+    expect(rates.input).toBeCloseTo(4 / 11_000_000);
+    expect(rates.blended).toBeCloseTo(19 / 12_000_000);
+  });
+
+  it('reads cache types a hair above input as inside it', () => {
+    // `increase()` extrapolates each series on its own, so a count holding
+    // the cache types can come out just below them.
+    const rates = deriveTokenRates(
+      { '': 19 },
+      {
+        input: 10_999_000,
+        input_cache_read: 10_000_000,
+        input_cache_write: 1_000_000,
+        output: 1_000_000,
+      },
+    );
+
+    expect(rates.blended).toBeCloseTo(19 / 11_999_000);
+  });
+
   it('returns no rate at all when nothing was priced', () => {
     // Zero cost is what the gateway records for a model missing from its price
     // catalogue, so this must not become a rate of zero.
