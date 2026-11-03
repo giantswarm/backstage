@@ -88,7 +88,7 @@ import {
   ServerAuthActions,
   serverStateLabel,
   SessionGate,
-  useConnectorGroupPaths,
+  useConnectorListPaths,
   useServerSignIn,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
@@ -252,7 +252,7 @@ function ConnectorPageContent({
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
-  const paths = useConnectorGroupPaths();
+  const paths = useConnectorListPaths();
   // The list, where its crumb, its tags and a removal lead.
   const listPath = paths.connectors;
   const { activeInstallationInfo } = useMusterInstance();
@@ -824,7 +824,7 @@ function ConnectorPageBody({
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const { installation = '' } = useParams();
-  const paths = useConnectorGroupPaths();
+  const paths = useConnectorListPaths();
   const listPath = paths.connectors;
 
   if (isLoadingInstallations || isLoading) {

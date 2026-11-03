@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../../routes';
 
-export interface ConnectorGroupPaths {
+export interface ConnectorListPaths {
   customize?: string;
   /** The Connectors tab's list, which lists every connector. */
   connectors?: string;
@@ -15,7 +15,7 @@ export interface ConnectorGroupPaths {
  * app binds it. Each is undefined where it does not resolve, so a caller
  * renders plain text instead of a link to a 404.
  */
-export function useConnectorGroupPaths(): ConnectorGroupPaths {
+export function useConnectorListPaths(): ConnectorListPaths {
   const customizeRoute = useRouteRef(customizeExternalRouteRef);
   const serversRoute = useRouteRef(mcpServersRouteRef);
   const customize = customizeRoute?.();

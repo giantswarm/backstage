@@ -134,7 +134,7 @@ against two).
   in `packages/app/src/App.tsx`, or a helper built on one. Helpers:
   `useCustomizePaths`, `useSkillPaths`, `useNewSessionHref`
   (agent-platform); `useServerPageLinks`, `useWorkflowPageLinks`,
-  `useConnectorGroupPaths`, `useConnectorWizardLinks` (muster).
+  `useConnectorListPaths`, `useConnectorWizardLinks` (muster).
 - Every route ref is exported in its plugin's `routes`, so the app and the
   other plugin can bind and link to it.
 - Splat paths (skills) are built through one helper (`useSkillPaths` on
