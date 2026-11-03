@@ -13,6 +13,7 @@ import {
 } from '../../../lib/formatNumbers';
 import { CostPerDayCard } from '../../LlmUsage';
 import { MODEL_USAGE_WINDOW_DAYS, type ModelUsage } from '../useModelUsage';
+import { lastDaysLabel, lastDaysNoun } from '../../../lib/usageWindow';
 
 export type ModelUsageTabProps = {
   installation: string;
@@ -60,7 +61,7 @@ export function ModelUsageTab({
     );
   }
 
-  const sub = `every user's, last ${MODEL_USAGE_WINDOW_DAYS} days`;
+  const sub = `every user's, ${lastDaysLabel(MODEL_USAGE_WINDOW_DAYS)}`;
   return (
     <Flex direction="column" gap="4">
       <StatGrid>
@@ -97,7 +98,7 @@ export function ModelUsageTab({
       )}
       <Text as="p" variant="body-small" color="secondary">
         {slice.calls === 0
-          ? `No calls to ${model} went through the gateway in the last ${MODEL_USAGE_WINDOW_DAYS} days.`
+          ? `No calls to ${model} went through the gateway in ${lastDaysNoun(MODEL_USAGE_WINDOW_DAYS)}.`
           : `This counts every gateway call to ${model} from any agent, including those through other configurations of this model on ${installation}.`}
       </Text>
     </Flex>

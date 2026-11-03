@@ -68,7 +68,7 @@ jest.mock('../../hooks/useTokenRates', () => ({
     model: undefined,
     isLoading: false,
     isAvailable: true,
-    window: '7d',
+    windowDays: 7,
   }),
 }));
 

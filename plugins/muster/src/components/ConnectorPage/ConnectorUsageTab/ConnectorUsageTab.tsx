@@ -4,6 +4,7 @@ import { Link } from '@backstage/ui';
 import {
   formatCount,
   formatUsageWindowParam,
+  lastDaysLabel,
   USAGE_WINDOW_PARAM,
   type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -200,7 +201,7 @@ export function ConnectorUsageTab({
           label="Tools used"
           hint={toolsUsedHint(catalogue.complete, tools.truncated)}
           value={toolsUsedLine(toolRows, catalogue.complete)}
-          sub={`last ${days} days`}
+          sub={lastDaysLabel(days)}
         />
       }
       instances={instances}

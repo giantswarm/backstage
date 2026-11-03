@@ -1,14 +1,15 @@
 import type { TokenRateTier } from '../hooks/useTokenRates';
 import { pricedTokenCount } from './costEstimate';
 import { formatTokens } from './formatNumbers';
+import { lastDaysNoun } from './usageWindow';
 
 export type CostBasis = {
   tier: TokenRateTier;
   /** The model the session's agent runs on, when it could be resolved. */
   model: string | undefined;
   installation: string;
-  /** The window the rate was averaged over, e.g. `7d`. */
-  window: string;
+  /** The days the rate was averaged over, named in words (`the last 7 days`). */
+  windowDays: number;
   /** The input tokens the estimate priced, as the stats beside it count them. */
   inputTokens: number;
   /** The output tokens the estimate priced, as the stats beside it count them. */
@@ -21,18 +22,6 @@ export type CostBasis = {
    */
   unpricedTokens?: number;
 };
-
-/**
- * A rate window as the copy says it: `7d` is "7 days". Anything else is said
- * as it is.
- */
-export function describeRateWindow(window: string): string {
-  const days = /^(\d+)d$/.exec(window);
-  if (!days) {
-    return window;
-  }
-  return Number(days[1]) === 1 ? '1 day' : `${days[1]} days`;
-}
 
 /**
  * What every priced estimate says about itself: it is an average over the
@@ -76,7 +65,7 @@ export const AVERAGE_RATE_CAVEAT =
  */
 export function describeCostBasis(basis: CostBasis): string {
   const { tier, model, installation } = basis;
-  const window = describeRateWindow(basis.window);
+  const windowNoun = lastDaysNoun(basis.windowDays);
   const applied = `applied to the ${formatTokens(
     pricedTokenCount(basis.inputTokens),
   )} input and ${formatTokens(
@@ -92,13 +81,13 @@ export function describeCostBasis(basis: CostBasis): string {
 
   switch (tier) {
     case 'model':
-      return `Estimated: ${model}'s average cost per token on ${installation} over the last ${window}, ${applied}. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
+      return `Estimated: ${model}'s average cost per token on ${installation} over ${windowNoun}, ${applied}. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'agent':
-      return `Estimated: this agent's average cost per token on ${installation} over the last ${window}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
+      return `Estimated: this agent's average cost per token on ${installation} over ${windowNoun}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'installation':
-      return `Estimated: ${installation}'s average cost per token over the last ${window}, ${applied} — a fleet-wide blend across every model. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
+      return `Estimated: ${installation}'s average cost per token over ${windowNoun}, ${applied} — a fleet-wide blend across every model. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
@@ -117,7 +106,7 @@ export function describeCostBasis(basis: CostBasis): string {
       // Two different reasons, and the fix differs: point the agent at the LLM
       // gateway, versus wait for traffic or fix the price catalogue.
       return model
-        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in the last ${window}, so there is no rate to apply.`
-        : `No estimate: nothing on ${installation} in the last ${window} could be priced. The token counts are unaffected.`;
+        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in ${windowNoun}, so there is no rate to apply.`
+        : `No estimate: nothing on ${installation} in ${windowNoun} could be priced. The token counts are unaffected.`;
   }
 }

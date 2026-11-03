@@ -21,6 +21,7 @@ import { usageCostRouteRef } from '../../routes';
 import { AgentsDataProvider } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { toAgentIdentifier } from '../SessionsDataProvider/helpers';
+import { lastDaysLabel, lastDaysNoun } from '../../lib/usageWindow';
 
 /** The window this tab reads: the prototype's "this month". */
 const WINDOW_DAYS = 30;
@@ -116,9 +117,9 @@ function AgentUsageContent({
           <Stat
             variant="tile"
             label="Your sessions"
-            hint={`Counts the sessions you started with this agent in the last ${sessionWindow} days. Other users' sessions cannot be counted here.`}
+            hint={`Counts the sessions you started with this agent in ${lastDaysNoun(sessionWindow)}. Other users' sessions cannot be counted here.`}
             value={formatCount(sessionRow?.sessions ?? 0)}
-            sub={`yours, last ${sessionWindow} days`}
+            sub={`yours, ${lastDaysLabel(sessionWindow)}`}
           />
         )}
         {/* Only when a runtime reported one: "not reported" is not "$0.00". */}
