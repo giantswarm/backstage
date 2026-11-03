@@ -54,14 +54,19 @@ export function useSeenRecordSource(
     [markSeen],
   );
 
-  const markAllRead = useCallback(async () => {
-    const targets = rows.filter(row => row.unread).map(row => row.seenMark);
-    if (targets.length === 0) {
-      return false;
-    }
-    await markManySeen(targets);
-    return true;
-  }, [rows, markManySeen]);
+  const markAllRead = useCallback(
+    async (only?: readonly DerivedInboxRow[]) => {
+      const targets = (only ?? rows)
+        .filter(row => row.unread)
+        .map(row => row.seenMark);
+      if (targets.length === 0) {
+        return false;
+      }
+      await markManySeen(targets);
+      return true;
+    },
+    [rows, markManySeen],
+  );
 
   return {
     rows,

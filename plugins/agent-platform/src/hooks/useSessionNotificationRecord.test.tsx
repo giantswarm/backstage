@@ -16,6 +16,7 @@ import {
   useSessionNotificationRecord,
   useSessionNotificationSettings,
 } from './useSessionNotificationRecord';
+import { STORED_SETTING_RETRIES } from './useStoredSetting';
 
 const BUCKET = 'agent-platform';
 const SETTINGS = 'sessionNotificationSettings';
@@ -47,7 +48,7 @@ function stored(storage: StorageApi, key: string) {
  */
 function backendStorage(initial: Record<string, JsonValue>) {
   const backend = new Map<string, JsonValue>(Object.entries(initial));
-  const reads = { failing: false };
+  const reads = { failing: false, failNext: 0, status: 503, count: 0 };
   const listeners = new Map<
     string,
     Set<(snapshot: StorageValueSnapshot<JsonValue>) => void>
@@ -75,10 +76,17 @@ function backendStorage(initial: Record<string, JsonValue>) {
         const set = listeners.get(key) ?? new Set();
         set.add(listener);
         listeners.set(key, set);
-        // Answers asynchronously, as a fetch does; a failed read is unknown.
+        // Answers asynchronously, as a fetch does; a failed read is unknown,
+        // with the backend's status, as the app's storage hands it out.
+        reads.count += 1;
+        const failing = reads.failing || reads.failNext > 0;
+        reads.failNext = Math.max(0, reads.failNext - 1);
+        const { status } = reads;
         Promise.resolve().then(() =>
           listener(
-            reads.failing ? { key, presence: 'unknown' } : snapshotOf(key),
+            failing
+              ? ({ key, presence: 'unknown', status } as never)
+              : snapshotOf(key),
           ),
         );
         return { unsubscribe: () => set.delete(listener) };
@@ -99,10 +107,18 @@ function backendStorage(initial: Record<string, JsonValue>) {
     writeElsewhere: (key: string, value: JsonValue) => backend.set(key, value),
     /** The backend's signal for that write reaches this tab. */
     announce: emit,
-    /** Reads stop being answered (offline), or start again. */
-    failReads: (failing: boolean) => {
+    /** Reads fail with `status` (a 503 by default), or work again. */
+    failReads: (failing: boolean, status = 503) => {
       reads.failing = failing;
+      reads.status = status;
     },
+    /** The next `count` reads fail with `status`. */
+    failNextReads: (count: number, status = 503) => {
+      reads.failNext = count;
+      reads.status = status;
+    },
+    /** How many reads (subscriptions) the backend has answered. */
+    readCount: () => reads.count,
     backendValue: (key: string) => backend.get(key),
   };
 }
@@ -477,6 +493,106 @@ describe('useNotificationSeenMarks', () => {
       ['AgentPlatform.notificationOpened', { kind: 'waiting' }],
       ['AgentPlatform.notificationsMarkedRead', {}],
     ]);
+  });
+
+  it('tries "Mark all read" again when the read of the stored marks answers 503', async () => {
+    const { storage, failNextReads, readCount, backendValue } = backendStorage(
+      {},
+    );
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+    const before = readCount();
+
+    failNextReads(STORED_SETTING_RETRIES);
+    await act(async () => {
+      await result.current.markManySeen([waitingRow, mcpRow]);
+    });
+
+    // Two reads answered 503; the third, and its write, went through.
+    expect(readCount() - before).toBe(STORED_SETTING_RETRIES + 1);
+    expect(backendValue(SEEN)).toEqual({
+      sessions: {
+        'gazelle/abc': { mark: waitingRow.mark, at: expect.any(Number) },
+      },
+      mcpSignIn: { gazelle: { mark: mcpRow.mark, at: expect.any(Number) } },
+    });
+  });
+
+  it('gives up on a row after a bounded number of reads that answer 503, writing nothing', async () => {
+    const { storage, failReads, readCount, backendValue } = backendStorage({});
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+    const before = readCount();
+
+    failReads(true);
+    await act(async () => {
+      await expect(
+        result.current.markSeen(waitingRow, {
+          action: 'opened',
+          kind: 'waiting',
+        }),
+      ).rejects.toThrow('could not be read');
+    });
+
+    expect(readCount() - before).toBe(STORED_SETTING_RETRIES + 1);
+    expect(backendValue(SEEN)).toBeUndefined();
+    // Nothing was saved, so nothing is reported.
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('tries neither a refused read nor a mark of a row on screen again', async () => {
+    const { storage, failReads, readCount } = backendStorage({});
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+
+    // A 403 will not change on a second read.
+    failReads(true, 403);
+    let before = readCount();
+    await act(async () => {
+      await expect(result.current.markManySeen([waitingRow])).rejects.toThrow(
+        'could not be read',
+      );
+    });
+    expect(readCount() - before).toBe(1);
+
+    // Bookkeeping (no reason) is written again with the next read anyway.
+    failReads(true, 503);
+    before = readCount();
+    await act(async () => {
+      await expect(result.current.markSeen(waitingRow)).rejects.toThrow(
+        'could not be read',
+      );
+    });
+    expect(readCount() - before).toBe(1);
+  });
+
+  it('keeps a mark queued while a retry waits from being overwritten by it', async () => {
+    const { storage, failNextReads, backendValue } = backendStorage({});
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+    const newer = { ...waitingRow, mark: 'gazelle/abc/failed/2' };
+
+    failNextReads(1);
+    await act(async () => {
+      // "Mark all read" meets a 503; meanwhile a newer row of the session is
+      // marked on screen. It is queued behind the retry, and lands last.
+      const all = result.current.markManySeen([waitingRow]);
+      const onScreen = result.current.markSeen(newer);
+      await Promise.all([all, onScreen]);
+    });
+
+    expect(backendValue(SEEN)).toEqual({
+      sessions: { 'gazelle/abc': { mark: newer.mark, at: expect.any(Number) } },
+      mcpSignIn: {},
+    });
   });
 
   it('follows a row another tab marked seen', async () => {
