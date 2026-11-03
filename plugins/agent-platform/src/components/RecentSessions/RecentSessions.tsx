@@ -176,6 +176,7 @@ function SessionItem({
   return (
     <li className={pin ? `${classes.item} ${activeClass}` : undefined}>
       <Link
+        standalone
         href={href}
         className={
           pin
@@ -358,6 +359,7 @@ function RecentSessionsList({
       </Link>
       {grouped.waitingCount > 0 && (
         <Link
+          standalone
           href={`${allSessionsHref}${sessionsListSearch({ state: 'waiting' })}`}
           aria-label={`${grouped.waitingCount} ${SESSION_STATE_LABELS.waiting.toLowerCase()}`}
           className={classes.countLink}

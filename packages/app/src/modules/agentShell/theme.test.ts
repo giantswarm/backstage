@@ -8,7 +8,7 @@ import {
   PHONE_MAX_WIDTH,
   TOUCH_QUERY,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { agentShellLightColors } from './theme';
+import { agentShellDarkColors, agentShellLightColors } from './theme';
 
 function shellCss(): string {
   return readFileSync(join(__dirname, 'agent-shell.css'), 'utf8');
@@ -76,19 +76,6 @@ describe('agentShellLightColors', () => {
         agentShellLightColors.background,
       ),
     ).toBeGreaterThanOrEqual(3);
-  });
-
-  // The rule for links on a tinted surface (agent-shell.css).
-  it('sets links at 4.5:1 against the tinted surface and the alert backgrounds', () => {
-    const colors = agentShellLightColors;
-    for (const surface of [
-      colors.subtleSurface,
-      colors.infoBackground,
-      colors.successBackground,
-      colors.warningBackground,
-    ]) {
-      expect(contrast(colors.link, surface)).toBeGreaterThanOrEqual(4.5);
-    }
   });
 
   it('lists the light palette by role', () => {
@@ -295,7 +282,10 @@ describe('agentShellLightColors', () => {
   });
 
   it('is the only source of the colours in agent-shell.css', () => {
-    const tableValues = new Set<string>(Object.values(agentShellLightColors));
+    const tableValues = new Set<string>([
+      ...Object.values(agentShellLightColors),
+      ...Object.values(agentShellDarkColors),
+    ]);
     const cssValues = new Set(cssColorValues());
 
     expect([...cssValues].filter(value => !tableValues.has(value))).toEqual([]);
@@ -304,5 +294,142 @@ describe('agentShellLightColors', () => {
         .filter(([, value]) => !cssValues.has(value))
         .map(([role]) => role),
     ).toEqual(['divider']);
+  });
+});
+
+/**
+ * bui's own surfaces where the shell does not repaint them: the dark theme,
+ * which the shell reaches only inside a toast (it inverts the theme the
+ * person picked), and the light app background a toast takes when it is the
+ * light one. Read from the installed bui stylesheet, so a bui upgrade that
+ * darkens or lightens a surface fails here rather than on the page.
+ */
+function buiTokens(mode: 'light' | 'dark'): Record<string, string> {
+  const css = readFileSync(
+    join(
+      require.resolve('@backstage/ui/package.json'),
+      '..',
+      'dist/css/styles.css',
+    ),
+    'utf8',
+  );
+  const start = css.indexOf(
+    mode === 'light' ? '/* Light theme tokens' : '/* Dark theme tokens',
+  );
+  if (start === -1) {
+    throw new Error(`bui's ${mode} tokens moved in its stylesheet`);
+  }
+  const body = css.slice(start, css.indexOf('}', start));
+  return Object.fromEntries(
+    [...body.matchAll(/(--bui-[\w-]+):\s*(#[0-9a-f]{6});/gi)].map(m => [
+      m[1],
+      m[2].toLowerCase(),
+    ]),
+  );
+}
+
+// The one rule for text links (agent-shell.css). Colour and underline both
+// mark a link: the colour against the surface it sits on (4.5:1, as text),
+// the underline against the body text around it, where the colour alone falls
+// short of 3:1.
+describe('agent-shell.css text links', () => {
+  const linkRule = (css: string) =>
+    css.match(
+      /html\[data-agent-shell\]\s*:is\(\.bui-Link, \.MuiLink-root, \[class\*='Toast_links'\] a\):not\([^)]*\) \{([^}]*)\}/,
+    )?.[1];
+
+  it('defines the link colours by theme mode, from the palette tables', () => {
+    const css = shellCss();
+    expect(css).toMatch(
+      new RegExp(
+        `html\\[data-agent-shell\\] \\[data-theme-mode='light'\\] \\{\\s*--agent-shell-link: ${agentShellLightColors.link};\\s*--agent-shell-link-hover: ${agentShellLightColors.linkHover};`,
+      ),
+    );
+    expect(css).toMatch(
+      new RegExp(
+        `html\\[data-agent-shell\\] \\[data-theme-mode='dark'\\] \\{\\s*--agent-shell-link: ${agentShellDarkColors.link};\\s*--agent-shell-link-hover: ${agentShellDarkColors.linkHover};`,
+      ),
+    );
+  });
+
+  it('colours and solidly underlines every text link with one rule', () => {
+    const rule = linkRule(shellCss());
+    expect(rule).toBeDefined();
+    expect(rule).toContain('color: var(--agent-shell-link);');
+    expect(rule).toContain('text-decoration-line: underline;');
+    expect(rule).toContain('text-decoration-style: solid;');
+    expect(rule).toContain('text-decoration-color: currentColor;');
+  });
+
+  it('keeps no per-surface link rule', () => {
+    // #3254's rule keyed on bui's surface attribute and the banner, with a
+    // growing list of exclusions; the one rule above replaced it.
+    const css = shellCss();
+    expect(css).not.toMatch(/\[data-bg='neutral-\d'\][^{]*\ba\b/);
+    expect(css).not.toMatch(/\.bui-Alert\s+a\b/);
+    expect(css.match(/var\(--agent-shell-link\)/g)).toHaveLength(2);
+  });
+
+  describe('light', () => {
+    const colors = agentShellLightColors;
+    const bui = buiTokens('light');
+
+    it.each([
+      ['white surface', colors.surface],
+      ['tinted surface (neutral-2)', colors.subtleSurface],
+      ['rail', colors.railBackground],
+      ['info banner', colors.infoBackground],
+      ['success banner', colors.successBackground],
+      ['warning banner', colors.warningBackground],
+      // bui's Alert still paints its banners with the deprecated tokens.
+      // eslint-disable-next-line @backstage/no-deprecated-bui-tokens
+      ['danger banner (bui)', bui['--bui-bg-danger']],
+      ['light toast (bui app)', bui['--bui-bg-app']],
+    ])('holds 4.5:1 against the %s', (_, surface) => {
+      expect(surface).toMatch(/^#[0-9a-f]{6}$/);
+      expect(contrast(colors.link, surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(colors.linkHover, surface)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('is told from the body text by its underline, as colour alone falls short of 3:1', () => {
+      for (const text of [colors.text, colors.bodyText, colors.quietText]) {
+        expect(contrast(colors.link, text)).toBeLessThan(3);
+      }
+      expect(linkRule(shellCss())).toContain(
+        'text-decoration-line: underline;',
+      );
+    });
+  });
+
+  describe('dark', () => {
+    const colors = agentShellDarkColors;
+    const bui = buiTokens('dark');
+
+    // bui nests surfaces up to neutral-3 (useBg), so neutral-4 never holds a
+    // link. bui's Alert still paints its banners with the deprecated tokens.
+    /* eslint-disable @backstage/no-deprecated-bui-tokens */
+    it.each([
+      ['app background (a toast)', '--bui-bg-app'],
+      ['neutral-1 surface', '--bui-bg-neutral-1'],
+      ['neutral-2 surface', '--bui-bg-neutral-2'],
+      ['neutral-3 surface', '--bui-bg-neutral-3'],
+      ['info banner', '--bui-bg-info'],
+      ['success banner', '--bui-bg-success'],
+      ['warning banner', '--bui-bg-warning'],
+      ['danger banner', '--bui-bg-danger'],
+      /* eslint-enable @backstage/no-deprecated-bui-tokens */
+    ])('holds 4.5:1 against the %s', (_, token) => {
+      const surface = bui[token];
+      expect(surface).toMatch(/^#[0-9a-f]{6}$/);
+      expect(contrast(colors.link, surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(colors.linkHover, surface)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('is told from the body text by its underline, as colour alone falls short of 3:1', () => {
+      expect(contrast(colors.link, '#ffffff')).toBeLessThan(3);
+      expect(linkRule(shellCss())).toContain(
+        'text-decoration-line: underline;',
+      );
+    });
   });
 });

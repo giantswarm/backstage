@@ -64,7 +64,7 @@ function RefusalDetails({
         {refused.models.map(model =>
           servingPath ? (
             <Link key={model} to={servingPath}>
-              <Text as="span" variant="body-small">
+              <Text as="span" variant="body-small" style={{ color: 'inherit' }}>
                 {model}
               </Text>
             </Link>

@@ -111,7 +111,12 @@ export function LifecycleSteps({
               <Flex gap="2" align="baseline" style={{ flexWrap: 'wrap' }}>
                 {linked && step.state === 'done' ? (
                   <Link to={linked.to}>
-                    <Text as="span" variant="body-medium" weight="bold">
+                    <Text
+                      as="span"
+                      variant="body-medium"
+                      weight="bold"
+                      style={{ color: 'inherit' }}
+                    >
                       {linked.label}
                     </Text>
                   </Link>
@@ -138,7 +143,12 @@ export function LifecycleSteps({
               )}
               {linked && step.state === 'failed' && (
                 <Link to={linked.to}>
-                  <Text as="span" variant="body-small" weight="bold">
+                  <Text
+                    as="span"
+                    variant="body-small"
+                    weight="bold"
+                    style={{ color: 'inherit' }}
+                  >
                     {linked.label}
                   </Text>
                 </Link>

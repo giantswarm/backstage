@@ -154,6 +154,21 @@ describe('WizardFrame', () => {
     );
   });
 
+  it('marks its links as controls, so the agent shell does not style them as text links', () => {
+    renderFrame();
+
+    // agent-shell.css underlines every bui link that is not `standalone`.
+    for (const link of [
+      screen.getByRole('link', { name: 'Close' }),
+      screen.getByRole('link', { name: 'Cancel' }),
+      within(screen.getByRole('list', { name: 'Steps' })).getByRole('link', {
+        name: 'Basics',
+      }),
+    ]) {
+      expect(link).toHaveAttribute('data-standalone');
+    }
+  });
+
   it.each(['Close', 'Cancel'])(
     'asks before %s discards a dirty flow, and stays on Keep editing',
     async name => {

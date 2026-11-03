@@ -101,6 +101,38 @@ A Kubernetes resource in a `FactList` shows its namespace and name as two
 facts, Namespace and Name, through `namespacedNameFacts` (a `ui-react` util); a
 second resource in the same list passes its `kind` to prefix the labels.
 
+## Links in the Agent Platform shell
+
+Every text link in the Agent Platform shell looks the same: the shell's link
+colour and a solid underline, on every surface — white or tinted, a card, a
+nested card or a banner — whatever its `color` prop. One rule in
+`packages/app/src/modules/agentShell/agent-shell.css` styles bui's `Link`
+(`.bui-Link`), core-components' and MUI's `Link` (`.MuiLink-root`) and a
+toast's links alike, so a component never colours, underlines or
+un-underlines a link of its own. Hover darkens the colour and thickens the
+line.
+
+The underline is what marks a link. The link colour (#00609c) holds 4.5:1
+against every surface a link sits on, but only 2.3:1 against the body text,
+short of the 3:1 at which colour alone may mark a link (WCAG 1.4.1).
+
+The shell renders light, but a toast inverts the theme the person picked, so
+its links sit on bui's dark surfaces whenever they picked the light theme.
+There the link colour is #bcdcff, which holds 4.5:1 against bui's dark app
+background, its neutral-1 to neutral-3 surfaces and its banners. `theme.test.ts`
+checks the contrast in both modes, against the shell's palette and the
+installed bui's own tokens.
+
+Controls rendered as links keep their own look, because the rule leaves them
+out: `ButtonLink`, core-components' `LinkButton`, a `Tab`, `MenuItem`, `Tag`
+or `Card` with an `href`, and any bui `Link` with `standalone`. `standalone` is
+how a bui `Link` says it is a control rather than text — the rail's items and
+the logo, breadcrumbs, a wizard's steps, Close and Cancel, a title that a row
+or a card stretches over its whole area, an icon-only link. Pass it rather
+than adding an exclusion to the rule. Inside a text link, a bui `Text` takes
+`style={{ color: 'inherit' }}`, or it keeps its own colour under the link's
+underline.
+
 ## Toasts
 
 A toast (`toastApiRef` from `@backstage/frontend-plugin-api`) is an
