@@ -24,9 +24,6 @@ const useStyles = makeStyles({
       outlineOffset: 2,
     },
   },
-  tooltip: {
-    maxWidth: 280,
-  },
 });
 
 export type WorkflowEffectBadgeProps = {
@@ -103,9 +100,7 @@ export function WorkflowEffectBadge({ effect }: WorkflowEffectBadgeProps) {
         <EffectBadge effect={effect} />
       </span>
       <VisuallyHidden id={hintId}>{hint}</VisuallyHidden>
-      <Tooltip triggerRef={wrapper} className={classes.tooltip}>
-        {hint}
-      </Tooltip>
+      <Tooltip triggerRef={wrapper}>{hint}</Tooltip>
     </TooltipTrigger>
   );
 }

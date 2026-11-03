@@ -2172,6 +2172,19 @@ describe('createRouter', () => {
       );
     });
 
+    it('forwards the status message the answer was given for', async () => {
+      answerConfirmation.mockResolvedValue({});
+
+      await post({ ...validBody, askedIn: 'status-msg-1' });
+
+      expect(answerConfirmation).toHaveBeenCalledWith(
+        'abc',
+        expect.anything(),
+        expect.objectContaining({ askedIn: 'status-msg-1' }),
+        expect.anything(),
+      );
+    });
+
     it('accepts a refusal with a reason', async () => {
       answerConfirmation.mockResolvedValue({});
 
