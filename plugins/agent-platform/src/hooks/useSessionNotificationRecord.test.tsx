@@ -16,6 +16,7 @@ import {
   useSessionNotificationRecord,
   useSessionNotificationSettings,
 } from './useSessionNotificationRecord';
+import { STORED_SETTING_RETRIES } from './useStoredSetting';
 
 const BUCKET = 'agent-platform';
 const SETTINGS = 'sessionNotificationSettings';
@@ -47,7 +48,7 @@ function stored(storage: StorageApi, key: string) {
  */
 function backendStorage(initial: Record<string, JsonValue>) {
   const backend = new Map<string, JsonValue>(Object.entries(initial));
-  const reads = { failing: false };
+  const reads = { failing: false, failNext: 0, count: 0 };
   const listeners = new Map<
     string,
     Set<(snapshot: StorageValueSnapshot<JsonValue>) => void>
@@ -75,11 +76,13 @@ function backendStorage(initial: Record<string, JsonValue>) {
         const set = listeners.get(key) ?? new Set();
         set.add(listener);
         listeners.set(key, set);
-        // Answers asynchronously, as a fetch does; a failed read is unknown.
+        // Answers asynchronously, as a fetch does; a failed read (offline, a
+        // 503) is unknown.
+        reads.count += 1;
+        const failing = reads.failing || reads.failNext > 0;
+        reads.failNext = Math.max(0, reads.failNext - 1);
         Promise.resolve().then(() =>
-          listener(
-            reads.failing ? { key, presence: 'unknown' } : snapshotOf(key),
-          ),
+          listener(failing ? { key, presence: 'unknown' } : snapshotOf(key)),
         );
         return { unsubscribe: () => set.delete(listener) };
       },
@@ -103,6 +106,12 @@ function backendStorage(initial: Record<string, JsonValue>) {
     failReads: (failing: boolean) => {
       reads.failing = failing;
     },
+    /** The next `count` reads fail, as the backend answering 503 would. */
+    failNextReads: (count: number) => {
+      reads.failNext = count;
+    },
+    /** How many reads (subscriptions) the backend has answered. */
+    readCount: () => reads.count,
     backendValue: (key: string) => backend.get(key),
   };
 }
@@ -477,6 +486,55 @@ describe('useNotificationSeenMarks', () => {
       ['AgentPlatform.notificationOpened', { kind: 'waiting' }],
       ['AgentPlatform.notificationsMarkedRead', {}],
     ]);
+  });
+
+  it('tries "Mark all read" again when the read of the stored marks answers 503', async () => {
+    const { storage, failNextReads, readCount, backendValue } = backendStorage(
+      {},
+    );
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+    const before = readCount();
+
+    failNextReads(STORED_SETTING_RETRIES);
+    await act(async () => {
+      await result.current.markManySeen([waitingRow, mcpRow]);
+    });
+
+    // Two reads answered 503; the third, and its write, went through.
+    expect(readCount() - before).toBe(STORED_SETTING_RETRIES + 1);
+    expect(backendValue(SEEN)).toEqual({
+      sessions: {
+        'gazelle/abc': { mark: waitingRow.mark, at: expect.any(Number) },
+      },
+      mcpSignIn: { gazelle: { mark: mcpRow.mark, at: expect.any(Number) } },
+    });
+  });
+
+  it('gives up on a row after a bounded number of reads that answer 503, writing nothing', async () => {
+    const { storage, failReads, readCount, backendValue } = backendStorage({});
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+    const before = readCount();
+
+    failReads(true);
+    await act(async () => {
+      await expect(
+        result.current.markSeen(waitingRow, {
+          action: 'opened',
+          kind: 'waiting',
+        }),
+      ).rejects.toThrow('could not be read');
+    });
+
+    expect(readCount() - before).toBe(STORED_SETTING_RETRIES + 1);
+    expect(backendValue(SEEN)).toBeUndefined();
+    // Nothing was saved, so nothing is reported.
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('follows a row another tab marked seen', async () => {

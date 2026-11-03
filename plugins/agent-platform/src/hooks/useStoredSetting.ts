@@ -24,6 +24,60 @@ const BUCKET = 'agent-platform';
 /** How long a write waits for the stored value before it gives up. */
 const READ_TIMEOUT_MS = 10_000;
 
+/**
+ * A write's read of the stored value that failed. `transient`: the backend
+ * answered with a failure (a 5xx, the network) and a new read may well
+ * succeed; a read that timed out is not, as a retry would wait as long again.
+ */
+export class StoredSettingReadError extends Error {
+  constructor(
+    message: string,
+    readonly transient: boolean,
+  ) {
+    super(message);
+    this.name = 'StoredSettingReadError';
+  }
+}
+
+/** How many times a write that failed transiently is tried again. */
+export const STORED_SETTING_RETRIES = 2;
+
+/** The wait before the first retry; it doubles before each one after. */
+export const STORED_SETTING_RETRY_DELAY_MS = 250;
+
+/**
+ * Whether a failed write may succeed if tried again: its read failed
+ * transiently, the network failed (`fetch` rejects with a TypeError), or the
+ * backend answered with a 5xx (the storage's write error carries the
+ * `status`).
+ */
+export function isTransientStoredSettingError(error: unknown): boolean {
+  if (error instanceof StoredSettingReadError) {
+    return error.transient;
+  }
+  if (error instanceof TypeError) {
+    return true;
+  }
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' && status >= 500;
+}
+
+/**
+ * React Query's retry for a setting's write, for writes the person waits on:
+ * a transient failure is tried again {@link STORED_SETTING_RETRIES} times,
+ * after {@link STORED_SETTING_RETRY_DELAY_MS} and then twice as long each
+ * time. Safe because every write reads the stored value again and applies
+ * its change to it (`updateStoredSetting`): a write that did land before its
+ * answer was lost changes nothing the second time.
+ */
+export const storedSettingRetry = {
+  retry: (failureCount: number, error: unknown) =>
+    failureCount < STORED_SETTING_RETRIES &&
+    isTransientStoredSettingError(error),
+  retryDelay: (failureCount: number) =>
+    STORED_SETTING_RETRY_DELAY_MS * 2 ** failureCount,
+};
+
 /** The queue of writes to one setting. */
 const queues = new WeakMap<StorageApi, Map<string, Promise<unknown>>>();
 
@@ -45,7 +99,8 @@ function setTail(storageApi: StorageApi, key: string, tail: Promise<unknown>) {
  * storage, in tests and signed out) answers from its snapshot; the app's
  * user-settings storage answers `snapshot` with "unknown", and a subscription
  * reads the backend afresh. A read the backend did not answer ("unknown")
- * rejects: a write built on it would replace the stored value.
+ * rejects with a {@link StoredSettingReadError}: a write built on it would
+ * replace the stored value.
  */
 function readStored(
   bucket: StorageApi,
@@ -72,13 +127,21 @@ function readStored(
       // subscription is assigned.
       queueMicrotask(() => state.subscription?.unsubscribe());
     };
-    const unreadable = () =>
-      reject(new Error('The stored setting could not be read.'));
-    state.timer = setTimeout(() => settle(unreadable), READ_TIMEOUT_MS);
+    const unreadable = (transient: boolean) =>
+      reject(
+        new StoredSettingReadError(
+          'The stored setting could not be read.',
+          transient,
+        ),
+      );
+    state.timer = setTimeout(
+      () => settle(() => unreadable(false)),
+      READ_TIMEOUT_MS,
+    );
     state.subscription = bucket.observe$<StoredJson>(key).subscribe({
       next: value =>
         settle(() =>
-          value.presence === 'unknown' ? unreadable() : resolve(value),
+          value.presence === 'unknown' ? unreadable(true) : resolve(value),
         ),
       error: error => settle(() => reject(error)),
     });

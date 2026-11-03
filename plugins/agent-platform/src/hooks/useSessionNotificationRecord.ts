@@ -24,6 +24,7 @@ import {
   type SeenMarkTarget,
 } from '../lib/notificationRecord';
 import {
+  storedSettingRetry,
   storedSettingWriteClient,
   useStoredSetting,
   useStoredSettingUpdate,
@@ -221,6 +222,10 @@ export function useNotificationSeenMarks() {
           );
           return next && { value: next, result: true };
         }),
+      // A seen mark is written while the person watches (a row opened,
+      // "Mark all read"): a read the backend answered with a 503 is tried
+      // again before the inbox says it could not be saved.
+      ...storedSettingRetry,
       // Only what the person did: a row opened from the inbox, "Mark all
       // read". A session's row marked seen because its page is on screen is
       // bookkeeping, reported by nothing.

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
-import { Button, Flex, Switch, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Switch, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { NotificationRow } from '../NotificationRow';
@@ -46,6 +45,9 @@ const useStyles = makeStyles({
   state: {
     padding: 'var(--bui-space-4) var(--bui-space-1)',
   },
+  failure: {
+    margin: 'var(--bui-space-2) var(--bui-space-1) 0',
+  },
   footer: {
     padding: 'var(--bui-space-3) var(--bui-space-1) var(--bui-space-1)',
     borderTop: '1px solid var(--bui-border-1)',
@@ -84,9 +86,58 @@ function DesktopNotificationsSwitch() {
 }
 
 /**
+ * Read marks that could not be saved, with Try again: in the overlay, where
+ * the person looks for their notifications, rather than a toast that the
+ * overlay covers or that times out. The rows stay unread.
+ */
+function MarkFailureAlert({
+  rows,
+  retry,
+}: {
+  rows: number;
+  retry: () => Promise<void>;
+}) {
+  const classes = useStyles();
+  const [retrying, setRetrying] = useState(false);
+  const one = rows === 1;
+  return (
+    <Alert
+      role="alert"
+      status="danger"
+      icon
+      className={classes.failure}
+      isPending={retrying}
+      title={
+        one
+          ? 'Could not mark the notification read'
+          : 'Could not mark the notifications read'
+      }
+      description={`What you have read could not be saved, so ${
+        one ? 'it stays' : 'they stay'
+      } unread.`}
+      customActions={
+        <Button
+          variant="tertiary"
+          size="small"
+          isDisabled={retrying}
+          onPress={() => {
+            setRetrying(true);
+            retry()
+              .catch(() => {})
+              .finally(() => setRetrying(false));
+          }}
+        >
+          Try again
+        </Button>
+      }
+    />
+  );
+}
+
+/**
  * The overlay's content, the same in the rail's popover and the phone's
- * sheet: "Mark all read", the rows newest first, and the desktop-
- * notifications switch. `onNavigate` closes the overlay when a row opens its
+ * sheet: "Mark all read", the rows newest first, read marks that could not be
+ * saved, and the desktop-notifications switch. `onNavigate` closes the overlay when a row opens its
  * page.
  */
 export function NotificationList({
@@ -99,25 +150,27 @@ export function NotificationList({
 }) {
   const classes = useStyles();
   const inbox = useNotificationInbox();
-  const toastApi = useApi(toastApiRef);
   const [marking, setMarking] = useState(false);
   const now = useNow();
   if (!inbox) {
     return null;
   }
-  const { rows, ready, unreadCount, markRead, openInPlace, markAllRead } =
-    inbox;
+  const {
+    rows,
+    ready,
+    unreadCount,
+    markRead,
+    openInPlace,
+    markAllRead,
+    markFailure,
+    retryMarks,
+  } = inbox;
 
   const onMarkAllRead = () => {
     setMarking(true);
+    // A failure shows as `markFailure`.
     markAllRead()
-      .catch(() =>
-        toastApi.post({
-          title: 'Could not mark the notifications read',
-          status: 'danger',
-          timeout: 8000,
-        }),
-      )
+      .catch(() => {})
       .finally(() => setMarking(false));
   };
 
@@ -180,6 +233,9 @@ export function NotificationList({
           </Button>
         )}
       </Flex>
+      {markFailure && (
+        <MarkFailureAlert rows={markFailure.rows} retry={retryMarks} />
+      )}
       {body}
       {inbox.desktop.permission !== 'unsupported' && (
         <div className={classes.footer}>

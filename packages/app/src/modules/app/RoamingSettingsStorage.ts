@@ -231,9 +231,19 @@ export class RoamingSettingsStorage implements StorageApi {
   }
 }
 
-async function failure(response: Response, action: string): Promise<Error> {
-  const error = new Error(
-    `Could not ${action} the setting: the settings backend answered ${response.status}.`,
+/**
+ * A write the backend refused. `status` is its answer's, so a writer can tell
+ * a 5xx worth trying again from a refusal that will not change.
+ */
+async function failure(
+  response: Response,
+  action: string,
+): Promise<Error & { status: number }> {
+  const error = Object.assign(
+    new Error(
+      `Could not ${action} the setting: the settings backend answered ${response.status}.`,
+    ),
+    { status: response.status },
   );
   error.name = 'UserSettingsWriteError';
   return error;

@@ -176,6 +176,11 @@ describe('RoamingSettingsStorage', () => {
     await expect(storage.set('someSetting', 'too big')).rejects.toThrow(
       'answered 413',
     );
+    // The status, for a writer to tell a refusal from a 5xx worth retrying.
+    fetch.mockResolvedValueOnce(json({}, 503));
+    await expect(storage.set('someSetting', 'later')).rejects.toMatchObject({
+      status: 503,
+    });
     expect(seen.map(snapshot => snapshot.value)).toEqual(['before']);
   });
 

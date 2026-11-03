@@ -58,9 +58,18 @@ export type NotificationInboxValue = {
    * "Mark all read": every unread row, a write per source that has one (the
    * seen marks in one write; the store's unread notifications, read first,
    * in another). Rejects when a source could not mark them, after the others
-   * did.
+   * did; `markFailure` then says so.
    */
   markAllRead: () => Promise<void>;
+  /**
+   * Read marks the person asked for that could not be saved, after their
+   * retries: "Mark all read", or rows they opened. `rows` is how many of
+   * those rows are still unread; undefined once none is (a later mark, or
+   * another tab, read them). The rows stay unread meanwhile.
+   */
+  markFailure?: { rows: number };
+  /** Tries the marks of `markFailure` again. */
+  retryMarks: () => Promise<void>;
   /** The overlay (a popover on the rail, a sheet on a phone). */
   isOpen: boolean;
   setOpen: (open: boolean) => void;
@@ -79,6 +88,12 @@ const InboxContext = createContext<NotificationInboxValue | undefined>(
 export function useNotificationInbox(): NotificationInboxValue | undefined {
   return useContext(InboxContext);
 }
+
+/**
+ * What the person asked to mark read that could not be saved: "Mark all
+ * read", or rows they opened; `rowIds` are the rows it was to mark.
+ */
+type MarkFailure = { kind: 'all' | 'rows'; rowIds: string[] };
 
 /** Pinned rows first, then newest first; rows that cannot say when go last. */
 function byNewest(a: InboxRow, b: InboxRow): number {
@@ -128,26 +143,43 @@ function Inbox({ children }: { children: ReactNode }) {
   const [isOpen, setOpenState] = useState(false);
   const desktop = useDesktopNotifications();
 
+  const [failure, setFailure] = useState<MarkFailure>();
+
   // Rows whose read mark is on its way, so a row is written once however it
-  // was read: clicked, then on screen once its page opens.
+  // was read: clicked, then on screen once its page opens. A row the person
+  // opened whose mark could not be saved (its source has retried) is a
+  // failure the overlay shows; a row only on screen is not their doing, and
+  // is marked again with the next read.
   const marking = useRef(new Set<string>());
   const markOnce = useCallback(
-    (row: InboxRow, opened: boolean) => {
+    (row: InboxRow, opened: boolean): Promise<void> => {
       const source = sourceOf(row);
       if (!source || !row.unread || marking.current.has(row.id)) {
-        return;
+        return Promise.resolve();
       }
       marking.current.add(row.id);
-      source
+      return source
         .markRead(row, opened)
-        .catch(() => {})
+        .catch(() => {
+          if (opened) {
+            setFailure(previous => ({
+              kind: previous?.kind ?? 'rows',
+              rowIds: [
+                ...(previous?.rowIds ?? []).filter(id => id !== row.id),
+                row.id,
+              ],
+            }));
+          }
+        })
         .finally(() => marking.current.delete(row.id));
     },
     [sourceOf],
   );
 
   const markRead = useCallback(
-    (row: InboxRow) => markOnce(row, true),
+    (row: InboxRow) => {
+      markOnce(row, true);
+    },
     [markOnce],
   );
 
@@ -180,11 +212,49 @@ function Inbox({ children }: { children: ReactNode }) {
     inboxQueryClient,
   );
   const markAllRead = useCallback(async () => {
-    const { failure } = await markAllSources();
-    if (failure) {
-      throw failure;
+    const asked = latestSources.current.flatMap(source =>
+      source.rows.filter(row => row.unread).map(row => row.id),
+    );
+    const { failure: reason } = await markAllSources();
+    if (reason) {
+      setFailure({ kind: 'all', rowIds: asked });
+      throw reason;
     }
+    setFailure(undefined);
   }, [markAllSources]);
+
+  // Shown while a row it names is still unread: a row read since (a later
+  // mark, another tab) takes its part of the failure away.
+  const failedRows = useMemo(
+    () =>
+      failure
+        ? rows.filter(row => row.unread && failure.rowIds.includes(row.id))
+        : [],
+    [failure, rows],
+  );
+  const markFailure = useMemo(
+    () => (failedRows.length > 0 ? { rows: failedRows.length } : undefined),
+    [failedRows.length],
+  );
+  // Once none of its rows is unread the failure is over, so a later one
+  // starts afresh rather than retrying a "Mark all read" nobody sees.
+  const isFailureOver = Boolean(failure) && failedRows.length === 0;
+  useEffect(() => {
+    if (isFailureOver) {
+      setFailure(undefined);
+    }
+  }, [isFailureOver]);
+
+  const latestFailedRows = useRef(failedRows);
+  latestFailedRows.current = failedRows;
+  const retryMarks = useCallback(async () => {
+    if (failure?.kind === 'all') {
+      await markAllRead();
+      return;
+    }
+    setFailure(undefined);
+    await Promise.all(latestFailedRows.current.map(row => markOnce(row, true)));
+  }, [failure, markAllRead, markOnce]);
 
   // Opening the overlay, however it opens, answers the toasts that point to
   // it; `interruptions` is read through a ref because it needs the opener.
@@ -308,6 +378,8 @@ function Inbox({ children }: { children: ReactNode }) {
       markRead,
       openInPlace,
       markAllRead,
+      markFailure,
+      retryMarks,
       isOpen,
       setOpen,
       desktop,
@@ -319,6 +391,8 @@ function Inbox({ children }: { children: ReactNode }) {
       markRead,
       openInPlace,
       markAllRead,
+      markFailure,
+      retryMarks,
       isOpen,
       setOpen,
       desktop,

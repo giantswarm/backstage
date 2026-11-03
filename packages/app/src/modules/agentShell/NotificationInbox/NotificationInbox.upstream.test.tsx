@@ -543,12 +543,9 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       await userEvent.click(
         await within(overlay).findByRole('button', { name: 'Mark all read' }),
       );
-      await waitFor(() =>
-        expect(post).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: 'Could not mark the notifications read',
-          }),
-        ),
+      // Said in the overlay, for the one row still unread.
+      expect(await within(overlay).findByRole('alert')).toHaveTextContent(
+        'Could not mark the notification read',
       );
       expect(upstream.isRead('n1')).toBe(true);
       expect(reportedEvents()).toEqual([
