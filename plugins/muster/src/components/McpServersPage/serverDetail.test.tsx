@@ -4,11 +4,17 @@ import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
   AuthChain,
+  hasHealthDetails,
+  HealthDetails,
   RuntimeState,
   ServerConfig,
   ServerTools,
@@ -425,5 +431,70 @@ describe('RuntimeState on a deactivated server', () => {
     expect(
       screen.queryByText(/the Session, Tools, Resources and Prompts rows/),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('HealthDetails', () => {
+  const MINUTE = 60 * 1000;
+
+  function serverWithStatus(status: Record<string, unknown>): MCPServer {
+    return new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'aws-root' },
+        spec: OAUTH_SPEC,
+        status: { state: 'Failed', ...status },
+      } as never,
+      'gazelle',
+    );
+  }
+
+  /** Renders the block on the shell's clock, as the app mounts it. */
+  function renderHealth(server: MCPServer) {
+    return renderInTestApp(
+      <DateTimeZoneProvider timeZone="local">
+        <HealthDetails server={server} />
+      </DateTimeZoneProvider>,
+    );
+  }
+
+  it('says when it last connected and when it retries, the local time on hover', async () => {
+    const lastConnected = new Date(Date.now() - 5 * MINUTE).toISOString();
+    const nextRetry = new Date(Date.now() + 3 * MINUTE).toISOString();
+
+    await renderHealth(
+      serverWithStatus({
+        lastConnected,
+        consecutiveFailures: 3,
+        nextRetryAfter: nextRetry,
+      }),
+    );
+
+    const last = screen.getByText('5 minutes ago');
+    expect(last).toHaveAttribute('title', formatLocalDateFull(lastConnected));
+    const retry = screen.getByText('in 3 minutes');
+    expect(retry).toHaveAttribute('title', formatLocalDateFull(nextRetry));
+    // No browser-locale timestamp in parentheses beside them.
+    expect(screen.queryByText(/\(/)).not.toBeInTheDocument();
+  });
+
+  it('leaves out a timestamp that does not parse', async () => {
+    const server = serverWithStatus({
+      lastConnected: 'not a date',
+      nextRetryAfter: 'soon',
+      consecutiveFailures: 1,
+    });
+
+    await renderHealth(server);
+
+    expect(screen.queryByText('Last connected')).not.toBeInTheDocument();
+    expect(screen.queryByText('Next retry')).not.toBeInTheDocument();
+    expect(screen.getByText('Consecutive failures')).toBeInTheDocument();
+    expect(
+      hasHealthDetails(
+        serverWithStatus({ lastConnected: 'not a date', nextRetryAfter: 'x' }),
+      ),
+    ).toBe(false);
   });
 });

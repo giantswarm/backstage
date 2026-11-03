@@ -18,6 +18,7 @@ import {
   INITIAL_ROWS,
   isAwaitingData,
   CatalogNoMatch,
+  DateComponent,
   matchesQuery,
   Mono,
   useFactTextVariant,
@@ -40,10 +41,7 @@ import {
 import { decodeDexSubject } from '../../lib/dexSubject';
 import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
 import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
-import {
-  formatRelativeTime,
-  formatTimestamp,
-} from '../../lib/formatRelativeTime';
+import { validTimestamp } from '../../lib/formatRelativeTime';
 import {
   StateBadge,
   severityTone,
@@ -337,9 +335,9 @@ export function AuthChain({ server }: { server: MCPServer }) {
 export function hasHealthDetails(server: MCPServer): boolean {
   return Boolean(
     server.getReadyCondition()?.message ||
-    server.getLastConnected() ||
+    validTimestamp(server.getLastConnected()) ||
     (server.getConsecutiveFailures() ?? 0) > 0 ||
-    server.getNextRetryAfter() ||
+    validTimestamp(server.getNextRetryAfter()) ||
     server.getLastError(),
   );
 }
@@ -351,9 +349,9 @@ export function hasHealthDetails(server: MCPServer): boolean {
  */
 export function HealthDetails({ server }: { server: MCPServer }) {
   const classes = useStyles();
-  const lastConnected = server.getLastConnected();
+  const lastConnected = validTimestamp(server.getLastConnected());
   const consecutiveFailures = server.getConsecutiveFailures();
-  const nextRetry = server.getNextRetryAfter();
+  const nextRetry = validTimestamp(server.getNextRetryAfter());
   const lastError = server.getLastError();
 
   const facts: Fact[] = [];
@@ -372,15 +370,11 @@ export function HealthDetails({ server }: { server: MCPServer }) {
       ),
     });
   }
+  // How long ago and how soon, the local date and time on hover.
   if (lastConnected) {
     facts.push({
       label: 'Last connected',
-      value: (
-        <>
-          {formatRelativeTime(lastConnected)}{' '}
-          <Note>({formatTimestamp(lastConnected)})</Note>
-        </>
-      ),
+      value: <DateComponent value={lastConnected} relative />,
     });
   }
   if (typeof consecutiveFailures === 'number' && consecutiveFailures > 0) {
@@ -389,12 +383,7 @@ export function HealthDetails({ server }: { server: MCPServer }) {
   if (nextRetry) {
     facts.push({
       label: 'Next retry',
-      value: (
-        <>
-          {formatRelativeTime(nextRetry)}{' '}
-          <Note>({formatTimestamp(nextRetry)})</Note>
-        </>
-      ),
+      value: <DateComponent value={nextRetry} relative />,
     });
   }
 
@@ -508,18 +497,6 @@ export function RuntimeState({ server }: { server: MCPServer }) {
     facts.push({
       label: 'Consecutive failures',
       value: runtime.consecutiveFailures,
-    });
-  }
-  if (runtime.nextRetryAfter) {
-    facts.push({
-      label: 'Next retry',
-      value: formatTimestamp(runtime.nextRetryAfter),
-    });
-  }
-  if (runtime.connectedAt) {
-    facts.push({
-      label: 'Connected at',
-      value: formatTimestamp(runtime.connectedAt),
     });
   }
   if (runtime.error) {

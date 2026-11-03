@@ -1022,7 +1022,7 @@ function AgentDetailPageContent() {
       meta={
         created ? (
           <>
-            Created <DateComponent value={created} />
+            Created <DateComponent value={created} relative />
           </>
         ) : undefined
       }

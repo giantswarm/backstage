@@ -23,6 +23,11 @@ import {
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+  getRelativeDate,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { AgentDetailPage } from './AgentDetailPage';
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
@@ -2274,17 +2279,23 @@ describe('AgentDetailPage: the model behind the agent', () => {
 
 describe('AgentDetailPage: the frame and the plain Overview', () => {
   const renderShell = (tab: string = '', path: string = AGENT_PATH) =>
-    renderInTestApp(<AgentDetailPage />, {
-      mountedRoutes: {
-        '/customize/agents': agentsRouteRef,
-        '/customize/models': modelsRouteRef,
-        '/customize': customizeExternalRouteRef,
-        '/customize/skills': skillsRouteRef,
-        '/usage': usageRouteRef,
+    renderInTestApp(
+      // On the shell's clock, as its layout mounts it around its pages.
+      <DateTimeZoneProvider timeZone="local">
+        <AgentDetailPage />
+      </DateTimeZoneProvider>,
+      {
+        mountedRoutes: {
+          '/customize/agents': agentsRouteRef,
+          '/customize/models': modelsRouteRef,
+          '/customize': customizeExternalRouteRef,
+          '/customize/skills': skillsRouteRef,
+          '/usage': usageRouteRef,
+        },
+        mountPath: '/customize/agents/:installation/:namespace/:name/*',
+        initialRouteEntries: [tab ? `${path}/${tab}` : path],
       },
-      mountPath: '/customize/agents/:installation/:namespace/:name/*',
-      initialRouteEntries: [tab ? `${path}/${tab}` : path],
-    });
+    );
 
   beforeEach(() => {
     mockUseResource.mockReset();
@@ -2335,6 +2346,27 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       // plain page; the identifier waits behind the technical details.
       expect(screen.queryByText('← Agents')).toBeNull();
       expect(screen.queryByText('agent-platform/pr-reviewer')).toBeNull();
+    });
+
+    it('says how long ago the agent was created, once, the local time on hover', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const created = screen.getByText(
+        getRelativeDate('2026-07-21T09:00:00Z', new Date()),
+      );
+      expect(created).toHaveTextContent(/ ago$/);
+      expect(created).toHaveAttribute(
+        'title',
+        formatLocalDateFull('2026-07-21T09:00:00Z'),
+      );
+      expect(created.parentElement).toHaveTextContent(/^Created /);
+      // The header says it; the Overview's facts beside it do not repeat it.
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).queryByText('Created')).toBeNull();
     });
 
     it('offers Overview, Sessions, Tools and Usage, each at its own URL', async () => {

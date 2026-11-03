@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+  getRelativeDate,
   PageHeaderActionsProvider,
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -246,24 +249,27 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    // The shell mounts the scope around its pages, as the app does.
-    <ShellScopeProvider>
-      <QueryClientProvider client={queryClient}>
-        <PageHeaderActionsProvider>
-          <Routes>
-            {/* The connector wizard, where Edit leads. */}
-            <Route
-              path="/customize/connectors/:installation/:server/edit"
-              element={<LocationProbe />}
-            />
-            <Route
-              path="/customize/connectors/:installation/:server/*"
-              element={<ConnectorPage usedBy={usedBy} />}
-            />
-          </Routes>
-        </PageHeaderActionsProvider>
-      </QueryClientProvider>
-    </ShellScopeProvider>,
+    // The shell mounts the scope and its clock around its pages, as the app
+    // does.
+    <DateTimeZoneProvider timeZone="local">
+      <ShellScopeProvider>
+        <QueryClientProvider client={queryClient}>
+          <PageHeaderActionsProvider>
+            <Routes>
+              {/* The connector wizard, where Edit leads. */}
+              <Route
+                path="/customize/connectors/:installation/:server/edit"
+                element={<LocationProbe />}
+              />
+              <Route
+                path="/customize/connectors/:installation/:server/*"
+                element={<ConnectorPage usedBy={usedBy} />}
+              />
+            </Routes>
+          </PageHeaderActionsProvider>
+        </QueryClientProvider>
+      </ShellScopeProvider>
+    </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
@@ -438,7 +444,15 @@ describe('ConnectorPage', () => {
       hours: 720,
       servers: ['jira'],
     });
-    expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
+    // Added: how long ago, the local date and time on hover.
+    const added = within(facts).getByText(
+      getRelativeDate('2026-08-04T10:00:00Z', new Date()),
+    );
+    expect(added).toHaveTextContent(/ ago$/);
+    expect(added).toHaveAttribute(
+      'title',
+      formatLocalDateFull('2026-08-04T10:00:00Z'),
+    );
     // The address is technical: in the fold-out's configuration.
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
   });
