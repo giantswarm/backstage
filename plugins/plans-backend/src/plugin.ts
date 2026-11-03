@@ -8,7 +8,7 @@ import { createRouter } from './router';
 /**
  * plansPlugin backend plugin
  *
- * Thin REST API over plan repositories (e.g. giantswarm/bumblebee-plans),
+ * Thin REST API over plan repositories (e.g. `<owner>/<plans-repo>`),
  * consumed by the plans frontend plugin to render proposed (open PR) and
  * merged plan documents and to read/write PR discussion and inline review
  * comments. Every GitHub call runs as the signed-in person: the frontend

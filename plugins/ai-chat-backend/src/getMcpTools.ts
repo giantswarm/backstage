@@ -50,8 +50,11 @@ function readMcpServersFromConfig(
   config: Config,
   authTokens: AuthTokens,
   backstageUser: BackstageUserContext | undefined,
+  logger: LoggerService,
 ): Record<string, McpServerConfig> {
   const mcpServers: Record<string, McpServerConfig> = {};
+  const musterServerName =
+    config.getOptionalString('muster.serverName') ?? 'muster';
 
   const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
   if (!mcpConfigs || mcpConfigs.length === 0) {
@@ -111,15 +114,24 @@ function readMcpServersFromConfig(
       continue;
     }
 
-    // Rule 3: If headers configured, add server with those headers
-    const headers = getMcpServerHeaders(mcp);
-    if (headers) {
-      mcpServers[name] = { url, headers, installation, timeoutMs };
+    // Rule 3: muster runs every tool of every aggregated server (agent-manager
+    // starting sessions and writing agents among them) as the caller. Without
+    // the person's token it would run them under its own identity, shared by
+    // every portal user, so it is never handed to the model that way.
+    if (name === musterServerName) {
+      logger.info(
+        `MCP server '${name}' is muster and has no authProvider, so it is left out of AI chat rather than called under muster's shared identity.`,
+      );
       continue;
     }
 
-    // Rule 4: No headers and no authProvider, just add server
-    mcpServers[name] = { url, installation, timeoutMs };
+    // Rule 4: Any other server, with its static headers if configured
+    mcpServers[name] = {
+      url,
+      headers: getMcpServerHeaders(mcp),
+      installation,
+      timeoutMs,
+    };
   }
 
   return mcpServers;
@@ -362,6 +374,7 @@ export async function getMcpTools(
     config,
     authTokens,
     backstageUser,
+    logger,
   );
 
   const tools: ToolSet = {};

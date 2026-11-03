@@ -1,14 +1,14 @@
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   clientLookupOf,
   endpointAuthority,
   explanationWithoutReason,
   findServedModel,
-  findServedModelForEndpoint,
   gpuFree,
   gpuTotal,
-  hasServedModelActions,
   isAcceleratorCapacityRow,
   isSameServedModel,
   isServingFailure,
@@ -45,52 +45,6 @@ const qwen: ServedModel = {
     'models.example.test',
   ],
 };
-
-describe('findServedModelForEndpoint', () => {
-  it('matches a base URL by hostname regardless of scheme, port and path', () => {
-    expect(
-      findServedModelForEndpoint(
-        'http://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local:8000/v1',
-        [qwen],
-      ),
-    ).toBe(qwen);
-    expect(
-      findServedModelForEndpoint(
-        'HTTPS://Models.example.test:443/kserve/qwen3-14b/v1/',
-        [qwen],
-      ),
-    ).toBe(qwen);
-  });
-
-  it('matches a model listed under an authority only from that port', () => {
-    const ollamaOnly: ServedModel = {
-      id: 'lab/ollama//qwen3:0.6b',
-      installation: 'lab',
-      backend: 'ollama',
-      name: 'qwen3:0.6b',
-      readiness: 'idle',
-      endpointHosts: ['172.21.0.1:11434'],
-    };
-    expect(
-      findServedModelForEndpoint('http://172.21.0.1:11434/v1', [ollamaOnly]),
-    ).toBe(ollamaOnly);
-    expect(
-      findServedModelForEndpoint('http://172.21.0.1:13305/v1', [ollamaOnly]),
-    ).toBeUndefined();
-    expect(
-      findServedModelForEndpoint('http://172.21.0.1/v1', [ollamaOnly]),
-    ).toBeUndefined();
-  });
-
-  it('matches nothing for provider defaults, non-URLs and unknown hosts', () => {
-    expect(findServedModelForEndpoint(undefined, [qwen])).toBeUndefined();
-    expect(findServedModelForEndpoint('', [qwen])).toBeUndefined();
-    expect(findServedModelForEndpoint('not-a-url', [qwen])).toBeUndefined();
-    expect(
-      findServedModelForEndpoint('https://api.openai.com/v1', [qwen]),
-    ).toBeUndefined();
-  });
-});
 
 describe('findServedModel', () => {
   // Two Ollama models on one host: the endpoint alone cannot tell them apart.
@@ -223,6 +177,10 @@ describe('findServedModel', () => {
     };
     expect(findServedModel(lemonade, [qwenSmall])).toBeUndefined();
     expect(findServedModel(lemonade, [qwenSmall, qwenBig])).toBeUndefined();
+    // No port at all is the scheme's default (:80), another server too.
+    expect(
+      findServedModel({ endpoint: 'http://172.21.0.1/v1' }, [qwenSmall]),
+    ).toBeUndefined();
     // Ollama's own port, with one model there: the single-candidate rule
     // applies as before — on that server.
     expect(
@@ -308,6 +266,7 @@ describe('findServedModel', () => {
       'http://qwen3-14b-kserve-workload-svc.kserve.svc:8080/v1',
       'http://qwen3-14b-kserve-workload-svc.kserve/v1',
       'https://models.example.test/kserve/qwen3-14b/v1',
+      'HTTPS://Models.example.test:443/kserve/qwen3-14b/v1/',
     ]) {
       expect(findServedModel({ endpoint, model: 'anything' }, [qwen])).toBe(
         qwen,
@@ -324,29 +283,14 @@ describe('findServedModel', () => {
     ).toBeUndefined();
   });
 
-  it('matches nothing for provider defaults and non-URLs', () => {
+  it('matches nothing for provider defaults, non-URLs and unknown hosts', () => {
     expect(findServedModel({}, [qwen])).toBeUndefined();
     expect(findServedModel({ endpoint: '' }, [qwen])).toBeUndefined();
     expect(findServedModel({ model: 'qwen3-14b' }, [qwen])).toBeUndefined();
-  });
-});
-
-describe('hasServedModelActions', () => {
-  it('is true only when an operation beyond listing is offered', () => {
-    expect(hasServedModelActions(undefined)).toBe(false);
-    expect(hasServedModelActions(NO_SERVING_CAPABILITIES)).toBe(false);
+    expect(findServedModel({ endpoint: 'not-a-url' }, [qwen])).toBeUndefined();
     expect(
-      hasServedModelActions({
-        ...NO_SERVING_CAPABILITIES,
-        nodeInventory: true,
-      }),
-    ).toBe(false);
-    expect(
-      hasServedModelActions({ ...NO_SERVING_CAPABILITIES, load: true }),
-    ).toBe(true);
-    expect(
-      hasServedModelActions({ ...NO_SERVING_CAPABILITIES, delete: true }),
-    ).toBe(true);
+      findServedModel({ endpoint: 'https://api.openai.com/v1' }, [qwen]),
+    ).toBeUndefined();
   });
 });
 
@@ -777,9 +721,31 @@ describe('mergeServingSnapshots', () => {
     });
   });
 
+  it('waits for the served models of every source, falling back to its isLoading', () => {
+    // A source that reports no `isLoadingServedModels` of its own.
+    const { isLoadingServedModels: _, ...settled } = mergeServingSnapshots([]);
+    const merged = (
+      ...flags: { isLoading: boolean; isLoadingServedModels?: boolean }[]
+    ) => mergeServingSnapshots(flags.map(flag => ({ ...settled, ...flag })));
+
+    expect(
+      merged(
+        { isLoading: true, isLoadingServedModels: false },
+        { isLoading: false, isLoadingServedModels: false },
+      ).isLoadingServedModels,
+    ).toBe(false);
+    expect(
+      merged(
+        { isLoading: true, isLoadingServedModels: false },
+        { isLoading: true },
+      ).isLoadingServedModels,
+    ).toBe(true);
+  });
+
   it('is empty and settled with no sources', () => {
     expect(mergeServingSnapshots([])).toEqual({
       isLoading: false,
+      isLoadingServedModels: false,
       installations: [],
       backends: {},
       backendCapabilities: {},
@@ -1395,7 +1361,7 @@ describe('clientLookupOf', () => {
   it('reads the endpoint, model and identity off a ModelConfig', () => {
     const modelConfig = new ModelConfig(
       {
-        apiVersion: 'kagent.dev/v1alpha3',
+        apiVersion: 'api.kagent.dev/v1alpha3',
         kind: 'ModelConfig',
         metadata: { name: 'qwen3-0-6b', namespace: 'kagent' },
         spec: {
@@ -1403,7 +1369,7 @@ describe('clientLookupOf', () => {
           model: 'qwen3:0.6b',
           ollama: { host: 'http://172.21.0.1:11434' },
         },
-      } as crds.kagent.v1alpha3.ModelConfig,
+      } as ModelConfigInterface,
       'lab',
     );
     expect(clientLookupOf(modelConfig)).toEqual({

@@ -1,64 +1,185 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Content, Progress } from '@backstage/core-components';
+import { ReactNode, useCallback, useMemo } from 'react';
 import {
-  toastApiRef,
-  useApi,
-  useRouteRef,
-} from '@backstage/frontend-plugin-api';
-import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import {
+  ErrorsProvider,
   ModelConfig,
   useResource,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import {
+  DateComponent,
+  EmptyStateCard,
+  type Fact,
+  LoadingIndicator,
+  type RouteTabSpec,
+  ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageTitleSkeleton,
+  StatusDot,
+  useFactTextVariant,
+  useProvidePageHeaderActions,
+  useSplatBasePath,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import { modelsRouteRef } from '../../routes';
 import {
   modelConfigFormValues,
   modelConfigOwner,
-  ModelConfigFormValues,
-  validateModelConfigForm,
 } from '../../lib/modelConfigs';
-import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
+import {
+  type ContextWindowLookup,
+  lookUpContextWindow,
+} from '../../lib/contextWindows';
+import { modelStatus } from '../../lib/customize';
+import { modelProblem } from '../../lib/modelProblem';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
+import { modelEditRouteRef } from '../../routes';
+import { useAgents } from '../AgentsDataProvider';
 import { InstallationChip } from '../InstallationChip';
-import { ModelConfigFormFields } from '../ModelConfigForm';
-import { ModelServingStatus } from '../ModelServingStatus';
-import { toModelServedBy } from '../ModelsTable';
+import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
-
-/** Long enough to read two lines, short enough not to follow you to the next page. */
-const TOAST_TIMEOUT_MS = 6000;
-
-const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
-}));
+import { ModelOverviewTab } from './ModelOverviewTab';
+import { modelPageTabs } from './modelTabs';
+import { ModelUsageTab } from './ModelUsageTab';
+import { ModelUsedByTab } from './ModelUsedByTab';
+import {
+  agentsUsingModel,
+  describeContextWindow,
+  modelConfigIdOf,
+} from './modelUsage';
+import { useModelUsage } from './useModelUsage';
 
 /**
- * One model, as an editable form — and deliberately also the read view: what
- * a ModelConfig *is* fits the same fields, so a CR the portal must not write
- * (tool-owned, no RBAC, or a provider this form does not speak) renders the
- * identical page with the fields disabled and an alert saying why.
+ * The page's outer frame: the platform-standard page frame (`ShellPage`) —
+ * breadcrumbs reading "Customize / Models / <model>", the
+ * model's name as the h1 at the standard scale, its status, environment and
+ * provider beside it, and the tabs under it. The actions the page registers
+ * land in that header's slot.
+ *
+ * A component of its own so every exit — loading, not found, and the model
+ * itself — gets the same frame.
  */
-export function ModelDetailPage() {
-  const classes = useStyles();
+function ModelFrame({
+  title,
+  heading,
+  badges,
+  meta,
+  tabs,
+  children,
+}: {
+  /** The shell header's h1, and the breadcrumbs' last entry. */
+  title: string;
+  /** The h1 instead of `title`, e.g. its skeleton while the model is read. */
+  heading?: ReactNode;
+  badges?: ReactNode;
+  meta?: ReactNode;
+  tabs?: RouteTabSpec[];
+  children: ReactNode;
+}) {
+  const paths = useCustomizePaths();
+  const { search } = useLocation();
+  return (
+    <ShellPage
+      title={heading ?? title}
+      breadcrumbs={[
+        { label: 'Customize', href: paths.customize },
+        { label: 'Models', href: paths.models },
+        { label: title },
+      ]}
+      badges={badges}
+      meta={meta}
+      tabs={tabs}
+      // The tab links keep the address's query, as on the workflow page.
+      tabsSearch={search}
+    >
+      {children}
+    </ShellPage>
+  );
+}
+
+/**
+ * The tool that owns the model, and what that means here: no Edit, since the
+ * tool would revert it. The page's header offers none, and this says why.
+ */
+function ManagedByValue({ owner }: { owner: string }) {
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant={useFactTextVariant()}>{owner}</Text>
+      <Text variant="body-small" color="secondary">
+        {owner} would revert edits made here, so change the model where {owner}{' '}
+        is configured.
+      </Text>
+    </Flex>
+  );
+}
+
+/** Overview's plain facts: what it calls, where, who owns it, and since when. */
+export function modelFacts({
+  modelConfig,
+  installation,
+  contextWindow,
+  owner,
+}: {
+  modelConfig: ModelConfig;
+  installation: string;
+  /** What the context-window table says about the model, when that is known. */
+  contextWindow: ContextWindowLookup | undefined;
+  /** The tool that asserts the model (`modelConfigOwner`), if any. */
+  owner?: string;
+}): Fact[] {
+  const created = modelConfig.getCreatedTimestamp();
+  const provider = modelConfig.getProvider();
+  const facts: Fact[] = [
+    ...(provider ? [{ label: 'Provider', value: provider }] : []),
+    { label: 'Model ID', value: modelConfig.getModel() ?? '—' },
+    {
+      label: 'Endpoint',
+      value: modelConfig.getEndpoint() ?? 'Provider default',
+    },
+  ];
+  if (contextWindow?.kind === 'window') {
+    facts.push({
+      label: 'Context window',
+      value: describeContextWindow(contextWindow.tokens),
+    });
+  }
+  facts.push({ label: 'Environment', value: installation });
+  if (owner) {
+    facts.push({
+      label: 'Managed by',
+      value: <ManagedByValue owner={owner} />,
+    });
+  }
+  if (created) {
+    facts.push({
+      label: 'Created',
+      // Relative, as the shell's other "Created" facts; the shell's local
+      // clock puts the full timestamp in its title.
+      value: <DateComponent value={created} relative />,
+    });
+  }
+  return facts;
+}
+
+function ModelDetailPageContent() {
   const navigate = useNavigate();
-  const toastApi = useApi(toastApiRef);
-  const modelsLink = useRouteRef(modelsRouteRef);
+  const modelEditRoute = useRouteRef(modelEditRouteRef);
+  const paths = useCustomizePaths();
+  const basePath = useSplatBasePath();
+  const { search } = useLocation();
+  const { config } = useSignedInConfig();
   const {
     installation = '',
     namespace = '',
@@ -78,14 +199,12 @@ export function ModelDetailPage() {
   );
 
   const owner = modelConfig ? modelConfigOwner(modelConfig) : undefined;
-  const prefilled = modelConfig
-    ? modelConfigFormValues(modelConfig)
-    : undefined;
-  const isUnsupportedProvider = Boolean(modelConfig) && !prefilled;
+  const isUnsupportedProvider = modelConfig
+    ? !modelConfigFormValues(modelConfig)
+    : false;
 
-  // The same block the Model configs list shows in its Endpoint cell: what
-  // the serving layer says about the model behind this config, and the fix
-  // where there is one. Nothing for provider defaults and external endpoints.
+  // What the serving layer says about the model behind this config, for the
+  // status badge and the Overview's serving block.
   const { servingStateFor, capabilitiesFor, backends } = useServing();
   const servingState = modelConfig
     ? servingStateFor(installation, clientLookupOf(modelConfig))
@@ -114,20 +233,32 @@ export function ModelDetailPage() {
       { enabled: Boolean(modelConfig) },
     );
 
-  const [values, setValues] = useState<ModelConfigFormValues | undefined>();
-  // Seed the form once when the CR first resolves; a ref makes this a one-shot
-  // so a background refetch never clobbers in-progress edits.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (!seeded.current && prefilled) {
-      seeded.current = true;
-      setValues(prefilled);
-    }
-  }, [prefilled]);
-
-  const [showValidation, setShowValidation] = useState(false);
-  const { save, isSaving, error: saveError, reset } = useSaveModelConfig();
   const deletion = useDeleteModelConfig(modelConfig);
+
+  // Read here, above the tabs, so Used by and the Usage tab share one
+  // result. Only for a model there is: the not-found and error frames
+  // never show it.
+  const usage = useModelUsage(
+    modelConfig ? installation : undefined,
+    modelConfig?.getModel(),
+    modelConfig?.getDisplayName() ?? name,
+  );
+
+  // The agents whose spec names this ModelConfig, for Used by and its count.
+  const {
+    rows: agentRows,
+    isLoading: agentsLoading,
+    unreachableInstallations,
+  } = useAgents();
+  const using = useMemo(
+    () =>
+      agentsUsingModel(
+        agentRows,
+        modelConfigIdOf(installation, namespace, name),
+      ),
+    [agentRows, installation, namespace, name],
+  );
+  const agentsUnreachable = unreachableInstallations.includes(installation);
 
   const isEditable =
     Boolean(modelConfig) &&
@@ -136,59 +267,12 @@ export function ModelDetailPage() {
     mayUpdate &&
     !isCheckingPermission;
 
-  const onChange = useCallback((patch: Partial<ModelConfigFormValues>) => {
-    setValues(prev => (prev ? { ...prev, ...patch } : prev));
-  }, []);
-
-  const validationErrors = values
-    ? validateModelConfigForm(values, {
-        isEdit: true,
-        originalProvider: modelConfig?.getProvider(),
-      })
-    : [];
-
-  const onCancel = useCallback(() => {
-    if (modelsLink) {
-      navigate(modelsLink());
+  const openEdit = useCallback(() => {
+    const href = modelEditRoute?.({ installation, namespace, name });
+    if (href) {
+      navigate(href);
     }
-  }, [modelsLink, navigate]);
-
-  const onSave = useCallback(async () => {
-    if (!values || !modelConfig) {
-      return;
-    }
-    if (validationErrors.length > 0) {
-      setShowValidation(true);
-      return;
-    }
-    reset();
-    try {
-      await save({ installation, values, original: modelConfig });
-    } catch {
-      // Left on the page: the mutation error renders in the alert below.
-      return;
-    }
-    toastApi.post({
-      title: `Model "${values.displayName.trim() || values.name}" saved`,
-      status: 'success',
-      timeout: TOAST_TIMEOUT_MS,
-    });
-    if (modelsLink) {
-      navigate(modelsLink());
-    }
-    // validationErrors derives from `values`/`modelConfig`, both dependencies.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    values,
-    modelConfig,
-    installation,
-    save,
-    reset,
-    toastApi,
-    modelsLink,
-    navigate,
-    validationErrors.length,
-  ]);
+  }, [modelEditRoute, installation, namespace, name, navigate]);
 
   // Memoized so the header actions slot only updates when the handlers change.
   // The kebab gets the page's deletion result as a prop: it renders in the
@@ -196,12 +280,9 @@ export function ModelDetailPage() {
   const actions = useMemo(
     () => (
       <Flex gap="2" align="center">
-        <Button variant="tertiary" onPress={onCancel} isDisabled={isSaving}>
-          {isEditable ? 'Cancel' : 'Back to models'}
-        </Button>
-        {isEditable && (
-          <Button variant="primary" onPress={onSave} isDisabled={isSaving}>
-            {isSaving ? 'Saving…' : 'Save changes'}
+        {isEditable && modelEditRoute && (
+          <Button variant="secondary" onPress={openEdit}>
+            Edit
           </Button>
         )}
         {modelConfig && (
@@ -209,148 +290,179 @@ export function ModelDetailPage() {
         )}
       </Flex>
     ),
-    [onCancel, onSave, isSaving, isEditable, modelConfig, deletion],
+    [isEditable, modelEditRoute, openEdit, modelConfig, deletion],
   );
   useProvidePageHeaderActions(actions);
 
-  if (isLoading) {
+  // Loading only while there is no model to show: one already in the query
+  // cache renders at once, even while the persisted cache restores on the
+  // provider's mount. Meanwhile the loaded page's frame, with skeletons where
+  // the read will fill in (T95).
+  if (isLoading && !modelConfig) {
     return (
-      <Content>
-        <Progress aria-label="Loading model" />
-      </Content>
+      <ModelFrame
+        title="Model"
+        heading={<ShellPageTitleSkeleton label="Loading model" />}
+        badges={<ShellPageBadgeSkeleton />}
+        tabs={modelPageTabs({ usedBy: undefined, isLoading: true })}
+      >
+        <LoadingIndicator label="Reading the model…" />
+      </ModelFrame>
     );
   }
 
   if (!modelConfig) {
     return (
-      <Content>
-        <Alert
-          status="warning"
-          title="Model not found"
-          description={
-            errors.length > 0
-              ? `ModelConfig ${namespace}/${name} on ${installation} could not be read. It may have been deleted, or you may not have permission to read it.`
-              : `ModelConfig ${namespace}/${name} does not exist on ${installation}.`
-          }
-        />
-      </Content>
+      <ModelFrame title="Model">
+        {/* As the agent page: a failed read is an error with the way back, a
+            model that is not there an empty state with it. */}
+        {errors.length > 0 ? (
+          <Flex direction="column" gap="3">
+            <Alert
+              status="danger"
+              title="Could not load this model"
+              description={`ModelConfig ${namespace}/${name} on ${installation} could not be read. It may have been deleted, or you may not have permission to read it.`}
+            />
+            {paths.models && <Link href={paths.models}>Back to models</Link>}
+          </Flex>
+        ) : (
+          <EmptyStateCard
+            title="Model not found"
+            description={`ModelConfig ${namespace}/${name} does not exist on ${installation}.`}
+            actions={
+              paths.models && <Link href={paths.models}>Back to models</Link>
+            }
+          />
+        )}
+      </ModelFrame>
     );
   }
 
+  const status = modelStatus(toModelRow(modelConfig, servedBy));
+  // Unknown while the signed-in config loads, and when it has no table at
+  // all: app-config.yaml ships one, so a missing table means the config did
+  // not load (the loader publishes an empty one once its retries run out), not
+  // that no model has a window. Unknown, too, for a model without a model id,
+  // which no pattern can name. Unknown says nothing either way.
+  const contextWindowTable = config?.getOptional<Record<string, unknown>>(
+    'agentPlatform.models.contextWindows',
+  );
+  const modelId = modelConfig.getModel();
+  const contextWindow =
+    contextWindowTable && modelId
+      ? lookUpContextWindow(modelId, contextWindowTable)
+      : undefined;
+  const facts = modelFacts({
+    modelConfig,
+    installation,
+    contextWindow,
+    owner,
+  });
+
   return (
-    <Content>
-      <div className={classes.column}>
-        <Flex
-          align="center"
-          gap="2"
-          className={classes.pageTitle}
-          style={{ flexWrap: 'wrap' }}
-        >
-          <Text as="h2" variant="title-large" weight="bold">
-            {modelConfig.getDisplayName()}
-          </Text>
+    <ModelFrame
+      title={modelConfig.getDisplayName()}
+      badges={
+        <>
+          <StatusDot tone={status.tone} label={status.label} />
           <InstallationChip installation={installation} />
-        </Flex>
-        <Text as="p" color="secondary" className={classes.intro}>
-          ModelConfig <code>{`${namespace}/${name}`}</code> on {installation}.
-        </Text>
-
-        <Flex direction="column" gap="4">
-          {servedBy && (
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="2">
-                  <ModelServingStatus
-                    serving={servedBy}
-                    shortcut={servedBy.shortcut}
-                    variant="block"
-                  />
-                  <Text variant="body-small" color="secondary">
-                    {servedBy.message}
-                  </Text>
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
-          {owner && (
-            <Alert
-              status="info"
-              title={`Managed by ${owner}`}
-              description={`This model is asserted by ${owner}, which would revert portal edits on its next run — so it is read-only here. Change it where ${owner} is configured.`}
+        </>
+      }
+      meta={modelConfig.getProvider()}
+      tabs={modelPageTabs({
+        usedBy: agentsUnreachable ? undefined : using.length,
+        isLoading: agentsLoading,
+      })}
+    >
+      <Routes>
+        <Route
+          index
+          element={
+            <ModelOverviewTab
+              // Technical details start afresh per model.
+              key={`${installation}/${namespace}/${name}`}
+              modelConfig={modelConfig}
+              installation={installation}
+              facts={facts}
+              contextWindow={contextWindow}
+              servedBy={servedBy}
+              owner={owner}
+              isUnsupportedProvider={isUnsupportedProvider}
+              problem={modelProblem(modelConfig, {
+                canEdit: isEditable && Boolean(modelEditRoute),
+                owner,
+              })}
             />
-          )}
-          {isUnsupportedProvider && !owner && (
-            <Alert
-              status="info"
-              title={`Provider ${modelConfig.getProvider()} is not editable here`}
-              description="This form covers OpenAI-compatible, Anthropic, Gemini and Ollama models. Manage this config with kubectl."
+          }
+        />
+        <Route
+          path="usage"
+          element={
+            <ModelUsageTab
+              installation={installation}
+              model={modelConfig.getModel()}
+              usage={usage}
             />
-          )}
-          {!owner &&
-            !isUnsupportedProvider &&
-            !mayUpdate &&
-            !isCheckingPermission && (
-              <Alert
-                status="info"
-                title="Read-only"
-                description="You don't have permission to change ModelConfigs on this installation."
-              />
-            )}
-
-          {values ? (
-            <ModelConfigFormFields
-              values={values}
-              onChange={onChange}
-              mode="edit"
-              isReadOnly={!isEditable}
+          }
+        />
+        <Route
+          path="used-by"
+          element={
+            <ModelUsedByTab
+              installation={installation}
+              using={using}
+              isLoading={agentsLoading}
+              isUnreachable={agentsUnreachable}
+              usage={usage}
             />
-          ) : (
-            // Unsupported provider: no form values to edit, but the essentials
-            // are still worth showing.
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="2">
-                  <Text>
-                    Provider: <code>{modelConfig.getProvider() ?? '—'}</code>
-                  </Text>
-                  <Text>
-                    Model: <code>{modelConfig.getModel() ?? '—'}</code>
-                  </Text>
-                  {modelConfig.getEndpoint() && (
-                    <Text>
-                      Endpoint: <code>{modelConfig.getEndpoint()}</code>
-                    </Text>
-                  )}
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
+          }
+        />
+        {/* An address the page no longer has lands on Overview. */}
+        <Route
+          path="*"
+          element={<Navigate to={`${basePath}${search}`} replace />}
+        />
+      </Routes>
+    </ModelFrame>
+  );
+}
 
-          {isEditable && (
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="3">
-                  {showValidation && validationErrors.length > 0 && (
-                    <Alert
-                      status="danger"
-                      title="Please fix the following before saving"
-                      description={validationErrors.join('. ')}
-                    />
-                  )}
-                  {saveError && (
-                    <Alert
-                      status="danger"
-                      title="The model could not be saved"
-                      description={saveError.message}
-                    />
-                  )}
-                  {actions}
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
-        </Flex>
-      </div>
-    </Content>
+/**
+ * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
+ * by the app's Customize page), as a read view with Edit as an action, in
+ * three tabs, each its own address under the model's:
+ *
+ * - **Overview** (the index): whether the serving layer serves it, why it
+ *   cannot be edited here, what it calls, where and since when, then
+ *   "Technical details" with the resource and the controller's conditions.
+ * - **Usage** (`usage`): the gateway's figures for the model over the last
+ *   30 days and its spend per day.
+ * - **Used by** (`used-by`), counted in the tab: the agents that run on it,
+ *   each with what it spent on the model.
+ *
+ * Any other address under the model's, the former `details` among them,
+ * redirects to Overview. A model agents cannot use yet says why at the top
+ * of Overview in plain words (`modelProblem`), from the condition that
+ * failed, and its Technical details open on arrival; the alert's Show
+ * conditions reveals them. **Edit** opens the Connect-a-model flow prefilled
+ * (`EditModelPage`), the same way agents and skills are edited. A CR the
+ * portal must not write (tool-owned, no RBAC, or a provider the form does not
+ * speak) offers no Edit, and an alert says why where the reason is not just
+ * the reader's permissions.
+ *
+ * Mounted inside the plugin's query client, a `ServingProvider` and an
+ * `AgentsDataProvider`, as `CustomizeModelPage` mounts it.
+ *
+ * This is the page's one `ErrorsProvider`, and it is required, not
+ * decorative: the Technical details' `GitOpsCard` reports the failures of its
+ * Flux lookups through `useShowErrors`, which throws without this context, as
+ * on the agent page. The route keeps the page outside muster's provider, so no
+ * other errors panel sits above it.
+ */
+export function ModelDetailPage() {
+  return (
+    <ErrorsProvider>
+      <ModelDetailPageContent />
+    </ErrorsProvider>
   );
 }

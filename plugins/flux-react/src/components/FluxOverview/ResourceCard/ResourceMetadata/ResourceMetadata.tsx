@@ -8,7 +8,9 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../../utils/fluxResources';
 import {
+  CommitSha,
   ConditionMessage,
   DateComponent,
   ExternalLink,
@@ -18,46 +20,8 @@ import {
 import { Box } from '@backstage/ui';
 import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
 import { useGitSourceLink } from '../../../../hooks/useGitSourceLink';
-import { ReactNode } from 'react';
-
-type Metadata = { [key: string]: ReactNode };
-
-type ReadyCondition = {
-  status: string;
-  lastTransitionTime?: string;
-  message?: string;
-};
-
-function buildStatusMetadata(
-  readyCondition: ReadyCondition | undefined,
-): Metadata {
-  const metadata: Metadata = {};
-
-  if (readyCondition) {
-    if (readyCondition.status === 'False') {
-      metadata.Status = (
-        <>
-          Last reconciliation failed{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    } else {
-      metadata.Status = (
-        <>
-          Last reconciled{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    }
-    metadata.Message = (
-      <ConditionMessage message={readyCondition.message ?? ''} />
-    );
-  } else {
-    metadata.Status = 'Unknown';
-  }
-
-  return metadata;
-}
+import { buildStatusMetadata, Metadata } from './buildStatusMetadata';
+import { getFluxOperatorSpecAndStatus } from './fluxOperatorMetadata';
 
 type StatusCondition = {
   type: string;
@@ -199,6 +163,18 @@ function getKustomizationSpec(
   return metadata;
 }
 
+/**
+ * A revision linked to its commit: the short SHA, the full one as its title;
+ * no copy button, which cannot sit inside a link.
+ */
+function RevisionLink({ href, revision }: { href: string; revision: string }) {
+  return (
+    <ExternalLink href={href}>
+      <CommitSha value={revision} copy={false} />
+    </ExternalLink>
+  );
+}
+
 function getKustomizationStatus(
   kustomization: Kustomization,
   sourceUrl?: string,
@@ -210,9 +186,9 @@ function getKustomizationStatus(
 
   if (revision) {
     metadata.Revision = sourceUrl ? (
-      <ExternalLink href={sourceUrl}>{revision}</ExternalLink>
+      <RevisionLink href={sourceUrl} revision={revision} />
     ) : (
-      revision
+      <CommitSha value={revision} />
     );
   } else {
     metadata.Revision = <NotAvailable />;
@@ -275,13 +251,13 @@ function getHelmReleaseStatus(helmRelease: HelmRelease): Metadata {
   const metadata: Metadata = {};
 
   if (chartVersion) {
-    metadata['Chart Version'] = chartVersion;
+    metadata['Chart Version'] = <CommitSha value={chartVersion} />;
   }
 
   // Which version the failed release attempted, so that the running version
   // above and the one the error talks about can be told apart.
   if (failureCause && attemptedVersion && attemptedVersion !== chartVersion) {
-    metadata.Attempted = attemptedVersion;
+    metadata.Attempted = <CommitSha value={attemptedVersion} />;
   }
 
   if (installFailures && installFailures > 0) {
@@ -327,7 +303,7 @@ function getRepositorySpec(
     } else if (reference?.semver) {
       metadata.Tag = reference.semver;
     } else if (reference?.digest) {
-      metadata.Digest = reference.digest;
+      metadata.Digest = <CommitSha value={reference.digest} />;
     }
   }
 
@@ -355,9 +331,9 @@ function getRepositoryStatus(
   const revision = repository.getRevision();
   if (revision) {
     metadata.Revision = repositorySourceUrl ? (
-      <ExternalLink href={repositorySourceUrl}>{revision}</ExternalLink>
+      <RevisionLink href={repositorySourceUrl} revision={revision} />
     ) : (
-      revision
+      <CommitSha value={revision} />
     );
   }
 
@@ -591,20 +567,12 @@ function getSpecAndStatus(
         ),
       };
     default:
-      return { spec: {}, status: {} };
+      return getFluxOperatorSpecAndStatus(resource) ?? { spec: {}, status: {} };
   }
 }
 
 type ResourceMetadataProps = {
-  resource:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource: FluxResource;
   source?: GitRepository | OCIRepository | HelmRepository;
   fixedKeyColumnWidth?: string;
 };

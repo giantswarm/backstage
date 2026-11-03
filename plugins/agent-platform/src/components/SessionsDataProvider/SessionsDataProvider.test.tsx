@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
+import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { kagentApiRef } from '../../apis';
 import { KagentApi, KagentInstallation } from '../../apis/types';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -68,6 +73,7 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
 }));
 
 const listSessions = jest.fn();
+const listSessionsIfComplete = jest.fn();
 const listInstallations = jest.fn();
 
 /** One entry of the backend's list; reachable unless said otherwise. */
@@ -81,6 +87,7 @@ function proxied(
 
 const kagentApi = {
   listSessions,
+  listSessionsIfComplete,
   listInstallations,
   getIdentity: jest.fn(),
 } as unknown as KagentApi;
@@ -106,9 +113,15 @@ function renderProvider(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   }),
+  storage: StorageApi = mockApis.storage(),
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+    <TestApiProvider
+      apis={[
+        [kagentApiRef, kagentApi],
+        [storageApiRef, storage],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <SessionsDataProvider>{children}</SessionsDataProvider>
       </QueryClientProvider>
@@ -119,6 +132,11 @@ function renderProvider(
 
 beforeEach(() => {
   listSessions.mockReset();
+  listSessionsIfComplete.mockReset();
+  // A fresh complete read lists what the list read did.
+  listSessionsIfComplete.mockImplementation((installation: string) =>
+    listSessions(installation),
+  );
   listInstallations.mockReset();
   listInstallations.mockResolvedValue([proxied('gazelle'), proxied('golem')]);
   mockConfigInstallations = ['gazelle', 'golem'];
@@ -388,6 +406,28 @@ describe('SessionsDataProvider', () => {
       expect(result.current.rows).toHaveLength(1);
     });
 
+    it('carries why each installation could not be read', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.resolve([session()])
+          : Promise.reject(
+              Object.assign(namedError('UpstreamError'), {
+                status: 500,
+                reason: 'timeout',
+                requestId: 'req-9',
+              }),
+            ),
+      );
+
+      const { result } = renderProvider();
+
+      await waitFor(() =>
+        expect(result.current.readFailures).toEqual({
+          golem: { reason: 'timed out', requestId: 'req-9' },
+        }),
+      );
+    });
+
     it('does not let one failing installation empty the table', async () => {
       listSessions.mockImplementation((installation: string) =>
         installation === 'gazelle'
@@ -417,6 +457,36 @@ describe('SessionsDataProvider', () => {
       await waitFor(() => expect(result.current.rows).toHaveLength(1));
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isLoadingMore).toBe(true);
+    });
+
+    it('keeps loading, not empty, while a failed read waits to retry', async () => {
+      // A 500 whose retry is paused (the tab is in the background) leaves the
+      // query pending but not `isLoading`: the table must not claim "No sessions".
+      focusManager.setFocused(false);
+      mockKagent = { installations: ['gazelle'], isProbing: false };
+      listInstallations.mockResolvedValue([proxied('gazelle')]);
+      listSessions
+        .mockRejectedValueOnce(new Error('500 Internal Server Error'))
+        .mockResolvedValue([session()]);
+
+      try {
+        const { result } = renderProvider(
+          new QueryClient({
+            defaultOptions: { queries: { retry: 1, retryDelay: 0 } },
+          }),
+        );
+
+        await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(result.current.isLoading).toBe(true));
+        expect(result.current.rows).toHaveLength(0);
+
+        act(() => focusManager.setFocused(true));
+
+        await waitFor(() => expect(result.current.rows).toHaveLength(1));
+        expect(result.current.isLoading).toBe(false);
+      } finally {
+        focusManager.setFocused(undefined);
+      }
     });
 
     it('is not loading when no installations are configured', async () => {
@@ -589,5 +659,170 @@ describe('SessionsDataProvider installation scope', () => {
     expect(result.current.installations).toEqual(['gazelle', 'golem']);
     expect(result.current.notReachableInstallations).toEqual(['golem']);
     expect(listSessions).not.toHaveBeenCalledWith('golem');
+  });
+
+  describe('the notification record', () => {
+    async function storedRecord() {
+      const storage = mockApis.storage();
+      const bucket = storage.forBucket('agent-platform');
+      await bucket.set('sessionNotificationSettings', {
+        sessions: {
+          'gazelle/abc': { origin: 'portal', at: 1 },
+          'gazelle/gone': { origin: 'portal', level: 'all', at: 1 },
+          'golem/xyz': { level: 'muted', at: 1 },
+        },
+      });
+      await bucket.set('notificationSeenMarks', {
+        sessions: {
+          'gazelle/abc': { mark: 'mark-abc', at: 1 },
+          'gazelle/gone': { mark: 'mark-gone', at: 1 },
+        },
+        mcpSignIn: { gazelle: { mark: 'mark-mcp', at: 1 } },
+      });
+      return storage;
+    }
+
+    const settingsKeys = (storage: StorageApi) =>
+      Object.keys(
+        (
+          storage
+            .forBucket('agent-platform')
+            .snapshot('sessionNotificationSettings').value as {
+            sessions: object;
+          }
+        ).sessions,
+      );
+    const seenOf = (storage: StorageApi) =>
+      storage.forBucket('agent-platform').snapshot('notificationSeenMarks')
+        .value as {
+        sessions: Record<string, unknown>;
+        mcpSignIn: Record<string, unknown>;
+      };
+
+    const listing = (installation: string) =>
+      Promise.resolve(
+        installation === 'gazelle'
+          ? [session({ id: 'gazelle/abc', sessionId: 'abc' })]
+          : [
+              session({
+                id: 'golem/xyz',
+                sessionId: 'xyz',
+                installation: 'golem',
+              }),
+            ],
+      );
+
+    it('drops the entries of sessions a complete read no longer lists', async () => {
+      listSessions.mockImplementation(listing);
+      const storage = await storedRecord();
+
+      renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(settingsKeys(storage)).toEqual(['gazelle/abc', 'golem/xyz']),
+      );
+      await waitFor(() =>
+        expect(Object.keys(seenOf(storage).sessions)).toEqual(['gazelle/abc']),
+      );
+      // The MCP sign-in row's mark is per installation, not per session.
+      expect(seenOf(storage).mcpSignIn).toEqual({
+        gazelle: { mark: 'mark-mcp', at: 1 },
+      });
+      // Only the installation with something to prune is read again.
+      expect(listSessionsIfComplete).toHaveBeenCalledTimes(1);
+      expect(listSessionsIfComplete).toHaveBeenCalledWith('gazelle');
+    });
+
+    it('prunes nothing when the fresh read is not complete', async () => {
+      listSessions.mockImplementation(listing);
+      // Rows that did not parse, or a listing cut at the page limit.
+      listSessionsIfComplete.mockResolvedValue(undefined);
+      const storage = await storedRecord();
+
+      renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(listSessionsIfComplete).toHaveBeenCalledWith('gazelle'),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(settingsKeys(storage)).toEqual([
+        'gazelle/abc',
+        'gazelle/gone',
+        'golem/xyz',
+      ]);
+    });
+
+    it('keeps the entries of an installation whose read failed', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.reject(namedError('UpstreamError'))
+          : listing(installation),
+      );
+      const storage = await storedRecord();
+
+      const { result } = renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['gazelle']),
+      );
+      expect(listSessionsIfComplete).not.toHaveBeenCalled();
+      expect(settingsKeys(storage)).toEqual([
+        'gazelle/abc',
+        'gazelle/gone',
+        'golem/xyz',
+      ]);
+    });
+
+    it('keeps the entries of an installation that is not read at all', async () => {
+      mockKagent = { installations: ['gazelle'], isProbing: false };
+      listSessions.mockImplementation(listing);
+      const storage = await storedRecord();
+
+      renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(settingsKeys(storage)).toEqual(['gazelle/abc', 'golem/xyz']),
+      );
+      expect(listSessionsIfComplete).not.toHaveBeenCalledWith('golem');
+    });
+
+    it('looks again only when the sessions change, not on every refetch', async () => {
+      listSessions.mockImplementation(listing);
+      // The fresh read fails, so no interval holds the next attempt back:
+      // only a change of the listed sessions may start one.
+      listSessionsIfComplete.mockRejectedValue(namedError('UpstreamError'));
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const storage = await storedRecord();
+
+      renderProvider(queryClient, storage);
+      await waitFor(() =>
+        expect(listSessionsIfComplete).toHaveBeenCalledTimes(1),
+      );
+      await act(async () => {
+        await queryClient.refetchQueries();
+      });
+      expect(listSessions).toHaveBeenCalledTimes(4);
+      expect(listSessionsIfComplete).toHaveBeenCalledTimes(1);
+
+      // A session appears: the set changed, so the record is compared again.
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.resolve([
+              session({ id: 'gazelle/abc', sessionId: 'abc' }),
+              session({ id: 'gazelle/new', sessionId: 'new' }),
+            ])
+          : listing(installation),
+      );
+      await act(async () => {
+        await queryClient.refetchQueries();
+      });
+      await waitFor(() =>
+        expect(listSessionsIfComplete).toHaveBeenCalledTimes(2),
+      );
+    });
   });
 });

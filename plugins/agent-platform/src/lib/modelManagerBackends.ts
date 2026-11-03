@@ -2,8 +2,8 @@
  * model-manager's tools, as the portal calls them through muster as the
  * signed-in person.
  *
- * model-manager ships with every installation and starts with no backend
- * (bumblebee-plans#46, D5). A backend — Ollama, LM Studio, Lemonade or a
+ * model-manager ships with every installation and starts with no backend.
+ * A backend — Ollama, LM Studio, Lemonade or a
  * KServe cluster — is registered at runtime as a **backend document**: a
  * ConfigMap in model-manager's namespace found by label, validated when it is
  * read (`docs/backends.md` of giantswarm/model-manager). The portal writes
@@ -15,6 +15,8 @@
  * (`ModelManagerApiClient`): the portal knows model-manager only as the
  * MCPServer its muster registers, never as a URL.
  */
+
+import { safeWebURL } from '@giantswarm/backstage-plugin-ui-react';
 
 import { looksNotConnected, type CommitAgentResult } from './agentManager';
 
@@ -234,14 +236,7 @@ export type RemoveBackendResult = {
 
 /** A base URL a host backend is reached at: `http(s)://host[:port][/path]`. */
 export function isValidEndpoint(value: string): boolean {
-  try {
-    const url = new URL(value.trim());
-    return (
-      (url.protocol === 'http:' || url.protocol === 'https:') && !!url.host
-    );
-  } catch {
-    return false;
-  }
+  return safeWebURL(value) !== undefined;
 }
 
 /**
@@ -270,8 +265,8 @@ export const MODEL_MANAGER_ERROR_NAMES: Readonly<Record<string, string>> = {
  */
 export class ModelManagerToolError extends Error {
   readonly code?: string;
-  constructor(message: string, code?: string) {
-    super(message);
+  constructor(message: string, code?: string, options?: ErrorOptions) {
+    super(message, options);
     this.code = code;
     this.name =
       (code !== undefined ? MODEL_MANAGER_ERROR_NAMES[code] : undefined) ??
@@ -304,10 +299,11 @@ export function classifyModelManagerToolError(error: unknown): Error {
   }
   const message = error instanceof Error ? error.message : String(error);
   if (looksNotConnected(message)) {
-    return new ModelManagerNotConnectedError(message);
+    return new ModelManagerNotConnectedError(message, { cause: error });
   }
   return new ModelManagerToolError(
     message,
     message.match(TOOL_ERROR_CODE)?.[1],
+    { cause: error },
   );
 }

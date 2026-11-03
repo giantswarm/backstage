@@ -10,7 +10,7 @@ export interface KagentInstallationConfig {
   name: string;
   /**
    * The gRPC origin of the kagent controller route — `https://<host>[:port]`,
-   * no path. The service paths (`/kagent.api.v1alpha1.AgentInstanceService/…`,
+   * no path. The service paths (`/kagent.api.v1alpha1.SessionService/…`,
    * `/lf.a2a.v1.A2AService/…`) are what the transport appends.
    */
   apiBaseUrl: string;

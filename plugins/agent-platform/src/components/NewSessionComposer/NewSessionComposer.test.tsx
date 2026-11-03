@@ -1,10 +1,19 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  declaredStyle,
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
+import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
+import { mockImageEncoding, pngFile } from '../../lib/__fixtures__/images';
 import {
   agentOptionLabel,
+  isStartableAgent,
   modelWarningFor,
   NewSessionComposer,
 } from './NewSessionComposer';
@@ -78,6 +87,11 @@ beforeEach(() => {
   onStart.mockReset();
 });
 
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
+  ServerSignIn: () => <div data-testid="server-sign-in" />,
+}));
+
 describe('NewSessionComposer', () => {
   describe('collapsing', () => {
     it('shows the agent picker and Start before it is focused', () => {
@@ -111,6 +125,50 @@ describe('NewSessionComposer', () => {
       renderComposer();
 
       expect(field()).toHaveAttribute('rows', '3');
+    });
+  });
+
+  describe('where the picker sits', () => {
+    const follows = (first: Element, second: Element) =>
+      Boolean(
+        first.compareDocumentPosition(second) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+
+    it('puts the picker in the controls row under the text by default', () => {
+      renderComposer({
+        agents: [sre, issues],
+        pickerLabel: () => 'Select agent',
+      });
+
+      expect(follows(field(), agentPicker())).toBe(true);
+      // The label belongs to the picker-first row only.
+      expect(screen.queryByText('Select agent')).not.toBeInTheDocument();
+    });
+
+    it('heads the box with the picker and its label when placed on top', async () => {
+      renderComposer({
+        agents: [sre, issues],
+        pickerPlacement: 'top',
+        pickerLabel: () => 'Select agent',
+        renderPickerAccessory: agent =>
+          agent ? null : <span>Required to start</span>,
+      });
+
+      const label = screen.getByText('Select agent');
+      expect(follows(label, agentPicker())).toBe(true);
+      expect(follows(agentPicker(), field())).toBe(true);
+      expect(
+        follows(agentPicker(), screen.getByText('Required to start')),
+      ).toBe(true);
+      // Start stays at the bottom, after the text.
+      expect(follows(field(), startButton())).toBe(true);
+
+      await userEvent.click(agentPicker());
+      await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+      expect(screen.getByText('Select agent')).toBeInTheDocument();
+      expect(screen.queryByText('Required to start')).not.toBeInTheDocument();
     });
   });
 
@@ -220,7 +278,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), '  why is the ingress failing?  ');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'why is the ingress failing?',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('starts on Enter', async () => {
@@ -228,7 +292,13 @@ describe('NewSessionComposer', () => {
 
       await userEvent.type(field(), 'check the cluster{Enter}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the cluster',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('still starts on Cmd/Ctrl+Enter, the key it used to be', async () => {
@@ -237,7 +307,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check the cluster');
       await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the cluster',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('breaks the line on Shift+Enter', async () => {
@@ -478,7 +554,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check',
+        [],
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -486,9 +568,7 @@ describe('NewSessionComposer', () => {
     renderComposer({ isLoadingAgents: true });
 
     expect(
-      screen.getByText(
-        'Still checking the remaining installations for agents…',
-      ),
+      screen.getByText('Still checking the remaining environments for agents…'),
     ).toBeInTheDocument();
   });
 
@@ -499,6 +579,678 @@ describe('NewSessionComposer', () => {
     expect(
       screen.getByText('kagent did not accept the agent'),
     ).toBeInTheDocument();
+  });
+
+  it("offers muster's sign-in when agent-manager is not connected", () => {
+    renderComposer({
+      defaultAgent: sre,
+      error: new AgentManagerNotConnectedError('tool not found'),
+    });
+
+    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
+    expect(screen.getByTestId('server-sign-in')).toBeInTheDocument();
+    expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+});
+
+describe('opt-in picker options', () => {
+  const research = agentRow({
+    id: 'gazelle/research/research-agent',
+    namespace: 'research',
+    name: 'Research Agent',
+    technicalName: 'research-agent',
+    description: 'Finds things out',
+  });
+
+  it('lists a non-ready agent as a disabled option that says why', async () => {
+    renderComposer({ agents: [sre, issues, broken], showUnavailable: true });
+
+    await userEvent.click(agentPicker());
+    const option = screen.getByRole('option', { name: /Broken Agent/ });
+
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    expect(option).toHaveTextContent('Unavailable: 0/1 pods are ready');
+  });
+
+  it("leaves out a ready agent whose installation's agent-manager cannot start a session, and lists it disabled with the reason", async () => {
+    const shared = {
+      ...issues,
+      sessionBlocker:
+        'Muster on gazelle has no per-user sign-in in this portal.',
+    };
+    expect(isStartableAgent(shared)).toBe(false);
+
+    renderComposer({ agents: [sre, shared], showUnavailable: true });
+
+    await userEvent.click(agentPicker());
+    const option = screen.getByRole('option', { name: /Issue Tracker/ });
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    expect(option).toHaveTextContent(
+      'Unavailable: Muster on gazelle has no per-user sign-in in this portal.',
+    );
+  });
+
+  it('never selects a disabled option', async () => {
+    renderComposer({ agents: [sre, issues, broken], showUnavailable: true });
+
+    // The option takes no pointer events, so the check would refuse the click.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(agentPicker());
+    await user.click(screen.getByRole('option', { name: /Broken Agent/ }));
+    await user.keyboard('{Escape}');
+
+    expect(agentPicker()).not.toHaveTextContent('Broken Agent');
+  });
+
+  it('keeps the picker open to a sole startable agent beside unavailable ones', () => {
+    renderComposer({ agents: [sre, broken], showUnavailable: true });
+
+    expect(agentPicker()).toBeEnabled();
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+  });
+
+  it('heads the groups with the namespaces', async () => {
+    renderComposer({ agents: [sre, research, issues], groupByNamespace: true });
+
+    await userEvent.click(agentPicker());
+    const headings = screen
+      .getAllByRole('presentation')
+      .map(element => element.textContent)
+      .filter(text => text === 'kagent' || text === 'research');
+
+    expect(headings).toEqual(['kagent', 'research']);
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the recent agents first, in their order', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id, sre.id],
+    });
+
+    await userEvent.click(agentPicker());
+    const groups = screen.getAllByRole('group');
+
+    expect(groups[0]).toHaveAccessibleName('Recent');
+    expect(
+      within(groups[0])
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('Research Agent'),
+      expect.stringContaining('SRE Agent'),
+    ]);
+  });
+
+  it('selects the agent behind a recent option', async () => {
+    renderComposer({
+      agents: [sre, research],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Recent' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    );
+    await userEvent.type(field(), 'check');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      research,
+      'check',
+      [],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('lists the favorites second, after the recent agents, in display order', async () => {
+    renderComposer({
+      agents: [sre, issues, research],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      favoriteAgentIds: [research.id, issues.id, sre.id],
+    });
+
+    await userEvent.click(agentPicker());
+    const groups = screen.getAllByRole('group');
+
+    ['Recent', 'Favorites', 'kagent', 'research'].forEach((name, index) =>
+      expect(groups[index]).toHaveAccessibleName(name),
+    );
+    expect(groups).toHaveLength(4);
+    // A recent favorite stays in both groups.
+    expect(
+      within(groups[1])
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('SRE Agent'),
+      expect.stringContaining('Issue Tracker'),
+      expect.stringContaining('Research Agent'),
+    ]);
+  });
+
+  it('groups by favorites alone, and skips favorites not on offer', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      groupByNamespace: true,
+      favoriteAgentIds: ['gazelle/kagent/deleted-agent', issues.id],
+    });
+
+    await userEvent.click(agentPicker());
+    const groups = screen.getAllByRole('group');
+
+    ['Favorites', 'kagent'].forEach((name, index) =>
+      expect(groups[index]).toHaveAccessibleName(name),
+    );
+    expect(groups).toHaveLength(2);
+    expect(
+      within(groups[0])
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Issue Tracker')]);
+  });
+
+  it('selects the agent behind a favorite option', async () => {
+    renderComposer({
+      agents: [sre, research],
+      groupByNamespace: true,
+      favoriteAgentIds: [research.id],
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Favorites' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    );
+    await userEvent.type(field(), 'check');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      research,
+      'check',
+      [],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('moves from Recent into Favorites with the arrow keys', async () => {
+    renderComposer({
+      agents: [sre, issues, research],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      favoriteAgentIds: [issues.id],
+    });
+
+    agentPicker().focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toHaveTextContent('Research Agent');
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toHaveTextContent('Issue Tracker');
+    await userEvent.keyboard('{Enter}');
+
+    expect(agentPicker()).toHaveTextContent('Issue Tracker');
+  });
+
+  it('lists every favorite, uncapped, in display order', async () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(letter =>
+      agentRow({
+        id: `gazelle/kagent/agent-${letter}`,
+        name: `Agent ${letter.toUpperCase()}`,
+        technicalName: `agent-${letter}`,
+      }),
+    );
+    renderComposer({
+      agents: many,
+      groupByNamespace: true,
+      // Stored oldest star first, which is not the order they are listed in.
+      favoriteAgentIds: [many[6], many[0], ...many.slice(1, 6)].map(
+        agent => agent.id,
+      ),
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(
+      within(screen.getByRole('group', { name: 'Favorites' }))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual(
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(letter =>
+        expect.stringContaining(`Agent ${letter}`),
+      ),
+    );
+  });
+
+  it('keeps the groups as they were while the picker is open', async () => {
+    const props = {
+      agents: [sre, issues, research],
+      groupByNamespace: true,
+      isStarting: false,
+      onStart,
+    };
+    const { rerender } = render(
+      <NewSessionComposer {...props} recentAgentIds={[research.id]} />,
+    );
+
+    await userEvent.click(agentPicker());
+    // The favorites arrive from the user-settings backend while it is open.
+    rerender(
+      <NewSessionComposer
+        {...props}
+        recentAgentIds={[research.id]}
+        favoriteAgentIds={[issues.id]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('group', { name: 'Favorites' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(agentPicker());
+
+    expect(
+      screen.getByRole('group', { name: 'Favorites' }),
+    ).toBeInTheDocument();
+  });
+
+  it('checks the favorite row that was picked, not its namespace copy', async () => {
+    renderComposer({
+      agents: [sre, research],
+      groupByNamespace: true,
+      favoriteAgentIds: [research.id],
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Favorites' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    );
+    await userEvent.click(agentPicker());
+
+    expect(
+      within(screen.getByRole('group', { name: 'Favorites' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('offers a search box when asked, whatever the number of agents', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search 2 agents' }),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the matches as one group while searching', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      favoriteAgentIds: [sre.id],
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'agent',
+    );
+
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('SRE Agent'),
+      expect.stringContaining('Research Agent'),
+    ]);
+  });
+
+  it('finds an agent by its description', async () => {
+    const analyst = agentRow({
+      id: 'gazelle/kagent/factory-analyst',
+      name: 'Factory Analyst',
+      technicalName: 'factory-analyst',
+      description: 'Answers questions about production line output',
+    });
+    renderComposer({
+      agents: [sre, research, analyst, issues],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 4 agents' }),
+      'question',
+    );
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Factory Analyst')]);
+  });
+
+  it('lists agents found by name before those found by description', async () => {
+    const librarian = agentRow({
+      id: 'gazelle/kagent/librarian',
+      name: 'Librarian',
+      technicalName: 'librarian',
+      description: 'Summarises research papers',
+    });
+    renderComposer({
+      agents: [librarian, sre, research],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'research',
+    );
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('Research Agent'),
+      expect.stringContaining('Librarian'),
+    ]);
+  });
+
+  it('matches the start of a word, not the middle of one', async () => {
+    const meter = agentRow({
+      id: 'gazelle/kagent/meter',
+      name: 'Meter',
+      technicalName: 'meter',
+      description: 'Measures throughput',
+    });
+    renderComposer({
+      agents: [meter, sre],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 2 agents' }),
+      'sure',
+    );
+
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+  });
+
+  it('matches a description written across lines as the option shows it', async () => {
+    const analyst = agentRow({
+      id: 'gazelle/kagent/factory-analyst',
+      name: 'Factory Analyst',
+      technicalName: 'factory-analyst',
+      description: 'Reports production line\n  output',
+    });
+    renderComposer({
+      agents: [sre, analyst],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 2 agents' }),
+      'line output',
+    );
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Factory Analyst')]);
+  });
+
+  it('matches an unavailable agent by the reason it shows, not its hidden description', async () => {
+    const down = agentRow({
+      ...broken,
+      description: 'Answers questions about production line output',
+    });
+    renderComposer({
+      agents: [sre, down],
+      showUnavailable: true,
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    const search = screen.getByRole('searchbox', { name: 'Search 2 agents' });
+    await userEvent.type(search, 'question');
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+
+    await userEvent.clear(search);
+    await userEvent.type(search, 'pods');
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Broken Agent')]);
+  });
+
+  it('finds an agent by its description without namespace groups', async () => {
+    renderComposer({ agents: [sre, issues], searchable: true });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(screen.getByRole('searchbox'), 'github');
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Issue Tracker')]);
+  });
+
+  it('shows Recent again when the picker reopens after a search', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'issue',
+    );
+    expect(
+      screen.queryByRole('group', { name: 'Recent' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(document.body);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    await userEvent.click(agentPicker());
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+    ).toHaveValue('');
+    expect(screen.getByRole('group', { name: 'Recent' })).toBeInTheDocument();
+  });
+
+  it('clears the search once an agent is chosen', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'issue',
+    );
+    await userEvent.click(
+      screen.getByRole('option', { name: /Issue Tracker/ }),
+    );
+    expect(agentPicker()).toHaveTextContent('Issue Tracker');
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getByRole('group', { name: 'Recent' })).toBeInTheDocument();
+  });
+
+  it('names the empty choice as asked', () => {
+    renderComposer({
+      agents: [sre, issues],
+      pickerPlaceholder: 'Choose an agent',
+    });
+
+    expect(agentPicker()).toHaveTextContent('Choose an agent');
+  });
+
+  it('runs the footer action, last in the picker, without selecting it', async () => {
+    const onAction = jest.fn();
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      searchable: true,
+      pickerFooterAction: { label: 'Manage agents', onAction },
+    });
+
+    await userEvent.click(agentPicker());
+    const options = screen.getAllByRole('option');
+    expect(options[options.length - 1]).toHaveAccessibleName('Manage agents');
+
+    await userEvent.click(options[options.length - 1]);
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(agentPicker()).toHaveTextContent('Select an agent');
+  });
+
+  it('keeps the footer action reachable beside a sole agent', async () => {
+    const onAction = jest.fn();
+    renderComposer({
+      agents: [sre],
+      pickerFooterAction: { label: 'Manage agents', onAction },
+    });
+
+    expect(agentPicker()).toBeEnabled();
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      screen.getByRole('option', { name: 'Manage agents' }),
+    );
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+  });
+
+  it('keeps a sole agent without a footer action as no choice', () => {
+    renderComposer({ agents: [sre] });
+
+    expect(agentPicker()).toBeDisabled();
+  });
+
+  it('says nothing matches rather than offering only the footer action', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      searchable: true,
+      pickerFooterAction: { label: 'Manage agents', onAction: jest.fn() },
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'zebra',
+    );
+
+    expect(
+      screen.queryByRole('option', { name: 'Manage agents' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+  });
+
+  it('sets the footer action apart from the agents', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      pickerFooterAction: { label: 'Manage agents', onAction: jest.fn() },
+    });
+
+    await userEvent.click(agentPicker());
+
+    const footer = screen.getByRole('option', { name: 'Manage agents' });
+    expect(footer).toHaveStyle({
+      borderTopWidth: '1px',
+      borderTopStyle: 'solid',
+    });
+    // Declared, not computed: jsdom computes a `var()` to the initial color.
+    expect(declaredStyle(footer, 'border-top-color')).toBe(
+      'var(--bui-border-1)',
+    );
+  });
+
+  it('starts with the initial prompt', () => {
+    renderComposer({ initialPrompt: 'Which clusters still run 1.31?' });
+
+    expect(field()).toHaveValue('Which clusters still run 1.31?');
+  });
+
+  it('uses the placeholder for the selected agent', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      promptPlaceholder: agent =>
+        agent ? `What can ${agent.name} help you with?` : 'Choose an agent',
+    });
+    expect(field()).toHaveAttribute('placeholder', 'Choose an agent');
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+    expect(field()).toHaveAttribute(
+      'placeholder',
+      'What can SRE Agent help you with?',
+    );
+  });
+
+  it('lets the footer select an agent and reports the selection', async () => {
+    const onSelectedAgentChange = jest.fn();
+    renderComposer({
+      agents: [sre, issues],
+      onSelectedAgentChange,
+      renderFooter: ({ selectAgent }) => (
+        <button type="button" onClick={() => selectAgent(issues)}>
+          Pick Issue Tracker
+        </button>
+      ),
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Pick Issue Tracker' }),
+    );
+
+    expect(agentPicker()).toHaveTextContent('Issue Tracker');
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues);
   });
 });
 
@@ -542,7 +1294,7 @@ describe('the model behind the agent', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Ollama model qwen2\.5:0\.5b: .* You can still start the session/,
+        /Ollama model qwen2\.5:0\.5b: .* Its first turn fails until the model serves again/,
       ),
     ).toBeInTheDocument();
 
@@ -610,5 +1362,207 @@ describe('NewSessionComposer installation labels', () => {
   it('agentOptionLabel spells the two forms', () => {
     expect(agentOptionLabel(sre, true)).toBe('SRE Agent · gazelle');
     expect(agentOptionLabel(sre, false)).toBe('SRE Agent');
+  });
+});
+
+describe('NewSessionComposer agent-first', () => {
+  it('disables the prompt and Start until an agent is chosen, then releases both', async () => {
+    renderComposer({ agents: [sre, issues], agentFirst: true });
+
+    expect(field()).toBeDisabled();
+    expect(startButton()).toBeDisabled();
+    expect(screen.getByText('Choose an agent first.')).toBeInTheDocument();
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    expect(startButton()).toBeEnabled();
+  });
+
+  it('marks the picker as the step to take while nothing is chosen', async () => {
+    const { container } = renderComposer({
+      agents: [sre, issues],
+      agentFirst: true,
+    });
+
+    const attention = container.querySelector(
+      '[class*="agentSelectAttention"]',
+    );
+    expect(attention).not.toBeNull();
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+    expect(
+      container.querySelector('[class*="agentSelectAttention"]'),
+    ).toBeNull();
+  });
+
+  it('never gates a preselected agent: a defaultAgent keeps the composer open', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      defaultAgent: sre,
+      agentFirst: true,
+    });
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    expect(startButton()).toBeEnabled();
+  });
+
+  it('never gates a sole agent, which is preselected', async () => {
+    renderComposer({ agents: [sre], agentFirst: true });
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    await userEvent.click(startButton());
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'Check the cluster',
+      [],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('without the flag, an unchosen agent leaves the field open and is refused on submit', async () => {
+    renderComposer({ agents: [sre, issues] });
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    await userEvent.click(startButton());
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Choose an agent to start.',
+    );
+  });
+});
+
+describe('NewSessionComposer with touch input (T22 B2)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  it('breaks the line on Enter, starts from the arrow, and says so', async () => {
+    layout = mockPhoneLayout();
+    renderComposer({ defaultAgent: sre });
+
+    await userEvent.type(field(), 'line one{Enter}line two');
+    expect(onStart).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('line one\nline two');
+    expect(field()).toHaveAttribute('enterkeyhint', 'enter');
+    expect(
+      screen.getByText('Tap the arrow to start the session with this message.'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'line one\nline two',
+      [],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('names Enter and Shift+Enter with a keyboard', () => {
+    layout = mockDesktopLayout();
+    renderComposer({ defaultAgent: sre });
+
+    // The keys are key caps; the words read as the caption does.
+    expect(
+      screen.getByText(/starts the session with this message/).textContent,
+    ).toBe(
+      'Enter starts the session with this message, Shift+Enter for a new line.',
+    );
+    expect(field()).toHaveAttribute('enterkeyhint', 'send');
+  });
+});
+
+describe('NewSessionComposer — images', () => {
+  // On the Go ADK runtime with an Anthropic model: one that takes images.
+  const seer = agentRow({
+    harnessRuntime: 'kagent',
+    modelProvider: 'Anthropic',
+  });
+  let encoding: ReturnType<typeof mockImageEncoding>;
+  beforeEach(() => {
+    encoding = mockImageEncoding();
+  });
+  afterEach(() => {
+    encoding.restore();
+  });
+
+  function paste(files: File[]) {
+    fireEvent.paste(field(), {
+      clipboardData: { files, types: ['Files'], getData: () => '' },
+    });
+  }
+
+  it('starts with the pasted images as part of the first message', async () => {
+    renderComposer({ agents: [seer], defaultAgent: seer, acceptsImages: true });
+
+    paste([pngFile('image.png')]);
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
+    await userEvent.type(field(), 'what is this?{Enter}');
+
+    expect(onStart).toHaveBeenCalledWith(
+      seer,
+      'what is this?',
+      [
+        expect.objectContaining({
+          name: 'Pasted image.png',
+          mediaType: 'image/png',
+        }),
+      ],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('takes no images without acceptsImages', async () => {
+    renderComposer({ defaultAgent: sre });
+
+    paste([pngFile('a.png')]);
+
+    await act(async () => {});
+    expect(screen.queryByText('a.png')).not.toBeInTheDocument();
+  });
+
+  it('holds the start while the chosen agent cannot take the attached images', async () => {
+    const coder = agentRow({
+      id: 'gazelle/kagent/coder',
+      name: 'Coder',
+      technicalName: 'coder',
+      harnessRuntime: 'claude',
+    });
+    renderComposer({ agents: [seer, coder], acceptsImages: true });
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
+    await userEvent.click(screen.getByRole('option', { name: /^SRE Agent/ }));
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
+
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
+    await userEvent.click(screen.getByRole('option', { name: /^Coder/ }));
+    await userEvent.type(field(), 'fix it{Enter}');
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Coder cannot take images: its Claude Code runtime accepts text only. Remove the images, or choose another agent.',
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Pasted image.png' }),
+    );
+    await userEvent.click(startButton());
+    expect(onStart).toHaveBeenCalledWith(
+      coder,
+      'fix it',
+      [],
+      undefined,
+      undefined,
+    );
   });
 });

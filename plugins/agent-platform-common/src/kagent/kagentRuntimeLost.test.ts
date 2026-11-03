@@ -1,17 +1,20 @@
 import {
+  countSendTimeout,
   isRuntimeLostFailureText,
   isRuntimeLostReason,
   readConversationRuntimeLoss,
   readReportedRuntimeLoss,
   readRuntimeLoss,
   readRuntimeLostTurn,
+  readSendTimeoutRuntimeLoss,
 } from './kagentRuntimeLost';
+import type { A2aTaskWire } from './kagentTaskSchema';
 import {
   normalizeSessionDetail,
   normalizeTaskList,
 } from './kagentSessionDetail';
 import {
-  agentInstanceRuntimeLost,
+  sessionRuntimeLost,
   tasksAskUserPending,
   tasksFailed,
   tasksRuntimeLost,
@@ -26,7 +29,7 @@ describe('isRuntimeLostFailureText', () => {
     ['atenet, after its resume budget', ATENET],
     [
       'the A2A gateway, when the runtime cannot be dialled',
-      'failed to connect to AgentInstance runtime: rpc error: code = Unavailable',
+      'failed to connect to Session runtime: rpc error: code = Unavailable',
     ],
     [
       'the scheduler reporting the locality miss as capacity',
@@ -162,8 +165,8 @@ describe('readConversationRuntimeLoss', () => {
 });
 
 describe('readReportedRuntimeLoss', () => {
-  const session = normalizeSessionDetail(agentInstanceRuntimeLost, 'gazelle')
-    .detail!.session;
+  const session = normalizeSessionDetail(sessionRuntimeLost, 'gazelle').detail!
+    .session;
 
   it("reads kagent's mark off the instance, dropping its own prefix from the cause", () => {
     expect(readReportedRuntimeLoss(session)).toEqual({
@@ -189,8 +192,8 @@ describe('readReportedRuntimeLoss', () => {
 });
 
 describe('readRuntimeLoss', () => {
-  const reported = normalizeSessionDetail(agentInstanceRuntimeLost, 'gazelle')
-    .detail!.session;
+  const reported = normalizeSessionDetail(sessionRuntimeLost, 'gazelle').detail!
+    .session;
   const tasks = normalizeTaskList(tasksRuntimeLost).tasks;
 
   it("lets the instance's mark win and folds the conversation's attempts in", () => {
@@ -226,5 +229,81 @@ describe('readRuntimeLoss', () => {
       readRuntimeLoss({}, normalizeTaskList(tasksV099).tasks),
     ).toBeUndefined();
     expect(readRuntimeLoss(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('repeated send timeouts', () => {
+  const task = (id: string, state: string): A2aTaskWire => ({
+    id,
+    contextId: 'context-1',
+    kind: 'task',
+    status: { state },
+  });
+  const settled = [task('turn-1', 'completed')];
+
+  it('counts sends that time out while no turn is created', () => {
+    const first = countSendTimeout(undefined, settled);
+    expect(first).toEqual({ count: 1, newestTaskId: 'turn-1' });
+    expect(countSendTimeout(first, settled)).toEqual({
+      count: 2,
+      newestTaskId: 'turn-1',
+    });
+  });
+
+  it('starts over once a turn was created since the run began', () => {
+    const run = { count: 2, newestTaskId: 'turn-1' };
+    expect(
+      countSendTimeout(run, [...settled, task('turn-2', 'completed')]),
+    ).toEqual({ count: 1, newestTaskId: 'turn-2' });
+  });
+
+  it('suspects a loss from the second timeout in a row on a settled session', () => {
+    const run = countSendTimeout(countSendTimeout(undefined, settled), settled);
+    expect(readSendTimeoutRuntimeLoss(run, settled)).toEqual({
+      reported: false,
+      attempts: 2,
+      source: 'send-timeouts',
+    });
+    expect(
+      readSendTimeoutRuntimeLoss({ ...run, count: 3 }, settled),
+    ).toMatchObject({ attempts: 3 });
+  });
+
+  it('reads one timeout as a slow start', () => {
+    expect(
+      readSendTimeoutRuntimeLoss(countSendTimeout(undefined, settled), settled),
+    ).toBeUndefined();
+    expect(readSendTimeoutRuntimeLoss(undefined, settled)).toBeUndefined();
+  });
+
+  it('reads a session whose conversation is empty like a settled one', () => {
+    expect(
+      readSendTimeoutRuntimeLoss({ count: 2, newestTaskId: undefined }, []),
+    ).toEqual(expect.objectContaining({ source: 'send-timeouts' }));
+  });
+
+  it('reads nothing once a turn was created since the run began', () => {
+    expect(
+      readSendTimeoutRuntimeLoss({ count: 2, newestTaskId: 'turn-1' }, [
+        ...settled,
+        task('turn-2', 'completed'),
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('reads nothing while the newest turn is still working', () => {
+    const working = [task('turn-1', 'working')];
+    expect(
+      readSendTimeoutRuntimeLoss({ count: 2, newestTaskId: 'turn-1' }, working),
+    ).toBeUndefined();
+  });
+
+  it('reads nothing before the conversation was read', () => {
+    expect(
+      readSendTimeoutRuntimeLoss(
+        { count: 2, newestTaskId: undefined },
+        undefined,
+      ),
+    ).toBeUndefined();
   });
 });

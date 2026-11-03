@@ -1,28 +1,27 @@
-import {
-  Box,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-  makeStyles,
-  useTheme,
-  Theme,
-} from '@material-ui/core';
+import { useMemo } from 'react';
+import { makeStyles, Theme } from '@material-ui/core';
 import { Progress } from '@backstage/core-components';
+import { Box, Link, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
-  categoricalColors,
-  columnMax,
-  DataBar,
+  formatCount,
+  formatSeconds,
+  parseUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
   SectionHeader,
-  StackedBarChart,
+  ShowMore,
+  isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
+import { connectorNames } from '../../lib/connectorName';
+import { connectorPageKeys } from '../../lib/serverGrouping';
+import type { MCPServer } from '../../lib/k8s';
 import type { McpUsage } from '../../apis';
 import {
   isUnreachableSession,
@@ -31,26 +30,41 @@ import {
 } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { MusterProviders } from '../MusterProviders';
-import { SessionGate, Stat } from '../shared';
+import {
+  errorRatioFigure,
+  McpCallsByOutcomeChart,
+  McpDataStartNote,
+  McpUsageTable,
+  useUsageColumns,
+} from '../McpUsage';
+import { SessionGate, Stat, useServerPageLinks } from '../shared';
 
 /**
- * The window, fixed at 30 days to match the personal section above it.
+ * The window: the Usage screen's own time-range control (`?window=7d`, the
+ * 7 | 30 | 90 days every view of the screen reads), never a control of this
+ * section's. muster's `/usage` takes any span up to 90 days, so the figures
+ * follow the selection like the gateway views beside them (QA round 1: the
+ * control showed here and changed nothing).
  *
- * There used to be a 24h/7d/30d switcher here, and it had to go when this moved
- * onto the shared Usage page. Three reasons. The kagent route backing the
- * section above takes no window parameter, so a control on this one alone would
- * make the page's stated window false for whichever section a reader just
- * switched. The two stop being comparable, which is the whole reason they share
- * a page. And the bucket size changes with the window (`formatBucketTick`
- * switches to hours below 24h), so a 24h selection put an hourly-bucketed chart
- * directly under a daily one — same idiom, different meaning per bar.
- *
- * What was lost is the 24h zoom, whose real question ("is muster dispatching
- * right now") the per-server health on the Servers view answers. Bringing a control back
- * means one *page-level* control driving both sections, once the kagent route
- * accepts a window.
+ * There used to be a 24h/7d/30d switcher on the section itself, and it went
+ * when this moved onto the shared Usage page: a control on one section would
+ * make the page's stated window false for the others, and a 24h selection put
+ * an hourly-bucketed chart under daily ones. The page's windows are whole
+ * days, so the buckets stay daily.
  */
-const WINDOW_HOURS = 30 * 24;
+function useWindowDays(): UsageWindowDays {
+  const [searchParams] = useSearchParams();
+  return parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM));
+}
+
+/**
+ * How many connectors the table shows before *Show all N connectors*.
+ *
+ * The backend sends every connector with a call in the window — no top-N, as
+ * it does for tools — so a large gateway's list is unbounded. Realistically
+ * tens, so one click reveals the rest rather than paging through them.
+ */
+export const CONNECTOR_ROWS = 15;
 
 const useStyles = makeStyles((theme: Theme) => ({
   column: {
@@ -62,18 +76,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(2, 5),
     marginBottom: theme.spacing(3),
   },
-  chartCard: {
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius * 2,
+  chart: {
     marginBottom: theme.spacing(3),
-  },
-  chartTitle: {
-    marginBottom: theme.spacing(1.5),
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    fontSize: 11,
-    fontWeight: 500,
-    color: theme.palette.text.secondary,
   },
   /**
    * Stacked, not side by side.
@@ -89,330 +93,178 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.spacing(3),
   },
-  tableCard: {
-    borderRadius: theme.shape.borderRadius * 2,
-    overflow: 'hidden',
-  },
-  toolName: {
-    // The body font, matching the personal section's tables directly above on
-    // the Usage page — the same kind of value rendered two ways on one page
-    // reads as a bug. `anywhere` rather than `break-all`, which split names
-    // mid-word (`…resolve_cluste / r`) once the pitch stopped being fixed.
-    overflowWrap: 'anywhere',
-  },
-  /**
-   * Left-aligned, not right.
-   *
-   * These columns carry a `DataBar`, which grows from the left — a
-   * right-aligned number over a left-anchored bar reads as two unrelated
-   * things, and a mirrored bar read as inconsistent beside the left-aligned
-   * tables on the Usage tab's other views. So the whole cell goes left and
-   * matches them.
-   */
-  numeric: {
-    fontVariantNumeric: 'tabular-nums',
-    whiteSpace: 'nowrap',
-  },
-  errorValue: {
-    color: theme.palette.error.main,
-  },
   note: {
     display: 'block',
     marginTop: theme.spacing(2),
-    color: theme.palette.text.secondary,
+  },
+  dataStart: {
+    display: 'block',
+    marginBottom: theme.spacing(2),
   },
 }));
 
-/**
- * Thousands grouping fixed to `en-US`, whatever the browser's locale, to match
- * the agent-platform figures this section sits beside on the Usage page
- * (`formatCount` in that plugin's `lib/formatNumbers.ts`).
- */
-const grouped = new Intl.NumberFormat('en-US');
+type ToolRow = McpUsage['top_tools'][number] & { id: string };
+type ServerRow = McpUsage['servers'][number] & { id: string };
 
-function formatCount(value: number): string {
-  return grouped.format(Math.round(value));
-}
-
-function formatSeconds(value: number | null): string {
-  if (value === null) {
-    return '—';
-  }
-  if (value < 1) {
-    return `${Math.round(value * 1000)} ms`;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} s`;
-}
-
-/** Axis tick for a bucket start: hour of day for hourly, date for daily. */
-function formatBucketTick(start: string, stepHours: number): string {
-  const date = new Date(start);
-  if (stepHours < 24) {
-    return date.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function formatBucketTooltip(start: string, stepHours: number): string {
-  const date = new Date(start);
-  if (stepHours < 24) {
-    return date.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
+function UsageBody({
+  data,
+  windowDays,
+  installation,
+  servers,
+}: {
+  data: McpUsage;
+  /** The Usage screen's window, which each connector's link carries. */
+  windowDays: UsageWindowDays;
+  /** The installation the figures are read on, whose connector pages rows open. */
+  installation: string;
+  /**
+   * The installation's MCPServer CRs, to name each connector as Customize
+   * does and find the page that shows its usage.
+   */
+  servers: MCPServer[];
+}) {
   const classes = useStyles();
-  const theme = useTheme();
+  const links = useServerPageLinks();
+  const pageKeys = useMemo(() => connectorPageKeys(servers), [servers]);
+  const names = connectorNames(
+    [
+      ...(data.servers ?? []).map(entry => entry.server),
+      ...(data.source?.server ? [data.source.server] : []),
+    ],
+    servers,
+  );
+  const toolRows: ToolRow[] = (data.top_tools ?? []).map(row => ({
+    ...row,
+    id: row.tool,
+  }));
+  const serverRows: ServerRow[] = (data.servers ?? []).map(row => ({
+    ...row,
+    id: row.server,
+  }));
+  const toolColumns = useUsageColumns(toolRows, {
+    label: 'Top tools',
+    renderName: row => row.tool,
+    withP95: true,
+  });
+  const serverColumns = useUsageColumns(serverRows, {
+    label: 'Connector',
+    // To the connector's Usage tab over the same window: a family instance's
+    // is its family's, which lists each instance. A row no page shows
+    // (muster's own tools, a server since removed) stays plain text.
+    renderName: row => {
+      const name = names.get(row.server) ?? row.server;
+      const key = pageKeys.get(row.server);
+      const href = key
+        ? links.server(key, installation, {
+            tab: 'usage',
+            usageWindow: windowDays,
+          })
+        : undefined;
+      return href ? <Link href={href}>{name}</Link> : name;
+    },
+  });
 
   if (!data.available) {
     return (
-      <Typography variant="body2" color="textSecondary">
-        Usage metrics are not available for this installation:{' '}
+      <Text as="p" variant="body-medium" color="secondary">
+        Usage metrics are not available for this environment:{' '}
         {data.reason ?? 'unknown reason'}
-      </Typography>
+      </Text>
     );
   }
 
   const { totals } = data;
-  const errorPct =
-    totals.error_ratio !== null ? Math.round(totals.error_ratio * 100) : null;
-  let errorTone: 'ok' | 'warning' | undefined;
-  if (errorPct !== null) {
-    errorTone = errorPct <= 5 ? 'ok' : 'warning';
-  }
-
-  const okColor = theme.palette.success.main;
-  const errorResultColor = theme.palette.warning.main;
-  const errorColor = theme.palette.error.main;
-  // One fixed window now, so the label is derived rather than looked up.
-  const rangeLabel = `${Math.round(hours / 24)}d`;
-  const windowNote = `over the last ${Math.round(hours / 24)} days`;
-
-  /**
-   * The data bars' hues, one per measure.
-   *
-   * Slot numbers rather than an import: the agent-platform plugin keeps the
-   * same measure→slot map for its own tables (`lib/measures.ts` — calls is
-   * slot 0, a per-call figure slot 7), and matching it keeps "Calls" the same
-   * colour across every table on the Usage tab. Importing that map would make
-   * this plugin depend on agent-platform, which the whole attach-by-node-id
-   * contract exists to avoid — so the two numbers are duplicated deliberately.
-   * `barColors.test.ts` pins them, so drift fails CI rather than resting on
-   * this comment. (`columnMax` was duplicated the same way and has since moved
-   * to `ui-react`, which both plugins already depend on — the right home when
-   * the shared thing has no domain content.)
-   *
-   * Errors takes the **status** red rather than a categorical slot: an error
-   * count is a status quantity, and status colours are reserved. It ships with
-   * a column header and its own figure, so it never rests on colour alone.
-   */
-  const palette = categoricalColors(theme);
-  const barColors = {
-    calls: palette[0],
-    latency: palette[7],
-    errors: errorColor,
-  };
-
-  // One maximum per column, so a bar is read against the column it sits in and
-  // the two tables do not borrow each other's scale.
-  const max = {
-    toolCalls: columnMax(data.top_tools, row => row.calls),
-    toolErrors: columnMax(data.top_tools, row => row.errors),
-    toolP95: columnMax(data.top_tools, row => row.p95_seconds ?? undefined),
-    serverCalls: columnMax(data.servers, row => row.calls),
-    serverErrors: columnMax(data.servers, row => row.errors),
-  };
+  const errorRatio = errorRatioFigure(totals.error_ratio);
+  const rangeLabel = `${windowDays}d`;
+  const windowNote = `over the last ${windowDays} days`;
 
   return (
     <>
+      <McpDataStartNote
+        usage={data}
+        windowDays={windowDays}
+        className={classes.dataStart}
+      />
       <Box className={classes.statRow}>
         <Stat
           label="Tool calls"
           value={formatCount(totals.calls)}
-          hint={`Calls muster dispatched to its servers ${windowNote}, from every client, not only yours.`}
+          hint={`Counts calls dispatched to connectors ${windowNote}, from every client.`}
         />
         <Stat
           label="Error ratio"
-          value={errorPct !== null ? `${errorPct}%` : '—'}
-          tone={errorTone}
-          hint="Calls that could not be dispatched or came back as an error result, as a share of all of them. Amber above 5%."
+          value={errorRatio.value}
+          tone={errorRatio.tone}
+          hint="Shows the share of calls that failed to dispatch or returned an error. Amber above 5%."
         />
         <Stat
           label="p95 latency"
           value={formatSeconds(totals.p95_seconds)}
-          hint={`How long a server took to answer, at the 95th percentile of every call ${windowNote}. Estimated from muster's latency histogram, so read it as a range rather than an exact figure.`}
+          hint={`Shows the 95th-percentile connector response time ${windowNote}. It is estimated from a histogram, so read it as a range.`}
         />
         <Stat
           label="Distinct tools"
           value={totals.distinct_tools}
-          hint={`Tools called at least once ${windowNote}.`}
+          hint={`Counts the tools called at least once ${windowNote}.`}
         />
       </Box>
 
       {totals.calls === 0 ? (
-        <Typography variant="body2" color="textSecondary">
-          No tool calls were dispatched to MCP servers in the last {rangeLabel}.
-          If usage on this installation is expected, its muster release may not
-          export downstream dispatch metrics yet.
-        </Typography>
+        <Text as="p" variant="body-medium" color="secondary">
+          No tool calls were dispatched to connectors in the last {rangeLabel}.
+          If usage is expected, this environment's muster may not export
+          dispatch metrics yet.
+        </Text>
       ) : (
         <>
-          <Paper variant="outlined" className={classes.chartCard}>
-            <Typography component="div" className={classes.chartTitle}>
-              Tool calls by outcome
-            </Typography>
-            <StackedBarChart
-              data={data.buckets}
-              xAxisKey="start"
-              series={[
-                { dataKey: 'ok', name: 'ok', color: okColor },
-                {
-                  dataKey: 'error_result',
-                  name: 'error result',
-                  color: errorResultColor,
-                },
-                { dataKey: 'error', name: 'error', color: errorColor },
-              ]}
-              formatXAxisTick={start =>
-                formatBucketTick(start, data.step_hours)
-              }
-              formatTooltipLabel={start =>
-                formatBucketTooltip(start, data.step_hours)
-              }
-              formatValue={formatCount}
-              formatYAxisTick={formatCount}
-              yAxisWidth={56}
-              height={200}
-              showLegend
+          <div className={classes.chart}>
+            <McpCallsByOutcomeChart
+              buckets={data.buckets}
+              stepHours={data.step_hours}
             />
-          </Paper>
+          </div>
 
           <Box className={classes.tables}>
-            <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Top tools</TableCell>
-                    <TableCell>Calls</TableCell>
-                    <TableCell>Errors</TableCell>
-                    <TableCell>p95</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.top_tools.map(row => (
-                    <TableRow key={row.tool}>
-                      <TableCell className={classes.toolName}>
-                        {row.tool}
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatCount(row.calls)}
-                          value={row.calls}
-                          max={max.toolCalls}
-                          color={barColors.calls}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className={`${classes.numeric} ${
-                          row.errors > 0 ? classes.errorValue : ''
-                        }`}
-                      >
-                        <DataBar
-                          label={formatCount(row.errors)}
-                          value={row.errors}
-                          max={max.toolErrors}
-                          color={barColors.errors}
-                        />
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatSeconds(row.p95_seconds)}
-                          value={row.p95_seconds ?? undefined}
-                          max={max.toolP95}
-                          color={barColors.latency}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
+            <McpUsageTable rows={toolRows} columns={toolColumns} />
 
-            <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>MCP server</TableCell>
-                    <TableCell>Calls</TableCell>
-                    <TableCell>Errors</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.servers.map(row => (
-                    <TableRow key={row.server}>
-                      <TableCell className={classes.toolName}>
-                        {row.server}
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatCount(row.calls)}
-                          value={row.calls}
-                          max={max.serverCalls}
-                          color={barColors.calls}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className={`${classes.numeric} ${
-                          row.errors > 0 ? classes.errorValue : ''
-                        }`}
-                      >
-                        <DataBar
-                          label={formatCount(row.errors)}
-                          value={row.errors}
-                          max={max.serverErrors}
-                          color={barColors.errors}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
+            {/* Sorted by calls on the server; the slice keeps the busiest. */}
+            <ShowMore
+              items={serverRows}
+              initial={CONNECTOR_ROWS}
+              noun="connector"
+              revealAll
+            >
+              {visible => (
+                <McpUsageTable rows={visible} columns={serverColumns} />
+              )}
+            </ShowMore>
           </Box>
         </>
       )}
 
       {data.source && (
-        <Typography variant="caption" className={classes.note}>
+        <Text
+          as="p"
+          variant="body-x-small"
+          color="secondary"
+          className={classes.note}
+        >
           Counted at muster's dispatch layer, so meta-tool wrapping (call_tool)
-          is attributed to the resolved tool and server. Queried via{' '}
-          {data.source.server}.
-        </Typography>
+          is attributed to the resolved tool and connector. Queried through the{' '}
+          {names.get(data.source.server) ?? data.source.server} connector.
+        </Text>
       )}
     </>
   );
 }
 
 /**
- * The installation-wide half of the Agent Platform's Usage tab: tool-call
+ * The installation-wide half of the Agent Platform's Usage page: tool-call
  * volume, outcomes, latency and top tools/servers for the selected
  * installation, from muster's own Prometheus metrics via the muster-backend's
  * `/usage` route.
  *
- * Contributed to `sub-page:agent-platform/usage` (see `../../mcpUsageSection`)
+ * Contributed to `page:agent-platform/usage` (see `../../mcpUsageSection`)
  * rather than imported by that plugin, so neither plugin depends on the other.
  * It therefore brings its own `MusterProviders`: that stack is designed to be
  * mounted per view — the QueryClient is a module singleton and the active
@@ -430,22 +282,29 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 function McpUsageBody() {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const { activeInstallation } = useMusterInstance();
+  const {
+    activeInstallation,
+    mcpServers,
+    isLoading: isLoadingServers,
+  } = useMusterInstance();
   // The usage route reads muster's own metrics through the live session; an
   // installation whose muster the backend cannot reach gets the note instead
   // of a request that can only fail.
   const session = useMusterSession();
   const unreachable = isUnreachableSession(session);
+  const windowDays = useWindowDays();
+  const hours = windowDays * 24;
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['muster', 'mcp-usage', activeInstallation, WINDOW_HOURS],
+  const { data, error, isPending, fetchStatus } = useQuery({
+    queryKey: ['muster', 'mcp-usage', activeInstallation, hours],
     queryFn: () =>
       musterApi.getMcpUsage({
         installation: activeInstallation,
-        hours: WINDOW_HOURS,
+        hours,
       }),
     enabled: Boolean(activeInstallation) && !unreachable,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   let body;
   if (unreachable) {
@@ -453,19 +312,28 @@ function McpUsageBody() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="Usage metrics are read through a live muster session."
+        context="Usage metrics need a muster session."
       />
     );
-  } else if (!activeInstallation || isLoading) {
+  } else if (!activeInstallation || isLoading || isLoadingServers) {
+    // The servers too: each connector's link waits for them, so the table
+    // never shows its names as text that turn into links a moment later.
     body = <Progress />;
   } else if (error) {
     body = (
-      <Typography variant="body2" color="textSecondary">
+      <Text as="p" variant="body-medium" color="secondary">
         Usage unavailable: {(error as Error).message}
-      </Typography>
+      </Text>
     );
   } else if (data) {
-    body = <UsageBody data={data} hours={WINDOW_HOURS} />;
+    body = (
+      <UsageBody
+        data={data}
+        windowDays={windowDays}
+        installation={activeInstallation}
+        servers={mcpServers}
+      />
+    );
   }
 
   return (
@@ -482,8 +350,8 @@ function McpUsageBody() {
       <SectionHeader
         as="h3"
         variant="title-x-small"
-        title="MCP tool calls on this installation"
-        description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
+        title="Connector tool calls on this environment"
+        description={`This covers every caller's tool calls, not only yours, over the last ${windowDays} days.`}
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

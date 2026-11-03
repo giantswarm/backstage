@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -101,6 +101,43 @@ describe('useClusterWrite', () => {
     // Continue: the same call completes the cluster, and reports it once.
     await act(() => result.current.create(cluster, { mode: 'apply' }));
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a write as writing, and a dry run only as busy', async () => {
+    let land: (value: unknown) => void = () => {};
+    callTool.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          land = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useClusterWrite('inst-1'), {
+      wrapper,
+    });
+
+    let pending: Promise<unknown> = Promise.resolve();
+    act(() => {
+      pending = result.current.create(cluster, { mode: 'apply', dryRun: true });
+    });
+    await waitFor(() => expect(result.current.isBusy).toBe(true));
+    expect(result.current.isWriting).toBe(false);
+    await act(async () => {
+      land(answer({ dryRun: true }));
+      await pending;
+    });
+
+    act(() => {
+      pending = result.current.remove(
+        { organization: 'acme', name: 'demo1' },
+        { mode: 'apply' },
+      );
+    });
+    await waitFor(() => expect(result.current.isWriting).toBe(true));
+    await act(async () => {
+      land(answer());
+      await pending;
+    });
+    await waitFor(() => expect(result.current.isWriting).toBe(false));
   });
 
   it('keeps a refusal as the failure and reports nothing', async () => {

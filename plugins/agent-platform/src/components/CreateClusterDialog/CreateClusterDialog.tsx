@@ -1,8 +1,7 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -20,6 +19,11 @@ import {
   Organization,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  BusyDialog,
+  useFieldValidation,
+  useSelectFieldError,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -45,6 +49,7 @@ import {
   previewOf,
   type ModeVerdicts,
 } from '../../lib/clusterWrites';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
@@ -75,7 +80,7 @@ export function defaultRelease(
   )?.version;
 }
 
-/** Why the name cannot be used, checked while typing; `undefined` when it can. */
+/** Why the name cannot be used; `undefined` when it can, or is still empty. */
 export function clusterNameProblem(
   name: string,
   taken: string[],
@@ -84,7 +89,7 @@ export function clusterNameProblem(
     return undefined;
   }
   if (!isValidClusterName(name)) {
-    return 'A lowercase DNS label of at most 20 characters, starting with a letter: letters, digits and dashes.';
+    return 'Use at most 20 lowercase letters, digits and dashes, starting with a letter.';
   }
   return taken.includes(name)
     ? `A cluster named ${name} already exists on this installation.`
@@ -117,7 +122,8 @@ export function parseValues(text: string): {
  * Create cluster — cluster-manager's `create_cluster` through muster as the
  * signed-in person. The form offers what the installation's cluster-manager
  * names (`list_releases`: the provider lines, the releases a cluster may run,
- * the newest preselected) and checks the name while typing; the review shows
+ * the newest preselected) and checks each field when the person leaves it,
+ * and every field on Review (the `forms` skill); the review shows
  * both modes' dry runs — the manifests, the values checked against the release
  * chart's schema, the pull request's files — and offers **Commit** (the pull
  * request as the person, preselected where git owns the organization) and
@@ -148,10 +154,14 @@ export function CreateClusterDialog({
   const releases = useClusterReleases(target);
   const clusters = useManagedClusters(target);
   const write = useClusterWrite(target);
+  const startAnswer = useOpenGeneration(isOpen);
   const organizations = useResources(target ?? [], Organization, undefined, {
     enabled: Boolean(target) && isOpen,
   });
-  const awsIdentity = AWS_IDENTITY_PROVIDERS.includes(provider ?? '');
+  // The provider line in effect: the person's choice, else the first line
+  // `list_releases` offers, which the form shows preselected.
+  const line = provider ?? releases.providers[0];
+  const awsIdentity = AWS_IDENTITY_PROVIDERS.includes(line ?? '');
   const identities = useResources(
     target ?? [],
     AWSClusterRoleIdentity,
@@ -159,7 +169,6 @@ export function CreateClusterDialog({
     { enabled: Boolean(target) && isOpen && awsIdentity },
   );
 
-  const line = provider ?? releases.providers[0];
   const chosenRelease = release ?? defaultRelease(releases.releases, line);
   const lineReleases = releases.releases.filter(
     candidate => candidate.provider === line,
@@ -177,6 +186,21 @@ export function CreateClusterDialog({
     clusters.clusters.map(cluster => cluster.name),
   );
   const parsedValues = parseValues(valuesText);
+  // Each field's problem, shown once the person leaves it or presses Review.
+  const errors = {
+    provider: line ? undefined : providerProblem(releases),
+    organization: organization ? undefined : 'Choose an organization.',
+    name: name ? nameProblem : 'Enter a name for the cluster.',
+    values: parsedValues.problem,
+  };
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
+  const providerError = useSelectFieldError(
+    validation.errorFor('provider', errors.provider),
+  );
+  const organizationError = useSelectFieldError(
+    validation.errorFor('organization', errors.organization),
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -189,6 +213,7 @@ export function CreateClusterDialog({
       setDescription('');
       setValuesText('');
       setVerdicts(undefined);
+      setJudging(false);
       setMode(undefined);
       setApplied(undefined);
       setCommitted(undefined);
@@ -217,20 +242,30 @@ export function CreateClusterDialog({
 
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
-    if (!input || judging) {
+    if (judging) {
+      return;
+    }
+    if (!input) {
+      validation.reveal();
       return;
     }
     setJudging(true);
+    const isCurrent = startAnswer();
     try {
       const judged = await judgeModes(
         dryRunMode => write.create(input, { mode: dryRunMode, dryRun: true }),
         offersCommit(info, CLUSTER_MANAGER_TOOLS.createCluster),
       );
+      if (!isCurrent()) {
+        return;
+      }
       write.reset();
       setVerdicts(judged);
       setMode(preferredMode(judged));
     } finally {
-      setJudging(false);
+      if (isCurrent()) {
+        setJudging(false);
+      }
     }
   };
 
@@ -251,12 +286,6 @@ export function CreateClusterDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!write.isBusy && !judging) {
-      onOpenChange(next);
-    }
-  };
-
   const onForm = !verdicts;
   const done = Boolean((applied && !applied.partial) || committed);
   const notConnected =
@@ -271,284 +300,298 @@ export function CreateClusterDialog({
   const busy = write.isBusy || judging;
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      onOpenChange={onOpenChange}
+      isBusy={write.isWriting}
       width="min(90vw, 860px)"
     >
-      <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
-        <DialogHeader>Create cluster</DialogHeader>
-        <DialogBody>
-          <Flex direction="column" gap="4">
-            <Text variant="body-small" color="secondary">
-              A workload cluster on the installation, composed by
-              cluster-manager and written as you: applied on the installation,
-              or as a pull request in the repository that owns the organization.
-            </Text>
+      {close => (
+        <>
+          <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
+            <DialogHeader>Create cluster</DialogHeader>
+            <DialogBody>
+              <Flex direction="column" gap="4">
+                <Text variant="body-small" color="secondary">
+                  A workload cluster on the installation, composed by
+                  cluster-manager and written as you: applied on the
+                  installation, or as a pull request in the repository that owns
+                  the organization.
+                </Text>
 
-            {onForm && (
-              <Flex direction="column" gap="3">
-                {installations.length > 1 && (
-                  <Select
-                    label="Installation"
-                    isRequired
-                    options={installations.map(id => ({ id, label: id }))}
-                    selectedKey={target ?? null}
-                    onSelectionChange={key => {
-                      if (key) {
-                        setInstallation(String(key));
-                        setProvider(undefined);
-                        setRelease(undefined);
-                        setOrganization(undefined);
-                        setIdentity(CHART_DEFAULT);
+                {onForm && (
+                  <Flex direction="column" gap="3" ref={scope}>
+                    {installations.length > 1 && (
+                      <Select
+                        label="Installation"
+                        isRequired
+                        options={installations.map(id => ({ id, label: id }))}
+                        selectedKey={target ?? null}
+                        onSelectionChange={key => {
+                          if (key) {
+                            setInstallation(String(key));
+                            setProvider(undefined);
+                            setRelease(undefined);
+                            setOrganization(undefined);
+                            setIdentity(CHART_DEFAULT);
+                          }
+                        }}
+                      />
+                    )}
+                    {releases.error && (
+                      <Alert
+                        status="warning"
+                        title="Could not read the releases"
+                        description={releases.error.message}
+                      />
+                    )}
+                    <Flex gap="3" align="start">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Select
+                          label="Provider"
+                          isRequired
+                          placeholder={
+                            releases.isLoading
+                              ? 'Reading releases…'
+                              : 'No provider'
+                          }
+                          options={releases.providers.map(id => ({
+                            id,
+                            label: id,
+                          }))}
+                          selectedKey={line ?? null}
+                          onSelectionChange={key => {
+                            if (key) {
+                              setProvider(String(key));
+                              setRelease(undefined);
+                              setIdentity(CHART_DEFAULT);
+                            }
+                          }}
+                          {...providerError.selectProps}
+                        />
+                        {providerError.message}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Select
+                          label="Release"
+                          isRequired
+                          placeholder={
+                            releases.isLoading
+                              ? 'Reading releases…'
+                              : 'No release'
+                          }
+                          options={lineReleases.map(candidate => ({
+                            id: candidate.version,
+                            label: releaseLabel(candidate),
+                            disabled: !candidate.offered,
+                          }))}
+                          selectedKey={chosenRelease ?? null}
+                          onSelectionChange={key =>
+                            key && setRelease(String(key))
+                          }
+                        />
+                      </div>
+                    </Flex>
+                    <Select
+                      label="Organization"
+                      isRequired
+                      description="The cluster lives in the organization's namespace, org-<organization>."
+                      placeholder={organizationPlaceholder(
+                        organizations.isLoading,
+                        organizationNames.length,
+                      )}
+                      options={organizationNames.map(id => ({ id, label: id }))}
+                      selectedKey={organization ?? null}
+                      onSelectionChange={key =>
+                        setOrganization(key ? String(key) : undefined)
                       }
-                    }}
-                  />
+                      {...organizationError.selectProps}
+                    />
+                    {organizationError.message}
+                    <TextField
+                      label="Name"
+                      isRequired
+                      description="Use lowercase letters, digits and dashes. It prefixes the cluster's cloud resources and cannot change."
+                      value={name}
+                      onChange={setName}
+                      {...validation.textFieldProps('name', errors.name)}
+                    />
+                    {awsIdentity ? (
+                      <Select
+                        label="Cloud identity"
+                        description="The AWSClusterRoleIdentity the cluster runs under; no credential passes through the portal."
+                        options={[
+                          {
+                            id: CHART_DEFAULT_KEY,
+                            label: "The chart's default",
+                          },
+                          ...identityNames.map(id => ({ id, label: id })),
+                        ]}
+                        selectedKey={identity || CHART_DEFAULT_KEY}
+                        onSelectionChange={key =>
+                          setIdentity(
+                            !key || key === CHART_DEFAULT_KEY
+                              ? CHART_DEFAULT
+                              : String(key),
+                          )
+                        }
+                      />
+                    ) : (
+                      <TextField
+                        label="Cloud identity"
+                        description="The name of the provider's identity object the cluster runs under; empty for the chart's default."
+                        value={identity}
+                        onChange={setIdentity}
+                      />
+                    )}
+                    <TextField
+                      label="Description"
+                      description="A sentence on the cluster's purpose."
+                      value={description}
+                      onChange={setDescription}
+                    />
+                    <TextAreaField
+                      label="Values"
+                      description="Further values as YAML (global.controlPlane, global.nodePools, …), checked against the release chart's schema in the review."
+                      value={valuesText}
+                      onChange={setValuesText}
+                      {...validation.textFieldProps('values', errors.values)}
+                    />
+                  </Flex>
                 )}
-                {releases.error && (
+
+                {!onForm && (
+                  <Flex direction="column" gap="3" data-testid="cluster-review">
+                    {review && (
+                      <>
+                        <Text variant="body-medium">
+                          {review.cluster} in {review.namespace}: release{' '}
+                          {review.release ?? chosenRelease ?? '?'}
+                          {review.kubernetesVersion
+                            ? `, Kubernetes ${review.kubernetesVersion}`
+                            : ''}
+                          .
+                        </Text>
+                        <Text variant="body-small" color="secondary">
+                          {review.objects
+                            .map(
+                              object =>
+                                `${object.kind} ${object.namespace}/${object.name}: ${object.action}`,
+                            )
+                            .join(' · ')}
+                        </Text>
+                      </>
+                    )}
+                    <RadioGroup
+                      label="How"
+                      value={mode ?? null}
+                      onChange={value => setMode(value as WriteMode)}
+                      isDisabled={busy || done}
+                    >
+                      <Radio
+                        value="commit"
+                        isDisabled={verdicts.commit.state !== 'ready'}
+                      >
+                        Commit — a pull request as you in the repository that
+                        owns the organization
+                      </Radio>
+                      <Radio
+                        value="apply"
+                        isDisabled={verdicts.apply.state !== 'ready'}
+                      >
+                        Deploy — apply the objects on the installation as you
+                      </Radio>
+                    </RadioGroup>
+                    <ModeNotes verdicts={verdicts} />
+                    {commitReview && (
+                      <Text variant="body-small" color="secondary">
+                        The pull request adds{' '}
+                        {commitReview.files.map(file => file.path).join(', ')}{' '}
+                        to {commitReview.repository} on {commitReview.base}.
+                      </Text>
+                    )}
+                    {review?.manifests && review.manifests.length > 0 && (
+                      <ManifestList manifests={review.manifests} />
+                    )}
+                  </Flex>
+                )}
+
+                {write.failure && write.failure.kind !== 'not-connected' && (
                   <Alert
-                    status="warning"
-                    title="Releases could not be read"
-                    description={releases.error.message}
+                    status="danger"
+                    title="cluster-manager refused"
+                    description={write.failure.message}
                   />
                 )}
-                <Flex gap="3">
-                  <Select
-                    label="Provider"
-                    isRequired
-                    placeholder={
-                      releases.isLoading ? 'Reading releases…' : 'No provider'
-                    }
-                    options={releases.providers.map(id => ({ id, label: id }))}
-                    selectedKey={line ?? null}
-                    onSelectionChange={key => {
-                      if (key) {
-                        setProvider(String(key));
-                        setRelease(undefined);
-                        setIdentity(CHART_DEFAULT);
-                      }
-                    }}
-                  />
-                  <Select
-                    label="Release"
-                    isRequired
-                    placeholder={
-                      releases.isLoading ? 'Reading releases…' : 'No release'
-                    }
-                    options={lineReleases.map(candidate => ({
-                      id: candidate.version,
-                      label: releaseLabel(candidate),
-                      disabled: !candidate.offered,
-                    }))}
-                    selectedKey={chosenRelease ?? null}
-                    onSelectionChange={key => key && setRelease(String(key))}
-                  />
-                </Flex>
-                <Select
-                  label="Organization"
-                  isRequired
-                  description="The cluster lives in the organization's namespace, org-<organization>."
-                  placeholder={organizationPlaceholder(
-                    organizations.isLoading,
-                    organizationNames.length,
-                  )}
-                  options={organizationNames.map(id => ({ id, label: id }))}
-                  selectedKey={organization ?? null}
-                  onSelectionChange={key =>
-                    setOrganization(key ? String(key) : undefined)
-                  }
-                />
-                <TextField
-                  label="Name"
-                  isRequired
-                  description={
-                    nameProblem ??
-                    "Prefixes the cluster's cloud resources and cannot change."
-                  }
-                  value={name}
-                  onChange={setName}
-                  isInvalid={Boolean(nameProblem)}
-                />
-                {awsIdentity ? (
-                  <Select
-                    label="Cloud identity"
-                    description="The AWSClusterRoleIdentity the cluster runs under; no credential passes through the portal."
-                    options={[
-                      { id: CHART_DEFAULT_KEY, label: "The chart's default" },
-                      ...identityNames.map(id => ({ id, label: id })),
-                    ]}
-                    selectedKey={identity || CHART_DEFAULT_KEY}
-                    onSelectionChange={key =>
-                      setIdentity(
-                        !key || key === CHART_DEFAULT_KEY
-                          ? CHART_DEFAULT
-                          : String(key),
-                      )
-                    }
-                  />
-                ) : (
-                  <TextField
-                    label="Cloud identity"
-                    description="The name of the provider's identity object the cluster runs under; empty for the chart's default."
-                    value={identity}
-                    onChange={setIdentity}
+                {notConnected && target && (
+                  <ConnectAgentManagerAlert
+                    installation={target}
+                    message={notConnected.message}
+                    action="Clusters are created"
+                    server={CLUSTER_MANAGER_SERVER}
                   />
                 )}
-                <TextField
-                  label="Description"
-                  description="A sentence on the cluster's purpose."
-                  value={description}
-                  onChange={setDescription}
-                />
-                <TextAreaField
-                  label="Values"
-                  description={
-                    parsedValues.problem ??
-                    "Further values as YAML (global.controlPlane, global.nodePools, …), checked against the release chart's schema in the review."
-                  }
-                  value={valuesText}
-                  onChange={setValuesText}
-                  isInvalid={Boolean(parsedValues.problem)}
-                />
-              </Flex>
-            )}
-
-            {!onForm && (
-              <Flex direction="column" gap="3" data-testid="cluster-review">
-                {review && (
-                  <>
-                    <Text variant="body-medium">
-                      {review.cluster} in {review.namespace}: release{' '}
-                      {review.release ?? chosenRelease ?? '?'}
-                      {review.kubernetesVersion
-                        ? `, Kubernetes ${review.kubernetesVersion}`
-                        : ''}
-                      .
-                    </Text>
-                    <Text variant="body-small" color="secondary">
-                      {review.objects
-                        .map(
-                          object =>
-                            `${object.kind} ${object.namespace}/${object.name}: ${object.action}`,
-                        )
-                        .join(' · ')}
-                    </Text>
-                  </>
+                {applied?.partial && (
+                  <PartialWriteOutcome
+                    result={applied}
+                    action="Deploy"
+                    onContinue={onWrite}
+                    isBusy={write.isBusy}
+                  />
                 )}
-                <RadioGroup
-                  label="How"
-                  value={mode ?? null}
-                  onChange={value => setMode(value as WriteMode)}
-                  isDisabled={busy || done}
-                >
-                  <Radio
-                    value="commit"
-                    isDisabled={verdicts.commit.state !== 'ready'}
-                  >
-                    Commit — a pull request as you in the repository that owns
-                    the organization
-                  </Radio>
-                  <Radio
-                    value="apply"
-                    isDisabled={verdicts.apply.state !== 'ready'}
-                  >
-                    Deploy — apply the objects on the installation as you
-                  </Radio>
-                </RadioGroup>
-                <ModeNotes verdicts={verdicts} />
-                {commitReview && (
-                  <Text variant="body-small" color="secondary">
-                    The pull request adds{' '}
-                    {commitReview.files.map(file => file.path).join(', ')} to{' '}
-                    {commitReview.repository} on {commitReview.base}.
-                  </Text>
+                {applied && !applied.partial && (
+                  <Alert
+                    status="success"
+                    title={`Cluster ${applied.cluster} applied as you`}
+                    description="helm-controller installs it now; the Clusters list shows it as it comes up."
+                  />
                 )}
-                {review?.manifests && review.manifests.length > 0 && (
-                  <ManifestList manifests={review.manifests} />
+                {committed?.commit && (
+                  <ClusterManagerCommitOutcome commit={committed.commit} />
                 )}
               </Flex>
-            )}
-
-            {write.failure && write.failure.kind !== 'not-connected' && (
-              <Alert
-                status="danger"
-                title="cluster-manager refused"
-                description={write.failure.message}
-              />
-            )}
-            {notConnected && target && (
-              <ConnectAgentManagerAlert
-                installation={target}
-                message={notConnected.message}
-                action="Clusters are created"
-                server={CLUSTER_MANAGER_SERVER}
-              />
-            )}
-            {applied?.partial && (
-              <PartialWriteOutcome
-                result={applied}
-                action="Deploy"
-                onContinue={onWrite}
-                isBusy={write.isBusy}
-              />
-            )}
-            {applied && !applied.partial && (
-              <Alert
-                status="success"
-                title={`Cluster ${applied.cluster} applied as you`}
-                description="helm-controller installs it now; the Clusters list shows it as it comes up."
-              />
-            )}
-            {committed?.commit && (
-              <ClusterManagerCommitOutcome commit={committed.commit} />
-            )}
-          </Flex>
-        </DialogBody>
-        <DialogFooter>
-          <Flex gap="2" justify="end">
-            <Button
-              variant="secondary"
-              onPress={() => close(false)}
-              isDisabled={busy}
-            >
-              {done ? 'Close' : 'Cancel'}
-            </Button>
-            {onForm && (
-              <Button
-                type="submit"
-                variant="primary"
-                isDisabled={!input || judging}
-              >
-                {judging ? 'Checking…' : 'Review'}
-              </Button>
-            )}
-            {!onForm && !done && (
-              <>
+            </DialogBody>
+            <DialogFooter>
+              <Flex gap="2" justify="end">
                 <Button
                   variant="secondary"
-                  onPress={() => {
-                    setVerdicts(undefined);
-                    write.reset();
-                  }}
-                  isDisabled={busy}
+                  onPress={close}
+                  isDisabled={write.isWriting}
                 >
-                  Back
+                  {done ? 'Close' : 'Cancel'}
                 </Button>
-                <Button
-                  variant="primary"
-                  onPress={onWrite}
-                  isDisabled={!mode || busy || Boolean(applied?.partial)}
-                >
-                  {writeLabel(mode, write.isBusy)}
-                </Button>
-              </>
-            )}
-          </Flex>
-        </DialogFooter>
-      </form>
-    </Dialog>
+                {onForm && (
+                  <Button type="submit" variant="primary" isDisabled={judging}>
+                    {judging ? 'Checking…' : 'Review'}
+                  </Button>
+                )}
+                {!onForm && !done && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onPress={() => {
+                        setVerdicts(undefined);
+                        write.reset();
+                      }}
+                      isDisabled={busy}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onPress={onWrite}
+                      isDisabled={!mode || busy || Boolean(applied?.partial)}
+                    >
+                      {writeLabel(mode, write.isBusy)}
+                    </Button>
+                  </>
+                )}
+              </Flex>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </BusyDialog>
   );
 }
 
@@ -579,6 +622,20 @@ function ModeNotes({ verdicts }: { verdicts: ModeVerdicts }) {
 }
 
 /** The organization picker's placeholder: reading, nothing to pick, or pick one. */
+/** Why no provider is in effect: still reading, unreadable, or none offered. */
+function providerProblem(releases: {
+  isLoading: boolean;
+  error?: unknown;
+}): string {
+  if (releases.isLoading) {
+    return 'Wait until the providers are read, then choose one.';
+  }
+  if (releases.error) {
+    return 'The providers could not be read; see the warning above.';
+  }
+  return 'This installation offers no provider to create a cluster with.';
+}
+
 function organizationPlaceholder(loading: boolean, count: number): string {
   if (loading) {
     return 'Reading organizations…';

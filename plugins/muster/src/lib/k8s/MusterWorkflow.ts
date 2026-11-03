@@ -3,7 +3,7 @@ import {
   KubeObjectInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-/** Optional category label used to group workflows (klaus-lab convention). */
+/** Optional category label used to group workflows (a workflow-grouping convention). */
 export const WORKFLOW_CATEGORY_LABEL = 'klaus-lab.giantswarm.io/category';
 
 export interface WorkflowArgDefinition {
@@ -27,34 +27,63 @@ export interface WorkflowCondition {
   expectNot?: WorkflowConditionExpectation;
 }
 
-export interface WorkflowSubStep {
-  id: string;
-  tool: string;
-  args?: Record<string, unknown>;
-  condition?: WorkflowCondition;
-  output?: boolean;
-  store?: boolean;
-  allowFailure?: boolean;
-  description?: string;
+/**
+ * How a tool step follows the tool's pages (`paginate`): it passes each
+ * page's next-page token back and keeps every page's items as one list.
+ */
+export interface WorkflowPaginate {
+  /** The most pages fetched. muster defaults it to 10. */
+  maxPages?: number;
+  /** Where a page's list is. muster defaults it to `items`. */
+  itemsField?: string;
+  /** Where a page's next-page token is. muster defaults it to `continue`. */
+  tokenField?: string;
+  /** The tool argument the token goes in. muster defaults it to `continue`. */
+  tokenArg?: string;
 }
 
-export interface WorkflowForEach {
-  items: string;
-  as?: string;
-  steps: WorkflowSubStep[];
-}
-
+/**
+ * One step, at any depth: exactly one of a tool call (`tool`), a loop
+ * (`forEach`) or a concurrent group (`parallel`).
+ *
+ * The CRD bounds the nesting — a forEach body may hold one nested forEach of
+ * tool calls, a parallel group or the cleanup steps only tool calls — so its
+ * schema stays structural. The page's model is recursive instead: it draws
+ * whatever nesting it is given, and a later CRD that allows more needs no
+ * change here.
+ */
 export interface WorkflowStep {
   id: string;
   tool?: string;
   args?: Record<string, unknown>;
   condition?: WorkflowCondition;
   forEach?: WorkflowForEach;
-  parallel?: WorkflowSubStep[];
+  parallel?: WorkflowStep[];
+  /** A tool step only: follow the tool's pages. */
+  paginate?: WorkflowPaginate;
+  /**
+   * A jq program that reshapes the step's result before it is stored: the
+   * tool's result, or a forEach's per-iteration records.
+   */
+  jq?: string;
   output?: boolean;
   store?: boolean;
   allowFailure?: boolean;
   description?: string;
+}
+
+/** A step in a forEach body, a parallel group or the cleanup steps. */
+export type WorkflowSubStep = WorkflowStep;
+
+export interface WorkflowForEach {
+  items: string;
+  as?: string;
+  /**
+   * How many iterations may run at once. Unset, they run one after another;
+   * in a nested loop, within one iteration of the outer loop.
+   */
+  parallelism?: number;
+  steps: WorkflowSubStep[];
 }
 
 interface MusterWorkflowInterface extends KubeObjectInterface {
@@ -94,11 +123,6 @@ export class MusterWorkflow extends KubeObject<MusterWorkflowInterface> {
 
   getSteps() {
     return this.jsonData.spec?.steps ?? [];
-  }
-
-  /** Step count from `.status.stepCount`, falling back to the spec length. */
-  getStepCount() {
-    return this.jsonData.status?.stepCount ?? this.getSteps().length;
   }
 
   /**

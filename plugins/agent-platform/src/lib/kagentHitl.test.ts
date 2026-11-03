@@ -59,6 +59,41 @@ const questionTask = (id: string) =>
   ]);
 
 describe('readPendingConfirmation', () => {
+  it('reads an MCP server sign-in the task waits on', () => {
+    const signIn = {
+      ...task('task-1', 'input-required', [
+        { kind: 'text', text: 'Sign in to github to continue.' },
+      ]),
+    } as unknown as { status: { message: Record<string, unknown> } };
+    signIn.status.message.messageId = 'status-1';
+    signIn.status.message.extensions = [
+      'https://kagent.dev/extensions/hitl/v1',
+    ];
+    signIn.status.message.metadata = {
+      'https://kagent.dev/extensions/hitl/v1': {
+        type: 'url_elicitation_request',
+        id: 'sign-in-1',
+        server: 'muster',
+        message: 'Sign in to github to continue.',
+        url: 'https://muster.example/oauth/proxy/start?state=abc',
+      },
+    };
+    expect(readPendingConfirmation([signIn as unknown as A2aTaskWire])).toEqual(
+      {
+        taskId: 'task-1',
+        asks: 'sign-in',
+        questions: [],
+        signIn: {
+          id: 'sign-in-1',
+          server: 'muster',
+          message: 'Sign in to github to continue.',
+          url: 'https://muster.example/oauth/proxy/start?state=abc',
+        },
+        askedIn: 'status-1',
+      },
+    );
+  });
+
   it('reads the question, its choices and the task to resume', () => {
     expect(readPendingConfirmation([questionTask('task-1')])).toEqual({
       taskId: 'task-1',
@@ -122,6 +157,51 @@ describe('readPendingConfirmation', () => {
       toolName: 'delete_file',
       questions: [],
     });
+  });
+
+  it('carries the proposed arguments, which are what Allow would run', () => {
+    const pending = readPendingConfirmation([
+      task('task-1', 'input-required', [
+        confirmationPart({ name: 'delete_file', args: { path: '/tmp/x' } }),
+      ]),
+    ]);
+
+    expect(pending?.args).toEqual({ path: '/tmp/x' });
+    expect(pending?.via).toBeUndefined();
+  });
+
+  it('looks through a muster-proxied proposal to the real tool', () => {
+    // Agents reach most MCP tools through muster's `call_tool`; the approval
+    // card must name the tool that would actually run, and keep the proxy as
+    // "via" — the same unwrapping the timeline applies to executed calls.
+    const pending = readPendingConfirmation([
+      task('task-1', 'input-required', [
+        confirmationPart({
+          name: 'call_tool',
+          args: {
+            name: 'slack_post_message',
+            arguments: { channel: '#support-weekly' },
+          },
+        }),
+      ]),
+    ]);
+
+    expect(pending).toMatchObject({
+      asks: 'approval',
+      toolName: 'slack_post_message',
+      via: 'Muster',
+      args: { channel: '#support-weekly' },
+    });
+  });
+
+  it('names the status message that asks, so a follow-up in the same task reads as new', () => {
+    const asking = questionTask('task-1');
+    (asking.status!.message as { messageId?: string }).messageId = 'status-1';
+
+    expect(readPendingConfirmation([asking])?.askedIn).toBe('status-1');
+    expect(
+      readPendingConfirmation([questionTask('task-1')]),
+    ).not.toHaveProperty('askedIn');
   });
 
   describe('which task counts as pending', () => {

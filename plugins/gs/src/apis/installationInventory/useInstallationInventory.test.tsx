@@ -19,10 +19,7 @@ import {
 } from '../mutedInstallations';
 import { INVENTORY_PROBE_PATH } from './probeInstallationInventory';
 import { installationInventoryQueryKey } from './queryKey';
-import {
-  orderInstallations,
-  useInstallationInventory,
-} from './useInstallationInventory';
+import { useInstallationInventory } from './useInstallationInventory';
 
 /** Per-installation canned `/apis` answers. */
 type Answer =
@@ -74,7 +71,7 @@ function fakeKubernetesApi(answers: Record<string, Answer>) {
   return { proxy };
 }
 
-const KAGENT_AND_KSERVE = ['apps', 'kagent.dev', 'serving.kserve.io'];
+const KAGENT_AND_KSERVE = ['apps', 'api.kagent.dev', 'serving.kserve.io'];
 
 type SetupOptions = {
   /** Configured installations, in config order. `golem` is the home. */
@@ -113,7 +110,7 @@ function setup({
   answers = {
     golem: { status: 200, groups: KAGENT_AND_KSERVE },
     wombat: { status: 200, groups: ['apps'] },
-    snail: { status: 200, groups: ['kagent.dev'] },
+    snail: { status: 200, groups: ['api.kagent.dev'] },
   },
   mainProvider = 'oidc-golem',
   states,
@@ -188,28 +185,6 @@ const probesOf = (result: {
     result.current.entries.map(entry => [entry.installation, entry.probe]),
   );
 
-describe('orderInstallations', () => {
-  it('puts the home first, then settled probes in settle order, then config order', () => {
-    const settled = new Map([
-      ['snail', 0],
-      ['wombat', 1],
-    ]);
-    expect(
-      orderInstallations(
-        ['wombat', 'golem', 'snail', 'yak', 'emu'],
-        'golem',
-        settled,
-      ),
-    ).toEqual(['golem', 'snail', 'wombat', 'yak', 'emu']);
-  });
-
-  it('keeps config order without a home or any settled probe', () => {
-    expect(
-      orderInstallations(['wombat', 'golem', 'snail'], undefined, new Map()),
-    ).toEqual(['wombat', 'golem', 'snail']);
-  });
-});
-
 describe('useInstallationInventory', () => {
   beforeEach(() => {
     __resetInstallationsConfigForTests();
@@ -245,6 +220,8 @@ describe('useInstallationInventory', () => {
     expect(names(result)).toEqual(['golem', 'wombat', 'snail']);
 
     act(() => statusApi.recordHealthy('snail'));
+    // A settled probe goes ahead of the ones still connecting.
+    expect(names(result)).toEqual(['golem', 'snail', 'wombat']);
     act(() => statusApi.recordHealthy('wombat'));
     act(() => statusApi.recordHealthy('golem'));
 
@@ -467,7 +444,7 @@ describe('useInstallationInventory', () => {
       hasInferenceServices: true,
     });
     queryClient.setQueryData(installationInventoryQueryKey('snail'), [
-      'kagent.dev',
+      'api.kagent.dev',
     ]);
     // A valid, fresh entry is served from the cache and not probed again.
     queryClient.setQueryData(installationInventoryQueryKey('wombat'), {
@@ -560,7 +537,7 @@ describe('useInstallationInventory', () => {
       answers: {
         golem: { status: 200, deferred },
         wombat: { status: 200, groups: ['apps'] },
-        snail: { status: 200, groups: ['kagent.dev'] },
+        snail: { status: 200, groups: ['api.kagent.dev'] },
       },
       states: allHealthy,
     });

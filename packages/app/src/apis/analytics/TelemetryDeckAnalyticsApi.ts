@@ -16,8 +16,9 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly identityApi: IdentityApi;
   private readonly errorReporterApi?: ErrorReporterApi;
   private readonly versionPayload: Record<string, string>;
-  private td: TelemetryDeck | undefined;
-  private initPromise: Promise<TelemetryDeck> | undefined;
+  /** The deployment's ID, read with the rest of app.telemetrydeck. */
+  private deploymentPayload: Record<string, string> = {};
+  private instance: Promise<TelemetryDeck | undefined> | undefined;
 
   private constructor(options: {
     configApi: ConfigApi;
@@ -44,31 +45,59 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     return new TelemetryDeckAnalyticsApi(options);
   }
 
-  private async getOrCreateInstance(): Promise<TelemetryDeck> {
-    if (this.td) {
-      return this.td;
-    }
-
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    this.initPromise = this.createInstance();
-    this.td = await this.initPromise;
-    return this.td;
+  /**
+   * The TelemetryDeck client, created once. Resolves to undefined when
+   * telemetry is off (`app.telemetrydeck` missing or null), and after one
+   * console message when it has no app ID or initialisation fails: signals
+   * are then skipped, never sent to a client that cannot exist.
+   */
+  private getInstance(): Promise<TelemetryDeck | undefined> {
+    this.instance ??= this.createInstance().catch(error => {
+      // eslint-disable-next-line no-console
+      console.error(
+        'TelemetryDeck initialisation failed, usage data is not sent:',
+        error,
+      );
+      return undefined;
+    });
+    return this.instance;
   }
 
-  private async createInstance(): Promise<TelemetryDeck> {
+  private async createInstance(): Promise<TelemetryDeck | undefined> {
     const telemetryConfig =
       this.configApi.getOptionalConfig('app.telemetrydeck');
+    if (!telemetryConfig) {
+      return undefined;
+    }
+    // Not getOptionalBoolean: a value it cannot read would throw, and an
+    // optional flag must not turn usage data off.
     const testMode =
-      window.location.hostname === 'localhost' || !telemetryConfig;
+      window.location.hostname === 'localhost' ||
+      telemetryConfig.getOptional('testMode') === true;
+
+    // Not getOptionalString: the config reader refuses an empty string, the
+    // base config's value.
+    const appID = telemetryConfig.getOptional('appID');
+    if (typeof appID !== 'string' || !appID.trim()) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        'TelemetryDeck usage data is disabled: app.telemetrydeck.appID is empty.',
+      );
+      return undefined;
+    }
+
+    // Names the deployment of a portal a tool set up (agentlab), whose own
+    // signals carry the same ID. Not getOptionalString, for the same reason.
+    const deploymentID = telemetryConfig.getOptional('deploymentID');
+    if (typeof deploymentID === 'string' && deploymentID.trim()) {
+      this.deploymentPayload = { deploymentID };
+    }
 
     const clientUser = await this.resolveClientUser();
 
     return new TelemetryDeck({
-      appID: telemetryConfig ? telemetryConfig.getString('appID') : 'test',
-      salt: telemetryConfig ? telemetryConfig.getString('salt') : 'test',
+      appID,
+      salt: telemetryConfig.getString('salt'),
       clientUser,
       testMode,
     });
@@ -136,13 +165,15 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       return;
     }
 
-    this.getOrCreateInstance()
+    this.getInstance()
       .then(td =>
-        td.signal(portalEvent.name, {
+        td?.signal(portalEvent.name, {
           ...portalEvent.attributes,
           ...this.versionPayload,
+          ...this.deploymentPayload,
         }),
       )
+      // A failed send (offline, blocked by the browser) is not an error.
       .catch(() => {});
   }
 
@@ -151,6 +182,8 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       return;
     }
 
+    // The query string and the hash are never sent, and the pathname only
+    // picks the page: the signal carries its route template instead.
     const pathname = event.subject.split('?')[0].split('#')[0];
     const payload = getTelemetryPageViewPayload(pathname);
 
@@ -168,8 +201,15 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       });
     }
 
-    this.getOrCreateInstance()
-      .then(td => td.signal('pageview', { ...payload, ...this.versionPayload }))
+    this.getInstance()
+      .then(td =>
+        td?.signal('pageview', {
+          ...payload,
+          ...this.versionPayload,
+          ...this.deploymentPayload,
+        }),
+      )
+      // A failed send (offline, blocked by the browser) is not an error.
       .catch(() => {});
   }
 }

@@ -121,6 +121,10 @@ right column.
 | MUI-lab `ToggleButtonGroup` | `ToggleButtonGroup` + `ToggleButton` |
 | MUI pickers | `DatePicker`, `DateRangePicker` |
 
+Form fields and their validation (when errors show, submit buttons, focus,
+wording) follow the **`forms`** skill and `useFieldValidation` from
+`ui-react`.
+
 bui `Tabs` covers both modes: in-page tabs keyed by `id`
 (`<Tab id="overview">`, with `selectedKey`/`onSelectionChange` on `Tabs`) and
 routed tabs (`href` + `matchStrategy: 'exact' | 'prefix'`, active state derived
@@ -188,6 +192,17 @@ tooltip. Prefer it over hand-rolling a code block or reaching for
 core-components' `CopyTextButton` — that button renders an oversized,
 primary-colored `ButtonIcon` that needs margin hacks to sit right. Source:
 `plugins/ui-react/src/components/CodeBlock/CodeBlock.tsx`.
+
+### Commits and Kubernetes names: `CommitSha`, `namespacedNameFacts`
+
+A git SHA is shown in 7 characters everywhere in the portal, classic pages
+included: `shortSha` (`gs-common`, re-exported by `ui-react`) for the text,
+`CommitSha` (`ui-react`) to render it with the full value as its `title` and a
+copy button on touch screens (`copy={false}` inside a link or a row). Never
+`sha.slice(0, n)`. A resource's namespace
+and name in a `FactList` are two facts through `namespacedNameFacts`. See
+"Commits and resource names" in `docs/ui.md`; the shell's own rules for both,
+and for links on tinted surfaces, are in the `agent-platform-ux-coding` skill.
 
 ### Overriding bui component sizes
 

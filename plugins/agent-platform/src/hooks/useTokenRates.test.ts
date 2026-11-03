@@ -49,11 +49,11 @@ function traffic(
 
 function given(...entries: ReturnType<typeof traffic>[]) {
   responses.set(
-    tokenRateQueries.cost,
+    tokenRateQueries().cost,
     entries.map(e => e.cost),
   );
   responses.set(
-    tokenRateQueries.tokens,
+    tokenRateQueries().tokens,
     entries.map(e => e.tokens),
   );
 }
@@ -133,7 +133,7 @@ describe('useTokenRates', () => {
   });
 
   it('reports no tier when nothing anywhere was priced', () => {
-    responses.set(tokenRateQueries.tokens, [SONNET.tokens]);
+    responses.set(tokenRateQueries().tokens, [SONNET.tokens]);
 
     const { result } = renderHook(() => useTokenRates('gazelle'));
 

@@ -1,3 +1,8 @@
+/**
+ * @jest-environment-options {"url": "https://portal.example.com/"}
+ *
+ * Not localhost, where the connector always files signals as test data.
+ */
 import { ConfigApi, IdentityApi } from '@backstage/core-plugin-api';
 import {
   analyticsApiRef,
@@ -8,6 +13,7 @@ import {
   portalEvents,
   type PortalEventSpec,
 } from '@giantswarm/backstage-plugin-analytics-react';
+import TelemetryDeck from '@telemetrydeck/sdk';
 import { TelemetryDeckAnalyticsApi } from './TelemetryDeckAnalyticsApi';
 
 const mockSignal = jest.fn();
@@ -61,9 +67,24 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
   }
 
+  /** app.telemetrydeck, as the connector reads it. */
+  function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
+    jest.mocked(configApi.getOptionalConfig).mockReturnValue({
+      getOptional: (key: string) => telemetrydeck[key],
+      getString: (key: string) => {
+        const value = telemetrydeck[key];
+        if (typeof value !== 'string' || !value) {
+          throw new Error(`Missing required config value at '${key}'`);
+        }
+        return value;
+      },
+    } as unknown as ReturnType<ConfigApi['getOptionalConfig']>);
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(configApi.getOptionalString).mockReturnValue(undefined);
+    withTelemetryConfig({ appID: 'APP-ID', salt: 'salt' });
   });
 
   it('reports untracked page views for paths that matched a registered route', () => {
@@ -97,8 +118,23 @@ describe('TelemetryDeckAnalyticsApi', () => {
 
     expect(mockSignal).toHaveBeenCalledWith('pageview', {
       page: 'Unknown page',
-      path: '/wp-login.php',
+      path: 'unknown',
     });
+  });
+
+  it('sends the route template, never the path, query string or hash', async () => {
+    navigateInTestApp(
+      '/sessions/acme-prod/0c4b2f5e-9a3d?prompt=acme+payments#turn-3',
+    );
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledTimes(1);
+    const [, payload] = mockSignal.mock.calls[0];
+    expect(payload).toEqual({
+      page: 'Session detail',
+      path: '/sessions/:installation/:sessionId',
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/acme|0c4b2f5e|prompt|turn/);
   });
 
   it('sends a pageview signal for tracked pages', async () => {
@@ -125,6 +161,155 @@ describe('TelemetryDeckAnalyticsApi', () => {
       page: 'Clusters index',
       path: '/clusters',
       'TelemetryDeck.AppInfo.version': '2.81.5',
+    });
+  });
+
+  it('adds the deployment ID to the pageview signal when configured', async () => {
+    withTelemetryConfig({
+      appID: 'APP-ID',
+      salt: 'salt',
+      deploymentID: 'DEPLOYMENT-ID',
+    });
+
+    navigateInTestApp('/clusters', { registerRoute: true });
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledWith('pageview', {
+      page: 'Clusters index',
+      path: '/clusters',
+      deploymentID: 'DEPLOYMENT-ID',
+    });
+  });
+
+  describe('initialisation', () => {
+    function navigateTwice() {
+      const api = createApi();
+      for (const path of ['/clusters', '/catalog']) {
+        api.captureEvent({
+          action: 'navigate',
+          subject: path,
+          context: { pluginId: 'gs', extensionId: 'page:gs' },
+        });
+      }
+    }
+
+    let warn: jest.SpyInstance;
+    let error: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+      error.mockRestore();
+    });
+
+    it.each([
+      ['empty', ''],
+      ['blank', '  '],
+      ['missing', undefined],
+    ])(
+      'skips TelemetryDeck with one warning when the app ID is %s',
+      async (_, appID) => {
+        withTelemetryConfig({ appID, salt: 'salt' });
+
+        expect(navigateTwice).not.toThrow();
+        await flushPromises();
+
+        expect(TelemetryDeck).not.toHaveBeenCalled();
+        expect(mockSignal).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(
+          'TelemetryDeck usage data is disabled: app.telemetrydeck.appID is empty.',
+        );
+      },
+    );
+
+    it('sends signals with the configured app ID', async () => {
+      withTelemetryConfig({ appID: 'APP-ID', salt: 'salt' });
+
+      navigateTwice();
+      await flushPromises();
+
+      expect(TelemetryDeck).toHaveBeenCalledTimes(1);
+      expect(TelemetryDeck).toHaveBeenCalledWith(
+        expect.objectContaining({ appID: 'APP-ID', salt: 'salt' }),
+      );
+      expect(mockSignal).toHaveBeenCalledTimes(2);
+      expect(warn).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['missing', undefined],
+      ['null', null],
+    ])(
+      'sends nothing and says nothing when app.telemetrydeck is %s',
+      async () => {
+        // The config reader answers undefined for both.
+        jest.mocked(configApi.getOptionalConfig).mockReturnValue(undefined);
+
+        navigateTwice();
+        await flushPromises();
+
+        expect(TelemetryDeck).not.toHaveBeenCalled();
+        expect(mockSignal).not.toHaveBeenCalled();
+        expect(warn).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['an empty string', ''],
+      ['a number', 12345],
+    ])('sends no deployment ID for %s', async (_, deploymentID) => {
+      withTelemetryConfig({ appID: 'APP-ID', salt: 'salt', deploymentID });
+
+      navigateTwice();
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledTimes(2);
+      expect(mockSignal).toHaveBeenCalledWith(
+        'pageview',
+        expect.not.objectContaining({ deploymentID: expect.anything() }),
+      );
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['set', true, true],
+      ['unset', undefined, false],
+      ['not a boolean', 'enabled', false],
+    ])(
+      'files the signals as test data when testMode is %s',
+      async (_, testMode, expected) => {
+        withTelemetryConfig({ appID: 'APP-ID', salt: 'salt', testMode });
+
+        navigateTwice();
+        await flushPromises();
+
+        expect(TelemetryDeck).toHaveBeenCalledWith(
+          expect.objectContaining({ testMode: expected }),
+        );
+      },
+    );
+
+    it('logs an initialisation failure once and sends nothing', async () => {
+      withTelemetryConfig({ appID: 'APP-ID' });
+
+      expect(navigateTwice).not.toThrow();
+      await flushPromises();
+
+      expect(mockSignal).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(error).toHaveBeenCalledWith(
+        'TelemetryDeck initialisation failed, usage data is not sent:',
+        expect.objectContaining({
+          message: "Missing required config value at 'salt'",
+        }),
+      );
     });
   });
 
@@ -180,6 +365,22 @@ describe('TelemetryDeckAnalyticsApi', () => {
       expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentCreated', {
         mode: 'deploy',
         'TelemetryDeck.AppInfo.version': '2.81.5',
+      });
+    });
+
+    it('adds the deployment ID to an action signal when configured', async () => {
+      withTelemetryConfig({
+        appID: 'APP-ID',
+        salt: 'salt',
+        deploymentID: 'DEPLOYMENT-ID',
+      });
+
+      captureAction('AgentPlatform.agentCreated', { mode: 'deploy' });
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentCreated', {
+        mode: 'deploy',
+        deploymentID: 'DEPLOYMENT-ID',
       });
     });
 

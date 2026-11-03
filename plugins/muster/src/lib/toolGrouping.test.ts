@@ -11,12 +11,18 @@ const tool = (name: string) => ({ name });
 function mcpServer(
   name: string,
   spec: { family?: string; toolPrefix?: string } = {},
+  displayName?: string,
 ): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name },
+      metadata: {
+        name,
+        ...(displayName
+          ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
+          : {}),
+      },
       spec: {
         ...(spec.family
           ? { family: { name: spec.family, instanceArg: 'management_cluster' } }
@@ -173,5 +179,21 @@ describe('serverPageResolver', () => {
   it('knows no page for a family named muster, whose page is the core row', () => {
     const musterFamily = mcpServer('muster-golem', { family: 'muster' });
     expect(serverPageOfTool('x_muster_foo', [musterFamily])).toBeUndefined();
+  });
+});
+
+describe('serverPrefixInfos display names', () => {
+  it('carries a server’s display name, and the one its family agrees on', () => {
+    const infos = serverPrefixInfos([
+      mcpServer('jira', {}, 'Acme Jira'),
+      mcpServer('a-kubernetes', { family: 'kubernetes' }, 'Kubernetes'),
+      mcpServer('b-kubernetes', { family: 'kubernetes' }),
+      mcpServer('grafana'),
+    ]);
+    const byServer = new Map(infos.map(i => [i.serverName, i.displayName]));
+    expect(byServer.get('jira')).toBe('Acme Jira');
+    expect(byServer.get('a-kubernetes')).toBe('Kubernetes');
+    expect(byServer.get('b-kubernetes')).toBe('Kubernetes');
+    expect(byServer.get('grafana')).toBeUndefined();
   });
 });

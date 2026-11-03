@@ -2,11 +2,15 @@ export {
   KagentApiClient,
   kagentApiRef,
   isConflictError,
+  isFirstEventTimeout,
+  isResubscribeRetryable,
   isStreamTransportError,
   isUnauthorizedError,
+  isUpstreamError,
   CONFLICT_ERROR_NAME,
   STREAM_TRANSPORT_ERROR_NAME,
   UNAUTHORIZED_ERROR_NAME,
+  UPSTREAM_ERROR_NAME,
 } from './KagentApiClient';
 export { KAGENT_AUTH_HEADER } from './types';
 export type {
@@ -14,6 +18,8 @@ export type {
   KagentApi,
   KagentIdentity,
   KagentInstallation,
+  RawSessionBodies,
+  StreamEnd,
 } from './types';
 export {
   SERVED_MODEL_AUTH_HEADER,

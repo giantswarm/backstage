@@ -55,6 +55,30 @@ describe('findReferencedBy', () => {
     expect(result.map(w => w.getName()).sort()).toEqual(['fanout', 'loop']);
   });
 
+  it('matches a call in a nested forEach', () => {
+    const nested = makeWorkflow('nested', [
+      {
+        id: 'outer',
+        forEach: {
+          items: '{{ .input.xs }}',
+          steps: [
+            {
+              id: 'inner',
+              forEach: {
+                items: '{{ .input.ys }}',
+                steps: [{ id: 'call', tool: 'workflow_deploy' }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(findReferencedBy('deploy', [nested]).map(w => w.getName())).toEqual([
+      'nested',
+    ]);
+  });
+
   it('excludes the target itself even if it self-references', () => {
     const selfRef = makeWorkflow('deploy', [
       { id: 's1', tool: 'workflow_deploy' },

@@ -1,4 +1,7 @@
 import type { Page, Route } from '@playwright/test';
+import { open, test } from './fixtures';
+import { lab } from './lab';
+import { MusterRoute } from './musterRoute';
 
 /**
  * model-manager at the browser: the answers of `x_model-manager_<tool>` calls
@@ -43,6 +46,59 @@ export type ModelManagerStub = {
 };
 
 const TOOL_PREFIX = 'x_model-manager_';
+
+let modelManagerVerdict: Promise<string | undefined> | undefined;
+
+/**
+ * Why the lab cannot show Model hosting, or undefined when it can: the
+ * portal draws the serving layer where model-manager answers (or KServe's API
+ * is served, which a lab has only with model-manager), and a lab runs
+ * model-manager only with `platform.modelManager` on. Read from muster's
+ * server list as the signed-in admin, the list the portal reads, once per
+ * worker. The first read loads `/` on the page to read the portal's tokens:
+ * call it before opening the view or staging answers on the page.
+ */
+export function modelManagerUnavailable(
+  page: Page,
+): Promise<string | undefined> {
+  modelManagerVerdict ??= readModelManagerVerdict(page).catch(error => {
+    modelManagerVerdict = undefined;
+    throw error;
+  });
+  return modelManagerVerdict;
+}
+
+async function readModelManagerVerdict(
+  page: Page,
+): Promise<string | undefined> {
+  // Signed in again first where another context's sign-in as the admin
+  // rotated this page's session away.
+  await open(page, '/');
+  const servers = await new MusterRoute(page, lab.users.admin).listServers();
+  const server = servers.find(entry => entry.name === 'model-manager');
+  if (!server) {
+    return "the lab's muster serves no model-manager (platform.modelManager off): `agentlab configure --model-manager`, then `agentlab platform`";
+  }
+  if (server.state && !/^(connected|running|ready)$/i.test(server.state)) {
+    return `the lab's muster lists model-manager as ${server.state}, not connected`;
+  }
+  return undefined;
+}
+
+/**
+ * Skips every test of the enclosing file or `describe` with the reason where
+ * the lab has no serving layer ({@link modelManagerUnavailable}): Model
+ * hosting is not drawn there, so its pages — stubbed answers or not — have
+ * nothing to prove. Call it before the scope's own `beforeEach` hooks, which
+ * open the view.
+ */
+export function skipWithoutModelManager(): void {
+  test.beforeEach(async ({ admin }) => {
+    const unavailable = await modelManagerUnavailable(admin);
+    test.skip(!!unavailable, unavailable);
+  });
+}
+
 const CALL_ROUTE = '**/api/muster/call**';
 
 /**

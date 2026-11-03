@@ -1,6 +1,16 @@
-import { Dialog, DialogBody, DialogHeader } from '@backstage/ui';
+import { DialogBody, DialogHeader } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core/styles';
+import { BusyDialog } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
+import type { ComposerImage } from '../../lib/messageImages';
 import { NewSessionComposer } from '../NewSessionComposer';
+import { PHONE_FULL_SCREEN_DIALOG } from './phoneDialog';
+
+const useStyles = makeStyles({
+  // The whole screen on a phone, so the box and Start stay above the soft
+  // keyboard (T22 C4).
+  dialog: PHONE_FULL_SCREEN_DIALOG,
+});
 
 export type NewSessionDialogProps = {
   isOpen: boolean;
@@ -9,8 +19,14 @@ export type NewSessionDialogProps = {
   isLoadingAgents?: boolean;
   defaultAgent?: AgentRow;
   isStarting: boolean;
-  error?: string;
-  onStart: (agent: AgentRow, prompt: string) => void;
+  error?: string | Error;
+  onStart: (
+    agent: AgentRow,
+    prompt: string,
+    images?: ComposerImage[],
+    workspace?: string,
+    toolchains?: string[],
+  ) => void;
 };
 
 /**
@@ -28,6 +44,9 @@ export type NewSessionDialogProps = {
  * to say so, as well as the only place the prompt still exists. And it cannot be
  * dismissed while a create is in flight, so a stray click outside cannot orphan a
  * write already on its way to kagent. The caller closes it by navigating away.
+ *
+ * At phone width it is the whole screen, as the command palette is: a centred
+ * card would leave the box and its Start button under the soft keyboard.
  */
 export function NewSessionDialog({
   isOpen,
@@ -35,27 +54,26 @@ export function NewSessionDialog({
   isStarting,
   ...composerProps
 }: NewSessionDialogProps) {
+  const classes = useStyles();
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`: those reach the outside click and Escape but
-      // not `DialogHeader`'s own close button, which bui renders unconditionally
-      // and routes through this callback.
-      onOpenChange={next => {
-        if (!isStarting) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isStarting}
-      isKeyboardDismissDisabled={isStarting}
+      onOpenChange={onOpenChange}
+      isBusy={isStarting}
       width="min(90vw, 560px)"
+      className={classes.dialog}
     >
       <DialogHeader>New session</DialogHeader>
       <DialogBody>
         <NewSessionComposer
           {...composerProps}
           isStarting={isStarting}
+          // Every caller hands the prompt to the session page, which sends it
+          // images and all.
+          acceptsImages
+          // Every caller starts the session through `useCreateSession`
+          // with the workspace it is handed.
+          offersWorkspaces
           // Deliberate here and only here: this is a modal the user opened in
           // order to type, and react-aria focuses the dialog container rather
           // than the field. See the composer, which carries the full reasoning.
@@ -63,6 +81,6 @@ export function NewSessionDialog({
           autoFocus
         />
       </DialogBody>
-    </Dialog>
+    </BusyDialog>
   );
 }

@@ -128,3 +128,61 @@ Emits nothing when unset, so rendered output is unchanged for existing users.
 {{- if $tolerations -}}{{- $_ := set $scheduling "tolerations" $tolerations -}}{{- end -}}
 {{- with $scheduling }}{{ toYaml . }}{{ end -}}
 {{- end -}}
+
+{{/*
+The most backend pods that hold database connections at once: the replicas
+plus the rolling update's surge (Kubernetes' default 25 %, rounded up; none
+under Recreate), plus every old pod still terminating, which the Deployment
+controller no longer counts and which keeps its connections until it exits.
+Takes the root context.
+*/}}
+{{- define "backstage.maxPods" -}}
+{{- $replicas := int .Values.replicas -}}
+{{- $strategy := .Values.strategy | default dict -}}
+{{- $surge := 0 -}}
+{{- if ne (toString ($strategy.type | default "RollingUpdate")) "Recreate" -}}
+{{- $rollingUpdate := $strategy.rollingUpdate | default dict -}}
+{{- $maxSurge := "25%" -}}
+{{- if hasKey $rollingUpdate "maxSurge" -}}
+{{- $maxSurge = toString $rollingUpdate.maxSurge -}}
+{{- end -}}
+{{- if hasSuffix "%" $maxSurge -}}
+{{- $surge = div (add (mul $replicas (trimSuffix "%" $maxSurge | int)) 99) 100 -}}
+{{- else -}}
+{{- $surge = int $maxSurge -}}
+{{- end -}}
+{{- end -}}
+{{- add (mul $replicas 2) $surge -}}
+{{- end }}
+
+{{/*
+The most database connections one backend pod holds: every plugin's pool
+(`pool.max`, or the plugin's entry in `pool.plugins`), plus the events
+plugin's LISTEN connection and the one connection at a time that ensures a
+plugin's schema, both outside the pools. Takes the root context.
+*/}}
+{{- define "backstage.databaseConnectionsPerPod" -}}
+{{- $pool := .Values.database.postgresql.pool -}}
+{{- $sized := 0 -}}
+{{- range $plugin, $max := $pool.plugins -}}
+{{- $sized = add $sized (int $max) -}}
+{{- end -}}
+{{- $others := max 0 (sub (int $pool.pluginsWithDatabase) (len $pool.plugins)) -}}
+{{- add (mul $others (int $pool.max)) $sized 2 -}}
+{{- end }}
+
+{{/*
+Fails the render when the backend pods of a rollout can hold more
+connections than the CNPG cluster admits for the app role. Takes the root
+context.
+*/}}
+{{- define "backstage.validateDatabaseBudget" -}}
+{{- $pg := .Values.database.postgresql -}}
+{{- $maxPods := include "backstage.maxPods" . | int -}}
+{{- $perPod := include "backstage.databaseConnectionsPerPod" . | int -}}
+{{- $available := sub (int $pg.maxConnections) (int $pg.superuserReservedConnections) -}}
+{{- $needed := mul $maxPods $perPod -}}
+{{- if gt $needed $available -}}
+{{- fail (printf "database.postgresql: %d backend pods during a rollout (2 × replicas %d, terminating ones included, plus the surge) × %d connections each (%d plugins with database.postgresql.pool.max %d or their database.postgresql.pool.plugins entry, plus 2) = %d, more than maxConnections %d less superuserReservedConnections %d = %d: raise database.postgresql.maxConnections (and the CNPG instance's memory with it), or lower the pools, replicas or strategy.rollingUpdate.maxSurge" $maxPods (int .Values.replicas) $perPod (int $pg.pool.pluginsWithDatabase) (int $pg.pool.max) $needed (int $pg.maxConnections) (int $pg.superuserReservedConnections) $available) -}}
+{{- end -}}
+{{- end }}

@@ -208,6 +208,7 @@ export const MARGE_GROUPS = [
   'obsolete',
   'waiting',
   'skipped',
+  'not_reached',
 ] as const;
 
 export type MargeGroup = (typeof MARGE_GROUPS)[number];
@@ -248,6 +249,8 @@ export const GROUP_MEANING: Record<MargeGroup, string> = {
   waiting: 'A required check has not finished. The engine waits; so do you.',
   skipped:
     'The engine did not decide it: the repository is out of the sweep, or its author is not a trusted bot.',
+  not_reached:
+    'The run stopped before it decided this PR, at the GitHub rate limit. It keeps the class it had; the next run decides it.',
 };
 
 export type MargeSummary = {
@@ -268,6 +271,8 @@ export type MargeSummary = {
   skipped: number;
   eligible: number;
   unclassified: number;
+  /** Absent from a marge that cannot stop a run partway. */
+  not_reached?: number;
 };
 
 export type MargeRules = {
@@ -293,6 +298,8 @@ export type MargeResult = Partial<Record<MargeGroup, MargeEntry[]>> & {
   rules?: MargeRules;
   unhandled?: MargeUnhandled[];
   repositories_failed?: { repo: string; error: string }[];
+  /** The run stopped because GitHub refused the token for rate. */
+  rate_limit?: { reset_at: string };
 };
 
 /** One team's queue inside a `list` that covered several teams (`TeamQueue`). */
@@ -478,6 +485,7 @@ export function statusIntentOf(group: MargeGroup): StatusIntent {
       return 'info';
     case 'unclassified':
     case 'skipped':
+    case 'not_reached':
     default:
       return 'neutral';
   }
@@ -515,6 +523,70 @@ export class MargeNotConnectedError extends Error {
 }
 
 /**
+ * GitHub refuses the person's token for rate, for this call and for every
+ * other GitHub call made with it, until `resetAt`: the budget is spent, or
+ * too low for the run asked for. Nothing was written past the refusal.
+ */
+export class MargeRateLimitError extends Error {
+  readonly name = 'MargeRateLimitError';
+
+  constructor(
+    message: string,
+    /** When GitHub serves the token again; undefined when marge named no time. */
+    readonly resetAt: Date | undefined,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * marge words every rate refusal the same way: `GitHub rate limit reached
+ * for this token; it resets at <RFC 3339>`, or `GitHub rate limit too low
+ * for this run: ...; it resets at <RFC 3339>` (internal/github/exhausted.go).
+ */
+const RATE_LIMIT_PATTERN = /GitHub rate limit\b.*?it resets at (\S+)/i;
+
+/** The rate refusal a message carries, or undefined for any other failure. */
+export function rateLimitOf(message: string): MargeRateLimitError | undefined {
+  const match = message.match(RATE_LIMIT_PATTERN);
+  if (!match) {
+    return undefined;
+  }
+  const resetAt = new Date(match[1]);
+  return new MargeRateLimitError(
+    message,
+    Number.isNaN(resetAt.getTime()) ? undefined : resetAt,
+  );
+}
+
+/**
+ * The latest time any of the refusals or results names. The token is
+ * refused until then, so that is when a read is worth trying again.
+ */
+export function rateLimitResetOf(
+  errors: (Error | null | undefined)[],
+  results: (MargeResult | undefined)[] = [],
+): Date | undefined {
+  const times = [
+    ...errors
+      .filter(
+        (error): error is MargeRateLimitError =>
+          error instanceof MargeRateLimitError,
+      )
+      .map(error => error.resetAt),
+    ...results.map(result =>
+      result?.rate_limit ? new Date(result.rate_limit.reset_at) : undefined,
+    ),
+  ].filter(
+    (time): time is Date => Boolean(time) && !Number.isNaN(time!.getTime()),
+  );
+  if (times.length === 0) {
+    return undefined;
+  }
+  return new Date(Math.max(...times.map(time => time.getTime())));
+}
+
+/**
  * The call's answer never reached the page, so nothing is known about what
  * marge did with the call: the browser's connection closed under the request,
  * or the portal's edge answered in marge's place. It is not a refusal. marge
@@ -549,6 +621,14 @@ function messageOf(error: unknown): string {
   return typeof message === 'string' ? message : String(error);
 }
 
+/**
+ * The muster client's `MusterAnswerCutError`: a streamed answer that ended
+ * before its result, recognised by its name.
+ */
+function isAnswerCut(error: unknown): boolean {
+  return (error as { name?: unknown } | null)?.name === 'MusterAnswerCutError';
+}
+
 export function looksAnswerLost(error: unknown): boolean {
   if (error instanceof TypeError) {
     return NETWORK_FAILURE_PATTERNS.some(pattern =>
@@ -566,12 +646,17 @@ export function looksAnswerLost(error: unknown): boolean {
 export function classifyMargeError(error: unknown): Error {
   if (
     error instanceof MargeNotConnectedError ||
-    error instanceof MargeAnswerLostError
+    error instanceof MargeAnswerLostError ||
+    error instanceof MargeRateLimitError
   ) {
     return error;
   }
   const message = messageOf(error);
-  if (looksAnswerLost(error)) {
+  const rateLimit = rateLimitOf(message);
+  if (rateLimit) {
+    return rateLimit;
+  }
+  if (isAnswerCut(error) || looksAnswerLost(error)) {
     return new MargeAnswerLostError(message, { cause: error });
   }
   if (looksNotConnected(message)) {

@@ -18,6 +18,8 @@ export const RoadmapApiOverride = ApiBlueprint.make({
       api: roadmapAuthApiRef,
       deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
       factory: ({ gsAuthProvidersApi }) =>
-        new RoadmapMainAuth(getOptionalMainAuthApi(gsAuthProvidersApi)),
+        new RoadmapMainAuth(
+          getOptionalMainAuthApi(gsAuthProvidersApi, 'roadmap'),
+        ),
     }),
 });

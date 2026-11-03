@@ -1,14 +1,11 @@
 import {
-  agentInstanceEnvelopeWireSchema,
-  agentInstanceListWireSchema,
-  isAgentInstanceEnvelope,
-  isAgentInstanceList,
-  normalizeAgentInstance,
-  parseAgentInstanceWire,
-} from './kagentAgentInstance';
+  isSessionRecordList,
+  normalizeSessionRecord,
+  parseSessionRecordWire,
+  sessionRecordListWireSchema,
+} from './kagentSessionRecord';
 import {
   KagentSessionWire,
-  kagentCreatedSessionSchema,
   kagentSessionListSchema,
   kagentSessionWireSchema,
 } from './kagentSchema';
@@ -20,14 +17,14 @@ export { normalizeTimestamp } from './kagentTimestamp';
  * Stable, UI-facing session shape.
  *
  * Deliberately decoupled from the wire: a kagent schema change is absorbed in
- * `normalizeSession` / `normalizeAgentInstance` rather than rippling through
+ * `normalizeSession` / `normalizeSessionRecord` rather than rippling through
  * every component. kagent ships no OpenAPI spec and the fleet can run mixed
  * versions, so this boundary is the only thing keeping version drift out of
  * the UI.
  *
- * On the kagent API v2 line a session **is** an AgentInstance; the fields
- * below `updatedAt` are what an instance says about itself and a 0.10 session
- * never did.
+ * On the kagent API v2 line a session is a Session record of the controller;
+ * the fields below `updatedAt` are what the record says about itself and a
+ * 0.10 session never did.
  */
 export type KagentSession = {
   /** `${installation}/${sessionId}` — unique fleet-wide; the table row key. */
@@ -42,7 +39,7 @@ export type KagentSession = {
   title?: string;
   /**
    * The agent, encoded as kagent's python identifier (`ns__NS__agent_name`) —
-   * verbatim from a 0.10 session, derived from an instance's template. What the
+   * verbatim from a 0.10 session, derived from a record's Agent. What the
    * frontend joins agents on, because encoding is lossless and decoding is not.
    */
   agentId?: string;
@@ -51,19 +48,50 @@ export type KagentSession = {
   /** RFC3339, guaranteed parseable and not Go zero time; undefined otherwise. */
   createdAt?: string;
   updatedAt?: string;
-  /** The AgentTemplate an instance runs — the agent's real namespace and name. */
-  agentTemplate?: { namespace: string; name: string };
+  /** The Agent the session runs — the agent's real namespace and name. */
+  agent?: { namespace: string; name: string };
   /**
-   * An instance's lifecycle state as one lower-case word (`ready`,
-   * `suspended`, `creating`, `failed`, `deleting`), for what the instance says
-   * about itself. Not a turn state: a suspended instance may be idle after a
-   * finished turn or waiting on a human, and only its tasks can tell.
+   * The Agent revision the session was prepared on, which it keeps for its
+   * whole life: a later change to the Agent (its Harness, prompt or skills)
+   * starts new sessions on a new revision and leaves this one where it is.
+   */
+  preparedRevision?: string;
+  /**
+   * The session's runtime state as one lower-case word (`ready`, `suspended`,
+   * `creating`, `failed`, `deleting`), for what the record says about itself.
+   * Not a turn state: a suspended session may be idle after a finished turn
+   * or waiting on a human, and only its tasks can tell.
    */
   state?: string;
-  /** The A2A context every turn of the instance shares. */
+  /**
+   * The A2A context every turn of the session shares. Equal to the session id on
+   * every supported controller (enforced by its schema); only earlier-build
+   * recordings such as `sessions.kagent-a8353a0.json` differ. See
+   * `KagentClient.targetOf` in agent-platform-backend.
+   */
   contextId?: string;
-  /** Why a `failed` instance failed, in the controller's words. */
+  /** Why a `failed` session failed, in the controller's words. */
   failure?: { reason?: string; message?: string };
+  /** The workspace the session works in; absent for one started without. */
+  workspace?: KagentSessionWorkspace;
+};
+
+/**
+ * A Session's workspace as its record says it: the volume by its CSI handle,
+ * which names the workspace only through workspace-manager's list, and what
+ * the admission admitted when it started.
+ */
+export type KagentSessionWorkspace = {
+  /** The CSI handle of the workspace's volume. */
+  volumeHandle: string;
+  csiDriver?: string;
+  /**
+   * The repositories, relative to the session's working directory, pushed to
+   * since the workspace's last sync: fetched fresh before the first turn.
+   */
+  fetched: string[];
+  /** The provider instances the session acts as the person on, sorted. */
+  providers: string[];
 };
 
 /** Map one parsed wire session onto the domain type. */
@@ -99,7 +127,10 @@ export type SessionListDriftKind =
   // A readable 200 that held no payload where one was expected. Distinct from
   // `skipped-rows`, whose message counts dropped rows — reusing that kind for
   // "the response carried no session" reported it as though rows were lost.
-  | 'missing-payload';
+  | 'missing-payload'
+  // The backend cut the listing at its page limit: the sessions it left out
+  // still exist.
+  | 'truncated';
 
 export type SessionListDrift = {
   kind: SessionListDriftKind;
@@ -116,8 +147,8 @@ export type NormalizedSessionList = {
 };
 
 /**
- * Parse and normalize a raw session list: a `ListAgentInstancesResponse`
- * (`{agentInstances: […]}`, the API v2 line) or a 0.10 `GET /api/sessions`
+ * Parse and normalize a raw session list: a `ListSessionsResponse`
+ * (`{sessions: […]}`, the API v2 line) or a 0.10 `GET /api/sessions`
  * envelope.
  *
  * Never throws: the worst case is an empty list plus a `drift` note. That
@@ -128,8 +159,8 @@ export function normalizeSessionList(
   raw: unknown,
   installation: string,
 ): NormalizedSessionList {
-  if (isAgentInstanceList(raw)) {
-    return normalizeAgentInstanceList(raw, installation);
+  if (isSessionRecordList(raw)) {
+    return normalizeSessionRecordList(raw, installation);
   }
 
   const parsed = kagentSessionListSchema.safeParse(raw);
@@ -204,16 +235,16 @@ export function normalizeSessionList(
 }
 
 /**
- * The API v2 half of {@link normalizeSessionList}: one row per instance,
+ * The API v2 half of {@link normalizeSessionList}: one row per record,
  * validated one at a time so a malformed row is skipped rather than costing the
- * list. An absent `agentInstances` is an empty result (proto3 JSON omits an
- * empty repeated field), never drift.
+ * list. An absent `sessions` is an empty result (proto3 JSON omits an empty
+ * repeated field), never drift.
  */
-function normalizeAgentInstanceList(
+function normalizeSessionRecordList(
   raw: unknown,
   installation: string,
 ): NormalizedSessionList {
-  const parsed = agentInstanceListWireSchema.safeParse(raw);
+  const parsed = sessionRecordListWireSchema.safeParse(raw);
   if (!parsed.success) {
     return {
       sessions: [],
@@ -222,13 +253,13 @@ function normalizeAgentInstanceList(
   }
   const sessions: KagentSession[] = [];
   let skippedRows = 0;
-  for (const row of parsed.data.agentInstances ?? []) {
-    const wire = parseAgentInstanceWire(row);
+  for (const row of parsed.data.sessions ?? []) {
+    const wire = parseSessionRecordWire(row);
     if (!wire || !wire.id) {
       skippedRows += 1;
       continue;
     }
-    sessions.push(normalizeAgentInstance(wire, installation));
+    sessions.push(normalizeSessionRecord(wire, installation));
   }
   if (skippedRows > 0) {
     return {
@@ -241,6 +272,15 @@ function normalizeAgentInstanceList(
       },
     };
   }
+  if (parsed.data.truncated) {
+    return {
+      sessions,
+      drift: {
+        kind: 'truncated',
+        message: 'the listing was cut at the backend’s page limit',
+      },
+    };
+  }
   return { sessions };
 }
 
@@ -248,34 +288,6 @@ function normalizeAgentInstanceList(
 export function parseSessionWire(raw: unknown): KagentSessionWire | undefined {
   const parsed = kagentSessionWireSchema.safeParse(raw);
   return parsed.success ? parsed.data : undefined;
-}
-
-/**
- * The id of a session kagent has just created.
- *
- * Unlike the list, this cannot degrade gracefully: without an id there is no
- * session to open, so every unreadable shape has to become a message the user
- * can act on rather than an `undefined` that would navigate nowhere. The caller
- * turns `undefined` into that message.
- *
- * The envelope's `error` flag is checked as well as the body, because kagent
- * reports a refusal with a 200 and `{error: true}` on some paths — a shape the
- * status code alone would let through.
- */
-export function parseCreatedSessionId(raw: unknown): string | undefined {
-  if (isAgentInstanceEnvelope(raw)) {
-    const parsed = agentInstanceEnvelopeWireSchema.safeParse(raw);
-    return parsed.success
-      ? parseAgentInstanceWire(parsed.data.agentInstance)?.id
-      : undefined;
-  }
-
-  const parsed = kagentCreatedSessionSchema.safeParse(raw);
-  if (!parsed.success || parsed.data.isError) {
-    return undefined;
-  }
-
-  return parseSessionWire(parsed.data.session)?.id;
 }
 
 /**

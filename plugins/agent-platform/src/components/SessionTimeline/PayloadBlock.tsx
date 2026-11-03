@@ -3,6 +3,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CopyButton,
   JsonHighlight,
+  PHONE_MEDIA,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 const useStyles = makeStyles(theme => ({
@@ -15,6 +16,12 @@ const useStyles = makeStyles(theme => ({
     // turns the conversation into a scroll past its own payload.
     maxHeight: 400,
     overflow: 'auto',
+    // On a phone 400px is most of the view, and a swipe that lands in the box
+    // scrolls the box, not the conversation (T22 C3): two fifths of the view
+    // leaves room above and below to scroll past it.
+    [PHONE_MEDIA]: {
+      maxHeight: 'min(400px, 40dvh)',
+    },
   },
   pre: {
     margin: 0,

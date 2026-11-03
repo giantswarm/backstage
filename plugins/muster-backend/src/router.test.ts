@@ -5,6 +5,7 @@ import express from 'express';
 import request from 'supertest';
 import {
   EndpointProbeResult,
+  MusterAuthRequiredError,
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
@@ -15,6 +16,15 @@ import {
   musterProbeUrl,
   RouterOptions,
 } from './router';
+
+const mockGetMcpUsage = jest.fn();
+jest.mock('./mcpUsage', () => {
+  const actual = jest.requireActual('./mcpUsage');
+  return {
+    ...actual,
+    getMcpUsage: (...args: unknown[]) => mockGetMcpUsage(...args),
+  };
+});
 
 /**
  * A reachability cache that never touches the network: every endpoint answers
@@ -40,6 +50,7 @@ function expressApp() {
 
 describe('createRouter', () => {
   const callTool = jest.fn();
+  const callToolWithProgress = jest.fn();
   const callToolWithStructured = jest.fn();
   const listTools = jest.fn();
   const filterTools = jest.fn();
@@ -51,6 +62,7 @@ describe('createRouter', () => {
 
   const mockClient = {
     callTool,
+    callToolWithProgress,
     callToolWithStructured,
     listTools,
     filterTools,
@@ -106,7 +118,9 @@ describe('createRouter', () => {
   let app: express.Express;
 
   beforeEach(async () => {
+    mockGetMcpUsage.mockReset();
     callTool.mockReset();
+    callToolWithProgress.mockReset();
     callToolWithStructured.mockReset();
     listTools.mockReset();
     filterTools.mockReset();
@@ -132,21 +146,6 @@ describe('createRouter', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual(payload);
     expect(callTool).toHaveBeenCalledWith('core_workflow_list', {}, {});
-  });
-
-  it('proxies workflow detail by name', async () => {
-    const payload = { workflow: { name: 'wf-a', steps: [] } };
-    callTool.mockResolvedValue(payload);
-
-    const response = await request(app).get('/workflows/wf-a');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(payload);
-    expect(callTool).toHaveBeenCalledWith(
-      'core_workflow_get',
-      { name: 'wf-a' },
-      {},
-    );
   });
 
   it('proxies execution list with filters', async () => {
@@ -225,6 +224,107 @@ describe('createRouter', () => {
 
     expect(response.status).toBe(400);
     expect(callTool).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['too many hours', '/usage?hours=2161'],
+    // Gone: a stale client must not read 24 hours as the month.
+    ['the month window', '/usage?window=month'],
+    ['a server that is not a resource name', '/usage?server=a%22b'],
+    ['an empty server', '/usage?server='],
+    ['a tool with a control character', '/usage?tool=a%0Ab'],
+    ['an overlong tool', `/usage?tool=${'t'.repeat(513)}`],
+    ['an empty tool', '/usage?tool='],
+    ['two tools', '/usage?tool=a&tool=b'],
+    [
+      'more servers than a read may name',
+      `/usage?${Array.from({ length: 257 }, (_, i) => `server=s${i}`).join('&')}`,
+    ],
+  ])('rejects usage with %s', async (_, path) => {
+    const response = await request(app).get(path);
+
+    expect(response.status).toBe(400);
+    expect(mockGetMcpUsage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/usage?hours=72', 72],
+    ['/usage', 24],
+  ])(
+    'reads %s as the last %s hours of every connector',
+    async (path, hours) => {
+      mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+      const response = await request(app).get(path);
+
+      expect(response.status).toBe(200);
+      expect(mockGetMcpUsage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        hours,
+        [],
+        undefined,
+      );
+    },
+  );
+
+  it('takes any tool name muster may expose, left to the escaping', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      `/usage?tool=${encodeURIComponent('x_legacy_get:item@v1 "a"}')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      24,
+      [],
+      'x_legacy_get:item@v1 "a"}',
+    );
+  });
+
+  it('narrows usage to one tool of a connector', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      '/usage?hours=720&server=kagi&tool=x_kagi_search',
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      ['kagi'],
+      'x_kagi_search',
+    );
+  });
+
+  it("narrows usage to every server named, past the query parser's 20 repeats", async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+    const servers = Array.from(
+      { length: 25 },
+      (_, i) => `mc${i}-mcp-kubernetes`,
+    );
+
+    const response = await request(app).get(
+      `/usage?hours=720&${servers.map(name => `server=${name}`).join('&')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      servers,
+      undefined,
+    );
   });
 
   it('proxies execution detail with steps', async () => {
@@ -882,6 +982,38 @@ describe('createRouter', () => {
       expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
+    it("starts the grant of a provider App with muster's app argument", async () => {
+      callToolWithStructured.mockResolvedValue({
+        text: "Authentication required for 'github'.",
+        structuredContent: {
+          app: 'github',
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+        },
+      });
+
+      const response = await login({ app: 'github' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'auth_required',
+        authUrl:
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+      });
+      expect(callToolWithStructured).toHaveBeenCalledWith(
+        'core_auth_login',
+        { app: 'github' },
+        { authToken: TOKEN },
+      );
+    });
+
+    it('refuses a body naming both a server and an app', async () => {
+      const response = await login({ server: 'pro', app: 'github' });
+
+      expect(response.status).toBe(400);
+      expect(callToolWithStructured).not.toHaveBeenCalled();
+    });
+
     it('fails with 401 when the user token is missing', async () => {
       const response = await request(authApp)
         .post('/auth/login?installation=gazelle')
@@ -999,8 +1131,15 @@ describe('createRouter', () => {
     });
   });
 
+  // An installation that forwards the person's token: every tool runs as them.
+  const personApp = () =>
+    buildMultiApp([
+      { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+    ]);
+  const asPerson = { authToken: 'user-token' };
+
   describe('/call', () => {
-    it('executes any tool unconditionally', async () => {
+    it('executes a core tool on an installation without per-user auth', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -1011,7 +1150,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith('core_service_list', {}, {});
     });
 
-    it('executes a mutating-looking tool without any gate', async () => {
+    it('executes a mutating-looking core tool without any gate', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -1033,6 +1172,57 @@ describe('createRouter', () => {
       expect(callTool).not.toHaveBeenCalled();
     });
 
+    /**
+     * Without an authProvider muster would run the call under its own
+     * identity, shared by every portal user. Only muster's core tools run
+     * there: an aggregated server's tool under any name, a workflow whose
+     * steps call one, a meta-tool wrapping another call and per-user auth
+     * are refused before muster is called.
+     */
+    it.each([
+      'x_agent-manager_start_session',
+      'x_agent-manager_create_agent',
+      'x_agent-manager_update_agent',
+      'x_agent-manager_delete_agent',
+      'x_model-manager_load_model',
+      'x_cluster-manager_delete_node_pool',
+      'x_agents_create_agent',
+      'workflow_start-agent-session',
+      'call_tool',
+      'core_auth_login',
+    ])('refuses %s on an installation without per-user auth', async name => {
+      const response = await request(app)
+        .post('/call')
+        .send({
+          name,
+          arguments: {
+            name: 'x_agent-manager_delete_agent',
+            arguments: {},
+          },
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain('without an authProvider');
+      expect(response.body.error.message).toContain(name);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it("runs an aggregated server's tool with the person's token", async () => {
+      callTool.mockResolvedValue({ session: { id: 's-1' } });
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_agent-manager_start_session', arguments: {} });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_start_session',
+        {},
+        asPerson,
+      );
+    });
+
     // cluster-manager's delete_node_pool answers its structured refusal as a
     // second text block; gs-node keeps it as the error's `details`, and the
     // error middleware serializes it next to the message for the frontend.
@@ -1043,8 +1233,9 @@ describe('createRouter', () => {
         ]),
       );
 
-      const response = await request(app)
+      const response = await request(await personApp())
         .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
         .send({ name: 'x_cluster-manager_delete_node_pool', arguments: {} });
 
       expect(response.status).toBe(500);
@@ -1054,6 +1245,108 @@ describe('createRouter', () => {
         details: ['{"refused":{"nodes":["i-0abc"],"models":[],"hint":"wait"}}'],
       });
     });
+  });
+
+  describe('/call/progress', () => {
+    const lines = (text: string) =>
+      text
+        .trim()
+        .split('\n')
+        .map(line => JSON.parse(line));
+    const sweep = async (body: object) =>
+      request(await personApp())
+        .post('/call/progress')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send(body);
+
+    it("streams the tool's progress, then its result, as lines", async () => {
+      callToolWithProgress.mockImplementation(async (_name, _args, options) => {
+        options.onProgress({ progress: 1, message: '0 of 2 PRs done' });
+        options.onProgress({ progress: 2, message: '2 of 2 PRs done' });
+        return { swept: 2 };
+      });
+
+      const response = await sweep({
+        name: 'x_marge_sweep',
+        arguments: { team: 'honeybadger' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/application\/x-ndjson/);
+      expect(lines(response.text)).toEqual([
+        { type: 'progress', progress: 1, message: '0 of 2 PRs done' },
+        { type: 'progress', progress: 2, message: '2 of 2 PRs done' },
+        { type: 'result', result: { swept: 2 } },
+      ]);
+      expect(callToolWithProgress).toHaveBeenCalledWith(
+        'x_marge_sweep',
+        { team: 'honeybadger' },
+        expect.objectContaining({
+          ...asPerson,
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    it('answers a failure before the first line as an ordinary error', async () => {
+      callToolWithProgress.mockRejectedValue(
+        new MusterToolError('no team file for "x"'),
+      );
+
+      const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterToolError',
+        message: 'no team file for "x"',
+      });
+    });
+
+    it('ends a started stream with an error line', async () => {
+      callToolWithProgress.mockImplementation(async (_name, _args, options) => {
+        options.onProgress({ progress: 1, message: '1 of 3 PRs done' });
+        throw new MusterToolError('refused', ['{"why":"x"}']);
+      });
+
+      const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
+
+      expect(response.status).toBe(200);
+      expect(lines(response.text)).toEqual([
+        { type: 'progress', progress: 1, message: '1 of 3 PRs done' },
+        {
+          type: 'error',
+          error: {
+            name: 'MusterToolError',
+            message: 'refused',
+            details: ['{"why":"x"}'],
+          },
+        },
+      ]);
+    });
+
+    it('requires a name', async () => {
+      const response = await request(app)
+        .post('/call/progress')
+        .send({ arguments: {} });
+
+      expect(response.status).toBe(400);
+      expect(callToolWithProgress).not.toHaveBeenCalled();
+    });
+
+    it.each(['x_agent-manager_start_session', 'workflow_sweep', 'call_tool'])(
+      'refuses %s on an installation without per-user auth',
+      async name => {
+        const response = await request(app)
+          .post('/call/progress')
+          .send({ name, arguments: {} });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.message).toContain(
+          'without an authProvider',
+        );
+        expect(callToolWithProgress).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('computes workflow stats from executions', async () => {
@@ -1199,6 +1492,179 @@ describe('createRouter', () => {
       expect(response.status).toBe(401);
       expect(response.body.error.message).toContain('mcp-muster');
       expect(callTool).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * giantswarm/giantswarm#38779: a 401 with an empty body left the page and
+   * the logs guessing. Every 401 now names its reason, which the frontend
+   * picks its action from, and is logged with it -- never with the token.
+   */
+  describe('every 401 says why', () => {
+    /** An unsigned JWT that expires at `exp` (seconds since the epoch). */
+    function jwt(exp: number): string {
+      const b64url = (value: object) =>
+        Buffer.from(JSON.stringify(value)).toString('base64url');
+      return `${b64url({ alg: 'RS256' })}.${b64url({
+        sub: 'person-subject',
+        exp: Math.floor(exp),
+      })}.sig`;
+    }
+    const LIVE = jwt(Date.now() / 1000 + 600);
+    const EXPIRED = jwt(Date.now() / 1000 - 60);
+
+    async function buildCallApp() {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({
+        data: {
+          muster: {
+            installations: [
+              {
+                name: 'gazelle',
+                url: 'https://muster.gazelle.example.io/mcp',
+                authProvider: 'mcp-muster',
+              },
+            ],
+          },
+        },
+      });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      const callApp = expressApp();
+      callApp.use(router);
+      callApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { callApp, logger };
+    }
+
+    const call = (callApp: express.Express, token?: string) => {
+      const pending = request(callApp)
+        .post('/call?installation=gazelle')
+        .send({ name: 'x_cluster-manager_list_clusters', arguments: {} });
+      return token ? pending.set(MUSTER_AUTH_HEADER, token) : pending;
+    };
+
+    /** Everything the 401 put in the log, as one string. */
+    const logged = (logger: ReturnType<typeof mockServices.logger.mock>) =>
+      JSON.stringify(
+        [logger.info, logger.warn, logger.error].flatMap(fn => fn.mock.calls),
+      );
+
+    it('says a server needs the person sign-in, and names the server', async () => {
+      const { callApp, logger } = await buildCallApp();
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError(
+          'cluster-manager',
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+          ["auth_required: server 'cluster-manager' requires authentication"],
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({
+        name: 'MusterUnauthorizedError',
+        message:
+          "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
+        reason: 'server_sign_in_required',
+        server: 'cluster-manager',
+      });
+      expect(logger.info).toHaveBeenCalledWith('Muster request answered 401', {
+        installation: 'gazelle',
+        route: '/call',
+        reason: 'server_sign_in_required',
+        server: 'cluster-manager',
+      });
+      // The sign-in link is the person's: the page asks for its own.
+      expect(JSON.stringify(response.body)).not.toContain('state=abc');
+    });
+
+    it('says the token is missing', async () => {
+      const { callApp, logger } = await buildCallApp();
+
+      const response = await call(callApp);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_missing');
+      expect(response.body.error.message).toContain(
+        "installation 'gazelle' requires a user token",
+      );
+      expect(callTool).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        'Muster request answered 401',
+        expect.objectContaining({ reason: 'token_missing' }),
+      );
+    });
+
+    it('says the token expired, without asking muster', async () => {
+      const { callApp, logger } = await buildCallApp();
+
+      const response = await call(callApp, EXPIRED);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+      expect(callTool).not.toHaveBeenCalled();
+      expect(logged(logger)).not.toContain(EXPIRED);
+    });
+
+    it("says muster's expired-token answer is an expired token", async () => {
+      const { callApp } = await buildCallApp();
+      callTool.mockRejectedValue(
+        new MusterToolError(
+          'token has expired for cluster-manager, re-authenticate to refresh: token is expired',
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+    });
+
+    it('says muster refused a token that has not expired', async () => {
+      const { callApp, logger } = await buildCallApp();
+      callTool.mockRejectedValue(
+        Object.assign(
+          new Error(
+            'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): invalid_token for person@example.com',
+          ),
+          { name: 'MCPClientError', statusCode: 401 },
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_rejected');
+      // muster's own text may name the person: it stays out of both.
+      expect(JSON.stringify(response.body)).not.toContain('person@');
+      expect(logged(logger)).not.toContain('person@');
+      expect(logged(logger)).not.toContain(LIVE);
+    });
+
+    it('says why on the streamed call too, before its first line', async () => {
+      const { callApp } = await buildCallApp();
+
+      const response = await request(callApp)
+        .post('/call/progress?installation=gazelle')
+        .send({ name: 'x_cluster-manager_create_node_pool', arguments: {} });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_missing');
+    });
+
+    it('leaves every other failure to the error middleware', async () => {
+      const { callApp } = await buildCallApp();
+      callTool.mockRejectedValue(new MusterToolError('node pool not found'));
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.reason).toBeUndefined();
     });
   });
 });

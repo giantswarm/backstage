@@ -1,14 +1,10 @@
 import { CSSProperties, ReactNode, useMemo } from 'react';
 import {
   GitRepository,
-  HelmRelease,
   HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-  Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../utils/fluxResources';
 import {
   DateComponent,
   NotAvailable,
@@ -26,6 +22,7 @@ import classNames from 'classnames';
 import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { CopyCommandMenu } from './CopyCommandMenu';
 import { FluxResourceActions } from './FluxResourceActions';
+import { ManifestButton } from './ManifestButton';
 import { ResourceMetadata } from './ResourceMetadata';
 import { buildResourceAiChatPrompt } from './utils/buildResourceAiChatPrompt';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
@@ -142,15 +139,7 @@ type ResourceCardProps = {
   kind: string;
   cluster: string;
   targetCluster?: string;
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource?: FluxResource;
   source?: GitRepository | OCIRepository | HelmRepository;
   highlighted?: boolean;
   error?: boolean;
@@ -287,6 +276,7 @@ export const ResourceCard = ({
             <Flex align="center" mt="2" gap="2">
               <FluxResourceActions resource={resource} />
               <CopyCommandMenu resource={resource} />
+              <ManifestButton resource={resource} />
               <AIChatButton
                 troubleshoot={aiChatPrompt.troubleshoot}
                 items={[{ message: aiChatPrompt.message }]}

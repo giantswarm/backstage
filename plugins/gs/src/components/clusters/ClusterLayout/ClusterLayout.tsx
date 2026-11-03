@@ -5,7 +5,7 @@ import {
   useElementFilter,
 } from '@backstage/core-plugin-api';
 import { useRouteRefParams } from '@backstage/frontend-plugin-api';
-import { Flex, PluginHeader } from '@backstage/ui';
+import { Alert as BuiAlert, Flex, PluginHeader } from '@backstage/ui';
 import StorageIcon from '@material-ui/icons/Storage';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
@@ -13,7 +13,12 @@ import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { useCurrentUser, useLayoutTabs } from '../../hooks';
 import { ClusterAppStatus } from './ClusterAppStatus';
-import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ClusterDeletingNotice } from './ClusterDeletingNotice';
+import {
+  App,
+  Cluster,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AIChatButtonBui } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { calculateClusterStatus } from '../utils';
 import { ClusterStatuses } from '../ClusterStatus';
@@ -42,7 +47,10 @@ const PageContent = ({
   clusterName,
   installationName,
   error,
-  clusterApp,
+  refreshError,
+  cluster,
+  isDeleting,
+  installer,
   element,
 }: {
   isLoading: boolean;
@@ -50,7 +58,10 @@ const PageContent = ({
   clusterName: string;
   installationName: string;
   error: Error | null;
-  clusterApp?: App;
+  refreshError: Error | null;
+  cluster?: Cluster;
+  isDeleting: boolean;
+  installer?: App | HelmRelease;
   element: ReactNode;
 }) => {
   if (isLoading) {
@@ -76,8 +87,8 @@ const PageContent = ({
   if (error) {
     return (
       <Content>
-        {clusterApp ? (
-          <ClusterAppStatus app={clusterApp} />
+        {installer ? (
+          <ClusterAppStatus installer={installer} />
         ) : (
           <Alert severity="error">{error.toString()}</Alert>
         )}
@@ -85,7 +96,23 @@ const PageContent = ({
     );
   }
 
-  return <Content>{element}</Content>;
+  return (
+    <Content>
+      {cluster && isDeleting ? (
+        <ClusterDeletingNotice cluster={cluster} refreshError={refreshError} />
+      ) : null}
+      {!isDeleting && refreshError ? (
+        <BuiAlert
+          status="warning"
+          icon
+          mb="4"
+          title="Could not re-read the cluster"
+          description={`The page shows the cluster as last read and keeps trying: ${refreshError.message}`}
+        />
+      ) : null}
+      {element}
+    </Content>
+  );
 };
 
 function getAIChatMessage(cluster: Cluster, installationName: string): string {
@@ -101,7 +128,10 @@ function getAIChatMessage(cluster: Cluster, installationName: string): string {
 
 export interface ClusterLayoutProps {
   children?: React.ReactNode;
-  /** Header actions other plugins attach, shown once the cluster is loaded. */
+  /**
+   * Header actions other plugins attach. They render while the cluster loads
+   * and after it is gone too, reading it with `useClusterPageTarget`.
+   */
   actions?: ReactElement[];
 }
 
@@ -114,10 +144,13 @@ export const ClusterLayout = ({
   const {
     cluster,
     clusterApp,
+    clusterRelease,
     installationName,
+    isDeleting,
     loading: clusterIsLoading,
     notFound,
     error: error,
+    refreshError,
   } = useAsyncCluster();
 
   const { isGSUser, isLoading: currentUserIsLoading } =
@@ -169,9 +202,11 @@ export const ClusterLayout = ({
         title={`Clusters / ${name}`}
         tabs={tabs}
         customActions={
-          cluster ? (
-            <Flex gap="2" align="center">
-              {actions}
+          // The actions stay mounted once the cluster is gone, so a dialog
+          // an action opened can see its flow through.
+          <Flex gap="2" align="center">
+            {actions}
+            {cluster ? (
               <AIChatButtonBui
                 troubleshoot={
                   calculateClusterStatus(cluster) !== ClusterStatuses.Ready
@@ -183,8 +218,8 @@ export const ClusterLayout = ({
                   },
                 ]}
               />
-            </Flex>
-          ) : undefined
+            ) : null}
+          </Flex>
         }
       />
       <PageContent
@@ -193,7 +228,10 @@ export const ClusterLayout = ({
         clusterName={name}
         installationName={installationName}
         error={error}
-        clusterApp={clusterApp}
+        refreshError={refreshError}
+        cluster={cluster}
+        isDeleting={isDeleting}
+        installer={clusterApp ?? clusterRelease}
         element={element}
       />
     </>

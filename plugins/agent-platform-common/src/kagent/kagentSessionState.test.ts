@@ -1,10 +1,11 @@
 import {
   ACTIVE_MAX_AGE_MS,
-  deriveSessionState,
   describeSessionState,
   isAgentWorking,
+  isAwaitingInput,
   readNewestTaskState,
   readTurnProgress,
+  SESSION_STATE_LABELS,
 } from './kagentSessionState';
 import { normalizeTaskList } from './kagentSessionDetail';
 
@@ -13,23 +14,37 @@ import unknownState from './__fixtures__/tasks.unknown-state.json';
 import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
 
 function stateFor(fixture: unknown) {
-  return deriveSessionState(normalizeTaskList(fixture).tasks);
+  return readNewestTaskState(normalizeTaskList(fixture).tasks)?.state;
 }
 
 describe('describeSessionState', () => {
   it.each([
     ['working', 'Working', true],
-    ['input-required', 'Waiting for input', true],
-    ['completed', 'Completed', false],
+    ['input-required', 'Waiting for you', true],
+    ['completed', 'Idle', false],
     ['failed', 'Failed', false],
-    ['canceled', 'Canceled', false],
+    ['canceled', 'Idle', false],
   ])('describes %s', (raw, label, isActive) => {
     expect(describeSessionState(raw)).toMatchObject({ raw, label, isActive });
   });
 
+  it.each([
+    ['submitted', 'Working'],
+    ['working', 'Working'],
+    ['input-required', 'Waiting for you'],
+    ['auth-required', 'Waiting for you'],
+    ['completed', 'Idle'],
+    ['canceled', 'Idle'],
+    ['failed', 'Failed'],
+    ['rejected', 'Failed'],
+  ])('names %s "%s", one of the four state words', (raw, label) => {
+    expect(describeSessionState(raw)?.label).toBe(label);
+    expect(Object.values(SESSION_STATE_LABELS)).toContain(label);
+  });
+
   it('is case-insensitive about the state name', () => {
     expect(describeSessionState('COMPLETED')).toMatchObject({
-      label: 'Completed',
+      label: 'Idle',
       // The raw value is kept verbatim, so the original casing survives.
       raw: 'COMPLETED',
     });
@@ -67,41 +82,6 @@ describe('describeSessionState', () => {
       });
     },
   );
-});
-
-describe('deriveSessionState', () => {
-  it('takes the state of the most recent task', () => {
-    // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
-    // An earlier turn having completed says nothing about whether the session is
-    // working now.
-    expect(stateFor(kagentPrefixed)).toMatchObject({
-      raw: 'working',
-      isActive: true,
-    });
-  });
-
-  it('keeps an unrecognised newest state rather than falling back to an older one', () => {
-    expect(stateFor(unknownState)).toMatchObject({
-      raw: 'quantum-superposition',
-      label: 'quantum-superposition',
-    });
-  });
-
-  it('skips trailing tasks that report no state at all', () => {
-    const tasks = normalizeTaskList(kagentPrefixed).tasks;
-    const stateless = { ...tasks[tasks.length - 1], status: undefined };
-
-    expect(deriveSessionState([...tasks, stateless])).toMatchObject({
-      raw: 'working',
-    });
-  });
-
-  it('returns undefined for a session with no tasks', () => {
-    // A real condition — created but never run — and distinct from every state
-    // kagent could report, so it must not be flattened into one of them.
-    expect(stateFor(emptyNoData)).toBeUndefined();
-    expect(deriveSessionState([])).toBeUndefined();
-  });
 });
 
 describe('isAgentWorking', () => {
@@ -264,6 +244,39 @@ describe('readTurnProgress', () => {
 });
 
 describe('readNewestTaskState', () => {
+  it('takes the state of the most recent task', () => {
+    // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
+    // An earlier turn having completed says nothing about whether the session is
+    // working now.
+    expect(stateFor(kagentPrefixed)).toMatchObject({
+      raw: 'working',
+      isActive: true,
+    });
+  });
+
+  it('keeps an unrecognised newest state rather than falling back to an older one', () => {
+    expect(stateFor(unknownState)).toMatchObject({
+      raw: 'quantum-superposition',
+      label: 'quantum-superposition',
+    });
+  });
+
+  it('skips trailing tasks that report no state at all', () => {
+    const tasks = normalizeTaskList(kagentPrefixed).tasks;
+    const stateless = { ...tasks[tasks.length - 1], status: undefined };
+
+    expect(readNewestTaskState([...tasks, stateless])?.state).toMatchObject({
+      raw: 'working',
+    });
+  });
+
+  it('returns undefined for a session with no tasks', () => {
+    // A real condition — created but never run — and distinct from every state
+    // kagent could report, so it must not be flattened into one of them.
+    expect(stateFor(emptyNoData)).toBeUndefined();
+    expect(readNewestTaskState([])).toBeUndefined();
+  });
+
   it('takes the state and its timestamp from the same task', () => {
     // A trailing task carrying no state must not lend its timestamp to an
     // earlier task's state.
@@ -277,6 +290,7 @@ describe('readNewestTaskState', () => {
     expect(readNewestTaskState(tasks)).toEqual({
       state: expect.objectContaining({ raw: 'working' }),
       changedAt: Date.parse('2026-08-31T11:00:00Z'),
+      index: 0,
     });
   });
 });
@@ -288,7 +302,7 @@ describe('describeSessionState normalisation', () => {
     expect(describeSessionState('Input-Required')).toMatchObject({
       raw: 'Input-Required',
       key: 'input-required',
-      label: 'Waiting for input',
+      label: 'Waiting for you',
     });
   });
 
@@ -297,5 +311,18 @@ describe('describeSessionState normalisation', () => {
       raw: 'Quantum-Superposition',
       key: 'quantum-superposition',
     });
+  });
+});
+
+describe('isAwaitingInput', () => {
+  it('is true for the states that wait on a person', () => {
+    expect(isAwaitingInput(describeSessionState('input-required'))).toBe(true);
+    expect(isAwaitingInput(describeSessionState('Auth-Required'))).toBe(true);
+  });
+
+  it('is false for every other state and for no state', () => {
+    expect(isAwaitingInput(describeSessionState('working'))).toBe(false);
+    expect(isAwaitingInput(describeSessionState('completed'))).toBe(false);
+    expect(isAwaitingInput(undefined)).toBe(false);
   });
 });

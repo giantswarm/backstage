@@ -15,6 +15,7 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { plansApiRef } from '../../apis';
 import {
   compareDisplayPaths,
@@ -75,10 +76,11 @@ export function MergedTab({ repo }: { repo: string }) {
     setSearchParams(params, { replace: true });
   };
 
-  const { data, isLoading, error } = useQuery({
+  const tree = useQuery({
     queryKey: ['plans', 'tree', repo],
     queryFn: () => plansApi.getTree(undefined, repo),
   });
+  const { data, error } = tree;
 
   // Epic references per plan folder, for the cross-link chips. Failure just
   // means no chips (e.g. the backend still rolling out).
@@ -122,7 +124,7 @@ export function MergedTab({ repo }: { repo: string }) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
-  if (isLoading) {
+  if (isAwaitingData(tree)) {
     return <Progress />;
   }
   if (error) {

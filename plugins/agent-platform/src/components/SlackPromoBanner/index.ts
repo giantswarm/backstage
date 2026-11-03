@@ -1,0 +1,1 @@
+export { SlackPromoBanner } from './SlackPromoBanner';

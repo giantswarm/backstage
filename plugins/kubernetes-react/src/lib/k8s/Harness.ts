@@ -1,13 +1,11 @@
-import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from './KubeObject';
-import { HARNESS_LABEL } from './Agent';
+import {
+  KAGENT_API_GROUP,
+  type HarnessInterface,
+  type HarnessSpec,
+} from './kagentApi';
 
-type HarnessInterface = crds.kagent.v1alpha3.Harness;
-
-/** A Harness's `spec.allowedAgentTemplates.selector`. */
-export type HarnessAgentTemplateSelector = NonNullable<
-  NonNullable<HarnessInterface['spec']>['allowedAgentTemplates']
->['selector'];
+export type { HarnessInterface } from './kagentApi';
 
 /**
  * The runtime adapter a Harness selects: the one of `spec.kagent`,
@@ -23,39 +21,29 @@ const RUNTIMES: readonly HarnessRuntime[] = [
 ];
 
 /**
+ * The runtime a Harness spec sets — of a `Harness` object, or one inline in an
+ * Agent — `undefined` when it sets none this client knows.
+ */
+export function harnessRuntimeOf(
+  spec: HarnessSpec | undefined,
+): HarnessRuntime | undefined {
+  return RUNTIMES.find(runtime => spec?.[runtime] !== undefined);
+}
+
+/**
  * kagent Harness — a runtime (the Go ADK, Claude Code, Codex or a custom
- * image) and its infrastructure policy. An AgentTemplate runs on the Harness
- * whose `allowedAgentTemplates` selector matches it.
+ * image) and its infrastructure policy. An Agent runs on the Harness its
+ * `spec.harnessRef` names; any Harness of the namespace is a valid choice.
  */
 export class Harness extends KubeObject<HarnessInterface> {
   static readonly supportedVersions = ['v1alpha3'] as const;
-  static readonly group = 'kagent.dev';
+  static readonly group = KAGENT_API_GROUP;
   static readonly kind = 'Harness' as const;
   static readonly plural = 'harnesses';
 
   /** The runtime adapter, `undefined` when the spec sets none this client knows. */
   getRuntime(): HarnessRuntime | undefined {
-    const spec = this.jsonData.spec;
-    return RUNTIMES.find(runtime => spec?.[runtime] !== undefined);
-  }
-
-  /**
-   * The value of {@link HARNESS_LABEL} this Harness admits templates by: what
-   * agent-manager's `harness` argument names. `undefined` when its selector
-   * does not match on that label, so no agent the Generic chart renders can be
-   * admitted by it.
-   */
-  getAdmittedHarnessLabel(): string | undefined {
-    const value =
-      this.jsonData.spec?.allowedAgentTemplates?.selector?.matchLabels?.[
-        HARNESS_LABEL
-      ];
-    return value?.trim() ? value : undefined;
-  }
-
-  /** The `allowedAgentTemplates` label selector, `undefined` when unset. */
-  getAgentTemplateSelector(): HarnessAgentTemplateSelector | undefined {
-    return this.jsonData.spec?.allowedAgentTemplates?.selector;
+    return harnessRuntimeOf(this.jsonData.spec);
   }
 
   /**
@@ -70,5 +58,10 @@ export class Harness extends KubeObject<HarnessInterface> {
   /** The workload image reference, digest included. */
   getImage(): string | undefined {
     return this.jsonData.spec?.workload.image;
+  }
+
+  /** The hosts every agent on the Harness may reach besides what its revision compiles. */
+  getEgress(): string[] {
+    return [...(this.jsonData.spec?.substrate.egress ?? [])];
   }
 }

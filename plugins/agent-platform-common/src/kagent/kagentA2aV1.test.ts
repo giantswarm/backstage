@@ -13,6 +13,7 @@ import {
   normalizeA2aRole,
   normalizeA2aState,
   normalizeStreamEvent,
+  readUrlElicitationRequest,
   toWireMessage,
   toWirePart,
   toWireStreamEvent,
@@ -639,5 +640,51 @@ describe('history order', () => {
         ],
       }),
     ).toEqual(['A', 'B']);
+  });
+});
+
+describe('readUrlElicitationRequest', () => {
+  const signIn = (payload: Record<string, unknown>) => ({
+    messageId: 'm1',
+    role: 'ROLE_AGENT',
+    parts: [{ text: 'Sign in to github to continue.' }],
+    extensions: [HITL_EXTENSION_URI],
+    metadata: {
+      [HITL_EXTENSION_URI]: {
+        type: 'url_elicitation_request',
+        id: 'sign-in-1',
+        server: 'muster',
+        message: 'Sign in to github to continue.',
+        url: 'https://muster.example/oauth/proxy/start?state=abc',
+        ...payload,
+      },
+    },
+  });
+
+  it('reads the request off a v1 message and its legacy shape alike', () => {
+    const want = {
+      id: 'sign-in-1',
+      server: 'muster',
+      message: 'Sign in to github to continue.',
+      url: 'https://muster.example/oauth/proxy/start?state=abc',
+    };
+    expect(readUrlElicitationRequest(signIn({}))).toEqual(want);
+    expect(readUrlElicitationRequest(toWireMessage(signIn({})))).toEqual(want);
+  });
+
+  it.each([
+    ['no id', { id: '' }],
+    ['no URL', { url: '' }],
+    ['a relative URL', { url: '/oauth/proxy/start' }],
+    ['another scheme', { url: 'ftp://muster.example/start' }],
+    ['another request', { type: 'ask_user_request' }],
+  ])('offers nothing for %s', (_, payload) => {
+    expect(readUrlElicitationRequest(signIn(payload))).toBeUndefined();
+  });
+
+  it('needs the extension declared', () => {
+    expect(
+      readUrlElicitationRequest({ ...signIn({}), extensions: [] }),
+    ).toBeUndefined();
   });
 });

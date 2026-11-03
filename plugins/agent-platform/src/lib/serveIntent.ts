@@ -294,10 +294,10 @@ export type ServeIntentStepInput = {
   loading: boolean;
   /** The served model of the intent, while model-manager lists it. */
   model: ServedModel | undefined;
-  /** The Serve dialog on the pool without a preset — the way out of a refusal, the next model after a served one. */
+  /** Serve model on the pool without a preset — the way out of a refusal, the next model after a served one. */
   serveAnotherHref?: string;
-  /** The Serve dialog on the pool with the preset preselected — the way out of a failed load. */
-  serveInDialogHref?: string;
+  /** Serve model on the pool with the preset preselected — the way out of a failed load. */
+  servePresetHref?: string;
 };
 
 /**
@@ -316,17 +316,17 @@ export function serveIntentStep(input: ServeIntentStepInput): LifecycleStep {
     loading,
     model,
     serveAnotherHref,
-    serveInDialogHref,
+    servePresetHref,
   } = input;
   const id = 'serve';
   const title = `Serving ${serveChoiceLabel(intent)}`;
   const serveAnother = serveAnotherHref
     ? { label: 'Serve another model', to: serveAnotherHref }
     : undefined;
-  const serveInDialog = serveInDialogHref
+  const servePreset = servePresetHref
     ? {
-        label: `Serve ${serveChoiceLabel(intent)} in the dialog`,
-        to: serveInDialogHref,
+        label: `Serve ${serveChoiceLabel(intent)} manually`,
+        to: servePresetHref,
       }
     : undefined;
   const outcome = intent.outcome;
@@ -392,7 +392,7 @@ export function serveIntentStep(input: ServeIntentStepInput): LifecycleStep {
         state: 'failed',
         since: outcome.at,
         message: `model-manager refused: ${outcome.message}`,
-        action: serveInDialog,
+        action: servePreset,
       };
     case 'served':
       if (outcome.ready) {

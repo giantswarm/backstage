@@ -11,7 +11,7 @@ import type { ClusterAccessState } from '../clusterAccessStatus';
 export type PlatformComponent = 'kagent' | 'muster' | 'kserve' | 'capi';
 
 export const PLATFORM_API_GROUPS: Record<PlatformComponent, string> = {
-  kagent: 'kagent.dev',
+  kagent: 'api.kagent.dev',
   muster: 'muster.giantswarm.io',
   kserve: 'serving.kserve.io',
   capi: 'cluster.x-k8s.io',

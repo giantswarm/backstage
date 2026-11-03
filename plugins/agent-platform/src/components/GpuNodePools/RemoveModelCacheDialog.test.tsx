@@ -165,16 +165,28 @@ describe('RemoveModelCacheDialog', () => {
     );
     expect(
       screen.getByText(
-        /The cluster's serving slice mounts this claim: it switches to serve from the node's disk — every pool of the cluster/,
+        /The cluster's serving slice mounts this claim: every pool switches to serving from the node's disk/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByTestId('served-models')).toHaveTextContent(
       'Models served on this cluster (1):qwen3-8b',
     );
     const confirm = screen.getByRole('button', { name: 'Remove cache' });
-    expect(confirm).toBeDisabled();
-    await user.click(screen.getByLabelText(ACKNOWLEDGE_LOSS));
+    // Pressable; pressed before the loss is acknowledged, the checkbox says so.
     expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    expect(onRemoved).not.toHaveBeenCalled();
+    const acknowledge = screen.getByRole('checkbox', {
+      name: ACKNOWLEDGE_LOSS,
+    });
+    expect(acknowledge).toHaveAttribute('aria-invalid', 'true');
+    expect(acknowledge).toHaveFocus();
+    expect(acknowledge).toHaveAccessibleDescription(
+      'Acknowledge that the cached weights go with the cache.',
+    );
+
+    await user.click(acknowledge);
+    expect(acknowledge).not.toHaveAttribute('aria-invalid');
     await user.click(confirm);
     await waitFor(() => expect(onRemoved).toHaveBeenCalled());
     expect(callTool).toHaveBeenCalledWith(
@@ -200,7 +212,7 @@ describe('RemoveModelCacheDialog', () => {
       'cluster-manager refused: the cache is in use',
     );
     expect(screen.getByTestId('refused-models')).toHaveTextContent(
-      'Unload this model first, on the Serving page:LLMInferenceService model-serving/qwen3-8b (Qwen/Qwen3-8B-FP8)',
+      'Unload this model first, under Running models:LLMInferenceService model-serving/qwen3-8b (Qwen/Qwen3-8B-FP8)',
     );
     expect(refused).toHaveTextContent(REFUSED.hint);
     expect(onRemoved).not.toHaveBeenCalled();

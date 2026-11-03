@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolsetPreset } from '@giantswarm/backstage-plugin-muster';
 
 import { musterToolsetPresetsQueryKey } from '../lib/queryKeys';
@@ -40,7 +41,7 @@ export function useToolsetPresets(
 ): ToolsetPresets {
   const musterApi = useMusterPluginApi();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterToolsetPresetsQueryKey(installation ?? ''),
     enabled: Boolean(installation) && Boolean(musterApi),
     queryFn: () =>
@@ -49,6 +50,7 @@ export function useToolsetPresets(
     // Installation configuration; a minute of staleness is fine.
     staleTime: 60_000,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (!musterApi || !installation) {
     return {

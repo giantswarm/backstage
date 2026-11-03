@@ -7,21 +7,42 @@ import {
   CellText,
   ColumnConfig,
   Flex,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
+import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
+  groupNames,
   InfoCard,
+  INITIAL_ROWS,
+  joinNames,
   LoadingIndicator,
+  MENU_WIDTH,
+  NAMED_IN_SENTENCE,
+  ShowMore,
+  SimpleAccordion,
+  StackedRowList,
+  usePhoneLayout,
   useVisibleSort,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
+import {
+  ConnectorSignInAlert,
+  installationErrorLine,
+  type ConnectorSignIn,
+} from '@giantswarm/backstage-plugin-muster';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
+import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { poolPhaseLabel } from '../../lib/poolLifecycle';
+import { describeHourlyRange } from '../../lib/poolPricing';
 import {
   PoolLifecyclePanel,
   type OpenedPool,
@@ -41,6 +62,11 @@ export type GpuNodePoolsPanelProps = {
   /** Installations whose cluster-manager reports no Cluster API, with its note. */
   notes: { installation: string; note: string }[];
   errors: { installation: string; error: Error }[];
+  /**
+   * The connectors whose sign-in the reads asked for, and where: offered in
+   * place of the pools those installations could not list.
+   */
+  signIns?: ConnectorSignIn[];
   onRemove: (row: GpuNodePoolRow) => void;
   /** The pool whose lifecycle panel is open beneath the table, if any. */
   opened: OpenedPool | undefined;
@@ -51,7 +77,184 @@ export type GpuNodePoolsPanelProps = {
   onCloseLifecycle: () => void;
   /** Columns to leave out: the page drops Installation where it would repeat. */
   hideColumns?: ReadonlyArray<'installation'>;
+  /** What each pool's nodes cost per hour; without it there is no Cost column. */
+  prices?: NodeSizePrices;
 };
+
+/**
+ * The pool's Cost cell: what its running nodes cost now and, under it, what
+ * one node costs while it runs — cluster-manager's on-demand list prices. A
+ * pool of several sizes shows the range from its cheapest to its dearest.
+ */
+export function PoolCostCell({
+  row,
+  prices,
+}: {
+  row: GpuNodePoolRow;
+  prices: NodeSizePrices;
+}) {
+  const price = prices.priceOf(row);
+  if (!price) {
+    return (
+      <CellText
+        title={prices.isReading(row) ? 'Reading…' : '—'}
+        description={
+          prices.isReading(row) ? undefined : 'No price listed for its sizes'
+        }
+      />
+    );
+  }
+  return (
+    <CellText
+      title={`${describeHourlyRange(price.nowMinUSD, price.nowMaxUSD)} now`}
+      description={`${describeHourlyRange(
+        price.perNodeMinUSD,
+        price.perNodeMaxUSD,
+      )} per node · ${price.nodes} running`}
+    />
+  );
+}
+
+/**
+ * A phone row's cost: what the running nodes cost now, then a node's rate —
+ * the two lines of {@link PoolCostCell}, as words.
+ */
+export function describePoolCost(
+  row: GpuNodePoolRow,
+  prices: NodeSizePrices,
+): { now: string; perNode?: string } {
+  const price = prices.priceOf(row);
+  if (!price) {
+    return {
+      now: prices.isReading(row) ? 'reading its price…' : 'no price listed',
+    };
+  }
+  return {
+    now: `${describeHourlyRange(price.nowMinUSD, price.nowMaxUSD)} now`,
+    perNode: `${describeHourlyRange(
+      price.perNodeMinUSD,
+      price.perNodeMaxUSD,
+    )} per node · ${price.nodes} running`,
+  };
+}
+
+/** The actions column's width, px: the lifecycle chevron and Remove pool. */
+const ACTIONS_COLUMN_WIDTH = 176;
+
+/** The chevron that opens or closes a pool's lifecycle panel beneath the list. */
+function LifecycleToggle({
+  row,
+  isOpen,
+  onToggle,
+}: {
+  row: GpuNodePoolRow;
+  isOpen: boolean;
+  onToggle: (row: GpuNodePoolRow) => void;
+}) {
+  return (
+    <ButtonIcon
+      size="small"
+      variant="tertiary"
+      icon={isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+      aria-label={`${isOpen ? 'Hide' : 'Show'} lifecycle of pool ${row.pool.name}`}
+      aria-expanded={isOpen}
+      onPress={() => onToggle(row)}
+    />
+  );
+}
+
+/**
+ * One pool as a phone row (T22 B14): the table's nine columns clipped
+ * **Remove pool** and the lifecycle chevron off the row.
+ *
+ * - Line 1: the pool, its phase, the chevron and a ⋯ menu holding Remove pool
+ *   (destructive, so in the menu, never a bare button on a phone row).
+ * - Line 2: accelerator · cluster · environment · what it costs now.
+ * - Under them: the node sizes, the two Kubernetes versions, a node's rate.
+ */
+export function gpuNodePoolStackedRow(
+  row: GpuNodePoolRow,
+  {
+    isOpen,
+    onToggleLifecycle,
+    onRemove,
+    prices,
+    showInstallation,
+  }: {
+    isOpen: boolean;
+    onToggleLifecycle: (row: GpuNodePoolRow) => void;
+    onRemove: (row: GpuNodePoolRow) => void;
+    prices?: NodeSizePrices;
+    showInstallation: boolean;
+  },
+): StackedRowItem {
+  const cost = prices ? describePoolCost(row, prices) : undefined;
+  const sizes = row.pool.instanceTypes.join(', ');
+  return {
+    id: row.id,
+    title: row.pool.name,
+    status: (
+      <Text as="span" variant="body-small" color="secondary">
+        {poolPhaseLabel(row.pool, row.cluster)}
+      </Text>
+    ),
+    facts: [
+      row.pool.accelerator,
+      row.cluster.name,
+      showInstallation ? row.installation : undefined,
+      cost?.now,
+    ],
+    details: (
+      <Flex direction="column" gap="1">
+        {row.poolName && (
+          <Text as="p" variant="body-small" color="secondary">
+            {row.poolName}
+          </Text>
+        )}
+        {sizes && (
+          <Text as="p" variant="body-small" color="secondary">
+            Node sizes: {sizes}
+          </Text>
+        )}
+        <Text as="p" variant="body-small" color="secondary">
+          Kubernetes {row.pool.version || '—'} · control plane{' '}
+          {row.pool.controlPlaneVersion || '—'}
+        </Text>
+        {cost?.perNode && (
+          <Text as="p" variant="body-small" color="secondary">
+            {cost.perNode}
+          </Text>
+        )}
+      </Flex>
+    ),
+    actions: (
+      <>
+        <LifecycleToggle
+          row={row}
+          isOpen={isOpen}
+          onToggle={onToggleLifecycle}
+        />
+        <MenuTrigger>
+          <ButtonIcon
+            size="small"
+            variant="tertiary"
+            icon={<MoreVertIcon />}
+            aria-label={`Actions for pool ${row.pool.name}`}
+          />
+          <Menu maxWidth={MENU_WIDTH}>
+            <MenuItem
+              color="danger"
+              iconStart={<DeleteOutlineIcon />}
+              onAction={() => onRemove(row)}
+            >
+              Remove pool…
+            </MenuItem>
+          </Menu>
+        </MenuTrigger>
+      </>
+    ),
+  };
+}
 
 export function sortGpuNodePoolsBy(
   rows: GpuNodePoolRow[],
@@ -84,7 +287,17 @@ function getColumnConfig(
   onRemove: (row: GpuNodePoolRow) => void,
   openedId: string | undefined,
   onToggleLifecycle: (row: GpuNodePoolRow) => void,
+  prices: NodeSizePrices | undefined,
 ): ColumnConfig<GpuNodePoolRow>[] {
+  const costColumn: ColumnConfig<GpuNodePoolRow>[] = prices
+    ? [
+        {
+          id: 'cost',
+          label: 'Cost',
+          cell: row => <PoolCostCell row={row} prices={prices} />,
+        },
+      ]
+    : [];
   return [
     {
       id: 'name',
@@ -97,7 +310,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       cell: row => <CellText title={row.installation} />,
     },
@@ -129,6 +342,7 @@ function getColumnConfig(
       isSortable: true,
       cell: row => <CellText title={poolPhaseLabel(row.pool, row.cluster)} />,
     },
+    ...costColumn,
     {
       id: 'version',
       label: 'Pool Kubernetes',
@@ -144,18 +358,20 @@ function getColumnConfig(
     {
       id: 'actions',
       label: '',
+      // Room for the chevron and Remove pool side by side: with the columns
+      // shared out equally, nine of them left this cell ~100px at desktop
+      // width, and the chevron slid under the version cell beside it, where
+      // no click reached it.
+      width: ACTIONS_COLUMN_WIDTH,
       cell: row => {
         const isOpen = row.id === openedId;
         return (
           <Cell>
             <Flex gap="1" align="center" justify="end">
-              <ButtonIcon
-                size="small"
-                variant="tertiary"
-                icon={isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                aria-label={`${isOpen ? 'Hide' : 'Show'} lifecycle of pool ${row.pool.name}`}
-                aria-expanded={isOpen}
-                onPress={() => onToggleLifecycle(row)}
+              <LifecycleToggle
+                row={row}
+                isOpen={isOpen}
+                onToggle={onToggleLifecycle}
               />
               <Button
                 size="small"
@@ -188,19 +404,22 @@ export function GpuNodePoolsPanel({
   isLoading,
   notes,
   errors,
+  signIns = [],
   onRemove,
   opened,
   serve,
   onToggleLifecycle,
   onCloseLifecycle,
   hideColumns,
+  prices,
 }: GpuNodePoolsPanelProps) {
+  const isPhone = usePhoneLayout();
   const columnConfig = useMemo(
     () =>
-      getColumnConfig(onRemove, opened?.id, onToggleLifecycle).filter(
+      getColumnConfig(onRemove, opened?.id, onToggleLifecycle, prices).filter(
         column => !hideColumns?.includes(column.id as 'installation'),
       ),
-    [onRemove, opened?.id, onToggleLifecycle, hideColumns],
+    [onRemove, opened?.id, onToggleLifecycle, prices, hideColumns],
   );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
@@ -219,12 +438,42 @@ export function GpuNodePoolsPanel({
 
   let body: ReactNode;
   if (rows.length > 0) {
+    // A page of the sorted pools at a time (list scale): a fleet's pools are
+    // tens, and never an unbounded DOM. At phone width each pool is a
+    // stacked row, in the table's order.
     body = (
-      <Table<GpuNodePoolRow> {...tableProps} columnConfig={columnConfig} />
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="pool"
+      >
+        {visible =>
+          isPhone ? (
+            <StackedRowList
+              aria-label="GPU node pools"
+              rows={visible.map(row =>
+                gpuNodePoolStackedRow(row, {
+                  isOpen: row.id === opened?.id,
+                  onToggleLifecycle,
+                  onRemove,
+                  prices,
+                  showInstallation: !hideColumns?.includes('installation'),
+                }),
+              )}
+            />
+          ) : (
+            <Table<GpuNodePoolRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+            />
+          )
+        }
+      </ShowMore>
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading node pools…" />;
-  } else {
+  } else if (signIns.length === 0) {
     body = (
       <Text variant="body-medium" color="secondary">
         No GPU node pools yet.
@@ -237,11 +486,20 @@ export function GpuNodePoolsPanel({
       <InfoCard title="GPU node pools">
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
-            The GPU pools cluster-manager created for the models served here,
-            per cluster. A pool runs nodes exactly while something is scheduled
-            on them; removing a pool that still runs nodes is refused until the
-            models on it are stopped.
+            cluster-manager created these pools for the models served here. A
+            pool runs nodes only while something is scheduled on them, and it
+            can be removed once its models are stopped.
+            {prices &&
+              " Costs are on-demand list prices for the pool's node sizes."}
           </Text>
+          {signIns.map(({ server, installations }) => (
+            <ConnectorSignInAlert
+              key={server}
+              server={server}
+              installations={installations}
+              purpose="see GPU node pools"
+            />
+          ))}
           {body}
           {opened && (
             <PoolLifecyclePanel
@@ -254,26 +512,86 @@ export function GpuNodePoolsPanel({
           {notes.length > 0 && (
             <Alert
               status="info"
-              title="No clusters to list on some installations"
-              description={notes
-                .map(({ installation, note }) => `${installation}: ${note}`)
-                .join('; ')}
+              title="No clusters to list on some environments"
+              description={
+                <GroupedByInstallation
+                  lines={notes.map(({ installation, note }) => ({
+                    installation,
+                    rest: `: ${note}`,
+                  }))}
+                />
+              }
               data-testid="cluster-api-note"
             />
           )}
           {errors.length > 0 && (
             <Alert
               status="info"
-              title="Node pools could not be read for some installations"
-              description={errors
-                .map(({ installation, error }) =>
-                  installationErrorLine(installation, error),
-                )
-                .join('; ')}
+              title="Could not read the node pools of some environments"
+              description={
+                <GroupedByInstallation
+                  lines={errors.map(({ installation, error }) =>
+                    splitErrorLine(installation, error),
+                  )}
+                />
+              }
             />
           )}
         </Flex>
       </InfoCard>
     </div>
+  );
+}
+
+/** A per-installation line, cut after the installation's name. */
+type InstallationLine = { installation: string; rest: string };
+
+/**
+ * `<installation>: <message>` or `<installation> did not answer…`, as
+ * {@link installationErrorLine} words it, split after the name so installations
+ * failing the same way share one sentence.
+ */
+function splitErrorLine(installation: string, error: Error): InstallationLine {
+  const line = installationErrorLine(installation, error);
+  return line.startsWith(installation)
+    ? { installation, rest: line.slice(installation.length) }
+    : { installation, rest: `: ${line}` };
+}
+
+/**
+ * Per-installation lines grouped by what follows the name — fifty clusters
+ * without Cluster API read as one sentence, the names capped
+ * (`a, b, c, d, e and 45 more: <note>`) — with every line behind a disclosure
+ * once there are more than a sentence names.
+ */
+function GroupedByInstallation({ lines }: { lines: InstallationLine[] }) {
+  const sentence = joinNames(
+    groupNames(
+      lines,
+      line => line.installation,
+      line => line.rest,
+    ).map(({ group, names }) => `${joinNames(names)}${group}`),
+    { separator: '; ' },
+  );
+  if (lines.length <= NAMED_IN_SENTENCE) {
+    return <>{sentence}</>;
+  }
+  return (
+    <Flex direction="column" gap="2">
+      <span>{sentence}</span>
+      <SimpleAccordion
+        title={`All ${lines.length} environments`}
+        headingLevel={4}
+      >
+        <Flex direction="column" gap="1">
+          {lines.map(({ installation, rest }) => (
+            <Text key={installation} variant="body-small">
+              {installation}
+              {rest}
+            </Text>
+          ))}
+        </Flex>
+      </SimpleAccordion>
+    </Flex>
   );
 }

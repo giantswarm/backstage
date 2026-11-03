@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 
-import type { ClusterManagerCommit } from '../../lib/clusterManager';
+import type { ClusterManagerCommit, PlaceNoun } from '../../lib/clusterManager';
 
 /**
  * What cluster-manager's `mode: commit` answered (`commit`): the pull request
@@ -13,10 +13,17 @@ import type { ClusterManagerCommit } from '../../lib/clusterManager';
 export function ClusterManagerCommitOutcome({
   commit,
   liveStep,
+  placeNoun = 'installation',
 }: {
   commit: ClusterManagerCommit;
   /** The button that runs `liveSteps` after the merge, where the dialog offers one. */
   liveStep?: ReactNode;
+  /**
+   * What the place is called: main's "installation" for the classic Clusters
+   * page's dialogs (the default), "environment" in the agent platform's own
+   * sections.
+   */
+  placeNoun?: PlaceNoun;
 }) {
   const liveSteps = commit.liveSteps ?? [];
   return (
@@ -33,9 +40,11 @@ export function ClusterManagerCommitOutcome({
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
-            {commit.repository}, {commit.directory} on {commit.base}. Flux
-            Kustomization {commit.kustomization} lands it after the merge
-            {commit.prune ? '' : ', without pruning'}.
+            {commit.repository}, {commit.directory} on {commit.base}.
+            {commit.kustomization &&
+              ` Flux Kustomization ${commit.kustomization} lands it after the merge${
+                commit.prune ? '' : ', without pruning'
+              }.`}
           </Text>
           {commit.pullRequest && (
             <div>
@@ -46,14 +55,14 @@ export function ClusterManagerCommitOutcome({
                 variant="secondary"
                 size="small"
               >
-                Open the pull request ↗
+                Review pull request ↗
               </ButtonLink>
             </div>
           )}
           {liveSteps.length > 0 && (
             <Flex direction="column" gap="1" data-testid="live-steps">
               <Text variant="body-small">
-                After the merge, the installation still needs:
+                After the merge, the {placeNoun} still needs:
               </Text>
               {liveSteps.map(step => (
                 <Text key={step} variant="body-small" color="secondary">

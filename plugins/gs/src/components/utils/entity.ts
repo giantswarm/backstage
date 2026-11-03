@@ -204,7 +204,7 @@ export type BuildToolchain = {
 
 /**
  * Whether the importer found an architect orb in the repo's CI config, as a
- * release pin or otherwise. Gates the "Build toolchain" column.
+ * release pin or otherwise. Gates the "Architect Orb Version" column.
  */
 export const isEntityBuildToolchainAvailable = (entity: Entity) =>
   Boolean(

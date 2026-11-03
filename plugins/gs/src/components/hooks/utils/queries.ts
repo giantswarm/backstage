@@ -1,4 +1,5 @@
 import { Query, QueryCache, UseQueryResult } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 export type ErrorInfo = {
   installationName: string;
@@ -37,7 +38,7 @@ export const getInstallationsQueriesInfo = <T>(
     }),
   );
 
-  const isLoading = queries.some(query => query.isLoading);
+  const isLoading = queries.some(isAwaitingData);
   const retry = () => {
     for (const query of queries) {
       query.refetch();

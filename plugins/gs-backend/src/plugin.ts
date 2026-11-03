@@ -10,8 +10,10 @@ import {
 } from '@backstage/integration';
 import { registerMcpActions } from './mcpActions';
 import { createRouter } from './router';
-import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
-import { mimirServiceRef } from './services/MimirService';
+import {
+  containerRegistryServiceRef,
+  mimirServiceRef,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
 
 /**
@@ -62,7 +64,9 @@ export const gsPlugin = createBackendPlugin({
               config,
               auth,
               discovery,
+              logger,
             }),
+            logger,
           }),
         );
 

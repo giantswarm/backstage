@@ -77,6 +77,30 @@ you see it:
   want them to fail — worth doing on a package you are actively migrating,
   unusable repo-wide until the backlog is gone.
 
+## Commits and resource names
+
+A git commit SHA is shown in 7 characters, as `git log --oneline` prints it,
+wherever the portal shows one: skill pins, agent and skill revisions,
+workspace heads, Flux revisions (`main@sha1:<sha>`), versions that carry a
+commit (`1.2.3-<sha>`), the release footer. A digest (`sha256:`, `sha384:`,
+`sha512:`, `blake3:`, or a bare 64-hex value, which may be a checksum as well
+as a SHA-256 commit) keeps its prefix and 12 characters. One helper does it,
+for the frontend and the backend's messages alike:
+
+- `shortSha(value)` in `@giantswarm/backstage-plugin-gs-common`, re-exported
+  by `ui-react`. It finds a full 40- or 64-hex hash inside the value and
+  leaves anything else as it is: a tag, a semver, an abbreviated SHA (Flux's
+  `1.2.3+<12 hex>` included), since its shape cannot tell a commit from any
+  other hex token.
+- `CommitSha` in `ui-react` renders the short form with the full value at
+  hand: its `title` on a pointer, a copy button beside it on a touch screen.
+  Inside a link, a row or a selectable card, where a button cannot go, pass
+  `copy={false}`: the `title` alone carries the full value there.
+
+A Kubernetes resource in a `FactList` shows its namespace and name as two
+facts, Namespace and Name, through `namespacedNameFacts` (a `ui-react` util); a
+second resource in the same list passes its `kind` to prefix the labels.
+
 ## Toasts
 
 A toast (`toastApiRef` from `@backstage/frontend-plugin-api`) is an
@@ -195,8 +219,7 @@ repo is therefore hand-rolled, using one of three strategies.
    maxHeight: `calc(100dvh - ${PLUGIN_CONTENT_VIEWPORT_OFFSET}px)`,
    ```
 
-   `plugins/ai-chat/.../RecentConversations`,
-   `plugins/agent-platform/.../SessionSwitcherRail`.
+   `plugins/ai-chat/.../RecentConversations`.
 
 3. **Measured offset.** `window.innerHeight - node.getBoundingClientRect().top`,
    re-measured on resize and via a `ResizeObserver`. The only one that survives a

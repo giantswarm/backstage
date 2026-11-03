@@ -1,4 +1,4 @@
-import { KubeObjectInterface } from '../KubeObject';
+import { crds } from '@giantswarm/k8s-types';
 import { ProviderCluster } from './ProviderCluster';
 
 /**
@@ -14,18 +14,9 @@ export interface AzureASOManagedClusterResource {
   };
 }
 
-/**
- * The CAPZ managed infrastructure cluster (AKS). `@giantswarm/k8s-types` does
- * not ship the CAPZ managed CRDs, so this covers the fields the plugins read.
- */
-export interface AzureASOManagedClusterInterface extends KubeObjectInterface {
-  spec?: {
-    resources?: AzureASOManagedClusterResource[];
-  };
-  status?: {
-    ready?: boolean;
-  };
-}
+/** The CAPZ managed infrastructure cluster (AKS). */
+export type AzureASOManagedClusterInterface =
+  crds.capz.v1beta1.AzureASOManagedCluster;
 
 /** The API group of the ASO `ResourceGroup` kind. */
 const RESOURCE_GROUP_API_GROUP = 'resources.azure.com';
@@ -44,7 +35,8 @@ export class AzureASOManagedCluster extends ProviderCluster<AzureASOManagedClust
    * sit in another region, so none of them is a substitute.
    */
   getLocation() {
-    const resources = this.jsonData.spec?.resources ?? [];
+    const resources = (this.jsonData.spec?.resources ??
+      []) as AzureASOManagedClusterResource[];
 
     const resourceGroup = resources.find(
       resource =>

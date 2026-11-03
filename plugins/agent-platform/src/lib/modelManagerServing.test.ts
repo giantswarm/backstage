@@ -19,7 +19,6 @@ import {
   clientEndpointOf,
   managerRefOf,
   namespaceOfServedUrl,
-  notableCapabilities,
   sharedHostsOf,
   toGpuNodeFromManager,
   toServedModelFromManager,
@@ -416,14 +415,6 @@ describe('model features', () => {
       false,
     );
     expect(lacksToolCalling({ capabilities: undefined })).toBe(false);
-  });
-
-  it('hides the implied completion feature', () => {
-    expect(notableCapabilities(['vision', 'completion', 'tools'])).toEqual([
-      'vision',
-      'tools',
-    ]);
-    expect(notableCapabilities(['completion'])).toEqual([]);
   });
 });
 

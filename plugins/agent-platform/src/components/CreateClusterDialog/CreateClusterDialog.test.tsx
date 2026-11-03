@@ -2,7 +2,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
@@ -28,11 +28,12 @@ jest.mock('../CodeBlock', () => ({
 
 // The organizations and the cloud identities are read from the installation's
 // Kubernetes API; the dialog sees them as the kubernetes-react hook returns.
+let mockOrganizationNames = ['acme'];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: (_installation: string, resourceClass: { kind: string }) => ({
     resources: (resourceClass.kind === 'Organization'
-      ? ['acme']
+      ? mockOrganizationNames
       : ['default-identity']
     ).map(name => ({ getName: () => name })),
     isLoading: false,
@@ -115,6 +116,8 @@ type Scenario = {
   commitRefused?: boolean;
   /** create_cluster refuses every call: muster's session is not connected. */
   notConnected?: boolean;
+  /** list_releases never answers. */
+  releasesPending?: boolean;
 };
 
 const NOT_FROM_GIT =
@@ -135,7 +138,7 @@ function makeMusterApi(scenario: Scenario = {}) {
             tools: ['create_cluster', 'delete_cluster', 'list_releases'],
           };
         case 'x_cluster-manager_list_releases':
-          return RELEASES;
+          return scenario.releasesPending ? new Promise(() => {}) : RELEASES;
         case 'x_cluster-manager_list_clusters':
           return { clusters: [{ name: 'taken1', namespace: 'org-acme' }] };
         case 'x_cluster-manager_create_cluster': {
@@ -181,9 +184,15 @@ function makeMusterApi(scenario: Scenario = {}) {
 
 const analyticsApi = mockApis.analytics.mock();
 
-beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
+beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
+  mockOrganizationNames = ['acme'];
+});
 
-async function renderDialog(scenario: Scenario = {}) {
+async function renderDialog(
+  scenario: Scenario = {},
+  installations: string[] = ['inst-1'],
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -197,7 +206,7 @@ async function renderDialog(scenario: Scenario = {}) {
     >
       <QueryClientProvider client={queryClient}>
         <CreateClusterDialog
-          installations={['inst-1']}
+          installations={installations}
           isOpen
           onOpenChange={() => {}}
         />
@@ -214,7 +223,6 @@ async function fillAndReview(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('option', { name: 'acme' }));
   await user.type(screen.getByLabelText(/^Name/), 'demo1');
   const review = screen.getByRole('button', { name: 'Review' });
-  await waitFor(() => expect(review).toBeEnabled());
   await user.click(review);
   await screen.findByTestId('cluster-review');
 }
@@ -233,6 +241,71 @@ describe('CreateClusterDialog', () => {
       await screen.findByRole('button', {
         name: /33\.1\.0 · Kubernetes 1\.33\.4/,
       }),
+    ).toBeInTheDocument();
+  });
+
+  it('marks what is missing on Review, focuses it, and dry-runs nothing', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog();
+    await screen.findByRole('button', { name: /Pick an organization/ });
+
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+
+    const organization = screen.getByRole('button', {
+      name: /Pick an organization/,
+    });
+    expect(organization).toHaveAccessibleDescription(
+      expect.stringContaining('Choose an organization.'),
+    );
+    expect(organization).toHaveFocus();
+    const name = screen.getByLabelText(/^Name/);
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a name for the cluster.'),
+    );
+    expect(writesOf(callTool)).toHaveLength(0);
+    expect(screen.queryByTestId('cluster-review')).toBeNull();
+  });
+
+  it('says the providers are still being read when Review is pressed before they are', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ releasesPending: true });
+    await screen.findByRole('button', { name: /Pick an organization/ });
+
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(
+      screen.getByText('Wait until the providers are read, then choose one.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/offers no provider/)).not.toBeInTheDocument();
+  });
+
+  it('checks the name when the person leaves it, not while they type', async () => {
+    const user = userEvent.setup();
+    await renderDialog();
+    const name = await screen.findByLabelText(/^Name/);
+
+    await user.type(name, '1demo');
+    expect(name).not.toHaveAttribute('aria-invalid');
+
+    await user.tab();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('starting with a letter'),
+    );
+
+    await user.clear(name);
+    await user.type(name, 'demo1');
+    expect(name).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('offers the cloud identities of the preselected aws line by name', async () => {
+    const user = userEvent.setup();
+    await renderDialog();
+    await user.click(
+      await screen.findByRole('button', { name: /The chart's default/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: 'default-identity' }),
     ).toBeInTheDocument();
   });
 
@@ -256,7 +329,7 @@ describe('CreateClusterDialog', () => {
       await screen.findByText('Pull request #7 opened as jane'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/7');
     expect(writesOf(callTool)).toEqual([
       [
@@ -332,8 +405,39 @@ describe('CreateClusterDialog', () => {
   });
 });
 
+describe('CreateClusterDialog · the selects at scale', () => {
+  // The dialog renders on the classic Clusters page, so its selects stay as on
+  // main: no type-ahead, however long the list.
+  it('keeps plain selects without a search over 300 organizations and 50 installations', async () => {
+    mockOrganizationNames = Array.from(
+      { length: 300 },
+      (_, i) => `org-${String(i).padStart(3, '0')}`,
+    );
+    const user = userEvent.setup();
+    await renderDialog(
+      {},
+      Array.from({ length: 50 }, (_, i) => `inst-${i + 1}`),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: /Pick an organization/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: 'org-299' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
+    expect(
+      await screen.findByRole('option', { name: 'inst-50' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+});
+
 describe('the form’s checks', () => {
-  it('checks the name while typing', () => {
+  it('says why a name cannot be used', () => {
     expect(clusterNameProblem('', [])).toBeUndefined();
     expect(clusterNameProblem('demo1', [])).toBeUndefined();
     expect(clusterNameProblem('1demo', [])).toMatch(/starting with a letter/);

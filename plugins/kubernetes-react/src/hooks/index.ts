@@ -9,6 +9,7 @@ export * from './utils/createResource';
 export * from './utils/deleteResource';
 export * from './utils/fetchResourceList';
 export * from './utils/k8sResponseError';
+export { getK8sListPath } from './utils/k8sPath';
 export * from './utils/patchResource';
 export * from './utils/queries';
 export * from './utils/queryPersistence';

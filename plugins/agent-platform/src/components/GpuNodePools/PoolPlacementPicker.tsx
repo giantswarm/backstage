@@ -23,7 +23,7 @@ import {
   type NodePoolWriteResult,
   type Refusal,
 } from '../../lib/clusterManager';
-import { gpuCapacityRouteRef } from '../../routes';
+import { modelCacheRouteRef } from '../../routes';
 
 /** What this installation's `create_node_pool` takes of the two choices. */
 export type PlacementOffer = {
@@ -48,6 +48,12 @@ export type PoolPlacementPickerProps = {
    * the slice would mount (giantswarm/backstage#2493).
    */
   review?: NodePoolWriteResult;
+  /**
+   * One section only: the form keeps the zones — whose default, every zone,
+   * fits most pools — under More options, and the cache, a monthly bill,
+   * in sight. Both when absent.
+   */
+  part?: 'zones' | 'cache';
 };
 
 /** The id of the zones picker. */
@@ -60,7 +66,7 @@ export const EVERY_ZONE =
   'The nodes may launch in every zone of the cluster; Karpenter picks by capacity.';
 export const PICK_A_ZONE = 'Pick at least one zone.';
 export const ZONES_PENDING =
-  'Pick a cluster — its zones are listed here, every one chosen.';
+  'Pick a cluster to see its zones; every zone is chosen by default.';
 
 /**
  * The cache's consequence, in one line each way (decisions of 2026-09-18 on
@@ -70,7 +76,7 @@ export const ZONES_PENDING =
 export const CACHE_ON_SAVES =
   'The download and the compile of every later start of the same model are saved.';
 export const CACHE_OFF_NOTE =
-  "Nothing stands: the weights land on the node's disk at every start, and a cold start costs about 90 s more.";
+  "Without a cache, the weights land on the node's disk at every start, and a cold start takes about 90 s longer.";
 export const CACHE_OFF_COST =
   'Switching it on creates a cache claim, a volume billed every month it exists; its price shows here.';
 /** The switch while the cluster keeps a cache: every pool serves from it, and the switch is not the pool's to flip. */
@@ -78,7 +84,7 @@ export const CACHE_KEPT_NOTE =
   'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache';
 export const READING_PRICE = "Reading the claim's price from cluster-manager…";
 export const BILLED_STANDING =
-  'billed while the claim exists, after this pool is removed too, until the cache is removed on the GPU capacity page.';
+  'billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.';
 
 /** How a claim stands in one line: `100 GiB gp3 at 500 MiB/s · $27.37/month · since 18 Sept 2026 · Bound in eu-central-1b`. */
 export function describeClaimStanding(claim: CacheClaim): string {
@@ -157,7 +163,7 @@ export function cacheOffLine(claims: CacheClaim[] | null | undefined): string {
       return `${claim.name}${price ? ` (${price})` : ''}`;
     })
     .join(', ');
-  return `${CACHE_OFF_NOTE} The existing cache ${kept} stays and keeps costing until it is removed on the GPU capacity page.`;
+  return `${CACHE_OFF_NOTE} The existing cache ${kept} stays and keeps costing until it is removed under Model cache.`;
 }
 
 /** Whether the zones chosen are every zone of the cluster. */
@@ -215,22 +221,29 @@ export function PoolPlacementPicker({
   onCacheChange,
   isBusy,
   review,
+  part,
 }: PoolPlacementPickerProps) {
-  const capacityRoute = useRouteRef(gpuCapacityRouteRef);
-  if (!offers.zones && !offers.cache) {
+  const cacheRoute = useRouteRef(modelCacheRouteRef);
+  const showsZones = offers.zones && part !== 'cache';
+  const showsCache = offers.cache && part !== 'zones';
+  if (!showsZones && !showsCache) {
     return null;
   }
   const clusterZones = cluster?.zones;
   const hasZones = Boolean(clusterZones && clusterZones.length > 0);
   const kept = cacheKeptByCluster(cluster);
   const keptClaim = mountedClaimOf(cluster);
-  const capacityPath = capacityRoute?.();
+  const cachePath = cacheRoute?.();
   // The cost is read from a dry run with the cache on; the last answer for
   // the cache off prices nothing and is not this switch's.
   const priced = review?.cache?.enabled ? review.cache : undefined;
   return (
-    <Flex direction="column" gap="3" data-testid="pool-placement-picker">
-      {offers.zones && (
+    <Flex
+      direction="column"
+      gap="3"
+      data-testid={part ? `pool-placement-${part}` : 'pool-placement-picker'}
+    >
+      {showsZones && (
         <Flex
           direction="column"
           gap="1"
@@ -239,7 +252,7 @@ export function PoolPlacementPicker({
         >
           <CheckboxGroup
             label="Zones"
-            description="Where the pool's nodes may launch: every zone of the cluster by default, any combination. Fewer zones is a capacity risk taken knowingly; with the model cache on, the pool follows its cache once a claim is bound."
+            description="Every zone by default. Fewer zones risks capacity; with the model cache on, the pool follows its cache once a claim is bound."
             value={zones}
             onChange={onZonesChange}
             isDisabled={isBusy || !hasZones}
@@ -288,7 +301,7 @@ export function PoolPlacementPicker({
           )}
         </Flex>
       )}
-      {offers.cache && (
+      {showsCache && (
         <Flex direction="column" gap="1" data-testid="cache-picker">
           <Switch
             label="Keep a model cache"
@@ -303,14 +316,13 @@ export function PoolPlacementPicker({
               data-testid="cache-kept"
             >
               {CACHE_KEPT_NOTE}
-              {capacityPath ? (
+              {cachePath ? (
                 <>
                   {' '}
-                  under <Link to={capacityPath}>Model cache</Link> on the GPU
-                  capacity page.
+                  under <Link to={cachePath}>Model cache</Link>.
                 </>
               ) : (
-                ' under Model cache on the GPU capacity page.'
+                ' under Model cache.'
               )}
               {keptClaim
                 ? ` The cache: ${keptClaim.name} — ${describeClaimStanding(keptClaim)}.`

@@ -1,0 +1,1 @@
+export { HiveKnowledgeTab } from './HiveKnowledgeTab';

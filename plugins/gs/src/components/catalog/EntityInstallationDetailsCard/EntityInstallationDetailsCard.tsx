@@ -1,7 +1,10 @@
 import { Flex } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { Link, MarkdownContent } from '@backstage/core-components';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { Link } from '@backstage/core-components';
+import {
+  GSMarkdownContent,
+  InfoCard,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { AboutField, ScrollContainer } from '../../UI';
 
@@ -84,7 +87,7 @@ export function EntityInstallationDetailsCard() {
 
       {entity.metadata.annotations?.['giantswarm.io/access-docs-markdown'] && (
         <InfoCard title="Non-standard access">
-          <MarkdownContent
+          <GSMarkdownContent
             content={
               entity.metadata.annotations?.[
                 'giantswarm.io/access-docs-markdown'

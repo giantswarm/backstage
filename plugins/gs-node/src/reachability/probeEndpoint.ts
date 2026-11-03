@@ -101,6 +101,11 @@ export type ProbeEndpointOptions = {
 /** Node error codes that mean the name could not be resolved. */
 const DNS_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'EAI_FAIL', 'EAI_NONAME']);
 
+/** Whether an error code names a failed DNS lookup of the host name. */
+export function isDnsErrorCode(code: string | undefined): boolean {
+  return code !== undefined && DNS_CODES.has(code);
+}
+
 /**
  * Whether an error code names a TLS handshake or certificate-trust failure.
  * OpenSSL codes (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`, `CERT_HAS_EXPIRED`,
@@ -185,7 +190,7 @@ export function classifyProbeFailure(
   if (!code) {
     return 'connection failed';
   }
-  if (DNS_CODES.has(code)) {
+  if (isDnsErrorCode(code)) {
     return `DNS lookup failed (${code})`;
   }
   if (code === 'ECONNREFUSED') {

@@ -4,16 +4,7 @@ import {
   KustomizationTreeNode,
   KustomizationTreeNodeData,
 } from '../utils/KustomizationTreeBuilder';
-import {
-  HelmRelease,
-  Kustomization,
-  GitRepository,
-  OCIRepository,
-  HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { hasDetailsPanel } from '../../../utils/fluxResources';
 import {
   FixedSizeTree as Tree,
   TreeWalkerValue,
@@ -131,15 +122,7 @@ const Node = ({
     />
   );
 
-  const showLink =
-    data.kind === Kustomization.kind ||
-    data.kind === HelmRelease.kind ||
-    data.kind === GitRepository.kind ||
-    data.kind === OCIRepository.kind ||
-    data.kind === HelmRepository.kind ||
-    data.kind === ImagePolicy.kind ||
-    data.kind === ImageRepository.kind ||
-    data.kind === ImageUpdateAutomation.kind;
+  const showLink = hasDetailsPanel(data.kind);
 
   return (
     <div

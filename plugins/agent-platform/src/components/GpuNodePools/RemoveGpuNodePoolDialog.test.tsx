@@ -212,12 +212,25 @@ describe('RemoveGpuNodePoolDialog', () => {
     expect(served).not.toHaveTextContent('elsewhere');
 
     const confirm = screen.getByRole('button', { name: 'Remove pool' });
-    expect(confirm).toBeDisabled();
-    await user.type(
-      screen.getByLabelText(/Type wc1-gpu-l4 to confirm/),
-      'wc1-gpu-l4',
-    );
+    // Pressable; pressed before the name is typed, the field says so.
     expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    expect(callTool).not.toHaveBeenCalledWith(
+      'x_cluster-manager_delete_node_pool',
+      expect.anything(),
+      expect.anything(),
+    );
+    const typed = screen.getByRole('textbox', {
+      name: /Type wc1-gpu-l4 to confirm/,
+    });
+    expect(typed).toHaveAttribute('aria-invalid', 'true');
+    expect(typed).toHaveFocus();
+    expect(
+      screen.getByText('Type wc1-gpu-l4 to confirm the removal.'),
+    ).toBeInTheDocument();
+
+    await user.type(typed, 'wc1-gpu-l4');
+    expect(typed).not.toHaveAttribute('aria-invalid');
     await user.click(confirm);
     await waitFor(() =>
       expect(callTool).toHaveBeenCalledWith(

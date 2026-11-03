@@ -1,3 +1,7 @@
+import {
+  getHelmReleaseName,
+  getHelmReleaseNamespace,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useAsyncCluster } from './useCurrentCluster';
 import { getClusterOrganization, isManagementCluster } from '../utils';
 
@@ -10,6 +14,10 @@ export type ClusterPageTarget = {
   organization: string;
   /** The installation's own cluster. */
   isManagementCluster: boolean;
+  /** Deletion was requested and the cluster is not gone yet. */
+  isDeleting: boolean;
+  /** The Flux HelmRelease whose chart rendered the cluster; absent for an App-based one. */
+  helmRelease?: { name: string; namespace: string };
 };
 
 const ORG_NAMESPACE_PREFIX = 'org-';
@@ -23,11 +31,13 @@ const ORG_NAMESPACE_PREFIX = 'org-';
  * @public
  */
 export function useClusterPageTarget(): ClusterPageTarget | undefined {
-  const { installationName, cluster } = useAsyncCluster();
+  const { installationName, cluster, isDeleting } = useAsyncCluster();
   if (!cluster) {
     return undefined;
   }
   const namespace = cluster.getNamespace() ?? '';
+  const helmReleaseName = getHelmReleaseName(cluster);
+  const helmReleaseNamespace = getHelmReleaseNamespace(cluster);
   return {
     installationName,
     name: cluster.getName(),
@@ -38,5 +48,10 @@ export function useClusterPageTarget(): ClusterPageTarget | undefined {
         ? namespace.slice(ORG_NAMESPACE_PREFIX.length)
         : ''),
     isManagementCluster: isManagementCluster(cluster),
+    isDeleting,
+    helmRelease:
+      helmReleaseName && helmReleaseNamespace
+        ? { name: helmReleaseName, namespace: helmReleaseNamespace }
+        : undefined,
   };
 }

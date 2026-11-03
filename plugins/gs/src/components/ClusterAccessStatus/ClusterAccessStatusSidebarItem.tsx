@@ -21,7 +21,7 @@ import {
   mutedInstallationsApiRef,
   useMutedInstallations,
 } from '../../apis/mutedInstallations';
-import { gsAuthApiRef } from '../../apis/auth/types';
+import { gsAuthProvidersApiRef } from '../../apis/auth/types';
 
 const STATE_COLORS: Record<ClusterAccessState, string> = {
   connecting: '#9e9e9e',
@@ -167,7 +167,10 @@ export function ClusterAccessStatusSidebarItem() {
   const classes = useStyles();
   const statusApi = useApi(clusterAccessStatusApiRef);
   const mutedApi = useApi(mutedInstallationsApiRef);
-  const mainAuthApi = useApi(gsAuthApiRef);
+  // The main auth API is resolved only for "Sign in again": a portal without a
+  // main auth provider (`gs.authProvider` unset) has none, and resolving it
+  // at render would throw and take the sidebar down.
+  const authProvidersApi = useApi(gsAuthProvidersApiRef);
   const errorApi = useApi(errorApiRef);
   // In the mobile sidebar the item is a full-width row in the Menu overlay, so
   // the popover opens above it instead of to its right.
@@ -337,7 +340,9 @@ export function ClusterAccessStatusSidebarItem() {
                 fullWidth
                 onClick={() => {
                   setAnchorEl(null);
-                  mainAuthApi.signIn().catch(error => errorApi.post(error));
+                  Promise.resolve()
+                    .then(() => authProvidersApi.getMainAuthApi().signIn())
+                    .catch(error => errorApi.post(error));
                 }}
               >
                 Sign in again

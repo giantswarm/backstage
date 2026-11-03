@@ -4,9 +4,10 @@ import {
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
 import { discoveryApiRef, fetchApiRef } from '@backstage/core-plugin-api';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, screen, waitFor } from '@testing-library/react';
+import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import { gsAuthProvidersApiRef } from '../../../apis/auth';
 import {
   __resetInstallationsConfigForTests,
@@ -46,7 +47,7 @@ function known(
 /** The backend's answer for the fleet, or a pending or failed request. */
 type Answer = Record<string, ManagementClusterVersions> | 'pending' | number;
 
-function versionsFetch(answer: Answer) {
+function versionsFetch(answer: Answer, readInBrowser: string[] = []) {
   return jest.fn(async (_url: string, _init?: RequestInit) => {
     if (answer === 'pending') {
       return new Promise<Response>(() => {});
@@ -57,24 +58,53 @@ function versionsFetch(answer: Answer) {
     return {
       ok: true,
       status: 200,
-      json: async () => ({ installations: answer }),
+      json: async () => ({ installations: answer, readInBrowser }),
     } as Response;
   });
 }
 
-function wrapper(fetch: jest.Mock) {
-  const queryClient = new QueryClient({
+/** The Kubernetes plugin's proxy: `/version` for each browser-read installation, no CAPI. */
+function browserProxy(versions: Record<string, string>) {
+  return jest.fn(
+    async ({ clusterName, path }: { clusterName: string; path: string }) =>
+      path === '/version'
+        ? ({
+            ok: true,
+            status: 200,
+            json: async () => ({ gitVersion: versions[clusterName] }),
+          } as Response)
+        : ({
+            ok: false,
+            status: 404,
+            statusText: '',
+            json: async () => ({ message: 'not found' }),
+          } as Response),
+  );
+}
+
+let queryClient: QueryClient;
+
+function wrapper(
+  fetch: jest.Mock,
+  options: {
+    proxy?: jest.Mock;
+    getIdToken?: (options?: { optional?: boolean }) => Promise<string>;
+  } = {},
+) {
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const getIdToken = options.getIdToken ?? (async () => 'main-id-token');
   return ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
         [fetchApiRef, { fetch }],
+        [kubernetesApiRef, { proxy: options.proxy ?? browserProxy({}) } as any],
         [discoveryApiRef, { getBaseUrl: async () => 'http://backend/api/gs' }],
         [
           gsAuthProvidersApiRef,
           {
-            getMainAuthApi: () => ({ getIdToken: async () => 'main-id-token' }),
+            getMainAuthApi: () => ({ getIdToken }),
           } as any,
         ],
       ]}
@@ -106,10 +136,11 @@ async function renderProbe(
   installations: string[],
   answer: Answer,
   rows = installations,
+  options: Parameters<typeof wrapper>[1] & { readInBrowser?: string[] } = {},
 ) {
-  const fetch = versionsFetch(answer);
+  const fetch = versionsFetch(answer, options.readInBrowser);
   setInstallationsConfig(installations.map(name => ({ name })));
-  const Wrapper = wrapper(fetch);
+  const Wrapper = wrapper(fetch, options);
   await renderInTestApp(
     <Wrapper>
       <Probe names={rows} />
@@ -147,6 +178,41 @@ describe('useManagementClusterVersionColumns', () => {
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('http://backend/api/gs/installations/versions');
     expect(init?.headers).toEqual({ 'gs-subject-token': 'main-id-token' });
+  });
+
+  it('never persists the person’s answer to the browser’s storage', async () => {
+    await renderProbe(['alpha'], { alpha: known('v1.35.8') });
+
+    await screen.findByTestId('version-kubernetes-alpha');
+    expect(
+      queryClient
+        .getQueryCache()
+        .find({ queryKey: ['installations', 'management-cluster-versions'] })
+        ?.meta,
+    ).toEqual({ persist: false });
+  });
+
+  it('reads in the browser what the backend leaves to it', async () => {
+    const proxy = browserProxy({ own: 'v1.33.4' });
+    await renderProbe(
+      ['alpha', 'own'],
+      { alpha: known('v1.35.8') },
+      undefined,
+      {
+        proxy,
+        readInBrowser: ['own'],
+      },
+    );
+
+    expect(
+      await screen.findByTestId('version-kubernetes-own'),
+    ).toHaveTextContent('1.33.4');
+    expect(screen.getByTestId('version-kubernetes-alpha')).toHaveTextContent(
+      '1.35.8',
+    );
+    expect(
+      proxy.mock.calls.map(([{ clusterName }]) => clusterName),
+    ).not.toContain('alpha');
   });
 
   it('shows a skeleton in every row while the versions load', async () => {
@@ -207,6 +273,31 @@ describe('useManagementClusterVersionColumns', () => {
     );
   });
 
+  it('says not signed in when the main sign-in is declined', async () => {
+    await renderProbe(['alpha'], { alpha: known('v1.35.8') }, undefined, {
+      getIdToken: async () => {
+        throw Object.assign(new Error('Login failed, popup was closed'), {
+          name: 'RejectedError',
+        });
+      },
+    });
+
+    const cell = await screen.findByTestId('version-kubernetes-alpha');
+    expect(cell).toHaveTextContent('Not signed in');
+    expect(cell).not.toHaveTextContent('popup');
+  });
+
+  it('keeps a failed read short in the cell, the details on hover', async () => {
+    await renderProbe(['alpha'], 500);
+
+    const cell = await screen.findByTestId('version-kubernetes-alpha');
+    expect(cell).toHaveTextContent(/^Read failed$/);
+    expect(cell).toHaveAttribute(
+      'title',
+      'The portal could not read the management cluster versions (HTTP 500)',
+    );
+  });
+
   it('sorts in semver order and matches the table search', async () => {
     const fetch = versionsFetch({
       a: known('v1.9.0', '9.0.0'),
@@ -250,5 +341,94 @@ describe('useManagementClusterVersionColumns', () => {
         .filter(r => release.customFilterAndSearch!('34.', r, release))
         .map(r => r.entity.metadata.name),
     ).toEqual(['c']);
+  });
+});
+
+describe('useManagementClusterVersions after the portal session expired', () => {
+  /** Sets the tab's user activation, as the browser reports it. */
+  function gesture(isActive: boolean) {
+    Object.defineProperty(navigator, 'userActivation', {
+      configurable: true,
+      value: { isActive, hasBeenActive: true },
+    });
+  }
+
+  /**
+   * The main login: signed in until `expire()`. After that its optional path
+   * answers no token, and its interactive path opens the sign-in (recorded in
+   * `prompts`) and stays open.
+   */
+  function mainLogin() {
+    let signedIn = true;
+    const prompts: string[] = [];
+    const getIdToken = jest.fn(
+      async (options?: { optional?: boolean }): Promise<string> => {
+        if (signedIn) {
+          return 'main-id-token';
+        }
+        if (options?.optional) {
+          return '';
+        }
+        prompts.push('Login Required');
+        return new Promise<string>(() => {});
+      },
+    );
+    return {
+      getIdToken,
+      prompts,
+      expire: () => {
+        signedIn = false;
+      },
+    };
+  }
+
+  beforeEach(() => __resetInstallationsConfigForTests());
+  afterEach(() => {
+    delete (navigator as { userActivation?: unknown }).userActivation;
+  });
+
+  it('a background refetch opens no sign-in and shows the installations as not signed in', async () => {
+    gesture(false);
+    const login = mainLogin();
+    const fetch = await renderProbe(
+      ['alpha'],
+      { alpha: known('v1.35.8', '35.1.1') },
+      undefined,
+      { getIdToken: login.getIdToken },
+    );
+    expect(
+      await screen.findByTestId('version-kubernetes-alpha'),
+    ).toHaveTextContent('1.35.8');
+
+    login.expire();
+    await act(() => queryClient.refetchQueries());
+
+    await waitFor(() =>
+      expect(screen.getByTestId('version-kubernetes-alpha')).toHaveTextContent(
+        'Not signed in',
+      ),
+    );
+    expect(screen.getByTestId('version-release-alpha')).toHaveTextContent(
+      'Not signed in',
+    );
+    expect(login.prompts).toEqual([]);
+    expect(login.getIdToken).toHaveBeenLastCalledWith({ optional: true });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a read the person starts still asks for the sign-in', async () => {
+    gesture(true);
+    const login = mainLogin();
+    login.expire();
+    const fetch = await renderProbe(
+      ['alpha'],
+      { alpha: known('v1.35.8') },
+      undefined,
+      { getIdToken: login.getIdToken },
+    );
+
+    await waitFor(() => expect(login.prompts).toEqual(['Login Required']));
+    expect(login.getIdToken).toHaveBeenCalledWith({ optional: false });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

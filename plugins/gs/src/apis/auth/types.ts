@@ -1,5 +1,6 @@
 import {
   AuthProviderInfo,
+  AuthRequestOptions,
   BackstageIdentityApi,
   ConfigApi,
   OAuthApi,
@@ -35,6 +36,27 @@ export type AuthApi = OAuthApi &
   ProfileInfoApi &
   BackstageIdentityApi &
   SessionApi;
+
+/**
+ * A Kubernetes (OIDC) auth API of the portal: an {@link AuthApi} that can also
+ * hand out an ID token that lasts.
+ */
+export type LastingAuthApi = AuthApi & {
+  /**
+   * The session's ID token with at least `minLifetimeLeft` (a share of the
+   * token's lifetime, `exp` − `iat`, from 0 to 1) still ahead of it, for a
+   * request whose receiver keeps the token for as long as the work it starts
+   * runs (an agent turn). The session is refreshed silently for it when its
+   * token falls short, which a plain `getIdToken` only does in its last 3
+   * minutes; `request` applies to the session's token as in `getIdToken`.
+   * The refresh never opens a sign-in; when it fails, this resolves the
+   * session's token.
+   */
+  getLastingIdToken(
+    minLifetimeLeft: number,
+    request?: AuthRequestOptions,
+  ): Promise<string>;
+};
 
 export type AuthProvider = {
   providerName: string;
@@ -79,7 +101,9 @@ export type GSAuthProvidersApi = {
    * Async lookup of a per-installation kubernetes (OIDC) auth API, awaiting
    * lazy initialization first. Returns `undefined` if not configured.
    */
-  getKubernetesAuthApi: (providerName: string) => Promise<AuthApi | undefined>;
+  getKubernetesAuthApi: (
+    providerName: string,
+  ) => Promise<LastingAuthApi | undefined>;
   /**
    * Names of installations whose cluster access is fully covered by the token
    * broker (a Dex target, or muster with `clusterTokenAudience` set; never
@@ -109,4 +133,10 @@ export type GSAuthProvidersApiCreateOptions = {
    * to localStorage; tests pass their own.
    */
   signInConnectorMemory?: SignInConnectorMemory;
+  /**
+   * Whether a person started what runs now. Only then may a broker-backed
+   * cluster-token mint open the main sign-in; a background read without a
+   * session fails as session-expired. Defaults to the page's user activation.
+   */
+  hasUserGesture?: () => boolean;
 };

@@ -1,5 +1,6 @@
 import { ClusterAccessStatusStore } from './ClusterAccessStatusStore';
 import { ClusterAccessStatusEntry } from './types';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /** Let zen-observable flush its (next-tick) deliveries. */
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -10,14 +11,14 @@ describe('ClusterAccessStatusStore', () => {
 
     store.recordHealthy('golem');
     store.recordDegraded('alpha', 'API unreachable (timeout)');
-    store.recordSessionExpired('golem', 'Your session expired');
+    store.recordSessionExpired('golem', SESSION_EXPIRED_MESSAGE);
 
     expect(store.getSnapshot()).toEqual([
       expect.objectContaining({ installation: 'alpha', state: 'degraded' }),
       expect.objectContaining({
         installation: 'golem',
         state: 'session-expired',
-        reason: 'Your session expired',
+        reason: SESSION_EXPIRED_MESSAGE,
       }),
     ]);
   });

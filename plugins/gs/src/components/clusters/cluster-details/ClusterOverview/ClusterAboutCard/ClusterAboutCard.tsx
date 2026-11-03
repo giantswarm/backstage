@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Grid } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
@@ -26,6 +27,7 @@ import {
 } from '../../../../UI';
 import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
+import { useIsExpectedClusterError } from '../../../ClusterDetailsPage/useIsExpectedClusterError';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
@@ -47,6 +49,8 @@ import {
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { getClusterKey, useWorkerCapacity } from '../../../../hooks';
+import { WorkerCapacity } from '../../../WorkerCapacity';
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -106,6 +110,7 @@ function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
+  const isExpectedError = useIsExpectedClusterError();
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
@@ -143,7 +148,7 @@ export function ClusterAboutCard() {
   );
 
   let controlPlaneErrorMessage;
-  if (controlPlaneError) {
+  if (controlPlaneError && !isExpectedError(controlPlaneError)) {
     controlPlaneErrorMessage = getErrorMessage({
       error: controlPlaneError,
       resourceKind: (ControlPlaneModel ?? ControlPlane).kind,
@@ -163,6 +168,16 @@ export function ClusterAboutCard() {
   }
 
   useShowErrors(hasSupportedControlPlane ? controlPlaneErrors : null);
+
+  const clusters = useMemo(() => [cluster], [cluster]);
+  const { capacities } = useWorkerCapacity(clusters);
+  const workerCapacity = capacities.get(
+    getClusterKey({
+      installationName,
+      namespace: cluster.getNamespace(),
+      name: cluster.getName(),
+    }),
+  );
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
@@ -218,6 +233,23 @@ export function ClusterAboutCard() {
                 />
               )}
             </AsyncValue>
+          </AboutFieldValue>
+        </AboutField>
+
+        <AboutField label="Worker capacity">
+          <AboutFieldValue>
+            <AsyncValue
+              isLoading={workerCapacity?.isLoading ?? false}
+              errorMessage={workerCapacity?.errorMessage}
+              value={
+                workerCapacity?.capacity && (
+                  <WorkerCapacity
+                    capacity={workerCapacity.capacity}
+                    metricsStatus={workerCapacity.metricsStatus}
+                  />
+                )
+              }
+            />
           </AboutFieldValue>
         </AboutField>
 

@@ -1,0 +1,903 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+
+import { musterApiRef } from '../../apis';
+import { mcpServersRouteRef } from '../../routes';
+import { MCPServer } from '../../lib/k8s';
+import type { TransportDetectionState } from '../NewMcpServerPage/useTransportDetection';
+import { McpServersRouter } from '../McpServersRouter';
+
+// Each test walks the real multi-step flow with plenty of typing, which gets
+// slow when the whole plugin suite runs in parallel (same as BotPrsPage).
+jest.setTimeout(30_000);
+
+/** Registered servers of the active installation, per test. */
+let mockMcpServers: MCPServer[] = [];
+
+// The muster providers, whose instance the mock below stands for.
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+jest.mock('../MusterInstanceProvider', () => ({
+  useMusterInstance: () => ({
+    installations: ['gazelle'],
+    isLoadingInstallations: false,
+    isSingleInstallation: true,
+    installationInfos: [],
+    activeInstallation: 'gazelle',
+    activeInstallationInfo: {
+      name: 'gazelle',
+      endpoint: 'https://muster.gazelle.example.com/mcp',
+      requiresAuth: true,
+    },
+    setActiveInstallation: jest.fn(),
+    mcpServers: mockMcpServers,
+    isLoading: false,
+    retry: jest.fn(),
+  }),
+  useMusterSession: () => ({
+    authenticated: true,
+    connecting: false,
+    connect: jest.fn(),
+  }),
+}));
+
+// The probe has its own tests (lib/transportDetection); here its verdict is
+// set per test so the inline "Server found" states render deterministically
+// and the register flow's callTool assertions see no detect calls.
+let mockDetection: TransportDetectionState = {
+  detected: undefined,
+  probing: false,
+};
+jest.mock('../NewMcpServerPage/useTransportDetection', () => ({
+  useTransportDetection: () => mockDetection,
+}));
+
+const callTool = jest.fn();
+const listServers = jest.fn();
+const getAuthStatus = jest.fn();
+const filterTools = jest.fn();
+const describeTool = jest.fn();
+
+const musterApi = {
+  callTool,
+  listServers,
+  getAuthStatus,
+  filterTools,
+  describeTool,
+} as unknown as jest.Mocked<import('../../apis').MusterApi>;
+
+function renderWizard(path: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderInTestApp(
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>
+        {/* The frame's footer renders the actions the steps register, so the
+            slot provider the shell's page routes mount is mounted here too. */}
+        <PageHeaderActionsProvider>
+          <Routes>
+            <Route
+              path="/customize/connectors/*"
+              element={<McpServersRouter />}
+            />
+          </Routes>
+        </PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </TestApiProvider>,
+    {
+      initialRouteEntries: [path],
+      mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
+    },
+  );
+}
+
+/** Fills the Connect step and continues to Sign-in. */
+async function renderSignInStep() {
+  const result = await renderWizard('/customize/connectors/new');
+  await userEvent.type(
+    screen.getByLabelText(/^Server address/),
+    'https://jira.example.com/mcp',
+  );
+  await userEvent.type(screen.getByLabelText(/^Name/), 'Jira');
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  await screen.findByText('How do people sign in?');
+  return result;
+}
+
+/**
+ * `describe_tool` of a muster whose create and update take a display name
+ * (v5.43.0 and later) or not.
+ */
+function musterTakesDisplayName(takes: boolean) {
+  describeTool.mockImplementation((name: string) =>
+    Promise.resolve({
+      name,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          ...(takes ? { displayName: { type: 'string' } } : {}),
+        },
+      },
+    }),
+  );
+}
+
+/** The arguments of each `core_mcpserver_<tool>` call so far. */
+function toolCalls(tool: string): unknown[][] {
+  return callTool.mock.calls.filter(call => call[0] === tool);
+}
+
+describe('shell connector wizard', () => {
+  beforeEach(() => {
+    mockMcpServers = [];
+    mockDetection = { detected: undefined, probing: false };
+    jest.clearAllMocks();
+    callTool.mockResolvedValue({});
+    listServers.mockResolvedValue({ mcpServers: [] });
+    getAuthStatus.mockResolvedValue({ servers: [] });
+    filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    });
+    musterTakesDisplayName(true);
+  });
+
+  describe('Connect step', () => {
+    it('renders the in-content wizard frame with the three steps', async () => {
+      await renderWizard('/customize/connectors/new');
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Add connector' }),
+      ).toBeInTheDocument();
+      const strip = screen.getByRole('list', { name: 'Steps' });
+      expect(
+        within(strip)
+          .getAllByRole('listitem')
+          .map(item => item.textContent),
+      ).toEqual(['1Connect', '2Sign-in', '3Test']);
+      expect(screen.getByText('Connect an app')).toBeInTheDocument();
+      // The prototype's audience choice has no muster equivalent, so the
+      // wizard does not ask it.
+      expect(screen.queryByText(/Who can use it/)).not.toBeInTheDocument();
+    });
+
+    it('marks the invalid fields themselves on Continue instead of moving on', async () => {
+      await renderWizard('/customize/connectors/new');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      const address = screen.getByLabelText(/^Server address/);
+      expect(address).toHaveAttribute('aria-invalid', 'true');
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Enter the server address'),
+      );
+      // The first invalid field takes the focus.
+      expect(address).toHaveFocus();
+      const name = screen.getByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveAttribute('aria-invalid', 'true');
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name for the connector.'),
+      );
+      // Every problem has a field to show it, so no summary box.
+      expect(
+        screen.queryByText(/Fix before continuing/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('How do people sign in?'),
+      ).not.toBeInTheDocument();
+    });
+
+    // Live round L5: the field is labelled "Server address", so its problems
+    // say so — not the validator's "URL".
+    it('words the address problems after the field label', async () => {
+      await renderWizard('/customize/connectors/new');
+
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'not a url',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      const address = screen.getByLabelText(/^Server address/);
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Server address must be an http(s) URL'),
+      );
+      expect(address).not.toHaveAccessibleDescription(/^URL/);
+    });
+
+    it('checks the address when the person leaves it, and clears the error once it is fixed', async () => {
+      await renderWizard('/customize/connectors/new');
+      const address = screen.getByLabelText(/^Server address/);
+
+      await userEvent.type(address, 'mcp.example.com');
+      expect(address).not.toHaveAttribute('aria-invalid');
+
+      await userEvent.tab();
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Server address must be an http(s) URL'),
+      );
+
+      await userEvent.clear(address);
+      await userEvent.type(address, 'https://mcp.example.com/mcp');
+      expect(address).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('shows the probe verdict as the inline "Server found" state', async () => {
+      mockDetection = {
+        detected: 'streamable-http',
+        probing: false,
+        probedUrl: 'https://jira.example.com/mcp',
+        detection: {
+          transport: 'streamable-http',
+          reachable: true,
+          requiresAuth: true,
+          serverName: 'Jira MCP',
+        },
+      };
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+
+      expect(await screen.findByText('Server found')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Jira MCP · Streamable HTTP · asks for a sign-in/),
+      ).toBeInTheDocument();
+    });
+
+    it('says when the probe could not reach the address', async () => {
+      mockDetection = {
+        detected: undefined,
+        probing: false,
+        probedUrl: 'https://jira.example.com/mcp',
+        detection: {
+          transport: 'unknown',
+          reachable: false,
+          requiresAuth: false,
+        },
+      };
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+
+      expect(
+        await screen.findByText(/Muster could not reach this address/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Server found')).not.toBeInTheDocument();
+    });
+
+    it('sends a sign-in deep link back while the connection details are incomplete', async () => {
+      await renderWizard('/customize/connectors/new/auth');
+
+      expect(await screen.findByText('Connect an app')).toBeInTheDocument();
+      expect(
+        screen.queryByText('How do people sign in?'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Sign-in step', () => {
+    it('offers exactly the four decided modes, and none of the omitted ones', async () => {
+      await renderSignInStep();
+
+      const choices = screen.getAllByRole('radio');
+      expect(choices.map(c => c.getAttribute('aria-label'))).toEqual([
+        'Company login',
+        'Each person signs in with their own account',
+        'No sign-in',
+        'AWS request signing (SigV4)',
+      ]);
+      // Decided against: token exchange, forwardIdentity and plaintext
+      // credential headers never show up.
+      expect(screen.queryByText(/token exchange/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/forwardIdentity/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/API key/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument();
+    });
+
+    it('starts a new connector on Company login, marked as recommended', async () => {
+      await renderSignInStep();
+
+      const sso = screen.getByRole('radio', { name: 'Company login' });
+      expect(sso).toHaveAttribute('aria-checked', 'true');
+      expect(within(sso).getByText(/^Recommended\./)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'No sign-in' })).toHaveAttribute(
+        'aria-checked',
+        'false',
+      );
+    });
+
+    it('does not offer AWS request signing on a transport the CRD forbids', async () => {
+      mockDetection = { detected: 'sse', probing: false };
+      await renderSignInStep();
+
+      expect(
+        screen.queryByRole('radio', { name: 'AWS request signing (SigV4)' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('registers a no-sign-in connector: validate, then create', async () => {
+      await renderSignInStep();
+      await userEvent.click(screen.getByRole('radio', { name: 'No sign-in' }));
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      const expected = {
+        name: 'jira',
+        displayName: 'Jira',
+        type: 'streamable-http',
+        url: 'https://jira.example.com/mcp',
+        autoStart: true,
+      };
+      expect(toolCalls('core_mcpserver_validate')).toEqual([
+        ['core_mcpserver_validate', expected, 'gazelle'],
+      ]);
+      expect(toolCalls('core_mcpserver_create')).toEqual([
+        ['core_mcpserver_create', expected, 'gazelle'],
+      ]);
+    });
+
+    it('keeps the typed name as the display name, registered under the derived one', async () => {
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://stackoverflow.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Stack Overflow');
+      // The create form is as it was: the derived name is said under the field.
+      expect(screen.getByText(/^Registered as/)).toHaveTextContent(
+        'Registered as stack-overflow — used in its tool names.',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        name: 'stack-overflow',
+        displayName: 'Stack Overflow',
+      });
+    });
+
+    it('sends no display name for a plain id', async () => {
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'jira');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).not.toHaveProperty(
+        'displayName',
+      );
+    });
+
+    it('registers as before on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      await renderSignInStep();
+      await userEvent.click(screen.getByRole('radio', { name: 'No sign-in' }));
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      for (const tool of ['core_mcpserver_validate', 'core_mcpserver_create']) {
+        expect(toolCalls(tool)[0][1]).toEqual({
+          name: 'jira',
+          type: 'streamable-http',
+          url: 'https://jira.example.com/mcp',
+          autoStart: true,
+        });
+      }
+    });
+
+    it('registers "own account" with the advanced override behind the disclosure', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      );
+
+      // The callback URL to allowlist is stated before any advanced field.
+      expect(
+        screen.getByText('https://muster.gazelle.example.com/oauth/callback'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByText(
+          "Advanced: sign-in settings for apps muster can't look up",
+        ),
+      );
+      await userEvent.type(
+        await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
+        'https://github.com',
+      );
+      await userEvent.type(
+        screen.getByLabelText(/^Permissions to ask for \(scopes\)/),
+        'repo',
+      );
+      await userEvent.type(
+        screen.getByLabelText(
+          /^Sign-in page address \(authorization endpoint\)/,
+        ),
+        'https://github.com/login/oauth/authorize',
+      );
+      await userEvent.type(
+        screen.getByLabelText(/^Token address \(token endpoint\)/),
+        'https://github.com/login/oauth/access_token',
+      );
+
+      // The client credentials ask where the Secret is and which keys to read,
+      // never for the credentials themselves.
+      const credentials = screen.getByRole('group', {
+        name: 'Client credentials — stored in a Kubernetes Secret',
+      });
+      expect(
+        within(credentials).getByText(
+          /never the client ID or secret themselves/,
+        ),
+      ).toBeInTheDocument();
+      await userEvent.type(
+        within(credentials).getByLabelText(/^Secret name(?!space)/),
+        'github-oauth-client',
+      );
+      await userEvent.type(
+        within(credentials).getByLabelText(/^Secret namespace/),
+        'muster',
+      );
+      await userEvent.type(
+        within(credentials).getByLabelText(/^Key holding the client ID/),
+        'clientId',
+      );
+      await userEvent.type(
+        within(credentials).getByLabelText(/^Key holding the client secret/),
+        'clientSecret',
+      );
+      // The grant's lifetime in plain words, muster's term in parentheses.
+      expect(
+        screen.getAllByText(
+          'Sign in again in every new session (session, default)',
+        ).length,
+      ).toBeGreaterThan(0);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        name: 'jira',
+        auth: {
+          type: 'oauth',
+          authorizationServer: {
+            issuer: 'https://github.com',
+            scopes: 'repo',
+            authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+            tokenEndpoint: 'https://github.com/login/oauth/access_token',
+            clientCredentialsSecretRef: {
+              name: 'github-oauth-client',
+              namespace: 'muster',
+              clientIdKey: 'clientId',
+              clientSecretKey: 'clientSecret',
+            },
+          },
+        },
+      });
+    });
+
+    it('reopens the advanced settings around a field that blocks registration', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      );
+      const advanced = () =>
+        screen.getByText(
+          "Advanced: sign-in settings for apps muster can't look up",
+        );
+      await userEvent.click(advanced());
+      await userEvent.type(
+        await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
+        'http://not-https.example.com',
+      );
+      // Collapsed again: the issuer field is gone from the page.
+      await userEvent.click(advanced());
+      expect(
+        screen.queryByLabelText(/^Where people sign in \(issuer URL\)/),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+
+      const issuer = await screen.findByLabelText(
+        /^Where people sign in \(issuer URL\)/,
+      );
+      expect(issuer).toHaveAttribute('aria-invalid', 'true');
+      expect(issuer).toHaveAccessibleDescription(
+        expect.stringContaining('Issuer must be an https URL'),
+      );
+      expect(issuer).toHaveFocus();
+      expect(toolCalls('core_mcpserver_create')).toEqual([]);
+    });
+
+    it('registers plain "own account" as oauth with discovery', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      );
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        auth: { type: 'oauth' },
+      });
+      expect(
+        (toolCalls('core_mcpserver_create')[0][1] as { auth: object }).auth,
+      ).not.toHaveProperty('authorizationServer');
+    });
+
+    it('registers Company login as forwardToken, with the restart caveat as help text', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Company login' }),
+      );
+
+      expect(
+        screen.getByText(/takes effect only after muster restarts/),
+      ).toBeInTheDocument();
+
+      await userEvent.type(
+        screen.getByLabelText(/Required audiences/),
+        'jira-backend, dex',
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        auth: {
+          forwardToken: true,
+          requiredAudiences: ['jira-backend', 'dex'],
+        },
+      });
+    });
+
+    it('registers AWS request signing as sigv4 and requires the region', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'AWS request signing (SigV4)' }),
+      );
+
+      expect(
+        screen.getByText('Every user shares one AWS identity'),
+      ).toBeInTheDocument();
+
+      // The region is required: without it the submit marks the field.
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      const region = screen.getByLabelText(/^Signing region/);
+      expect(region).toHaveAttribute('aria-invalid', 'true');
+      expect(region).toHaveAccessibleDescription(
+        expect.stringContaining('Enter the signing region'),
+      );
+      expect(region).toHaveFocus();
+      expect(toolCalls('core_mcpserver_create')).toEqual([]);
+
+      await userEvent.type(
+        screen.getByLabelText(/^Signing region/),
+        'eu-central-1',
+      );
+      await userEvent.type(
+        screen.getByLabelText(/^Signing service/),
+        'aws-mcp',
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        auth: {
+          type: 'sigv4',
+          sigv4: { region: 'eu-central-1', service: 'aws-mcp' },
+        },
+      });
+    });
+  });
+
+  describe('editing a registered connector', () => {
+    const registered = () =>
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'jira', namespace: 'muster' },
+          spec: {
+            type: 'streamable-http',
+            url: 'https://jira.example.com/mcp',
+            autoStart: true,
+            description: 'Search, read and update tickets',
+            auth: { type: 'oauth' },
+          },
+          status: { state: 'Connected' },
+        } as never,
+        'gazelle',
+      );
+
+    beforeEach(() => {
+      mockMcpServers = [registered()];
+    });
+
+    it('opens the same wizard pre-filled, titled as an edit of the connector', async () => {
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      expect(
+        await screen.findByRole('heading', {
+          level: 1,
+          name: 'Edit connector',
+        }),
+      ).toBeInTheDocument();
+      // The connector is named in the context line and the document title,
+      // as on every edit frame.
+      expect(
+        screen.getByText('Customize / Connectors / jira'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.title).toBe('Edit jira · Connectors'),
+      );
+      expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+        'https://jira.example.com/mcp',
+      );
+      expect(screen.getByLabelText(/^What does it give access to/)).toHaveValue(
+        'Search, read and update tickets',
+      );
+      // The name is the display name, which an edit can change; the
+      // registered name under it cannot.
+      const name = screen.getByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveValue('jira');
+      await waitFor(() => expect(name).not.toHaveAttribute('readonly'));
+      expect(name).toHaveAccessibleDescription(
+        'Shown when giving an agent access.',
+      );
+      expect(screen.getByText(/^Registered as/)).toHaveTextContent(
+        'Registered as jira — used in its tool names. It cannot be changed.',
+      );
+      // Leaving goes back to the connector's page, where Edit was pressed.
+      expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
+        'href',
+        '/customize/connectors/gazelle/jira',
+      );
+    });
+
+    it('names the connector by its display name in the edit frame', async () => {
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      expect(
+        await screen.findByText('Customize / Connectors / Acme Jira'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.title).toBe('Edit Acme Jira · Connectors'),
+      );
+      expect(screen.getByRole('textbox', { name: /^Name/ })).toHaveValue(
+        'Acme Jira',
+      );
+    });
+
+    it('renames the connector through its display name on save', async () => {
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() => expect(name).not.toHaveAttribute('readonly'));
+      await userEvent.clear(name);
+      await userEvent.type(name, 'Acme Tickets');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_update')[0][1]).toMatchObject({
+        name: 'jira',
+        displayName: 'Acme Tickets',
+      });
+    });
+
+    it('leaves the display name alone when the name is not changed', async () => {
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByLabelText(/^Server address/);
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_update')[0][1]).not.toHaveProperty(
+        'displayName',
+      );
+    });
+
+    it('keeps the name read-only on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() =>
+        expect(describeTool).toHaveBeenCalledWith(
+          'core_mcpserver_update',
+          'gazelle',
+        ),
+      );
+      expect(name).toHaveAttribute('readonly');
+      expect(name).toHaveAccessibleDescription(
+        'It cannot be changed after registration.',
+      );
+      // A plain id needs no second line saying the same name.
+      expect(screen.queryByText(/Registered as/)).not.toBeInTheDocument();
+    });
+
+    it('says once that the name is fixed, on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveValue('Acme Jira');
+      expect(name).toHaveAccessibleDescription(
+        'It cannot be changed after registration.',
+      );
+      const registeredAs = screen.getByText(/^Registered as/);
+      expect(registeredAs).toHaveTextContent(
+        'Registered as jira — used in its tool names.',
+      );
+      expect(registeredAs).not.toHaveTextContent(/cannot be changed/);
+    });
+
+    it('keeps the name of a family member read-only, the family sharing it', async () => {
+      const server = registered();
+      (server.jsonData.spec as Record<string, unknown>).family = {
+        name: 'tickets',
+        instanceArg: 'site',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() =>
+        expect(describeTool).toHaveBeenCalledWith(
+          'core_mcpserver_update',
+          'gazelle',
+        ),
+      );
+      expect(name).toHaveAttribute('readonly');
+      expect(name).toHaveAccessibleDescription(
+        'Shared with the other members of the tickets family, so it is set where they are defined.',
+      );
+    });
+
+    it('marks the invalid fields themselves on Continue, as when adding', async () => {
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const address = await screen.findByLabelText(/^Server address/);
+      await userEvent.clear(address);
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(address).toHaveAttribute('aria-invalid', 'true');
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Enter the server address'),
+      );
+      expect(address).toHaveFocus();
+      expect(
+        screen.queryByText('How do people sign in?'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('saves the changes as an update of the connector, never a second one', async () => {
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const address = await screen.findByLabelText(/^Server address/);
+      await userEvent.clear(address);
+      await userEvent.type(address, 'https://jira.internal/mcp');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByText('How do people sign in?');
+
+      // The registered sign-in is the starting answer, not Company login.
+      expect(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      ).toHaveAttribute('aria-checked', 'true');
+      expect(
+        screen.queryByRole('button', { name: 'Add connector' }),
+      ).not.toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_update')).toEqual([
+        [
+          'core_mcpserver_update',
+          expect.objectContaining({
+            name: 'jira',
+            url: 'https://jira.internal/mcp',
+            auth: { type: 'oauth' },
+          }),
+          'gazelle',
+        ],
+      ]);
+      expect(toolCalls('core_mcpserver_create')).toEqual([]);
+      expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
+        'href',
+        '/customize/connectors/gazelle/jira',
+      );
+    });
+  });
+
+  it('closes a new registration to the connectors list', async () => {
+    await renderWizard('/customize/connectors/new');
+
+    expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
+      'href',
+      '/customize/connectors',
+    );
+  });
+});

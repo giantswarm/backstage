@@ -92,21 +92,67 @@ describe('build toolchain column', () => {
     expect(container.textContent).toBe('dev:abc123');
   });
 
-  it('sorts newest orb first and non-release pins last', () => {
-    const column = columnFactories.createBuildToolchainColumn();
-    const sort = column.customSort!;
-    const release = (v: string) =>
-      ({
-        entity: component({ 'giantswarm.io/architect-orb-version': v }),
-      }) as any;
-    const ref = {
-      entity: component({}, { 'giantswarm.io/architect-orb-ref': 'dev:abc' }),
-    } as any;
+  it('is titled like the sidebar facet', () => {
+    expect(columnFactories.createBuildToolchainColumn().title).toBe(
+      'Architect Orb Version',
+    );
+  });
 
-    // semverCompareSort is ascending; the table's default click direction
-    // flips it. What matters is that 10.10.0 is ordered numerically, not
-    // lexically, after 10.2.0, and that an unparseable pin sorts to the end.
-    expect(sort(release('10.2.0'), release('10.10.0'), 'row')).toBeLessThan(0);
-    expect(sort(release('10.10.0'), ref, 'row')).toBeLessThan(0);
+  describe('sorting', () => {
+    const sort = columnFactories.createBuildToolchainColumn().customSort!;
+    const row = (
+      name: string,
+      labels: Record<string, string> = {},
+      annotations: Record<string, string> = {},
+    ) =>
+      ({
+        entity: {
+          ...component(labels, annotations),
+          metadata: { name, labels, annotations },
+        },
+      }) as CatalogTableRow;
+    const release = (name: string, v: string) =>
+      row(name, { 'giantswarm.io/architect-orb-version': v });
+    const pin = (name: string, ref: string) =>
+      row(name, {}, { 'giantswarm.io/architect-orb-ref': ref });
+
+    // Ties on every key but the name, so a stable sort that only mirrors the
+    // keys would leave them in the same order in both directions.
+    const rows = [
+      row('no-orb-b'),
+      release('release-b', '10.2.0'),
+      pin('pin-volatile', 'volatile'),
+      release('old', '9.6.0'),
+      row('no-orb-a'),
+      pin('pin-dev', 'dev:a'),
+      release('release-a', '10.2.0'),
+      release('newest', '10.10.0'),
+    ];
+    const names = (sorted: CatalogTableRow[]) =>
+      sorted.map(({ entity }) => entity.metadata.name);
+    const firstClick = [
+      'newest',
+      'release-a',
+      'release-b',
+      'old',
+      'pin-dev',
+      'pin-volatile',
+      'no-orb-a',
+      'no-orb-b',
+    ];
+
+    // material-table sorts ascending on the first click, and descending by
+    // swapping the comparator's arguments.
+    it('puts the newest orb first and rows without one last', () => {
+      expect(names([...rows].sort((a, b) => sort(a, b, 'row')))).toEqual(
+        firstClick,
+      );
+    });
+
+    it('reverses exactly on the second click', () => {
+      expect(names([...rows].sort((a, b) => sort(b, a, 'row')))).toEqual(
+        [...firstClick].reverse(),
+      );
+    });
   });
 });

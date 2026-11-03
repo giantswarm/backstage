@@ -3,6 +3,10 @@ import { Config } from '@backstage/config';
 import { InputError, NotFoundError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
+import {
+  errorCode,
+  isDnsErrorCode,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { readInstallationBaseDomain } from './installationDomain';
 
 /**
@@ -30,6 +34,13 @@ import { readInstallationBaseDomain } from './installationDomain';
  * and nothing else of the request reaches it. Redirects are refused, so an
  * upstream cannot send this backend anywhere else either.
  *
+ * An installation that serves no avatars (its avatars host has no address,
+ * or a route that is not the renderer answers 406 because DiceBear is off)
+ * answers 404, the answer for an agent without an avatar, for a minute without
+ * asking again: the browser shows the initials. A 502 is left for a renderer
+ * or gateway in trouble (another 4xx, a 5xx, a timeout, something other than
+ * a raster image).
+ *
  * Authentication is the plugin's cookie policy for this path — an `<img>`
  * carries no bearer token — see plugin.ts.
  */
@@ -38,6 +49,8 @@ export interface AvatarRouterOptions {
   logger: LoggerService;
   /** Overridable for tests. */
   fetchFn?: typeof fetch;
+  /** Overridable clock for tests. */
+  now?: () => number;
 }
 
 /** Sizes the avatar endpoint allowlists. Must match AVATAR_SIZES in plugins/agent-platform. */
@@ -52,6 +65,31 @@ const UPSTREAM_TIMEOUT_MS = 10_000;
 
 /** Far above any avatar the renderer produces: a bound, not a budget. */
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+/**
+ * What the upstream is asked for: any image. The renderer answers a `.png`
+ * path with a PNG whatever the header says; a narrower `Accept` only gives a
+ * negotiating proxy in front of it a reason to refuse (406). The content type
+ * is checked on the answer instead.
+ */
+const UPSTREAM_ACCEPT = 'image/*';
+
+/**
+ * The image types forwarded: raster only. An SVG is a document that can carry
+ * script, and it would be served same-origin; anything else is a failure and
+ * the browser shows the initials.
+ */
+const RASTER_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
+
+/** The media type of a `Content-Type` header, without its parameters. */
+function mediaType(contentType: string): string {
+  return contentType.split(';')[0].trim().toLowerCase();
+}
 
 /** What the browser should see of an avatar exactly as the upstream sent it. */
 const FORWARDED_HEADERS = ['content-type', 'cache-control', 'etag'] as const;
@@ -122,7 +160,42 @@ type UpstreamAnswer =
   | { kind: 'ok'; headers: Headers; body: Buffer }
   | { kind: 'not-modified'; headers: Headers }
   | { kind: 'not-found' }
-  | { kind: 'failed'; reason: string };
+  | {
+      /**
+       * The installation serves no avatars ({@link NOT_SERVED_STATUS}, or no
+       * address for its avatars host): the answer for an agent without an
+       * avatar, not a fault of a renderer.
+       */
+      kind: 'not-served';
+      reason: string;
+      details?: Record<string, string | number>;
+    }
+  | {
+      kind: 'failed';
+      /** Fixed wording for the log message (Sentry fingerprints on it). */
+      problem: string;
+      /** The full reason, for the 502 answer. */
+      reason: string;
+      /** The varying parts, for the log's structured metadata. */
+      details?: Record<string, string | number>;
+    };
+
+/**
+ * The status that says the avatars host is not the renderer: the renderer
+ * answers any `image/*`, so a 406 comes from a route that negotiates something
+ * else — the edge's catch-all MCP route of an installation whose DiceBear is
+ * off. Every other 4xx (an auth gate, a rate limit, a size a renderer
+ * refuses) is a renderer or a gateway in trouble and stays a 502.
+ */
+const NOT_SERVED_STATUS = 406;
+
+/** How long an installation that serves no avatars is not asked again. */
+const NOT_SERVED_TTL_MS = 60_000;
+
+/** Lets an unread answer's connection go back to the pool. */
+async function discard(upstream: Response): Promise<void> {
+  await upstream.body?.cancel().catch(() => undefined);
+}
 
 /**
  * One fetch of an avatar, classified. Nothing of the browser's request goes
@@ -139,7 +212,7 @@ async function fetchAvatar(
   try {
     const upstream = await fetchFn(url, {
       headers: {
-        Accept: 'image/png',
+        Accept: UPSTREAM_ACCEPT,
         ...(ifNoneMatch ? { 'If-None-Match': ifNoneMatch } : {}),
       },
       redirect: 'error',
@@ -150,38 +223,72 @@ async function fetchAvatar(
       return { kind: 'not-modified', headers: upstream.headers };
     }
     if (upstream.status === 404) {
+      await discard(upstream);
       return { kind: 'not-found' };
     }
+    const contentType = upstream.headers.get('content-type') ?? '';
     if (!upstream.ok) {
-      return { kind: 'failed', reason: `answered ${upstream.status}` };
+      await discard(upstream);
+      const reason = contentType
+        ? `answered ${upstream.status} with ${contentType}`
+        : `answered ${upstream.status}`;
+      const details = { status: upstream.status, contentType };
+      return upstream.status === NOT_SERVED_STATUS
+        ? { kind: 'not-served', reason, details }
+        : { kind: 'failed', problem: 'answered an error', reason, details };
     }
 
-    const contentType = upstream.headers.get('content-type') ?? '';
-    if (!contentType.startsWith('image/')) {
+    if (!RASTER_TYPES.has(mediaType(contentType))) {
+      await discard(upstream);
       return {
         kind: 'failed',
-        reason: `answered ${contentType || 'no content type'} rather than an image`,
+        problem: 'answered something other than a raster image',
+        reason: `answered ${contentType || 'no content type'} rather than a raster image`,
+        details: { contentType },
       };
     }
     const declared = Number(upstream.headers.get('content-length') ?? 0);
     if (declared > MAX_BODY_BYTES) {
-      return { kind: 'failed', reason: `declared ${declared} bytes` };
+      await discard(upstream);
+      return {
+        kind: 'failed',
+        problem: 'sent an avatar too large to forward',
+        reason: `declared ${declared} bytes`,
+        details: { bytes: declared },
+      };
     }
     const body = Buffer.from(await upstream.arrayBuffer());
     if (body.byteLength > MAX_BODY_BYTES) {
-      return { kind: 'failed', reason: `sent ${body.byteLength} bytes` };
+      return {
+        kind: 'failed',
+        problem: 'sent an avatar too large to forward',
+        reason: `sent ${body.byteLength} bytes`,
+        details: { bytes: body.byteLength },
+      };
     }
     return { kind: 'ok', headers: upstream.headers, body };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       return {
         kind: 'failed',
+        problem: 'did not answer in time',
         reason: `no answer within ${UPSTREAM_TIMEOUT_MS / 1000} s`,
+      };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    const code = errorCode(error);
+    if (isDnsErrorCode(code)) {
+      return {
+        kind: 'not-served',
+        reason: `has no address (${code})`,
+        details: { error: message },
       };
     }
     return {
       kind: 'failed',
-      reason: error instanceof Error ? error.message : String(error),
+      problem: 'could not be reached',
+      reason: message,
+      details: { error: message },
     };
   } finally {
     clearTimeout(timer);
@@ -202,7 +309,28 @@ export function createAvatarRouter(
 ): express.Router {
   const { config, logger } = options;
   const fetchFn = options.fetchFn ?? fetch;
+  const now = options.now ?? Date.now;
   const router = Router();
+  /** Installations found to serve no avatars, until when, and why. */
+  const notServed = new Map<string, { until: number; reason: string }>();
+
+  // A 404 with the reason, cached as long as the finding is: the browser does
+  // not ask again for a minute, and this backend does not ask the upstream.
+  const answerNotServed = (
+    res: express.Response,
+    installation: string,
+    reason: string,
+    until: number,
+  ) => {
+    const maxAge = Math.max(0, Math.ceil((until - now()) / 1000));
+    res.setHeader('Cache-Control', `private, max-age=${maxAge}`);
+    res.status(404).json({
+      error: {
+        name: 'NotFoundError',
+        message: `The installation '${installation}' serves no avatars: its avatars host ${reason}.`,
+      },
+    });
+  };
 
   router.get('/avatars/:installation/v1/*rest', async (req, res) => {
     const installation = String(req.params.installation);
@@ -219,6 +347,12 @@ export function createAvatarRouter(
       );
     }
     const url = `https://avatars.${baseDomain}/${avatarPath(target)}`;
+
+    const known = notServed.get(installation);
+    if (known && known.until > now()) {
+      answerNotServed(res, installation, known.reason, known.until);
+      return;
+    }
 
     const ifNoneMatch = req.headers['if-none-match'];
     const answer = await fetchAvatar(
@@ -244,14 +378,32 @@ export function createAvatarRouter(
         throw new NotFoundError(
           `No avatar for '${target.name}' on '${installation}'.`,
         );
+      case 'not-served': {
+        // A defined answer, not a failure: the browser shows the initials, as
+        // for any agent without an avatar. Logged once per finding at info,
+        // so an installation that should serve avatars (a wrong base domain,
+        // a renderer switched off by mistake) still shows in the logs.
+        const until = now() + NOT_SERVED_TTL_MS;
+        notServed.set(installation, { until, reason: answer.reason });
+        logger.info('The installation serves no avatars', {
+          url,
+          installation,
+          ...answer.details,
+        });
+        answerNotServed(res, installation, answer.reason, until);
+        return;
+      }
       case 'failed':
         // Answered rather than thrown: `MiddlewareFactory.error()` forwards
         // every 5xx to Sentry, and an avatar service that is down fails once
         // per avatar on every page that lists agents. One warning per image
         // names the upstream and the reason; the browser shows the initials.
-        logger.warn(`The avatar service ${answer.reason}`, {
+        // The message stays fixed per kind of problem (Sentry fingerprints on
+        // it); what varies goes into the metadata.
+        logger.warn(`The avatar service ${answer.problem}`, {
           url,
           installation,
+          ...answer.details,
         });
         res.status(502).json({
           error: {

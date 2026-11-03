@@ -24,11 +24,35 @@ export type SessionState = {
    * human.
    */
   key: string;
+  /**
+   * The state in the platform's words, one of four a person tells apart at a
+   * glance ({@link SESSION_STATE_LABELS}): Waiting for you, Working, Idle,
+   * Failed. Every surface — lists, filters, the session's badge — shows this,
+   * so one session cannot be called two things on two screens. An
+   * unrecognised state keeps its raw form, so a future kagent state still
+   * shows as itself.
+   */
   label: string;
   tone: SessionStateTone;
   /** True while the session may still produce output. */
   isActive: boolean;
 };
+
+/**
+ * The platform's four state words, see {@link SessionState.label}: the one
+ * vocabulary for session states. Finer A2A states (submitted, auth-required,
+ * canceled, rejected) map onto these rather than getting words of their own.
+ *
+ * `finished` is the newest turn having ended, completed or stopped. A kagent
+ * session never closes, so the word is "Idle", not "Finished": the agent is
+ * done with its turn and the session takes the next message (T100 H4).
+ */
+export const SESSION_STATE_LABELS = {
+  waiting: 'Waiting for you',
+  working: 'Working',
+  finished: 'Idle',
+  failed: 'Failed',
+} as const;
 
 /**
  * The states in which a task is waiting on a human rather than working.
@@ -48,6 +72,11 @@ export const AWAITING_INPUT_STATES = new Set([
   'input-required',
   'auth-required',
 ]);
+
+/** Whether a described session state is waiting on a person: input or authentication. */
+export function isAwaitingInput(state: SessionState | undefined): boolean {
+  return state !== undefined && AWAITING_INPUT_STATES.has(state.key);
+}
 
 /**
  * The terminal states in which a turn ended in error.
@@ -93,25 +122,58 @@ export const CANCELED_STATE = 'canceled';
  */
 const KNOWN_STATES: Record<
   string,
-  { label: string; tone: SessionStateTone; isActive: boolean }
+  {
+    label: string;
+    tone: SessionStateTone;
+    isActive: boolean;
+  }
 > = {
-  submitted: { label: 'Submitted', tone: 'info', isActive: true },
-  working: { label: 'Working', tone: 'info', isActive: true },
+  submitted: {
+    label: SESSION_STATE_LABELS.working,
+    tone: 'info',
+    isActive: true,
+  },
+  working: {
+    label: SESSION_STATE_LABELS.working,
+    tone: 'info',
+    isActive: true,
+  },
   'input-required': {
-    label: 'Waiting for input',
+    label: SESSION_STATE_LABELS.waiting,
     tone: 'warning',
     isActive: true,
   },
   'auth-required': {
-    label: 'Authentication required',
+    label: SESSION_STATE_LABELS.waiting,
     tone: 'warning',
     isActive: true,
   },
-  completed: { label: 'Completed', tone: 'success', isActive: false },
-  failed: { label: 'Failed', tone: 'danger', isActive: false },
-  canceled: { label: 'Canceled', tone: 'neutral', isActive: false },
-  rejected: { label: 'Rejected', tone: 'danger', isActive: false },
-  unknown: { label: 'Unknown', tone: 'neutral', isActive: false },
+  completed: {
+    label: SESSION_STATE_LABELS.finished,
+    tone: 'success',
+    isActive: false,
+  },
+  failed: {
+    label: SESSION_STATE_LABELS.failed,
+    tone: 'danger',
+    isActive: false,
+  },
+  // Stopped on purpose, so over rather than failed.
+  canceled: {
+    label: SESSION_STATE_LABELS.finished,
+    tone: 'neutral',
+    isActive: false,
+  },
+  rejected: {
+    label: SESSION_STATE_LABELS.failed,
+    tone: 'danger',
+    isActive: false,
+  },
+  unknown: {
+    label: 'Unknown',
+    tone: 'neutral',
+    isActive: false,
+  },
 };
 
 /**
@@ -144,27 +206,13 @@ export function describeSessionState(
   if (known) {
     return { raw: state, key, ...known };
   }
-  return { raw: state, key, label: state, tone: 'neutral', isActive: false };
-}
-
-/**
- * The session's state, taken from its **most recent** task.
- *
- * kagent returns tasks `ORDER BY created_at ASC`
- * (`go/core/internal/database/gen/tasks.sql.go`), so the array is chronological
- * and the last element is the newest turn. Its state is the session's state:
- * earlier turns having completed says nothing about whether the session is
- * currently working.
- *
- * Returns `undefined` when there are no tasks or none reported a state — a
- * session created but never run. That is a real condition ("no activity yet"),
- * distinct from any state kagent could report, so it must not be flattened into
- * one of them.
- */
-export function deriveSessionState(
-  tasks: A2aTaskWire[],
-): SessionState | undefined {
-  return readNewestTaskState(tasks)?.state;
+  return {
+    raw: state,
+    key,
+    label: state,
+    tone: 'neutral',
+    isActive: false,
+  };
 }
 
 /**
@@ -195,6 +243,11 @@ export type NewestTaskState = {
   state: SessionState;
   /** Epoch ms the state last moved, when anything usable says. */
   changedAt?: number;
+  /**
+   * Where that task is in the list ({@link findNewestStatefulTaskIndex}), so
+   * a caller that needs more of it does not walk the list again.
+   */
+  index: number;
 };
 
 /**
@@ -226,9 +279,12 @@ function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
 /**
  * Walk back to the newest task that reports a state, and resolve when it moved.
  *
- * kagent returns tasks oldest-first, so the session's state is the newest task's.
- * The walk takes the state **and** the timestamp from the same task, so a trailing
- * task carrying no state cannot lend its timestamp to an earlier task's state.
+ * kagent returns tasks oldest-first (`ORDER BY created_at ASC`,
+ * `go/core/internal/database/gen/tasks.sql.go`), so the session's state is the
+ * newest task's. The walk takes the state **and** the timestamp from the same
+ * task, so a trailing task carrying no state cannot lend its timestamp to an
+ * earlier task's state. Undefined when no task reports a state: a session
+ * created but never run, distinct from any state kagent could report.
  *
  * When that task has no usable timestamp of its own, the conversation's newest
  * usable one stands in — losing the "same task" property deliberately. A missing
@@ -257,7 +313,7 @@ export function readNewestTaskState(
   const changedAt =
     own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
 
-  return { state, changedAt };
+  return { state, changedAt, index };
 }
 
 /**

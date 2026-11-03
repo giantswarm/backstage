@@ -1,8 +1,7 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -10,15 +9,21 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import {
+  BusyDialog,
+  useFieldValidation,
+  useOnDialogOpen,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 
 /**
  * Longest name this dialog will submit.
  *
- * Not a kagent limit — its `session.name` column is unbounded `TEXT` — but ours,
- * matching the conversation titles in the ai-chat plugin. The backend enforces
- * the same bound, because a `maxLength` on an input is a courtesy and not a
- * guard.
+ * kagent's own limit: the controller caps a Session name at 200 characters
+ * (`UpdateSessionNameRequest.name`, `max_len: 200`) and refuses control
+ * characters and surrounding whitespace. Bounded here so the field says so up
+ * front instead of a rejected rename, and enforced again by the backend, because
+ * a `maxLength` on an input is a courtesy and not a guard.
  *
  * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform-backend.
  */
@@ -45,8 +50,9 @@ export type SessionRenameDialogProps = {
  * Renames a session.
  *
  * Deliberately not built on `ConfirmDialog`: this asks for a value rather than
- * for a yes, so it needs a `<form>` — which is what makes Enter submit — and a
- * submit button that stays disabled until the field holds something usable.
+ * for a yes, so it needs a `<form>` — which is what makes Enter submit. Save
+ * stays pressable: with the field emptied, it says so on the field and
+ * focuses it instead (the `forms` skill).
  *
  * It does keep that component's two conventions, both of which matter here.
  * Confirming does **not** close it: the rename can fail, and a dialog that
@@ -67,6 +73,8 @@ export function SessionRenameDialog({
   isUserScoped,
 }: SessionRenameDialogProps) {
   const [value, setValue] = useState(title);
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
 
   // Seeded on the closed → open transition only, never on a `title` change.
   //
@@ -74,88 +82,83 @@ export function SessionRenameDialog({
   // dialog whenever the session is renamed elsewhere — kagent's own UI, another
   // tab, another device. Depending on it here would replace whatever the user
   // has typed, mid-sentence and with no indication anything happened.
-  const wasOpen = useRef(isOpen);
-  useEffect(() => {
-    if (isOpen && !wasOpen.current) {
-      setValue(title);
-    }
-    wasOpen.current = isOpen;
-  }, [isOpen, title]);
+  useOnDialogOpen(isOpen, () => setValue(title));
 
   const trimmed = value.trim();
-  const isValid =
-    trimmed.length > 0 && trimmed.length <= SESSION_NAME_MAX_LENGTH;
+  let nameError: string | undefined;
+  if (trimmed.length === 0) {
+    nameError = 'Enter a name for the session.';
+  } else if (trimmed.length > SESSION_NAME_MAX_LENGTH) {
+    nameError = `Shorten the name to ${SESSION_NAME_MAX_LENGTH} characters or fewer.`;
+  }
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (isValid && !isRenaming) {
-      onConfirm(trimmed);
+    if (isRenaming) {
+      return;
     }
+    if (nameError) {
+      validation.reveal();
+      return;
+    }
+    onConfirm(trimmed);
   };
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`, which reach the outside click and Escape but
-      // not `DialogHeader`'s own close button — bui renders that unconditionally,
-      // and it routes through this callback. Without the gate, closing mid-flight
-      // leaves the mutation running with nowhere to report a failure, and the user
-      // looking at the old title believing the rename worked.
-      onOpenChange={next => {
-        if (!isRenaming) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isRenaming}
-      isKeyboardDismissDisabled={isRenaming}
+      // While the rename is in flight, closing would leave the mutation
+      // running with nowhere to report a failure, and the user looking at the
+      // old title believing the rename worked.
+      onOpenChange={onOpenChange}
+      isBusy={isRenaming}
       width="min(90vw, 520px)"
     >
-      <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>
-        <DialogHeader>Rename session</DialogHeader>
-        <DialogBody>
-          <Flex direction="column" gap="3">
-            <TextField
-              label="Session name"
-              value={value}
-              onChange={setValue}
-              maxLength={SESSION_NAME_MAX_LENGTH}
-              // The rule guards against stealing focus on page load. This is a
-              // modal the user just opened in order to type a name, and react-aria
-              // focuses the dialog container rather than the field — so without
-              // this the cursor is nowhere and the field has to be clicked first.
-              // Focusing the first meaningful control is what the ARIA dialog
-              // pattern asks for. Pinned by a test.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-            />
-            {isUserScoped === false && (
-              <Text variant="body-medium">
-                This kagent deployment does not scope sessions to individual
-                users, so this session may have been started by somebody else.
-              </Text>
-            )}
-            {error ? <Alert status="danger" description={error} /> : null}
-          </Flex>
-        </DialogBody>
-        <DialogFooter>
-          <Button
-            variant="secondary"
-            isDisabled={isRenaming}
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            isDisabled={!isValid}
-            isPending={isRenaming}
-          >
-            {isRenaming ? 'Saving…' : 'Save'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </Dialog>
+      {close => (
+        <>
+          <form onSubmit={handleSubmit} noValidate style={DIALOG_FORM_STYLE}>
+            <DialogHeader>Rename session</DialogHeader>
+            <DialogBody>
+              <Flex direction="column" gap="3" ref={scope}>
+                <TextField
+                  label="Session name"
+                  value={value}
+                  onChange={setValue}
+                  maxLength={SESSION_NAME_MAX_LENGTH}
+                  {...validation.textFieldProps('name', nameError)}
+                  // The rule guards against stealing focus on page load. This is a
+                  // modal the user just opened in order to type a name, and react-aria
+                  // focuses the dialog container rather than the field — so without
+                  // this the cursor is nowhere and the field has to be clicked first.
+                  // Focusing the first meaningful control is what the ARIA dialog
+                  // pattern asks for. Pinned by a test.
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  autoFocus
+                />
+                {isUserScoped === false && (
+                  <Text variant="body-medium">
+                    This kagent does not scope sessions to users, so someone
+                    else may have started this session.
+                  </Text>
+                )}
+                {error ? <Alert status="danger" description={error} /> : null}
+              </Flex>
+            </DialogBody>
+            <DialogFooter>
+              <Button
+                variant="secondary"
+                isDisabled={isRenaming}
+                onClick={close}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" isPending={isRenaming}>
+                {isRenaming ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </BusyDialog>
   );
 }

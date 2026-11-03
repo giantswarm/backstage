@@ -23,10 +23,13 @@ export function EditDeploymentButton({
   const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
   // Only fetch edit data when the template is available
-  const { chartRef, chartTag, automaticUpgrades, isLoading } =
-    useEditDeploymentData(deployment, installationName, {
+  const { chartRef, chartTag, autoUpgrades, isLoading } = useEditDeploymentData(
+    deployment,
+    installationName,
+    {
       enabled: available,
-    });
+    },
+  );
 
   const {
     incompatibleReasons,
@@ -72,7 +75,12 @@ export function EditDeploymentButton({
     return getTemplateUrl({
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
-      automaticUpgrades: automaticUpgrades ?? 'no-upgrades',
+      automaticUpgrades: autoUpgrades?.semverRange
+        ? 'custom-range'
+        : (autoUpgrades?.mode ?? 'no-upgrades'),
+      semverRange: autoUpgrades?.semverRange,
+      semverFilter: autoUpgrades?.semverFilter,
+      includePrereleases: autoUpgrades?.includePrereleases,
       installation: { installationName },
       cluster: {
         clusterName,
@@ -86,7 +94,7 @@ export function EditDeploymentButton({
     getTemplateUrl,
     chartRef,
     chartTag,
-    automaticUpgrades,
+    autoUpgrades,
     installationName,
     clusterName,
     clusterNamespace,

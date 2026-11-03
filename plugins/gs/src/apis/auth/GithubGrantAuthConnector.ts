@@ -9,13 +9,9 @@ import {
   OpenIdConnectApi,
   ProfileInfoApi,
 } from '@backstage/core-plugin-api';
-
-/**
- * Header used by the frontend to forward the user's main Dex ID token, which
- * the backend exchanges through the muster token broker. Must match the
- * auth backend module's `SUBJECT_TOKEN_HEADER`.
- */
-const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
+// The header the user's main Dex ID token travels in, which the backend
+// exchanges through the muster token broker.
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 
 /** The backend route minting and revoking the GitHub token. */
 export const GITHUB_TOKEN_PATH = '/api/auth/github-token';
