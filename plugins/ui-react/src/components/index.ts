@@ -69,6 +69,8 @@ export * from './StatusLabel';
 export * from './SyncMark';
 export * from './TagList';
 export * from './TagsField';
+export * from './TagVocabularyProvider';
+export * from './SharedTagsProvider';
 export * from './StructuredMetadataList';
 export * from './TechnicalDetailsFoldOut';
 export * from './TextAreaField';

@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
 
 import { parseTags } from '../../lib/tags';
-import { TAGS_FACET_ID } from './tagsFacet';
+import { TAGS_FACET_ID } from '../CatalogFilters/tagsFacet';
 
 /**
  * The query parameter that opens a catalog with tags picked in its Tags

@@ -17,7 +17,7 @@ import {
   splitDraft,
   suggestTags,
 } from '../../lib/tags';
-import { useTagVocabulary } from './TagVocabularyContext';
+import { useTagVocabulary } from '../TagVocabularyProvider';
 
 /**
  * At most this many existing tags are offered at once: what is typed narrows

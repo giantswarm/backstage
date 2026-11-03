@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { TagsField } from './TagsField';
+import { TagsField } from '../TagsField';
 import {
   type TagSource,
   type TagSourceItems,
@@ -10,7 +10,7 @@ import {
   TagVocabularyProvider,
   useReportTags,
   useTagVocabulary,
-} from './TagVocabularyContext';
+} from './TagVocabularyProvider';
 
 let mounted: string[] = [];
 

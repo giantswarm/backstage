@@ -6,10 +6,10 @@ import {
   tagHref,
   tagsOfSearch,
   withTagsSearch,
-} from './sharedTags';
-import { tagsFacet } from './tagsFacet';
-import { useCatalogFilters } from './useCatalogFilters';
-import type { CatalogFacet } from './catalogFilters';
+} from './SharedTagsProvider';
+import { tagsFacet } from '../CatalogFilters/tagsFacet';
+import { useCatalogFilters } from '../CatalogFilters/useCatalogFilters';
+import type { CatalogFacet } from '../CatalogFilters/catalogFilters';
 
 type Item = { kind: string; tags: string[] };
 
