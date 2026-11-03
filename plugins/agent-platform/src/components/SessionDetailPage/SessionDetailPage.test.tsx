@@ -1,5 +1,6 @@
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  analyticsApiRef,
   storageApiRef,
   toastApiRef,
   type StorageApi,
@@ -406,6 +407,7 @@ const loadedView: SessionDetailView = {
   isAgentWorking: true,
   taskCount: tasks.length,
   hasConversation: true,
+  isConversationCurrent: true,
   isLoading: false,
   isNotFound: false,
   error: undefined,
@@ -4204,6 +4206,87 @@ describe('SessionDetailPage', () => {
       expect(
         within(dock).getByRole('button', { name: /Session cost and context/ }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the view signal', () => {
+    /** The page under a button that re-renders it, as a poll does. */
+    function Harness() {
+      const [, setTick] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick(tick => tick + 1)}>
+            poll
+          </button>
+          <SessionDetailPage />
+        </>
+      );
+    }
+
+    function viewEvents(captureEvent: jest.Mock) {
+      return captureEvent.mock.calls
+        .map(([event]) => event)
+        .filter(event => event.action === 'AgentPlatform.sessionViewed');
+    }
+
+    it('reports the session’s turns once it is read, and not again as it polls', async () => {
+      const analyticsApi = mockApis.analytics.mock();
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: undefined,
+        timeline: emptyTimeline,
+        hasConversation: false,
+        isLoading: true,
+      });
+      await renderInTestApp(<Harness />, {
+        apis: [[analyticsApiRef, analyticsApi]],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+      const captureEvent = jest.mocked(analyticsApi.captureEvent);
+
+      expect(viewEvents(captureEvent)).toEqual([]);
+
+      // An earlier visit's cache, shown while the opening read is on its way:
+      // its turns may be out of date, so they are not reported.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        taskCount: 3,
+        isConversationCurrent: false,
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      expect(viewEvents(captureEvent)).toEqual([]);
+
+      mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 7 });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 12 });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+
+      // The number, and neither the session nor its id.
+      expect(viewEvents(captureEvent)).toEqual([
+        expect.objectContaining({
+          action: 'AgentPlatform.sessionViewed',
+          attributes: { turns: 7 },
+        }),
+      ]);
+    });
+
+    it('reports nothing while the conversation is unread', async () => {
+      const analyticsApi = mockApis.analytics.mock();
+      // The session read answered, the tasks read did not: the turns are
+      // absent, not zero.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        timeline: emptyTimeline,
+        taskCount: 0,
+        hasConversation: false,
+        isConversationCurrent: false,
+      });
+      await renderInTestApp(<SessionDetailPage />, {
+        apis: [[analyticsApiRef, analyticsApi]],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+
+      expect(viewEvents(jest.mocked(analyticsApi.captureEvent))).toEqual([]);
     });
   });
 });
