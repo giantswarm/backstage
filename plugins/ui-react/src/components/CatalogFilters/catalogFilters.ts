@@ -27,8 +27,9 @@ export type CatalogFacet<T> = {
   /**
    * Whether an item without a value is a choice in itself, so one value that
    * some items lack can narrow the list: a flag (Pinned, Starred, "Created
-   * by: Me"). Off by default: there a missing value is one not read yet or
-   * not matched, and the facet needs two values to choose between.
+   * by: Me") or Tags (untagged). Off by default: there a missing value is one
+   * not read yet or not matched, and the facet needs a value that some items
+   * with one lack.
    */
   missingIsChoice?: boolean;
 };
@@ -107,17 +108,23 @@ export function isCatalogFiltered(selection: CatalogFilterSelection): boolean {
   );
 }
 
+/** Items per value, and how many items have any value (`[]` is none). */
 function countValues<T>(
   items: readonly T[],
   facet: CatalogFacet<T>,
-): Map<string, number> {
+): { counts: Map<string, number>; withValue: number } {
   const counts = new Map<string, number>();
+  let withValue = 0;
   for (const item of items) {
-    for (const value of valuesOf(facet, item)) {
+    const values = valuesOf(facet, item);
+    if (values.length > 0) {
+      withValue += 1;
+    }
+    for (const value of values) {
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
   }
-  return counts;
+  return { counts, withValue };
 }
 
 function sortOptions<T>(
@@ -149,10 +156,11 @@ function sortOptions<T>(
 /**
  * The facets to draw, with their options and counts.
  *
- * A facet is drawn only when picking from it can narrow the catalog: two
- * values to choose between among the items that have one (two repositories),
- * or, for a facet whose missing value is a choice (`missingIsChoice`), one
- * value some items lack (Favorites: "Starred"). One value every item has, one
+ * A facet is drawn only when picking from it can narrow the catalog: a value
+ * some of the items that have one lack (two repositories; `[a]` beside
+ * `[a, b]` where an item can have several), or, for a facet whose missing
+ * value is a choice (`missingIsChoice`), one value some items lack
+ * (Favorites: "Starred"; Tags, untagged being a choice). One value every item has, one
  * value with the rest not read yet (one organization while agents load) or
  * no value at all (no favorites yet) make a dropdown with nothing to choose,
  * and it is left out — unless a pick on it is still standing, so it can be
@@ -173,15 +181,14 @@ export function catalogFilterDimensions<T>(
   const dimensions: CatalogFilterDimension[] = [];
   for (const facet of facets) {
     const picked = picksOf(selection, facet.id);
-    const catalogCounts = countValues(items, facet);
+    const { counts: catalogCounts, withValue } = countValues(items, facet);
     // A picked value the catalog no longer holds stays offered, at zero, so
     // the pick that empties the list can be undone.
     const ids = new Set([...catalogCounts.keys(), ...picked]);
     // Picking a value narrows when some item it is weighed against lacks it:
-    // any item for a flag, an item with some other value otherwise.
-    const weighed = facet.missingIsChoice
-      ? items.length
-      : items.filter(item => facet.value(item) !== undefined).length;
+    // any item where a missing value is a choice, an item with some other
+    // value otherwise.
+    const weighed = facet.missingIsChoice ? items.length : withValue;
     const canNarrow = [...catalogCounts.values()].some(
       count => count < weighed,
     );
@@ -191,7 +198,7 @@ export function catalogFilterDimensions<T>(
     const narrowed = searched.filter(item =>
       matchesFacets(item, facets, selection, facet.id),
     );
-    const counts = countValues(narrowed, facet);
+    const { counts } = countValues(narrowed, facet);
     const options = [...ids].map(id => ({
       id,
       label: facet.optionLabel?.(id) ?? id,

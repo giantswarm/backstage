@@ -21,8 +21,9 @@ export const SKILL_USAGE_LABELS = {
 /**
  * The skill catalog's facets: the repository a skill comes from, whether any
  * agent mounts it (once the agents are read), and its tags. `usage` is the
- * agents per canonical skill id (`agentsBySkill`); without it there is no usage facet,
- * rather than one that calls every skill unused while the agents load.
+ * agents per canonical skill id (`agentsBySkill`); without it there is no
+ * usage facet, rather than one that calls every skill unused while the agents
+ * load.
  */
 export function skillFacets(
   usage: Map<string, number> | undefined,

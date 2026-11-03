@@ -257,12 +257,11 @@ export type CustomizeAgentsPanelProps = {
 
 /**
  * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
- * runs on, its Harness, who created it, the person's favorites and its tags
- * (drawn only once some agent has one), last as on every catalog tab. The
- * environment is not one of them: the page's Environment select already
- * scopes the tab to one installation, and shows only where there is more than
- * one — a second control for the same thing would be two answers to one
- * question.
+ * runs on, its Harness, who created it, the person's favorites and its tags,
+ * last as on every catalog tab. The environment is not one of them: the
+ * page's Environment select already scopes the tab to one installation, and
+ * shows only where there is more than one — a second control for the same
+ * thing would be two answers to one question.
  *
  * The bar draws a facet only when it can narrow the list (one organization,
  * model or Harness among the agents that have one is no choice:

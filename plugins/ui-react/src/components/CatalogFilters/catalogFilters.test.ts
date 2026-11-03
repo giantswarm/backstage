@@ -262,6 +262,33 @@ describe('a facet with several values per item', () => {
     ]);
   });
 
+  const drawn = (rows: Tagged[]) =>
+    catalogFilterDimensions(rows, rows, tagFacets, {}).map(
+      dimension => dimension.id,
+    );
+
+  it('leaves the facet out when every item has the same values', () => {
+    const same = tagged.map(item => ({ ...item, tags: ['a', 'b'] }));
+    expect(drawn(same)).toEqual(['repo']);
+  });
+
+  it('draws the facet when a value is not on every item', () => {
+    const some = tagged.map((item, index) => ({
+      ...item,
+      tags: index === 0 ? ['a'] : ['a', 'b'],
+    }));
+    expect(drawn(some)).toEqual(['tags', 'repo']);
+  });
+
+  it('counts an empty list as no value', () => {
+    // One value, the rest without: nothing to choose unless missing is one.
+    const one = tagged.map((item, index) => ({
+      ...item,
+      tags: index === 0 ? ['a'] : [],
+    }));
+    expect(drawn(one)).toEqual(['repo']);
+  });
+
   it('leaves the facet out when no item has a value', () => {
     const none = tagged.map(item => ({ ...item, tags: [] }));
     expect(
