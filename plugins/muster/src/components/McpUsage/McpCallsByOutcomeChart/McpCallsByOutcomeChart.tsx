@@ -4,35 +4,7 @@ import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { McpUsageBucket } from '../../../apis';
 import { McpUsageCard } from '../McpUsageCard';
-
-/** Axis tick for a bucket start: hour of day for hourly, date for daily. */
-function formatBucketTick(start: string, stepHours: number): string {
-  const date = new Date(start);
-  if (stepHours < 24) {
-    return date.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function formatBucketTooltip(start: string, stepHours: number): string {
-  const date = new Date(start);
-  if (stepHours < 24) {
-    return date.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
+import { formatBucketTick, formatBucketTooltip } from './helpers';
 
 export type McpCallsByOutcomeChartProps = {
   buckets: McpUsageBucket[];
