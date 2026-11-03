@@ -9,7 +9,6 @@ const workspace = (name: string, overrides: Partial<Workspace> = {}) =>
     name,
     organization: 'alpha',
     sources: [],
-    sync: { schedule: 'nightly' },
     resourceVersion: '1',
     createdAt: '2026-10-01T00:00:00Z',
     lastSync: { time: '2026-10-01T12:00:00Z', result: 'Succeeded' },

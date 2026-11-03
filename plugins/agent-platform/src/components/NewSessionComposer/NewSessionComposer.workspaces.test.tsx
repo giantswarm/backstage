@@ -19,7 +19,6 @@ function workspace(overrides: Partial<Workspace>): Workspace {
     name: 'platform-mix',
     organization: 'agentlab-org',
     sources: [],
-    sync: { schedule: 'nightly' },
     resourceVersion: '1',
     createdAt: '2026-10-01T00:00:00Z',
     repositories: 9,
