@@ -222,6 +222,60 @@ describe('CustomizeModelsPanel', () => {
     ).not.toBeInTheDocument();
   });
 
+  describe('the Model hosting row', () => {
+    function PathProbe() {
+      return <div data-testid="path">{useLocation().pathname}</div>;
+    }
+
+    async function renderAtModels() {
+      mockServingInstallations = ['golem'];
+      await renderInTestApp(
+        <>
+          <PathProbe />
+          <CustomizeModelsPanel search="" />
+        </>,
+        {
+          initialRouteEntries: ['/customize/models'],
+          mountedRoutes: {
+            '/customize/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
+      );
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models$/,
+      );
+    }
+
+    it('opens Model hosting from its link', async () => {
+      await renderAtModels();
+
+      await userEvent.click(
+        screen.getByRole('link', { name: 'Model hosting' }),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
+
+    it('opens Model hosting from anywhere on the card, its text included', async () => {
+      await renderAtModels();
+
+      // The card's link is visually hidden; bui forwards a click on the card's
+      // surface to it.
+      await userEvent.click(
+        screen.getByText(
+          'Admins can run models on their own GPUs and manage what is served.',
+        ),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
+  });
+
   describe('at list scale', () => {
     function manyModels(count: number): ModelRow[] {
       return Array.from({ length: count }, (_, i) => {

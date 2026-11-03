@@ -389,6 +389,33 @@ describe('ModelsRouter', () => {
       });
     });
 
+    it('offers the tabs at all installations where cluster-manager runs without a serving layer', async () => {
+      mockUseServing.mockReturnValue(noServingLayer);
+      mockClusterManager = ['inst-1'];
+      renderTab('/customize/models/hosting/capacity');
+
+      expect(await screen.findByText('capacity-view')).toBeInTheDocument();
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Running models',
+        'GPU pools',
+        'Model cache',
+      ]);
+      // The tab the Add GPU node pool form's cache note points to.
+      expect(screen.getByRole('tab', { name: 'Model cache' })).toHaveAttribute(
+        'href',
+        '/customize/models/hosting/cache',
+      );
+    });
+
+    it('draws no tabs at all installations with neither a serving layer nor cluster-manager', async () => {
+      mockUseServing.mockReturnValue(noServingLayer);
+      mockClusterManager = [];
+      renderTab('/customize/models/hosting');
+
+      expect(await screen.findByText('serving-view')).toBeInTheDocument();
+      expect(screen.queryAllByRole('tab')).toEqual([]);
+    });
+
     it('shows no figures on a portal without a serving layer', async () => {
       mockUseServing.mockReturnValue(noServingLayer);
       renderTab('/customize/models/hosting');

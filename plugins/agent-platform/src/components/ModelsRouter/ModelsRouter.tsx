@@ -131,11 +131,12 @@ const HostingView = ({
  * pool…) land in this header's slot, top right.
  *
  * The figures show where a serving layer is in view. The tabs show where one
- * is in view or an environment is pinned: picking one in the header that
- * runs no serving layer changes the view's content, not the frame, so the
- * other tabs stay one click away. Only "All installations" on a portal
- * without a serving layer drops the strip; a deep link there keeps the frame
- * and lets the view's own empty state speak. The Model cache tab is offered
+ * is in view, where cluster-manager answers, or where an environment is
+ * pinned: picking one in the header that runs no serving layer changes the
+ * view's content, not the frame, so the other tabs stay one click away. Only
+ * "All installations" on a portal with neither a serving layer nor
+ * cluster-manager drops the strip; a deep link there keeps the frame and lets
+ * the view's own empty state speak. The Model cache tab is offered
  * where cluster-manager runs, and kept while it is the open view, so a
  * switch of environment never leaves a view without its tab.
  *
@@ -164,7 +165,12 @@ const ShellModelHosting = () => {
   const onCache = pathname.replace(/\/$/, '') === `${basePath}/cache`;
   const offersCache =
     clusterManager.available.length > 0 || clusterManager.isLoading || onCache;
-  const showTabs = servingLayer || scope !== ALL_INSTALLATIONS;
+  // cluster-manager's views (GPU pools, Model cache) stand without a serving
+  // layer: where it answers, the tabs are the way to them at every scope.
+  const showTabs =
+    servingLayer ||
+    clusterManager.available.length > 0 ||
+    scope !== ALL_INSTALLATIONS;
   // Every environment in view failed to read its served models: a "Models
   // running: 0" tile would claim what the warning below says was not seen.
   const servedModelsUnread = nothingCouldBeRead({
