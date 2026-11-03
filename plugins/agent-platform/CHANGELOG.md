@@ -1,5 +1,58 @@
 # @giantswarm/backstage-plugin-agent-platform
 
+## 1.2.0
+
+### Minor Changes
+
+- d1486af: Usage reports a calendar month: the Time range select offers this month so
+  far and the two before it beside the days windows, carried in the URL as
+  `?window=2026-10`. Overview and Cost report exactly that month's UTC days, a
+  past month evaluated at its end with the change against the month before, the
+  current month to date. In a month, Cost also shows spend and tokens by person,
+  the gateway's `user` label, with the calls it named nobody for as "No person
+  recorded"; with the Organization scope that is one organization's month by
+  agent and by person. Your sessions and Connectors keep their days windows: the
+  months are disabled choices there, and a month a link names there reads as the
+  default days. Closes giantswarm/backstage#2672.
+
+### Patch Changes
+
+- Updated dependencies [d1486af]
+- Updated dependencies [d1486af]
+  - @giantswarm/backstage-plugin-gs@0.71.1
+  - @giantswarm/backstage-plugin-agent-platform-common@1.2.0
+
+## 1.1.0
+
+### Minor Changes
+
+- 689b152: A session that waits on an MCP server's sign-in link (kagent's HITL `url_elicitation_request`, sent by runtimes that relay MCP URL elicitations, such as muster's sign-in link from 5.53.0 on) shows a sign-in card instead of the composer's question card: the server that asked, its message, _Sign in_ and _Not now_. Muster returns the sign-in's tab to the session and the agent continues on its own (`url_elicitation_response` `accept`); _Not now_ declines. `readUrlElicitationRequest` reads the request off a status message.
+- 7b1078c: Usage → Cost shows spend by organization: a "By organization" table with one
+  row per organization whose agents the gateway recorded calls for (the
+  organization's name, `None` for the platform's shared agents, `namespace
+<name>` for another namespace, Unattributed for calls placed in no namespace),
+  with its model calls, tokens, spend and share of spend over the selected
+  window. An Organization select in the scope bar, kept in the URL as
+  `?organization=<namespace>`, narrows every figure on Overview and Cost to one
+  organization; a row of the table opens that view. The Cost caption says the
+  page covers every organization, for everyone who can read the environment's
+  metrics. Part of giantswarm/backstage#2672.
+- 97c84d4: A workspace setup notice from kagent's harness shows as a status of its turn,
+  not as the agent's reply: an alert above the agent's answer with one summary
+  line ("Workspace setup: 3 repositories not updated"), a warning when the setup
+  failed, the directory was set up again or repositories stayed at the last sync,
+  and information when they are up to date again, with git's reasons folded
+  under Technical details. It renders the same live and after a reload, and no
+  longer counts as a reply. kagent does not mark a notice, so it is recognised by
+  its text on the message that opens the turn; `readKagentNotice` also reads a
+  proposed mark (`kagent.dev/notice`) that kagent does not send yet.
+
+### Patch Changes
+
+- Updated dependencies [689b152]
+- Updated dependencies [97c84d4]
+  - @giantswarm/backstage-plugin-agent-platform-common@1.1.0
+
 ## 1.0.0
 
 ### Major Changes

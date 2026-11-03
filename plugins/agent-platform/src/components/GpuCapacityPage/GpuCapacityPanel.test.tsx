@@ -809,6 +809,14 @@ describe('describeNode / lacksInstallationCache', () => {
     expect(describeNode(sparkPinnedOut)).toBe(NOT_SERVING_TARGET_DESCRIPTION);
     expect(describeNode(sparkTarget)).toBeUndefined();
     expect(describeNode(ollamaHost)).toBe('Backend host');
+    // The server's name when the host carries one, so two backends on one
+    // address read apart.
+    expect(describeNode({ ...ollamaHost, backend: 'ollama' })).toBe(
+      'Ollama host',
+    );
+    expect(describeNode({ ...ollamaHost, backend: 'lemonade' })).toBe(
+      'Lemonade host',
+    );
     expect(describeNode({ ...ollamaHost, eligible: false })).toBe(
       NOT_SERVING_TARGET_DESCRIPTION,
     );
