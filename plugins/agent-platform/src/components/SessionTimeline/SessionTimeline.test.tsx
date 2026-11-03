@@ -522,10 +522,12 @@ describe('SessionTimeline', () => {
   });
 
   describe('a stalled turn', () => {
-    // Relative to the real clock, which the row reads.
-    const since = Date.now() - 12 * 60 * 1000;
+    const since = Date.parse('2026-09-13T13:52:00Z');
 
     it('replaces the working row with when progress last came, and a cancel', async () => {
+      // Relative to the real clock, which the row reads: taken as the test
+      // runs, not when the file is collected.
+      const stalledSince = Date.now() - 12 * 60 * 1000;
       const onCancelTurn = jest.fn();
       await renderInTestApp(
         <DateTimeZoneProvider timeZone="local">
@@ -535,7 +537,7 @@ describe('SessionTimeline', () => {
             // The page never passes both; if it did, the stall must win — a
             // spinner next to "no progress" contradicts itself.
             isAgentWorking
-            stalledSince={since}
+            stalledSince={stalledSince}
             onCancelTurn={onCancelTurn}
           />
         </DateTimeZoneProvider>,
@@ -547,10 +549,15 @@ describe('SessionTimeline', () => {
       expect(screen.getByText(/last reported progress/)).toHaveTextContent(
         'The agent last reported progress 12 minutes ago.',
       );
-      expect(screen.getByText('12 minutes ago')).toHaveAttribute(
+      const time = screen.getByText('12 minutes ago');
+      expect(time).toHaveAttribute(
         'title',
-        formatLocalDateFull(new Date(since)),
+        formatLocalDateFull(new Date(stalledSince)),
       );
+      // It ticks every minute: kept out of the status's announcements, so
+      // the stall is announced once.
+      expect(time.closest('[role="status"]')).not.toBeNull();
+      expect(time).toHaveAttribute('aria-live', 'off');
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Stop the turn' }),

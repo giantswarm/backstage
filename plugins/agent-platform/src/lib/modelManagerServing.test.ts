@@ -10,9 +10,7 @@ import {
   modelManagerNodeSchema,
   parseModelManagerList,
 } from './modelManager';
-import { formatLocalDateFull } from '@giantswarm/backstage-plugin-ui-react';
 import {
-  describeBackendTime,
   describeServedModel,
   formatContextLength,
   formatGpuShare,
@@ -175,13 +173,9 @@ describe('toServedModelFromManager', () => {
     });
 
     expect(served.readiness).toBe('ready');
-    // Relative, so an eviction tomorrow does not read as today; the date
-    // and time after it, the message being a hover already.
-    expect(served.readinessMessage).toBe(
-      `Loaded in memory; evicts ${
-        describeBackendTime('2026-09-02T13:05:00Z')?.relative
-      } (${formatLocalDateFull('2026-09-02T13:05:00Z')}).`,
-    );
+    // When it goes is told at render, relative to that moment
+    // (`servedReadinessMessage`): the row keeps the time alone.
+    expect(served.readinessMessage).toBe('Loaded in memory.');
     expect(served.loaded).toBe(true);
     expect(served.memoryBytes).toBe(1_200_000_000);
     expect(served.loadedUntil).toBe('2026-09-02T13:05:00Z');
@@ -445,19 +439,6 @@ describe('formatting', () => {
     expect(describeServedModel({ parameterSize: '268.10M' })).toBe('268.10M');
     expect(describeServedModel(undefined)).toBe('');
     expect(describeServedModel({})).toBe('');
-  });
-
-  it('tells a backend time relative to now, with the full local stamp', () => {
-    const now = new Date('2026-09-02T10:05:00Z');
-    expect(describeBackendTime('2026-09-02T13:05:00Z', now)).toEqual({
-      relative: 'in about 3 hours',
-      full: formatLocalDateFull('2026-09-02T13:05:00Z'),
-    });
-    // Yesterday reads as yesterday, not as a time today.
-    expect(describeBackendTime('2026-09-01T09:05:00Z', now)?.relative).toBe(
-      '1 day ago',
-    );
-    expect(describeBackendTime('not a time', now)).toBeUndefined();
   });
 });
 

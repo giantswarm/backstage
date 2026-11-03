@@ -338,9 +338,12 @@ export function SessionTimeline({
       <div className={classes.stalled} role="status">
         <span className={classes.stalledText}>
           The agent last reported progress{' '}
+          {/* The relative time ticks every minute: kept out of the live
+              region's announcements, so the stall is announced once. */}
           <DateComponent
             value={new Date(stalledSince).toISOString()}
             relative
+            aria-live="off"
           />
           .
         </span>

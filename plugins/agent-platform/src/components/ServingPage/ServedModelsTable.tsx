@@ -18,6 +18,8 @@ import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   CatalogNoMatch,
   countNoun,
+  formatLocalDateFull,
+  getRelativeDate,
   INITIAL_ROWS,
   matchesQuery,
   ShowMore,
@@ -31,7 +33,6 @@ import {
   describeServedModel,
   formatContextLength,
   formatGpuShare,
-  describeBackendTime,
   isServedKServeModel,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
@@ -39,6 +40,8 @@ import { formatBytes } from '../../lib/formatNumbers';
 import {
   SERVED_MODEL_READINESS,
   SERVED_MODEL_READINESS_ORDER,
+  scheduledEviction,
+  servedReadinessMessage,
   type ServedModel,
   type ServedModelReadiness,
   type ServingBackend,
@@ -392,12 +395,8 @@ export function memoryLine(
   if (!row.loaded) {
     return 'Not loaded';
   }
-  if (
-    row.memoryBytes === undefined &&
-    !row.loadedUntil &&
-    !row.device &&
-    !row.pinned
-  ) {
+  const evicts = scheduledEviction(row.loadedUntil, now);
+  if (row.memoryBytes === undefined && !evicts && !row.device && !row.pinned) {
     return undefined;
   }
   const parts = [
@@ -418,11 +417,8 @@ export function memoryLine(
   if (row.pinned) {
     parts.push('pinned');
   }
-  const evicts = row.loadedUntil
-    ? describeBackendTime(row.loadedUntil, now)
-    : undefined;
   if (evicts) {
-    parts.push(`evicts ${evicts.relative}`);
+    parts.push(`evicts ${getRelativeDate(evicts, now)}`);
   }
   return parts.join(' · ');
 }
@@ -432,23 +428,23 @@ export function memoryLine(
  * footprint is the weights plus the KV cache for the context length the model
  * is loaded with — which is why a 500 MiB download occupies gigabytes — and
  * the share says how much of it sits on the accelerator; and the date and
- * time of an eviction the line gives relative to now. Only while loaded; the
- * other lines speak for themselves.
+ * time of an eviction the line gives relative to now (in the browser's time
+ * zone: the serving pages live in the shell, where every time is local). Only
+ * while loaded; the other lines speak for themselves.
  */
 export function memoryLineTitle(
   row: Pick<
     ServedModelRow,
     'loaded' | 'memoryBytes' | 'memoryVramBytes' | 'details' | 'loadedUntil'
   >,
+  now: Date = new Date(),
 ): string | undefined {
   if (!row.loaded) {
     return undefined;
   }
-  const evicts = row.loadedUntil
-    ? describeBackendTime(row.loadedUntil)
-    : undefined;
+  const evicts = scheduledEviction(row.loadedUntil, now);
   const eviction = evicts
-    ? `The backend evicts it from memory at ${evicts.full}.`
+    ? `The backend evicts it from memory at ${formatLocalDateFull(evicts)}.`
     : undefined;
   if (row.memoryBytes === undefined) {
     return eviction;
@@ -587,7 +583,7 @@ export function servedModelStatusExplanation(
   if (isDownloadRow(row) && row.download.phase === 'failed') {
     return row.download.error ?? row.readinessMessage;
   }
-  return row.readinessMessage;
+  return servedReadinessMessage(row);
 }
 
 /**
@@ -600,7 +596,7 @@ function ServedRowReadiness({ row }: { row: ServedModelRow }) {
     <ServedReadinessLabel
       readiness={row.readiness}
       reason={row.readinessReason}
-      title={explanation ? undefined : row.readinessMessage}
+      title={explanation ? undefined : servedReadinessMessage(row)}
       hint={<StatusHint subject={row.name} explanation={explanation} />}
     />
   );
@@ -1121,13 +1117,14 @@ export function describePlacement(row: ServedModelRow): string | undefined {
  */
 export function phoneStatusLines(row: ServedModelRow): string[] {
   const lines = servedModelStatusLines(row);
+  const message = servedReadinessMessage(row);
   if (
     !isDownloadRow(row) &&
     !isTroubled(row) &&
-    row.readinessMessage &&
-    !lines.includes(row.readinessMessage)
+    message &&
+    !lines.includes(message)
   ) {
-    return [row.readinessMessage, ...lines];
+    return [message, ...lines];
   }
   return lines;
 }

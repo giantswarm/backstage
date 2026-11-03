@@ -107,8 +107,7 @@ const rows: ServedModelRow[] = [
   },
 ];
 
-/** Two models of an Ollama-backed model-manager: one loaded and wired, one not. */
-// Relative to the real clock, which the memory line reads.
+// Relative to the real clock, which the status cell reads.
 const IN_THREE_HOURS = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
 const LOADED_MESSAGE = `Loaded in memory; evicts in about 3 hours (${formatLocalDateFull(
   IN_THREE_HOURS,
@@ -117,6 +116,7 @@ const EVICTION_TITLE = `The backend evicts it from memory at ${formatLocalDateFu
   IN_THREE_HOURS,
 )}.`;
 
+/** Two models of an Ollama-backed model-manager: one loaded and wired, one not. */
 const ollamaRows: ServedModelRow[] = [
   {
     id: 'lab/ollama//qwen3.5:9b',
@@ -126,7 +126,7 @@ const ollamaRows: ServedModelRow[] = [
     modelSource: 'qwen3.5:9b',
     runtime: 'ollama 0.33.2',
     readiness: 'ready',
-    readinessMessage: LOADED_MESSAGE,
+    readinessMessage: 'Loaded in memory.',
     internalUrl: 'http://172.21.0.1:11434',
     endpointHosts: ['172.21.0.1:11434'],
     sizeBytes: 6594474711,
@@ -330,6 +330,25 @@ describe('memoryLine and servedModelStatusLines', () => {
     expect(
       memoryLine({ loaded: true, loadedUntil: '2026-09-03T13:05:00Z' }, now),
     ).toBe('In memory · evicts in 1 day');
+    // No eviction to tell — passed (a row can outlive it by a poll), far
+    // ahead (Ollama's `keep_alive: -1`, some 292 years out) or unreadable:
+    // the line leaves it out, and says nothing when nothing else is known.
+    for (const loadedUntil of [
+      '2026-09-02T10:04:00Z',
+      '2318-12-24T10:05:00Z',
+      'not a time',
+    ]) {
+      expect(
+        memoryLine(
+          { loaded: true, memoryBytes: 5_800_000_000, loadedUntil },
+          now,
+        ),
+      ).toBe('5.4 GiB in memory');
+      expect(memoryLine({ loaded: true, loadedUntil }, now)).toBeUndefined();
+      expect(
+        memoryLineTitle({ loaded: true, loadedUntil }, now),
+      ).toBeUndefined();
+    }
     expect(servedModelStatusLines(rows[0])).toEqual([]);
     expect(servedModelStatusLines(ollamaRows[1])).toEqual(['Not loaded']);
   });
@@ -409,14 +428,20 @@ describe('memoryLine and servedModelStatusLines', () => {
     );
     // The date and time of an eviction the line gives relative to now.
     expect(
-      memoryLineTitle({ ...footprint, loadedUntil: '2026-09-02T13:05:00Z' }),
+      memoryLineTitle(
+        { ...footprint, loadedUntil: '2026-09-02T13:05:00Z' },
+        new Date('2026-09-02T10:05:00Z'),
+      ),
     ).toBe(
       `In memory: the weights plus the KV cache for the 40k context the model is loaded with. The backend evicts it from memory at ${formatLocalDateFull(
         '2026-09-02T13:05:00Z',
       )}.`,
     );
     expect(
-      memoryLineTitle({ loaded: true, loadedUntil: '2026-09-02T13:05:00Z' }),
+      memoryLineTitle(
+        { loaded: true, loadedUntil: '2026-09-02T13:05:00Z' },
+        new Date('2026-09-02T10:05:00Z'),
+      ),
     ).toBe(
       `The backend evicts it from memory at ${formatLocalDateFull(
         '2026-09-02T13:05:00Z',
