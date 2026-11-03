@@ -13,12 +13,14 @@ import {
   useSessionDraft,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import type {
-  AgentManagerAgent,
-  AgentPluginEntry,
-  AgentSkillEntry,
-  WriteMode,
+import {
+  supportsTags,
+  type AgentManagerAgent,
+  type AgentPluginEntry,
+  type AgentSkillEntry,
+  type WriteMode,
 } from '../../lib/agentManager';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
   changedFields,
   editStateOf,
@@ -320,6 +322,14 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
    * and model are left out, since the form picks those itself.
    */
   isDirty: boolean;
+  /**
+   * Whether the installation's agent-manager keeps tags. False until its
+   * `get_info` is read: the Tags field is shown, and its problems count, only
+   * while true.
+   */
+  tagsOffered: boolean;
+  /** An edited agent's tags as read, for the Tags field; none on create. */
+  storedTags: readonly string[];
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -503,6 +513,8 @@ function baselineOf(agent: AgentManagerAgent): AgentManagerAgent {
     : agent;
 }
 
+const NO_TAGS: readonly string[] = [];
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
@@ -534,7 +546,14 @@ export function NewAgentFormProvider({
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
-  const isDirtyCreate = !edit && hasCreateInput(state);
+  const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const tagsOffered = supportsTags(agentManagerInfo);
+
+  // Text left in a Tags field the installation does not offer is out of
+  // sight, so it does not make the form one to keep.
+  const isDirtyCreate =
+    !edit &&
+    hasCreateInput(tagsOffered ? state : { ...state, tagDraft: undefined });
   const draftValue = useMemo<NewAgentDraft>(() => {
     // The notice of a removal is said once, and whether the platform sets the
     // egress is read again, like the tenant choices.
@@ -564,9 +583,14 @@ export function NewAgentFormProvider({
     dismissRestored: dismissDraftNotice,
   } = draft;
 
+  // An edited agent's tags as read: past the limit they may stay.
+  const storedTags = useMemo(
+    () => (edit ? editStateOf(edit.agent).tags : NO_TAGS),
+    [edit],
+  );
   const tagUpdaters = useMemo(
-    () => tagsFieldUpdaters<NewAgentFormState>(setState),
-    [],
+    () => tagsFieldUpdaters<NewAgentFormState>(setState, storedTags),
+    [storedTags],
   );
 
   const value = useMemo<NewAgentFormContextValue>(() => {
@@ -579,11 +603,10 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
-    fieldErrors.tags = draftProblem(
-      state.tagDraft ?? '',
-      state.tags,
-      edit ? editStateOf(edit.agent).tags : [],
-    );
+    // Not offered where agent-manager keeps no tags, so not checked there.
+    fieldErrors.tags = tagsOffered
+      ? draftProblem(state.tagDraft ?? '', state.tags, storedTags)
+      : undefined;
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -897,6 +920,8 @@ export function NewAgentFormProvider({
       },
       clearSavedDraft: clearDraft,
       isDirty,
+      tagsOffered,
+      storedTags,
       isComplete,
       validationErrors,
       fieldErrors,
@@ -913,6 +938,8 @@ export function NewAgentFormProvider({
     dismissDraftNotice,
     clearDraft,
     tagUpdaters,
+    tagsOffered,
+    storedTags,
   ]);
 
   return (

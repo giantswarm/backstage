@@ -34,7 +34,6 @@ import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { supportsTags } from '../../lib/agentManager';
 import {
   harnessTitle,
   PLATFORM_DEFAULT_LABEL,
@@ -89,6 +88,8 @@ function NewAgentPageContent() {
     setEgressSetByPlatform,
     validationErrors,
     fieldErrors,
+    tagsOffered,
+    storedTags,
   } = useNewAgentForm();
   // The platform Harness the runtime field shows, for the summary below.
   const { platformChoice } = useRuntimeChoices();
@@ -110,16 +111,6 @@ function NewAgentPageContent() {
   // to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { errorFor, fieldProps, textFieldProps } = validation;
-  // Tags only where the installation's agent-manager takes them. A draft
-  // left in the hidden field must not block Continue.
-  const tagsSupported = supportsTags(agentManagerInfo);
-  const hasHiddenTagDraft =
-    agentManagerInfo !== undefined && !tagsSupported && !!state.tagDraft;
-  useEffect(() => {
-    if (hasHiddenTagDraft) {
-      setTagDraft('');
-    }
-  }, [hasHiddenTagDraft, setTagDraft]);
   // "More options" holds the technical knobs (model, runtime, default
   // workspace, technical name, EgressPolicies and extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
@@ -151,7 +142,10 @@ function NewAgentPageContent() {
       return;
     }
     // A typed tag not yet added goes with the agent, however step 1 is left.
-    commitTagDraft();
+    // Where the field is not offered, its text stays out of the agent.
+    if (tagsOffered) {
+      commitTagDraft();
+    }
     if (nextLink) {
       navigate(nextLink());
     }
@@ -161,6 +155,7 @@ function NewAgentPageContent() {
     nextLink,
     navigate,
     reveal,
+    tagsOffered,
     commitTagDraft,
   ]);
 
@@ -307,11 +302,12 @@ function NewAgentPageContent() {
           placeholder="e.g. Sorts, summarises and routes support tickets"
           description="Shown to people when they pick an agent."
         />
-        {tagsSupported && (
+        {tagsOffered && (
           <TagsField
             tags={state.tags}
             draft={state.tagDraft ?? ''}
             error={errorFor('tags', fieldErrors.tags)}
+            stored={storedTags}
             onDraftChange={setTagDraft}
             onAdd={addTags}
             onRemove={removeTag}

@@ -15,7 +15,7 @@ import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
-import { useTakesDisplayName, useTakesTags } from '../NewMcpServerReviewPage';
+import { useToolTakesArgument } from '../shared/hooks';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
@@ -154,6 +154,8 @@ export function NewConnectorConnectPage() {
     fieldErrors,
     registeredName,
     registeredInstallation,
+    takesTags,
+    storedTags,
   } = useNewMcpServerForm();
 
   // The wizard registers onto the section's active installation, mirrored into
@@ -170,9 +172,10 @@ export function NewConnectorConnectPage() {
   // Until the schema is read the name stays read-only, as it was before
   // muster took a display name. A family's members are named together (the
   // name they agree on), so one member is not renamed on its own.
-  const updateTakesDisplayName = useTakesDisplayName(
+  const updateTakesDisplayName = useToolTakesArgument(
     'core_mcpserver_update',
     registeredInstallation,
+    'displayName',
     { enabled: Boolean(registeredName) },
   );
   const family = registeredName
@@ -180,11 +183,6 @@ export function NewConnectorConnectPage() {
         .find(server => server.getName() === registeredName)
         ?.getFamily()
     : undefined;
-  // Whether this muster keeps tags: the tool this run writes with.
-  const takesTags = useTakesTags(
-    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
-    registeredName ? registeredInstallation : state.installation,
-  );
   // The tags the installation's connectors already use, offered while typing:
   // their own, not the read-only tool-group tag (`connectorTags`).
   const knownTags = useMemo(
@@ -215,20 +213,16 @@ export function NewConnectorConnectPage() {
   // Continue moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { reveal } = validation;
-  // A draft left in a hidden Tags field (an older muster) does not block
-  // Continue; Continue drops it.
-  const errorCount =
-    detailsErrors.length - (!takesTags && fieldErrors.tags ? 1 : 0);
+  const errorCount = detailsErrors.length;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       reveal();
       return;
     }
     // A typed tag not yet added goes with the connector, as on the agent form.
+    // Where the field is not offered, its text stays out of the connector.
     if (takesTags) {
       commitTagDraft();
-    } else {
-      setTagDraft('');
     }
     const signIn = wizardLinks('auth', {
       name: registeredName,
@@ -242,7 +236,6 @@ export function NewConnectorConnectPage() {
     reveal,
     takesTags,
     commitTagDraft,
-    setTagDraft,
     wizardLinks,
     navigate,
     registeredName,
@@ -329,6 +322,7 @@ export function NewConnectorConnectPage() {
           draft={state.tagDraft}
           error={validation.errorFor('tags', fieldErrors.tags)}
           counts={knownTags}
+          stored={storedTags}
           onDraftChange={setTagDraft}
           onAdd={addTags}
           onRemove={removeTag}

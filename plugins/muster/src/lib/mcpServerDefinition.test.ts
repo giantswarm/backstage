@@ -14,8 +14,7 @@ import {
   WIZARD_ANSWER_MODES,
   WIZARD_AUTH_MODES,
   sigv4Advisories,
-  takesDisplayName,
-  takesTags,
+  takesArgument,
   tagsArgument,
   mcpServerDetailsProblems,
   validateNewMcpServerForm,
@@ -336,24 +335,30 @@ describe('displayNameArgument', () => {
   );
 });
 
-describe('takesDisplayName', () => {
+describe('takesArgument', () => {
   it('reads the argument from the tool’s input schema', () => {
     expect(
-      takesDisplayName({
-        properties: {
-          name: { type: 'string' },
-          displayName: { type: 'string' },
+      takesArgument(
+        {
+          properties: {
+            name: { type: 'string' },
+            displayName: { type: 'string' },
+          },
         },
-      }),
+        'displayName',
+      ),
     ).toBe(true);
   });
 
   it('is false for a muster from before display names, or no schema', () => {
-    expect(takesDisplayName({ properties: { name: { type: 'string' } } })).toBe(
-      false,
-    );
-    expect(takesDisplayName({})).toBe(false);
-    expect(takesDisplayName(undefined)).toBe(false);
+    expect(
+      takesArgument(
+        { properties: { name: { type: 'string' } } },
+        'displayName',
+      ),
+    ).toBe(false);
+    expect(takesArgument({}, 'displayName')).toBe(false);
+    expect(takesArgument(undefined, 'displayName')).toBe(false);
   });
 });
 
@@ -1536,6 +1541,15 @@ describe('tags', () => {
     ).not.toContain('tags');
   });
 
+  it('checks no tags where the muster keeps none', () => {
+    const full = Array.from({ length: 51 }, (_, index) => `tag-${index}`);
+    expect(
+      mcpServerDetailsProblems(state({ tags: full, tagDraft: '!!' }), {
+        takesTags: false,
+      }).map(problem => problem.field),
+    ).not.toContain('tags');
+  });
+
   it('reads an edited server’s tags into the form', () => {
     const server = new MCPServer(
       {
@@ -1553,8 +1567,10 @@ describe('tags', () => {
   });
 
   it('takes tags only from a tool whose schema declares them', () => {
-    expect(takesTags({ properties: { tags: { type: 'array' } } })).toBe(true);
-    expect(takesTags({ properties: { name: {} } })).toBe(false);
-    expect(takesTags(undefined)).toBe(false);
+    expect(
+      takesArgument({ properties: { tags: { type: 'array' } } }, 'tags'),
+    ).toBe(true);
+    expect(takesArgument({ properties: { name: {} } }, 'tags')).toBe(false);
+    expect(takesArgument(undefined, 'tags')).toBe(false);
   });
 });

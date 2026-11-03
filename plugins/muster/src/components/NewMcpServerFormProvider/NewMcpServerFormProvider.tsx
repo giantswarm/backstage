@@ -36,6 +36,7 @@ import {
   type McpServerTransport,
   type NewMcpServerFormState,
 } from '../../lib/mcpServerDefinition';
+import { useToolTakesArgument } from '../shared/hooks';
 
 export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
   state: NewMcpServerFormState;
@@ -113,6 +114,14 @@ export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
    * empty form.
    */
   reset: () => void;
+  /**
+   * Whether the installation's muster keeps tags, read from the schema of the
+   * tool this run writes with. False until it is read: the Tags field is shown,
+   * and its problems count, only while true.
+   */
+  takesTags: boolean;
+  /** The edited server's tags as read, for the Tags field; none on create. */
+  storedTags: readonly string[];
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -151,6 +160,8 @@ export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
   /** The definition passed to muster's validate/create/update tools. */
   definition: McpServerDefinition;
 };
+
+const NO_TAGS: readonly string[] = [];
 
 const NewMcpServerFormContext = createContext<
   NewMcpServerFormContextValue | undefined
@@ -283,14 +294,22 @@ export function NewMcpServerFormProvider({
     setState(restored?.state ?? initialState);
   }, [initialState]);
 
+  const storedTags = base?.tags ?? NO_TAGS;
   const tagUpdaters = useMemo(
-    () => tagsFieldUpdaters<NewMcpServerFormState>(setState),
-    [],
+    () => tagsFieldUpdaters<NewMcpServerFormState>(setState, storedTags),
+    [storedTags],
+  );
+
+  const takesTags = useToolTakesArgument(
+    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+    registeredName ? registeredInstallation : state.installation,
+    'tags',
   );
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     const detailsProblems = mcpServerDetailsProblems(state, {
-      storedTags: base?.tags,
+      storedTags,
+      takesTags,
     });
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
@@ -365,6 +384,8 @@ export function NewMcpServerFormProvider({
       markSaved,
       startEdit,
       reset,
+      takesTags,
+      storedTags,
       isComplete: validationErrors.length === 0,
       validationErrors,
       detailsErrors,
@@ -394,6 +415,8 @@ export function NewMcpServerFormProvider({
     startEdit,
     reset,
     tagUpdaters,
+    takesTags,
+    storedTags,
   ]);
 
   return (

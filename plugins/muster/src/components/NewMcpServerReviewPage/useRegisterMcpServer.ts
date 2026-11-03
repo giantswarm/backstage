@@ -6,12 +6,11 @@ import { musterApiRef } from '../../apis';
 import { isMusterAuthError } from '../../lib/authError';
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import {
-  takesDisplayName,
-  takesTags,
+  takesArgument,
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
-import { displayNameSupportQuery } from './useTakesDisplayName';
+import { toolArgumentsQuery } from '../shared/hooks';
 
 export type McpServerRegistration = {
   definition: McpServerDefinition;
@@ -64,7 +63,7 @@ export function useRegisterMcpServer() {
           return definition;
         }
         const detail = await queryClient
-          .fetchQuery(displayNameSupportQuery(musterApi, name, installation))
+          .fetchQuery(toolArgumentsQuery(musterApi, name, installation))
           .catch(error => {
             if (isMusterAuthError(error)) {
               throw error;
@@ -78,10 +77,10 @@ export function useRegisterMcpServer() {
             );
           });
         const sent = { ...definition };
-        if (!takesDisplayName(detail.inputSchema)) {
+        if (!takesArgument(detail.inputSchema, 'displayName')) {
           delete sent.displayName;
         }
-        if (!takesTags(detail.inputSchema)) {
+        if (!takesArgument(detail.inputSchema, 'tags')) {
           delete sent.tags;
         }
         return sent;

@@ -21,9 +21,9 @@
 // `ui.giantswarm.io/display-name` annotation) through the tools' own
 // `displayName` argument, which muster takes since v5.43.0 (muster#1518). An
 // older muster refuses it as an unknown field, so the write only sends it to a
-// tool whose input schema declares it ({@link takesDisplayName}). Tags
+// tool whose input schema declares it ({@link takesArgument}). Tags
 // (`ui.giantswarm.io/tags`) go the same way, through the tools' `tags`
-// argument where its schema declares one ({@link takesTags}).
+// argument where its schema declares one.
 
 import type {
   MCPServer,
@@ -315,27 +315,16 @@ export function tagsArgument(
 }
 
 /**
- * Whether a muster tool takes the `tags` argument, read from its input schema
- * as `describe_tool` returns it. Older muster releases do not declare it — and
- * refuse it as an unknown field — so a tool without a schema counts as not
- * taking it.
+ * Whether a muster tool takes the `argument`, read from its input schema as
+ * `describe_tool` returns it. Older muster releases do not declare
+ * `displayName` (before v5.43.0) or `tags`, and refuse them as unknown fields,
+ * so a tool without a schema counts as not taking it.
  */
-export function takesTags(
+export function takesArgument(
   inputSchema: { properties?: Record<string, unknown> } | undefined,
+  argument: 'displayName' | 'tags',
 ): boolean {
-  return Boolean(inputSchema?.properties?.tags);
-}
-
-/**
- * Whether a muster tool takes the `displayName` argument, read from its input
- * schema as `describe_tool` returns it. muster releases before v5.43.0 do not
- * declare it — and refuse it as an unknown field — so a tool without a schema
- * counts as not taking it.
- */
-export function takesDisplayName(
-  inputSchema: { properties?: Record<string, unknown> } | undefined,
-): boolean {
-  return Boolean(inputSchema?.properties?.displayName);
+  return Boolean(inputSchema?.properties?.[argument]);
 }
 
 function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
@@ -530,10 +519,15 @@ export function mcpServerFieldErrors(
  * shown?" on the details alone — a bad issuer typed on the auth step must not
  * bounce the user back to step 1. `storedTags` are an edited server's tags as
  * read: left unchanged, they are not written, so they are not checked.
+ * `takesTags` is false where the installation's muster keeps no tags: the
+ * Tags field is not offered there, so it cannot hold a problem.
  */
 export function mcpServerDetailsProblems(
   state: NewMcpServerFormState,
-  { storedTags = [] }: { storedTags?: readonly string[] } = {},
+  {
+    storedTags = [],
+    takesTags = true,
+  }: { storedTags?: readonly string[]; takesTags?: boolean } = {},
 ): McpServerProblem[] {
   const problems: McpServerProblem[] = [];
 
@@ -561,7 +555,8 @@ export function mcpServerDetailsProblems(
       message: `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
     });
   }
-  const tagProblem = draftProblem(state.tagDraft, state.tags, storedTags);
+  const tagProblem =
+    takesTags && draftProblem(state.tagDraft, state.tags, storedTags);
   if (tagProblem) {
     problems.push({ field: 'tags', message: tagProblem });
   }
