@@ -36,12 +36,13 @@ function mediaBlocks(css: string, query: string): string[] {
 
 const PHONE = `(max-width: ${PHONE_MAX_WIDTH}px)`;
 
-function cssColorValues(): string[] {
+/** The blocks of the stylesheet that style the dark theme mode. */
+const DARK_BLOCK = /[^{}]*\[data-theme-mode='dark'\][^{}]*\{[^{}]*\}/g;
+
+function cssColorValues(css: string): string[] {
   // Only values that carry a colour: the stylesheet also declares layout
   // variables (the mobile bar height), which the palette table does not own.
-  return [
-    ...shellCss().matchAll(/(?:--[\w-]+|color|box-shadow)\s*:\s*([^;]+);/g),
-  ]
+  return [...css.matchAll(/(?:--[\w-]+|color|box-shadow)\s*:\s*([^;]+);/g)]
     .map(match => match[1].replace(/\s+/g, ' ').trim())
     .filter(value => value.includes('#') || value.includes('rgb'));
 }
@@ -281,19 +282,32 @@ describe('agentShellLightColors', () => {
     expect(block).toContain("[type='button']");
   });
 
+  // Each mode's blocks against its own table, so a dark value in a light
+  // block, or the reverse, fails.
   it('is the only source of the colours in agent-shell.css', () => {
-    const tableValues = new Set<string>([
-      ...Object.values(agentShellLightColors),
-      ...Object.values(agentShellDarkColors),
-    ]);
-    const cssValues = new Set(cssColorValues());
+    const css = shellCss();
+    const darkCss = (css.match(DARK_BLOCK) ?? []).join('\n');
+    expect(darkCss).not.toBe('');
 
-    expect([...cssValues].filter(value => !tableValues.has(value))).toEqual([]);
+    const lightTable = new Set<string>(Object.values(agentShellLightColors));
+    const lightValues = new Set(cssColorValues(css.replace(DARK_BLOCK, '')));
+    expect([...lightValues].filter(value => !lightTable.has(value))).toEqual(
+      [],
+    );
     expect(
       Object.entries(agentShellLightColors)
-        .filter(([, value]) => !cssValues.has(value))
+        .filter(([, value]) => !lightValues.has(value))
         .map(([role]) => role),
     ).toEqual(['divider']);
+
+    const darkTable = new Set<string>(Object.values(agentShellDarkColors));
+    const darkValues = new Set(cssColorValues(darkCss));
+    expect([...darkValues].filter(value => !darkTable.has(value))).toEqual([]);
+    expect(
+      Object.entries(agentShellDarkColors)
+        .filter(([, value]) => !darkValues.has(value))
+        .map(([role]) => role),
+    ).toEqual([]);
   });
 });
 
@@ -333,10 +347,24 @@ function buiTokens(mode: 'light' | 'dark'): Record<string, string> {
 // the underline against the body text around it, where the colour alone falls
 // short of 3:1.
 describe('agent-shell.css text links', () => {
-  const linkRule = (css: string) =>
-    css.match(
-      /html\[data-agent-shell\]\s*:is\(\.bui-Link, \.MuiLink-root, \[class\*='Toast_links'\] a\):not\([^)]*\) \{([^}]*)\}/,
-    )?.[1];
+  /** The text-link rule's body, nested rules included, braces matched. */
+  const linkRule = (css: string): string | undefined => {
+    const opener = css.match(
+      /html\[data-agent-shell\]\s*:is\(\.bui-Link, \.MuiLink-root, \[class\*='Toast_links'\] a\):not\([^)]*\) \{/,
+    );
+    if (!opener || opener.index === undefined) {
+      return undefined;
+    }
+    const start = opener.index + opener[0].length;
+    let depth = 1;
+    let end = start;
+    while (depth > 0 && end < css.length) {
+      if (css[end] === '{') depth += 1;
+      if (css[end] === '}') depth -= 1;
+      end += 1;
+    }
+    return css.slice(start, end - 1);
+  };
 
   it('defines the link colours by theme mode, from the palette tables', () => {
     const css = shellCss();
@@ -359,6 +387,27 @@ describe('agent-shell.css text links', () => {
     expect(rule).toContain('text-decoration-line: underline;');
     expect(rule).toContain('text-decoration-style: solid;');
     expect(rule).toContain('text-decoration-color: currentColor;');
+    // One exclusion list for rest and hover: the hover is nested.
+    expect(rule).toMatch(
+      /&:hover \{\s*color: var\(--agent-shell-link-hover\);\s*text-decoration-thickness: 2px;\s*\}/,
+    );
+    expect(shellCss().match(/:is\(\.bui-Link, \.MuiLink-root/g)).toHaveLength(
+      1,
+    );
+  });
+
+  it('gives a bui Text inside a text link the link’s colour', () => {
+    // bui's Text sets its own colour, which would sit under the link's
+    // underline. jsdom applies no nested rules, so this reads the rule.
+    expect(linkRule(shellCss())).toMatch(
+      /& \.bui-Text \{\s*color: inherit;\s*\}/,
+    );
+  });
+
+  it('opts a bui link out only when it is standalone', () => {
+    // bui writes `standalone={false}` as data-standalone="false".
+    expect(shellCss()).toContain("[data-standalone='true']");
+    expect(shellCss()).not.toMatch(/\[data-standalone\](?!=)/);
   });
 
   it('keeps no per-surface link rule', () => {

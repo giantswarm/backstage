@@ -109,8 +109,9 @@ nested card or a banner — whatever its `color` prop. One rule in
 `packages/app/src/modules/agentShell/agent-shell.css` styles bui's `Link`
 (`.bui-Link`), core-components' and MUI's `Link` (`.MuiLink-root`) and a
 toast's links alike, so a component never colours, underlines or
-un-underlines a link of its own. Hover darkens the colour and thickens the
-line.
+un-underlines a link of its own. A bui `Text` inside a text link takes the
+link's colour from the same rule. Hover takes the text colour and thickens
+the line.
 
 The underline is what marks a link. The link colour (#00609c) holds 4.5:1
 against every surface a link sits on, but only 2.3:1 against the body text,
@@ -123,15 +124,17 @@ background, its neutral-1 to neutral-3 surfaces and its banners. `theme.test.ts`
 checks the contrast in both modes, against the shell's palette and the
 installed bui's own tokens.
 
-Controls rendered as links keep their own look, because the rule leaves them
-out: `ButtonLink`, core-components' `LinkButton`, a `Tab`, `MenuItem`, `Tag`
-or `Card` with an `href`, and any bui `Link` with `standalone`. `standalone` is
-how a bui `Link` says it is a control rather than text — the rail's items and
-the logo, breadcrumbs, a wizard's steps, Close and Cancel, a title that a row
-or a card stretches over its whole area, an icon-only link. Pass it rather
-than adding an exclusion to the rule. Inside a text link, a bui `Text` takes
-`style={{ color: 'inherit' }}`, or it keeps its own colour under the link's
-underline.
+Controls rendered as links keep their own look. bui's `ButtonLink`,
+core-components' `LinkButton`, and a bui `Tab`, `MenuItem` or `Tag` with an
+`href` carry no link class, so the rule never reaches them. It leaves out a
+`Card` with an `href`, anything MUI builds on its `ButtonBase` (a button, tab
+or menu item rendered through core-components' `Link`), and any bui `Link`
+with `standalone`. `standalone` is how a bui `Link` says it is a control rather
+than text — the rail's items and the logo, breadcrumbs, a wizard's steps,
+Close and Cancel, a title that a row or a card stretches over its whole area,
+a link filling a tag, an icon-only link. Pass it rather than adding an
+exclusion to the rule. A standalone link keeps the link colour, darker on
+hover, unless its component sets its own.
 
 ## Toasts
 

@@ -202,9 +202,8 @@ them and never invent a palette.
   (`--agent-shell-link`, #00609c) and a solid underline, on every surface,
   white or tinted, banner or card, whatever its `color` prop. One rule in
   `agent-shell.css` does this for bui's and MUI's links alike (and a toast's);
-  do not colour, underline or un-underline a link per component. Inside a link,
-  a bui `Text` takes `style={{ color: 'inherit' }}`, or it keeps its own
-  colour under the link's underline.
+  do not colour, underline or un-underline a link per component. A bui `Text`
+  inside a text link takes the link's colour from the same rule.
 - The underline is the cue, not the colour: #00609c holds 4.5:1 against every
   surface a link sits on, but only 2.3:1 against the body text, short of the
   3:1 at which colour alone may mark a link. A trailing arrow is not a cue
@@ -217,9 +216,9 @@ them and never invent a palette.
 - A control rendered as a link is not a text link and keeps its own look:
   `ButtonLink`, core-components' `LinkButton`, a `Tab`, `MenuItem`, `Tag` or
   `Card` with an `href`. A bui `Link` that is a control — a rail or nav item,
-  a breadcrumb, a wizard's step, Close or Cancel, an icon-only link, a title a
-  row or a card stretches over its whole area — passes `standalone`, which is
-  how it opts out of the rule. Never opt out with a class or a selector in the
+  a breadcrumb, a wizard's step, Close or Cancel, an icon-only link, a link
+  filling a tag, a title a row or a card stretches over its whole area —
+  passes `standalone`, which is how it opts out of the rule. Never opt out with a class or a selector in the
   rule; `agentShellLinks.test.tsx` checks the controls most at risk.
 
 ### Kubernetes resources and commits

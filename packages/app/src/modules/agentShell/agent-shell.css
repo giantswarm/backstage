@@ -90,27 +90,32 @@ html[data-agent-shell]
 /*
  * Text links: one rule for the whole shell. Every text link — bui's `Link`,
  * core-components' and MUI's `Link`, a toast's links — takes the shell's link
- * colour and a solid underline, on every surface, whatever its `color` prop.
- * The link colour holds 4.5:1 against every surface a link sits on, light
- * and dark (theme.test.ts), but only 2.3:1 against the body text, short of
- * the 3:1 at which colour alone may mark a link (WCAG 1.4.1), so the
- * underline is what marks it; bui's own 30% underline all but vanished on a
- * tint, and core-components' link was text-coloured and underlined only on
- * hover. Hover takes the text colour and thickens the line.
+ * colour and a solid underline, on every surface, whatever its `color` prop,
+ * and a bui `Text` inside it takes the link's colour. The link colour holds
+ * 4.5:1 against every surface a link sits on, light and dark
+ * (theme.test.ts), but only 2.3:1 against the body text, short of the 3:1 at
+ * which colour alone may mark a link (WCAG 1.4.1), so the underline is what
+ * marks it; bui's own 30% underline all but vanished on a tint, and
+ * core-components' link was text-coloured and underlined only on hover.
+ * Hover takes the text colour and thickens the line.
  *
  * The colour follows the nearest theme mode, not the body's: the shell
  * renders light, but a toast inverts the theme the person picked, so its
  * links sit on bui's dark surfaces whenever they picked the light theme.
  *
- * Controls that are links underneath keep their own look: buttons
- * (`ButtonLink`, core-components' `LinkButton`), tabs, menu items, tags, a
- * `Card` with an `href`, and bui's `standalone` links. `standalone` is how a
- * bui `Link` says it is a control rather than text: the rail's items and the
+ * A control rendered as a link keeps its own look. bui's `ButtonLink`, and a
+ * `Tab`, `MenuItem` or `Tag` with an `href`, carry no link class, so the rule
+ * never reaches them. What it leaves out by name are the controls that do:
+ * bui's `standalone` links, a `Card`'s link, and anything MUI builds on its
+ * `ButtonBase` (a button, tab or menu item rendered through core-components'
+ * `Link`, like core-components' `RoutedTabs`). `standalone` is how a bui
+ * `Link` says it is a control rather than text: the rail's items and the
  * logo, breadcrumbs, the wizard's steps, Close and Cancel, a title a row or a
  * card stretches over its whole area (StackedRowList, the agent and connector
- * lists), the skill file tree. A new control rendered as a link opts out the
- * same way, never by restyling the link in its component. Unlayered, so it
- * wins over MUI's link classes, bui's, and a colour a component inherits.
+ * lists), the skill file tree, a link filling a tag. A new control rendered
+ * as a link opts out the same way, never by restyling the link in its
+ * component. Unlayered, so it wins over MUI's link classes, bui's, and a
+ * colour a component sets on the link.
  */
 html[data-agent-shell] [data-theme-mode='light'] {
   --agent-shell-link: #00609c;
@@ -122,25 +127,24 @@ html[data-agent-shell] [data-theme-mode='dark'] {
   --agent-shell-link-hover: #ffffff;
 }
 
-/* A bui link that opts out keeps the link colour unless its component sets
-   its own. Inside bui's components layer, so a component's styles win. */
+/* A bui link that opts out keeps the link colour, and the darker one on
+   hover, unless its component sets its own. Inside bui's components layer,
+   so a component's styles win. */
 @layer components {
   html[data-agent-shell] .bui-Link[data-color='primary'] {
     color: var(--agent-shell-link);
+
+    &:hover {
+      color: var(--agent-shell-link-hover);
+    }
   }
 }
 
 html[data-agent-shell]
   :is(.bui-Link, .MuiLink-root, [class*='Toast_links'] a):not(
-    .bui-Button,
-    .bui-ButtonLink,
-    .bui-ButtonIcon,
-    .bui-Tag,
-    [class*='MuiButton'],
-    [role='tab'],
-    [role='menuitem'],
-    [data-standalone],
-    .bui-CardTrigger
+    [data-standalone='true'],
+    .bui-CardTrigger,
+    .MuiButtonBase-root
   ) {
   color: var(--agent-shell-link);
   text-decoration-line: underline;
@@ -148,22 +152,15 @@ html[data-agent-shell]
   text-decoration-color: currentColor;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
-}
 
-html[data-agent-shell]
-  :is(.bui-Link, .MuiLink-root, [class*='Toast_links'] a):not(
-    .bui-Button,
-    .bui-ButtonLink,
-    .bui-ButtonIcon,
-    .bui-Tag,
-    [class*='MuiButton'],
-    [role='tab'],
-    [role='menuitem'],
-    [data-standalone],
-    .bui-CardTrigger
-  ):hover {
-  color: var(--agent-shell-link-hover);
-  text-decoration-thickness: 2px;
+  & .bui-Text {
+    color: inherit;
+  }
+
+  &:hover {
+    color: var(--agent-shell-link-hover);
+    text-decoration-thickness: 2px;
+  }
 }
 
 /*
