@@ -59,13 +59,10 @@ const useStyles = makeStyles({
   icon: ({ size }: { size: keyof typeof SIZES }) => ({
     fontSize: SIZES[size].icon,
   }),
-  /** Long enough for a sentence, narrow enough to stay readable. */
-  tooltip: {
-    maxWidth: 280,
-    // Multi-line hints (a reason plus warnings) keep their line breaks.
-    whiteSpace: 'pre-line',
-  },
-  // The same measure as the tooltip, and never wider than a phone allows.
+  // Long enough for a sentence, and never wider than a phone allows.
+  // Multi-line hints (a reason plus warnings) keep their line breaks. The
+  // tooltip keeps bui's own width: bui's `Tooltip` drops a `className`, so a
+  // class on it would apply nothing.
   popoverContent: {
     display: 'block',
     maxWidth: 'min(280px, calc(100vw - 48px))',
@@ -137,7 +134,7 @@ function ClassicInfoHint({
         aria-label={label}
         icon={<InfoOutlinedIcon className={classes.icon} />}
       />
-      <Tooltip className={classes.tooltip}>{children}</Tooltip>
+      <Tooltip>{children}</Tooltip>
     </TooltipTrigger>
   );
 }
@@ -170,7 +167,7 @@ function ShellInfoHint({
           onPress={() => setOpen(open => !open)}
           icon={<InfoOutlinedIcon className={classes.icon} />}
         />
-        <Tooltip className={classes.tooltip}>{children}</Tooltip>
+        <Tooltip>{children}</Tooltip>
       </TooltipTrigger>
       <Popover
         triggerRef={triggerRef}
