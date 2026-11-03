@@ -9,6 +9,7 @@ import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
 import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { modelLifecycleSteps } from '../../lib/modelLifecycle';
+import { servedReadinessMessage } from '../../lib/serving';
 import {
   requestAuthOf,
   requestExamples,
@@ -360,7 +361,7 @@ export function ServedModelLifecyclePanel({
             <ServedReadinessLabel
               readiness={row.readiness}
               reason={row.readinessReason}
-              title={row.readinessMessage}
+              title={servedReadinessMessage(row)}
             />
           )}
         </Flex>
