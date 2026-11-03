@@ -1,4 +1,9 @@
-import { isValidTag, parseTags } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  exceedsTagLimit,
+  isValidTag,
+  MAX_TAGS,
+  parseTags,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * Skill tags: frontmatter `metadata.tags`, a comma-joined string
@@ -48,8 +53,9 @@ export class SkillTagsError extends Error {}
  * other key (and `metadata` key) kept in place. Empty `tags` removes
  * `metadata.tags`, and `metadata` too when tags were all it held; a missing
  * `metadata` is only created for tags. Throws a {@link SkillTagsError} when
- * `metadata` is not a map, or its `tags` hold what the portal cannot read
- * (see {@link readsCleanly}).
+ * `metadata` is not a map, its `tags` hold what the portal cannot read
+ * (see {@link readsCleanly}), or `tags` add a tag past `MAX_TAGS`
+ * (`exceedsTagLimit` over the stored tags; none on create).
  */
 export function withSkillTags(
   frontmatter: Record<string, unknown>,
@@ -60,6 +66,10 @@ export function withSkillTags(
     throw new SkillTagsError(
       "The skill's metadata.tags is not a comma-separated list of tags, so changing it here would lose some of it. Change the tags in the repository.",
     );
+  }
+  // As muster checks it: past the limit only with a tag the skill lacks.
+  if (exceedsTagLimit(tags, skillTagsOf(frontmatter))) {
+    throw new SkillTagsError(`A skill takes at most ${MAX_TAGS} tags.`);
   }
   if (tags.length === 0) {
     if (!isPlainObject(metadata) || !('tags' in metadata)) {

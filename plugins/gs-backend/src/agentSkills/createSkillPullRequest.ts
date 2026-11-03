@@ -436,6 +436,19 @@ export async function createSkillPullRequest(
     }
   }
 
+  // Rendered before the branch exists: a SKILL.md it refuses (the tags, a
+  // 422) leaves nothing behind in the repository.
+  const content = Buffer.from(
+    renderSkillMarkdown({
+      skillName,
+      description,
+      instructions,
+      tags,
+      keepFrontmatter,
+    }),
+    'utf8',
+  ).toString('base64');
+
   // The branch, off the head checked above (see branchCandidates).
   let branch: string | undefined;
   for (const candidate of branchCandidates(baseBranch, headSha)) {
@@ -508,16 +521,6 @@ export async function createSkillPullRequest(
     }
   };
 
-  const content = Buffer.from(
-    renderSkillMarkdown({
-      skillName,
-      description,
-      instructions,
-      tags,
-      keepFrontmatter,
-    }),
-    'utf8',
-  ).toString('base64');
   const origin = isUpdate
     ? `Edited from the skill's page in the portal${
         options.baseCommit

@@ -59,7 +59,6 @@ import { readSignedInConfig } from './signedInConfig';
 import {
   isValidTag,
   MAX_TAG_LENGTH,
-  MAX_TAGS,
   shortSha,
   SUBJECT_TOKEN_HEADER,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -932,7 +931,8 @@ export async function createRouter({
             message: `Each tag must be lowercase letters and digits with single dashes between, at most ${MAX_TAG_LENGTH} characters`,
           }),
         )
-        .max(MAX_TAGS)
+        // The limit is checked against the stored tags when the SKILL.md is
+        // written (`withSkillTags`): an unchanged list past it goes through.
         .optional(),
       kind: z.enum(['create', 'update']).optional(),
       path: z

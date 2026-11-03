@@ -1798,6 +1798,23 @@ describe('POST /agent-skills/pull-request', () => {
     });
   });
 
+  it('leaves the 50-tag limit to the write, which knows the stored tags', async () => {
+    const app = await buildSkillsApp();
+    const many = Array.from({ length: 55 }, (_, index) => `tag-${index}`);
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({ ...body, tags: many });
+
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith({
+      ...body,
+      tags: many,
+      token: 'gh-token',
+    });
+  });
+
   it.each([['Triage'], ['on call'], ['x'.repeat(64)], ['-a']])(
     'refuses with 400 the tag %s',
     async tag => {
