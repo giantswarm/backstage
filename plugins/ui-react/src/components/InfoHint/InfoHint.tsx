@@ -59,13 +59,17 @@ const useStyles = makeStyles({
   icon: ({ size }: { size: keyof typeof SIZES }) => ({
     fontSize: SIZES[size].icon,
   }),
-  // Multi-line hints (a reason plus warnings) keep their line breaks. On an
-  // element inside the tooltip: bui's `Tooltip` drops a `className`.
+  // Multi-line hints (a reason plus warnings) keep their line breaks, and a
+  // long unbroken token (a model id) wraps instead of leaving the box. On an
+  // element inside the tooltip: bui's `Tooltip` drops a `className`, and
+  // keeps its own 240px width.
   tooltipText: {
     whiteSpace: 'pre-line',
+    overflowWrap: 'anywhere',
   },
-  // Long enough for a sentence, and never wider than a phone allows.
-  // Multi-line hints (a reason plus warnings) keep their line breaks.
+  // The same text as the tooltip's, a little wider (280px against bui's
+  // 240px) for a press that opens it deliberately, and never wider than a
+  // phone allows.
   popoverContent: {
     display: 'block',
     maxWidth: 'min(280px, calc(100vw - 48px))',
