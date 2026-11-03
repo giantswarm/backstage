@@ -7,7 +7,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
-import { formatSeconds } from '../../lib/lifecycle';
+import { formatSeconds } from '../../lib/formatNumbers';
 import { modelLifecycleSteps } from '../../lib/modelLifecycle';
 import {
   requestAuthOf,

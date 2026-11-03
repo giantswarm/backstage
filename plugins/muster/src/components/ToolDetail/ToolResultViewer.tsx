@@ -24,7 +24,10 @@ import {
   ShowMore,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatBytes } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  formatBytes,
+  formatSeconds,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { detectTable } from '../../lib/resultShape';
 
 type ViewMode = 'parsed' | 'raw' | 'table';
@@ -212,7 +215,7 @@ export function ToolResultViewer({
               color="secondary"
               style={{ fontVariantNumeric: 'tabular-nums' }}
             >
-              {durationMs} ms
+              {formatSeconds(durationMs / 1000)}
             </Text>
           )}
           <Text

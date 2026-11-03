@@ -1,5 +1,5 @@
 import type { ManagedCluster, NodePool } from './clusterManager';
-import { formatSeconds, stepTiming } from './lifecycle';
+import { stepTiming } from './lifecycle';
 import {
   gpuNodePoolsRefetchInterval,
   isPoolSettled,
@@ -367,19 +367,13 @@ describe('stepTiming', () => {
         { state: 'done', since: T0, finishedAt: '2026-09-17T11:33:25Z' },
         now,
       ),
-    ).toBe('took 3 s');
+    ).toBe('took 3.0 s');
     expect(stepTiming({ state: 'done', since: T1, finishedAt: T1 }, now)).toBe(
       'done 2 min 24 s ago',
     );
     expect(stepTiming({ state: 'failed', since: T1 }, now)).toBe(
       'failed 2 min 24 s ago',
     );
-  });
-
-  it('formats spans at a glance', () => {
-    expect(formatSeconds(3)).toBe('3 s');
-    expect(formatSeconds(120)).toBe('2 min');
-    expect(formatSeconds(3900)).toBe('1 h 5 min');
   });
 });
 

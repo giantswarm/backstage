@@ -11,6 +11,7 @@ import {
   Pod,
   type LLMInferenceServiceInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { formatSeconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_PLATFORM_PRESET_LABEL } from './modelServingConfig';
 import {
   explanationWithoutReason,
@@ -78,19 +79,18 @@ export function isPodStarting(pod: Pod): boolean {
 }
 
 /**
- * A start in words: `Starting on gpu-a for 4 min: downloading the weights.`
+ * A start in words: `Starting on gpu-a for 4 min 30 s: downloading the weights.`
  * or `…: the runtime loads the weights and warms up.`
  */
 export function describeStart(pod: Pod, now: number): string {
   const node = pod.getNodeName();
   const started = Date.parse(pod.jsonData.status?.startTime ?? '');
-  const minutes = Number.isNaN(started)
-    ? undefined
-    : Math.max(0, Math.floor((now - started) / 60_000));
   return [
     'Starting',
     node ? ` on ${node}` : '',
-    minutes === undefined ? '' : ` for ${minutes} min`,
+    Number.isNaN(started)
+      ? ''
+      : ` for ${formatSeconds((now - started) / 1000)}`,
     pod.jsonData.status?.phase === 'Running'
       ? ': the runtime loads the weights and warms up.'
       : ': downloading the weights.',

@@ -15,7 +15,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { WorkflowStatsPerDay } from '../../apis';
-import { formatDuration } from '../../lib/formatDuration';
+import { formatSeconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { workflowRunKeys } from '../../lib/workflowRunKeys';
 import { Stat } from '../shared';
 
@@ -210,9 +210,13 @@ export function WorkflowStatsPanel({
     successTone = successRatePct >= 95 ? 'ok' : 'warning';
   }
   const avg =
-    data.avg_duration_ms !== null ? formatDuration(data.avg_duration_ms) : '—';
+    data.avg_duration_ms !== null
+      ? formatSeconds(data.avg_duration_ms / 1000)
+      : '—';
   const max =
-    data.max_duration_ms !== null ? formatDuration(data.max_duration_ms) : '—';
+    data.max_duration_ms !== null
+      ? formatSeconds(data.max_duration_ms / 1000)
+      : '—';
 
   const perDay = padPerDay(data.per_day);
   const sampleScope =

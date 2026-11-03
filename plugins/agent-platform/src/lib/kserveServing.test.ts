@@ -733,7 +733,7 @@ describe('toServedModel during a start', () => {
     expect(toServedModel(starting, [running], undefined, now)).toMatchObject({
       readiness: 'starting',
       readinessMessage:
-        'Starting on gpu-node-2 for 4 min: the runtime loads the weights and warms up.',
+        'Starting on gpu-node-2 for 4 min 30 s: the runtime loads the weights and warms up.',
     });
   });
 
@@ -765,7 +765,7 @@ describe('toServedModel during a start', () => {
     ).toMatchObject({
       readiness: 'starting',
       readinessMessage:
-        'Starting on gpu-node-2 for 1 min: downloading the weights.',
+        'Starting on gpu-node-2 for 1 min 30 s: downloading the weights.',
     });
   });
 
