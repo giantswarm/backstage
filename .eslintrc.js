@@ -96,6 +96,10 @@ const shellPathMessage =
 const shellPathPattern =
   '/^\\x2F(agent-platform|customize|sessions|usage|profile)(\\x2F|\\?|#|$)/';
 
+const tooltipClassNameMessage =
+  "bui's Tooltip drops a className: it applies to no element. Style an " +
+  'element inside the tooltip, or pass `style`.';
+
 module.exports = {
   root: true,
   plugins: ['giantswarm'],
@@ -156,6 +160,23 @@ module.exports = {
           {
             selector: `TemplateLiteral > TemplateElement:first-child[value.raw=${shellPathPattern}]`,
             message: shellPathMessage,
+          },
+        ],
+      },
+    },
+    {
+      // bui's `Tooltip` declares `className` but attaches it to no element
+      // (`useDefinition`'s default target, `root`, is not one of its class
+      // keys), so a class on it type-checks and does nothing. An error: the
+      // tree has none, and a copy only spreads the dead class.
+      files: ['**/*.tsx'],
+      rules: {
+        'giantswarm/no-restricted-bui-syntax': [
+          'error',
+          {
+            selector:
+              "JSXOpeningElement[name.name='Tooltip'] > JSXAttribute[name.name='className']",
+            message: tooltipClassNameMessage,
           },
         ],
       },
