@@ -373,7 +373,7 @@ export const KarpenterNodePoolsAllowedDisruptions = {
 export const AgentgatewayGenAiClientTokenUsage = {
   name: 'agentgateway_gen_ai_client_token_usage',
   description:
-    'Tokens the gateway proxied. `_sum` is the token count and `_count` the number of usage records. Split by `gen_ai_token_type` into `input`, `output`, `input_cache_read` and `input_cache_write` — Anthropic counts the three input types separately, so `input` excludes cache traffic and a high cache-read share is prompt caching paying off. Needs no price catalogue, so it is the figure to trust when pricing is incomplete.',
+    'Tokens the gateway proxied. `_sum` is the token count and `_count` the number of usage records. Split by `gen_ai_token_type` into `input`, `output`, `input_cache_read` and `input_cache_write` — the gateway normalises `input` to include the tokens read from and written to cache, and records those again under the two cache types, so `input` + `output` is every token and adding the cache types counts cached input twice. A high cache-read share of `input` is prompt caching paying off. Needs no price catalogue, so it is the figure to trust when pricing is incomplete.',
   type: 'histogram',
   source: 'agentgateway',
 } as const satisfies PrometheusMetric;

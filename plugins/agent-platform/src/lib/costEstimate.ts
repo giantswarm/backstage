@@ -13,15 +13,32 @@
  * input the same way.
  */
 
-/** Token types the gateway bills as input. `input` excludes cache traffic. */
+/**
+ * Token types whose spend is input spend. Their *tokens* are not added up:
+ * see {@link CACHE_TOKEN_TYPES}.
+ */
 const INPUT_TOKEN_TYPES = ['input', 'input_cache_read', 'input_cache_write'];
 const OUTPUT_TOKEN_TYPES = ['output'];
 
+/**
+ * Token types the gateway counts **inside** `input` as well as on their own.
+ *
+ * agentgateway normalises every provider's input count to include the tokens
+ * read from and written to cache (`CacheTokenConvention::include_cache_tokens`,
+ * agentgateway#2880), then records the cache counts again under these types.
+ * So `input` is every input token, and adding these to it counts cached input
+ * twice. On `gazelle` (2026-11-03) the two cache types summed to `input` to
+ * within 0.01% for every model, and adding them halved the rate
+ * (giantswarm/giantswarm#38457).
+ */
+const CACHE_TOKEN_TYPES = ['input_cache_read', 'input_cache_write'];
+
 export type TokenRates = {
   /**
-   * USD per input token, blended across `input`, `input_cache_read` and
-   * `input_cache_write` — because the counts we apply it to (kagent's
-   * `promptTokenCount`) are one undivided number.
+   * USD per input token, the spend of `input`, `input_cache_read` and
+   * `input_cache_write` over the `input` count that holds all three — because
+   * the counts we apply it to (kagent's `promptTokenCount`) are one undivided
+   * number.
    *
    * Only derivable when the cost metric carries `gen_ai_token_type`.
    */
@@ -61,6 +78,11 @@ function sumAll(totals: Record<string, number>): number {
   return Object.values(totals).reduce((acc, value) => acc + (value ?? 0), 0);
 }
 
+/** Every token the totals hold, each once: the cache types are in `input`. */
+function sumDistinctTokens(totals: Record<string, number>): number {
+  return sumAll(totals) - sumTypes(totals, CACHE_TOKEN_TYPES);
+}
+
 /**
  * Derive $/token from cost and token totals broken down by
  * `gen_ai_token_type`.
@@ -75,7 +97,14 @@ function sumAll(totals: Record<string, number>): number {
  * `gazelle` (2026-09-10): `agentgateway_gen_ai_client_token_usage` carries
  * `gen_ai_token_type` with all four values, and
  * `agentgateway_gen_ai_client_cost_usd_total` carries **no** `gen_ai_token_type`
- * at all — so today every estimate is a blend. The per-type branch is kept
+ * at all — so today every estimate is a blend.
+ *
+ * **A blend is the window's mix, not the session's.** Most of the window's
+ * input is cache reads, which a provider prices at a fraction of fresh input,
+ * so the blend undercharges a session that reads little from cache — a short
+ * one most of all: a one-turn session on `gazelle` came out at a fifth of its
+ * bill (giantswarm/giantswarm#38457). Telling them apart takes the spend by
+ * token type, which the gateway does not record. The per-type branch is kept
  * because it costs nothing and is where a gateway release that adds the label
  * would land; do not delete it as dead code without re-checking.
  */
@@ -84,12 +113,12 @@ export function deriveTokenRates(
   tokensByType: Record<string, number>,
 ): TokenRates {
   const totalCost = sumAll(costByType);
-  const totalTokens = sumAll(tokensByType);
+  const totalTokens = sumDistinctTokens(tokensByType);
 
   return {
     input: ratio(
       sumTypes(costByType, INPUT_TOKEN_TYPES),
-      sumTypes(tokensByType, INPUT_TOKEN_TYPES),
+      tokensByType.input ?? 0,
     ),
     output: ratio(
       sumTypes(costByType, OUTPUT_TOKEN_TYPES),
