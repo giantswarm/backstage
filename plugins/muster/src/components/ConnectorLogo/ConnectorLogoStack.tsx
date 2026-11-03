@@ -12,11 +12,12 @@ const useStyles = makeStyles({
     fontSize: Math.round(size * 0.42),
   }),
   // Each one over the last's right edge, on the surface's colour so the one
-  // under it does not show through.
+  // under it does not show through: `--connector-stack-surface`, which a
+  // surface that changes colour (a hovered row) sets.
   item: ({ size }: StyleProps) => ({
     display: 'inline-flex',
     borderRadius: '50%',
-    backgroundColor: 'var(--bui-bg-neutral-1)',
+    backgroundColor: 'var(--connector-stack-surface, var(--bui-bg-neutral-1))',
     '& + &': {
       marginLeft: -Math.round(size / 4),
     },
@@ -60,6 +61,8 @@ export type ConnectorLogoStackProps = {
   max?: number;
   /** Each circle's width and height in px. */
   size?: number;
+  /** The group's accessible name: "Connectors" by default. */
+  'aria-label'?: string;
   className?: string;
 };
 
@@ -72,6 +75,7 @@ export function ConnectorLogoStack({
   connectors,
   max = 3,
   size = 24,
+  'aria-label': ariaLabel = 'Connectors',
   className,
 }: ConnectorLogoStackProps) {
   const classes = useStyles({ size });
@@ -86,7 +90,7 @@ export function ConnectorLogoStack({
   return (
     <span
       role="group"
-      aria-label="Connectors"
+      aria-label={ariaLabel}
       className={[classes.list, className].filter(Boolean).join(' ')}
     >
       {shown.map(connector => (

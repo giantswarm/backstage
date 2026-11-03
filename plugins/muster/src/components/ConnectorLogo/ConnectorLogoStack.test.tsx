@@ -53,4 +53,28 @@ describe('ConnectorLogoStack', () => {
       'Slack, PagerDuty',
     );
   });
+
+  it('names the group "Connectors", or as given', () => {
+    const { rerender } = render(<ConnectorLogoStack connectors={connectors} />);
+    expect(screen.getByRole('group')).toHaveAccessibleName('Connectors');
+    rerender(
+      <ConnectorLogoStack
+        connectors={connectors}
+        aria-label="Connectors of Triage"
+      />,
+    );
+    expect(screen.getByRole('group')).toHaveAccessibleName(
+      'Connectors of Triage',
+    );
+  });
+
+  it("paints the discs with the surface's variable, the page's by default", () => {
+    render(<ConnectorLogoStack connectors={connectors} />);
+    const rules = Array.from(document.styleSheets).flatMap(sheet =>
+      Array.from(sheet.cssRules).map(rule => rule.cssText),
+    );
+    expect(rules.join('\n')).toContain(
+      'var(--connector-stack-surface, var(--bui-bg-neutral-1))',
+    );
+  });
 });
