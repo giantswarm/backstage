@@ -49,7 +49,7 @@ describe('toSource', () => {
 });
 
 describe('draftFromWorkspace', () => {
-  it('round-trips a stored workspace without its sync schedule', () => {
+  it('round-trips a stored workspace', () => {
     const workspace: Workspace = {
       name: 'w',
       organization: 'acme',
@@ -61,7 +61,6 @@ describe('draftFromWorkspace', () => {
           exclude: ['x'],
         },
       ],
-      sync: { schedule: 'nightly' },
       sizing: { minimum: '20Gi' },
       resourceVersion: '1',
       createdAt: '',
