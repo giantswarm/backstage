@@ -3409,6 +3409,12 @@ estimates at $0.0064. A long session, whose own mix is mostly cache reads like
 the window's, comes out close. Pricing the two apart takes spend by token type,
 which the cost metric does not carry (see below).
 
+The estimate stays a 7-day average, and says so wherever it shows: the cost
+popover's basis line (`describeCostBasis`) and the Your sessions note
+(`ByAgentTable`) call it the average cost per token over the last 7 days and
+add `AVERAGE_RATE_CAVEAT`: "An average can be low for short sessions that read
+little from cache."
+
 **A model without a usable price contributes no cost, not an error.** Only
 `agentgateway_cost_catalog_lookups_total` tells zero spend from unpriced spend,
 which is why the Cost tab has a pricing-coverage alert and an unpriced-models

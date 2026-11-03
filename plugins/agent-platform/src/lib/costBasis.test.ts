@@ -1,4 +1,9 @@
-import { describeCostBasis, type CostBasis } from './costBasis';
+import {
+  AVERAGE_RATE_CAVEAT,
+  describeCostBasis,
+  describeRateWindow,
+  type CostBasis,
+} from './costBasis';
 
 const base: CostBasis = {
   tier: 'model',
@@ -15,8 +20,27 @@ describe('describeCostBasis', () => {
 
     expect(text).toContain('claude-opus-5');
     expect(text).toContain('gazelle');
-    expect(text).toContain('7d');
+    expect(text).toContain('over the last 7 days');
     expect(text).toContain('63.4k input and 481 output tokens');
+  });
+
+  it('says the rate is a weekly average that can be low, per priced tier', () => {
+    // giantswarm/giantswarm#38457: a one-turn session came out at a fifth of
+    // its bill, because the window it is averaged over is mostly cache reads.
+    for (const tier of ['model', 'agent', 'installation'] as const) {
+      const text = describeCostBasis({ ...base, tier });
+      expect(text).toContain('average cost per token');
+      expect(text).toContain('over the last 7 days');
+      expect(text).toContain(
+        'An average can be low for short sessions that read little from cache.',
+      );
+    }
+  });
+
+  it('says no average where there is no figure', () => {
+    for (const tier of ['none', 'loading', 'unavailable', 'error'] as const) {
+      expect(describeCostBasis({ ...base, tier })).not.toContain('average');
+    }
   });
 
   it('names the counts the stats beside it show, the way they show them', () => {
@@ -137,9 +161,10 @@ describe('describeCostBasis', () => {
     );
   });
 
-  it('stays to one sentence per tier', () => {
+  it('stays to one sentence per tier, and the average caveat', () => {
     // The label's own "Est." prefix carries the not-a-bill caveat, so the
-    // tooltip's job is only to name which rate was applied.
+    // tooltip's job is to name which rate was applied — and, where it is a
+    // weekly average, the one caveat that says which sessions it undercharges.
     for (const tier of [
       'model',
       'agent',
@@ -151,7 +176,20 @@ describe('describeCostBasis', () => {
     ] as const) {
       const text = describeCostBasis({ ...base, tier });
       expect(text).not.toContain('Not a billed figure');
-      expect(text.length).toBeLessThan(230);
+      expect(text.replace(` ${AVERAGE_RATE_CAVEAT}`, '').length).toBeLessThan(
+        230,
+      );
     }
+  });
+});
+
+describe('describeRateWindow', () => {
+  it('says a window of days in words', () => {
+    expect(describeRateWindow('7d')).toBe('7 days');
+    expect(describeRateWindow('1d')).toBe('1 day');
+  });
+
+  it('says any other window as it is', () => {
+    expect(describeRateWindow('12h')).toBe('12h');
   });
 });

@@ -23,6 +23,29 @@ export type CostBasis = {
 };
 
 /**
+ * A rate window as the copy says it: `7d` is "7 days". Anything else is said
+ * as it is.
+ */
+export function describeRateWindow(window: string): string {
+  const days = /^(\d+)d$/.exec(window);
+  if (!days) {
+    return window;
+  }
+  return Number(days[1]) === 1 ? '1 day' : `${days[1]} days`;
+}
+
+/**
+ * What every priced estimate says about itself: it is an average over the
+ * window, and which sessions it undercharges. Most of a window's input is
+ * cache reads, priced at a fraction of fresh input, so a session that reads
+ * little from cache — a short one most of all — costs more per token than
+ * the average (giantswarm/giantswarm#38457: a one-turn session came out at a
+ * fifth of its bill).
+ */
+export const AVERAGE_RATE_CAVEAT =
+  'An average can be low for short sessions that read little from cache.';
+
+/**
  * The one line behind the session's estimated cost: what it was multiplied by,
  * or why there is nothing to show.
  *
@@ -36,10 +59,13 @@ export type CostBasis = {
  * made about an installation with no Mimir, or a query that failed — a cause
  * stated about a measurement that never ran is worse than no cause at all.
  *
- * Kept to a sentence. Earlier drafts explained *why* borrowing another model's
+ * Kept short. Earlier drafts explained *why* borrowing another model's
  * rate would be wrong, and closed with "Not a billed figure" — the first is
  * the code's job to know rather than the reader's to be told, and the second
- * is what the stat's own "Est." prefix already says.
+ * is what the stat's own "Est." prefix already says. The one caveat it does
+ * carry, {@link AVERAGE_RATE_CAVEAT}, is there because the figure is most
+ * wrong exactly where a reader has the least reason to doubt it: a short
+ * session.
  *
  * **It names the input and output counts `estimateCost` priced, formatted as
  * the stats beside it show them.** A single total in exact digits ("the 48,478
@@ -49,7 +75,8 @@ export type CostBasis = {
  * many rather than leaving them out of sight.
  */
 export function describeCostBasis(basis: CostBasis): string {
-  const { tier, model, installation, window } = basis;
+  const { tier, model, installation } = basis;
+  const window = describeRateWindow(basis.window);
   const applied = `applied to the ${formatTokens(
     pricedTokenCount(basis.inputTokens),
   )} input and ${formatTokens(
@@ -65,13 +92,13 @@ export function describeCostBasis(basis: CostBasis): string {
 
   switch (tier) {
     case 'model':
-      return `Estimated: ${model}'s observed cost per token on ${installation} over the last ${window}, ${applied}.${leftOut}`;
+      return `Estimated: ${model}'s average cost per token on ${installation} over the last ${window}, ${applied}. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'agent':
-      return `Estimated: this agent's observed cost per token on ${installation} over the last ${window}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved.${leftOut}`;
+      return `Estimated: this agent's average cost per token on ${installation} over the last ${window}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'installation':
-      return `Estimated: ${installation}'s observed cost per token over the last ${window}, ${applied} — a fleet-wide blend across every model.${leftOut}`;
+      return `Estimated: ${installation}'s average cost per token over the last ${window}, ${applied} — a fleet-wide blend across every model. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
