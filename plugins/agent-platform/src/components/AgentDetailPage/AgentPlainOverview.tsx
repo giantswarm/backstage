@@ -603,7 +603,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to, who created it and since when.
+ * the organization it belongs to and who created it; when is the header's.
  */
 export function agentFacts({
   agent,

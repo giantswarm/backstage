@@ -78,6 +78,7 @@ function makeServer(opts: {
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
   displayName?: string;
+  lastConnected?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -110,11 +111,17 @@ function makeServer(opts: {
           : {}),
         ...opts.spec,
       },
-      status: { state: opts.state ?? 'Connected' },
+      status: {
+        state: opts.state ?? 'Connected',
+        ...(opts.lastConnected ? { lastConnected: opts.lastConnected } : {}),
+      },
     } as never,
     'gazelle',
   );
 }
+
+/** When the failed kubernetes instance last connected. */
+const LAST_CONNECTED = '2026-10-16T14:05:12Z';
 
 const makeServers = () => [
   makeServer({
@@ -129,6 +136,7 @@ const makeServers = () => [
     mc: 'gazelle',
     state: 'Failed',
     labels: INFRASTRUCTURE,
+    lastConnected: LAST_CONNECTED,
   }),
   makeServer({
     name: 'jira',
@@ -609,6 +617,20 @@ describe('ConnectorPage', () => {
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
+    // Last connected: how long ago, the local date and time on hover, as
+    // the expanded row's Health says it; a dash for one that never has.
+    const lastConnected = screen.getByText(
+      getRelativeDate(LAST_CONNECTED, new Date()),
+    );
+    expect(lastConnected).toHaveAttribute(
+      'title',
+      formatLocalDateFull(LAST_CONNECTED),
+    );
+    expect(
+      within(
+        screen.getByRole('row', { name: /walrus-mcp-kubernetes/ }),
+      ).getByTitle('—'),
+    ).toBeInTheDocument();
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();

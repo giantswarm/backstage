@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
@@ -15,7 +15,6 @@ import {
   AuthChain,
   hasHealthDetails,
   HealthDetails,
-  RuntimeState,
   ServerConfig,
   ServerTools,
 } from './serverDetail';
@@ -380,60 +379,6 @@ describe('ServerTools with no tools to show', () => {
   });
 });
 
-describe('RuntimeState on a deactivated server', () => {
-  /** Renders the live runtime block over a stubbed `core_mcpserver_list`. */
-  async function renderRuntime(server: MCPServer) {
-    const musterApi = {
-      listServers: jest.fn().mockResolvedValue({
-        mcpServers: [
-          {
-            name: 'aws-root',
-            state: 'Disconnected',
-            sessionStatus: 'connected',
-            toolsCount: 58,
-          },
-        ],
-      }),
-    };
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    return renderInTestApp(
-      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <RuntimeState server={server} />
-        </QueryClientProvider>
-      </TestApiProvider>,
-    );
-  }
-
-  it('marks the session rows so a stale connection is not read as a working server', async () => {
-    // The aggregator answers the session's last connection ("connected",
-    // 58 tools) next to a `Disconnected` live state; without the note the
-    // block reads like a working server with an empty Tools block.
-    await renderRuntime(
-      makeServer({ ...OAUTH_SPEC, suspended: true }, 'Disconnected'),
-    );
-
-    expect(await screen.findByText('connected')).toBeInTheDocument();
-    expect(screen.getByText('58')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /the Session, Tools, Resources and Prompts rows are your session's last/,
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('leaves an active server’s session rows unremarked', async () => {
-    await renderRuntime(makeServer(OAUTH_SPEC, 'Disconnected'));
-
-    expect(await screen.findByText('connected')).toBeInTheDocument();
-    expect(
-      screen.queryByText(/the Session, Tools, Resources and Prompts rows/),
-    ).not.toBeInTheDocument();
-  });
-});
-
 describe('HealthDetails', () => {
   const MINUTE = 60 * 1000;
 
@@ -479,22 +424,33 @@ describe('HealthDetails', () => {
     expect(screen.queryByText(/\(/)).not.toBeInTheDocument();
   });
 
-  it('leaves out a timestamp that does not parse', async () => {
-    const server = serverWithStatus({
-      lastConnected: 'not a date',
-      nextRetryAfter: 'soon',
-      consecutiveFailures: 1,
-    });
+  it('shows a timestamp that does not parse as muster wrote it', async () => {
+    await renderHealth(serverWithStatus({ lastConnected: 'not a date' }));
 
-    await renderHealth(server);
+    expect(screen.getByText('Last connected')).toBeInTheDocument();
+    expect(screen.getByText('not a date')).toBeInTheDocument();
+  });
 
-    expect(screen.queryByText('Last connected')).not.toBeInTheDocument();
-    expect(screen.queryByText('Next retry')).not.toBeInTheDocument();
-    expect(screen.getByText('Consecutive failures')).toBeInTheDocument();
+  it('leaves out a retry time that has passed, and one once it passes', async () => {
+    const passed = new Date(Date.now() - 2 * MINUTE).toISOString();
+    expect(hasHealthDetails(serverWithStatus({ nextRetryAfter: passed }))).toBe(
+      false,
+    );
     expect(
-      hasHealthDetails(
-        serverWithStatus({ lastConnected: 'not a date', nextRetryAfter: 'x' }),
-      ),
+      hasHealthDetails(serverWithStatus({ nextRetryAfter: 'not a date' })),
     ).toBe(false);
+
+    const soon = new Date(Date.now() + 1500).toISOString();
+    await renderHealth(
+      serverWithStatus({ consecutiveFailures: 2, nextRetryAfter: soon }),
+    );
+    expect(screen.getByText('Next retry')).toBeInTheDocument();
+
+    // Not "Next retry less than a minute ago".
+    await waitFor(
+      () => expect(screen.queryByText('Next retry')).not.toBeInTheDocument(),
+      { timeout: 4000 },
+    );
+    expect(screen.getByText('Consecutive failures')).toBeInTheDocument();
   });
 });
