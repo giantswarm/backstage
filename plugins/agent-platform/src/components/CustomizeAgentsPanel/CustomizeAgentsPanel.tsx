@@ -135,8 +135,10 @@ const useStyles = makeStyles({
   },
   // The row opens the agent: its name is the link, whose hit area stretches
   // over the whole row (as `StackedRowList`'s does), so the star sits above
-  // that area rather than inside a link. The hover tints the row.
+  // that area rather than inside a link. The hover tints the row, and the
+  // connector logos' discs with it.
   item: {
+    '--connector-stack-surface': 'var(--bui-bg-neutral-1)',
     position: 'relative',
     display: 'flex',
     alignItems: 'center',
@@ -146,6 +148,7 @@ const useStyles = makeStyles({
       borderBottom: 0,
     },
     '&:hover': {
+      '--connector-stack-surface': 'var(--bui-bg-neutral-2)',
       background: 'var(--bui-bg-neutral-2)',
     },
   },
@@ -518,10 +521,10 @@ function AgentListItem({
               {row.name}
             </Text>
           )}
-          {/* Whose agent it is, with the name rather than among the facts:
-              every row keeps the same fact columns, and a platform agent's
-              row has nothing here. Its tooltip is the name's (above): a
-              title of its own would sit under the link's hit area. */}
+          {/* Whose agent it is, with the name rather than among the facts,
+              which say what the agent is like; a platform agent's row has
+              nothing here. Its tooltip is the name's (above): a title of its
+              own would sit under the link's hit area. */}
           {organization && (
             <Text
               as="span"
@@ -559,7 +562,6 @@ function AgentListItem({
             {row.description}
           </Text>
         )}
-        {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
         <div className={classes.facts} data-testid="agent-facts">
           <TagList
             id={tagsId}
@@ -586,11 +588,14 @@ function AgentListItem({
           ))}
         </div>
       </div>
-      <span className={classes.connectors}>
+      {/* The test id: agentlab's tenants spec lines the rows' connectors
+          up. */}
+      <span className={classes.connectors} data-testid="agent-connectors">
         {connectors.length > 0 && (
           <ConnectorLogoStack
             connectors={connectors}
             max={ROW_CONNECTORS_MAX}
+            aria-label={`Connectors of ${row.name}`}
             className={stretched.above}
           />
         )}
@@ -746,33 +751,47 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
     }
   }, [showHarness, harnessPicked, select]);
   // Last use is the person's own: sessions of an installation whose list is
-  // not scoped to them are left out, as the "Last used by you" cards do. A
-  // session's last turn is in its state; its start is the fallback.
-  const { rows: sessions, notUserScopedInstallations } = useSessions();
-  const sessionInstallations = useMemo(
-    () => Array.from(new Set(sessions.map(session => session.installation))),
-    [sessions],
-  );
-  const { states: sessionStates } = useFleetSessionStates(sessionInstallations);
-  const lastUsedAt = useMemo(() => {
+  // not scoped to them are left out, as the "Last used by you" cards do.
+  const {
+    rows: sessions,
+    notUserScopedInstallations,
+    isLoading: sessionsLoading,
+    isLoadingMore: sessionsLoadingMore,
+  } = useSessions();
+  const mySessions = useMemo(() => {
     const notMine = new Set(notUserScopedInstallations);
-    return agentLastUsedAt(
-      sessions.filter(session => !notMine.has(session.installation)),
-      sessionStates,
-    );
-  }, [sessions, sessionStates, notUserScopedInstallations]);
+    return sessions.filter(session => !notMine.has(session.installation));
+  }, [sessions, notUserScopedInstallations]);
   const [storedSort, setSort] = useLocalStorageState<AgentSort | undefined>(
     SORT_STORAGE_KEY,
     { defaultValue: undefined },
   );
-  // Last used once the person has used any agent listed; by name until then.
-  const defaultSort: AgentSort = rows.some(row => lastUsedAt.has(row.id))
-    ? 'lastUsed'
-    : 'name';
-  const sort: AgentSort =
-    storedSort && AGENT_SORTS.some(option => option.id === storedSort)
-      ? storedSort
-      : defaultSort;
+  // Last used once the person has used any agent listed, by name otherwise:
+  // decided on the sessions' starts alone, so it needs no session states.
+  // Held while sessions are still read and none is with an agent listed, so
+  // the list does not open by name and then jump.
+  const usedAny = useMemo(() => {
+    const started = agentLastUsedAt(mySessions);
+    return rows.some(row => started.has(row.id));
+  }, [mySessions, rows]);
+  const pickedSort = AGENT_SORTS.find(option => option.id === storedSort)?.id;
+  const sort: AgentSort = pickedSort ?? (usedAny ? 'lastUsed' : 'name');
+  const sortPending =
+    !pickedSort && !usedAny && (sessionsLoading || sessionsLoadingMore);
+  // A session's last turn is in its state, read only for the Last used sort:
+  // each read costs its installation a pass over its sessions.
+  const sessionInstallations = useMemo(
+    () =>
+      sort === 'lastUsed'
+        ? Array.from(new Set(mySessions.map(session => session.installation)))
+        : [],
+    [sort, mySessions],
+  );
+  const { states: sessionStates } = useFleetSessionStates(sessionInstallations);
+  const lastUsedAt = useMemo(
+    () => agentLastUsedAt(mySessions, sessionStates),
+    [mySessions, sessionStates],
+  );
   const visible = useMemo(
     () => sortAgents(filters.filtered, sort, lastUsedAt),
     [filters.filtered, sort, lastUsedAt],
@@ -895,6 +914,9 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
         />
       );
     }
+  } else if (sortPending) {
+    // The order waits on the person's sessions (see `sortPending`).
+    body = <LoadingIndicator label="Reading your agents…" />;
   } else if (visible.length === 0) {
     body = (
       <CatalogNoMatch
@@ -949,7 +971,7 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
             onSelect={filters.select}
             onClear={filters.clear}
           />
-          {rows.length > 1 && (
+          {rows.length > 1 && !sortPending && (
             <Select
               aria-label="Sort agents"
               size="small"
@@ -988,7 +1010,9 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
       <AgentsHelperBanner />
       {/* The person's recent agents, while the tab shows everything: a search
           or a filter narrows the list below, and the cards would not follow. */}
-      {!isLoading && rows.length > 0 && !isNarrowed && <LastUsedAgents />}
+      {!isLoading && rows.length > 0 && !isNarrowed && (
+        <LastUsedAgents states={sessionStates} />
+      )}
       {rows.length > 0 ? (
         <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin

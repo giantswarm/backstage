@@ -116,6 +116,8 @@ beforeEach(() => {
 const failedProbe = (name: string) => Object.assign(new Error(name), { name });
 
 let mockSessions: SessionRow[] = [];
+// Sessions still being read: none in yet, or more to come.
+let mockSessionsLoading: 'none' | 'loading' | 'loadingMore' = 'none';
 jest.mock('../SessionsDataProvider', () => ({
   SessionsDataProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
@@ -123,13 +125,22 @@ jest.mock('../SessionsDataProvider', () => ({
   useSessions: () => ({
     rows: mockSessions,
     notUserScopedInstallations: [],
+    isLoading: mockSessionsLoading === 'loading',
+    isLoadingMore: mockSessionsLoading === 'loadingMore',
   }),
 }));
 // The sessions' last turns, by session row id: what orders the list by last
-// use beyond a session's start.
+// use beyond a session's start. Each call's installations are recorded: only
+// those are asked.
 let mockSessionStates = new Map<string, { changedAt?: number }>();
+const mockSessionStatesAsked: string[][] = [];
 jest.mock('../../hooks/useFleetSessionStates', () => ({
-  useFleetSessionStates: () => ({ states: mockSessionStates }),
+  useFleetSessionStates: (installations: string[]) => {
+    mockSessionStatesAsked.push(installations);
+    return {
+      states: installations.length > 0 ? mockSessionStates : new Map(),
+    };
+  },
 }));
 let mockMetaAgent: AgentRow | undefined;
 // The installation's MCPServers behind a row's connector logos: named, one
@@ -1691,10 +1702,15 @@ describe('CustomizeAgentsPanel sort', () => {
       unreachableInstallations: [],
     };
     mockSessions = [];
+    mockSessionsLoading = 'none';
     mockSessionStates = new Map();
+    mockSessionStatesAsked.length = 0;
     mockMetaAgent = undefined;
   });
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    mockSessionsLoading = 'none';
+  });
 
   it('sorts by name while the person has used no agent', async () => {
     await renderPanel();
@@ -1730,6 +1746,65 @@ describe('CustomizeAgentsPanel sort', () => {
     expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
 
     unmount();
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Recently added');
+    expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+  });
+
+  it('asks for session states only while sorting by last use', async () => {
+    mockSessions = [sessionWith(older, '2026-10-05T10:00:00Z')];
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Last used');
+    expect(mockSessionStatesAsked.at(-1)).toEqual(['golem']);
+
+    await userEvent.click(sortDropdown());
+    await userEvent.click(await screen.findByRole('option', { name: 'Name' }));
+    expect(mockSessionStatesAsked.at(-1)).toEqual([]);
+  });
+
+  it('asks for no session states while the person has used no agent', async () => {
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Name');
+    expect(mockSessionStatesAsked.every(asked => asked.length === 0)).toBe(
+      true,
+    );
+  });
+
+  it('holds the list while sessions are read rather than jump from Name to Last used', async () => {
+    mockSessionsLoading = 'loading';
+    await renderRerenderablePanel();
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('list', { name: 'Agents' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Sort agents/, hidden: true }),
+    ).not.toBeInTheDocument();
+
+    mockSessionsLoading = 'none';
+    mockSessions = [sessionWith(middle, '2026-10-05T10:00:00Z')];
+    act(() => rerenderPanel());
+    expect(screen.getByRole('list', { name: 'Agents' })).toBeInTheDocument();
+    expect(sortDropdown()).toHaveTextContent('Last used');
+    expect(names()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+  });
+
+  it('shows the list as soon as a session decides on Last used', async () => {
+    mockSessionsLoading = 'loadingMore';
+    mockSessions = [sessionWith(middle, '2026-10-05T10:00:00Z')];
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Last used');
+    expect(names()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+  });
+
+  it('keeps a picked sort while sessions are read', async () => {
+    localStorage.setItem(
+      'gs-agent-platform-agents-sort',
+      JSON.stringify('recent'),
+    );
+    mockSessionsLoading = 'loading';
     await renderPanel();
     expect(sortDropdown()).toHaveTextContent('Recently added');
     expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
@@ -1825,7 +1900,9 @@ describe('CustomizeAgentsPanel connectors', () => {
   it("shows a row's connectors as logos by their display names", async () => {
     await renderPanel();
     const logos = within(
-      within(rowOf('A two')).getByRole('group', { name: 'Connectors' }),
+      within(rowOf('A two')).getByRole('group', {
+        name: 'Connectors of A two',
+      }),
     ).getAllByRole('img');
     expect(logos.map(logo => logo.getAttribute('aria-label'))).toEqual([
       'Jira',
@@ -1835,7 +1912,7 @@ describe('CustomizeAgentsPanel connectors', () => {
     expect(
       within(within(rowOf('A two')).getByTestId('agent-facts')).queryByRole(
         'group',
-        { name: 'Connectors' },
+        { name: /^Connectors/ },
       ),
     ).not.toBeInTheDocument();
   });
@@ -1843,7 +1920,7 @@ describe('CustomizeAgentsPanel connectors', () => {
   it('shows two logos and "+N" for more than three connectors', async () => {
     await renderPanel();
     const stack = within(rowOf('B four')).getByRole('group', {
-      name: 'Connectors',
+      name: 'Connectors of B four',
     });
     expect(within(stack).getAllByRole('img')).toHaveLength(2);
     expect(within(stack).getByText('+2')).toBeInTheDocument();
@@ -1865,10 +1942,30 @@ describe('CustomizeAgentsPanel connectors', () => {
     ).toBeInTheDocument();
   });
 
+  it("sets the logos' disc surface on the row and on its hover", async () => {
+    await renderPanel();
+    const className = Array.from(rowOf('A two').classList).find(name =>
+      name.includes('item'),
+    )!;
+    const css = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+    expect(css).toMatch(
+      new RegExp(
+        `\\.${className} \\{[^}]*--connector-stack-surface: var\\(--bui-bg-neutral-1\\)`,
+      ),
+    );
+    expect(css).toMatch(
+      new RegExp(
+        `\\.${className}:hover \\{[^}]*--connector-stack-surface: var\\(--bui-bg-neutral-2\\)`,
+      ),
+    );
+  });
+
   it('shows no logos for full access, as the agent page does', async () => {
     await renderPanel();
     expect(
-      within(rowOf('C full')).queryByRole('group', { name: 'Connectors' }),
+      within(rowOf('C full')).queryByRole('group', { name: /^Connectors/ }),
     ).not.toBeInTheDocument();
   });
 });

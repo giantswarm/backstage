@@ -10,19 +10,25 @@ import {
 /** How many recent agents the home screen offers. */
 export const RECENT_AGENTS_LIMIT = 3;
 
-/** A recent agent, and when the person's latest session with it started. */
+/** A recent agent, and when the person last used it. */
 export type RecentAgentUse = {
   agent: AgentRow;
-  /** The latest session's `createdAt`, when kagent reported one. */
+  /**
+   * The latest session's last turn where its state is known, its `createdAt`
+   * otherwise, when kagent reported one.
+   */
   lastUsedAt?: string;
 };
 
 /**
- * The agents of the most recently started sessions, newest first, each once,
- * with when each was last used. A session counts only when it matched an
- * `Agent` on the fleet, since only then is its agent known by identity.
- * Sessions are walked newest first and stop at `limit` agents, so a person
- * with hundreds of sessions costs no more than the few it takes.
+ * The agents of the most recently used sessions, newest first, each once,
+ * with when each was last used. A session's use is its last turn where
+ * `states` (keyed by session row id) knows it, its start otherwise
+ * ({@link lastActiveAt}), as {@link agentLastUsedAt} orders the Agents list.
+ * A session counts only when it matched an `Agent` on the fleet, since only
+ * then is its agent known by identity. Sessions are walked newest first and
+ * stop at `limit` agents, so a person with hundreds of sessions costs no
+ * more than the few it takes.
  *
  * `startableOnly` (the default) skips an agent no session can start on now,
  * for a list that starts one; a list that opens the agent's page keeps it,
@@ -34,11 +40,23 @@ export function recentAgentUses(
   {
     limit = RECENT_AGENTS_LIMIT,
     startableOnly = true,
-  }: { limit?: number; startableOnly?: boolean } = {},
+    states,
+  }: {
+    limit?: number;
+    startableOnly?: boolean;
+    states?: ReadonlyMap<string, SessionStateEntry>;
+  } = {},
 ): RecentAgentUse[] {
   const byId = new Map(agents.map(agent => [agent.id, agent]));
   const picked: RecentAgentUse[] = [];
-  for (const session of sortSessionRows(sessions)) {
+  let ranked = sortSessionRows(sessions);
+  if (states && states.size > 0) {
+    // Stable: sessions with the same use keep the start order.
+    const used = (session: SessionRow) =>
+      lastActiveAt(session, states.get(session.id)) ?? Number.MIN_SAFE_INTEGER;
+    ranked = ranked.sort((a, b) => used(b) - used(a));
+  }
+  for (const session of ranked) {
     if (picked.length >= limit) {
       break;
     }
@@ -53,7 +71,13 @@ export function recentAgentUses(
       (!startableOnly || isStartableAgent(agent)) &&
       !picked.some(use => use.agent === agent)
     ) {
-      picked.push({ agent, lastUsedAt: session.createdAt });
+      const state = states?.get(session.id);
+      const at = state && lastActiveAt(session, state);
+      picked.push({
+        agent,
+        lastUsedAt:
+          at !== undefined ? new Date(at).toISOString() : session.createdAt,
+      });
     }
   }
   return picked;

@@ -115,6 +115,59 @@ describe('recentAgentUses', () => {
   });
 });
 
+describe('recentAgentUses with session states', () => {
+  it('ranks by last turn where known, as the Last used sort does', () => {
+    const sessions = [
+      session('a', 'sre', '2026-10-01T10:00:00Z'),
+      session('b', 'issues', '2026-10-03T10:00:00Z'),
+      session('c', 'docs', '2026-10-02T10:00:00Z'),
+    ];
+    // A turn in sre's older session, after every start.
+    const states = new Map([
+      [
+        'gazelle/a',
+        {
+          sessionId: 'a',
+          state: 'completed',
+          changedAt: Date.parse('2026-10-05T10:00:00Z'),
+        },
+      ],
+    ]);
+
+    expect(recentAgentUses(sessions, [sre, issues, docs], { states })).toEqual([
+      { agent: sre, lastUsedAt: '2026-10-05T10:00:00.000Z' },
+      { agent: issues, lastUsedAt: '2026-10-03T10:00:00Z' },
+      { agent: docs, lastUsedAt: '2026-10-02T10:00:00Z' },
+    ]);
+  });
+
+  it('agrees with agentLastUsedAt on the order', () => {
+    const sessions = [
+      session('a', 'sre', '2026-10-01T10:00:00Z'),
+      session('b', 'issues', '2026-10-03T10:00:00Z'),
+    ];
+    const states = new Map([
+      [
+        'gazelle/a',
+        {
+          sessionId: 'a',
+          state: 'completed',
+          changedAt: Date.parse('2026-10-04T10:00:00Z'),
+        },
+      ],
+    ]);
+    const byUse = [...agentLastUsedAt(sessions, states)]
+      .sort(([, a], [, b]) => b - a)
+      .map(([id]) => id);
+
+    expect(
+      recentAgentUses(sessions, [sre, issues], { states }).map(
+        use => use.agent.id,
+      ),
+    ).toEqual(byUse);
+  });
+});
+
 describe('agentLastUsedAt', () => {
   it('takes each agent’s latest session, by its last turn where known', () => {
     const first = session('s1', 'sre', '2026-10-01T10:00:00Z');

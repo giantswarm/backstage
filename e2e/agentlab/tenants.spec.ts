@@ -416,27 +416,35 @@ test.describe('agents per tenant', () => {
         'pointing at the organization points at the name link',
       ).toBe(agent.name);
       /**
-       * Where a row's facts end. The facts (tags, then the Harness and
-       * environment columns) close the row on the right, so their end is the
-       * same on every row whose facts share the name's line — whatever they
-       * hold, none at all included. The organization beside the name must not
-       * push them onto a line of their own.
+       * Where a row's connector column and favourite star start. Both have a
+       * fixed width at the row's right, so they line up on every row —
+       * whatever the row's connectors, none at all included. The
+       * organization beside the name must not push them.
        */
-      const factsEnd = (name: string) =>
-        rosterRowOf(alice, name)
-          .getByTestId('agent-facts')
-          .evaluate(element => element.getBoundingClientRect().right);
-      const organizationRowFactsEnd = await factsEnd(agent.name);
+      const columnsAt = async (name: string) => {
+        const listItem = rosterRowOf(alice, name);
+        const [connectors, star] = await Promise.all([
+          listItem.getByTestId('agent-connectors').boundingBox(),
+          listItem.getByRole('button', { name: / favorites$/ }).boundingBox(),
+        ]);
+        return { connectors: connectors!.x, star: star!.x };
+      };
+      const organizationRowColumns = await columnsAt(agent.name);
       // The platform's agent belongs to no organization, and its row says
       // nothing of one.
       await searchRoster(alice, labAgent.name);
       await expect(rosterLinkOf(alice, labAgent.name)).toBeVisible({
         timeout: rosterWait,
       });
+      const platformRowColumns = await columnsAt(labAgent.name);
       expect(
-        await factsEnd(labAgent.name),
-        'the platform agent’s facts line up with the organization’s agent’s',
-      ).toBeCloseTo(organizationRowFactsEnd, 0);
+        platformRowColumns.connectors,
+        'the platform agent’s connectors line up with the organization’s agent’s',
+      ).toBeCloseTo(organizationRowColumns.connectors, 0);
+      expect(
+        platformRowColumns.star,
+        'the platform agent’s star lines up with the organization’s agent’s',
+      ).toBeCloseTo(organizationRowColumns.star, 0);
       await expect(
         rosterRowOf(alice, labAgent.name).getByText(
           /^(None|Organization: .*)$/,
