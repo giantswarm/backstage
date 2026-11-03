@@ -152,6 +152,12 @@ function nothingLeftError() {
   );
 }
 
+const OTHER_OWNER_WARNING =
+  'HelmRelease org-acme/demo1-extra is managed by someone else and is left: remove it by the means that created it';
+
+/** Only another owner's object is left: cluster-manager names it and removes nothing. */
+const OTHER_OWNERS = dryRun([], { warnings: [OTHER_OWNER_WARNING] });
+
 /** One answer of cluster-manager: a result, or an error it throws. */
 type Answer = ClusterWriteResult | (() => Error);
 
@@ -492,6 +498,119 @@ describe('DeleteClusterDialog', () => {
     await waitFor(() =>
       expect(callTool.mock.calls.length).toBeGreaterThan(before),
     );
+  });
+
+  it('keeps checking through a failed check, and reads nothing left as complete', async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ delay: null });
+      await renderDialog(
+        {
+          checks: [
+            () => new Error('muster: request timed out'),
+            nothingLeftError,
+          ],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(
+        await screen.findByText(/^Could not check what is left at /),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Finish removal' }),
+      ).toBeInTheDocument();
+
+      await act(async () => {
+        jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+      });
+      expect(await screen.findByTestId('delete-complete')).toHaveTextContent(
+        'demo1 is removed: nothing of it is left',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("stops checking once what is left is not cluster-manager's, until Check again", async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ delay: null });
+      const { callTool } = await renderDialog(
+        { checks: [OTHER_OWNERS, nothingLeftError] },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(
+        await screen.findByText(
+          "What is left is not cluster-manager's to remove.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(OTHER_OWNER_WARNING)).toBeInTheDocument();
+      const calls = callTool.mock.calls.length;
+      await act(async () => {
+        jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS * 4);
+      });
+      expect(callTool.mock.calls.length).toBe(calls);
+
+      await user.click(screen.getByRole('button', { name: 'Check again' }));
+      expect(await screen.findByTestId('delete-complete')).toHaveTextContent(
+        'demo1 is removed: nothing of it is left',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reads Removing… on Finish removal while its pass runs', async () => {
+    const user = userEvent.setup();
+    const muster = makeMusterApi({
+      passes: [FIRST_PASS, LEFTOVERS_REMOVED],
+      checks: [LEFTOVERS, nothingLeftError],
+    });
+    const answer = muster.callTool.getMockImplementation()!;
+    let land: () => void = () => {};
+    let applies = 0;
+    muster.callTool.mockImplementation(async (name, args) => {
+      if (!args.dryRun && ++applies === 2) {
+        await new Promise<void>(resolve => {
+          land = resolve;
+        });
+      }
+      return answer(name, args);
+    });
+    await renderDialog({}, false, () => {}, muster);
+    await deleteCluster(user);
+    await user.click(
+      await screen.findByRole('button', { name: 'Finish removal' }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Removing…' }),
+    ).toBeDisabled();
+    await act(async () => land());
+    expect(await screen.findByTestId('delete-complete')).toBeInTheDocument();
+  });
+
+  it('shows what a pass changed besides deleting', async () => {
+    const user = userEvent.setup();
+    await renderDialog(
+      {
+        passes: [
+          pass([object('HelmRelease', 'demo1', 'updated')], {
+            nextStep: UNINSTALL_STEP,
+          }),
+        ],
+      },
+      false,
+    );
+    await deleteCluster(user);
+
+    const first = await screen.findByTestId('delete-pass');
+    expect(first).toHaveTextContent('Changed as you: 1 object');
+    expect(first).toHaveTextContent('HelmRelease org-acme/demo1: updated');
   });
 
   it('reads nothing left after Finish removal as the removal complete', async () => {

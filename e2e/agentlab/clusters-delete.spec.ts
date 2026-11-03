@@ -196,6 +196,12 @@ test.describe('clusters: Delete cluster to the end', () => {
     await expect(dialog.getByText(/^Checked at /)).toBeVisible({
       timeout: 60_000,
     });
+    // What it waits for is cluster-manager's next step (the dry run carries
+    // it too), not someone else's object.
+    await expect(dialog.getByText(/is being removed since/)).toBeVisible();
+    await expect(
+      dialog.getByText("What is left is not cluster-manager's to remove."),
+    ).toHaveCount(0);
     const finish = dialog.getByRole('button', { name: 'Finish removal' });
     await expect(finish).toHaveCount(0);
 

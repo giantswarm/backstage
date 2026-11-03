@@ -50,8 +50,39 @@ describe('summarizePass', () => {
     expect(summarizePass(passes, 1)).toEqual({
       removed: [object('demo1-apps', 'deleted')],
       stillGoing: [object('demo1', 'deleted')],
+      others: [],
+      changed: [],
     });
     expect(summarizePass(passes, 0).removed).toHaveLength(1);
+  });
+
+  it('keeps every other action, and tells what changed from what did not', () => {
+    const passes = [
+      passOf([
+        object('a', 'updated'),
+        object('b', 'unchanged'),
+        object('c', 'pending'),
+      ]),
+    ];
+
+    const { removed, others, changed } = summarizePass(passes, 0);
+    expect(removed).toEqual([]);
+    expect(others.map(o => o.name)).toEqual(['a', 'b', 'c']);
+    expect(changed.map(o => o.name)).toEqual(['a']);
+  });
+
+  it('tells objects of the same kind and name in other API groups apart', () => {
+    const passes = [
+      passOf([{ ...object('demo1', 'deleted'), apiVersion: 'a.io/v1' }]),
+      passOf([
+        { ...object('demo1', 'deleted'), apiVersion: 'a.io/v2' },
+        { ...object('demo1', 'deleted'), apiVersion: 'b.io/v1' },
+      ]),
+    ];
+
+    const { removed, stillGoing } = summarizePass(passes, 1);
+    expect(stillGoing.map(o => o.apiVersion)).toEqual(['a.io/v2']);
+    expect(removed.map(o => o.apiVersion)).toEqual(['b.io/v1']);
   });
 });
 
@@ -69,6 +100,12 @@ describe('judgeNextPass', () => {
         passes,
       ),
     ).toEqual({ state: 'ready', objects: [object('x', 'would-delete')] });
+  });
+
+  it('is ready when a pass would change anything else', () => {
+    expect(
+      judgeNextPass(result([object('demo1', 'would-update')]), passes),
+    ).toEqual({ state: 'ready', objects: [object('demo1', 'would-update')] });
   });
 
   it("waits with cluster-manager's next step when nothing new would go", () => {
