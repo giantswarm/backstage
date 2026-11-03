@@ -1,7 +1,3 @@
-import {
-  formatDayTick,
-  formatDayTooltip,
-} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { formatBucketTick, formatBucketTooltip } from './helpers';
 
 /** UTC midnight, the start of muster-backend's daily bucket for 4 Sep 2026. */
@@ -16,11 +12,13 @@ const LOCALE_METHODS = [
 ] as const;
 
 /**
- * Format dates as a browser in `timeZone` would: every `toLocale*` call that
- * names no zone gets this one. Assigning `process.env.TZ` would not do it, as
- * each Jest test file gets its own copy of the environment.
+ * Format dates as a browser in `timeZone` with the `en-US` locale would: every
+ * `toLocale*` call that names no zone gets this one, and no locale `en-US`, so
+ * the labels can be compared as exact strings. Assigning `process.env.TZ`
+ * would not do it, as each Jest test file gets its own copy of the
+ * environment.
  */
-function pinBrowserZone(timeZone: string) {
+function pinBrowser(timeZone: string) {
   for (const method of LOCALE_METHODS) {
     const original = Date.prototype[method];
     jest.spyOn(Date.prototype, method).mockImplementation(function format(
@@ -28,7 +26,10 @@ function pinBrowserZone(timeZone: string) {
       locales?: Intl.LocalesArgument,
       options?: Intl.DateTimeFormatOptions,
     ) {
-      return original.call(this, locales, { timeZone, ...options });
+      return original.call(this, locales ?? 'en-US', {
+        timeZone,
+        ...options,
+      });
     });
   }
 }
@@ -36,38 +37,21 @@ function pinBrowserZone(timeZone: string) {
 describe('bucket labels west of UTC', () => {
   beforeEach(() => {
     // Seven hours behind UTC in September: every UTC midnight is the
-    // evening before here, the case a browser-zone label gets wrong.
-    pinBrowserZone('America/Los_Angeles');
+    // evening before here, the case a browser-zone day label gets wrong.
+    pinBrowser('America/Los_Angeles');
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it('runs in a zone where the bucket starts on the previous day', () => {
-    expect(
-      new Date(DAY_BUCKET).toLocaleDateString(undefined, { day: 'numeric' }),
-    ).toBe('3');
-  });
-
   it('labels a daily bucket with its UTC day, as the Usage charts do', () => {
-    expect(formatBucketTick(DAY_BUCKET, 24)).toBe(formatDayTick('2026-09-04'));
-    expect(formatBucketTooltip(DAY_BUCKET, 24)).toBe(
-      formatDayTooltip('2026-09-04'),
-    );
-    expect(formatBucketTooltip(DAY_BUCKET, 24)).toMatch(/4/);
-    expect(formatBucketTooltip(DAY_BUCKET, 24)).toMatch(/2026/);
+    expect(formatBucketTick(DAY_BUCKET, 24)).toBe('Sep 4');
+    expect(formatBucketTooltip(DAY_BUCKET, 24)).toBe('Fri, Sep 4, 2026');
   });
 
-  it('labels an hourly bucket with its UTC hour and day', () => {
-    expect(formatBucketTick(HOUR_BUCKET, 1)).toBe(
-      new Date(HOUR_BUCKET).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'UTC',
-      }),
-    );
-    expect(formatBucketTick(HOUR_BUCKET, 1)).toMatch(/03/);
-    expect(formatBucketTooltip(HOUR_BUCKET, 1)).toMatch(/\b4\b/);
+  it('labels an hourly bucket with the browser time, as the rest of the page', () => {
+    expect(formatBucketTick(HOUR_BUCKET, 1)).toBe('08:00 PM');
+    expect(formatBucketTooltip(HOUR_BUCKET, 1)).toBe('Sep 3, 08:00 PM');
   });
 });
