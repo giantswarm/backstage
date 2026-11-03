@@ -71,11 +71,12 @@ jobs:
   # ends every container but 0 before the generated Build and
   # persist_to_workspace steps, which must run once: CircleCI refuses to
   # attach a workspace two containers persisted the same file into. The tests
-  # are 450 of the job's 640 s on one container; two containers cut the job to
-  # about 6 min for about 11% more credits (the second container's start, and
-  # the shards being a few percent uneven). The saved node_modules cache comes
-  # from container 0 only, so the other shard's jest transform cache is cold
-  # after a lockfile change.
+  # are 450 of the job's 640 s on one container; on two (#3330, first runs)
+  # each shard took 240 to 300 s, the job 6.8 and 7.4 min, for about 20% more
+  # credits: each container's start, each shard's own jest start-up, and the
+  # last container's tsc and lint (97 s) after its tests. The saved
+  # node_modules cache comes from container 0 only, so the other shard's jest
+  # transform cache is cold after a lockfile change.
   node-build:
     resource_class: xlarge
     parallelism: 2
