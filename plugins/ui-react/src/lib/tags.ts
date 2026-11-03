@@ -1,27 +1,20 @@
-/**
- * Tags: free-form keywords people find an agent (or another resource) by
- * (`util`, `marketing`). Stored as the comma-joined `ui.giantswarm.io/tags`
- * annotation; agent-manager takes them as `tags` and checks the same form.
- */
-export const TAGS_ANNOTATION = 'ui.giantswarm.io/tags';
-
-/** The longest tag the charts take. */
-export const MAX_TAG_LENGTH = 63;
+import {
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  parseTags,
+  TAG_PATTERN,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 /**
- * The most tags one resource carries. muster and gs-backend
- * (`MAX_SKILL_TAGS`) refuse more.
+ * Tags in the portal's forms: the stored rule and its reader come from
+ * gs-common, which gs-backend checks against too; this adds how typed text
+ * becomes tags, the problems a form shows, and suggestions.
  */
-export const MAX_TAGS = 50;
+export { MAX_TAG_LENGTH, MAX_TAGS, parseTags, TAG_PATTERN, TAGS_ANNOTATION };
 
 /** Why more tags cannot be added. */
 export const MAX_TAGS_PROBLEM = `At most ${MAX_TAGS} tags.`;
-
-/**
- * The charts' tag form: lowercase letters and digits, single `-` between.
- * The one tag rule the portal checks against; muster and gs-backend mirror it.
- */
-export const TAG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * A tag as typed, in the stored form: lowercase, spaces and underscores as
@@ -48,22 +41,6 @@ export function tagProblem(tag: string): string | undefined {
     return 'Use letters and numbers.';
   }
   return undefined;
-}
-
-/**
- * The tags in a stored annotation value: split on commas, trimmed and
- * lowercased, without empties or repeats. A value that is not a valid tag
- * (see {@link tagProblem}) is left out, so an edit never sends it back.
- */
-export function parseTags(raw: string | undefined): string[] {
-  return [
-    ...new Set(
-      (raw ?? '')
-        .split(',')
-        .map(tag => tag.trim().toLowerCase())
-        .filter(tag => tagProblem(tag) === undefined),
-    ),
-  ];
 }
 
 /** The parts of a typed text a comma separates, trimmed, without empties. */
@@ -143,15 +120,18 @@ export function commitTagDraft(
 
 /**
  * Why a typed but not yet added text cannot become tags: the first of its
- * comma-separated parts that cannot, else that `tags` already hold more than
- * {@link MAX_TAGS} (read from a resource written elsewhere) or the text would
- * take them past it. Undefined when it can, or is empty.
+ * comma-separated parts that cannot, else that `tags` hold more than
+ * {@link MAX_TAGS} and differ from `stored` (the resource's tags as read: an
+ * unchanged list is not written, so one written elsewhere past the limit
+ * stands), or the text would take them past it. Undefined when it can, or is
+ * empty.
  */
 export function draftProblem(
   text: string,
   tags: readonly string[],
+  stored: readonly string[] = [],
 ): string | undefined {
-  if (tags.length > MAX_TAGS) {
+  if (tags.length > MAX_TAGS && !sameTags(tags, stored)) {
     return MAX_TAGS_PROBLEM;
   }
   for (const part of splitTyped(text)) {
@@ -194,7 +174,9 @@ export function suggestTags(
   typed: string,
   picked: readonly string[],
 ): string[] {
-  const needle = normalizeTag(typed);
+  // Only the part being typed: earlier comma-separated parts are kept in the
+  // draft when they cannot be tags.
+  const needle = normalizeTag(typed.slice(typed.lastIndexOf(',') + 1));
   return [...counts.keys()]
     .filter(tag => !picked.includes(tag) && tag.includes(needle))
     .sort(
@@ -224,7 +206,15 @@ export function editDistance(a: string, b: string): number {
 const MIN_PREFIX_LENGTH = 3;
 /** Both tags must be this long before a small edit distance counts. */
 const MIN_FUZZY_LENGTH = 4;
-const MAX_FUZZY_DISTANCE = 2;
+/**
+ * The edits two tags may differ by: one below {@link LONG_TAG_LENGTH}
+ * characters, where two would be half of `pods` (`prod`), else two.
+ */
+const LONG_TAG_LENGTH = 7;
+
+function maxFuzzyDistance(shorter: string): number {
+  return shorter.length >= LONG_TAG_LENGTH ? 2 : 1;
+}
 
 function singular(tag: string): string {
   if (tag.endsWith('ies') && tag.length > 3) {
@@ -250,7 +240,7 @@ export function areSimilarTags(a: string, b: string): boolean {
   }
   return (
     shorter.length >= MIN_FUZZY_LENGTH &&
-    editDistance(a, b) <= MAX_FUZZY_DISTANCE
+    editDistance(a, b) <= maxFuzzyDistance(shorter)
   );
 }
 
@@ -276,4 +266,44 @@ export function similarExistingTag(
         (counts.get(b) ?? 0) - (counts.get(a) ?? 0) ||
         a.localeCompare(b),
     )[0];
+}
+
+/** What a form's Tags field changes in the form's state. */
+export type TagsFieldUpdaters = {
+  /** Adds tags not yet present (already normalized and valid). */
+  addTags: (tags: readonly string[]) => void;
+  removeTag: (tag: string) => void;
+  setTagDraft: (draft: string) => void;
+  /** Adds what the draft can, leaving the rest typed ({@link commitTagDraft}). */
+  commitTagDraft: () => void;
+};
+
+/**
+ * The Tags field's updaters over a form state that holds `tags` and
+ * `tagDraft`, for a form provider's context. Stable for a stable `setState`.
+ */
+export function tagsFieldUpdaters<
+  S extends { tags: string[]; tagDraft?: string },
+>(setState: (update: (prev: S) => S) => void): TagsFieldUpdaters {
+  return {
+    addTags: added =>
+      setState(prev => {
+        const next = addTags(prev.tags, added);
+        return next.length > prev.tags.length ? { ...prev, tags: next } : prev;
+      }),
+    removeTag: tag =>
+      setState(prev => ({
+        ...prev,
+        tags: prev.tags.filter(each => each !== tag),
+      })),
+    setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
+    commitTagDraft: () =>
+      setState(prev => {
+        if (!prev.tagDraft?.trim()) {
+          return prev;
+        }
+        const committed = commitTagDraft(prev.tags, prev.tagDraft);
+        return { ...prev, tags: committed.tags, tagDraft: committed.draft };
+      }),
+  };
 }

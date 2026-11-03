@@ -12,7 +12,6 @@ import {
   InfoHint,
   MoreOptions,
   useFieldValidation,
-  tagCounts,
   TagsField,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -35,7 +34,6 @@ import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { supportsTags } from '../../lib/agentManager';
 import {
   harnessTitle,
@@ -60,10 +58,7 @@ const useStyles = makeStyles({
 export function NewAgentPage() {
   return (
     <ModelConfigsProvider>
-      {/* The fleet's agents, for the tags they already use. */}
-      <AgentsDataProvider>
-        <NewAgentPageContent />
-      </AgentsDataProvider>
+      <NewAgentPageContent />
     </ModelConfigsProvider>
   );
 }
@@ -115,9 +110,6 @@ function NewAgentPageContent() {
   // to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { errorFor, fieldProps, textFieldProps } = validation;
-  // The tags the fleet already uses, offered while typing a tag.
-  const { rows: agents } = useAgents();
-  const knownTags = useMemo(() => tagCounts(agents), [agents]);
   // Tags only where the installation's agent-manager takes them. A draft
   // left in the hidden field must not block Continue.
   const tagsSupported = supportsTags(agentManagerInfo);
@@ -320,7 +312,6 @@ function NewAgentPageContent() {
             tags={state.tags}
             draft={state.tagDraft ?? ''}
             error={errorFor('tags', fieldErrors.tags)}
-            counts={knownTags}
             onDraftChange={setTagDraft}
             onAdd={addTags}
             onRemove={removeTag}

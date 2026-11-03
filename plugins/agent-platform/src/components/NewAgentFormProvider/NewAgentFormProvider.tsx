@@ -7,8 +7,8 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  addTags as addTagsTo,
-  commitTagDraft as commitDraft,
+  tagsFieldUpdaters,
+  type TagsFieldUpdaters,
   draftProblem,
   useSessionDraft,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -21,6 +21,7 @@ import type {
 } from '../../lib/agentManager';
 import {
   changedFields,
+  editStateOf,
   editStateOfForm,
   skillEntryKey,
 } from '../../lib/agentEdit';
@@ -202,22 +203,13 @@ export type AgentWizardEdit = {
   detailHref: string | undefined;
 };
 
-export type NewAgentFormContextValue = {
+export type NewAgentFormContextValue = TagsFieldUpdaters & {
   state: NewAgentFormState;
   /** Set when the wizard edits an existing agent rather than creating one. */
   edit: AgentWizardEdit | undefined;
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
-  /** Adds tags not yet present (already normalized and valid). */
-  addTags: (tags: readonly string[]) => void;
-  removeTag: (tag: string) => void;
-  setTagDraft: (draft: string) => void;
-  /**
-   * Adds the tags the draft holds, leaving only what cannot be a tag in it:
-   * what leaving step 1 does with a typed but not added draft.
-   */
-  commitTagDraft: () => void;
   setInstallation: (installation: string | undefined) => void;
   /**
    * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
@@ -572,6 +564,11 @@ export function NewAgentFormProvider({
     dismissRestored: dismissDraftNotice,
   } = draft;
 
+  const tagUpdaters = useMemo(
+    () => tagsFieldUpdaters<NewAgentFormState>(setState),
+    [],
+  );
+
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
     // agent.systemMessage, so an empty field means "use the chart default"
@@ -582,7 +579,11 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
-    fieldErrors.tags = draftProblem(state.tagDraft ?? '', state.tags);
+    fieldErrors.tags = draftProblem(
+      state.tagDraft ?? '',
+      state.tags,
+      edit ? editStateOf(edit.agent).tags : [],
+    );
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -669,31 +670,7 @@ export function NewAgentFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
-      addTags: tags =>
-        setState(prev => {
-          const next = addTagsTo(prev.tags, tags);
-          return next.length > prev.tags.length
-            ? { ...prev, tags: next }
-            : prev;
-        }),
-      removeTag: tag =>
-        setState(prev => ({
-          ...prev,
-          tags: prev.tags.filter(each => each !== tag),
-        })),
-      setTagDraft: tagDraft => setState(prev => ({ ...prev, tagDraft })),
-      commitTagDraft: () =>
-        setState(prev => {
-          if (!prev.tagDraft?.trim()) {
-            return prev;
-          }
-          const committed = commitDraft(prev.tags, prev.tagDraft);
-          return {
-            ...prev,
-            tags: committed.tags,
-            tagDraft: committed.draft,
-          };
-        }),
+      ...tagUpdaters,
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
       // here.
@@ -935,6 +912,7 @@ export function NewAgentFormProvider({
     draftNoticeStep,
     dismissDraftNotice,
     clearDraft,
+    tagUpdaters,
   ]);
 
   return (

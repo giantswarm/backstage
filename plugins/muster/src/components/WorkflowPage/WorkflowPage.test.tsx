@@ -503,7 +503,10 @@ describe('WorkflowPage', () => {
     // Each opens Customize → Workflows with that tag picked.
     expect(
       within(section).getByRole('link', { name: 'release' }),
-    ).toHaveAttribute('href', '/customize/workflows?tags=release');
+    ).toHaveAttribute(
+      'href',
+      '/customize/workflows?installation=gazelle&tags=release',
+    );
   });
 
   it('says so where the definition gives no description', async () => {

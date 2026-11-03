@@ -7,4 +7,4 @@
 
 Tag helpers (`parseTags`, `TAGS_ANNOTATION` and the rest), `TagsField`, `TagVocabularyContext` and the `tagsFacet` catalog facet move to `ui-react`, for every resource with tags.
 
-A resource takes at most 50 tags (`MAX_TAGS`): `TagsField` and the agent, connector and skill forms refuse more with "At most 50 tags."
+A resource takes at most 50 tags (`MAX_TAGS`): `TagsField` and the agent, connector and skill forms refuse more with "At most 50 tags." An edit that leaves more tags written elsewhere as they are goes through, since it does not write them.

@@ -6,7 +6,6 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
-import { connectorTags } from '../../lib/connectorTags';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { selectMusterInstallations } from '../MusterInstanceProvider/selectInstallations';
 import { useMusterInstallations } from '../MusterInstanceProvider/useMusterInstallations';
@@ -34,14 +33,18 @@ function ConnectorTags({ onTags }: TagSourceProps) {
     MCPServer,
   );
   // One entry per connector, as the Connectors tab lists them: a family's
-  // servers are one connector on each installation.
+  // servers are one connector on each installation. Only the tags written on
+  // the servers, not the read-only one their tool-group label reads as
+  // (`connectorTags`), which no form takes.
   const items = useMemo(() => {
-    const connectors = new Map<string, MCPServer[]>();
+    const connectors = new Map<string, Set<string>>();
     for (const server of resources) {
       const key = `${server.cluster}/${server.getFamily() ?? server.getName()}`;
-      connectors.set(key, [...(connectors.get(key) ?? []), server]);
+      const tags = connectors.get(key) ?? new Set<string>();
+      server.getTags().forEach(tag => tags.add(tag));
+      connectors.set(key, tags);
     }
-    return [...connectors.values()].map(connectorTags);
+    return [...connectors.values()].map(tags => [...tags]);
   }, [resources]);
   useReportTags(isLoading && items.length === 0 ? undefined : items, onTags);
   return null;

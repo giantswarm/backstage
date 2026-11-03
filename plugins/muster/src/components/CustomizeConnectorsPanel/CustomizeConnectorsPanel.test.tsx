@@ -645,6 +645,35 @@ describe('CustomizeConnectorsPanel', () => {
     expect(api.getAuthStatus).not.toHaveBeenCalled();
   });
 
+  it('says how to add a connector while none is registered, above the platform’s own', async () => {
+    mockServers = [
+      makeServer('agent-manager', { toolGroup: 'agent-platform' }),
+      makeServer('kubernetes', { toolGroup: 'infrastructure' }),
+    ];
+    await renderPanel();
+
+    expect(
+      await screen.findByText('No connectors added yet'),
+    ).toBeInTheDocument();
+    expect(rowOf('kubernetes')).toBeVisible();
+  });
+
+  it('leaves the prompt out once a connector is registered, or while searching', async () => {
+    mockServers = [makeServer('kubernetes', { toolGroup: 'infrastructure' })];
+    const { unmount } = await renderPanel('kube');
+    await screen.findByRole('row', { name: /^kubernetes/ });
+    expect(screen.queryByText('No connectors added yet')).toBeNull();
+    unmount();
+
+    mockServers = [
+      makeServer('jira'),
+      makeServer('kubernetes', { toolGroup: 'infrastructure' }),
+    ];
+    await renderPanel();
+    await screen.findByRole('row', { name: /^jira/ });
+    expect(screen.queryByText('No connectors added yet')).toBeNull();
+  });
+
   it('opens the connector page from its row', async () => {
     await renderPanel();
 

@@ -14,6 +14,7 @@ import {
   suggestTags,
   tagCounts,
   tagProblem,
+  tagsFieldUpdaters,
 } from './tags';
 
 /** `count` distinct valid tags. */
@@ -94,6 +95,19 @@ describe('the tag cap', () => {
     expect(draftProblem('', full)).toBeUndefined();
   });
 
+  it('is no problem for stored tags past it that are left as they are', () => {
+    expect(draftProblem('', numbered(51), numbered(51))).toBeUndefined();
+    expect(draftProblem('', numbered(51).reverse(), numbered(51))).toBe(
+      undefined,
+    );
+    expect(draftProblem('', numbered(52), numbered(51))).toBe(
+      'At most 50 tags.',
+    );
+    expect(draftProblem('new', numbered(51), numbered(51))).toBe(
+      'At most 50 tags.',
+    );
+  });
+
   it('adds no tags past it', () => {
     expect(addTags(numbered(49), ['a', 'b'])).toEqual([...numbered(49), 'a']);
     expect(addTags(full, ['new'])).toEqual(full);
@@ -170,6 +184,15 @@ describe('suggestTags', () => {
     expect(suggestTags(counts, '', ['util'])).toEqual(['ops', 'marketing']);
     expect(suggestTags(counts, 'xyz', [])).toEqual([]);
   });
+
+  it('matches only the part typed after a kept invalid one', () => {
+    expect(suggestTags(counts, 'über, mark', [])).toEqual(['marketing']);
+    expect(suggestTags(counts, 'über, ', [])).toEqual([
+      'util',
+      'ops',
+      'marketing',
+    ]);
+  });
 });
 
 describe('similarity', () => {
@@ -191,6 +214,11 @@ describe('similarity', () => {
     expect(areSimilarTags('ai', 'aiops')).toBe(false);
     expect(areSimilarTags('ops', 'dps')).toBe(false);
     expect(areSimilarTags('sales', 'legal')).toBe(false);
+    // Under seven characters, one edit: two would be half the word.
+    expect(areSimilarTags('pods', 'prod')).toBe(false);
+    expect(areSimilarTags('core', 'cost')).toBe(false);
+    expect(areSimilarTags('data', 'dash')).toBe(false);
+    expect(areSimilarTags('infra', 'imfra')).toBe(true);
   });
 
   it('names the closest existing tag for a new one, or none', () => {
@@ -235,5 +263,33 @@ describe('parseTags', () => {
   it('is empty without a value or with a blank one', () => {
     expect(parseTags(undefined)).toEqual([]);
     expect(parseTags(' ')).toEqual([]);
+  });
+});
+
+describe('tagsFieldUpdaters', () => {
+  function form(initial: { tags: string[]; tagDraft?: string; name: string }) {
+    let state = initial;
+    const updaters = tagsFieldUpdaters<typeof state>(update => {
+      state = update(state);
+    });
+    return { updaters, read: () => state };
+  }
+
+  it('adds, removes and commits tags, keeping the rest of the state', () => {
+    const { updaters, read } = form({ tags: ['ops'], name: 'x' });
+    const before = read();
+    updaters.addTags(['ops']);
+    expect(read()).toBe(before);
+
+    updaters.addTags(['util']);
+    updaters.removeTag('ops');
+    updaters.setTagDraft('On Call, über');
+    updaters.commitTagDraft();
+
+    expect(read()).toEqual({
+      tags: ['util', 'on-call'],
+      tagDraft: 'über',
+      name: 'x',
+    });
   });
 });

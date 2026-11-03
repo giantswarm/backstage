@@ -795,6 +795,29 @@ describe('renderSkillMarkdown', () => {
       }),
     ).toThrow(expect.objectContaining({ status: 422 }));
   });
+
+  it('refuses with 422 to replace tags kept as a YAML list, which it cannot read', () => {
+    expect(() =>
+      renderSkillMarkdown({
+        skillName: 'notes',
+        description: 'New.',
+        instructions: 'Body',
+        tags: ['ops'],
+        keepFrontmatter: { metadata: { tags: ['triage', 'kubernetes'] } },
+      }),
+    ).toThrow(expect.objectContaining({ status: 422 }));
+  });
+
+  it('keeps tags it cannot read when the edit leaves the tags alone', () => {
+    expect(
+      renderSkillMarkdown({
+        skillName: 'notes',
+        description: 'New.',
+        instructions: 'Body',
+        keepFrontmatter: { metadata: { tags: ['triage', 'kubernetes'] } },
+      }),
+    ).toContain('- triage');
+  });
 });
 
 describe('SKILL_NAME_RE', () => {

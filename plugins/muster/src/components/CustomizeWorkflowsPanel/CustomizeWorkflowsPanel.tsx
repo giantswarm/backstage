@@ -13,7 +13,9 @@ import {
   ShowMore,
   type StackedRowItem,
   StackedRowList,
+  ROW_TAGS_MAX,
   TagList,
+  TAGS_COLUMN_MIN_WIDTH,
   tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
@@ -75,15 +77,6 @@ export function runsLabel(response: WorkflowExecutionListResponse): string {
   const runs = countNoun(response.total, 'run');
   return latest ? `${runs} · ${latest}` : runs;
 }
-
-/** Tags a row shows before "+N", as on agent rows; the rest are on its page. */
-export const ROW_TAGS_MAX = 3;
-
-/**
- * The tags column's floor: room for a few short tags on one line. Its share
- * of a narrow table alone left ~70-100px, so each tag took its own line.
- */
-const TAGS_COLUMN_MIN_WIDTH = 184;
 
 const SOURCE_LABELS = {
   gitops: 'GitOps',

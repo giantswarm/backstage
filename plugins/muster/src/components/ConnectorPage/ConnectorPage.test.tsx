@@ -330,7 +330,10 @@ describe('ConnectorPage', () => {
     });
     expect(
       within(facts).getByRole('link', { name: 'infrastructure' }),
-    ).toHaveAttribute('href', '/customize/connectors?tags=infrastructure');
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=infrastructure',
+    );
   });
 
   it("shows muster's own page with its endpoint to copy, and that it is fixed", async () => {
@@ -420,7 +423,10 @@ describe('ConnectorPage', () => {
     // Each opens the connector's Customize list with that tag picked.
     expect(
       within(facts).getByRole('link', { name: 'support' }),
-    ).toHaveAttribute('href', '/customize/connectors?tags=support');
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=support',
+    );
   });
 
   it('lists the facts on the Details tab, not beside the content', async () => {

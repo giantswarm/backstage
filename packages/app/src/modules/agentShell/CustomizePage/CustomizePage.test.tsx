@@ -9,7 +9,7 @@ import {
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   Route,
   Routes,
@@ -29,8 +29,21 @@ function mockPanel(name: string) {
   return function MockPanel(props: { search: string }) {
     // What a panel's Tags facet starts from, and a way to change it.
     const shared = useSharedTags();
+    // What a real panel's filters seed from once, on mount.
+    const [seeded] = useState(() => shared?.tags.join(',') || 'no tags');
+    const navigate = useNavigate();
     return (
       <>
+        <p>{`${name} filters seeded with ${seeded}`}</p>
+        <button type="button" onClick={() => shared?.setTags([])}>
+          Clear tags
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/customize/agents?tags=util')}
+        >
+          Open the util tag link
+        </button>
         <p>{`${name} panel, search “${props.search}”${
           // Anything beyond the search would be a filter the page hands down.
           Object.keys(props).length > 1 ? ', with more props' : ''
@@ -577,6 +590,29 @@ describe('CustomizePage', () => {
       await userEvent.click(screen.getByRole('tab', { name: /^Skills/ }));
 
       expect(screen.getByText('Skills panel, tags ops')).toBeInTheDocument();
+    });
+
+    it('seeds the tab a tag link opens, after the pick was cleared', async () => {
+      await renderCustomize('/customize/agents?tags=util');
+      await userEvent.click(screen.getByRole('button', { name: 'Clear tags' }));
+      await userEvent.click(screen.getByRole('tab', { name: /^Skills/ }));
+      expect(
+        screen.getByText('Skills filters seeded with no tags'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Open the util tag link' }),
+      );
+
+      expect(
+        screen.getByText('Agents filters seeded with util'),
+      ).toBeInTheDocument();
+    });
+
+    it('reads ?tags= as tags are stored: lowercased, invalid ones left out', async () => {
+      await renderCustomize('/customize/skills?tags=Util,not%20a%20tag');
+
+      expect(screen.getByText('Skills panel, tags util')).toBeInTheDocument();
     });
 
     it('is nothing without ?tags=', async () => {

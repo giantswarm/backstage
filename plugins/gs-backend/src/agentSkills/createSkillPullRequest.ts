@@ -3,7 +3,7 @@ import { dump } from 'js-yaml';
 import { GitHubApiError, parseRepoUrl } from './discoverAgentSkills';
 import { splitSkillMarkdown } from './frontmatter';
 import { isSkillFilePath } from './skillFiles';
-import { withSkillTags } from './skillTags';
+import { SkillTagsError, withSkillTags } from './skillTags';
 import { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
@@ -207,7 +207,8 @@ async function refuse(step: string, response: Response): Promise<never> {
  * the form does not show (`license`, `allowed-tools`, …) survive it; `name`
  * and `description` always come first and from the form. `tags`, when given,
  * replace `metadata.tags` (see `withSkillTags`); every other `metadata` key
- * is kept. A `metadata` that is not a map cannot take tags: a 422.
+ * is kept. A `metadata` that is not a map, or `metadata.tags` the portal
+ * cannot read whole, cannot take tags: a 422.
  */
 export function renderSkillMarkdown(options: {
   skillName: string;
@@ -225,11 +226,11 @@ export function renderSkillMarkdown(options: {
   if (options.tags !== undefined) {
     try {
       kept = withSkillTags(rest, options.tags);
-    } catch {
-      throw new GitHubApiError(
-        422,
-        `The skill's frontmatter metadata is not a map, so tags cannot be added to it.`,
-      );
+    } catch (error) {
+      if (error instanceof SkillTagsError) {
+        throw new GitHubApiError(422, error.message);
+      }
+      throw error;
     }
   }
   // js-yaml's dump quotes and escapes whatever the description contains, so

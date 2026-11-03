@@ -42,11 +42,6 @@ import {
   repositoryKey,
   SkillDiscoveryCache,
 } from './agentSkills/skillDiscoveryCache';
-import {
-  isValidTag,
-  MAX_SKILL_TAGS,
-  MAX_TAG_LENGTH,
-} from './agentSkills/skillTags';
 import { UpstreamReadGuard } from './agentSkills/upstreamReadGuard';
 import {
   isSkillFilePath,
@@ -62,6 +57,9 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import { readSignedInConfig } from './signedInConfig';
 import {
+  isValidTag,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
   shortSha,
   SUBJECT_TOKEN_HEADER,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -934,7 +932,7 @@ export async function createRouter({
             message: `Each tag must be lowercase letters and digits with single dashes between, at most ${MAX_TAG_LENGTH} characters`,
           }),
         )
-        .max(MAX_SKILL_TAGS)
+        .max(MAX_TAGS)
         .optional(),
       kind: z.enum(['create', 'update']).optional(),
       path: z

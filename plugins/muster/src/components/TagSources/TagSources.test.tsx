@@ -27,7 +27,12 @@ jest.mock('../MusterInstanceProvider/useMusterResources', () => ({
   },
 }));
 
-function server(name: string, tags: string, family?: string) {
+function server(
+  name: string,
+  tags: string,
+  family?: string,
+  toolGroup?: string,
+) {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
@@ -36,6 +41,13 @@ function server(name: string, tags: string, family?: string) {
         name,
         namespace: 'muster',
         annotations: { 'ui.giantswarm.io/tags': tags },
+        ...(toolGroup
+          ? {
+              labels: {
+                'agent-platform.giantswarm.io/tool-group': toolGroup,
+              },
+            }
+          : {}),
       },
       spec: family ? { family: { name: family } } : {},
     } as never,
@@ -46,8 +58,8 @@ function server(name: string, tags: string, family?: string) {
 describe('ConnectorTagSource', () => {
   it('reports one entry per connector on every muster installation', async () => {
     mockResources = [
-      server('walrus-k8s', 'kubernetes', 'k8s'),
-      server('gazelle-k8s', 'kubernetes,ops', 'k8s'),
+      server('walrus-k8s', 'kubernetes', 'k8s', 'infrastructure'),
+      server('gazelle-k8s', 'kubernetes,ops', 'k8s', 'infrastructure'),
       server('jira', 'ticketing'),
     ];
     const onTags = jest.fn();
@@ -58,6 +70,11 @@ describe('ConnectorTagSource', () => {
         ['kubernetes', 'ops'],
         ['ticketing'],
       ]),
+    );
+    // Not the read-only tool-group tag: nobody types `infrastructure` onto
+    // a connector, so it is never suggested.
+    expect(onTags).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.arrayContaining(['infrastructure'])]),
     );
     expect(mockUseMusterResources).toHaveBeenCalledWith(
       ['gazelle', 'golem'],

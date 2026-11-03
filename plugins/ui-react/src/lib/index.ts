@@ -12,8 +12,10 @@ export {
   splitDraft,
   addTags,
   commitTagDraft,
+  tagsFieldUpdaters,
   sameTags,
   tagCounts,
   suggestTags,
   similarExistingTag,
 } from './tags';
+export type { TagsFieldUpdaters } from './tags';

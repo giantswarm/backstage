@@ -862,6 +862,23 @@ describe('EditAgentPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('goes on past step 1 with more than 50 tags written elsewhere, left as they are', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, {
+      agent: {
+        ...AGENT,
+        tags: Array.from({ length: 51 }, (_, index) => `tag-${index}`),
+      },
+      info: { ...INFO, capabilities: { tags: false } },
+    });
+
+    await changeDescriptionAndReview(user);
+
+    expect(
+      screen.getByRole('heading', { name: 'Check and save' }),
+    ).toBeInTheDocument();
+  });
+
   it('leaves an untouched edit without asking', async () => {
     const user = userEvent.setup();
     await renderEdit(BASE);

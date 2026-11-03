@@ -26,7 +26,9 @@ import {
   StackedRowList,
   StatusDot,
   isAwaitingData,
+  ROW_TAGS_MAX,
   TagList,
+  TAGS_COLUMN_MIN_WIDTH,
   tagsFacet,
   stopRowPress,
   useCatalogFilters,
@@ -73,14 +75,6 @@ import {
   unsearchedToolsNotes,
 } from './connectorRows';
 
-/** Tags a row shows before "+N", as on agent rows; the rest are on its page. */
-export const ROW_TAGS_MAX = 3;
-
-/**
- * The tags column's floor: room for a few short tags on one line. Its share
- * of a narrow table alone left ~70-100px, so each tag took its own line.
- */
-const TAGS_COLUMN_MIN_WIDTH = 184;
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
@@ -513,7 +507,11 @@ function ConnectorsTable({
     },
   ];
 
-  // Never empty: muster's own row is always there.
+  // The list is never empty (the platform's own connectors and muster are
+  // always there), so where none is registered yet, it says how to add one.
+  const hasRegistered = listRows.some(listRow => isRegisteredRow(listRow.row));
+  const showAddPrompt =
+    !hasRegistered && search.trim() === '' && !filters.isFiltered;
   let list;
   if (rows.length === 0) {
     // A search that found nothing says what it could not look at, where the
@@ -583,6 +581,12 @@ function ConnectorsTable({
         onSelect={filters.select}
         onClear={filters.clear}
       />
+      {showAddPrompt && (
+        <EmptyStateCard
+          title="No connectors added yet"
+          description="Add a connector to give agents its tools. The platform's own connectors are listed below."
+        />
+      )}
       {!hasSession && (
         <SessionGate
           session={session}

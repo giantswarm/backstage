@@ -36,7 +36,6 @@ import {
   type StatusDotTone,
   TagList,
   useSplatBasePath,
-  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
@@ -45,6 +44,7 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef } from '../../routes';
@@ -496,7 +496,14 @@ function ConnectorPageContent({
       value: (
         <TagList
           tags={tags}
-          getHref={listPath ? tag => tagHref(listPath, tag) : undefined}
+          getHref={
+            // On the connector's own installation: the list's scope may be
+            // another one, which does not list it.
+            listPath
+              ? tag =>
+                  withInstallationQuery(listPath, installation, { tags: tag })
+              : undefined
+          }
         />
       ),
     });

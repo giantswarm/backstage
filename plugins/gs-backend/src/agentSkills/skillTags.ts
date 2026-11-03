@@ -1,43 +1,11 @@
+import { isValidTag, parseTags } from '@giantswarm/backstage-plugin-gs-common';
+
 /**
  * Skill tags: frontmatter `metadata.tags`, a comma-joined string
  * (`"triage, kubernetes"`) — the Agent Skills spec allows only string values
- * in `metadata`. The form is the one every tag in the portal has; the parse
- * and the check repeat `parseTags` / `tagProblem` in
- * plugins/ui-react/src/lib/tags.ts, which a backend cannot import. Keep them
- * in step.
+ * in `metadata`. Each tag follows gs-common's rule, as every tag in the
+ * portal does.
  */
-
-export const MAX_TAG_LENGTH = 63;
-
-/**
- * The most tags a pull request writes on one skill: a bound, not a goal.
- * Mirrors `MAX_TAGS` in ui-react's `lib/tags.ts`, which a backend plugin
- * cannot import.
- */
-export const MAX_SKILL_TAGS = 50;
-
-/** Lowercase letters and digits, single `-` between. */
-export const TAG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-/** Whether a value is a tag as it is stored. */
-export function isValidTag(tag: string): boolean {
-  return tag.length <= MAX_TAG_LENGTH && TAG_PATTERN.test(tag);
-}
-
-/**
- * The tags in a stored value: split on commas, trimmed and lowercased,
- * without empties, repeats or values that are not a valid tag.
- */
-export function parseTags(raw: string | undefined): string[] {
-  return [
-    ...new Set(
-      (raw ?? '')
-        .split(',')
-        .map(tag => tag.trim().toLowerCase())
-        .filter(isValidTag),
-    ),
-  ];
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -53,17 +21,46 @@ export function skillTagsOf(frontmatter: Record<string, unknown>): string[] {
 }
 
 /**
+ * Whether a stored `metadata.tags` reads as tags without losing any of it: a
+ * comma-joined string whose every part is a tag (in any case). A YAML list,
+ * or a part like `on call`, would be dropped by {@link skillTagsOf}, so
+ * replacing it would lose what the form never showed.
+ */
+function readsCleanly(stored: unknown): boolean {
+  if (stored === undefined || stored === null) {
+    return true;
+  }
+  return (
+    typeof stored === 'string' &&
+    stored
+      .split(',')
+      .map(part => part.trim().toLowerCase())
+      .filter(part => part !== '')
+      .every(isValidTag)
+  );
+}
+
+/** Why {@link withSkillTags} cannot write tags into a frontmatter. */
+export class SkillTagsError extends Error {}
+
+/**
  * The frontmatter with `metadata.tags` set to `tags`, comma-joined, every
  * other key (and `metadata` key) kept in place. Empty `tags` removes
  * `metadata.tags`, and `metadata` too when tags were all it held; a missing
- * `metadata` is only created for tags. Throws when `metadata` is not a map
- * and tags are to be written into it.
+ * `metadata` is only created for tags. Throws a {@link SkillTagsError} when
+ * `metadata` is not a map, or its `tags` hold what the portal cannot read
+ * (see {@link readsCleanly}).
  */
 export function withSkillTags(
   frontmatter: Record<string, unknown>,
   tags: readonly string[],
 ): Record<string, unknown> {
   const metadata = frontmatter.metadata;
+  if (isPlainObject(metadata) && !readsCleanly(metadata.tags)) {
+    throw new SkillTagsError(
+      "The skill's metadata.tags is not a comma-separated list of tags, so changing it here would lose some of it. Change the tags in the repository.",
+    );
+  }
   if (tags.length === 0) {
     if (!isPlainObject(metadata) || !('tags' in metadata)) {
       return frontmatter;
@@ -76,7 +73,9 @@ export function withSkillTags(
     return { ...frontmatter, metadata: rest };
   }
   if (metadata !== undefined && metadata !== null && !isPlainObject(metadata)) {
-    throw new Error('The frontmatter `metadata` is not a map');
+    throw new SkillTagsError(
+      "The skill's frontmatter metadata is not a map, so tags cannot be added to it.",
+    );
   }
   return {
     ...frontmatter,

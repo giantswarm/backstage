@@ -5,6 +5,8 @@ import { musterApiRef, type MusterApi } from '../../apis';
 import { takesDisplayName, takesTags } from '../../lib/mcpServerDefinition';
 import { toolDescriptionQuery } from '../shared/useToolDescription';
 
+type ToolInputSchema = Parameters<typeof takesTags>[0];
+
 /**
  * `describe_tool` of `tool`, read to learn whether it takes a display name: the
  * tool page's cache entry, fresh for a few minutes so a save does not ask again
@@ -23,6 +25,22 @@ export function displayNameSupportQuery(
   };
 }
 
+/** Whether `tool`'s input schema passes `takes`; false until it is read. */
+function useToolSchemaTakes(
+  tool: string,
+  installation: string | undefined,
+  enabled: boolean,
+  takes: (inputSchema: ToolInputSchema) => boolean,
+): boolean {
+  const musterApi = useApi(musterApiRef);
+  const { data } = useQuery({
+    ...displayNameSupportQuery(musterApi, tool, installation),
+    enabled,
+    select: detail => takes(detail.inputSchema),
+  });
+  return data ?? false;
+}
+
 /**
  * Whether the installation's muster `tool` takes `displayName` (v5.43.0 and
  * later). False until its schema is read, and when it cannot be read.
@@ -32,13 +50,7 @@ export function useTakesDisplayName(
   installation: string | undefined,
   { enabled = true }: { enabled?: boolean } = {},
 ): boolean {
-  const musterApi = useApi(musterApiRef);
-  const { data } = useQuery({
-    ...displayNameSupportQuery(musterApi, tool, installation),
-    enabled,
-    select: detail => takesDisplayName(detail.inputSchema),
-  });
-  return data ?? false;
+  return useToolSchemaTakes(tool, installation, enabled, takesDisplayName);
 }
 
 /**
@@ -51,11 +63,10 @@ export function useTakesTags(
   installation: string | undefined,
   { enabled = true }: { enabled?: boolean } = {},
 ): boolean {
-  const musterApi = useApi(musterApiRef);
-  const { data } = useQuery({
-    ...displayNameSupportQuery(musterApi, tool, installation),
-    enabled: enabled && Boolean(installation),
-    select: detail => takesTags(detail.inputSchema),
-  });
-  return data ?? false;
+  return useToolSchemaTakes(
+    tool,
+    installation,
+    enabled && Boolean(installation),
+    takesTags,
+  );
 }
