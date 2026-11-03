@@ -101,6 +101,14 @@ A Kubernetes resource in a `FactList` shows its namespace and name as two
 facts, Namespace and Name, through `namespacedNameFacts` (a `ui-react` util); a
 second resource in the same list passes its `kind` to prefix the labels.
 
+## Links
+
+A link is underlined and in the link colour. Leave either out only where the
+click target is larger than the link's text, so the shape of the control shows
+it can be clicked: a table or list row, a card, a nav or rail item, a
+breadcrumb, a tab, a button. A link inside a table cell is a text link and
+stays underlined. Any other exception needs a reason in the code review.
+
 ## Links in the Agent Platform shell
 
 Every text link in the Agent Platform shell looks the same: the shell's link

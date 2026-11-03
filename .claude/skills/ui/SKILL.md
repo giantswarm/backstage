@@ -204,6 +204,13 @@ and name in a `FactList` are two facts through `namespacedNameFacts`. See
 "Commits and resource names" in `docs/ui.md`; the shell's own rules for both
 are in the `agent-platform-ux-coding` skill.
 
+### Links: underlined, in the link colour
+
+A link is underlined and in the link colour. Exceptions only where the click
+target is larger than the text — a table or list row, a card, a nav or rail
+item, a breadcrumb, a tab, a button — and anything else needs a reason. A link
+in a table cell stays underlined. See "Links" in `docs/ui.md`.
+
 ### Links in the Agent Platform shell
 
 Every text link in the shell takes the shell's link colour and a solid

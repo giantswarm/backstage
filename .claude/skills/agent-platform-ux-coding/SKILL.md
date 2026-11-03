@@ -196,6 +196,10 @@ them and never invent a palette.
 
 ### Links
 
+- The rule: a link is underlined and in the link colour. Exceptions only where
+  the click target is larger than the text (a table or list row, a card, a nav
+  or rail item, a breadcrumb, a tab, a button); anything else needs a reason.
+  A link in a table cell stays underlined.
 - A text link is bui's `Link` with an absolute href; core-components' `Link`
   only where the target is a route ref (see the `ui` skill).
 - Every text link in the shell looks the same: the shell's link colour
