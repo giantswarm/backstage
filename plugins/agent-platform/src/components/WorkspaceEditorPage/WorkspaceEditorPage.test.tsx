@@ -50,6 +50,14 @@ const UNGRANTED_GITLAB = {
   signIn: `grant the App of provider gitlab-lab once in muster: core_auth_login server=${GITLAB_GRANT_SERVER}`,
 };
 
+/** gitlab-lab as a multi-App registration names it: its own App in muster. */
+const APP_GITLAB = {
+  ...GITLAB,
+  connected: false,
+  signIn:
+    'grant the App of provider gitlab-lab once in muster: core_auth_login app=gitlab-lab',
+};
+
 function repo(
   provider: string,
   owner: string,
@@ -453,86 +461,134 @@ describe('WorkspaceEditorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('asks for the provider sign-in before the form when no instance is connected', async () => {
-    const fake = createWorkspaceManagerFake({
-      providers: [UNGRANTED_GITLAB],
-      repositories: LAB,
-      grants: { [GITLAB_GRANT_SERVER]: 'auth_required' },
-    });
-    await render(fake);
+  /**
+   * The two shapes of workspace-manager's `signIn` for an ungranted instance:
+   * muster's sign-in for the server the manager is pinned to, or for the
+   * instance's own App (a multi-App registration). Both read the same in the
+   * editor; only the sign-in muster is asked to start differs.
+   */
+  describe.each([
+    {
+      hint: 'server',
+      provider: UNGRANTED_GITLAB,
+      grant: { grants: { [GITLAB_GRANT_SERVER]: 'auth_required' as const } },
+      target: GITLAB_GRANT_SERVER,
+      finish: (fake: WorkspaceManagerFake) => {
+        fake.grants[GITLAB_GRANT_SERVER] = 'connected';
+      },
+    },
+    {
+      hint: 'app',
+      provider: APP_GITLAB,
+      grant: { appGrants: { 'gitlab-lab': 'auth_required' as const } },
+      target: { app: 'gitlab-lab' },
+      finish: (fake: WorkspaceManagerFake) => {
+        fake.appGrants['gitlab-lab'] = 'connected';
+      },
+    },
+  ])(
+    'with a core_auth_login $hint= sign-in',
+    ({ provider, grant, target, finish }) => {
+      let open: jest.SpyInstance;
+      beforeEach(() => {
+        open = jest.spyOn(window, 'open').mockReturnValue(null);
+      });
+      afterEach(() => {
+        open.mockRestore();
+      });
 
-    const gate = within(await screen.findByTestId('workspace-editor-gate'));
-    expect(
-      gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
-    ).toBeInTheDocument();
-    expect(
-      gate.getByRole('button', { name: 'Sign in to GitLab ↗' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('textbox', { name: /^Name/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Create workspace' }),
-    ).not.toBeInTheDocument();
-    expect(fake.callsOf('list_repositories')).toHaveLength(0);
-  });
+      it('asks for the provider sign-in before the form when no instance is connected', async () => {
+        const fake = createWorkspaceManagerFake({
+          providers: [provider],
+          repositories: LAB,
+          ...grant,
+        });
+        await render(fake);
 
-  it('opens the form once the provider is granted in muster', async () => {
-    const fake = createWorkspaceManagerFake({
-      providers: [UNGRANTED_GITLAB],
-      repositories: LAB,
-      grants: { [GITLAB_GRANT_SERVER]: 'auth_required' },
-    });
-    await render(fake);
-    await screen.findByTestId('workspace-editor-gate');
+        const gate = within(await screen.findByTestId('workspace-editor-gate'));
+        expect(
+          gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
+        ).toBeInTheDocument();
+        expect(
+          gate.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+        ).toBeInTheDocument();
+        expect(gate.queryByText(/core_auth_login/)).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('textbox', { name: /^Name/ }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Create workspace' }),
+        ).not.toBeInTheDocument();
+        expect(fake.callsOf('list_repositories')).toHaveLength(0);
+      });
 
-    const open = jest.spyOn(window, 'open').mockReturnValue(null);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Sign in to GitLab ↗' }),
-    );
-    expect(await screen.findByText('Waiting for GitLab…')).toBeInTheDocument();
-    expect(fake.signInServer).toHaveBeenCalledWith(GITLAB_GRANT_SERVER, 'lab');
-    // The grant finishes in the other tab; muster reports it on its next read.
-    fake.grants[GITLAB_GRANT_SERVER] = 'connected';
-    fake.providers[0] = { ...GITLAB, connected: true };
-    open.mockRestore();
+      it('opens the form once the provider is granted in muster', async () => {
+        const fake = createWorkspaceManagerFake({
+          providers: [provider],
+          repositories: LAB,
+          ...grant,
+        });
+        await render(fake);
+        await screen.findByTestId('workspace-editor-gate');
 
-    expect(
-      await screen.findByRole('textbox', { name: /^Name/ }, { timeout: 8000 }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('workspace-editor-gate'),
-    ).not.toBeInTheDocument();
-  }, 15_000);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+        );
+        expect(
+          await screen.findByText('Waiting for GitLab…'),
+        ).toBeInTheDocument();
+        // The hint's own sign-in, and no other.
+        expect(fake.signInServer.mock.calls).toEqual([[target, 'lab']]);
+        // The grant finishes in the other tab; muster reports it on its next read.
+        finish(fake);
+        fake.providers[0] = { ...GITLAB, connected: true };
 
-  it('shows the connect prompt in place of the owner for a source on an unconnected instance', async () => {
-    const fake = createWorkspaceManagerFake({
-      providers: [GITHUB, UNGRANTED_GITLAB],
-      repositories: [...ACME, ...LAB],
-      grants: { [GITLAB_GRANT_SERVER]: 'auth_required' },
-    });
-    await render(fake);
+        expect(
+          await screen.findByRole(
+            'textbox',
+            { name: /^Name/ },
+            { timeout: 8000 },
+          ),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByTestId('workspace-editor-gate'),
+        ).not.toBeInTheDocument();
+      }, 15_000);
 
-    await screen.findByTestId('workspace-source-0');
-    fireEvent.click(source(0).getByRole('button', { name: /Provider/ }));
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'gitlab-lab (GitLab)' }),
-    );
-    const prompt = within(
-      await screen.findByTestId('provider-connect-gitlab-lab'),
-    );
-    // The grant is muster's sign-in for the server the manager's `signIn` names.
-    expect(
-      prompt.getByText('Sign in to gitlab-lab (GitLab)'),
-    ).toBeInTheDocument();
-    expect(
-      prompt.getByRole('button', { name: 'Sign in to GitLab ↗' }),
-    ).toBeInTheDocument();
-    expect(
-      source(0).queryByRole('textbox', { name: /^Owner/ }),
-    ).not.toBeInTheDocument();
-    expect(fake.callsOf('list_repositories')).toHaveLength(0);
-  });
+      it('shows the connect prompt in place of the owner for a source on an unconnected instance', async () => {
+        const fake = createWorkspaceManagerFake({
+          providers: [GITHUB, provider],
+          repositories: [...ACME, ...LAB],
+          ...grant,
+        });
+        await render(fake);
+
+        await screen.findByTestId('workspace-source-0');
+        fireEvent.click(source(0).getByRole('button', { name: /Provider/ }));
+        fireEvent.click(
+          await screen.findByRole('option', { name: 'gitlab-lab (GitLab)' }),
+        );
+        const prompt = within(
+          await screen.findByTestId('provider-connect-gitlab-lab'),
+        );
+        expect(
+          prompt.getByText('Sign in to gitlab-lab (GitLab)'),
+        ).toBeInTheDocument();
+        expect(prompt.queryByText(/core_auth_login/)).not.toBeInTheDocument();
+        expect(
+          source(0).queryByRole('textbox', { name: /^Owner/ }),
+        ).not.toBeInTheDocument();
+        expect(fake.callsOf('list_repositories')).toHaveLength(0);
+
+        fireEvent.click(
+          prompt.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+        );
+        await waitFor(() =>
+          expect(fake.signInServer.mock.calls).toEqual([[target, 'lab']]),
+        );
+      });
+    },
+  );
 
   it('asks for the sign-in to workspace-manager before the form', async () => {
     const fake = createWorkspaceManagerFake({
@@ -563,7 +619,6 @@ describe('WorkspaceEditorPage', () => {
           name: 'taken',
           organization: 'acme',
           sources: [],
-          sync: { schedule: 'nightly' },
           resourceVersion: '1',
           createdAt: '2026-10-01T00:00:00Z',
           repositories: 0,
@@ -617,7 +672,6 @@ describe('WorkspaceEditorPage', () => {
           exclude: ['mcp-prometheus'],
         },
       ],
-      sync: { schedule: 'nightly' },
       resourceVersion: '7',
       createdAt: '2026-10-01T00:00:00Z',
       repositories: 1,
@@ -666,7 +720,6 @@ describe('WorkspaceEditorPage', () => {
         },
       ],
     });
-    expect(fake.callsOf('update_workspace')[0]).not.toHaveProperty('sync');
     // An edit closes to the workspace's page, the address's parent.
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
@@ -682,7 +735,6 @@ function storedWorkspace(selection: Partial<WorkspaceSource>): Workspace {
     name: 'portal',
     organization: 'acme',
     sources: [{ provider: 'github', owner: 'acme', ...selection }],
-    sync: { schedule: 'nightly' },
     resourceVersion: '7',
     createdAt: '2026-10-01T00:00:00Z',
     repositories: 0,

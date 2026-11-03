@@ -82,7 +82,6 @@ function docs(overrides: Partial<WorkspaceDetail['workspace']> = {}) {
           repositories: ['api', 'web'],
         },
       ],
-      sync: { schedule: 'nightly' },
       sizing: { minimum: '20Gi' },
       resourceVersion: '7',
       createdAt: '2026-10-01T00:00:00Z',
