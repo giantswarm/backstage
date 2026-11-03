@@ -72,7 +72,7 @@ import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
-/** Twice the rendered 32px (bui's medium avatar), for sharp 2x displays. */
+/** At least twice the rendered 40px (bui's large avatar), for 2x displays. */
 const ROW_AVATAR_SIZE: AvatarSize = 96;
 
 /**
@@ -149,15 +149,21 @@ const useStyles = makeStyles({
       background: 'var(--bui-bg-neutral-2)',
     },
   },
+  // Avatar, the name's column, the connectors' logos: roomy, one agent per
+  // glance. On a phone the logos wrap under the text, in line with it.
   row: {
     flex: '1 1 auto',
     minWidth: 0,
     display: 'flex',
     alignItems: 'center',
-    gap: 'var(--bui-space-3)',
+    columnGap: 'var(--bui-space-4)',
+    rowGap: 'var(--bui-space-2)',
     padding:
-      'var(--bui-space-3) var(--bui-space-2) var(--bui-space-3) var(--bui-space-4)',
+      'var(--bui-space-4) var(--bui-space-2) var(--bui-space-4) var(--bui-space-4)',
     color: 'var(--bui-fg-primary)',
+    [PHONE_MEDIA]: {
+      flexWrap: 'wrap',
+    },
   },
   // Stretched over the row by `useStretchedLinkStyles`, which also draws the
   // focus ring round the row, as the hover does.
@@ -192,34 +198,16 @@ const useStyles = makeStyles({
     rowGap: 2,
     marginBottom: 'var(--bui-space-3)',
   },
-  // Name and description, then the facts: side by side where there is room,
-  // the facts on a line of their own under the name where there is not. Every
-  // row of a list has the same facts in the same fixed columns, and the name
-  // the same least width, so all rows of a list wrap at the same width and
-  // their columns line up either way.
+  // The name with its organization and state, what the agent is for, then
+  // its tags and facts: three lines, each its own.
   body: {
-    flex: '1 1 auto',
-    minWidth: 0,
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    columnGap: 'var(--bui-space-4)',
-    rowGap: 'var(--bui-space-1)',
-  },
-  main: {
-    flex: '1 1 220px',
+    flex: '1 1 0',
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 2,
+    gap: 'var(--bui-space-1)',
   },
-  // Where the rows name organizations: room for one beside the name, or the
-  // facts move under the name rather than squeeze them. A list without them
-  // keeps its rows on one line down to the narrower 220px.
-  mainWithOrganization: {
-    flexBasis: 320,
-  },
-  // The name, its organization and its state on one baseline, as the facts.
+  // The name, its organization and its state on one baseline.
   nameLine: {
     display: 'flex',
     alignItems: 'baseline',
@@ -255,17 +243,15 @@ const useStyles = makeStyles({
       alignSelf: 'center',
     },
   },
+  // The meta line under the description: tags, creator, Harness and
+  // environment, wrapping where the line is short.
   facts: {
-    flex: '0 1 auto',
     minWidth: 0,
     display: 'flex',
     flexWrap: 'wrap',
-    columnGap: 'var(--bui-space-4)',
-    rowGap: 2,
-    alignItems: 'baseline',
-    [PHONE_MEDIA]: {
-      flexBasis: '100%',
-    },
+    alignItems: 'center',
+    columnGap: 'var(--bui-space-3)',
+    rowGap: 'var(--bui-space-1)',
   },
   // Tags sit under the name link's stretched hit area, so a press on one
   // opens the agent like the rest of the row.
@@ -273,29 +259,31 @@ const useStyles = makeStyles({
     flex: '0 1 auto',
     minWidth: 0,
   },
-  // Three overlapping 24px logos wide, so rows with connectors line their
-  // facts up. The logos sit above the name link's stretched hit area, so each
-  // one's tooltip opens.
-  connectors: {
-    flex: '0 0 60px',
-    display: 'flex',
-    alignSelf: 'center',
-    [PHONE_MEDIA]: {
-      flex: '0 1 auto',
-    },
-  },
-  // Fixed-width fact columns line the rows up, as the prototype's do.
   fact: {
-    flex: '0 0 150px',
+    flex: '0 1 auto',
     minWidth: 0,
     [PHONE_MEDIA]: {
-      flex: '0 1 auto',
       overflowWrap: 'anywhere',
     },
   },
-  // At phone width a name and a description wrap to two lines instead of
-  // being cut to one (T22 P2): a phone has no hover to read the rest in a
-  // tooltip.
+  // Three overlapping 24px logos wide on every row, so the rows' text and
+  // stars line up whatever logos each has. The logos sit above the name
+  // link's stretched hit area, so each one's tooltip opens. On a phone they
+  // take a line of their own under the text, in line with it.
+  connectors: {
+    flex: '0 0 60px',
+    display: 'flex',
+    [PHONE_MEDIA]: {
+      flexBasis: '100%',
+      paddingLeft: 'calc(2.5rem + var(--bui-space-4))',
+      '&:empty': {
+        display: 'none',
+      },
+    },
+  },
+  // At phone width a name wraps to two lines instead of being cut to one
+  // (T22 P2): a phone has no hover to read the rest in a tooltip. A
+  // description takes two lines at every width.
   twoLines: TWO_LINES,
 });
 
@@ -405,11 +393,12 @@ function organizationText(namespace: string): string {
 }
 
 /**
- * One agent as the prototype's list row: avatar, name — with its organization
- * and, only when it is not Ready, its state — and what it is for, then its
- * tags, its connectors' logos, its creator, its Harness and its environment,
- * the organization, Harness and environment when the list has more than one
- * of each. The model and skills are technical detail, on the agent's own page.
+ * One agent as the prototype's list row: avatar; then the name — with its
+ * organization and, only when it is not Ready, its state — what it is for, and
+ * a line of its tags, creator, Harness and environment; then its connectors'
+ * logos. The organization, Harness and environment show when the list has more
+ * than one of each. The model and skills are technical detail, on the agent's
+ * own page.
  */
 function AgentListItem({
   row,
@@ -490,95 +479,86 @@ function AgentListItem({
   const content: ReactNode = (
     <>
       <AgentAvatar
-        size="medium"
+        size="large"
         purpose="decoration"
         name={row.name}
         src={avatarUrl ?? ''}
       />
       <div className={classes.body}>
-        <div
-          className={
-            showTenant
-              ? `${classes.main} ${classes.mainWithOrganization}`
-              : classes.main
-          }
-        >
-          <div className={classes.nameLine}>
-            {/* The link is the name itself, so a long name truncates with
-                its ellipsis, as the text does without one. */}
-            {href ? (
-              <Link
-                href={href}
-                variant="body-medium"
-                weight="bold"
-                truncate={truncate}
-                title={nameTitle}
-                aria-describedby={describedBy}
-                className={[
-                  classes.nameLink,
-                  stretched.link,
-                  isPhone ? classes.twoLines : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                {row.name}
-              </Link>
-            ) : (
-              <Text
-                as="span"
-                variant="body-medium"
-                weight="bold"
-                truncate={truncate}
-                title={nameTitle}
-                className={isPhone ? classes.twoLines : undefined}
-              >
-                {row.name}
-              </Text>
-            )}
-            {/* Whose agent it is, with the name rather than among the facts:
-                every row keeps the same fact columns, and a platform agent's
-                row has nothing here. Its tooltip is the name's (above): a
-                title of its own would sit under the link's hit area. */}
-            {organization && (
-              <Text
-                as="span"
-                id={organizationId}
-                variant="body-small"
-                color="secondary"
-                truncate={truncate}
-                className={classes.organization}
-              >
-                {organization}
-              </Text>
-            )}
-            {/* The state shows only when it needs a look, as in the
-                prototype; a Ready agent's state is on its own page. The
-                state keeps to its few words (T104): the reason is its
-                tooltip, and the agent's page says it in full, which is where
-                a phone reads it. */}
-            {status.tone !== 'success' && (
-              <span className={classes.status} title={row.readinessMessage}>
-                <StatusDot tone={status.tone} />
-                <Text as="span" variant="body-small" color="secondary">
-                  {status.label}
-                </Text>
-              </span>
-            )}
-          </div>
-          {row.description && (
+        <div className={classes.nameLine}>
+          {/* The link is the name itself, so a long name truncates with
+              its ellipsis, as the text does without one. */}
+          {href ? (
+            <Link
+              href={href}
+              variant="body-medium"
+              weight="bold"
+              truncate={truncate}
+              title={nameTitle}
+              aria-describedby={describedBy}
+              className={[
+                classes.nameLink,
+                stretched.link,
+                isPhone ? classes.twoLines : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {row.name}
+            </Link>
+          ) : (
             <Text
               as="span"
+              variant="body-medium"
+              weight="bold"
+              truncate={truncate}
+              title={nameTitle}
+              className={isPhone ? classes.twoLines : undefined}
+            >
+              {row.name}
+            </Text>
+          )}
+          {/* Whose agent it is, with the name rather than among the facts:
+              every row keeps the same fact columns, and a platform agent's
+              row has nothing here. Its tooltip is the name's (above): a
+              title of its own would sit under the link's hit area. */}
+          {organization && (
+            <Text
+              as="span"
+              id={organizationId}
               variant="body-small"
               color="secondary"
               truncate={truncate}
-              className={isPhone ? classes.twoLines : undefined}
-              title={isPhone ? undefined : row.description}
+              className={classes.organization}
             >
-              {row.description}
+              {organization}
             </Text>
           )}
+          {/* The state shows only when it needs a look, as in the
+              prototype; a Ready agent's state is on its own page. The
+              state keeps to its few words (T104): the reason is its
+              tooltip, and the agent's page says it in full, which is where
+              a phone reads it. */}
+          {status.tone !== 'success' && (
+            <span className={classes.status} title={row.readinessMessage}>
+              <StatusDot tone={status.tone} />
+              <Text as="span" variant="body-small" color="secondary">
+                {status.label}
+              </Text>
+            </span>
+          )}
         </div>
+        {row.description && (
+          <Text
+            as="span"
+            variant="body-small"
+            color="secondary"
+            className={classes.twoLines}
+            title={isPhone ? undefined : row.description}
+          >
+            {row.description}
+          </Text>
+        )}
         {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
         <div className={classes.facts} data-testid="agent-facts">
           <TagList
@@ -587,15 +567,6 @@ function AgentListItem({
             max={ROW_TAGS_MAX}
             className={classes.tags}
           />
-          {connectors.length > 0 && (
-            <span className={classes.connectors}>
-              <ConnectorLogoStack
-                connectors={connectors}
-                max={ROW_CONNECTORS_MAX}
-                className={stretched.above}
-              />
-            </span>
-          )}
           {facts.map(fact => (
             <Text
               key={fact.key}
@@ -615,6 +586,15 @@ function AgentListItem({
           ))}
         </div>
       </div>
+      <span className={classes.connectors}>
+        {connectors.length > 0 && (
+          <ConnectorLogoStack
+            connectors={connectors}
+            max={ROW_CONNECTORS_MAX}
+            className={stretched.above}
+          />
+        )}
+      </span>
     </>
   );
 

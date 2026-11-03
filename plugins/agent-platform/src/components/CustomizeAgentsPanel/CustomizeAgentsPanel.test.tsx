@@ -1203,12 +1203,18 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     ).toHaveTextContent(/Support triageSorts tickets/);
   });
 
-  it('keeps the one-line rows and the tooltip on a wide viewport', async () => {
+  it('cuts the name to its line, with the tooltip, on a wide viewport', async () => {
     layout.restore();
     layout = mockDesktopLayout();
     await renderPanel();
 
     expect(screen.getByText(longName)).toHaveAttribute('data-truncate', 'true');
+    // The description takes two lines rather than one.
+    expect(
+      screen.getByText(
+        'Reconciles the cloud bills against the budget every quarter',
+      ),
+    ).not.toHaveAttribute('data-truncate');
     // The reason stays the state's tooltip there.
     expect(
       screen.queryByText('Model config sonnet not found'),
@@ -1280,9 +1286,9 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   /** The row of the agent named `name`. */
   const rowOf = (name: string) =>
     listed().find(item => within(item).queryByRole('link', { name }))!;
-  /** The column of a row's name and description. */
-  const nameColumnOf = (item: HTMLElement) =>
-    within(item).getByRole('link').parentElement!.parentElement!;
+  /** The line of a row's name, its organization and state. */
+  const nameLineOf = (item: HTMLElement) =>
+    within(item).getByRole('link').parentElement!;
   /** A row's fact columns, in order, as text. */
   const factsOf = (item: HTMLElement) =>
     Array.from(
@@ -1330,9 +1336,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     // The platform's agent belongs to no organization, and its row says
     // nothing of one: no "None" without its label, no info icon.
     const sre = rowOf('SRE');
-    expect(nameColumnOf(sre)).not.toHaveTextContent(
-      /None|Organization|Platform/,
-    );
+    expect(nameLineOf(sre)).not.toHaveTextContent(/None|Organization|Platform/);
     expect(
       within(sre).queryByRole('button', { name: /None/ }),
     ).not.toBeInTheDocument();
@@ -1352,9 +1356,6 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       'title',
       'SRE',
     );
-    // Room for the organization beside the name, on every row of the list.
-    expect(getComputedStyle(nameColumnOf(billing)).flexBasis).toBe('320px');
-    expect(getComputedStyle(nameColumnOf(sre)).flexBasis).toBe('320px');
     // Not among the facts: both rows have the same fact columns, so they
     // line up from row to row however the facts wrap. The model is not one
     // of them: the agent's page has it. Only the creator differs.
@@ -1425,9 +1426,6 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     const name = within(listed()[0]).getByText('Billing');
     expect(name.nextElementSibling).toBe(null);
     expect(name).not.toHaveAttribute('aria-describedby');
-    // And no wider name column than a list without organizations needs: its
-    // facts stay beside the name down to the narrower width.
-    expect(getComputedStyle(nameColumnOf(listed()[0])).flexBasis).toBe('220px');
   });
 
   it('offers the model dropdown over three agents on one model, none starred', async () => {
@@ -1833,6 +1831,13 @@ describe('CustomizeAgentsPanel connectors', () => {
       'Jira',
       'slack',
     ]);
+    // Beside the row's text, not on its meta line.
+    expect(
+      within(within(rowOf('A two')).getByTestId('agent-facts')).queryByRole(
+        'group',
+        { name: 'Connectors' },
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('shows two logos and "+N" for more than three connectors', async () => {
@@ -1849,7 +1854,7 @@ describe('CustomizeAgentsPanel connectors', () => {
     await renderPanel();
     await user.hover(within(rowOf('B four')).getByText('+2'));
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      /github\s*pagerduty/,
+      'github, pagerduty',
     );
   });
 
