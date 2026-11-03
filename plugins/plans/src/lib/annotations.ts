@@ -29,10 +29,6 @@ export function commentableLines(file: PlanPullFile): CommentableLines {
   return lines;
 }
 
-export function isCommentable(lines: CommentableLines, line: number): boolean {
-  return lines === 'all' ? true : lines.has(line);
-}
-
 /**
  * Number of source lines `splitFrontmatter` strips from the top of a
  * document. Rendered-body line N corresponds to file line N + offset, which

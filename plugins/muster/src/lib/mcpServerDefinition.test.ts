@@ -15,18 +15,27 @@ import {
   WIZARD_AUTH_MODES,
   sigv4Advisories,
   takesDisplayName,
-  validateNewMcpServerForm,
   clientBindingChanged,
   clientCredentialsArgument,
   clientCredentialsProblems,
   hasStoredClientSecret,
   isStoredClientSecret,
+  validateMcpServerAuth,
+  validateMcpServerDetails,
   withoutClientSecretRef,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
 import { toMcpServerDefinition } from './gitops';
 import { MCPServer } from './k8s';
 import { AUTH_MODE_LABELS, serverAuthMode } from './serverAuthMode';
+
+/**
+ * Every validation problem of the form, in form order: the two steps the
+ * form provider combines.
+ */
+function validateNewMcpServerForm(form: NewMcpServerFormState): string[] {
+  return [...validateMcpServerDetails(form), ...validateMcpServerAuth(form)];
+}
 
 function state(
   overrides: Partial<NewMcpServerFormState> = {},

@@ -1,0 +1,137 @@
+import { Cell, CellText, ColumnConfig } from '@backstage/ui';
+import {
+  ConditionState,
+  Gateway,
+  GatewayListener,
+  HttpRoute,
+  HttpRouteParent,
+} from '../../../hooks/gatewayTopology';
+import { ConditionStatus } from './ConditionStatus';
+
+export type ListenerRow = {
+  id: string;
+  gateway: Gateway;
+  listener?: GatewayListener;
+};
+
+export type RouteParentRow = {
+  id: string;
+  route: HttpRoute;
+  parent?: HttpRouteParent;
+};
+
+function conditionCell(condition: ConditionState | undefined) {
+  return (
+    <Cell>{condition ? <ConditionStatus condition={condition} /> : '—'}</Cell>
+  );
+}
+
+function listenerAddress(listener: GatewayListener | undefined): string {
+  if (!listener) return '—';
+  const protocol = listener.protocol ?? '?';
+  return listener.port ? `${protocol}/${listener.port}` : protocol;
+}
+
+export const listenerColumns: ColumnConfig<ListenerRow>[] = [
+  {
+    id: 'gateway',
+    label: 'Gateway',
+    isRowHeader: true,
+    cell: row => (
+      <CellText
+        title={row.gateway.name}
+        description={[row.gateway.namespace, row.gateway.className]
+          .filter(Boolean)
+          .join(' · ')}
+      />
+    ),
+  },
+  {
+    id: 'accepted',
+    label: 'Accepted',
+    cell: row => conditionCell(row.gateway.accepted),
+  },
+  {
+    id: 'programmed',
+    label: 'Programmed',
+    cell: row => conditionCell(row.gateway.programmed),
+  },
+  {
+    id: 'listener',
+    label: 'Listener',
+    cell: row => (
+      <CellText
+        title={row.listener?.name ?? '—'}
+        description={listenerAddress(row.listener)}
+      />
+    ),
+  },
+  {
+    id: 'hostname',
+    label: 'Hostname',
+    cell: row => (
+      <CellText title={row.listener ? (row.listener.hostname ?? 'any') : '—'} />
+    ),
+  },
+  {
+    id: 'attachedRoutes',
+    label: 'Attached routes',
+    cell: row => (
+      <CellText title={String(row.listener?.attachedRoutes ?? '—')} />
+    ),
+  },
+];
+
+export const routeColumns: ColumnConfig<RouteParentRow>[] = [
+  {
+    id: 'route',
+    label: 'HTTPRoute',
+    isRowHeader: true,
+    cell: row => (
+      <CellText title={row.route.name} description={row.route.namespace} />
+    ),
+  },
+  {
+    id: 'hostnames',
+    label: 'Hostnames',
+    cell: row => (
+      <CellText
+        title={
+          row.route.hostnames === undefined
+            ? '—'
+            : row.route.hostnames.join(', ') || 'any'
+        }
+      />
+    ),
+  },
+  {
+    id: 'parent',
+    label: 'Parent / listener',
+    cell: row =>
+      row.parent ? (
+        <CellText
+          title={row.parent.name}
+          description={[
+            row.parent.kind,
+            row.parent.namespace,
+            row.parent.sectionName || 'all listeners',
+            row.parent.port ? `port ${row.parent.port}` : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        />
+      ) : (
+        <CellText title="No Gateway or ListenerSet parent" />
+      ),
+  },
+  {
+    id: 'accepted',
+    label: 'Accepted',
+    cell: row => conditionCell(row.parent?.accepted),
+  },
+  {
+    id: 'resolvedRefs',
+    label: 'ResolvedRefs',
+    cell: row => conditionCell(row.parent?.resolvedRefs),
+  },
+];

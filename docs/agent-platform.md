@@ -436,10 +436,26 @@ page.
 
 ## Usage
 
-`/usage` reports over 7, 30 (the default) or 90 days:
+`/usage` reports over 7, 30 (the default) or 90 days, or over one calendar
+month: the Time range select offers this month so far and the two before it
+(`?window=2026-10`; the installations keep about three months of metrics). A
+past month is its exact UTC days, evaluated at its end, with the change
+against the month before; the current month is month-to-date, with no change
+shown yet.
 
 - **Overview** — platform health and trends from the LLM gateway.
-- **Cost** — spend from the gateway, by agent and model.
+- **Cost** — spend from the gateway, by organization, agent and model. The
+  **By organization** table has one row per organization whose agents the
+  gateway recorded calls for: the organization's name, `None` for the
+  platform's shared agents, `namespace <name>` for another namespace agents
+  run in, and Unattributed for calls the gateway placed in no namespace; each
+  row carries its model calls, tokens, spend and share of spend. A row opens
+  the same page narrowed to that organization. In a calendar month, Cost
+  also shows a **By person** table: spend, tokens and share of spend by the
+  gateway's `user` label, the person the runtime ran the turn for (an email),
+  with the calls it named nobody for as "No person recorded" (the Claude
+  harness sends no person, and an environment may switch the label off).
+  One organization, one month, by agent and by person is the chargeback view.
 - **Connectors** — every caller's tool calls from muster's metrics. Only where
   the muster plugin is registered. Each connector in its table links to that
   connector's Usage tab on the selected installation and window; an instance
@@ -447,8 +463,9 @@ page.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled options there, each saying
-  how many days kagent keeps. Its cost is the
+  30 days by default); wider ranges and the calendar months are disabled
+  options there, each saying why, and a month a link names there reads as the
+  default 30 days, as it does on Connectors. Its cost is the
   gateway's price for the person's own model calls, in total and per agent —
   every call made as them, in these sessions or not. Where that cannot be read,
   it shows an estimate labelled **Est. cost**, and its tooltip says why.
@@ -456,6 +473,21 @@ page.
 Overview and Cost cover everyone's traffic and need the installation's metrics
 (see the configuration page); without them, Overview and Cost say so and still
 show the person's own session figures.
+
+**Organization.** The scope bar's Organization select, shown on Overview and
+Cost from two organizations on, narrows every gateway figure to one
+organization's agents, by the namespace they run in (the gateway's
+`agent_namespace` label). It travels in the URL as `?organization=<namespace>`
+and is left out for every organization. Its options are the namespaces the
+gateway recorded calls for in the window, so a removed organization keeps its
+spend, plus the namespaces the roster's agents run in; a deep link to any other
+namespace is kept as the selection. Error rate, Rate limited and the
+unpriced-models warning cannot follow the scope, because their metrics carry
+no organization: narrowed, they say they are every organization's. The Cost
+caption says whose spend the page shows and for whom: every organization's, for everyone who can read the
+environment's metrics. The portal adds no access check of its own: who may
+read an installation's metrics is the observability platform's decision
+(agent-permissions plan, D8 T1).
 
 Each installation's metrics start on a different day. When the selected range
 reaches back further than the records, Overview, Cost and Connectors say since
@@ -2567,6 +2599,14 @@ request the controller recorded** (`GetTask` first), never from the browser's
 claims. The browser sends only approve or reject and, for questions, the
 answers in order.
 
+The browser also sends `askedIn`, the `messageId` of the status message it
+answers (`PendingConfirmation.askedIn`). Slack answers the same task, so by
+the time an answer arrives the task may have been answered there and paused
+again: it keeps its id but asks in a new status message. The backend then
+refuses the answer with a 409 instead of applying it to a request the person
+never saw. An answer without `askedIn` is checked against the task's state
+alone.
+
 - **A tool approval decides every requested tool at once**: the one verdict
   applies to every `tools[].id`. A rejection carries the reason on each; an
   approval carries none, since the controller refuses one.
@@ -3220,11 +3260,14 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 `/usage` has routed tabs, Overview at the bare path; an unknown view redirects
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
-environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
-select labelled "Time range" with the options "Last 7 days", "Last 30 days"
-and "Last 90 days", the same label, box and height as the Environment select
-beside it.
+environment and the window: the last 7, 30 or 90 days, or a calendar month
+(`?window=7d`, `?window=2026-10`; `lib/usageWindow.ts`). The window control is
+`UsageWindowSelect`: a select labelled "Time range" with "Last 7 days", "Last
+30 days" and "Last 90 days", then this month so far and the two before it, the
+same label, box and height as the Environment select beside it. In a month
+still being written the gateway queries re-key with the clock every five
+minutes; `useLlmUsage` holds the previous answer across that
+(`keepPreviousAnswer`) and reports a change of scope as loading.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |

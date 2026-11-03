@@ -967,6 +967,26 @@ describe('KagentApiClient', () => {
       });
     });
 
+    it('sends the status message the answer was given for', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}));
+
+      await buildClient().answerConfirmation(
+        'gazelle',
+        'abc123',
+        { namespace: 'kagent', name: 'a' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          askedIn: 'status-msg-1',
+        },
+      );
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+        askedIn: 'status-msg-1',
+      });
+    });
+
     it('omits the optional fields it was not given', async () => {
       fetchMock.mockResolvedValue(jsonResponse({}));
 

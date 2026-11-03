@@ -563,7 +563,6 @@ describe('WorkspaceEditorPage', () => {
           name: 'taken',
           organization: 'acme',
           sources: [],
-          sync: { schedule: 'nightly' },
           resourceVersion: '1',
           createdAt: '2026-10-01T00:00:00Z',
           repositories: 0,
@@ -617,7 +616,6 @@ describe('WorkspaceEditorPage', () => {
           exclude: ['mcp-prometheus'],
         },
       ],
-      sync: { schedule: 'nightly' },
       resourceVersion: '7',
       createdAt: '2026-10-01T00:00:00Z',
       repositories: 1,
@@ -666,7 +664,6 @@ describe('WorkspaceEditorPage', () => {
         },
       ],
     });
-    expect(fake.callsOf('update_workspace')[0]).not.toHaveProperty('sync');
     // An edit closes to the workspace's page, the address's parent.
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
@@ -682,7 +679,6 @@ function storedWorkspace(selection: Partial<WorkspaceSource>): Workspace {
     name: 'portal',
     organization: 'acme',
     sources: [{ provider: 'github', owner: 'acme', ...selection }],
-    sync: { schedule: 'nightly' },
     resourceVersion: '7',
     createdAt: '2026-10-01T00:00:00Z',
     repositories: 0,

@@ -1,18 +1,36 @@
 import { renderHook } from '@testing-library/react';
 import {
+  byPersonQueriesFor,
   llmUsageQueriesFor,
   llmUsageRangeQueriesFor,
+  todayPartialQueries,
+  todayPartialRange,
 } from '../lib/llmUsageQueries';
+import { previousUsageMonth, usageMonthOf } from '../lib/usageWindow';
 import { useLlmUsage } from './useLlmUsage';
 
 /** The installation-wide queries the hook runs by default. */
 const llmUsageQueries = llmUsageQueriesFor();
 const llmUsageRangeQueries = llmUsageRangeQueriesFor();
 
+/** The previous-window queries, which a days window always has. */
+function previousQueries() {
+  const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
+  return {
+    previousCost: previousCost!,
+    dataBeforePreviousWindow: dataBeforePreviousWindow!,
+  };
+}
+
 /** Queries reported as still pending, by query string. */
 const pending = new Set<string>();
 /** Queries reported as failed, by query string. */
 const failed = new Set<string>();
+/**
+ * Queries whose answer is a placeholder, by query string: the previous key's
+ * answer, held by `keepPreviousAnswer` while the new key fetches.
+ */
+const held = new Set<string>();
 /** Every query the hook issued while enabled. */
 const issued = new Set<string>();
 /** Answers by query string; an empty vector otherwise. */
@@ -43,6 +61,7 @@ function stub({ query, enabled = true }: { query: string; enabled?: boolean }) {
     isLoading: pending.has(query),
     error: failed.has(query) ? new Error('mimir') : null,
     isAvailable: true,
+    isPlaceholderData: held.has(query),
   };
 }
 
@@ -58,6 +77,7 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
 beforeEach(() => {
   pending.clear();
   failed.clear();
+  held.clear();
   issued.clear();
   answers.clear();
 });
@@ -129,9 +149,6 @@ describe('useLlmUsage', () => {
  * same way the hook does so the test cannot drift from it.
  */
 function pendingTodayQueries(): string[] {
-  const { todayPartialQueries, todayPartialRange } = jest.requireActual<
-    typeof import('../lib/llmUsageQueries')
-  >('../lib/llmUsageQueries');
   const queries = todayPartialQueries(todayPartialRange());
   return [queries.costByModel, queries.tokensByType];
 }
@@ -183,7 +200,7 @@ describe('useLlmUsage with options', () => {
   });
 
   it('reports the previous period’s spend when asked', () => {
-    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
+    const { previousCost, dataBeforePreviousWindow } = previousQueries();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
     ]);
@@ -203,7 +220,7 @@ describe('useLlmUsage with options', () => {
   it('drops the previous period’s spend when the data does not reach its start', () => {
     // On a gateway whose metrics began inside the previous window, that
     // window's spend is partial, and a change against it overstates growth.
-    const { previousCost } = llmUsageQueriesFor();
+    const { previousCost } = previousQueries();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
     ]);
@@ -219,7 +236,7 @@ describe('useLlmUsage with options', () => {
   it('keeps the previous period’s spend when a refetch of the check fails', () => {
     // react-query keeps the last good answer beside the error; one transient
     // Mimir error must not hide a delta whose baseline was verified.
-    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
+    const { previousCost, dataBeforePreviousWindow } = previousQueries();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
     ]);
@@ -237,7 +254,7 @@ describe('useLlmUsage with options', () => {
   });
 
   it('drops the previous period’s spend when the check never answered', () => {
-    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
+    const { previousCost, dataBeforePreviousWindow } = previousQueries();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
     ]);
@@ -252,9 +269,9 @@ describe('useLlmUsage with options', () => {
   });
 
   it('compares one organization with its own previous period', () => {
-    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor({
-      org: 'support',
-    });
+    const queries = llmUsageQueriesFor({ org: 'support' });
+    const previousCost = queries.previousCost!;
+    const dataBeforePreviousWindow = queries.dataBeforePreviousWindow!;
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '2.25'] },
     ]);
@@ -274,8 +291,8 @@ describe('useLlmUsage with options', () => {
   });
 
   it.each([
-    ['spend', llmUsageQueriesFor().previousCost],
-    ['coverage check', llmUsageQueriesFor().dataBeforePreviousWindow],
+    ['spend', previousQueries().previousCost],
+    ['coverage check', previousQueries().dataBeforePreviousWindow],
   ])('waits for the comparison’s %s it asked for', (_label, query) => {
     pending.add(query);
 
@@ -317,9 +334,6 @@ describe('useLlmUsage daily calls (the Overview heatmap)', () => {
         .dailyRangeWindow(Date.now(), 7).end,
     );
     answers.set(callsPerDay, [{ metric: {}, values: [[end, '42']] }]);
-    const { todayPartialQueries, todayPartialRange } = jest.requireActual<
-      typeof import('../lib/llmUsageQueries')
-    >('../lib/llmUsageQueries');
     answers.set(todayPartialQueries(todayPartialRange()).calls, [
       { metric: {}, value: [end, '5'] },
     ]);
@@ -429,5 +443,121 @@ describe('useLlmUsage data start', () => {
     const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
 
     expect(result.current.usage?.dataStart).toBeUndefined();
+  });
+});
+
+describe('useLlmUsage over a calendar month', () => {
+  /** The month before the one running now: complete, so pinned to its end. */
+  const month = previousUsageMonth(usageMonthOf(Date.now()));
+
+  it('pins every query to the month and asks for no partial day', () => {
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { month, comparePrevious: true }),
+    );
+
+    expect(result.current.isLoading).toBe(false);
+    const monthQueries = llmUsageQueriesFor({ month });
+    expect(monthQueries.cost).toContain(' @ ');
+    expect(issued).toContain(monthQueries.cost);
+    expect(issued).toContain(monthQueries.previousCost);
+    // A month that has ended has no today: neither partial query runs.
+    const todayQueries = todayPartialQueries(todayPartialRange());
+    expect(issued).not.toContain(todayQueries.costByModel);
+    expect(issued).not.toContain(todayQueries.tokensByType);
+    expect(result.current.usage?.window).toEqual({ kind: 'month', month });
+  });
+
+  it('reads the by-person vectors only when asked', () => {
+    const personQueries = byPersonQueriesFor({ month });
+    answers.set(personQueries.cost, [
+      { metric: { user: 'alice@lab.local' }, value: [1, '3'] },
+    ]);
+
+    const without = renderHook(() => useLlmUsage('gazelle', { month }));
+    expect(issued).not.toContain(personQueries.cost);
+    expect(without.result.current.usage).not.toHaveProperty('byPerson');
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { month, byPerson: true }),
+    );
+    expect(issued).toContain(personQueries.cost);
+    expect(issued).toContain(personQueries.tokens);
+    expect(result.current.usage?.byPerson?.map(row => row.label)).toEqual([
+      'alice@lab.local',
+    ]);
+  });
+
+  it('waits for the by-person vectors like the rest of the page', () => {
+    pending.add(byPersonQueriesFor({ month }).cost);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { month, byPerson: true }),
+    );
+
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it('asks for no previous window in the month still being written', () => {
+    const current = usageMonthOf(Date.now());
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { month: current, comparePrevious: true }),
+    );
+
+    expect(result.current.isLoading).toBe(false);
+    expect(llmUsageQueriesFor({ month: current }).previousCost).toBeUndefined();
+    expect(result.current.usage?.totals).not.toHaveProperty('previousCostUsd');
+  });
+
+  it('holds the answers across the clock in the month still being written', () => {
+    const current = usageMonthOf(Date.now());
+    const { result, rerender } = renderHook(() =>
+      useLlmUsage('gazelle', { month: current }),
+    );
+    expect(result.current.isLoading).toBe(false);
+
+    // Five minutes pass: every window query re-keys, and react-query holds
+    // the previous answer as a placeholder while the new key fetches. The
+    // page must not fall back to a spinner for that.
+    for (const query of issued) {
+      held.add(query);
+    }
+    rerender();
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.usage).toBeDefined();
+  });
+
+  it('reads an answer held from another scope as loading', () => {
+    const { result, rerender } = renderHook(
+      (options: { org?: string }) =>
+        useLlmUsage('gazelle', { month, ...options }),
+      { initialProps: {} },
+    );
+    expect(result.current.isLoading).toBe(false);
+
+    // The organization changes: the keys move, and the held answer is the
+    // other scope's — not to be shown under this scope's caption.
+    const acme = llmUsageQueriesFor({ month, org: 'org-acme' });
+    for (const query of Object.values(acme)) {
+      if (typeof query === 'string') {
+        held.add(query);
+      }
+    }
+    rerender({ org: 'org-acme' });
+    expect(result.current.isLoading).toBe(true);
+
+    // The answers arrive one by one: the page waits for the last of them, or
+    // the new scope's spend would show beside the old scope's latency.
+    held.clear();
+    held.add(acme.durationP50);
+    rerender({ org: 'org-acme' });
+    expect(result.current.isLoading).toBe(true);
+
+    // The last of the new scope's answers arrives.
+    held.clear();
+    rerender({ org: 'org-acme' });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.usage).toBeDefined();
   });
 });

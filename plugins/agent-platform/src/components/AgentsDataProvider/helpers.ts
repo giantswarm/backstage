@@ -123,27 +123,17 @@ export function getAgentRefetchInterval(
 }
 
 /**
- * Per-installation refetch interval for the agent list.
+ * Per-installation refetch interval for the agent list, re-evaluated by
+ * react-query after every fetch of that installation's list:
  *
- * `useResources` applies this to each installation's list query separately, and
- * react-query re-evaluates it after every fetch resolves — so this needs no
- * provider state and is self-correcting: an installation whose agents are all
- * ready stays on the baseline, and one whose agent starts converging tightens to
- * the fast interval and relaxes again once it settles.
+ * - no list yet, or an empty one: the baseline;
+ * - an agent still converging (see {@link isAgentConverging}): the
+ *   transitional tier;
+ * - every agent settled, or broken past the convergence window: the baseline.
  *
- * What this does **not** do is accelerate the first sighting of a *newly created*
- * agent. The decision is made from the data already in hand, so an installation
- * whose cached list predates the new agent stays on the baseline until the next
- * poll reveals it. Nothing invalidates the Agent list after creation (the flow
- * hands off to the scaffolder task page, and the agent does not exist yet at that
- * point), and `staleTime` suppresses a refetch on mount for a cache entry under a
- * minute old — so a new agent can take up to the baseline interval to appear, and
- * only then does the fast tier engage. Invalidating on creation would be the fix
- * if that wait proves annoying in practice.
- *
- * Note that interval refetches only fire while the tab is focused
- * (`refetchIntervalInBackground` defaults to `false`), which is the same
- * guard kagent's UI implements by hand with `document.hidden`.
+ * An agent deployed from this tab but not listed yet is not seen here;
+ * `AgentsDataProvider` tightens the interval for it. Interval refetches fire
+ * only while the tab is focused.
  */
 export function getAgentsRefetchInterval(
   query: Query<KubeObjectInterface[]>,
@@ -344,25 +334,6 @@ export function resolveModelConfig(
   return modelConfigs.find(
     mc => mc.getName() === ref && mc.getNamespace() === namespace,
   );
-}
-
-/**
- * Resolve an agent's `spec.modelConfig` reference to a
- * human-readable label by joining against the ModelConfigs on the same
- * installation ({@link resolveModelConfig}).
- *
- * Falls back to the raw reference name when the ModelConfig can't be found,
- * and to `undefined` when the agent references no model at all.
- */
-export function resolveModelLabel(
-  agent: Agent,
-  modelConfigs: ModelConfig[],
-): string | undefined {
-  const ref = agent.getModelConfigName();
-  if (!ref) {
-    return undefined;
-  }
-  return modelLabel(resolveModelConfig(agent, modelConfigs)) ?? ref;
 }
 
 /**
