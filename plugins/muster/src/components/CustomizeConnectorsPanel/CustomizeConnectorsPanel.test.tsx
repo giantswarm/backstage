@@ -313,6 +313,38 @@ describe('CustomizeConnectorsPanel', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('says a sign-in serving one session covers the portal only, with the why in a hint', async () => {
+    const user = userEvent.setup();
+    api.getAuthStatus.mockImplementation(async () => ({
+      servers: [
+        {
+          name: 'github',
+          status: 'connected',
+          kind: 'grant',
+          grant_scope: 'session',
+        },
+        { name: 'kubernetes', status: 'connected' },
+        { name: 'web-search', status: 'connected' },
+      ],
+    }));
+    await renderPanel();
+
+    const github = rowOf('github');
+    expect(await within(github).findByText('Portal only')).toBeInTheDocument();
+    expect(within(github).queryByText('Connected')).toBeNull();
+    const hint = within(github).getByRole('button', {
+      name: 'About the state of github',
+    });
+    await user.hover(document.body);
+    await user.hover(hint);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Your sign-in to github covers this portal only. Each agent conversation asks you to sign in again.',
+    );
+    // The hint keeps its press: the row does not open the connector.
+    await user.click(hint);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('says Connecting while muster still connects an SSO connector, then Connected without a reload', async () => {
     let connecting = true;
     api.getAuthStatus.mockImplementation(async () => ({

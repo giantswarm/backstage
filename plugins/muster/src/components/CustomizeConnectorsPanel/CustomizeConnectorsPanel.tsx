@@ -28,6 +28,7 @@ import {
   type StackedRowItem,
   StackedRowList,
   StatusDot,
+  StatusHint,
   isAwaitingData,
   stopRowPress,
   useCatalogFilters,
@@ -57,7 +58,6 @@ import {
   SessionGate,
   SignInStatusActions,
   SignInStatusText,
-  type StatusText,
   useConnectorGroupPaths,
   useServerPageLinks,
   useServerSignInStatus,
@@ -71,6 +71,7 @@ import {
   type ConnectorReach,
   connectorReach,
   connectorStatus,
+  type ConnectorStatusText,
   musterAuthLabel,
   musterReach,
   type MusterSessionState,
@@ -108,7 +109,7 @@ type Row = {
   auth: string;
   tools?: string;
   /** The row's state, from muster's sign-in report and the server's own. */
-  status: StatusText;
+  status: ConnectorStatusText;
   /** The muster server to sign in to, where muster asks this person to. */
   signInServer?: string;
   /** Why that sign-in cannot help now (a deactivated connector). */
@@ -184,9 +185,16 @@ function ConnectorStatusCell({
   installation: string;
 }) {
   if (!hasSignIn(row)) {
-    // Pressing a plain state opens the connector, like the rest of the row.
+    // Pressing a plain state opens the connector, like the rest of the row;
+    // the hint beside it must not.
     return (
-      <Cell>{row.status.label ? <StatusDot {...row.status} /> : null}</Cell>
+      <Cell>
+        <PlainStatus
+          status={row.status}
+          subject={row.entry.displayName}
+          stopPress
+        />
+      </Cell>
     );
   }
   return (
@@ -209,6 +217,47 @@ function ConnectorStatusCell({
         />
       </span>
     </Cell>
+  );
+}
+
+/**
+ * A row's state without a sign-in: the dot and its words, and the hint with
+ * its explanation where the state has one ("Portal only"). In a table row the
+ * hint keeps its press to itself (`stopPress`), since the row opens the
+ * connector.
+ */
+function PlainStatus({
+  status: { label, tone, explanation },
+  subject,
+  stopPress = false,
+}: {
+  status: ConnectorStatusText;
+  subject: string;
+  stopPress?: boolean;
+}) {
+  if (!label) {
+    return null;
+  }
+  if (!explanation) {
+    return <StatusDot tone={tone} label={label} />;
+  }
+  return (
+    <Flex align="center" gap="1">
+      <StatusDot tone={tone} label={label} />
+      {stopPress ? (
+        <span
+          onPointerDown={stopRowPress}
+          onPointerUp={stopRowPress}
+          onClick={stopRowPress}
+          onKeyDown={stopRowPress}
+          role="presentation"
+        >
+          <StatusHint subject={subject} explanation={explanation} />
+        </span>
+      ) : (
+        <StatusHint subject={subject} explanation={explanation} />
+      )}
+    </Flex>
   );
 }
 
@@ -292,7 +341,16 @@ function ConnectorStackedRow({
   return (
     <StackedRow
       {...props}
-      {...(row.status.label ? { status: <StatusDot {...row.status} /> } : {})}
+      {...(row.status.label
+        ? {
+            status: (
+              <PlainStatus
+                status={row.status}
+                subject={row.entry.displayName}
+              />
+            ),
+          }
+        : {})}
     />
   );
 }

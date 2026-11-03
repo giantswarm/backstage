@@ -14,9 +14,13 @@ import {
   isConnecting,
   isSsoRefused,
   needsSignIn,
+  portalOnlyStatus,
   SSO_REFUSED_STATUS,
   type StatusText,
 } from '../shared';
+
+/** A row's state, with the sentence a hint beside it says, where it has one. */
+export type ConnectorStatusText = StatusText & { explanation?: string };
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -68,13 +72,14 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
  * A row's state: for one server, this person's sign-in when muster reports one
  * that asks something of them or a connect with their portal sign-in still
  * under way, "Cannot connect" for an SSO server that refused their sign-in,
- * else the server's own state; for a family, how many of its
- * instances are healthy.
+ * "Portal only" for a healthy one whose sign-in serves this muster session
+ * only (`portalOnlyStatus`), else the server's own state; for a family, how
+ * many of its instances are healthy.
  */
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): StatusText {
+): ConnectorStatusText {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(
@@ -109,6 +114,10 @@ export function connectorStatus(
   }
   if (authStatus && isConnecting(authStatus)) {
     return { label: 'Connecting', tone: 'neutral' };
+  }
+  const portalOnly = portalOnlyStatus(server, entry.displayName, authStatus);
+  if (portalOnly) {
+    return portalOnly;
   }
   const state = server.getState();
   const severity = mcpServerStateSeverity(state);

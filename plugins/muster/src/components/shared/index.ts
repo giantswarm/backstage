@@ -80,6 +80,12 @@ export type {
 } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { familyHealthLabel } from './familyHealth';
+export {
+  PORTAL_ONLY_LABEL,
+  portalOnlyExplanation,
+  portalOnlyStatus,
+} from './portalOnlyStatus';
+export type { ExplainedStatusText } from './portalOnlyStatus';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
 export { useToolDescription } from './useToolDescription';
 export { DefinitionEditorDialog } from './DefinitionEditorDialog';
