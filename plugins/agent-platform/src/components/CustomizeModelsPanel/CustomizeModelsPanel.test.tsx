@@ -64,6 +64,14 @@ jest.mock('../ModelConfigsProvider', () => ({
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: agents, isLoading: false }),
 }));
+// The installations whose muster offers cluster-manager as the person.
+let mockClusterManager: string[] = [];
+jest.mock('../../hooks/useClusterManager', () => ({
+  useClusterManagerAvailability: () => ({
+    available: mockClusterManager,
+    isLoading: false,
+  }),
+}));
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: { installations: string[] }) =>
     serving.installations.length > 0,
@@ -107,6 +115,7 @@ describe('CustomizeModelsPanel', () => {
     mockModelsLoading = false;
     mockUnreachableInstallations = [];
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
   it('lists the models with their usage and state', async () => {
@@ -220,6 +229,73 @@ describe('CustomizeModelsPanel', () => {
     expect(
       screen.queryByRole('link', { name: 'How to turn it on' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers model hosting where cluster-manager runs without a serving layer', async () => {
+    mockClusterManager = ['golem'];
+    await renderPanel();
+    // GPU pools and the model cache are managed there.
+    expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
+      'href',
+      '/customize/models/hosting',
+    );
+    expect(
+      screen.queryByRole('link', { name: 'How to turn it on' }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('the Model hosting row', () => {
+    function PathProbe() {
+      return <div data-testid="path">{useLocation().pathname}</div>;
+    }
+
+    async function renderAtModels() {
+      mockServingInstallations = ['golem'];
+      await renderInTestApp(
+        <>
+          <PathProbe />
+          <CustomizeModelsPanel search="" />
+        </>,
+        {
+          initialRouteEntries: ['/customize/models'],
+          mountedRoutes: {
+            '/customize/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
+      );
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models$/,
+      );
+    }
+
+    it('opens Model hosting from its link', async () => {
+      await renderAtModels();
+
+      await userEvent.click(
+        screen.getByRole('link', { name: 'Model hosting' }),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
+
+    it('opens Model hosting from anywhere on the card, its text included', async () => {
+      await renderAtModels();
+
+      // The card's link is visually hidden; bui forwards a click on the card's
+      // surface to it.
+      await userEvent.click(
+        screen.getByText(
+          'Admins can run models on their own GPUs and manage what is served.',
+        ),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
   });
 
   describe('at list scale', () => {
@@ -416,6 +492,7 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
   beforeEach(() => {
     mockModelsLoading = false;
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
   it('offers a one-option provider dropdown over three models of one provider', async () => {

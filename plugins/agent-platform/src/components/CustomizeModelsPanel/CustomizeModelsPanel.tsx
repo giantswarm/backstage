@@ -33,13 +33,14 @@ import {
   usedByLabel,
 } from '../../lib/customize';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useModelHosting } from '../../hooks/useModelHosting';
 import { servingRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { ModelHostingHint } from '../ModelHostingHint';
 import type { ModelRow } from '../ModelsTable';
-import { hasServingLayer, useServing } from '../ServingProvider';
+import { useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 export type CustomizeModelsPanelProps = {
@@ -83,11 +84,15 @@ function ModelStatusCell({ row }: { row: Row }) {
   );
 }
 
-/** The way into model hosting, for installations with a serving layer. */
+/**
+ * The way into model hosting, where it is offered (`useModelHosting`): a
+ * serving layer in view, or cluster-manager alone, whose GPU pools and model
+ * cache are managed there too.
+ */
 function ModelHostingBanner() {
   const servingRoute = useRouteRef(servingRouteRef);
-  const servingLayer = hasServingLayer(useServing());
-  if (!servingRoute || !servingLayer) {
+  const hosting = useModelHosting(useServing());
+  if (!servingRoute || !hosting.available) {
     return null;
   }
   return (
