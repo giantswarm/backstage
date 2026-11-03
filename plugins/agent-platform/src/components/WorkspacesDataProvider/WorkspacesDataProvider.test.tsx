@@ -125,8 +125,13 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 }));
 
 function Availability() {
-  const { isAvailable } = useWorkspacesData();
-  return <p>{`available: ${String(isAvailable)}`}</p>;
+  const { isAvailable, totalCount } = useWorkspacesData();
+  return (
+    <>
+      <p>{`available: ${String(isAvailable)}`}</p>
+      <p>{`total: ${String(totalCount)}`}</p>
+    </>
+  );
 }
 
 /** Creates `platform-mcp`, or with `edit` saves a change to it, as the editor does. */
@@ -268,6 +273,32 @@ describe('WorkspacesDataProvider', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('available: undefined')).toBeInTheDocument();
     expect(screen.queryByText('Workspaces are not available here')).toBeNull();
+  });
+
+  describe('the total count', () => {
+    it('counts every Organization’s workspaces, where the table shows the picked one’s', async () => {
+      await renderWorkspaces();
+
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+      expect(screen.getByText('total: 2')).toBeInTheDocument();
+    });
+
+    it('is loading while the inventory still probes for muster', async () => {
+      mockProbing = true;
+      await renderWorkspaces();
+
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+      expect(screen.getByText('total: loading')).toBeInTheDocument();
+    });
+
+    it('is left out, not partial, where an installation’s muster did not answer', async () => {
+      mockMusterInstallations = ['gazelle', 'otter'];
+      mockUnreachable = ['otter'];
+      await renderWorkspaces();
+
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+      expect(screen.getByText('total: undefined')).toBeInTheDocument();
+    });
   });
 
   it('offers no Organization scope to a person in one Organization', async () => {

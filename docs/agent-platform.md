@@ -2599,6 +2599,14 @@ request the controller recorded** (`GetTask` first), never from the browser's
 claims. The browser sends only approve or reject and, for questions, the
 answers in order.
 
+The browser also sends `askedIn`, the `messageId` of the status message it
+answers (`PendingConfirmation.askedIn`). Slack answers the same task, so by
+the time an answer arrives the task may have been answered there and paused
+again: it keeps its id but asks in a new status message. The backend then
+refuses the answer with a 409 instead of applying it to a request the person
+never saw. An answer without `askedIn` is checked against the task's state
+alone.
+
 - **A tool approval decides every requested tool at once**: the one verdict
   applies to every `tools[].id`. A rejection carries the reason on each; an
   approval carries none, since the controller refuses one.

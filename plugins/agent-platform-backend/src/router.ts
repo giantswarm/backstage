@@ -276,6 +276,7 @@ function readAnswerBody(req: express.Request): {
     answers?: string[][];
     rejectionReason?: string;
     text?: string;
+    askedIn?: string;
   };
 } {
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -340,6 +341,7 @@ function readAnswerBody(req: express.Request): {
       answers,
       rejectionReason: readOptionalBounded('rejectionReason'),
       text: readOptionalBounded('text'),
+      askedIn: readOptionalBounded('askedIn'),
     },
   };
 }

@@ -54,6 +54,8 @@ export type ConfirmationAnswerRequest = {
   answers?: string[][];
   rejectionReason?: string;
   text?: string;
+  /** The `messageId` of the status message that asked (`PendingConfirmation.askedIn`). */
+  askedIn?: string;
 };
 
 /** Identity kagent resolved for a forwarded token. */

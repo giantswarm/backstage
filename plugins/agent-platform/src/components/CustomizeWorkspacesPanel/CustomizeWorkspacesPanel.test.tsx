@@ -101,6 +101,7 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
     setOrganization: jest.fn(),
     rows: [docs, infra],
     isLoading: false,
+    totalCount: 2,
     failures: {},
     signIns: [],
     retry: jest.fn(),

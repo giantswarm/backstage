@@ -1241,6 +1241,49 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
+    it('refuses an answer to a request the task no longer asks, as a 409', async () => {
+      const { fake, client } = build({ turn: () => approval });
+      const id = created(fake);
+      const paused = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'delete it' },
+        USER,
+      )) as {
+        task: { id: string; status: { message: { messageId: string } } };
+      };
+
+      await expect(
+        client.answerConfirmation(
+          id,
+          AGENT,
+          {
+            messageId: 'm2',
+            taskId: paused.task.id,
+            decision: 'approve',
+            askedIn: 'an-earlier-status-message',
+          },
+          USER,
+        ),
+      ).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining('already answered'),
+      });
+
+      const resumed = (await client.answerConfirmation(
+        id,
+        AGENT,
+        {
+          messageId: 'm3',
+          taskId: paused.task.id,
+          decision: 'approve',
+          askedIn: paused.task.status.message.messageId,
+        },
+        USER,
+      )) as { task: { status: { state: string } } };
+      expect(resumed.task.status.state).toBe('TASK_STATE_COMPLETED');
+    });
+
     it('refuses to answer a task that is not waiting, as a 409', async () => {
       const { fake, client } = build();
       const id = created(fake);
