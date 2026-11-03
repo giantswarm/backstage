@@ -63,8 +63,22 @@ jobs:
   # output alone outgrows it. tsc and the lint therefore run after jest, under
   # `concurrently --group`, so a type or lint error is always at the end of
   # the Verify log.
+  #
+  # `parallelism` runs the job on that many containers at once, each an xlarge
+  # with its own Postgres. `ci:verify` gives each container its shard of the
+  # tests (jest's `--shard`, split by a hash of each file's path, so the split
+  # is the same on every run), runs tsc and the lint on the last container and
+  # ends every container but 0 before the generated Build and
+  # persist_to_workspace steps, which must run once: CircleCI refuses to
+  # attach a workspace two containers persisted the same file into. The tests
+  # are 450 of the job's 640 s on one container; two containers cut the job to
+  # about 6 min for about 11% more credits (the second container's start, and
+  # the shards being a few percent uneven). The saved node_modules cache comes
+  # from container 0 only, so the other shard's jest transform cache is cold
+  # after a lockfile change.
   node-build:
     resource_class: xlarge
+    parallelism: 2
     docker:
     - image: cimg/postgres:18.6
       environment:
