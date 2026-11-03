@@ -61,11 +61,16 @@ const useStyles = makeStyles({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  // The name on a line of its own above the details. On an element inside
-  // the tooltip: bui's `Tooltip` drops a `className`.
-  tooltipName: {
+  // Lines of their own above the details: a bold headline at the tooltip's
+  // own size, which says what the chip shows, then the full name when the
+  // chip cuts it off. On elements inside the tooltip: bui's `Tooltip` drops
+  // a `className`.
+  tooltipHeading: {
     display: 'block',
     fontWeight: 'bold',
+  },
+  tooltipName: {
+    display: 'block',
     overflowWrap: 'anywhere',
   },
   list: {
@@ -95,7 +100,7 @@ function isTruncated(element: HTMLElement | null): boolean {
  * The session header's workspace: a chip with the workspace's name, its last
  * sync and how many repositories were fetched fresh at the start in a tooltip
  * on hover and keyboard focus, opening a drawer with the rest. The tooltip
- * leads with the full name when the chip cuts it off. The chip's accessible
+ * is headed "Workspace", and gives the full name when the chip cuts it off. The chip's accessible
  * name carries the name and the details, so the tooltip hides nothing from a
  * screen reader. A workspace the person cannot see any more shows unnamed,
  * never an error: the session works either way.
@@ -148,6 +153,7 @@ export function SessionWorkspaceChip({
           </span>
         </Button>
         <Tooltip>
+          <span className={classes.tooltipHeading}>Workspace</span>
           {opened?.truncated && (
             <span className={classes.tooltipName}>{label}</span>
           )}

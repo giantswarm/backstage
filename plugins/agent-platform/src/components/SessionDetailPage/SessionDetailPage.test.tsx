@@ -4086,9 +4086,15 @@ describe('SessionDetailPage', () => {
       // move over the page.
       await user.hover(document.body);
       await user.hover(chip);
-      expect(await screen.findByRole('tooltip')).toHaveTextContent(
-        /^Synchronized 4 h ago · 1 repository fetched$/,
+      const tooltip = await screen.findByRole('tooltip');
+      expect(tooltip).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
       );
+      // A bold headline that says what the chip shows.
+      expect(within(tooltip).getByText('Workspace')).toHaveStyle({
+        display: 'block',
+        fontWeight: '700',
+      });
 
       await user.click(chip);
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -4107,7 +4113,7 @@ describe('SessionDetailPage', () => {
       await user.keyboard('{Tab}');
       act(() => chip.focus());
       expect(await screen.findByRole('tooltip')).toHaveTextContent(
-        /^Synchronized 4 h ago · 1 repository fetched$/,
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
       );
 
       await user.keyboard('{Enter}');
@@ -4119,7 +4125,7 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     });
 
-    it('leads the tooltip with the full name when the chip cuts it off', async () => {
+    it('adds the full name under the tooltip’s headline when the chip cuts it off', async () => {
       const user = userEvent.setup();
       withWorkspace();
       await renderWithWorkspaces();
@@ -4134,9 +4140,16 @@ describe('SessionDetailPage', () => {
       const tooltip = await screen.findByRole('tooltip');
       await waitFor(() =>
         expect(tooltip).toHaveTextContent(
-          /^ws-docsSynchronized 4 h ago · 1 repository fetched$/,
+          /^Workspacews-docsSynchronized 4 h ago · 1 repository fetched$/,
         ),
       );
+      // Under the bold headline, on a line of its own in the regular weight.
+      expect(within(tooltip).getByText('ws-docs')).toHaveStyle({
+        display: 'block',
+      });
+      expect(within(tooltip).getByText('ws-docs')).not.toHaveStyle({
+        fontWeight: '700',
+      });
     });
 
     it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
