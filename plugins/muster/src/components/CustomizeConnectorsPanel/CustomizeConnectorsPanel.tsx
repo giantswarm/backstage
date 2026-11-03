@@ -152,6 +152,7 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
               opens in a new tab on cmd/middle-click; the row stays clickable. */}
           {href ? (
             <Link
+              standalone
               href={href}
               variant="body-medium"
               weight="bold"

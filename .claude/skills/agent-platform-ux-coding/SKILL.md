@@ -197,24 +197,34 @@ them and never invent a palette.
 
 ### Links
 
+- The rule: a link is underlined and in the link colour. Exceptions only where
+  the click target is larger than the text (a table or list row, a card, a nav
+  or rail item, a breadcrumb, a tab, a button); anything else needs a reason.
+  A link in a table cell stays underlined.
 - A text link is bui's `Link` with an absolute href; core-components' `Link`
-  only where the target is a route ref (see the `ui` skill). On a white
-  surface bui draws it in the shell's link colour (`--agent-shell-link`,
-  #00609c) with its own light underline.
-- On a tinted surface a link takes the shell's link colour and a solid
-  underline, whatever its `color` prop: every `Alert`, wherever it sits, and
-  bui's neutral-2 surface (#f0f4f6, a `Card` inside a white `Card` or
-  `Accordion`, like the Technical details cards, or a `Box bg="neutral"`
-  nested once), but not a white neutral-3 surface nested inside that.
-  `agent-shell.css` does this for bui's and MUI's links alike; do not style a
-  link per component. The link colour holds 6.0:1 against the tint but only
-  2.3:1 against the body text, short of the 3:1 at which colour alone may mark
-  a link, so the underline is the cue. A trailing arrow is not: "↗" marks a
-  new tab (`ExternalLink`, `GSReleaseInfo`), nothing else.
-- A tinted surface is a bui surface (`Card`, `Box bg`), so the rule finds it
-  by bui's `data-bg`. A hand-drawn `var(--bui-bg-neutral-2)` fill with links
-  in it sets `data-bg="neutral-2"` too; hover and selection tints are not
-  surfaces.
+  only where the target is a route ref (see the `ui` skill).
+- Every text link in the shell looks the same: the shell's link colour
+  (`--agent-shell-link`, #00609c) and a solid underline, on every surface,
+  white or tinted, banner or card, whatever its `color` prop. One rule in
+  `agent-shell.css` does this for bui's and MUI's links alike (and a toast's);
+  do not colour, underline or un-underline a link per component. A bui `Text`
+  inside a text link takes the link's colour from the same rule.
+- The underline is the cue, not the colour: #00609c holds 4.5:1 against every
+  surface a link sits on, but only 2.3:1 against the body text, short of the
+  3:1 at which colour alone may mark a link. A trailing arrow is not a cue
+  either: "↗" marks a new tab (`ExternalLink`, `GSReleaseInfo`), nothing else.
+- Dark mode: the shell renders light, but a toast inverts the theme the person
+  picked, so its links can sit on bui's dark surfaces. There the link colour is
+  #bcdcff (`agentShellDarkColors`), which holds 4.5:1 against bui's dark app
+  background, neutral-1 to neutral-3 surfaces and banners. `theme.test.ts`
+  checks both modes; a new link colour or surface goes through it.
+- A control rendered as a link is not a text link and keeps its own look:
+  `ButtonLink`, core-components' `LinkButton`, a `Tab`, `MenuItem`, `Tag` or
+  `Card` with an `href`. A bui `Link` that is a control — a rail or nav item,
+  a breadcrumb, a wizard's step, Close or Cancel, an icon-only link, a link
+  filling a tag, a title a row or a card stretches over its whole area —
+  passes `standalone`, which is how it opts out of the rule. Never opt out with a class or a selector in the
+  rule; `agentShellLinks.test.tsx` checks the controls most at risk.
 
 ### Kubernetes resources and commits
 

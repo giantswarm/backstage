@@ -1908,7 +1908,14 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   unread rows, waits for all of them and reports
   `AgentPlatform.notificationsMarkedRead` once if any marked something;
   opening a plain row reports `AgentPlatform.notificationOpened` with
-  `kind: plain`.
+  `kind: plain`. When "Mark all read" or a row the person opened could not be
+  marked, the overlay says so in a danger alert with Try again (not a toast,
+  which the overlay covers), and the rows stay unread; the alert goes once
+  they are read, by Try again, a later mark or another tab. Try again marks
+  only the rows the alert names, not rows that arrived since, and a "Mark all
+  read" that marked part of the rows is not reported again. A row only marked
+  because its page is on screen fails quietly and is marked again with the
+  next read.
 - **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
   keys as the rail's dots: every 10 s while the tab is visible, and on the
   60 s baseline tier while it is hidden. A state for a session the sessions
@@ -2033,7 +2040,14 @@ user-settings storage is our own `RoamingSettingsStorage`
 the backend does not answer is "unknown", never "absent", and no read is
 cached. Every write reads the key first (`useStoredSetting`) and refuses to
 write on a read that was not answered, so a tab that wakes up offline erases
-nothing. A shown value stays until a read answers. The storage is created with
+nothing. The storage says why a read or write failed (`status`, or `network`
+when the backend could not be reached), and a write the person waits on (a
+row opened, "Mark all read"; `retry` on the update) is tried twice more, after
+250 ms and 500 ms, when that is a 5xx or the network, so a single 503 does not
+fail it. A 4xx, an answer that is not JSON, a read that timed out and a mark
+of a row on screen are not retried. A retry reads and applies again in the
+write's own place in the queue, so a write queued behind it still lands after
+it. A shown value stays until a read answers. The storage is created with
 the signals API, so a write in one tab reaches the person's other tabs, and
 the record is read again whenever a tab becomes visible. Two tabs writing the
 same key within one read-and-write still race: the backend has no
