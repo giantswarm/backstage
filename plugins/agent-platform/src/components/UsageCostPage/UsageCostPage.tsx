@@ -1,20 +1,28 @@
-import { Flex, Text } from '@backstage/ui';
+import { useLocation } from 'react-router-dom';
+import { Flex, Link, Text } from '@backstage/ui';
 import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useUsageOrganization } from '../../hooks/useUsageOrganization';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import {
   formatUsd,
   isConvertedCurrency,
   useCurrency,
 } from '../../lib/formatNumbers';
+import type { LlmOrganizationRow } from '../../lib/llmUsage';
+import { tenantInSentence } from '../../lib/tenants';
+import { withUsageOrganization } from '../../lib/usageOrganization';
+import { usageWindowNoun, usageWindowPhrase } from '../../lib/usageWindow';
 import {
   CostKpiTiles,
   CostPerDayCard,
   DataStartNote,
   LlmByAgentTable,
   LlmByModelTable,
+  LlmByOrganizationTable,
+  LlmByPersonTable,
   LlmUsageState,
   PricingCoverageAlert,
   PricingCoverageNote,
@@ -57,13 +65,36 @@ const useStyles = makeStyles((theme: Theme) => ({
  */
 export function UsageCostPage() {
   const classes = useStyles();
-  const { days } = useUsageWindow();
+  // The window: days back from today, or one calendar month, the chargeback
+  // view (giantswarm/backstage#2672): a month also reads the by-person rows.
+  const { window, days } = useUsageWindow();
+  const month = window.kind === 'month' ? window.month : undefined;
+  // The organization scope, when a link or the scope bar names one: every
+  // query below then carries its namespace, so every figure is that
+  // organization's (giantswarm/giantswarm#36698, D8).
+  const { namespace } = useUsageOrganization();
+  const { pathname, search } = useLocation();
   // `comparePrevious` is the one extra query the delta on the spend tile
   // needs; only this view pays for it.
-  const view = useLlmUsageView({ days, comparePrevious: true });
+  const view = useLlmUsageView({
+    days,
+    month,
+    org: namespace,
+    comparePrevious: true,
+    byPerson: month !== undefined,
+  });
   const { usage, installation } = view;
   const currency = useCurrency(installation);
   const converted = isConvertedCurrency(currency);
+
+  // Whose spend the caption says it is, and where a row of the organization
+  // table takes the reader: the same page, narrowed to that organization.
+  // Unattributed traffic has no namespace to narrow to.
+  const scope = namespace ? tenantInSentence(namespace) : 'every organization';
+  const hrefForOrganization = (row: LlmOrganizationRow) =>
+    row.kind === 'unattributed'
+      ? undefined
+      : withUsageOrganization(pathname, search, row.namespace);
 
   // Only read for the gateway-less fallback below; the query key is shared
   // with the Overview and the Your sessions tab, so this costs no extra round.
@@ -78,21 +109,34 @@ export function UsageCostPage() {
   // rather than extrapolated to a whole day — and that it therefore sits below
   // a full day needs no saying: a reader looking at a partial day already
   // knows what time it is.
-  const windowNote = `The last ${days} days.`;
+  const windowNoun = usageWindowNoun(window);
+  const windowNote = `${windowNoun.charAt(0).toUpperCase()}${windowNoun.slice(1)}.`;
 
   return (
     <UsageColumn>
       <Flex direction="column" gap="6">
         {/* One short caption, not a heading: the tab above already names
-            the view. How the spend is priced is the footnote's to say. */}
+            the view. How the spend is priced is the footnote's to say. Whose
+            spend, and for whom, is the caption's: every organization's, for
+            everyone who may read the environment's metrics — the portal adds
+            no check of its own (agent-permissions plan, D8 T1). */}
         <Text as="p" variant="body-medium" color="secondary">
-          {installation ? (
+          Shows the spend of {scope}
+          {installation && (
             <>
-              Shows the spend on <strong>{installation}</strong> over the last{' '}
-              {days} days, for every user.
+              {' '}
+              on <strong>{installation}</strong>
             </>
-          ) : (
-            `Shows the spend over the last ${days} days, for every user.`
+          )}{' '}
+          {usageWindowPhrase(window)}, for everyone who can read this
+          environment's metrics.
+          {namespace && (
+            <>
+              {' '}
+              <Link href={withUsageOrganization(pathname, search, undefined)}>
+                Show all organizations
+              </Link>
+            </>
           )}
         </Text>
 
@@ -119,11 +163,23 @@ export function UsageCostPage() {
         {view.state === 'ready' && usage && (
           <>
             <DataStartNote usage={usage} />
-            <CostKpiTiles usage={usage} currency={currency} windowDays={days} />
+            <CostKpiTiles
+              usage={usage}
+              currency={currency}
+              windowDays={usage.windowDays}
+              window={window}
+            />
             {/* Beside the headline it qualifies: every figure on this page
                 understates the bill by what an unpriced model spent, and
                 the detail table below says which models and why. */}
-            <PricingCoverageAlert rows={usage.unpricedModels} />
+            <PricingCoverageAlert
+              rows={usage.unpricedModels}
+              scopeNote={
+                namespace
+                  ? `Counted across every organization, not only ${scope}: the price lookups carry no organization.`
+                  : undefined
+              }
+            />
             <div className={classes.row}>
               <CostPerDayCard
                 daily={usage.costPerDay}
@@ -131,12 +187,33 @@ export function UsageCostPage() {
                 currency={currency}
               />
             </div>
+            {/* The roll-up by organization, the cost centre: only across
+                every organization — narrowed to one it would be one row,
+                and the caption already names it. */}
+            {!namespace && (
+              <LlmByOrganizationTable
+                rows={usage.byOrganization}
+                currency={currency}
+                hrefFor={hrefForOrganization}
+                emptyMessage="The gateway attributed no calls to an organization in this window."
+                note="An organization is the namespace its agents run in, so its row covers every agent and every user there. None is the platform's shared agents, available to every organization. Unattributed marks calls the gateway placed in no namespace; a call it could match to no agent still counts for its namespace. Open an organization to narrow every figure on this page to it."
+              />
+            )}
             <LlmByAgentTable
               rows={usage.byAgent}
               currency={currency}
               emptyMessage="The gateway attributed no calls to an agent in this window."
               note="The runtime names each call's agent and person; the gateway records them for calls through the Substrate egress and attributes any other call to the calling pod's ServiceAccount. A row covers everyone's traffic through that agent. Removed marks an agent this portal no longer knows, and its spend stays in the totals. Unattributed marks traffic matched to no caller."
             />
+            {/* The monthly view's chargeback rows: who, beside which agent. */}
+            {month !== undefined && (
+              <LlmByPersonTable
+                rows={usage.byPerson ?? []}
+                currency={currency}
+                emptyMessage="The gateway named no person on a call in this month."
+                note="A person is the gateway's user label: whom the runtime ran the turn for, an email. No person recorded marks calls the runtime named nobody for, the Claude harness's among them, and every call of an environment that switched the label off."
+              />
+            )}
             <LlmByModelTable
               rows={usage.byModel}
               currency={currency}

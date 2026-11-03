@@ -10,7 +10,10 @@ import {
   counterIncrease,
   durationSeconds,
   formatDuration,
+  previousUsageMonth,
   promqlString,
+  usageMonthBounds,
+  type UsageMonth,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
@@ -69,7 +72,107 @@ export type LlmUsageQueryOptions = {
    * an agent runs in (`agent_namespace`). All agents when absent.
    */
   org?: string;
+  /**
+   * One calendar month (`YYYY-MM`, UTC) instead of the days: a past month is
+   * its exact days, evaluated at its end; the current month is month-to-date.
+   * Takes precedence over `days`.
+   */
+  month?: UsageMonth;
+  /** The clock, for the current month's elapsed range. Defaults to now. */
+  now?: number;
 };
+
+/**
+ * Where a window's queries evaluate and how far they reach: the shape every
+ * builder below shares, so the totals, the breakdowns and the by-person rows
+ * cover the same seconds.
+ */
+export type UsageWindowSpec = {
+  /** The PromQL range the counters grow over. */
+  range: string;
+  /** The evaluation time (the `@` modifier) for a window that ended; none for one ending now. */
+  at?: number;
+  /** Whole days the window covers, today included where it is still open. */
+  windowDays: number;
+  /** Where the window starts, for the "data reaches back to here" checks. */
+  windowStart: DataBeforeAt;
+  /**
+   * The window just before this one, for the change against it: the same
+   * number of days before a days window, the previous month before a past
+   * month. None for the current month, which is still being written.
+   */
+  previous?: {
+    range: string;
+    offset?: string;
+    at?: number;
+    windowStart: DataBeforeAt;
+  };
+};
+
+/** A point in time named either by an offset from the evaluation or absolutely. */
+type DataBeforeAt = { offsetSeconds?: number; at?: number };
+
+const DAY_SECONDS = 86400;
+
+/**
+ * How coarsely the clock is read where a query's range grows with it — today's
+ * partial bar ({@link todayPartialRange}) and a month still being written
+ * ({@link usageWindowSpec}) — so their query keys move every five minutes, not
+ * per render. The hook that reads the clock for them snaps to the same grid.
+ */
+export const CLOCK_SNAP_SECONDS = 300;
+
+/**
+ * The query shape of a window: a days window grows the counters over the last
+ * N days and compares with the N before; a past month grows them over the
+ * month's days evaluated at the month's end and compares with the month
+ * before; the current month grows them over the seconds since the month
+ * started (snapped, as today's partial bar is, so the query key holds still)
+ * and compares with nothing yet.
+ */
+export function usageWindowSpec({
+  days,
+  month,
+  now = Date.now(),
+}: Pick<LlmUsageQueryOptions, 'days' | 'month' | 'now'> = {}): UsageWindowSpec {
+  if (month === undefined) {
+    const windowDays = windowDaysOf(days);
+    const range = `${windowDays}d`;
+    return {
+      range,
+      windowDays,
+      windowStart: { offsetSeconds: durationSeconds(range) },
+      previous: {
+        range,
+        offset: range,
+        windowStart: { offsetSeconds: 2 * durationSeconds(range) },
+      },
+    };
+  }
+  const bounds = usageMonthBounds(month, now);
+  if (bounds.current) {
+    const elapsed = Math.floor(now / 1000) - bounds.start;
+    const snapped =
+      Math.floor(elapsed / CLOCK_SNAP_SECONDS) * CLOCK_SNAP_SECONDS;
+    return {
+      range: `${Math.max(snapped, 60)}s`,
+      windowDays: Math.floor(elapsed / DAY_SECONDS) + 1,
+      windowStart: { at: bounds.start },
+    };
+  }
+  const previous = usageMonthBounds(previousUsageMonth(month), now);
+  return {
+    range: `${bounds.days}d`,
+    at: bounds.end,
+    windowDays: bounds.days,
+    windowStart: { at: bounds.start },
+    previous: {
+      range: `${previous.days}d`,
+      at: bounds.start,
+      windowStart: { at: previous.start },
+    },
+  };
+}
 
 /** A positive whole number of days; anything else is the default window. */
 export function windowDaysOf(days: number | undefined): number {
@@ -107,8 +210,32 @@ export const DATA_START_LOOKBACK = '7d';
  * Tokens rather than cost: every model call records them, priced or not, so a
  * window of unpriced calls still counts as recorded.
  */
-function dataBefore(only: string, secondsAgo: number): string {
-  return `count(last_over_time(${TokenUsage.name}_sum${only}[${DATA_START_LOOKBACK}] offset ${formatDuration(secondsAgo)}))`;
+function dataBefore(only: string, before: DataBeforeAt): string {
+  const shift =
+    before.offsetSeconds === undefined
+      ? ''
+      : ` offset ${formatDuration(before.offsetSeconds)}`;
+  const pin = before.at === undefined ? '' : ` @ ${before.at}`;
+  return `count(last_over_time(${TokenUsage.name}_sum${only}[${DATA_START_LOOKBACK}]${shift}${pin}))`;
+}
+
+/**
+ * The namespaces the gateway attributed calls to in the window, one series
+ * per `agent_namespace`, for the Organization scope's options. Never
+ * narrowed to an organization: the options are what the control chooses
+ * from, so they are the same whichever one is chosen. The value is a count
+ * of series and is not read.
+ *
+ * Tokens rather than cost, as {@link dataBefore}: every model call records
+ * them, so an organization whose models the catalogue cannot price is still
+ * an option.
+ */
+export function organizationsSeenQueryFor(
+  options: Pick<LlmUsageQueryOptions, 'days' | 'month' | 'now'> = {},
+): string {
+  const { range, at } = usageWindowSpec(options);
+  const pin = at === undefined ? '' : ` @ ${at}`;
+  return `count by (agent_namespace) (last_over_time(${TokenUsage.name}_sum[${range}]${pin}))`;
 }
 
 /**
@@ -120,16 +247,24 @@ function dataBefore(only: string, secondsAgo: number): string {
  * `requestsByStatus` and `unpricedLookups` stay installation-wide: their
  * metrics carry no `agent_namespace` label.
  */
-export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
-  const window = `${windowDaysOf(days)}d`;
+export function llmUsageQueriesFor({
+  days,
+  org,
+  month,
+  now,
+}: LlmUsageQueryOptions = {}) {
+  const spec = usageWindowSpec({ days, month, now });
+  const { range: window, at } = spec;
   const only = orgSelector(org);
+  const grow = (series: string) =>
+    counterIncrease(series, window, undefined, at);
   return {
     /** Priced spend, split every way the page needs it. */
-    cost: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, window)}`,
+    cost: `sum by (${BY_AGENT_MODEL_TYPE}) ${grow(`${Cost.name}${only}`)}`,
     /** Tokens, same grouping — needs no price catalogue, so always trustworthy. */
-    tokens: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${TokenUsage.name}_sum${only}`, window)}`,
+    tokens: `sum by (${BY_AGENT_MODEL_TYPE}) ${grow(`${TokenUsage.name}_sum${only}`)}`,
     /** Model calls, from the duration histogram's count. */
-    calls: `sum by (${BY_AGENT_MODEL}) ${counterIncrease(`${RequestDuration.name}_count${only}`, window)}`,
+    calls: `sum by (${BY_AGENT_MODEL}) ${grow(`${RequestDuration.name}_count${only}`)}`,
     /**
      * Output speed of the **median** streamed call, as tokens per second.
      *
@@ -157,31 +292,60 @@ export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
      * only difference is that a newborn series' first observations count —
      * the same for the two duration quantiles below.
      */
-    outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) ${counterIncrease(`${TimePerOutputToken.name}_bucket${only}`, window)})`,
-    durationP50: `histogram_quantile(0.50, sum by (le) ${counterIncrease(`${RequestDuration.name}_bucket${only}`, window)})`,
-    durationP95: `histogram_quantile(0.95, sum by (le) ${counterIncrease(`${RequestDuration.name}_bucket${only}`, window)})`,
-    requestsByStatus: `sum by (status) ${counterIncrease(`${Requests.name}{listener="${LLM_LISTENER}"}`, window)}`,
+    outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) ${grow(`${TimePerOutputToken.name}_bucket${only}`)})`,
+    durationP50: `histogram_quantile(0.50, sum by (le) ${grow(`${RequestDuration.name}_bucket${only}`)})`,
+    durationP95: `histogram_quantile(0.95, sum by (le) ${grow(`${RequestDuration.name}_bucket${only}`)})`,
+    requestsByStatus: `sum by (status) ${grow(`${Requests.name}{listener="${LLM_LISTENER}"}`)}`,
     /**
      * Every model whose price lookup did not resolve. Empty is the healthy
      * state, and `> 0` keeps stale zero-valued series out of the table.
      */
-    unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) ${counterIncrease(`${CatalogLookups.name}{status!="Exact"}`, window)} > 0`,
-    /** {@link cost} over the window before this one. */
-    previousCost: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, window, window)}`,
+    unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) ${grow(`${CatalogLookups.name}{status!="Exact"}`)} > 0`,
+    /**
+     * {@link cost} over the window before this one: the same days before a
+     * days window, the previous month before a past month; none for the
+     * current month, which is still being written.
+     */
+    previousCost: spec.previous
+      ? `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, spec.previous.range, spec.previous.offset, spec.previous.at)}`
+      : undefined,
     /**
      * Whether the gateway recorded anything in the
      * {@link DATA_START_LOOKBACK} before this window starts: one sample, or
      * none. Gates the "data starts on …" note, so a window whose first days
      * merely had no calls does not read as one the data does not reach.
      */
-    dataBeforeWindow: dataBefore(only, durationSeconds(window)),
+    dataBeforeWindow: dataBefore(only, spec.windowStart),
     /**
      * The same check before the *previous* window starts. Without data
      * there, {@link previousCost} covers only part of its window and the
      * change against it overstates growth — on a gateway whose metrics began
      * mid-window it read "▲ 330%".
      */
-    dataBeforePreviousWindow: dataBefore(only, 2 * durationSeconds(window)),
+    dataBeforePreviousWindow: spec.previous
+      ? dataBefore(only, spec.previous.windowStart)
+      : undefined,
+  };
+}
+
+/**
+ * Spend and tokens by the person behind the calls, the gateway's `user`
+ * label (an email, or `unknown` where the runtime named nobody), over the
+ * same window as {@link llmUsageQueriesFor}: the monthly view's by-person
+ * table (giantswarm/backstage#2672). No model calls: the duration histogram
+ * is the server's, and the label is not asserted on it.
+ */
+export function byPersonQueriesFor({
+  days,
+  org,
+  month,
+  now,
+}: LlmUsageQueryOptions = {}) {
+  const { range, at } = usageWindowSpec({ days, month, now });
+  const only = orgSelector(org);
+  return {
+    cost: `sum by (user) ${counterIncrease(`${Cost.name}${only}`, range, undefined, at)}`,
+    tokens: `sum by (user) ${counterIncrease(`${TokenUsage.name}_sum${only}`, range, undefined, at)}`,
   };
 }
 
@@ -206,8 +370,6 @@ export function llmUsageRangeQueriesFor({
     callsPerDay: `sum ${counterIncrease(`${RequestDuration.name}_count${only}`, '1d')}`,
   };
 }
-
-const DAY_SECONDS = 86400;
 
 export type RangeWindow = { start: string; end: string; step: string };
 
@@ -253,9 +415,6 @@ export function hasCompleteDays(range: RangeWindow): boolean {
   return Number(range.start) <= Number(range.end);
 }
 
-/** How coarsely {@link todayPartialRange} is snapped. See its docblock. */
-const PARTIAL_SNAP_SECONDS = 300;
-
 /**
  * How much of today has elapsed, as a PromQL duration, for the instant query
  * that supplies today's partial bar.
@@ -282,8 +441,7 @@ const PARTIAL_SNAP_SECONDS = 300;
  */
 export function todayPartialRange(now: number = Date.now()): string {
   const elapsed = Math.floor(now / 1000) - todayMidnight(now);
-  const snapped =
-    Math.floor(elapsed / PARTIAL_SNAP_SECONDS) * PARTIAL_SNAP_SECONDS;
+  const snapped = Math.floor(elapsed / CLOCK_SNAP_SECONDS) * CLOCK_SNAP_SECONDS;
   return `${Math.max(snapped, 60)}s`;
 }
 
@@ -325,6 +483,41 @@ export function dailyWindowDayKeys(range: RangeWindow): string[] {
  */
 export function todayDayKey(range: RangeWindow): string {
   return dayKey(Number(range.end));
+}
+
+/**
+ * The daily range of one calendar month, and the days its charts render.
+ *
+ * As {@link dailyRangeWindow}: a point at a midnight covers the day before
+ * it, so the first point sits one day after the month starts and the last on
+ * the next month's first midnight for a past month. The current month's last
+ * point is today's midnight, and today is its own partial row, filled by
+ * {@link todayPartialQueries}; a past month has no partial row, so `today` is
+ * absent. On the first of the month there is no complete day yet
+ * ({@link hasCompleteDays} is false) and the chart is today's row alone.
+ */
+export function monthRangeWindow(
+  month: UsageMonth,
+  now: number = Date.now(),
+): { range: RangeWindow; days: string[]; today?: string } {
+  const bounds = usageMonthBounds(month, now);
+  const first = bounds.start + DAY_SECONDS;
+  const last = bounds.current ? todayMidnight(now) : bounds.end;
+  const range = {
+    start: String(first),
+    end: String(last),
+    step: String(DAY_SECONDS),
+  };
+  const days: string[] = [];
+  for (let at = first; at <= last; at += DAY_SECONDS) {
+    days.push(dayKey(at - DAY_SECONDS));
+  }
+  if (!bounds.current) {
+    return { range, days };
+  }
+  const today = dayKey(todayMidnight(now));
+  days.push(today);
+  return { range, days, today };
 }
 
 function dayKey(epochSeconds: number): string {

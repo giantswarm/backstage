@@ -37,22 +37,32 @@ jobs:
   # would not run. Under CI a test file declaring POSTGRES_18 fails when the
   # variable is missing instead of skipping.
   #
-  # The Postgres container shares the job's 16 GiB with `ci:verify`, which
-  # runs tsc, the lint and jest at once, and both parallel tools size
-  # themselves from the CPUs they see: the lint takes half of the host's 36
-  # (`nproc` on the Docker executor), jest 40% of the 16 the cgroup grants.
-  # Unbounded, that outgrew the memory and the kernel killed Postgres
-  # (exit 137) early in Verify, and the oversubscribed CPUs pushed the heaviest
-  # render tests past jest's 5 s. Bounded, measured at the peak: jest 4
-  # workers 6 GiB, tsc 4.2 GiB, the rest 2.3 GiB, 11.4 GiB anonymous in all.
-  # BACKSTAGE_CLI_CONCURRENCY sizes the lint (and the later build),
-  # JEST_MAX_WORKERS the jest pool `test:all` starts.
+  # The Postgres container shares the job's 16 GiB with `ci:verify`
+  # (scripts/ci-verify.sh), and both parallel tools in it size themselves from
+  # the CPUs they see: the lint takes half of the host's 36 (`nproc` on the
+  # Docker executor), jest 40% of the 16 the cgroup grants. Unbounded, with
+  # tsc, the lint and jest running at once, that outgrew the memory and the
+  # kernel killed Postgres (exit 137) early in Verify, and the oversubscribed
+  # CPUs pushed the heaviest render tests past jest's 5 s (#3045 bounded them
+  # to 4 workers and 2 lint threads: 11.4 GiB at the peak). On #3326, jest
+  # alone with 6 workers and no coverage peaked between 10.5 and 12.1 GiB
+  # over four runs, tsc beside the lint at 6.4 GiB at most; with 7 workers
+  # the jest phase peaked at 13.9 GiB, 2.5 GiB under the limit, too close for
+  # a gate that must not flake, so 6 it is. The lint took the same 101 s
+  # alone as beside jest, bound by its 2 threads, so phase 2 gives it 4: it
+  # runs beside the single-threaded tsc on 8 CPUs.
+  # `ci:verify` runs in two phases now: jest alone first, with the whole job to
+  # itself (JEST_MAX_WORKERS workers, no coverage), then tsc and the lint side
+  # by side. Each phase peaks lower than the three did together, and the end
+  # of the Verify log carries each phase's duration and the cgroup's peak
+  # memory, the inputs for tuning these two. BACKSTAGE_CLI_CONCURRENCY sizes
+  # the lint (and the later build), JEST_MAX_WORKERS the jest pool `ci:test`
+  # starts.
   #
   # CircleCI keeps only the tail of a step's output (about 400 KB), and jest's
-  # output alone outgrows it. `ci:verify` therefore runs the three with
-  # `concurrently --group`, jest first: jest streams live, tsc's and the lint's
-  # output is held back and printed after it, so a type or lint error is always
-  # at the end of the Verify log.
+  # output alone outgrows it. tsc and the lint therefore run after jest, under
+  # `concurrently --group`, so a type or lint error is always at the end of
+  # the Verify log.
   node-build:
     resource_class: xlarge
     docker:
@@ -61,8 +71,8 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
     environment:
-      BACKSTAGE_CLI_CONCURRENCY: "2"
-      JEST_MAX_WORKERS: "4"
+      BACKSTAGE_CLI_CONCURRENCY: "4"
+      JEST_MAX_WORKERS: "6"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
@@ -72,7 +82,10 @@ workflows:
     # control-plane catalog. Gated on the same jobs as the generated
     # push-chart-release (operations-platform): the build-chart archive and the
     # released image, so both catalogs publish the same tested archive (the
-    # chart tests ran on the PR that the tag was cut from).
+    # chart tests ran on the PR that the tag was cut from). Like every
+    # generated chart job it requires pin-version and attaches the workspace,
+    # so it stamps the version resolved once at the start of the workflow
+    # (.pipeline_version) instead of resolving its own.
     - architect/push-to-app-catalog:
         executor: app-build-suite
         context: architect
@@ -80,7 +93,9 @@ workflows:
         app_catalog: control-plane-catalog
         app_catalog_test: control-plane-test-catalog
         chart: backstage
+        attach_workspace: true
         requires:
+        - pin-version
         - build-chart
         - push-to-registries-release
         filters:
