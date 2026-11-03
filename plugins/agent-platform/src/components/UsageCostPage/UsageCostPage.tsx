@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Flex, Link, Text } from '@backstage/ui';
-import { Stat, UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
+import { ContentColumn, Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
@@ -112,7 +112,7 @@ export function UsageCostPage() {
   const windowNote = `${windowNoun.charAt(0).toUpperCase()}${windowNoun.slice(1)}.`;
 
   return (
-    <UsageColumn>
+    <ContentColumn>
       <Flex direction="column" gap="6">
         {/* One short caption, not a heading: the tab above already names
             the view. How the spend is priced is the footnote's to say. Whose
@@ -241,6 +241,6 @@ export function UsageCostPage() {
           </>
         )}
       </Flex>
-    </UsageColumn>
+    </ContentColumn>
   );
 }

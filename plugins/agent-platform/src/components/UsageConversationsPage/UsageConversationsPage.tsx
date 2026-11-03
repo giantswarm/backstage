@@ -1,6 +1,6 @@
 import { Flex } from '@backstage/ui';
 import { AgentUsageSection } from '../AgentUsageSection';
-import { UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
+import { ContentColumn } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The session-level half of the Usage tab: sessions, turns, tool calls and an
@@ -19,10 +19,10 @@ import { UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
  */
 export function UsageConversationsPage() {
   return (
-    <UsageColumn>
+    <ContentColumn>
       <Flex direction="column" gap="6">
         <AgentUsageSection />
       </Flex>
-    </UsageColumn>
+    </ContentColumn>
   );
 }
