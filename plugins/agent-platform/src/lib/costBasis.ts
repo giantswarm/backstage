@@ -1,14 +1,15 @@
 import type { TokenRateTier } from '../hooks/useTokenRates';
 import { pricedTokenCount } from './costEstimate';
 import { formatTokens } from './formatNumbers';
+import { lastDaysNoun } from './usageWindow';
 
 export type CostBasis = {
   tier: TokenRateTier;
   /** The model the session's agent runs on, when it could be resolved. */
   model: string | undefined;
   installation: string;
-  /** The window the rate was averaged over, e.g. `7d`. */
-  window: string;
+  /** The days the rate was averaged over, named in words (`the last 7 days`). */
+  windowDays: number;
   /** The input tokens the estimate priced, as the stats beside it count them. */
   inputTokens: number;
   /** The output tokens the estimate priced, as the stats beside it count them. */
@@ -49,7 +50,8 @@ export type CostBasis = {
  * many rather than leaving them out of sight.
  */
 export function describeCostBasis(basis: CostBasis): string {
-  const { tier, model, installation, window } = basis;
+  const { tier, model, installation } = basis;
+  const windowNoun = lastDaysNoun(basis.windowDays);
   const applied = `applied to the ${formatTokens(
     pricedTokenCount(basis.inputTokens),
   )} input and ${formatTokens(
@@ -65,13 +67,13 @@ export function describeCostBasis(basis: CostBasis): string {
 
   switch (tier) {
     case 'model':
-      return `Estimated: ${model}'s observed cost per token on ${installation} over the last ${window}, ${applied}.${leftOut}`;
+      return `Estimated: ${model}'s observed cost per token on ${installation} over ${windowNoun}, ${applied}.${leftOut}`;
 
     case 'agent':
-      return `Estimated: this agent's observed cost per token on ${installation} over the last ${window}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved.${leftOut}`;
+      return `Estimated: this agent's observed cost per token on ${installation} over ${windowNoun}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved.${leftOut}`;
 
     case 'installation':
-      return `Estimated: ${installation}'s observed cost per token over the last ${window}, ${applied} — a fleet-wide blend across every model.${leftOut}`;
+      return `Estimated: ${installation}'s observed cost per token over ${windowNoun}, ${applied} — a fleet-wide blend across every model.${leftOut}`;
 
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
@@ -90,7 +92,7 @@ export function describeCostBasis(basis: CostBasis): string {
       // Two different reasons, and the fix differs: point the agent at the LLM
       // gateway, versus wait for traffic or fix the price catalogue.
       return model
-        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in the last ${window}, so there is no rate to apply.`
-        : `No estimate: nothing on ${installation} in the last ${window} could be priced. The token counts are unaffected.`;
+        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in ${windowNoun}, so there is no rate to apply.`
+        : `No estimate: nothing on ${installation} in ${windowNoun} could be priced. The token counts are unaffected.`;
   }
 }

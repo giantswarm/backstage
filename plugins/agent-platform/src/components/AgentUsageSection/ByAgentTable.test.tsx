@@ -101,6 +101,27 @@ describe('ByAgentTable', () => {
     expect(screen.getByText('$22.59')).toBeInTheDocument();
   });
 
+  it('names the rate window in words in the estimate’s note', () => {
+    // The leak this guards: the PromQL duration read "priced at the last 7d
+    // of gazelle's observed cost per token".
+    render(
+      <ByAgentTable
+        rows={ROWS}
+        emptyMessage="none"
+        rates={{ blended: 3 / 1_000_000 }}
+        rateWindowDays={7}
+        installation="gazelle"
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /priced at the last 7 days of gazelle's observed cost per token/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\b7d\b/)).not.toBeInTheDocument();
+  });
+
   describe('with the actual cost', () => {
     it('shows each agent’s actual cost instead of the estimate', () => {
       render(

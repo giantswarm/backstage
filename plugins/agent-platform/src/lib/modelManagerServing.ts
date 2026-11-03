@@ -300,9 +300,9 @@ export function toServedModelFromManager(
     }
   } else if (model.loaded) {
     readiness = 'ready';
-    if (running?.expiresAt) {
-      readinessMessage = `Loaded in memory until ${formatTime(running.expiresAt)}.`;
-    } else if (running?.device) {
+    // When it goes (`expiresAt`, kept as `loadedUntil`) is told at render,
+    // relative to the moment it is shown: `servedReadinessMessage`.
+    if (running?.device) {
       readinessMessage = `Loaded on the ${running.device.toUpperCase()}${
         running.pinned ? ', pinned against eviction' : ''
       }.`;
@@ -617,17 +617,6 @@ export function describeServedModel(
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-/** ISO time → a short local clock time, else the input as-is. */
-export function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 }
 
 /**

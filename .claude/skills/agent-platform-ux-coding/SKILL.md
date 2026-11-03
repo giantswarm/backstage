@@ -114,11 +114,12 @@ them and never invent a palette.
   selection allowed). The PO-ruled instance is the command palette's
   result-type chips.
 - The Usage time range is a select, not a direct choice (PO, 2026-10-23,
-  reversing the earlier 7 | 30 | 90 toggle): `LastDaysSelect` (`ui-react`),
-  labelled "Time range", options "Last 7 days", "Last 30 days", "Last 90
-  days". Beside the Environment select it has the same label, box and height.
-  A window that cannot be chosen is a disabled option with the reason as its
-  description, not a tooltip and not a note beside the control.
+  reversing the earlier 7 | 30 | 90 toggle): `UsageWindowSelect`
+  (`agent-platform`), labelled "Time range", options "Last 7 days", "Last 30
+  days", "Last 90 days", then this month so far and the two months before it.
+  Beside the Environment and Organization selects it has the same label, box
+  and height. A window that cannot be chosen is a disabled option with the
+  reason as its description, not a tooltip and not a note beside the control.
 
 ### States
 
@@ -252,7 +253,10 @@ them and never invent a palette.
 - Counts: `countNoun(n, noun)`. Name lists: `joinNames` and `groupNames`.
 - Numbers, durations and bytes: `formatCount`, `formatSeconds` and
   `formatBytes` in `agent-platform-common/src/formatNumbers.ts`. Relative dates:
-  `getRelativeDate` (`ui-react`). Durations read "1.2 s" and "420 ms".
+  `getRelativeDate` (`ui-react`). `formatSeconds` is the one duration
+  format — "420 ms", "1.2 s", "3 s", "18 s", "2 min 30 s", "1 h 5 min";
+  milliseconds go through `formatMilliseconds`. Never print raw milliseconds or floor to
+  minutes by hand.
 - Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
 - Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,
   Run button, run note and result that a tool's page and a workflow's Run it
@@ -395,6 +399,9 @@ them and never invent a palette.
 
 - `truncate={false}` still truncates, because bui writes
   `data-truncate="false"`. Pass `undefined`.
+- bui's `Tooltip` drops a `className`: it applies to no element. Style an
+  element inside the tooltip, or pass `style`. ESLint fails on one
+  (`giantswarm/no-restricted-bui-syntax`).
 - bui's `Table` clips instead of scrolling at phone width. The
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
