@@ -108,6 +108,23 @@ describe('the tag cap', () => {
     );
   });
 
+  it('is no problem for stored tags past it that are cut, but still past it', () => {
+    const stored = numbered(55);
+    expect(draftProblem('', stored.slice(2), stored)).toBeUndefined();
+    expect(draftProblem('', [...stored.slice(2), 'new'], stored)).toBe(
+      'At most 50 tags.',
+    );
+  });
+
+  it('takes back a stored tag past it, but no new one', () => {
+    const stored = numbered(55);
+    const cut = stored.filter(tag => tag !== 'tag-3');
+    expect(exceedsMaxTags(cut, ['tag-3'], stored)).toBe(false);
+    expect(addTags(cut, ['tag-3', 'new'], stored)).toEqual([...cut, 'tag-3']);
+    expect(draftProblem('tag-3', cut, stored)).toBeUndefined();
+    expect(draftProblem('new', cut, stored)).toBe('At most 50 tags.');
+  });
+
   it('adds no tags past it', () => {
     expect(addTags(numbered(49), ['a', 'b'])).toEqual([...numbered(49), 'a']);
     expect(addTags(full, ['new'])).toEqual(full);
@@ -210,9 +227,12 @@ describe('similarity', () => {
     expect(areSimilarTags('utility', 'util')).toBe(true);
     expect(areSimilarTags('marketng', 'marketing')).toBe(true);
     expect(areSimilarTags('util', 'util')).toBe(false);
-    // Short tags: no prefix below three characters, no typos below four.
+    // Short tags: no prefix below three characters, no typos below five.
     expect(areSimilarTags('ai', 'aiops')).toBe(false);
     expect(areSimilarTags('ops', 'dps')).toBe(false);
+    expect(areSimilarTags('docs', 'dogs')).toBe(false);
+    expect(areSimilarTags('auth', 'math')).toBe(false);
+    expect(areSimilarTags('pods', 'pots')).toBe(false);
     expect(areSimilarTags('sales', 'legal')).toBe(false);
     // Under seven characters, one edit: two would be half the word.
     expect(areSimilarTags('pods', 'prod')).toBe(false);

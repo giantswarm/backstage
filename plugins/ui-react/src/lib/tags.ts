@@ -1,4 +1,5 @@
 import {
+  exceedsTagLimit,
   MAX_TAG_LENGTH,
   MAX_TAGS,
   parseTags,
@@ -11,7 +12,14 @@ import {
  * gs-common, which gs-backend checks against too; this adds how typed text
  * becomes tags, the problems a form shows, and suggestions.
  */
-export { MAX_TAG_LENGTH, MAX_TAGS, parseTags, TAG_PATTERN, TAGS_ANNOTATION };
+export {
+  exceedsTagLimit,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  parseTags,
+  TAG_PATTERN,
+  TAGS_ANNOTATION,
+};
 
 /** Why more tags cannot be added. */
 export const MAX_TAGS_PROBLEM = `At most ${MAX_TAGS} tags.`;
@@ -78,27 +86,34 @@ function freshTags(tags: readonly string[], added: readonly string[]) {
 }
 
 /**
- * Whether `added` holds tags new to `tags` and adding them would leave more
- * than {@link MAX_TAGS}.
+ * Whether `added` holds tags new to `tags` and adding them would break the
+ * limit over `stored` (`exceedsTagLimit`).
  */
 export function exceedsMaxTags(
   tags: readonly string[],
   added: readonly string[],
+  stored: readonly string[] = [],
 ): boolean {
-  const fresh = freshTags(tags, added).length;
-  return fresh > 0 && tags.length + fresh > MAX_TAGS;
+  const fresh = freshTags(tags, added);
+  return fresh.length > 0 && exceedsTagLimit([...tags, ...fresh], stored);
 }
 
 /**
- * `tags` with those of `added` it does not hold yet appended, in order, up
- * to {@link MAX_TAGS}.
+ * `tags` with those of `added` it does not hold yet appended, in order, as
+ * long as the limit over `stored` holds (`exceedsTagLimit`).
  */
 export function addTags(
   tags: readonly string[],
   added: readonly string[],
+  stored: readonly string[] = [],
 ): string[] {
-  const room = Math.max(MAX_TAGS - tags.length, 0);
-  return [...tags, ...freshTags(tags, added).slice(0, room)];
+  const next = [...tags];
+  for (const tag of freshTags(tags, added)) {
+    if (!exceedsTagLimit([...next, tag], stored)) {
+      next.push(tag);
+    }
+  }
+  return next;
 }
 
 /**
@@ -110,28 +125,28 @@ export function addTags(
 export function commitTagDraft(
   tags: readonly string[],
   draft: string,
+  stored: readonly string[] = [],
 ): { tags: string[]; draft: string } {
   const { tags: valid, invalid } = splitDraft(draft);
-  if (exceedsMaxTags(tags, valid)) {
+  if (exceedsMaxTags(tags, valid, stored)) {
     return { tags: [...tags], draft };
   }
-  return { tags: addTags(tags, valid), draft: invalid.join(', ') };
+  return { tags: addTags(tags, valid, stored), draft: invalid.join(', ') };
 }
 
 /**
  * Why a typed but not yet added text cannot become tags: the first of its
- * comma-separated parts that cannot, else that `tags` hold more than
- * {@link MAX_TAGS} and differ from `stored` (the resource's tags as read: an
- * unchanged list is not written, so one written elsewhere past the limit
- * stands), or the text would take them past it. Undefined when it can, or is
- * empty.
+ * comma-separated parts that cannot, else that `tags` break the limit over
+ * `stored` (the resource's tags as read; see `exceedsTagLimit`: a list past
+ * {@link MAX_TAGS} that holds a tag not stored), or the text would take them
+ * past it. Undefined when it can, or is empty.
  */
 export function draftProblem(
   text: string,
   tags: readonly string[],
   stored: readonly string[] = [],
 ): string | undefined {
-  if (tags.length > MAX_TAGS && !sameTags(tags, stored)) {
+  if (exceedsTagLimit(tags, stored)) {
     return MAX_TAGS_PROBLEM;
   }
   for (const part of splitTyped(text)) {
@@ -140,7 +155,7 @@ export function draftProblem(
       return problem;
     }
   }
-  return exceedsMaxTags(tags, splitDraft(text).tags)
+  return exceedsMaxTags(tags, splitDraft(text).tags, stored)
     ? MAX_TAGS_PROBLEM
     : undefined;
 }
@@ -204,8 +219,11 @@ export function editDistance(a: string, b: string): number {
 
 /** The shorter of two tags must be this long to count as the other's prefix. */
 const MIN_PREFIX_LENGTH = 3;
-/** Both tags must be this long before a small edit distance counts. */
-const MIN_FUZZY_LENGTH = 4;
+/**
+ * Both tags must be this long before a small edit distance counts: one edit
+ * turns a four-letter tag into an unrelated word (`docs`, `dogs`).
+ */
+const MIN_FUZZY_LENGTH = 5;
 /**
  * The edits two tags may differ by: one below {@link LONG_TAG_LENGTH}
  * characters, where two would be half of `pods` (`prod`), else two.
@@ -280,15 +298,20 @@ export type TagsFieldUpdaters = {
 
 /**
  * The Tags field's updaters over a form state that holds `tags` and
- * `tagDraft`, for a form provider's context. Stable for a stable `setState`.
+ * `tagDraft`, for a form provider's context; `stored` are an edited
+ * resource's tags as read (`exceedsTagLimit`). Stable for a stable
+ * `setState` and `stored`.
  */
 export function tagsFieldUpdaters<
   S extends { tags: string[]; tagDraft?: string },
->(setState: (update: (prev: S) => S) => void): TagsFieldUpdaters {
+>(
+  setState: (update: (prev: S) => S) => void,
+  stored: readonly string[] = [],
+): TagsFieldUpdaters {
   return {
     addTags: added =>
       setState(prev => {
-        const next = addTags(prev.tags, added);
+        const next = addTags(prev.tags, added, stored);
         return next.length > prev.tags.length ? { ...prev, tags: next } : prev;
       }),
     removeTag: tag =>
@@ -302,7 +325,7 @@ export function tagsFieldUpdaters<
         if (!prev.tagDraft?.trim()) {
           return prev;
         }
-        const committed = commitTagDraft(prev.tags, prev.tagDraft);
+        const committed = commitTagDraft(prev.tags, prev.tagDraft, stored);
         return { ...prev, tags: committed.tags, tagDraft: committed.draft };
       }),
   };

@@ -167,8 +167,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   // A draft that can be tags counts as added: submitting adds it, as the
   // agent form's Continue does.
   const submittedTags = useMemo(
-    () => commitTagDraft(tags, tagDraft).tags,
-    [tags, tagDraft],
+    () => commitTagDraft(tags, tagDraft, baselineTags).tags,
+    [tags, tagDraft, baselineTags],
   );
   // The tags the catalog's skills already use, offered while typing a tag.
   const { skills: catalogSkills } = useSkillCatalog();
@@ -450,8 +450,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             draft={tagDraft}
             error={errorFor('tags', fieldErrors.tags)}
             counts={knownTags}
+            stored={baselineTags}
             onDraftChange={setTagDraft}
-            onAdd={added => setTags(prev => addTags(prev, added))}
+            onAdd={added => setTags(prev => addTags(prev, added, baselineTags))}
             onRemove={tag => setTags(prev => prev.filter(each => each !== tag))}
           />
           <TextAreaField

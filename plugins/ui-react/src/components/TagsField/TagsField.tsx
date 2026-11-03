@@ -26,6 +26,7 @@ import { useTagVocabulary } from '../TagVocabularyProvider';
 const MAX_SUGGESTIONS = 8;
 
 const NO_COUNTS: ReadonlyMap<string, number> = new Map();
+const NO_TAGS: readonly string[] = [];
 
 const useStyles = makeStyles({
   // As `TagList`'s: bui's small tag is 10px, too small to read a tag by.
@@ -46,6 +47,11 @@ export type TagsFieldProps = {
    * takes precedence once it has read.
    */
   counts?: ReadonlyMap<string, number>;
+  /**
+   * An edited resource's tags as read: past `MAX_TAGS`, they may stay, and
+   * be added back once removed (`exceedsTagLimit`).
+   */
+  stored?: readonly string[];
   onDraftChange: (draft: string) => void;
   onAdd: (tags: string[]) => void;
   onRemove: (tag: string) => void;
@@ -65,6 +71,7 @@ export function TagsField({
   draft,
   error,
   counts: ownCounts = NO_COUNTS,
+  stored = NO_TAGS,
   onDraftChange,
   onAdd,
   onRemove,
@@ -105,7 +112,7 @@ export function TagsField({
    */
   const commit = (text: string, rest?: string) => {
     const { tags: valid, invalid } = splitDraft(text);
-    if (exceedsMaxTags(tags, valid)) {
+    if (exceedsMaxTags(tags, valid, stored)) {
       onDraftChange(rest === undefined ? text : `${text},${rest}`);
       setAttempted(true);
       return;
@@ -128,7 +135,9 @@ export function TagsField({
     }
     // A shown problem follows the text until it is fixed; a new one waits
     // until the field is left (the `forms` skill).
-    setAttempted(shown => shown && draftProblem(value, tags) !== undefined);
+    setAttempted(
+      shown => shown && draftProblem(value, tags, stored) !== undefined,
+    );
     onDraftChange(value);
   };
 
@@ -178,7 +187,9 @@ export function TagsField({
           onKeyDown={onKeyDown}
           placeholder="e.g. util"
           description="Press Enter to add."
-          {...fieldErrorProps(attempted ? draftProblem(draft, tags) : error)}
+          {...fieldErrorProps(
+            attempted ? draftProblem(draft, tags, stored) : error,
+          )}
         />
         {suggestions.length > 0 && (
           <TagGroup aria-label="Suggested tags">
