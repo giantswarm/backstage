@@ -9,8 +9,9 @@ import {
 import type { MissingReleaseFile } from '../../lib/agentManager';
 
 const useStyles = makeStyles({
-  // bui `Text` and `Link` set their own colour (`--bui-fg-primary`); on the
-  // alert's tinted background they take the alert's instead, like its title.
+  // bui `Text` sets its own colour (`--bui-fg-primary`); on the alert's
+  // tinted background it takes the alert's instead, like its title. Links
+  // take the shell's link style (agent-shell.css).
   inherit: {
     color: 'inherit',
   },
@@ -107,7 +108,6 @@ export function MissingReleaseFileAlert({
       rel="noopener noreferrer"
       // The size of the sentence it sits in: the empty state's is larger.
       variant={variant === 'page' ? 'body-large' : 'body-medium'}
-      className={tint}
     >
       <span className={classes.code}>{missing.repository}</span>
     </Link>

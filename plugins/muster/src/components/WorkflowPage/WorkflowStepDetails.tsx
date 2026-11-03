@@ -5,7 +5,7 @@ import { countNoun, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
 import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
-import { formatDuration } from '../../lib/formatDuration';
+import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   conditionSummary,
   formatArgValue,
@@ -166,7 +166,7 @@ export function lastRunSentence(overlay: StepRunOverlay): string {
   const times = overlay.runs > 1 ? ` (${overlay.runs} times)` : '';
   const took =
     overlay.durationMs !== undefined
-      ? ` in ${formatDuration(overlay.durationMs)}`
+      ? ` in ${formatMilliseconds(overlay.durationMs)}`
       : '';
   switch (overlay.status) {
     case 'completed':

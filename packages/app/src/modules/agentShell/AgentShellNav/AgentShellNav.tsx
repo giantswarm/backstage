@@ -302,6 +302,7 @@ function AgentShellRail() {
             pr={compact ? undefined : '1'}
           >
             <Link
+              standalone
               href={homeRoute?.()}
               aria-label="Agent Platform"
               className={

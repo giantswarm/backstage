@@ -151,7 +151,7 @@ jest.mock('../../hooks/useTokenRates', () => ({
     model: undefined,
     isLoading: false,
     isAvailable: true,
-    window: '7d',
+    windowDays: 7,
   }),
 }));
 
@@ -1580,21 +1580,21 @@ describe('SessionDetailPage', () => {
         turnProgress: { kind: 'stalled' as const, since },
         currentTaskId: 'task-9',
       };
-      const clock = new Date(since).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 
       it('says the agent has stopped reporting progress, and since when', async () => {
-        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSessionDetail.mockReturnValue({
+          ...stalledView,
+          turnProgress: {
+            kind: 'stalled' as const,
+            since: Date.now() - 12 * 60 * 1000,
+          },
+        });
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(
-            `The agent has not reported progress since ${clock}.`,
-          ),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+          'The agent last reported progress 12 minutes ago.',
+        );
       });
 
       it('names the stall in the state too, not Working (R2-4)', async () => {
@@ -1638,9 +1638,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
 
       it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
@@ -1691,9 +1689,7 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Stop the turn' }),
         ).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
     });
 
@@ -1777,9 +1773,7 @@ describe('SessionDetailPage', () => {
         );
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
@@ -3946,7 +3940,6 @@ describe('SessionDetailPage', () => {
       name: 'ws-docs',
       organization: 'lab',
       sources: [],
-      sync: { schedule: 'nightly' },
       resourceVersion: '1',
       createdAt: '2026-10-01T00:00:00Z',
       repositories: 2,
