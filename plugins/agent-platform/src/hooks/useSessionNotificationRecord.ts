@@ -24,7 +24,6 @@ import {
   type SeenMarkTarget,
 } from '../lib/notificationRecord';
 import {
-  storedSettingRetry,
   storedSettingWriteClient,
   useStoredSetting,
   useStoredSettingUpdate,
@@ -51,6 +50,13 @@ export type SeenMarkReason =
 type SeenMarksWrite = {
   targets: readonly SeenMarkTarget[];
   reason?: SeenMarkReason;
+  /**
+   * The person waits on it (a row opened, "Mark all read"): a read or write
+   * the backend answers with a 5xx is tried again before the inbox says it
+   * could not be saved. A mark of a row on screen is not; it is written again
+   * with the next read.
+   */
+  retry: boolean;
 };
 
 /**
@@ -213,19 +219,18 @@ export function useNotificationSeenMarks() {
 
   const { mutateAsync } = useTrackedMutation(
     {
-      mutationFn: ({ targets }: SeenMarksWrite) =>
-        update<true>(current => {
-          const next = withSeen(
-            readNotificationSeen(current),
-            targets,
-            Date.now(),
-          );
-          return next && { value: next, result: true };
-        }),
-      // A seen mark is written while the person watches (a row opened,
-      // "Mark all read"): a read the backend answered with a 503 is tried
-      // again before the inbox says it could not be saved.
-      ...storedSettingRetry,
+      mutationFn: ({ targets, retry }: SeenMarksWrite) =>
+        update<true>(
+          current => {
+            const next = withSeen(
+              readNotificationSeen(current),
+              targets,
+              Date.now(),
+            );
+            return next && { value: next, result: true };
+          },
+          { retry },
+        ),
       // Only what the person did: a row opened from the inbox, "Mark all
       // read". A session's row marked seen because its page is on screen is
       // bookkeeping, reported by nothing.
@@ -250,19 +255,23 @@ export function useNotificationSeenMarks() {
 
   /**
    * Marks one row seen. `reason` reports the person's own action (opening
-   * the row); without it the write is not reported.
+   * the row), and tries a transient failure again; without it the write is
+   * neither reported nor retried.
    */
   const markSeen = useCallback(
     async (target: SeenMarkTarget, reason?: SeenMarkReason) => {
-      await mutateAsync({ targets: [target], reason });
+      await mutateAsync({ targets: [target], reason, retry: Boolean(reason) });
     },
     [mutateAsync],
   );
 
-  /** Marks every row seen in one write: "Mark all read". */
+  /**
+   * Marks every row seen in one write: "Mark all read", which the person
+   * waits on, so a transient failure is tried again.
+   */
   const markManySeen = useCallback(
     async (targets: readonly SeenMarkTarget[], reason?: SeenMarkReason) => {
-      await mutateAsync({ targets, reason });
+      await mutateAsync({ targets, reason, retry: true });
     },
     [mutateAsync],
   );

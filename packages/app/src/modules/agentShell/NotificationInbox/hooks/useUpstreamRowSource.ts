@@ -194,7 +194,12 @@ export function useUpstreamRowSource(): UpstreamRowSource {
   );
 
   const markAllRead = useCallback(
-    async () => (await mutateAsync({})).length > 0,
+    async (only?: readonly UpstreamInboxRow[]) =>
+      (
+        await mutateAsync(
+          only ? { ids: only.map(row => row.notificationId) } : {},
+        )
+      ).length > 0,
     [mutateAsync],
   );
 

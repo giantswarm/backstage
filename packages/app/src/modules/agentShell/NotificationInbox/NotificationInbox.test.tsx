@@ -389,6 +389,21 @@ describe('Notification inbox', () => {
           'Could not mark the notifications read',
         );
 
+        // Still failing: the same alert stays up, not taken down and raised
+        // again.
+        await userEvent.click(
+          within(alert).getByRole('button', { name: 'Try again' }),
+        );
+        await waitFor(() =>
+          expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(2),
+        );
+        expect(within(overlay).getByRole('alert')).toBe(alert);
+
+        // A session that starts waiting since is not what the alert named.
+        await read([
+          ...waiting,
+          { sessionId: 's3', title: 'New one', state: 'input-required' },
+        ]);
         fakeInbox.failMarks(false);
         await userEvent.click(
           within(alert).getByRole('button', { name: 'Try again' }),
@@ -397,10 +412,14 @@ describe('Notification inbox', () => {
         await waitFor(() =>
           expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
         );
-        expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(2);
+        expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(3);
+        expect(fakeInbox.writes.markManySeen).toHaveBeenLastCalledWith([
+          expect.objectContaining({ sessionId: 's1' }),
+          expect.objectContaining({ sessionId: 's2' }),
+        ]);
         expect(
-          within(overlay).queryByRole('link', { name: /^Unread: / }),
-        ).not.toBeInTheDocument();
+          within(overlay).getAllByRole('link', { name: /^Unread: / }),
+        ).toHaveLength(1);
       });
 
       it('says so the next time the overlay opens after a row was opened, and marks it with Try again', async () => {
@@ -453,6 +472,54 @@ describe('Notification inbox', () => {
             hidden: true,
           }),
         ).toBeInTheDocument();
+      });
+      it('marks a row with Try again after the mark of its page, on its way, failed', async () => {
+        fakeInbox.setSessions(waiting);
+        await renderShell();
+        fakeInbox.failMarks(true);
+
+        let overlay = await openOverlay();
+        await userEvent.click(
+          within(overlay).getAllByRole('link', {
+            name: 'Unread: SRE Agent needs your input',
+          })[0],
+        );
+        await waitFor(() =>
+          expect(fakeInbox.writes.markSeen).toHaveBeenCalledTimes(1),
+        );
+
+        // The next read marks the row of the page on screen, slowly.
+        let failLate: () => void = () => {};
+        fakeInbox.writes.markSeen.mockImplementationOnce(
+          () =>
+            new Promise<void>((_, reject) => {
+              failLate = () => reject(new Error('could not be read'));
+            }),
+        );
+        await read(waiting);
+        await waitFor(() =>
+          expect(fakeInbox.writes.markSeen).toHaveBeenLastCalledWith(
+            expect.objectContaining({ sessionId: 's1' }),
+            undefined,
+          ),
+        );
+
+        overlay = await openOverlay();
+        const alert = await within(overlay).findByRole('alert');
+        fakeInbox.failMarks(false);
+        await userEvent.click(
+          within(alert).getByRole('button', { name: 'Try again' }),
+        );
+        // Try again waits for that mark; when it fails, Try again marks it.
+        await act(async () => failLate());
+
+        await waitFor(() =>
+          expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
+        );
+        expect(fakeInbox.writes.markSeen).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sessionId: 's1' }),
+          { action: 'opened', kind: 'waiting' },
+        );
       });
     });
 

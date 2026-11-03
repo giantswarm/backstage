@@ -544,10 +544,25 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
         await within(overlay).findByRole('button', { name: 'Mark all read' }),
       );
       // Said in the overlay, for the one row still unread.
-      expect(await within(overlay).findByRole('alert')).toHaveTextContent(
-        'Could not mark the notification read',
-      );
+      const alert = await within(overlay).findByRole('alert');
+      expect(alert).toHaveTextContent('Could not mark the notification read');
       expect(upstream.isRead('n1')).toBe(true);
+      expect(reportedEvents()).toEqual([
+        ['AgentPlatform.notificationsMarkedRead', {}],
+      ]);
+
+      // Try again marks the session row, and is the same "Mark all read":
+      // not reported a second time.
+      await userEvent.click(
+        within(alert).getByRole('button', { name: 'Try again' }),
+      );
+      await waitFor(() =>
+        expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
+      );
+      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(2);
+      expect(
+        upstream.notificationsApi.updateNotifications,
+      ).toHaveBeenCalledTimes(1);
       expect(reportedEvents()).toEqual([
         ['AgentPlatform.notificationsMarkedRead', {}],
       ]);

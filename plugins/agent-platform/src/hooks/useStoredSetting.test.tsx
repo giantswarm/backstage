@@ -174,11 +174,11 @@ describe('useStoredSetting', () => {
 
     expect(bucket.set).not.toHaveBeenCalled();
     expect(inner.snapshot(KEY).value).toEqual(['a', 'b']);
-    // The backend answered, with a failure: worth reading again.
+    // The storage says nothing of why: not worth reading again.
     await act(async () => {
       await expect(result.current.update(append('c'))).rejects.toMatchObject({
         name: 'StoredSettingReadError',
-        transient: true,
+        transient: false,
       });
     });
   });
@@ -256,7 +256,7 @@ describe('useStoredSetting', () => {
 });
 
 describe('isTransientStoredSettingError', () => {
-  it('tries again after a failed read, a network failure or a 5xx, not after a timeout or a 4xx', () => {
+  it('tries again after a transient read, the network or a 5xx, not after a timeout, a 4xx or a bug', () => {
     const answered = (status: number) =>
       Object.assign(new Error(`answered ${status}`), { status });
 
@@ -264,8 +264,14 @@ describe('isTransientStoredSettingError', () => {
       isTransientStoredSettingError(new StoredSettingReadError('503', true)),
     ).toBe(true);
     expect(
-      isTransientStoredSettingError(new TypeError('Failed to fetch')),
+      isTransientStoredSettingError(
+        Object.assign(new Error('unreachable'), { network: true }),
+      ),
     ).toBe(true);
+    // A TypeError the write's own code throws is no network failure.
+    expect(isTransientStoredSettingError(new TypeError('x is undefined'))).toBe(
+      false,
+    );
     expect(isTransientStoredSettingError(answered(503))).toBe(true);
     expect(
       isTransientStoredSettingError(
