@@ -275,6 +275,7 @@ const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
     label: 'Pinned',
     value: row => (row.pinned ? PINNED_VALUE : undefined),
     optionLabel: () => 'Pinned',
+    missingIsChoice: true,
   },
 ];
 

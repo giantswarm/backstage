@@ -827,6 +827,7 @@ function SessionsTab({
               value: directory =>
                 directory.creator?.toLowerCase() === caller ? 'me' : undefined,
               optionLabel: () => 'Me',
+              missingIsChoice: true,
             },
           ]
         : [],

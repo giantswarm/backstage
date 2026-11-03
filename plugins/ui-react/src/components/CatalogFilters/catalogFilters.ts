@@ -19,7 +19,13 @@ export type CatalogFacet<T> = {
    * The order the options are offered in. Values it does not name follow, by
    * label. Without it: the most common value first, then by label.
    */
-  order?: readonly string[];
+  order?: readonly string[]; /**
+   * Whether an item without a value is a choice in itself, so one value that
+   * some items lack can narrow the list: a flag (Pinned, Starred, "Created
+   * by: Me"). Off by default: there a missing value is one not read yet or
+   * not matched, and the facet needs two values to choose between.
+   */
+  missingIsChoice?: boolean;
 };
 
 /**
@@ -131,11 +137,14 @@ function sortOptions<T>(
 /**
  * The facets to draw, with their options and counts.
  *
- * A facet is drawn only when picking from it can narrow the catalog: some
- * value that not every item has (two repositories; Favorites: "Starred").
- * Values every item shares (one repository, one organization) or no value at
- * all (no favorites yet) make a dropdown with nothing to choose, and it is
- * left out — unless a pick on it is still standing, so it can be undone.
+ * A facet is drawn only when picking from it can narrow the catalog: two
+ * values to choose between among the items that have one (two repositories),
+ * or, for a facet whose missing value is a choice (`missingIsChoice`), one
+ * value some items lack (Favorites: "Starred"). One value every item has, one
+ * value with the rest not read yet (one organization while agents load) or
+ * no value at all (no favorites yet) make a dropdown with nothing to choose,
+ * and it is left out — unless a pick on it is still standing, so it can be
+ * undone.
  * Its options are the catalog's values (not the search's, so options do not
  * come and go while typing); each count is over the search and the other
  * facets' picks.
@@ -156,8 +165,13 @@ export function catalogFilterDimensions<T>(
     // A picked value the catalog no longer holds stays offered, at zero, so
     // the pick that empties the list can be undone.
     const ids = new Set([...catalogCounts.keys(), ...picked]);
-    const canNarrow = [...ids].some(
-      id => (catalogCounts.get(id) ?? 0) < items.length,
+    // Picking a value narrows when some item it is weighed against lacks it:
+    // any item for a flag, an item with some other value otherwise.
+    const weighed = facet.missingIsChoice
+      ? items.length
+      : items.filter(item => facet.value(item) !== undefined).length;
+    const canNarrow = [...catalogCounts.values()].some(
+      count => count < weighed,
     );
     if (!canNarrow && picked.length === 0) {
       continue;

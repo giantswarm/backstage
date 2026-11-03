@@ -36,15 +36,51 @@ describe('catalogFilterDimensions', () => {
     ]);
   });
 
-  it('draws one value some items lack, as a Favorites filter is', () => {
+  it('leaves out one value the other items lack, as one not read yet', () => {
+    // One organization while the rest of the fleet loads: nothing to choose.
     const some = items.map((item, index) => ({
       ...item,
       model: index === 0 ? 'opus' : undefined,
     }));
-    const [model] = catalogFilterDimensions(some, some, facets, {}).filter(
+    expect(
+      catalogFilterDimensions(some, some, facets, {}).map(
+        dimension => dimension.id,
+      ),
+    ).toEqual(['repo', 'usage']);
+  });
+
+  it('draws two values among the items that have one, the rest without', () => {
+    const mixed = items.map((item, index) => ({
+      ...item,
+      model: ['opus', 'sonnet', undefined][index],
+    }));
+    const [model] = catalogFilterDimensions(mixed, mixed, facets, {}).filter(
       dimension => dimension.id === 'model',
     );
-    expect(model.options).toEqual([{ id: 'opus', label: 'opus', count: 1 }]);
+    expect(model.options.map(option => option.id)).toEqual(['opus', 'sonnet']);
+  });
+
+  it('draws one value some items lack where a missing value is a choice, as Favorites', () => {
+    const starred: CatalogFacet<Item> = {
+      id: 'favorites',
+      label: 'Favorites',
+      value: item => (item.name === 'a' ? 'starred' : undefined),
+      missingIsChoice: true,
+    };
+    const [favorites] = catalogFilterDimensions(items, items, [starred], {});
+    expect(favorites.options).toEqual([
+      { id: 'starred', label: 'starred', count: 1 },
+    ]);
+  });
+
+  it('leaves out a flag every item has', () => {
+    const everyone: CatalogFacet<Item> = {
+      id: 'favorites',
+      label: 'Favorites',
+      value: () => 'starred',
+      missingIsChoice: true,
+    };
+    expect(catalogFilterDimensions(items, items, [everyone], {})).toEqual([]);
   });
 
   it('keeps a facet of one value while it is picked, so it can be undone', () => {

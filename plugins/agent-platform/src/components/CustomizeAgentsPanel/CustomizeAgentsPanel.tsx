@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useId, useMemo } from 'react';
+import { ReactNode, useCallback, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
 import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
@@ -255,13 +255,13 @@ export type CustomizeAgentsPanelProps = {
  * one — a second control for the same thing would be two answers to one
  * question.
  *
- * The bar draws a facet only when it can narrow the list (one organization
- * or model for every agent is no choice: `catalogFilterDimensions`).
+ * The bar draws a facet only when it can narrow the list (one organization,
+ * model or Harness among the agents that have one is no choice:
+ * `catalogFilterDimensions`); an agent without a Harness is one not read yet,
+ * not a second choice.
  *
- * @param harnesses the fleet's Harnesses ({@link agentHarnesses}). The
- *   Harness facet exists only from two on: main's `singleHarness` rule
- *   (#2858) hides the Harness fact and its filter together, and an agent
- *   without a Harness is one not read yet, not a second choice.
+ * @param harnesses the fleet's Harnesses ({@link agentHarnesses}), for how
+ *   each option reads.
  * @param isMine whether the person created the row's agent: the "Created by"
  *   facet, which the bar shows only when some row is theirs.
  */
@@ -273,17 +273,12 @@ export function agentFacets(
   return [
     { id: 'tenant', label: 'Organization', value: row => row.tenant },
     { id: 'model', label: 'Model', value: row => row.model || undefined },
-    ...(harnesses.size > 1
-      ? [
-          {
-            id: 'harness',
-            label: 'Harness',
-            value: (row: AgentRow) => row.harness,
-            optionLabel: (name: string) =>
-              harnessLabel(name, harnesses.get(name)),
-          },
-        ]
-      : []),
+    {
+      id: 'harness',
+      label: 'Harness',
+      value: row => row.harness,
+      optionLabel: name => harnessLabel(name, harnesses.get(name)),
+    },
     ...(isMine
       ? [
           {
@@ -291,6 +286,7 @@ export function agentFacets(
             label: 'Created by',
             value: (row: AgentRow) => (isMine(row) ? 'me' : undefined),
             optionLabel: () => 'Me',
+            missingIsChoice: true,
           },
         ]
       : []),
@@ -299,6 +295,7 @@ export function agentFacets(
       label: 'Favorites',
       value: row => (isFavorite(row.id) ? 'starred' : undefined),
       optionLabel: () => 'Starred',
+      missingIsChoice: true,
     },
   ];
 }
@@ -623,8 +620,8 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
 
   const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
   const harnesses = useMemo(() => agentHarnesses(rows), [rows]);
-  // Main's `singleHarness` rule (#2858): one Harness for every agent shows
-  // neither the Harness fact nor its filter.
+  // Main's `singleHarness` rule (#2858): one Harness for every agent shows no
+  // Harness fact; the filter follows the shared rule, which agrees.
   const showHarness = harnesses.size > 1;
   const tenantCount = new Set(rows.map(row => row.tenant)).size;
   // "Created by me": the creator agent-manager recorded against the person as
@@ -643,15 +640,6 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     [isFavorite, harnesses, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
-  // A Harness pick outlives its dropdown when the fleet settles on one
-  // Harness; it would filter nothing yet still count as a filter in force.
-  const { selection, select } = filters;
-  const harnessPicked = (selection.harness?.length ?? 0) > 0;
-  useEffect(() => {
-    if (!showHarness && harnessPicked) {
-      select('harness', []);
-    }
-  }, [showHarness, harnessPicked, select]);
   const visible = filters.filtered;
   const favorites = useMemo(
     () => visible.filter(row => isFavorite(row.id)),

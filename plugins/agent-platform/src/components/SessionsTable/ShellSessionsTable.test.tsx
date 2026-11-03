@@ -832,6 +832,27 @@ describe('SessionsTable in the shell layout', () => {
       expect(queryDropdown('organization')).not.toBeInTheDocument();
     });
 
+    it('draws no Organization dropdown for one organization while others are unmatched', async () => {
+      // Sessions whose agent is not matched (yet) have no organization: not a
+      // second one to choose, so no dropdown that vanishes once they load.
+      await renderShell([
+        { ...rows[0], agentNamespace: 'org-acme' },
+        { ...rows[1], agentNamespace: undefined },
+        { ...rows[2], agentNamespace: 'org-acme' },
+        { ...rows[3], agentNamespace: undefined },
+      ]);
+
+      expect(dropdown('agent')).toBeInTheDocument();
+      expect(queryDropdown('organization')).not.toBeInTheDocument();
+    });
+
+    it('draws the Pinned dropdown once some sessions are pinned', async () => {
+      // A flag: a session without the pin is a choice in itself.
+      await renderShell(rows, states, await storageWithPins(['a']));
+
+      expect(dropdown('pinned')).toBeInTheDocument();
+    });
+
     it('draws no Agent dropdown over one agent’s sessions', async () => {
       await renderShell(fleetOf(SEARCH_MIN + 1, 1));
 
