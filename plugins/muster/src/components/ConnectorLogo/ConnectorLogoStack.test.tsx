@@ -50,7 +50,7 @@ describe('ConnectorLogoStack', () => {
     render(<ConnectorLogoStack connectors={connectors} />);
     await user.hover(screen.getByText('+2'));
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      /Slack\s*PagerDuty/,
+      'Slack, PagerDuty',
     );
   });
 });

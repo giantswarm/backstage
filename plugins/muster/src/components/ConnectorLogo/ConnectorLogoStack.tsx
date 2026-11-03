@@ -44,7 +44,6 @@ const useStyles = makeStyles({
   },
   tooltip: {
     maxWidth: 280,
-    whiteSpace: 'pre-line',
   },
 });
 
@@ -105,7 +104,7 @@ export function ConnectorLogoStack({
       {rest.length > 0 && (
         <span className={classes.item}>
           <LogoTooltip
-            hint={rest.map(connector => connector.name).join('\n')}
+            hint={rest.map(connector => connector.name).join(', ')}
             className={classes.trigger}
             tooltipClassName={classes.tooltip}
           >
