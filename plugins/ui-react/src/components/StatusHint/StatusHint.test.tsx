@@ -16,9 +16,15 @@ describe('StatusHint', () => {
     expect(
       screen.getByRole('button', { name: 'About the state of qwen3' }),
     ).toHaveFocus();
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      '0/3 nodes are available. Add a GPU node.',
+    // `toHaveTextContent` collapses whitespace, so it would pass with the
+    // sentences run together: read the newline, and the `white-space` that
+    // keeps it on screen.
+    const tooltip = await screen.findByRole('tooltip');
+    const lines = Array.from(tooltip.querySelectorAll('span')).find(
+      span => span.textContent === '0/3 nodes are available.\nAdd a GPU node.',
     );
+    expect(lines).toBeDefined();
+    expect(lines).toHaveStyle({ whiteSpace: 'pre-line' });
   });
 
   it('renders nothing without an explanation', () => {

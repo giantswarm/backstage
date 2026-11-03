@@ -35,6 +35,43 @@ describe('InfoHint', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('It broke.');
   });
 
+  /**
+   * The element that holds the hint's text, found by its exact text with the
+   * newline: `toHaveTextContent` collapses whitespace, so it cannot tell a
+   * line break from a space.
+   */
+  function textHolder(tooltip: HTMLElement, text: string) {
+    return Array.from(tooltip.querySelectorAll('span')).find(
+      span => span.textContent === text,
+    );
+  }
+
+  it('keeps a multi-line hint’s line breaks in its tooltip on classic pages', async () => {
+    const user = userEvent.setup();
+    render(<InfoHint label="Why">{'It broke.\nTry again.'}</InfoHint>);
+
+    await user.tab();
+    const holder = textHolder(
+      await screen.findByRole('tooltip'),
+      'It broke.\nTry again.',
+    );
+    expect(holder).toBeDefined();
+    expect(holder).toHaveStyle({ whiteSpace: 'pre-line' });
+  });
+
+  it('keeps a multi-line hint’s line breaks in its tooltip in the shell', async () => {
+    const user = userEvent.setup();
+    renderInShell(<InfoHint label="Why">{'It broke.\nTry again.'}</InfoHint>);
+
+    await user.tab();
+    const holder = textHolder(
+      await screen.findByRole('tooltip'),
+      'It broke.\nTry again.',
+    );
+    expect(holder).toBeDefined();
+    expect(holder).toHaveStyle({ whiteSpace: 'pre-line' });
+  });
+
   it('keeps the tooltip alone on classic pages: a press opens nothing', async () => {
     layout = mockPhoneLayout();
     const user = userEvent.setup();
