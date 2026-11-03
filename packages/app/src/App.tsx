@@ -1,4 +1,5 @@
-import { createApp } from '@backstage/frontend-defaults';
+import { createApp, CreateAppOptions } from '@backstage/frontend-defaults';
+import { FrontendFeature } from '@backstage/frontend-plugin-api';
 
 // App-level and nav modules:
 import { appOverrides } from './modules/app';
@@ -56,84 +57,96 @@ import {
   githubPullRequestsNfsPlugin,
 } from './legacyPlugins';
 
+/**
+ * Every feature the app installs, besides `@backstage/plugin-app` itself
+ * (which `createApp` adds). Exported for `appExtensions.test.ts`, which checks
+ * the ids `app.extensions` names in app-config.yaml against them.
+ */
+export const appFeatures: FrontendFeature[] = [
+  // App-level overrides (core APIs, icons, sign-in page, feature flags):
+  appOverrides,
+  // Nav sidebar layout:
+  navModule,
+  agentShellModule,
+
+  // GS plugins:
+  gsPlugin,
+  fluxPlugin,
+  fluxPluginOverrides,
+  aiChatPlugin,
+  aiChatPluginOverrides,
+  // The Customize page's tabs come from both plugins: agent-platform
+  // attaches Agents, Skills and Models, muster Connectors and Workflows
+  // (`attachTo: page:app/agent-shell-customize`). The page orders them
+  // itself (`CUSTOMIZE_TAB_IDS`), so the order here does not matter for
+  // them. Both plugins' pages are mounted only where the agent shell is
+  // available (`AGENT_SHELL_ON`): the classic portal has none of them. The
+  // old `/agent-platform/**` addresses redirect through the app's mapping
+  // (`agentPlatformLegacyPages`).
+  agentPlatformPlugin,
+  agentPlatformLegacyPages,
+  musterPlugin,
+  musterPluginOverrides,
+  plansPluginOverrides,
+  roadmapPluginOverrides,
+  repositoriesPluginOverrides,
+  platformCapabilitiesPluginOverrides,
+  plansPlugin,
+  roadmapPlugin,
+  repositoriesPlugin,
+  platformCapabilitiesPlugin,
+  botPrsPlugin,
+
+  // Upstream NFS plugins:
+  catalogPlugin,
+  catalogPluginOverrides,
+  catalogGraphPlugin,
+  homePlugin,
+  homePluginOverrides,
+  orgPlugin,
+  scaffolderPlugin,
+  scaffolderPluginOverrides,
+  searchPlugin,
+  techdocsPlugin,
+  userSettingsPlugin,
+  userSettingsPluginOverrides,
+  kubernetesPlugin,
+  kubernetesPluginOverrides,
+  apiDocsPlugin,
+  apiDocsPluginOverrides,
+  githubActionsPlugin,
+  githubActionsPluginOverrides,
+  pagerDutyPlugin,
+  signalsPlugin,
+
+  // Legacy plugins (compat-converted for NFS route ref discovery):
+  circleCINfsPlugin,
+  githubPullRequestsNfsPlugin,
+];
+
+/** The app's route bindings, exported for `appExtensions.test.ts`. */
+export const bindAppRoutes: NonNullable<CreateAppOptions['bindRoutes']> = ({
+  bind,
+}) => {
+  // The shell's Customize page and home belong to the app, which no plugin
+  // can name as a default target. Both plugins link to pages under
+  // Customize through their `customize` external route; agent-platform's
+  // "New session" links reach the home through `newSession`. A connector's
+  // Usage tab opens agent-platform's Usage → Connectors, which muster does
+  // not depend on, through `usageConnectors`.
+  bind(musterPlugin.externalRoutes, {
+    customize: customizeRouteRef,
+    usageConnectors: agentPlatformPlugin.routes.usageConnectors,
+  });
+  bind(agentPlatformPlugin.externalRoutes, {
+    customize: customizeRouteRef,
+    newSession: homeRouteRef,
+  });
+};
+
 const app = createApp({
-  features: [
-    // App-level overrides (core APIs, icons, sign-in page, feature flags):
-    appOverrides,
-    // Nav sidebar layout:
-    navModule,
-    agentShellModule,
-
-    // GS plugins:
-    gsPlugin,
-    fluxPlugin,
-    fluxPluginOverrides,
-    aiChatPlugin,
-    aiChatPluginOverrides,
-    // The Customize page's tabs come from both plugins: agent-platform
-    // attaches Agents, Skills and Models, muster Connectors and Workflows
-    // (`attachTo: page:app/agent-shell-customize`). The page orders them
-    // itself (`CUSTOMIZE_TAB_IDS`), so the order here does not matter for
-    // them. Both plugins' pages are mounted only where the agent shell is
-    // available (`AGENT_SHELL_ON`): the classic portal has none of them. The
-    // old `/agent-platform/**` addresses redirect through the app's mapping
-    // (`agentPlatformLegacyPages`).
-    agentPlatformPlugin,
-    agentPlatformLegacyPages,
-    musterPlugin,
-    musterPluginOverrides,
-    plansPluginOverrides,
-    roadmapPluginOverrides,
-    repositoriesPluginOverrides,
-    platformCapabilitiesPluginOverrides,
-    plansPlugin,
-    roadmapPlugin,
-    repositoriesPlugin,
-    platformCapabilitiesPlugin,
-    botPrsPlugin,
-
-    // Upstream NFS plugins:
-    catalogPlugin,
-    catalogPluginOverrides,
-    catalogGraphPlugin,
-    homePlugin,
-    homePluginOverrides,
-    orgPlugin,
-    scaffolderPlugin,
-    scaffolderPluginOverrides,
-    searchPlugin,
-    techdocsPlugin,
-    userSettingsPlugin,
-    userSettingsPluginOverrides,
-    kubernetesPlugin,
-    kubernetesPluginOverrides,
-    apiDocsPlugin,
-    apiDocsPluginOverrides,
-    githubActionsPlugin,
-    githubActionsPluginOverrides,
-    pagerDutyPlugin,
-    signalsPlugin,
-
-    // Legacy plugins (compat-converted for NFS route ref discovery):
-    circleCINfsPlugin,
-    githubPullRequestsNfsPlugin,
-  ],
-  bindRoutes({ bind }) {
-    // The shell's Customize page and home belong to the app, which no plugin
-    // can name as a default target. Both plugins link to pages under
-    // Customize through their `customize` external route; agent-platform's
-    // "New session" links reach the home through `newSession`. A connector's
-    // Usage tab opens agent-platform's Usage → Connectors, which muster does
-    // not depend on, through `usageConnectors`.
-    bind(musterPlugin.externalRoutes, {
-      customize: customizeRouteRef,
-      usageConnectors: agentPlatformPlugin.routes.usageConnectors,
-    });
-    bind(agentPlatformPlugin.externalRoutes, {
-      customize: customizeRouteRef,
-      newSession: homeRouteRef,
-    });
-  },
+  features: appFeatures,
+  bindRoutes: bindAppRoutes,
 });
 
 export default app.createRoot();
