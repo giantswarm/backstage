@@ -1,6 +1,6 @@
 import { Flex } from '@backstage/ui';
 import { AgentUsageSection } from '../AgentUsageSection';
-import { UsageColumn } from '../UsageColumn';
+import { UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The session-level half of the Usage tab: sessions, turns, tool calls and an

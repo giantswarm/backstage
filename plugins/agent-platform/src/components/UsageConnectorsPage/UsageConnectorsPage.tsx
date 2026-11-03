@@ -1,6 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import { Flex } from '@backstage/ui';
-import { UsageColumn } from '../UsageColumn';
+import { UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The Usage screen's Connectors view: how the connectors behind this

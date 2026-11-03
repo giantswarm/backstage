@@ -46,15 +46,9 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
   },
 }));
 
-jest.mock('../CodeBlock', () => ({
+jest.mock('../FileView', () => ({
   // The editor does not lay text out in jsdom; the document as plain text.
-  CodeBlock: ({
-    filename,
-    content,
-  }: {
-    filename?: string;
-    content: string;
-  }) => (
+  FileView: ({ filename, content }: { filename?: string; content: string }) => (
     <pre data-testid="code-block" data-filename={filename}>
       {content}
     </pre>

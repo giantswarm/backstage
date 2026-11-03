@@ -20,8 +20,8 @@ import {
   parseValues,
 } from './CreateClusterDialog';
 
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
+jest.mock('../FileView', () => ({
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));

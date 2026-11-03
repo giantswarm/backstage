@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Flex, Link, Text } from '@backstage/ui';
-import { Stat } from '@giantswarm/backstage-plugin-ui-react';
+import { Stat, UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
@@ -27,7 +27,6 @@ import {
   PricingCoverageAlert,
   PricingCoverageNote,
 } from '../LlmUsage';
-import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {

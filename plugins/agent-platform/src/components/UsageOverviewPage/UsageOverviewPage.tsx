@@ -31,7 +31,7 @@ import {
   type TopAgentsRow,
   type UsageKpiSessions,
 } from '../LlmUsage';
-import { UsageColumn } from '../UsageColumn';
+import { UsageColumn } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionCountForWindow } from '../AgentUsageSection/helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
