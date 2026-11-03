@@ -386,6 +386,9 @@ them and never invent a palette.
 
 - `truncate={false}` still truncates, because bui writes
   `data-truncate="false"`. Pass `undefined`.
+- bui's `Tooltip` drops a `className`: it applies to no element. Style an
+  element inside the tooltip, or pass `style`. ESLint fails on one
+  (`giantswarm/no-restricted-bui-syntax`).
 - bui's `Table` clips instead of scrolling at phone width. The
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
