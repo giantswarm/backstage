@@ -51,7 +51,7 @@ export type CostBasis = {
  */
 export function describeCostBasis(basis: CostBasis): string {
   const { tier, model, installation } = basis;
-  const window = lastDaysNoun(basis.windowDays);
+  const windowNoun = lastDaysNoun(basis.windowDays);
   const applied = `applied to the ${formatTokens(
     pricedTokenCount(basis.inputTokens),
   )} input and ${formatTokens(
@@ -67,13 +67,13 @@ export function describeCostBasis(basis: CostBasis): string {
 
   switch (tier) {
     case 'model':
-      return `Estimated: ${model}'s observed cost per token on ${installation} over ${window}, ${applied}.${leftOut}`;
+      return `Estimated: ${model}'s observed cost per token on ${installation} over ${windowNoun}, ${applied}.${leftOut}`;
 
     case 'agent':
-      return `Estimated: this agent's observed cost per token on ${installation} over ${window}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved.${leftOut}`;
+      return `Estimated: this agent's observed cost per token on ${installation} over ${windowNoun}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved.${leftOut}`;
 
     case 'installation':
-      return `Estimated: ${installation}'s observed cost per token over ${window}, ${applied} — a fleet-wide blend across every model.${leftOut}`;
+      return `Estimated: ${installation}'s observed cost per token over ${windowNoun}, ${applied} — a fleet-wide blend across every model.${leftOut}`;
 
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
@@ -92,7 +92,7 @@ export function describeCostBasis(basis: CostBasis): string {
       // Two different reasons, and the fix differs: point the agent at the LLM
       // gateway, versus wait for traffic or fix the price catalogue.
       return model
-        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in ${window}, so there is no rate to apply.`
-        : `No estimate: nothing on ${installation} in ${window} could be priced. The token counts are unaffected.`;
+        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in ${windowNoun}, so there is no rate to apply.`
+        : `No estimate: nothing on ${installation} in ${windowNoun} could be priced. The token counts are unaffected.`;
   }
 }

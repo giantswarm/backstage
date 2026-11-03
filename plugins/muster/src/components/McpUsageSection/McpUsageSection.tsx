@@ -352,7 +352,7 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="Connector tool calls on this environment"
-        description={`This covers every caller's tool calls, not only yours, over the last ${windowDays} days.`}
+        description={`This covers every caller's tool calls, not only yours, over ${lastDaysNoun(windowDays)}.`}
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

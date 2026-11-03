@@ -238,15 +238,20 @@ export function usageMonthLabel(
 }
 
 /**
- * A number of days back from today as a noun: `the last 7 days`, or
- * `the last day` for one.
+ * A number of days back from today as a label: `last 7 days`, or `last day`
+ * for one — for a stat's subtitle (`yours, last 30 days`).
  *
- * The one place a days window turns into words, so a PromQL duration (`7d`)
- * never reaches the copy: a view that queries over `${days}d` names it with
- * this.
+ * With {@link lastDaysNoun}, where every days window in the copy turns into
+ * words, so a PromQL duration (`7d`) never reaches it and a window of one day
+ * (kagent's `sessionUsage.windowDays` is configurable) never reads `1 days`.
  */
+export function lastDaysLabel(days: number): string {
+  return days === 1 ? 'last day' : `last ${days} days`;
+}
+
+/** A number of days back from today as a noun: `the last 7 days`, `the last day`. */
 export function lastDaysNoun(days: number): string {
-  return days === 1 ? 'the last day' : `the last ${days} days`;
+  return `the ${lastDaysLabel(days)}`;
 }
 
 /** The window as a noun: `the last 30 days`, `October 2026`, `November 2026 so far`. */

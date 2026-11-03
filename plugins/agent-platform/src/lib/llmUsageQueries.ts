@@ -554,10 +554,11 @@ export function todayPartialQueries(
 export const RATE_WINDOW_DAYS = 7;
 
 /**
- * {@link RATE_WINDOW_DAYS} as the PromQL duration the queries take. For the
- * queries only: copy names the window with `lastDaysNoun(RATE_WINDOW_DAYS)`.
+ * {@link RATE_WINDOW_DAYS} as the PromQL duration the queries take. Not
+ * exported, so copy cannot pick it up: it names the window with
+ * `lastDaysNoun(RATE_WINDOW_DAYS)`.
  */
-export const RATE_WINDOW = `${RATE_WINDOW_DAYS}d`;
+const RATE_WINDOW = `${RATE_WINDOW_DAYS}d`;
 
 /**
  * The two queries behind {@link useTokenRates}: cost and tokens over

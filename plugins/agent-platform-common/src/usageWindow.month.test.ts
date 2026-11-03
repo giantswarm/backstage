@@ -1,6 +1,7 @@
 import {
   DEFAULT_USAGE_WINDOW_DAYS,
   formatUsageWindow,
+  lastDaysLabel,
   lastDaysNoun,
   parseUsageWindow,
   previousUsageMonth,
@@ -110,6 +111,8 @@ describe('the window in words', () => {
     expect(lastDaysNoun(7)).toBe('the last 7 days');
     expect(lastDaysNoun(30)).toBe('the last 30 days');
     expect(lastDaysNoun(1)).toBe('the last day');
+    expect(lastDaysLabel(30)).toBe('last 30 days');
+    expect(lastDaysLabel(1)).toBe('last day');
     expect(usageWindowPhrase({ kind: 'days', days: 1 }, NOW)).toBe(
       'over the last day',
     );

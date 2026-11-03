@@ -6,6 +6,7 @@ export {
   DEFAULT_USAGE_WINDOW_DAYS,
   formatUsageWindow,
   formatUsageWindowParam,
+  lastDaysLabel,
   lastDaysNoun,
   parseUsageWindow,
   parseUsageWindowParam,

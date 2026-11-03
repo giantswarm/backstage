@@ -37,6 +37,7 @@ import {
   sumDaily,
   toByAgentRows,
 } from './helpers';
+import { lastDaysNoun } from '../../lib/usageWindow';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -57,16 +58,16 @@ const PERSONAL_COPY = {
   title: 'Your sessions',
   description: (days: number, installation: string) => (
     <>
-      Your agent sessions on <strong>{installation}</strong> over the last{' '}
-      {days} days, from kagent's stored conversations — Slack included.
+      Your agent sessions on <strong>{installation}</strong> over{' '}
+      {lastDaysNoun(days)}, from kagent's stored conversations — Slack included.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Your agent sessions over the last ${days} days, from kagent's stored conversations — Slack included.`,
+    `Your agent sessions over ${lastDaysNoun(days)}, from kagent's stored conversations — Slack included.`,
   topTools: 'Your top tools',
   topServers: 'Your top connectors',
   empty: (days: number, installation: string) =>
-    `You have no agent sessions on ${installation} in the last ${days} days.`,
+    `You have no agent sessions on ${installation} in ${lastDaysNoun(days)}.`,
   unreadable: (installation: string) =>
     `None of your sessions on ${installation} could be read.`,
 };
@@ -75,16 +76,16 @@ const SHARED_COPY = {
   title: 'Agent sessions',
   description: (days: number, installation: string) => (
     <>
-      Every user's agent sessions on <strong>{installation}</strong> over the
-      last {days} days, from kagent's stored conversations.
+      Every user's agent sessions on <strong>{installation}</strong> over{' '}
+      {lastDaysNoun(days)}, from kagent's stored conversations.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Agent sessions over the last ${days} days, from kagent's stored conversations.`,
+    `Agent sessions over ${lastDaysNoun(days)}, from kagent's stored conversations.`,
   topTools: 'Top tools',
   topServers: 'Top connectors',
   empty: (days: number, installation: string) =>
-    `There are no agent sessions on ${installation} in the last ${days} days.`,
+    `There are no agent sessions on ${installation} in ${lastDaysNoun(days)}.`,
   unreadable: (installation: string) =>
     `No sessions on ${installation} could be read.`,
 };
@@ -505,7 +506,7 @@ export function AgentUsageSection() {
       {usage && selectedDays > windowDays && (
         <Text variant="body-small" color="secondary">
           kagent computes session usage over its own {windowDays}-day window, so
-          the last {selectedDays} days show the same figures as {windowDays}.
+          {lastDaysNoun(selectedDays)} show the same figures as {windowDays}.
         </Text>
       )}
       {isUserScoped === false && (
