@@ -89,14 +89,14 @@ export class WorkspaceManagerClient {
     });
   }
 
-  /** Creates the workspace; it syncs after the save and then on its cycle. */
+  /** Creates the workspace; it syncs after the save. */
   createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
     return this.call<Workspace>(WORKSPACE_MANAGER_TOOLS.createWorkspace, {
       ...input,
     });
   }
 
-  /** Replaces the sources, and the cycle and sizing when given. */
+  /** Replaces the sources, and the sizing when given. */
   updateWorkspace(input: UpdateWorkspaceInput): Promise<Workspace> {
     return this.call<Workspace>(WORKSPACE_MANAGER_TOOLS.updateWorkspace, {
       ...input,
@@ -111,7 +111,7 @@ export class WorkspaceManagerClient {
     );
   }
 
-  /** Sync now, ahead of the cycle (after the running sync, if any). */
+  /** Sync now (after the running sync, if any). */
   syncWorkspace(workspace: string): Promise<SyncWorkspaceResult> {
     return this.call<SyncWorkspaceResult>(
       WORKSPACE_MANAGER_TOOLS.syncWorkspace,

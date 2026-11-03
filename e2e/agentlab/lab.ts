@@ -58,7 +58,7 @@ export const LAB_WORKER = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
 export const lab = {
   /** Backstage's public URL through the lab's edge. */
   baseURL:
-    process.env.AGENTLAB_BACKSTAGE_URL ?? 'https://backstage.127.0.0.1.nip.io',
+    process.env.AGENTLAB_BACKSTAGE_URL ?? 'https://portal.127.0.0.1.nip.io',
   /** The fixture password, the same for every lab user. */
   password: process.env.AGENTLAB_PASSWORD ?? 'password',
   /** Which portals the lab serves (`AGENTLAB_PORTAL_MODE`, see {@link PortalMode}). */
