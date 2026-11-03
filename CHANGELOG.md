@@ -69,6 +69,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - gs, muster, agent-platform, agent-platform-common, platform-capabilities, platform-capabilities-backend, plans and repositories-backend: helpers exported only for their tests are now private or gone (`orderInstallations`, `homeFirst`, `hostNodeDescription`, `bodyArguments`, `listArguments`, `writeArguments`, `actionsArguments`, `ACTION_STATE_WORDS`, `isCommentable`, `validateNewMcpServerForm`, `deriveSessionState`). Their tests now check the same rules through the hook, route or component that uses them. Nothing a person sees changes.
 
+- Tests: removed tests that checked nothing, or repeated a stronger test, in gs, flux, ai-chat, muster, agent-platform, gs-backend and kubernetes-react. Nothing a person sees changes. ui-react: the shared chart palette has a test of its own: light and dark have the same number of slots, and every slot is a hex colour none other shares.
+
 ## [0.138.0] - 2026-06-21
 
 ### Changed
