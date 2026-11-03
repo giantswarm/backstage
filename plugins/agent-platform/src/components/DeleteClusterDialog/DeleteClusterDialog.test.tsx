@@ -570,7 +570,7 @@ describe('DeleteClusterDialog', () => {
       passes: [FIRST_PASS, LEFTOVERS_REMOVED],
       checks: [LEFTOVERS, nothingLeftError],
     });
-    const answer = muster.callTool.getMockImplementation()!;
+    const answerOf = muster.callTool.getMockImplementation()!;
     let land: () => void = () => {};
     let applies = 0;
     muster.callTool.mockImplementation(async (name, args) => {
@@ -579,7 +579,7 @@ describe('DeleteClusterDialog', () => {
           land = resolve;
         });
       }
-      return answer(name, args);
+      return answerOf(name, args);
     });
     await renderDialog({}, false, () => {}, muster);
     await deleteCluster(user);
