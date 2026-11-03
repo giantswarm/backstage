@@ -5,9 +5,14 @@ import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { LAST_DAYS_SELECT_CLASS_NAME } from '@giantswarm/backstage-plugin-ui-react';
 import { usageRouteRef } from '../../routes';
+import {
+  previousUsageMonth,
+  usageMonthLabel,
+  usageMonthOf,
+} from '../../lib/usageWindow';
 import { UsageRouter } from './UsageRouter';
+import { USAGE_WINDOW_SELECT_CLASS_NAME } from './UsageWindowSelect';
 
 // The views are irrelevant here — this is about the tab's routing, which
 // second-level tabs it offers and the scope controls above them — and stubbing
@@ -63,6 +68,20 @@ jest.mock('../EnvironmentSelect', () => ({
   EnvironmentSelect: ({ component }: { component?: string }) => (
     <div data-testid="environment-select">environment:{component}</div>
   ),
+}));
+
+// The organizations on offer come from one Mimir query and the agents
+// roster, each tested with its hook; here they are a list, and what matters
+// is when the control shows and what it writes to the URL.
+const organizationsState: {
+  namespaces: string[];
+  lastInstallation: string | undefined;
+} = { namespaces: [], lastInstallation: undefined };
+jest.mock('../../hooks/useUsageOrganizations', () => ({
+  useUsageOrganizations: (installation: string | undefined) => {
+    organizationsState.lastInstallation = installation;
+    return { namespaces: organizationsState.namespaces, isLoading: false };
+  },
 }));
 
 // Pass-throughs: the providers' own reads are not what this file is about.
@@ -122,12 +141,19 @@ async function chooseWindow(
 
 const MCP_SECTION = [<div key="mcp">contributed section</div>];
 
+/** The Organization select's trigger, named by its label. */
+function organization() {
+  return screen.queryByRole('button', { name: /Organization/ });
+}
+
 describe('UsageRouter', () => {
   beforeEach(() => {
     scopeState.isSingleInstallation = false;
     scopeState.isLoading = false;
     usageInstallationState.installation = 'alpha';
     sessionUsageState.usage = { windowDays: 30 };
+    organizationsState.namespaces = [];
+    organizationsState.lastInstallation = undefined;
   });
 
   it('renders Overview at the bare path, without a redirect', async () => {
@@ -264,6 +290,98 @@ describe('UsageRouter', () => {
       );
     });
 
+    it('offers the Organization control on the gateway views from two organizations on, and sets it in the URL', async () => {
+      organizationsState.namespaces = ['kagent', 'org-acme'];
+      const user = userEvent.setup();
+      renderTab('/usage/cost?window=7d');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      expect(organization()).toHaveTextContent('All organizations');
+      expect(organizationsState.lastInstallation).toBe('alpha');
+
+      await user.click(organization()!);
+      await user.click(screen.getByRole('option', { name: 'acme' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          '/usage/cost?window=7d&organization=org-acme',
+        );
+      });
+      expect(organization()).toHaveTextContent('acme');
+
+      // Every organization again: the parameter goes, the window stays.
+      await user.click(organization()!);
+      await user.click(
+        screen.getByRole('option', { name: 'All organizations' }),
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          /^\/usage\/cost\?window=7d$/,
+        );
+      });
+    });
+
+    it('offers no Organization control with one organization: nothing to choose', async () => {
+      organizationsState.namespaces = ['kagent'];
+      renderTab('/usage');
+
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
+      expect(organization()).toBeNull();
+    });
+
+    it('keeps a deep-linked organization as the selection even with nothing else to offer', async () => {
+      renderTab('/usage/cost?organization=org-deep');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      expect(organization()).toHaveTextContent('deep');
+    });
+
+    it('offers no Organization control on Your sessions, and starts no query for it there', async () => {
+      // The reader's own slice has no organization to narrow by, and the
+      // Connectors view is muster's: only the gateway views ask.
+      organizationsState.namespaces = ['kagent', 'org-acme'];
+      renderTab('/usage/your-sessions');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      expect(organization()).toBeNull();
+      expect(organizationsState.lastInstallation).toBeUndefined();
+    });
+
+    it('offers the calendar months after the days, and sets one in the URL', async () => {
+      const month = previousUsageMonth(usageMonthOf(Date.now()));
+      const user = userEvent.setup();
+      renderTab('/usage/cost');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      await chooseWindow(user, usageMonthLabel(month));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          `/usage/cost?window=${month}`,
+        );
+      });
+      expect(timeRange()).toHaveTextContent(usageMonthLabel(month));
+    });
+
+    it('disables the months on Your sessions and Connectors, saying why, and reads a deep-linked month there as the default', async () => {
+      const month = previousUsageMonth(usageMonthOf(Date.now()));
+      const user = userEvent.setup();
+      renderTab(`/usage/your-sessions?window=${month}`);
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      // The view reads days only, so the control shows the default, not the
+      // month the link named.
+      expect(timeRange()).toHaveTextContent('Last 30 days');
+      await user.click(timeRange());
+      const option = screen.getByRole('option', {
+        name: usageMonthLabel(month),
+      });
+      expect(option).toHaveAttribute('aria-disabled', 'true');
+      expect(option).toHaveAccessibleDescription(
+        'kagent reports session usage over days back from today only',
+      );
+    });
+
     it('offers the time window on the gateway views and sets it in the URL', async () => {
       const user = userEvent.setup();
       renderTab('/usage');
@@ -388,7 +506,7 @@ describe('UsageRouter', () => {
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
       // The select, by the root class it owns.
       const select = timeRange().closest<HTMLElement>(
-        `.${LAST_DAYS_SELECT_CLASS_NAME}`,
+        `.${USAGE_WINDOW_SELECT_CLASS_NAME}`,
       )!;
       expect(select).toHaveTextContent(/^Time range/);
       const row = select.parentElement!;

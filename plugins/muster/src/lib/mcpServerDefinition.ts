@@ -729,19 +729,6 @@ export function sigv4Advisories(state: NewMcpServerFormState): string[] {
   return advisories;
 }
 
-/**
- * Human-readable validation problems, in form order. Empty when the state is
- * valid. Mirrors the CRD's structural rules so nothing fails later at apply
- * time; the auth mutual exclusions are handled by {@link authFieldAvailability}
- * instead, since the wizard's exclusive auth modes make them unreachable rather
- * than merely invalid.
- */
-export function validateNewMcpServerForm(
-  state: NewMcpServerFormState,
-): string[] {
-  return [...validateMcpServerDetails(state), ...validateMcpServerAuth(state)];
-}
-
 export type FieldAvailability = {
   available: boolean;
   /** Why the field is unavailable. Undefined when it is available. */

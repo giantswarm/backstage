@@ -27,6 +27,13 @@ describe('counterIncrease', () => {
     expect(counterIncrease('c', '600s', '1d')).toContain('offset 87000s');
   });
 
+  it('pins the window to a time with the @ modifier, offsets relative to it', () => {
+    // A past calendar month: 31 days ending at the next month's midnight.
+    expect(counterIncrease('c', '31d', undefined, 1761955200)).toBe(
+      '(increase(c[31d] @ 1761955200) or label_replace(min_over_time(c[31d] @ 1761955200) unless last_over_time(c[1h] offset 31d @ 1761955200), "first_sample", "true", "__name__", ".*"))',
+    );
+  });
+
   it('rejects a duration it cannot add up', () => {
     expect(() => counterIncrease('c', '1h30m')).toThrow(
       'Not a simple PromQL duration',

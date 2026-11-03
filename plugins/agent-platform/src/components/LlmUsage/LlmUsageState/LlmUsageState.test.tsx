@@ -17,7 +17,7 @@ describe('LlmUsageState', () => {
 
     expect(
       screen.getByText(
-        /No model calls went through alpha's LLM gateway in the last 7 days\./,
+        /No model calls went through alpha's LLM gateway over the last 7 days\./,
       ),
     ).toBeInTheDocument();
   });
