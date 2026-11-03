@@ -4,14 +4,14 @@
  * workspace-manager manages workspaces: the sources an agent Session works on
  * (one owner on one provider instance each, selected by name, language and
  * topics), synced into bare mirrors on the workspace's one read-write-many
- * volume, with a directory per Session on it. It checks on
- * every call that the caller is a member of the workspace's Organization;
- * `authorize_workspace` checks, with the provider App token muster attaches
- * for the person, that they read every repository before a Session starts. The
- * person grants that App in muster, never in the manager. It speaks
- * MCP only; the portal reaches it as the signed-in person through the
- * installation's muster, where its tools appear as `x_workspace-manager_<tool>`.
- * The shapes here mirror `internal/api` of giantswarm/workspace-manager.
+ * volume, with a directory per Session on it. It checks on every call that the
+ * caller is a member of the workspace's Organization; `authorize_workspace`
+ * checks, with the provider App token muster attaches for the person, that
+ * they read every repository before a Session starts. The person grants that
+ * App in muster, never in the manager. It speaks MCP only; the portal reaches
+ * it as the signed-in person through the installation's muster, where its
+ * tools appear as `x_workspace-manager_<tool>`. The shapes here mirror
+ * `internal/api` of giantswarm/workspace-manager.
  */
 
 import { looksNotConnected } from './agentManager';
@@ -77,15 +77,20 @@ export type WorkspaceSizing = {
   minimum?: string;
 };
 
-/** What started a sync cycle. */
+/**
+ * What started a sync cycle. `cleanup`: a cleanup-only cycle at a Session
+ * directory's cleanup date. `schedule`: the removed sync schedule; no cycle
+ * starts with it any more, but a last sync recorded before workspace-manager
+ * dropped the schedule may still carry it.
+ */
 export type SyncTrigger =
   | 'change'
   | 'request'
   | 'retry'
-  /** Cleanup only: a Session directory reached its cleanup date. */
   | 'cleanup'
   | 'deletion'
-  | 'sessionDeleted';
+  | 'sessionDeleted'
+  | 'schedule';
 
 /** The last sync cycle's outcome. */
 export type LastSync = {

@@ -58,6 +58,7 @@ describe('syncTriggerLabel', () => {
     expect(syncTriggerLabel('cleanup')).toBe(
       'A session directory due for cleanup',
     );
+    expect(syncTriggerLabel('schedule')).toBe('The old nightly schedule');
     expect(syncTriggerLabel(undefined)).toBeUndefined();
   });
 });

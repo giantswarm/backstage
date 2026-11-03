@@ -16,7 +16,9 @@ import type {
 
 /**
  * What started a sync cycle, as the page says it. A Session's start past the
- * refresh threshold and Synchronize both reach the manager as a request.
+ * refresh threshold and Synchronize both reach the manager as a request; the
+ * manager records no schedule any more, but a cycle that ran at the upgrade
+ * may still name it.
  */
 export function syncTriggerLabel(
   trigger: SyncTrigger | undefined,
@@ -34,6 +36,8 @@ export function syncTriggerLabel(
       return 'A deleted session’s directory';
     case 'deletion':
       return 'The workspace’s deletion';
+    case 'schedule':
+      return 'The old nightly schedule';
     default:
       return undefined;
   }
