@@ -72,9 +72,9 @@ function dryRun(
 /** Delete: the release, its source and its values go; the uninstall starts. */
 const FIRST_PASS = pass(
   [
-    object('HelmRelease', 'demo1', 'deleted'),
-    object('OCIRepository', 'demo1', 'deleted'),
-    object('ConfigMap', 'demo1-cluster-values', 'deleted'),
+    object('HelmRelease', 'demo1', 'delete'),
+    object('OCIRepository', 'demo1', 'delete'),
+    object('ConfigMap', 'demo1-cluster-values', 'delete'),
   ],
   { nextStep: UNINSTALL_STEP },
 );
@@ -95,15 +95,15 @@ const LEFTOVERS = dryRun([
 ]);
 
 const LEFTOVERS_REMOVED = pass([
-  object('HelmRelease', 'demo1-observability', 'deleted'),
-  object('HelmRelease', 'demo1-llm-d', 'deleted'),
+  object('HelmRelease', 'demo1-observability', 'delete'),
+  object('HelmRelease', 'demo1-llm-d', 'delete'),
 ]);
 
 /** The leftovers deleted, one held by helm-controller's finalizer. */
 const ORPHAN_LEFT = pass(
   [
-    object('HelmRelease', 'demo1-observability', 'deleted'),
-    object('HelmRelease', 'demo1-llm-d', 'deleted'),
+    object('HelmRelease', 'demo1-observability', 'delete'),
+    object('HelmRelease', 'demo1-llm-d', 'delete'),
   ],
   { warnings: [ORPHAN_WARNING], nextStep: ORPHANS_STEP },
 );
@@ -599,7 +599,7 @@ describe('DeleteClusterDialog', () => {
     await renderDialog(
       {
         passes: [
-          pass([object('HelmRelease', 'demo1', 'updated')], {
+          pass([object('HelmRelease', 'demo1', 'update')], {
             nextStep: UNINSTALL_STEP,
           }),
         ],
@@ -610,7 +610,7 @@ describe('DeleteClusterDialog', () => {
 
     const first = await screen.findByTestId('delete-pass');
     expect(first).toHaveTextContent('Changed as you: 1 object');
-    expect(first).toHaveTextContent('HelmRelease org-acme/demo1: updated');
+    expect(first).toHaveTextContent('HelmRelease org-acme/demo1: update');
   });
 
   it('reads nothing left after Finish removal as the removal complete', async () => {

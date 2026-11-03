@@ -38,7 +38,7 @@ export type PassSummary = {
   removed: ObjectAction[];
   /** Deleted again: an earlier pass's delete is still running (the object is terminating). */
   stillGoing: ObjectAction[];
-  /** Every other object the answer lists, with its action (`updated`, `unchanged`, `pending`, …). */
+  /** Every other object the answer lists, with its action (`update`, `unchanged`, `pending`, …). */
   others: ObjectAction[];
   /** Of `others`, those the pass changed: neither `unchanged` nor `pending`. */
   changed: ObjectAction[];
@@ -53,7 +53,13 @@ export type NextPass =
   /** Nothing new to remove and no step named: what is left is not cluster-manager's to remove. */
   | { state: 'stuck'; warnings: string[] };
 
-const DELETED = 'deleted';
+/**
+ * A delete a pass made: cluster-manager answers `delete` (the verb of its
+ * applied actions: `create`, `update`, `delete`); `deleted` is kept for the
+ * past-tense form the type also allows.
+ */
+const DELETES = new Set(['delete', 'deleted']);
+const isDelete = (object: ObjectAction) => DELETES.has(object.action);
 const UNCHANGED = 'unchanged';
 const WOULD = 'would-';
 const WOULD_DELETE = `${WOULD}delete`;
@@ -88,18 +94,14 @@ export function objectsAre(objects: readonly unknown[]): string {
 /** The objects the passes deleted, by kind, namespace and name. */
 function removedKeys(passes: readonly RemovalPass[]): Set<string> {
   return new Set(
-    passes.flatMap(pass =>
-      pass.result.objects
-        .filter(object => object.action === DELETED)
-        .map(keyOf),
-    ),
+    passes.flatMap(pass => pass.result.objects.filter(isDelete).map(keyOf)),
   );
 }
 
 /**
  * What the pass at `index` removed: an object an earlier pass deleted already
  * is still going (cluster-manager deletes a terminating object again and
- * answers `deleted`), not removed anew.
+ * answers `delete`), not removed anew.
  */
 export function summarizePass(
   passes: readonly RemovalPass[],
@@ -107,8 +109,8 @@ export function summarizePass(
 ): PassSummary {
   const before = removedKeys(passes.slice(0, index));
   const { objects } = passes[index].result;
-  const deleted = objects.filter(object => object.action === DELETED);
-  const others = objects.filter(object => object.action !== DELETED);
+  const deleted = objects.filter(isDelete);
+  const others = objects.filter(object => !isDelete(object));
   return {
     removed: deleted.filter(object => !before.has(keyOf(object))),
     stillGoing: deleted.filter(object => before.has(keyOf(object))),

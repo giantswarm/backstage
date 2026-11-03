@@ -43,23 +43,36 @@ function passOf(
 describe('summarizePass', () => {
   it('tells objects removed anew from those an earlier pass deleted already', () => {
     const passes = [
-      passOf([object('demo1', 'deleted')]),
-      passOf([object('demo1', 'deleted'), object('demo1-apps', 'deleted')]),
+      passOf([object('demo1', 'delete')]),
+      passOf([object('demo1', 'delete'), object('demo1-apps', 'delete')]),
     ];
 
     expect(summarizePass(passes, 1)).toEqual({
-      removed: [object('demo1-apps', 'deleted')],
-      stillGoing: [object('demo1', 'deleted')],
+      removed: [object('demo1-apps', 'delete')],
+      stillGoing: [object('demo1', 'delete')],
       others: [],
       changed: [],
     });
     expect(summarizePass(passes, 0).removed).toHaveLength(1);
   });
 
+  it('counts the past-tense deleted as a delete too', () => {
+    const passes = [
+      passOf([object('demo1', 'delete')]),
+      passOf([object('demo1', 'deleted')]),
+    ];
+
+    expect(summarizePass(passes, 1)).toMatchObject({
+      removed: [],
+      stillGoing: [object('demo1', 'deleted')],
+      others: [],
+    });
+  });
+
   it('keeps every other action, and tells what changed from what did not', () => {
     const passes = [
       passOf([
-        object('a', 'updated'),
+        object('a', 'update'),
         object('b', 'unchanged'),
         object('c', 'pending'),
       ]),
@@ -73,10 +86,10 @@ describe('summarizePass', () => {
 
   it('tells objects of the same kind and name in other API groups apart', () => {
     const passes = [
-      passOf([{ ...object('demo1', 'deleted'), apiVersion: 'a.io/v1' }]),
+      passOf([{ ...object('demo1', 'delete'), apiVersion: 'a.io/v1' }]),
       passOf([
-        { ...object('demo1', 'deleted'), apiVersion: 'a.io/v2' },
-        { ...object('demo1', 'deleted'), apiVersion: 'b.io/v1' },
+        { ...object('demo1', 'delete'), apiVersion: 'a.io/v2' },
+        { ...object('demo1', 'delete'), apiVersion: 'b.io/v1' },
       ]),
     ];
 
@@ -88,7 +101,7 @@ describe('summarizePass', () => {
 
 describe('judgeNextPass', () => {
   const passes = [
-    passOf([object('demo1', 'deleted')], {
+    passOf([object('demo1', 'delete')], {
       nextStep: 'wait for the uninstall',
     }),
   ];
@@ -121,7 +134,7 @@ describe('judgeNextPass', () => {
     ).toEqual({ state: 'waiting', reason: 'wait for the uninstall' });
     expect(
       judgeNextPass(result([object('demo1', 'would-delete')]), [
-        passOf([object('demo1', 'deleted')]),
+        passOf([object('demo1', 'delete')]),
       ]),
     ).toEqual({
       state: 'waiting',
