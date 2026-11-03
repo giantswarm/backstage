@@ -1,4 +1,4 @@
-import { formatDuration } from '../../lib/formatDuration';
+import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { toolDisplay } from '../../lib/workflowDisplay';
 import {
@@ -46,7 +46,7 @@ export function runBadgeLabel(overlay: StepRunOverlay): string {
       const parts = ['✓'];
       if (overlay.runs > 1) parts.push(`×${overlay.runs}`);
       if (overlay.durationMs !== undefined) {
-        parts.push(formatDuration(overlay.durationMs));
+        parts.push(formatMilliseconds(overlay.durationMs));
       }
       return parts.join(' ');
     }
