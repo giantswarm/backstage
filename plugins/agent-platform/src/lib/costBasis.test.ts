@@ -4,18 +4,31 @@ const base: CostBasis = {
   tier: 'model',
   model: 'claude-opus-5',
   installation: 'gazelle',
-  window: '7d',
+  windowDays: 7,
   inputTokens: 63_402,
   outputTokens: 481,
 };
 
 describe('describeCostBasis', () => {
+  it('names the window in words, never as a PromQL duration', () => {
+    // `7d` leaked into the copy as "over the last 7d" while every other
+    // window on the screen read "the last 30 days".
+    for (const tier of ['model', 'agent', 'installation', 'none'] as const) {
+      const text = describeCostBasis({ ...base, tier });
+      expect(text).toContain('the last 7 days');
+      expect(text).not.toMatch(/\b7d\b/);
+    }
+    expect(describeCostBasis({ ...base, windowDays: 1 })).toContain(
+      'over the last day,',
+    );
+  });
+
   it('names the model when the rate is the model’s own', () => {
     const text = describeCostBasis(base);
 
     expect(text).toContain('claude-opus-5');
     expect(text).toContain('gazelle');
-    expect(text).toContain('7d');
+    expect(text).toContain('over the last 7 days,');
     expect(text).toContain('63.4k input and 481 output tokens');
   });
 

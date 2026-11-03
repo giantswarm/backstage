@@ -237,6 +237,18 @@ export function usageMonthLabel(
   return usageMonthBounds(month, now).current ? `${name} so far` : name;
 }
 
+/**
+ * A number of days back from today as a noun: `the last 7 days`, or
+ * `the last day` for one.
+ *
+ * The one place a days window turns into words, so a PromQL duration (`7d`)
+ * never reaches the copy: a view that queries over `${days}d` names it with
+ * this.
+ */
+export function lastDaysNoun(days: number): string {
+  return days === 1 ? 'the last day' : `the last ${days} days`;
+}
+
 /** The window as a noun: `the last 30 days`, `October 2026`, `November 2026 so far`. */
 export function usageWindowNoun(
   window: UsageWindow,
@@ -244,7 +256,7 @@ export function usageWindowNoun(
 ): string {
   return window.kind === 'month'
     ? usageMonthLabel(window.month, now)
-    : `the last ${window.days} days`;
+    : lastDaysNoun(window.days);
 }
 
 /** The window in a sentence: `over the last 30 days`, `in October 2026`. */
@@ -254,5 +266,5 @@ export function usageWindowPhrase(
 ): string {
   return window.kind === 'month'
     ? `in ${usageMonthLabel(window.month, now)}`
-    : `over the last ${window.days} days`;
+    : `over ${lastDaysNoun(window.days)}`;
 }

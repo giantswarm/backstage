@@ -544,14 +544,20 @@ export function todayPartialQueries(
 }
 
 /**
- * The window the $/token rate is averaged over, for the session detail strip
+ * The window the $/token rate is averaged over, in days, for the session detail strip
  * and the sessions tab.
  *
  * Shorter than the usage pages' window on purpose: a rate is applied to individual
  * sessions, so it should reflect the model mix in use now rather than one a
  * month of history has flattened.
  */
-export const RATE_WINDOW = '7d';
+export const RATE_WINDOW_DAYS = 7;
+
+/**
+ * {@link RATE_WINDOW_DAYS} as the PromQL duration the queries take. For the
+ * queries only: copy names the window with `lastDaysNoun(RATE_WINDOW_DAYS)`.
+ */
+export const RATE_WINDOW = `${RATE_WINDOW_DAYS}d`;
 
 /**
  * The two queries behind {@link useTokenRates}: cost and tokens over

@@ -179,7 +179,7 @@ export function AgentUsageSection() {
   // apart everywhere else.
   const {
     rates,
-    window: rateWindow,
+    windowDays: rateWindowDays,
     isLoading: isRateLoading,
     tier: rateTier,
   } = useTokenRates(installation);
@@ -390,7 +390,7 @@ export function AgentUsageSection() {
               tier: rateTier,
               model: undefined,
               installation: installation ?? '',
-              window: rateWindow,
+              windowDays: rateWindowDays,
               inputTokens: stripTotals.inputTokens,
               outputTokens: stripTotals.outputTokens,
               // The daily buckets carry no reported total, so a narrowed window
@@ -426,7 +426,7 @@ export function AgentUsageSection() {
         <ByAgentTable
           rows={byAgentRows}
           rates={rates}
-          rateWindow={rateWindow}
+          rateWindowDays={rateWindowDays}
           installation={installation}
           isRateLoading={isRateLoading}
           hasRate={hasRate}
