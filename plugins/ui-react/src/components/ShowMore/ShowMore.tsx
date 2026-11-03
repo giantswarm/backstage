@@ -20,7 +20,8 @@ export const SEARCH_MIN = 3;
 /**
  * Whether a list of `count` entities shows its search and filters: from
  * {@link SEARCH_MIN} on, and always while a search or filter is in force, so
- * whatever narrowed the list can still be undone.
+ * whatever narrowed the list can still be undone. Every list passes
+ * `narrowed`; a dropdown's type-ahead is `searchableIf`.
  */
 export function isSearchableList(count: number, narrowed = false): boolean {
   return narrowed || count >= SEARCH_MIN;

@@ -21,7 +21,7 @@ import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import {
   ComposerFrame,
   matchesQuery,
-  isSearchableList,
+  searchableIf,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -589,7 +589,7 @@ export function NewSessionComposer({
   // installation too (`agentOptionLabel`): the group heading is only visible
   // in the open list, and the selected value must still tell an "SRE Agent"
   // on one installation from its namesake on another.
-  const isSearchable = searchable ?? isSearchableList(listed.length);
+  const isSearchable = searchable ?? searchableIf(listed);
   const isSearching = searchText.trim() !== '';
   const installations = useMemo(
     () => [...new Set(listed.map(agent => agent.installation))],
