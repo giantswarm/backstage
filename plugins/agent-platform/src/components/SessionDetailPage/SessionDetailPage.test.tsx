@@ -4041,7 +4041,7 @@ describe('SessionDetailPage', () => {
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
       // The chip shows the name alone; its accessible name keeps the rest.
       const chip = screen.getByRole('button', {
-        name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
+        name: 'Workspace: ws-docs · Synchronized 4 h ago · 1 repository fetched',
       });
       expect(chip).toHaveTextContent(/^ws-docs$/);
       await userEvent.click(chip);
@@ -4087,7 +4087,7 @@ describe('SessionDetailPage', () => {
       await user.hover(document.body);
       await user.hover(chip);
       expect(await screen.findByRole('tooltip')).toHaveTextContent(
-        'synchronized 4 h ago · 1 fetched',
+        /^Synchronized 4 h ago · 1 repository fetched$/,
       );
 
       await user.click(chip);
@@ -4101,14 +4101,13 @@ describe('SessionDetailPage', () => {
       await renderWithWorkspaces();
       const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
 
-      chip.blur();
-      // Tab to the chip; the bound keeps a lost chip from looping forever.
-      for (let i = 0; i < 50 && document.activeElement !== chip; i++) {
-        await user.tab();
-      }
-      expect(chip).toHaveFocus();
+      // A key press puts react-aria in keyboard modality, so the focus that
+      // follows is a visible one, whatever comes before the chip in the
+      // header.
+      await user.keyboard('{Tab}');
+      act(() => chip.focus());
       expect(await screen.findByRole('tooltip')).toHaveTextContent(
-        'synchronized 4 h ago · 1 fetched',
+        /^Synchronized 4 h ago · 1 repository fetched$/,
       );
 
       await user.keyboard('{Enter}');
@@ -4120,13 +4119,33 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     });
 
+    it('leads the tooltip with the full name when the chip cuts it off', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+      // jsdom lays nothing out: the label reports itself wider than its box.
+      const label = within(chip).getByText('ws-docs');
+      Object.defineProperty(label, 'scrollWidth', { value: 400 });
+      Object.defineProperty(label, 'clientWidth', { value: 320 });
+
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      await waitFor(() =>
+        expect(tooltip).toHaveTextContent(
+          /^ws-docsSynchronized 4 h ago · 1 repository fetched$/,
+        ),
+      );
+    });
+
     it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
       withWorkspace();
       mockWorkspaceName = { status: 'unnamed' };
       await renderWithWorkspaces();
 
       const chip = screen.getByRole('button', {
-        name: 'Workspace: Workspace · 1 fetched',
+        name: 'Workspace: Workspace · 1 repository fetched',
       });
       expect(chip).toHaveTextContent(/^Workspace$/);
       await userEvent.click(chip);

@@ -3,6 +3,8 @@
  * workspace the session works in.
  */
 
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+
 import type { SessionWorkspaceName } from '../hooks/useWorkspaceNames';
 import { shortAge } from './shortAge';
 
@@ -39,9 +41,12 @@ export function syncedAgo(time: string | undefined, now = new Date()): string {
   return age === 'now' ? 'synchronized now' : `synchronized ${age} ago`;
 }
 
-/** "1 fetched": the repositories fetched fresh before the first turn. */
+/**
+ * "1 repository fetched": the repositories fetched fresh before the first
+ * turn.
+ */
 export function fetchedLabel(fetched: number): string {
-  return `${fetched} fetched`;
+  return `${countNoun(fetched, 'repository', 'repositories')} fetched`;
 }
 
 /** The header chip's words: its visible label and what its tooltip adds. */
@@ -49,8 +54,9 @@ export type WorkspaceChipText = {
   /** The workspace's name, or "Workspace" for the unnamed form. */
   label: string;
   /**
-   * Its last sync and how many repositories were fetched fresh at the start.
-   * The unnamed form has no sync to tell.
+   * Its last sync and how many repositories were fetched fresh at the start,
+   * a metadata line that stands alone in the tooltip, so it starts with a
+   * capital. The unnamed form has no sync to tell.
    */
   details: string;
 };
@@ -65,10 +71,13 @@ export function workspaceChipText(
   now = new Date(),
 ): WorkspaceChipText {
   if (name.status === 'named') {
+    // Capitalised here, not in `syncedAgo`, which the drawer and the
+    // composer's picker use mid-line.
+    const synced = syncedAgo(name.workspace.lastSync?.time, now);
     return {
       label: name.workspace.name,
       details: [
-        syncedAgo(name.workspace.lastSync?.time, now),
+        synced.charAt(0).toUpperCase() + synced.slice(1),
         fetchedLabel(fetched),
       ].join(' · '),
     };

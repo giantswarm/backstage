@@ -22,24 +22,24 @@ describe('workspaceChipText', () => {
       workspaceChipText({ status: 'named', workspace: docs }, 1, now),
     ).toEqual({
       label: 'ws-docs',
-      details: 'synchronized 4 h ago · 1 fetched',
+      details: 'Synchronized 4 h ago · 1 repository fetched',
     });
   });
 
-  it('says a workspace that never synchronized so', () => {
+  it('says a workspace that never synchronized so, and counts the repositories in the plural', () => {
     expect(
       workspaceChipText(
         { status: 'named', workspace: { ...docs, lastSync: undefined } },
         0,
         now,
       ).details,
-    ).toBe('not synchronized yet · 0 fetched');
+    ).toBe('Not synchronized yet · 0 repositories fetched');
   });
 
   it('labels an unnamed workspace "Workspace", with only the fetched count to tell', () => {
     expect(workspaceChipText({ status: 'unnamed' }, 2, now)).toEqual({
       label: 'Workspace',
-      details: '2 fetched',
+      details: '2 repositories fetched',
     });
   });
 });
