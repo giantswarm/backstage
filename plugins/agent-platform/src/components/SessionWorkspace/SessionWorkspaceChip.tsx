@@ -11,6 +11,8 @@ import {
   Flex,
   Skeleton,
   Text,
+  Tooltip,
+  TooltipTrigger,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import type { KagentSessionWorkspace } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -22,7 +24,7 @@ import type { SessionWorkspaceName } from '../../hooks/useWorkspaceNames';
 import {
   syncedAgo,
   UNNAMED_WORKSPACE_REASON,
-  workspaceChipLabel,
+  workspaceChipText,
 } from '../../lib/sessionWorkspace';
 import type { Workspace } from '../../lib/workspaceManager';
 import { workspaceDetailRouteRef } from '../../routes';
@@ -59,6 +61,10 @@ const useStyles = makeStyles({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  // The same measure as the shell's other hints (`InfoHint`).
+  tooltip: {
+    maxWidth: 280,
+  },
   list: {
     margin: 0,
     paddingLeft: 0,
@@ -79,8 +85,10 @@ export type SessionWorkspaceChipProps = {
 
 /**
  * The session header's workspace: a chip with the workspace's name, its last
- * sync and how many repositories were fetched fresh at the start, opening a
- * drawer with the rest. A workspace the person cannot see any more shows
+ * sync and how many repositories were fetched fresh at the start in a tooltip
+ * on hover and keyboard focus, opening a drawer with the rest. The chip's
+ * accessible name carries all three, so the tooltip hides nothing from a
+ * screen reader. A workspace the person cannot see any more shows
  * unnamed, never an error: the session works either way.
  */
 export function SessionWorkspaceChip({
@@ -93,18 +101,24 @@ export function SessionWorkspaceChip({
   if (name.status === 'loading') {
     return <Skeleton width={160} height={24} />;
   }
-  const label = workspaceChipLabel(name, workspace.fetched.length);
+  const { label, details } = workspaceChipText(name, workspace.fetched.length);
   return (
     <DialogTrigger>
-      <Button
-        size="small"
-        variant="secondary"
-        className={classes.chip}
-        aria-label={`Workspace: ${label}`}
-        aria-haspopup="dialog"
-      >
-        <span className={classes.chipLabel}>{label}</span>
-      </Button>
+      {/* Inside the dialog's trigger, so its press still reaches the button:
+          react-aria's tooltip trigger only adds hover and focus handling, and
+          closes the tooltip on a press. */}
+      <TooltipTrigger delay={200}>
+        <Button
+          size="small"
+          variant="secondary"
+          className={classes.chip}
+          aria-label={`Workspace: ${label} · ${details}`}
+          aria-haspopup="dialog"
+        >
+          <span className={classes.chipLabel}>{label}</span>
+        </Button>
+        <Tooltip className={classes.tooltip}>{details}</Tooltip>
+      </TooltipTrigger>
       <Dialog width={420} className={classes.drawer}>
         <DialogHeader>
           {name.status === 'named'

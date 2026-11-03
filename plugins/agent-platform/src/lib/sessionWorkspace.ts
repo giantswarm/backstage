@@ -44,22 +44,34 @@ export function fetchedLabel(fetched: number): string {
   return `${fetched} fetched`;
 }
 
+/** The header chip's words: its visible label and what its tooltip adds. */
+export type WorkspaceChipText = {
+  /** The workspace's name, or "Workspace" for the unnamed form. */
+  label: string;
+  /**
+   * Its last sync and how many repositories were fetched fresh at the start.
+   * The unnamed form has no sync to tell.
+   */
+  details: string;
+};
+
 /**
- * The header chip's words: the workspace's name, its last sync and how many
- * repositories were fetched fresh at the start. The unnamed form has no sync
- * to tell.
+ * The header chip's words: the workspace's name on the chip, its last sync
+ * and the repositories fetched fresh at the start in its tooltip.
  */
-export function workspaceChipLabel(
+export function workspaceChipText(
   name: SessionWorkspaceName,
   fetched: number,
   now = new Date(),
-): string {
+): WorkspaceChipText {
   if (name.status === 'named') {
-    return [
-      name.workspace.name,
-      syncedAgo(name.workspace.lastSync?.time, now),
-      fetchedLabel(fetched),
-    ].join(' · ');
+    return {
+      label: name.workspace.name,
+      details: [
+        syncedAgo(name.workspace.lastSync?.time, now),
+        fetchedLabel(fetched),
+      ].join(' · '),
+    };
   }
-  return ['Workspace', fetchedLabel(fetched)].join(' · ');
+  return { label: 'Workspace', details: fetchedLabel(fetched) };
 }

@@ -4034,14 +4034,16 @@ describe('SessionDetailPage', () => {
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
     });
 
-    it('shows the workspace’s name, last sync and fetched repositories as a chip opening a drawer', async () => {
+    it('shows the workspace’s name as a chip opening a drawer, its last sync and fetched repositories in its name and tooltip', async () => {
       withWorkspace();
       await renderWithWorkspaces();
 
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      // The chip shows the name alone; its accessible name keeps the rest.
       const chip = screen.getByRole('button', {
         name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
       });
+      expect(chip).toHaveTextContent(/^ws-docs$/);
       await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
@@ -4074,16 +4076,60 @@ describe('SessionDetailPage', () => {
       expect(within(drawer).getByText('github')).toBeVisible();
     });
 
+    it('tells the workspace’s last sync and fetched repositories in a tooltip on hover, gone once the drawer opens', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // react-aria opens a tooltip on hover only once it has seen the pointer
+      // move over the page.
+      await user.hover(document.body);
+      await user.hover(chip);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'synchronized 4 h ago · 1 fetched',
+      );
+
+      await user.click(chip);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('tells the same on keyboard focus, and Enter still opens the drawer', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      chip.blur();
+      // Tab to the chip; the bound keeps a lost chip from looping forever.
+      for (let i = 0; i < 50 && document.activeElement !== chip; i++) {
+        await user.tab();
+      }
+      expect(chip).toHaveFocus();
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'synchronized 4 h ago · 1 fetched',
+      );
+
+      await user.keyboard('{Enter}');
+      expect(
+        within(screen.getByRole('dialog')).getByRole('heading', {
+          name: 'Workspace: ws-docs',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
     it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
       withWorkspace();
       mockWorkspaceName = { status: 'unnamed' };
       await renderWithWorkspaces();
 
-      await userEvent.click(
-        screen.getByRole('button', {
-          name: 'Workspace: Workspace · 1 fetched',
-        }),
-      );
+      const chip = screen.getByRole('button', {
+        name: 'Workspace: Workspace · 1 fetched',
+      });
+      expect(chip).toHaveTextContent(/^Workspace$/);
+      await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
       expect(
