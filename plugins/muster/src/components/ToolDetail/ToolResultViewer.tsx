@@ -26,7 +26,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   formatBytes,
-  formatSeconds,
+  formatMilliseconds,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { detectTable } from '../../lib/resultShape';
 
@@ -215,7 +215,7 @@ export function ToolResultViewer({
               color="secondary"
               style={{ fontVariantNumeric: 'tabular-nums' }}
             >
-              {formatSeconds(durationMs / 1000)}
+              {formatMilliseconds(durationMs)}
             </Text>
           )}
           <Text

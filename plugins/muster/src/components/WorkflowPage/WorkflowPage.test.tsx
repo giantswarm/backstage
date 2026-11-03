@@ -1024,7 +1024,7 @@ describe('WorkflowPage', () => {
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Failed');
     expect(lastRun).toHaveTextContent('apply refused');
-    expect(lastRun).toHaveTextContent('took 2.0 s');
+    expect(lastRun).toHaveTextContent('took 2 s');
   });
 
   it('lists the plain facts on Details, then the CR’s bookkeeping in a Technical details fold-out', async () => {

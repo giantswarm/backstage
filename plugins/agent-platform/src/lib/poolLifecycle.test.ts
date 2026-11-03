@@ -367,7 +367,7 @@ describe('stepTiming', () => {
         { state: 'done', since: T0, finishedAt: '2026-09-17T11:33:25Z' },
         now,
       ),
-    ).toBe('took 3.0 s');
+    ).toBe('took 3 s');
     expect(stepTiming({ state: 'done', since: T1, finishedAt: T1 }, now)).toBe(
       'done 2 min 24 s ago',
     );

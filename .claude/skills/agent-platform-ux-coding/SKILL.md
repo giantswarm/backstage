@@ -243,8 +243,8 @@ them and never invent a palette.
 - Numbers, durations and bytes: `formatCount`, `formatSeconds` and
   `formatBytes` in `agent-platform-common/src/formatNumbers.ts`. Relative dates:
   `getRelativeDate` (`ui-react`). `formatSeconds` is the one duration
-  format — "420 ms", "1.2 s", "18 s", "2 min 30 s", "1 h 5 min"; pass
-  milliseconds as `ms / 1000`. Never print raw milliseconds or floor to
+  format — "420 ms", "1.2 s", "3 s", "18 s", "2 min 30 s", "1 h 5 min";
+  milliseconds go through `formatMilliseconds`. Never print raw milliseconds or floor to
   minutes by hand.
 - Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
 - Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,

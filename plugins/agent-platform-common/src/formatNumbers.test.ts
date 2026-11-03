@@ -1,4 +1,4 @@
-import { formatSeconds } from './formatNumbers';
+import { formatMilliseconds, formatSeconds } from './formatNumbers';
 
 describe('formatSeconds', () => {
   it('shows whole milliseconds below a second', () => {
@@ -8,11 +8,13 @@ describe('formatSeconds', () => {
     expect(formatSeconds(0.9994)).toBe('999 ms');
   });
 
-  it('shows one decimal from a second to 10 s', () => {
+  it('shows one decimal from a second to 10 s, none for a whole second', () => {
     // Rounds to a second, so it reads as one.
-    expect(formatSeconds(0.9996)).toBe('1.0 s');
-    expect(formatSeconds(1)).toBe('1.0 s');
+    expect(formatSeconds(0.9996)).toBe('1 s');
+    expect(formatSeconds(1)).toBe('1 s');
+    expect(formatSeconds(1.04)).toBe('1 s');
     expect(formatSeconds(1.2)).toBe('1.2 s');
+    expect(formatSeconds(3)).toBe('3 s');
     expect(formatSeconds(5.321)).toBe('5.3 s');
     expect(formatSeconds(9.94)).toBe('9.9 s');
   });
@@ -54,5 +56,18 @@ describe('formatSeconds', () => {
     expect(formatSeconds(Number.POSITIVE_INFINITY)).toBe('—');
     expect(formatSeconds(undefined)).toBe('—');
     expect(formatSeconds(null)).toBe('—');
+  });
+});
+
+describe('formatMilliseconds', () => {
+  it('formats milliseconds as formatSeconds formats seconds', () => {
+    expect(formatMilliseconds(420)).toBe('420 ms');
+    expect(formatMilliseconds(5321)).toBe('5.3 s');
+    expect(formatMilliseconds(300_000)).toBe('5 min');
+  });
+
+  it('is an em dash for no value, not 0 ms', () => {
+    expect(formatMilliseconds(null)).toBe('—');
+    expect(formatMilliseconds(undefined)).toBe('—');
   });
 });

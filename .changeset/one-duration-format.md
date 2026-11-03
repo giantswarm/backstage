@@ -5,7 +5,7 @@
 ---
 
 Write every duration in the Agent Platform the same way, through the shared
-`formatSeconds`: `420 ms` below a second, `1.2 s` below 10 s, `18 s` up to a
+`formatSeconds`: `420 ms` below a second, `1.2 s` or `3 s` below 10 s, `18 s` up to a
 minute, then `2 min 30 s`, `12 min` and `1 h 5 min`.
 
 - A fast try of a served model reads `200 as you in 420 ms`, not `in 0 s`.

@@ -769,6 +769,31 @@ describe('toServedModel during a start', () => {
     });
   });
 
+  it('leaves the span out below a second, and on a browser clock behind the cluster', () => {
+    const startedAt = (startTime: string) =>
+      pod({ status: { phase: 'Pending', startTime } });
+
+    for (const startTime of ['2026-09-28T10:05:30Z', '2026-09-28T10:05:32Z']) {
+      expect(
+        toServedModel(starting, [startedAt(startTime)], undefined, now),
+      ).toMatchObject({
+        readinessMessage: 'Starting on gpu-node-2: downloading the weights.',
+      });
+    }
+    expect(
+      toServedModel(
+        starting,
+        [startedAt('2026-09-28T10:05:27Z')],
+        undefined,
+        now + 900,
+      ),
+    ).toMatchObject({
+      // Whole seconds, rounded down: 3.9 s since the start reads 3 s.
+      readinessMessage:
+        'Starting on gpu-node-2 for 3 s: downloading the weights.',
+    });
+  });
+
   it('keeps a crash-looping pod red with its reason', () => {
     const crashing = pod({
       status: {
