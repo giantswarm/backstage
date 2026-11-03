@@ -10,4 +10,4 @@ bare clock time, which read as today:
 - When a node's model cache was scanned, in the GPU capacity hover:
   `scanned 2 days ago (2 Sep 2026, 13:05:00 CEST)`.
 - A stalled turn in a session: `The agent last reported progress 12 minutes
-  ago.`, with the date and time on hover.
+ago.`, with the date and time on hover.
