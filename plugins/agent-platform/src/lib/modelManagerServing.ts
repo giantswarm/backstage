@@ -5,6 +5,10 @@
 // `components/ServingProvider/useModelManagerServingSource.ts`.
 
 import { urlHostname } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  formatLocalDateFull,
+  getRelativeDate,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type {
   ModelManagerBackend,
   ModelManagerCapabilities,
@@ -300,8 +304,11 @@ export function toServedModelFromManager(
     }
   } else if (model.loaded) {
     readiness = 'ready';
-    if (running?.expiresAt) {
-      readinessMessage = `Loaded in memory until ${formatTime(running.expiresAt)}.`;
+    const evicts = running?.expiresAt
+      ? describeBackendTime(running.expiresAt)
+      : undefined;
+    if (evicts) {
+      readinessMessage = `Loaded in memory; evicts ${evicts.relative} (${evicts.full}).`;
     } else if (running?.device) {
       readinessMessage = `Loaded on the ${running.device.toUpperCase()}${
         running.pinned ? ', pinned against eviction' : ''
@@ -619,15 +626,25 @@ export function describeServedModel(
     .join(' · ');
 }
 
-/** ISO time → a short local clock time, else the input as-is. */
-export function formatTime(iso: string): string {
+/**
+ * An ISO time from the backend, told relative to `now` — `in about 3 hours`,
+ * `2 days ago` — with the full local timestamp (`16 Oct 2026, 14:05:12 CEST`)
+ * for a hover or for after it where it already sits in one. A bare clock time
+ * would read as today when the moment is yesterday or tomorrow. `undefined`
+ * when the time does not parse.
+ */
+export function describeBackendTime(
+  iso: string,
+  now: Date = new Date(),
+): { relative: string; full: string } | undefined {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+  return {
+    relative: getRelativeDate(date, now),
+    full: formatLocalDateFull(date),
+  };
 }
 
 /**

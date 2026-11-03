@@ -6,6 +6,7 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import userEvent from '@testing-library/user-event';
+import { formatLocalDateFull } from '@giantswarm/backstage-plugin-ui-react';
 import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { describeGroup } from './ServedModelsGroupHeader';
 import {
@@ -107,6 +108,15 @@ const rows: ServedModelRow[] = [
 ];
 
 /** Two models of an Ollama-backed model-manager: one loaded and wired, one not. */
+// Relative to the real clock, which the memory line reads.
+const IN_THREE_HOURS = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+const LOADED_MESSAGE = `Loaded in memory; evicts in about 3 hours (${formatLocalDateFull(
+  IN_THREE_HOURS,
+)}).`;
+const EVICTION_TITLE = `The backend evicts it from memory at ${formatLocalDateFull(
+  IN_THREE_HOURS,
+)}.`;
+
 const ollamaRows: ServedModelRow[] = [
   {
     id: 'lab/ollama//qwen3.5:9b',
@@ -116,13 +126,13 @@ const ollamaRows: ServedModelRow[] = [
     modelSource: 'qwen3.5:9b',
     runtime: 'ollama 0.33.2',
     readiness: 'ready',
-    readinessMessage: 'Loaded in memory until 13:05.',
+    readinessMessage: LOADED_MESSAGE,
     internalUrl: 'http://172.21.0.1:11434',
     endpointHosts: ['172.21.0.1:11434'],
     sizeBytes: 6594474711,
     loaded: true,
     memoryBytes: 7_100_000_000,
-    loadedUntil: '2026-09-02T13:05:00Z',
+    loadedUntil: IN_THREE_HOURS,
     capabilities: ['vision', 'completion', 'tools', 'thinking'],
     details: {
       parameterSize: '9.7B',
@@ -293,6 +303,9 @@ describe('describeGroup', () => {
 });
 
 describe('memoryLine and servedModelStatusLines', () => {
+  // Three hours before the eviction the lines below name.
+  const now = new Date('2026-09-02T10:05:00Z');
+
   it('tells the memory state from the row alone', () => {
     expect(memoryLine({ loaded: undefined })).toBeUndefined();
     expect(memoryLine({ loaded: false })).toBe('Not loaded');
@@ -301,15 +314,22 @@ describe('memoryLine and servedModelStatusLines', () => {
       '5.4 GiB in memory',
     );
     expect(
-      memoryLine({
-        loaded: true,
-        memoryBytes: 5_800_000_000,
-        loadedUntil: '2026-09-02T13:05:00Z',
-      }),
-    ).toMatch(/^5\.4 GiB in memory · evicts \d/);
+      memoryLine(
+        {
+          loaded: true,
+          memoryBytes: 5_800_000_000,
+          loadedUntil: '2026-09-02T13:05:00Z',
+        },
+        now,
+      ),
+    ).toBe('5.4 GiB in memory · evicts in about 3 hours');
     expect(
-      memoryLine({ loaded: true, loadedUntil: '2026-09-02T13:05:00Z' }),
-    ).toMatch(/^In memory · evicts \d/);
+      memoryLine({ loaded: true, loadedUntil: '2026-09-02T13:05:00Z' }, now),
+    ).toBe('In memory · evicts in about 3 hours');
+    // Relative, so an eviction tomorrow does not read as today.
+    expect(
+      memoryLine({ loaded: true, loadedUntil: '2026-09-03T13:05:00Z' }, now),
+    ).toBe('In memory · evicts in 1 day');
     expect(servedModelStatusLines(rows[0])).toEqual([]);
     expect(servedModelStatusLines(ollamaRows[1])).toEqual(['Not loaded']);
   });
@@ -329,12 +349,15 @@ describe('memoryLine and servedModelStatusLines', () => {
       '5.4 GiB in memory · CPU',
     );
     expect(
-      memoryLine({
-        ...footprint,
-        memoryVramBytes: 5_800_000_000,
-        loadedUntil: '2026-09-02T13:05:00Z',
-      }),
-    ).toMatch(/^5\.4 GiB in memory · 100 % GPU · evicts \d/);
+      memoryLine(
+        {
+          ...footprint,
+          memoryVramBytes: 5_800_000_000,
+          loadedUntil: '2026-09-02T13:05:00Z',
+        },
+        now,
+      ),
+    ).toBe('5.4 GiB in memory · 100 % GPU · evicts in about 3 hours');
   });
 
   it("keeps today's line when the backend does not report where the memory sits", () => {
@@ -347,12 +370,15 @@ describe('memoryLine and servedModelStatusLines', () => {
       memoryLine({ loaded: true, memoryVramBytes: 5_800_000_000 }),
     ).toBeUndefined();
     expect(
-      memoryLine({
-        loaded: true,
-        memoryVramBytes: 5_800_000_000,
-        loadedUntil: '2026-09-02T13:05:00Z',
-      }),
-    ).toMatch(/^In memory · evicts \d/);
+      memoryLine(
+        {
+          loaded: true,
+          memoryVramBytes: 5_800_000_000,
+          loadedUntil: '2026-09-02T13:05:00Z',
+        },
+        now,
+      ),
+    ).toBe('In memory · evicts in about 3 hours');
   });
 
   it('explains the footprint and the share on hover', () => {
@@ -381,6 +407,21 @@ describe('memoryLine and servedModelStatusLines', () => {
     expect(memoryLineTitle({ loaded: true, memoryBytes: 5_800_000_000 })).toBe(
       'In memory: the weights plus the KV cache for the context length the model is loaded with.',
     );
+    // The date and time of an eviction the line gives relative to now.
+    expect(
+      memoryLineTitle({ ...footprint, loadedUntil: '2026-09-02T13:05:00Z' }),
+    ).toBe(
+      `In memory: the weights plus the KV cache for the 40k context the model is loaded with. The backend evicts it from memory at ${formatLocalDateFull(
+        '2026-09-02T13:05:00Z',
+      )}.`,
+    );
+    expect(
+      memoryLineTitle({ loaded: true, loadedUntil: '2026-09-02T13:05:00Z' }),
+    ).toBe(
+      `The backend evicts it from memory at ${formatLocalDateFull(
+        '2026-09-02T13:05:00Z',
+      )}.`,
+    );
     // Nothing to explain when not loaded or without figures.
     expect(memoryLineTitle({ loaded: false, memoryBytes: 1 })).toBeUndefined();
     expect(memoryLineTitle({ loaded: true })).toBeUndefined();
@@ -396,11 +437,11 @@ describe('ServedModelStatusCell · GPU share', () => {
     );
 
     const line = screen.getByText(
-      /^6\.6 GiB in memory · 100 % GPU · evicts \d/,
+      '6.6 GiB in memory · 100 % GPU · evicts in about 3 hours',
     );
     expect(line).toHaveAttribute(
       'title',
-      'In memory: the weights plus the KV cache for the 256k context the model is loaded with. All of it is on the accelerator (GPU).',
+      `In memory: the weights plus the KV cache for the 256k context the model is loaded with. All of it is on the accelerator (GPU). ${EVICTION_TITLE}`,
     );
     // The share does not turn the placement columns on: no node on the row.
     expect(screen.queryByRole('columnheader', { name: 'Node' })).toBeNull();
@@ -413,7 +454,7 @@ describe('ServedModelStatusCell · GPU share', () => {
     );
 
     expect(
-      screen.getByText(/^6\.6 GiB in memory · CPU · evicts \d/),
+      screen.getByText('6.6 GiB in memory · CPU · evicts in about 3 hours'),
     ).toBeInTheDocument();
   });
 });
@@ -504,7 +545,7 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
 
     expect(screen.getByText('Ready').closest('[title]')).toHaveAttribute(
       'title',
-      'Loaded in memory until 13:05.',
+      LOADED_MESSAGE,
     );
     expect(
       screen.queryByRole('button', { name: /^About the state of/ }),
@@ -877,13 +918,11 @@ describe('ServedModelsTable', () => {
 
       expect(screen.getByText('Ready')).toBeInTheDocument();
       expect(
-        screen.getByText(/^6\.6 GiB in memory · evicts \d/),
+        screen.getByText('6.6 GiB in memory · evicts in about 3 hours'),
       ).toBeInTheDocument();
       expect(screen.getByText('Available')).toBeInTheDocument();
       expect(screen.getByText('Not loaded')).toBeInTheDocument();
-      expect(
-        screen.getByTitle('Loaded in memory until 13:05.'),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle(LOADED_MESSAGE)).toBeInTheDocument();
     });
 
     it('shows the features that matter to agents as chips and the tool-calling gap as an icon', async () => {

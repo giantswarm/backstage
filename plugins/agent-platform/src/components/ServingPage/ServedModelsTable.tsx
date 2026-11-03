@@ -31,7 +31,7 @@ import {
   describeServedModel,
   formatContextLength,
   formatGpuShare,
-  formatTime,
+  describeBackendTime,
   isServedKServeModel,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
@@ -365,10 +365,11 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
 
 /**
  * The memory line of the status cell, from the row alone: `5.4 GiB in memory
- * · 100 % GPU · evicts 22:58` while loaded — the footprint, where it sits
- * (the share on the accelerator, `CPU` when none of it is there; only when
- * the backend reports the split) and the eviction time, as far as the
- * backend reports them — `Not loaded` when the backend knows the model but
+ * · 100 % GPU · evicts in about 3 hours` while loaded — the footprint, where
+ * it sits (the share on the accelerator, `CPU` when none of it is there; only
+ * when the backend reports the split) and the eviction time, relative to now
+ * (its date and time in {@link memoryLineTitle}), as far as the backend
+ * reports them — `Not loaded` when the backend knows the model but
  * has not got it in memory, nothing when it has no notion of memory (an
  * LLMInferenceService read as a CR) or is loaded without figures (its status
  * already says so).
@@ -383,6 +384,7 @@ export function memoryLine(
     | 'device'
     | 'pinned'
   >,
+  now: Date = new Date(),
 ): string | undefined {
   if (row.loaded === undefined) {
     return undefined;
@@ -416,8 +418,11 @@ export function memoryLine(
   if (row.pinned) {
     parts.push('pinned');
   }
-  if (row.loadedUntil) {
-    parts.push(`evicts ${formatTime(row.loadedUntil)}`);
+  const evicts = row.loadedUntil
+    ? describeBackendTime(row.loadedUntil, now)
+    : undefined;
+  if (evicts) {
+    parts.push(`evicts ${evicts.relative}`);
   }
   return parts.join(' · ');
 }
@@ -426,17 +431,27 @@ export function memoryLine(
  * What the figures of the {@link memoryLine} mean, for its tooltip: the
  * footprint is the weights plus the KV cache for the context length the model
  * is loaded with — which is why a 500 MiB download occupies gigabytes — and
- * the share says how much of it sits on the accelerator. Only while loaded
- * with a footprint; the other lines speak for themselves.
+ * the share says how much of it sits on the accelerator; and the date and
+ * time of an eviction the line gives relative to now. Only while loaded; the
+ * other lines speak for themselves.
  */
 export function memoryLineTitle(
   row: Pick<
     ServedModelRow,
-    'loaded' | 'memoryBytes' | 'memoryVramBytes' | 'details'
+    'loaded' | 'memoryBytes' | 'memoryVramBytes' | 'details' | 'loadedUntil'
   >,
 ): string | undefined {
-  if (!row.loaded || row.memoryBytes === undefined) {
+  if (!row.loaded) {
     return undefined;
+  }
+  const evicts = row.loadedUntil
+    ? describeBackendTime(row.loadedUntil)
+    : undefined;
+  const eviction = evicts
+    ? `The backend evicts it from memory at ${evicts.full}.`
+    : undefined;
+  if (row.memoryBytes === undefined) {
+    return eviction;
   }
   const context = row.details?.contextLength;
   const footprint = `In memory: the weights plus the KV cache for the ${
@@ -446,7 +461,7 @@ export function memoryLineTitle(
   } the model is loaded with.`;
   const share = formatGpuShare(row.memoryBytes, row.memoryVramBytes);
   if (!share) {
-    return footprint;
+    return [footprint, eviction].filter(Boolean).join(' ');
   }
   let where: string;
   if (share === 'CPU') {
@@ -456,7 +471,7 @@ export function memoryLineTitle(
   } else {
     where = `${share.replace(' GPU', '')} of it is on the accelerator (GPU), the rest in system memory.`;
   }
-  return `${footprint} ${where}`;
+  return [footprint, where, eviction].filter(Boolean).join(' ');
 }
 
 /**
@@ -599,7 +614,7 @@ export type ServedModelStatusCellProps = {
  * The one status cell of a served model: the readiness label
  * ({@link ServedReadinessLabel} — the vocabulary's word and glyph, the
  * backend's reason after it) with the lines of {@link servedModelStatusLines}
- * under it — `Ready` / `6.6 GiB in memory · 100 % GPU · evicts 13:05`,
+ * under it — `Ready` / `6.6 GiB in memory · 100 % GPU · evicts in 2 hours`,
  * `Available` / `Not loaded` — the memory line explained on hover
  * ({@link memoryLineTitle}). What used to be the Memory column, told where
  * the status is. A troubled state keeps to its words — `Pending ·

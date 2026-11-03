@@ -143,14 +143,6 @@ function findTurn(
   );
 }
 
-/** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
-function formatClockTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 /**
  * Who is speaking, at the start of the agent's side of a turn.
  *
@@ -345,8 +337,12 @@ export function SessionTimeline({
     workingRow = (
       <div className={classes.stalled} role="status">
         <span className={classes.stalledText}>
-          The agent has not reported progress since{' '}
-          {formatClockTime(stalledSince)}.
+          The agent last reported progress{' '}
+          <DateComponent
+            value={new Date(stalledSince).toISOString()}
+            relative
+          />
+          .
         </span>
         {onCancelTurn && (
           <Button

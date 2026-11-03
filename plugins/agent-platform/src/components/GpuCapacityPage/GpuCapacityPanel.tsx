@@ -25,7 +25,7 @@ import {
   usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatTime } from '../../lib/modelManagerServing';
+import { describeBackendTime } from '../../lib/modelManagerServing';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
   gpuFree,
@@ -452,11 +452,14 @@ function CacheCell({
       <CellText title="—" />
     );
   }
+  const scanned = cache.scannedAt
+    ? describeBackendTime(cache.scannedAt)
+    : undefined;
   const detail = [
     cache.claim ? `Claim ${cache.claim}` : undefined,
     cache.mountPath ? `mounted at ${cache.mountPath}` : undefined,
     cache.shared ? 'shared storage, visible from every node' : undefined,
-    cache.scannedAt ? `scanned at ${formatTime(cache.scannedAt)}` : undefined,
+    scanned ? `scanned ${scanned.relative} (${scanned.full})` : undefined,
   ]
     .filter(Boolean)
     .join(', ');
