@@ -47,6 +47,16 @@ export interface CreateSkillPullRequestOptions {
    */
   path?: string;
   /**
+   * For `create`: the directory the new skill goes below (the repository's
+   * configured scan `path`); the repository root when absent.
+   */
+  parentDir?: string;
+  /**
+   * The branch the pull request targets (the source's configured `ref`); the
+   * default branch when absent. A ref that is not a branch is refused (422).
+   */
+  baseBranch?: string;
+  /**
    * For `update`: the commit the edit started from. The SKILL.md there is the
    * version the edit replaces: when the default branch's file is no longer
    * that blob, the update is refused with 409 instead of overwriting what
@@ -276,7 +286,10 @@ export async function createSkillPullRequest(
   const isUpdate = options.kind === 'update';
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const api = `https://api.github.com/repos/${owner}/${repo}`;
-  const dir = isUpdate ? (options.path ?? '') : skillName;
+  const newDir = options.parentDir
+    ? `${options.parentDir}/${skillName}`
+    : skillName;
+  const dir = isUpdate ? (options.path ?? '') : newDir;
   const baseBranch = isUpdate
     ? updateBranchName(dir, repo)
     : `add-skill/${skillName}`;
@@ -292,12 +305,28 @@ export async function createSkillPullRequest(
     default_branch?: string;
     permissions?: { push?: boolean };
   };
-  const base = repoData.default_branch || 'main';
+  const base = options.baseBranch || repoData.default_branch || 'main';
   if (repoData.permissions && !repoData.permissions.push) {
     throw new GitHubApiError(
       403,
       `You don't have push access to ${owner}/${repo}, which opening the pull request needs (the branch is created as you).`,
     );
+  }
+  if (options.baseBranch) {
+    // A configured ref may be a tag: pull requests only target branches.
+    const branchResponse = await githubRequest(
+      `${api}/git/ref/heads/${encodePath(options.baseBranch)}`,
+      token,
+    );
+    if (branchResponse.status === 404) {
+      throw new GitHubApiError(
+        422,
+        `${options.baseBranch} is not a branch of ${owner}/${repo}, so skills cannot be proposed to it.`,
+      );
+    }
+    if (!branchResponse.ok) {
+      await refuse(`resolve ${owner}/${repo}@${base}`, branchResponse);
+    }
   }
 
   // The head of the default branch, as a bare SHA whatever kind of ref it is.

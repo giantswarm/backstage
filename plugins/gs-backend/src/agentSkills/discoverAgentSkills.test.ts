@@ -101,6 +101,12 @@ describe('discoverAgentSkills', () => {
       if (url.includes('/commits/')) {
         return { ok: true, text: async () => `${HEAD}\n` } as Response;
       }
+      if (url.includes('/git/ref/heads/')) {
+        // Only `main` is a branch; any other ref is a tag.
+        return url.endsWith('/heads/main')
+          ? ({ ok: true, json: async () => ({}) } as Response)
+          : ({ ok: false, status: 404, statusText: 'Not Found' } as Response);
+      }
       if (url.includes(`/git/trees/${HEAD}?`)) {
         return {
           ok: true,
@@ -125,6 +131,69 @@ describe('discoverAgentSkills', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('scans only below scanPath at the given ref, keeping repository-relative paths', async () => {
+    const fetchMock = mockGitHub(
+      [
+        { path: 'demo/SKILL.md', type: 'blob' },
+        { path: 'skills/overview/SKILL.md', type: 'blob' },
+        { path: 'skills/overview/refs/a.md', type: 'blob' },
+        { path: 'skillset/x/SKILL.md', type: 'blob' },
+        // A plugin rooted above the scanned directory, and one outside it.
+        { path: 'plugin.json', type: 'blob' },
+        { path: 'other/.claude-plugin/plugin.json', type: 'blob' },
+      ],
+      { 'skills/overview/SKILL.md': '---\nname: overview\n---\nbody' },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { skills, ref, refKind, commit, plugins } = await discoverAgentSkills(
+      {
+        repoUrl: 'https://github.com/giantswarm/agent-platform',
+        ref: 'v1.2.3',
+        scanPath: 'skills',
+        githubCredentialsProvider: credentialsProvider,
+      },
+    );
+
+    expect(ref).toBe('v1.2.3');
+    expect(refKind).toBe('tag');
+    expect(skills[0].refKind).toBe('tag');
+    expect(commit).toBe(HEAD);
+    expect(plugins?.map(p => [p.path, p.format, p.skills.length])).toEqual([
+      ['', 'agent-plugins', 1],
+    ]);
+    expect(skills.map(s => [s.path, s.commit, s.fileCount])).toEqual([
+      ['skills/overview', HEAD, 2],
+    ]);
+    // A tag needs no default-branch lookup.
+    expect(
+      fetchMock.mock.calls.some(([url]) => /\/repos\/[^/]+\/[^/]+$/.test(url)),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([url]) => url.includes('/commits/v1.2.3')),
+    ).toBe(true);
+  });
+
+  it('says a configured branch is one, and a commit id is a commit', async () => {
+    global.fetch = mockGitHub([{ path: 'a/SKILL.md', type: 'blob' }], {
+      'a/SKILL.md': '---\nname: a\n---\n',
+    }) as unknown as typeof fetch;
+
+    const onBranch = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/skills',
+      ref: 'main',
+      githubCredentialsProvider: credentialsProvider,
+    });
+    const atCommit = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/skills',
+      ref: HEAD,
+      githubCredentialsProvider: credentialsProvider,
+    });
+
+    expect(onBranch.refKind).toBe('branch');
+    expect(atCommit.refKind).toBe('commit');
   });
 
   it('finds every SKILL.md and maps it to a skill (repo url + dir path)', async () => {

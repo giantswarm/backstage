@@ -15,12 +15,14 @@ import { AddSkillPage, type SkillEdit } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: string[] = [];
+let mockRepositories: Array<
+  string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+> = [];
 let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
     config: {
-      getOptionalStringArray: () => mockRepositories,
+      getOptional: () => mockRepositories,
       getOptionalString: (key: string) =>
         mockMetaAgents[key.replace('agentPlatform.metaAgents.', '')],
     },
@@ -46,6 +48,8 @@ jest.mock('../AgentsDataProvider', () => ({
   ),
   useAgents: () => ({ rows: [mockSkillCreator], isLoading: false }),
 }));
+// What discovery found each configured ref to be, by repository key.
+let mockRefKinds: Record<string, string> = {};
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
@@ -62,7 +66,10 @@ jest.mock('../../hooks/useCreateSession', () => ({
 // The catalog's skills, for the tags they already use.
 let mockCatalogSkills: DiscoveredSkill[] = [];
 jest.mock('../../hooks/useSkillCatalog', () => ({
-  useSkillCatalog: () => ({ skills: mockCatalogSkills }),
+  useSkillCatalog: () => ({
+    skills: mockCatalogSkills,
+    refKinds: mockRefKinds,
+  }),
 }));
 
 const proposeSkill = jest.fn();
@@ -131,6 +138,7 @@ beforeEach(() => {
   proposeSkill.mockResolvedValue(opened);
   mockState = { isProposing: false, error: null };
   mockRepositories = [REPO];
+  mockRefKinds = {};
   mockMetaAgents = {};
   mockCatalogSkills = [];
   createSession.mockReset();
@@ -416,6 +424,39 @@ describe('AddSkillPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Only github.com repositories are offered/),
+    ).toBeInTheDocument();
+  });
+
+  it('never offers a read-only repository', async () => {
+    mockRepositories = [
+      { url: 'https://github.com/giantswarm/agent-platform', readOnly: true },
+      REPO,
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Only github.com repositories are offered/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers a repository with a configured ref only once it is known to be a branch', async () => {
+    const TAGGED = 'https://github.com/giantswarm/tagged';
+    mockRepositories = [
+      { url: TAGGED, ref: 'v1' },
+      { url: REPO, ref: 'develop', path: 'skills' },
+    ];
+    mockRefKinds = { [TAGGED]: 'tag', [REPO]: 'branch' };
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
     ).toBeInTheDocument();
   });
 

@@ -184,7 +184,10 @@ export type AgentManagerInfo = {
   harness: { name: string };
   /** The muster MCP URL composed into every agent; empty = the chart default. */
   muster: { url: string };
-  skillsRepositories: string[];
+  /** A URL, or `{ url, ref?, path?, readOnly? }`. */
+  skillsRepositories: Array<
+    string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+  >;
 };
 
 /** The objects a create applies, as YAML, plus the values they carry. */

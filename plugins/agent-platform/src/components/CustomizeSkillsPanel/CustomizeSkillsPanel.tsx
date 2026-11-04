@@ -27,6 +27,10 @@ import {
   repoSlug,
   skillTags,
 } from '../../lib/skills';
+import {
+  proposableRepositories,
+  skillRepositoriesFrom,
+} from '../../lib/skillRepositories';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { newSkillRouteRef } from '../../routes';
@@ -219,11 +223,10 @@ export function useCanAddSkill(): boolean {
   const { skillCatalog } = useCustomizeData();
   const newSkillRoute = useRouteRef(newSkillRouteRef);
   const { config } = useSignedInConfig();
-  const repositories =
-    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
   return (
     !skillCatalog.isLoading &&
-    repositories.some(canProposeSkillTo) &&
+    proposableRepositories(skillRepositoriesFrom(config), skillCatalog.refKinds)
+      .length > 0 &&
     Boolean(newSkillRoute)
   );
 }
@@ -241,14 +244,19 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillPaths = useSkillPaths();
-  // The add form's target repositories: the github.com entries of the same
-  // signed-in-config list the catalog is discovered from — skills are
+  // The add form's target repositories (`canProposeTo`): skills are
   // proposed as GitHub pull requests, and the endpoint refuses any other
-  // repository (T61).
+  // repository (T61), a read-only source and one not read on a branch.
   const { config } = useSignedInConfig();
-  const repositories =
-    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-  const proposable = repositories.filter(canProposeSkillTo);
+  const repositories = skillRepositoriesFrom(config);
+  const proposable = proposableRepositories(
+    repositories,
+    skillCatalog.refKinds,
+  );
+  // Writable sources left out for not being on github.com.
+  const offGitHub = repositories.filter(
+    repository => !repository.readOnly && !canProposeSkillTo(repository.url),
+  );
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const unique = useMemo(
     () => uniqueSkills(skillCatalog.skills),
@@ -382,12 +390,10 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     );
   }
 
-  // Repositories configured, none on github.com: nothing to propose a skill
-  // to, and the reason is the configuration, not the person.
+  // Writable repositories configured, none on github.com: nothing to propose
+  // a skill to, and the reason is the configuration, not the person.
   const cannotAddHere =
-    !skillCatalog.isLoading &&
-    repositories.length > 0 &&
-    proposable.length === 0;
+    !skillCatalog.isLoading && offGitHub.length > 0 && proposable.length === 0;
   const hasFilters = filters.dimensions.length > 0;
 
   return (

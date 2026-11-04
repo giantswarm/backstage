@@ -476,7 +476,12 @@ agentPlatform:
     # or lab-local git server works, e.g.
     #   - http://gitserver.agent-platform.svc.cluster.local/skills.git
     # The URL travels into the agent chart's `git.url` unchanged, so agents
-    # must be able to `git fetch` it at boot too.
+    # must be able to `git fetch` it at boot too. An entry may also be
+    # `{url, ref, path, readOnly}`, e.g.
+    #   - url: https://github.com/giantswarm/agent-platform
+    #     ref: v1.0.0
+    #     path: skills
+    #     readOnly: true
     repositories:
       - https://github.com/giantswarm/agent-skills
   # Which agent serves each meta-agent role, as `<namespace>/<name>` (or
