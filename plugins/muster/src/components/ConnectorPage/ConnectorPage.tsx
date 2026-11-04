@@ -628,7 +628,6 @@ function ConnectorPageContent({
           <ConnectorLogo
             name={displayName}
             icon={representative?.getStatusIcon()}
-            url={representative?.getUrl()}
             size={56}
             decorative
           />

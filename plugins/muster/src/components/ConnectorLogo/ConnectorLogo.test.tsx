@@ -3,18 +3,18 @@ import userEvent from '@testing-library/user-event';
 import { ConnectorLogo } from './ConnectorLogo';
 
 describe('ConnectorLogo', () => {
-  it("shows the name's first letter without an icon or a known host", () => {
-    render(<ConnectorLogo name="weather" url="https://weather.example.com" />);
+  it("shows the name's first letter without an icon", () => {
+    render(<ConnectorLogo name="weather" />);
     expect(screen.getByRole('img', { name: 'weather' })).toHaveTextContent('w');
   });
 
-  it("shows the brand's mark for a known host", () => {
+  it('shows the letter for an icon that is not a safe data: image', () => {
     render(
-      <ConnectorLogo name="Tickets" url="https://mcp.pagerduty.com/mcp" />,
+      <ConnectorLogo name="weather" icon="https://example.com/icon.png" />,
     );
-    const logo = screen.getByRole('img', { name: 'Tickets' });
-    expect(logo).toHaveTextContent('');
-    expect(logo.querySelector('svg')).toBeInTheDocument();
+    const logo = screen.getByRole('img', { name: 'weather' });
+    expect(logo).toHaveTextContent('w');
+    expect(logo.querySelector('img')).toBeNull();
   });
 
   it('falls back to the letter while an icon has not loaded', () => {

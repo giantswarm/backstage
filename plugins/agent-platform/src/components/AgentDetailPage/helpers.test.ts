@@ -5,7 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   describeToolScope,
-  directServerLogo,
+  directServerName,
   isGatewayServerBinding,
   mcpBindingId,
   skillLabel,
@@ -52,57 +52,41 @@ describe('mcpBindingId', () => {
   });
 });
 
-describe('directServerLogo', () => {
-  const remote = (
-    name: string,
-    url: string,
-    annotations?: Record<string, string>,
-  ) =>
+describe('directServerName', () => {
+  const remote = (name: string, annotations?: Record<string, string>) =>
     new RemoteMCPServer(
       {
         apiVersion: 'api.kagent.dev/v1alpha3',
         kind: 'RemoteMCPServer',
         metadata: { name, namespace: 'agent-platform', annotations },
-        spec: { url },
+        spec: { url: 'https://ghe.corp.example/mcp' },
       } as never,
       'gazelle',
     );
+  const named = remote('ghe', {
+    'ui.giantswarm.io/display-name': 'GitHub Enterprise',
+  });
 
-  it('reads the bound RemoteMCPServer’s display name and URL', () => {
-    expect(
-      directServerLogo(binding('ghe'), [
-        remote('ghe', 'https://ghe.corp.example/mcp', {
-          'ui.giantswarm.io/display-name': 'GitHub Enterprise',
-        }),
-      ]),
-    ).toEqual({
-      name: 'GitHub Enterprise',
-      url: 'https://ghe.corp.example/mcp',
-    });
+  it('reads the bound RemoteMCPServer’s display name', () => {
+    expect(directServerName(binding('ghe'), [named])).toBe('GitHub Enterprise');
   });
 
   it('falls back to the resource’s name without a display name', () => {
-    expect(
-      directServerLogo(binding('github'), [
-        remote('github', 'https://ghe.corp.example/mcp'),
-      ]),
-    ).toEqual({ name: 'github', url: 'https://ghe.corp.example/mcp' });
+    expect(directServerName(binding('github'), [remote('github')])).toBe(
+      'github',
+    );
   });
 
   // A kagent MCPServer of the same name is a different resource: it must not
-  // take the RemoteMCPServer's URL.
+  // take the RemoteMCPServer's display name.
   it('matches the binding’s kind as well as its name', () => {
     expect(
-      directServerLogo({ server: { kind: 'MCPServer', name: 'github' } }, [
-        remote('github', 'https://ghe.corp.example/mcp'),
-      ]),
-    ).toEqual({ name: 'github' });
+      directServerName({ server: { kind: 'MCPServer', name: 'ghe' } }, [named]),
+    ).toBe('ghe');
   });
 
   it('shows the bare name until the namespace is read', () => {
-    expect(directServerLogo(binding('github'), undefined)).toEqual({
-      name: 'github',
-    });
+    expect(directServerName(binding('ghe'), undefined)).toBe('ghe');
   });
 });
 

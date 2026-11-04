@@ -65,17 +65,7 @@ export {
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
 export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
-export {
-  CONNECTOR_BRANDS,
-  connectorBrandOf,
-  connectorIconOf,
-  resolveConnectorLogo,
-} from './lib/connectorLogo';
-export type {
-  ConnectorBrand,
-  ConnectorLogoResolution,
-  ConnectorLogoSource,
-} from './lib/connectorLogo';
+export { connectorIconOf } from './lib/connectorLogo';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,

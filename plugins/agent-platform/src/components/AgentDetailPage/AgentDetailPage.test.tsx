@@ -2644,7 +2644,6 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
           group: 'registered',
           toolNamePrefix: 'x_github',
           oauth: false,
-          url: 'https://api.githubcopilot.com/mcp/',
         },
       ];
       mockUseAgentToolset.mockReturnValue({
@@ -2679,7 +2678,6 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
           toolNamePrefix: 'x_github',
           oauth: false,
           icon: 'data:image/png;base64,iVBORw0KGgo=',
-          url: 'https://api.githubcopilot.com/mcp/',
         },
       ];
       mockUseAgentToolset.mockReturnValue({

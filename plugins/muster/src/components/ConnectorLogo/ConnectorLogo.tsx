@@ -10,11 +10,7 @@ import { Avatar, Tooltip, TooltipTrigger } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { TooltipTriggerStateContext } from 'react-aria-components';
 import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  type ConnectorLogoSource,
-  resolveConnectorLogo,
-} from '../../lib/connectorLogo';
-import { BRAND_MARKS } from './brandMarks';
+import { connectorIconOf } from '../../lib/connectorLogo';
 
 type StyleProps = { size: number };
 
@@ -48,12 +44,6 @@ const useStyles = makeStyles({
       borderRadius: 0,
     },
   }),
-  mark: ({ size }: StyleProps) => ({
-    display: 'inline-flex',
-    width: Math.round(size * 0.56),
-    height: Math.round(size * 0.56),
-    color: 'var(--bui-fg-primary)',
-  }),
   trigger: {
     display: 'inline-flex',
     borderRadius: 9,
@@ -69,7 +59,9 @@ const useStyles = makeStyles({
   },
 });
 
-export type ConnectorLogoProps = ConnectorLogoSource & {
+export type ConnectorLogoProps = {
+  /** The MCPServer's `.status.icon`; checked by `connectorIconOf`. */
+  icon?: string;
   /** The connector's display name: its label, tooltip and fallback letter. */
   name: string;
   /** Width and height in px; the list's tile is 36, a page header's 56. */
@@ -85,52 +77,40 @@ export type ConnectorLogoProps = ConnectorLogoSource & {
 };
 
 /**
- * A connector's logo at the letter tile's size: the icon muster read from
- * the MCP server, else the platform's mark for the service its URL points
- * at, else the name's first letter (`resolveConnectorLogo`). An image that
+ * A connector's logo at the letter tile's size: the icon muster wrote to the
+ * MCPServer's `.status.icon`, else the name's first letter. An image that
  * fails to load falls back to the letter too, as bui's `Avatar` does.
  */
 export function ConnectorLogo({
   name,
   icon,
-  url,
   size = 36,
   decorative = false,
   tooltip = false,
   detail,
 }: ConnectorLogoProps) {
   const classes = useStyles({ size });
-  const logo = resolveConnectorLogo({ icon, url });
-  const a11y = decorative
-    ? ({ 'aria-hidden': true } as const)
-    : ({ role: 'img', 'aria-label': name } as const);
+  const src = connectorIconOf(icon);
 
-  let tile: ReactNode;
-  if (logo?.kind === 'image') {
-    tile = (
-      <Avatar
-        src={logo.src}
-        name={name}
-        // One letter, as the tile has.
-        size="small"
-        purpose={decorative ? 'decoration' : 'informative'}
-        className={classes.tile}
-      />
-    );
-  } else {
-    const Mark = logo ? BRAND_MARKS[logo.brand] : undefined;
-    tile = (
-      <span className={classes.tile} {...a11y}>
-        {Mark ? (
-          <span className={classes.mark}>
-            <Mark />
-          </span>
-        ) : (
-          name.trim().charAt(0)
-        )}
-      </span>
-    );
-  }
+  const tile = src ? (
+    <Avatar
+      src={src}
+      name={name}
+      // One letter, as the tile has.
+      size="small"
+      purpose={decorative ? 'decoration' : 'informative'}
+      className={classes.tile}
+    />
+  ) : (
+    <span
+      className={classes.tile}
+      {...(decorative
+        ? { 'aria-hidden': true }
+        : { role: 'img', 'aria-label': name })}
+    >
+      {name.trim().charAt(0)}
+    </span>
+  );
 
   if (!tooltip) {
     return tile;

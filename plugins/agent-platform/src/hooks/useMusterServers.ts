@@ -14,7 +14,6 @@ import { connectorLabels, type ServerInfo } from '../lib/toolset';
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
   const icon = server.getStatusIcon();
-  const url = server.getUrl();
   const namespace = server.getNamespace();
   const tenant = namespace?.startsWith(ORGANIZATION_PREFIX) ? namespace : '';
   const prefix = server.getToolNamePrefix();
@@ -33,7 +32,6 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
     ...(displayName ? { displayName } : {}),
     ...(tags.length > 0 ? { tags } : {}),
     ...(icon ? { icon } : {}),
-    ...(url ? { url } : {}),
   };
 }
 

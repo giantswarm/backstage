@@ -34,7 +34,6 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import type { ConnectorLogoSource } from '../../lib/connectorLogo';
 import { ConnectorLogo } from '../ConnectorLogo';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
@@ -93,8 +92,8 @@ type Row = {
   signInGate?: string;
   reach?: ConnectorReach;
   tags: string[];
-  /** What the connector's logo is resolved from. */
-  logo?: ConnectorLogoSource;
+  /** The MCPServer's `.status.icon`, for the connector's logo. */
+  icon?: string;
 };
 
 /** A row muster asks this person to sign in to. */
@@ -136,7 +135,11 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
   return (
     <Cell>
       <Flex align="center" gap="3" style={{ minWidth: 0 }}>
-        <ConnectorLogo name={row.entry.displayName} {...row.logo} decorative />
+        <ConnectorLogo
+          name={row.entry.displayName}
+          icon={row.icon}
+          decorative
+        />
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
           {/* The name is the row's link (M21): reachable by keyboard and
               opens in a new tab on cmd/middle-click; the row stays clickable. */}
@@ -290,7 +293,7 @@ function ConnectorStackedRow({
     ...(row.description ? { description: row.description } : {}),
     ...(href ? { href } : {}),
     leading: (
-      <ConnectorLogo name={row.entry.displayName} {...row.logo} decorative />
+      <ConnectorLogo name={row.entry.displayName} icon={row.icon} decorative />
     ),
     facts: [
       row.tags.length > 0 ? (
@@ -451,7 +454,7 @@ function ConnectorsTable({
         description: server?.getDescription(),
         auth: authLabel(server),
         tools: toolsLabel(entry),
-        logo: { icon: server?.getStatusIcon(), url: server?.getUrl() },
+        icon: server?.getStatusIcon(),
         status: connectorStatus(entry, status),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? { signInServer: entry.id }

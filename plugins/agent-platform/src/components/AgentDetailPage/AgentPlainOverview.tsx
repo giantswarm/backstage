@@ -62,7 +62,7 @@ import {
 } from '../../lib/defaultWorkspace';
 import {
   describeToolScope,
-  directServerLogo,
+  directServerName,
   isGatewayServerBinding,
   mcpBindingId,
   skillLabel,
@@ -274,7 +274,6 @@ type ConnectorMark = {
   key: string;
   name: string;
   icon?: string;
-  url?: string;
   detail?: string;
 };
 
@@ -305,17 +304,13 @@ function ConnectorsSection({
   const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
 
-  // Each muster connector's logo source, by surface name: the first CR of a
-  // family with an icon, else its first URL.
-  const sources = useMemo(() => {
-    const bySurface = new Map<string, { icon?: string; url?: string }>();
+  // Each muster connector's icon, by surface name: the first CR of a family
+  // with one.
+  const icons = useMemo(() => {
+    const bySurface = new Map<string, string | undefined>();
     for (const server of muster.servers) {
       const name = surfaceName(server);
-      const known = bySurface.get(name);
-      bySurface.set(name, {
-        icon: known?.icon ?? server.icon,
-        url: known?.url ?? server.url,
-      });
+      bySurface.set(name, bySurface.get(name) ?? server.icon);
     }
     return bySurface;
   }, [muster.servers]);
@@ -324,13 +319,13 @@ function ConnectorsSection({
     ...(hasGateway ? reachedConnectors(declared, groups) : []).map(name => ({
       key: `server:${name}`,
       name: muster.labels.get(name) ?? name,
-      ...sources.get(name),
+      icon: icons.get(name),
     })),
     ...direct.map((binding, index) => ({
       // The server name is not unique: two bindings may scope one server
       // differently.
       key: `${mcpBindingId(binding)}#${index}`,
-      ...directServerLogo(binding, servers),
+      name: directServerName(binding, servers),
       detail: `${describeToolScope(binding)}${
         binding.requireApproval ? ' · asks you before every call' : ''
       }`,
@@ -363,7 +358,6 @@ function ConnectorsSection({
               <ConnectorLogo
                 name={mark.name}
                 icon={mark.icon}
-                url={mark.url}
                 detail={mark.detail}
                 tooltip
               />
