@@ -21,6 +21,7 @@ import {
   clientCredentialsProblems,
   hasStoredClientSecret,
   isStoredClientSecret,
+  mcpServerAuthProblems,
   validateMcpServerAuth,
   validateMcpServerDetails,
   withoutClientSecretRef,
@@ -517,7 +518,101 @@ describe('validateNewMcpServerForm', () => {
           clientIdKey: 'clientId',
         }),
       ),
-    ).toEqual(["Enter the Secret's name."]);
+    ).toEqual(["Enter the Secret's name, e.g. github-oauth-client."]);
+  });
+
+  describe('an existing Secret, checked as Kubernetes names', () => {
+    const existing = (overrides: Partial<NewMcpServerFormState>) =>
+      mcpServerAuthProblems(
+        state({
+          authMode: 'own-account',
+          issuer: 'https://auth.example.com',
+          useExistingSecret: true,
+          clientSecretName: 'github-oauth-client',
+          ...overrides,
+        }),
+      );
+
+    it('accepts DNS subdomain names, a DNS label namespace and data keys, trimmed', () => {
+      expect(
+        existing({
+          clientSecretName: ' oauth.github-client ',
+          clientSecretNamespace: ' muster ',
+          clientIdKey: 'CLIENT_ID',
+          clientSecretKey: '.client-secret',
+        }),
+      ).toEqual([]);
+      expect(existing({ clientSecretName: 'a'.repeat(253) })).toEqual([]);
+    });
+
+    it.each([
+      ['a blank', 'github oauth'],
+      ['upper case', 'GitHub-Client'],
+      ['an underscore', 'github_client'],
+      ['a leading hyphen', '-github'],
+      ['a trailing dot', 'github.'],
+      ['more than 253 characters', 'a'.repeat(254)],
+    ])('rejects a Secret name with %s', (_, clientSecretName) => {
+      expect(existing({ clientSecretName })).toEqual([
+        {
+          field: 'clientSecretName',
+          message: expect.stringContaining(
+            'Use lowercase letters, numbers, hyphens and dots',
+          ),
+        },
+      ]);
+    });
+
+    it.each([
+      ['a dot', 'kube.system'],
+      ['a blank', 'my namespace'],
+      ['more than 63 characters', 'a'.repeat(64)],
+    ])('rejects a namespace with %s', (_, clientSecretNamespace) => {
+      expect(existing({ clientSecretNamespace })).toEqual([
+        {
+          field: 'clientSecretNamespace',
+          message: expect.stringContaining(
+            'Use lowercase letters, numbers and hyphens',
+          ),
+        },
+      ]);
+    });
+
+    it('rejects data keys the API server would refuse, each on its field', () => {
+      expect(
+        existing({
+          clientIdKey: 'client id',
+          clientSecretKey: 'client/secret',
+        }),
+      ).toEqual([
+        {
+          field: 'clientIdKey',
+          message:
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-id.',
+        },
+        {
+          field: 'clientSecretKey',
+          message:
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-secret.',
+        },
+      ]);
+    });
+
+    it('leaves empty optional fields to their defaults', () => {
+      expect(
+        existing({
+          clientSecretNamespace: '  ',
+          clientIdKey: '',
+          clientSecretKey: ' ',
+        }),
+      ).toEqual([]);
+    });
+
+    it('checks nothing of a Secret name typed before New Secret was chosen', () => {
+      expect(
+        existing({ useExistingSecret: false, clientSecretName: 'not valid' }),
+      ).toEqual([]);
+    });
   });
 
   it('ignores Secret fields of the other source when New Secret is chosen', () => {

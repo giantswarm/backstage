@@ -23,6 +23,7 @@
 // older muster refuses it as an unknown field, so the write only sends it to a
 // tool whose input schema declares it ({@link takesDisplayName}).
 
+import { isValidDNSSubdomainName } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type {
   MCPServer,
   MCPServerAuth,
@@ -643,6 +644,9 @@ export type McpServerField =
   | 'authorizationEndpoint'
   | 'tokenEndpoint'
   | 'clientSecretName'
+  | 'clientSecretNamespace'
+  | 'clientIdKey'
+  | 'clientSecretKey'
   | 'clientId'
   | 'clientSecret'
   | 'transport'
@@ -802,6 +806,54 @@ export function effectiveGrantScope(
   return state.issuer.trim() ? state.grantScope : 'session';
 }
 
+// A key of a Secret's `data`, as the API server checks it
+// (`IsConfigMapKey`): letters, digits, `-`, `_` and `.`, at most 253.
+const SECRET_DATA_KEY_PATTERN = /^[-._a-zA-Z0-9]{1,253}$/;
+
+/**
+ * Problems of the Existing Secret fields: the reference must name a Secret
+ * the API server could hold, or muster refuses the server once it is saved.
+ * Values are trimmed first, as they are composed.
+ */
+function existingSecretProblems(
+  state: NewMcpServerFormState,
+): McpServerProblem[] {
+  const problems: McpServerProblem[] = [];
+  const name = state.clientSecretName.trim();
+  if (!name) {
+    problems.push({
+      field: 'clientSecretName',
+      message: "Enter the Secret's name, e.g. github-oauth-client.",
+    });
+  } else if (!isValidDNSSubdomainName(name)) {
+    problems.push({
+      field: 'clientSecretName',
+      message:
+        'Use lowercase letters, numbers, hyphens and dots, starting and ending with a letter or number (at most 253 characters), e.g. github-oauth-client.',
+    });
+  }
+  const namespace = state.clientSecretNamespace.trim();
+  if (namespace && !isValidSlug(namespace)) {
+    problems.push({
+      field: 'clientSecretNamespace',
+      message:
+        'Use lowercase letters, numbers and hyphens, starting and ending with a letter or number (at most 63 characters), e.g. muster.',
+    });
+  }
+  for (const [field, key, example] of [
+    ['clientIdKey', state.clientIdKey.trim(), 'client-id'],
+    ['clientSecretKey', state.clientSecretKey.trim(), 'client-secret'],
+  ] as const) {
+    if (key && !SECRET_DATA_KEY_PATTERN.test(key)) {
+      problems.push({
+        field,
+        message: `Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. ${example}.`,
+      });
+    }
+  }
+  return problems;
+}
+
 /**
  * Validation problems of the Authentication step's fields only. A rule about
  * two fields belongs to the one whose change fixes it: the issuer the scopes
@@ -858,11 +910,8 @@ export function mcpServerAuthProblems(
         problems.push({ field, message: `${label} must be an https URL` });
       }
     }
-    if (state.useExistingSecret && !state.clientSecretName.trim()) {
-      problems.push({
-        field: 'clientSecretName',
-        message: "Enter the Secret's name.",
-      });
+    if (state.useExistingSecret) {
+      problems.push(...existingSecretProblems(state));
     }
   }
 

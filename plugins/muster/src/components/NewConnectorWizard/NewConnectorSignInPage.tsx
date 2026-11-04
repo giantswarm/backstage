@@ -327,6 +327,9 @@ export function NewConnectorSignInPage() {
     fieldErrors.authorizationEndpoint ||
     fieldErrors.tokenEndpoint ||
     fieldErrors.clientSecretName ||
+    fieldErrors.clientSecretNamespace ||
+    fieldErrors.clientIdKey ||
+    fieldErrors.clientSecretKey ||
     credentialErrors.clientId ||
     credentialErrors.clientSecret,
   );
@@ -601,6 +604,24 @@ export function NewConnectorSignInPage() {
                   <Radio value="new">New Secret</Radio>
                   <Radio value="existing">Existing Secret</Radio>
                 </RadioGroup>
+                {/* What either choice means in Kubernetes terms. muster
+                    writes its own client Secret as `Opaque`, and reads any
+                    other type but the ones that hold the cluster's or its own
+                    credentials (TLS, tokens, image pulls, Helm releases). */}
+                {state.useExistingSecret ? (
+                  <Text variant="body-small" color="secondary">
+                    Name a Kubernetes Secret of type Opaque that holds the
+                    client ID and secret in its data, by default under the keys
+                    client-id and client-secret. Whoever saves the connector
+                    must be allowed to get this Secret.
+                  </Text>
+                ) : (
+                  <Text variant="body-small" color="secondary">
+                    {enteringCredentials
+                      ? 'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.'
+                      : 'Muster keeps the client in a Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.'}
+                  </Text>
+                )}
                 {clientSecretStored && !replaceMode && (
                   <Flex align="center" justify="between" gap="3">
                     <Text variant="body-medium">Client secret stored</Text>
@@ -647,7 +668,7 @@ export function NewConnectorSignInPage() {
                       onChange={clientSecret =>
                         setCredentials(prev => ({ ...prev, clientSecret }))
                       }
-                      description="Stored in a Secret; cannot be read back."
+                      description="It cannot be read back once saved."
                       {...textFieldProps(
                         'clientSecret',
                         credentialErrors.clientSecret,
@@ -667,10 +688,6 @@ export function NewConnectorSignInPage() {
                 )}
                 {state.useExistingSecret && (
                   <>
-                    <Text variant="body-small" color="secondary">
-                      Whoever saves the connector must be allowed to get this
-                      Secret.
-                    </Text>
                     <TextField
                       label="Secret name"
                       value={state.clientSecretName}
@@ -687,20 +704,35 @@ export function NewConnectorSignInPage() {
                       value={state.clientSecretNamespace}
                       onChange={setClientSecretNamespace}
                       description="Defaults to the connector's namespace."
+                      {...textFieldProps(
+                        'clientSecretNamespace',
+                        fieldErrors.clientSecretNamespace,
+                      )}
                     />
+                    {/* The placeholder is the default key itself, not an
+                        "e.g.": an empty field sends nothing and muster uses
+                        that key, which the text above says too. */}
                     <TextField
-                      label="Key holding the client ID"
+                      label="Key in the Secret's data that holds the client ID"
                       secondaryLabel="optional"
                       value={state.clientIdKey}
                       onChange={setClientIdKey}
-                      description="Defaults to client-id."
+                      placeholder="client-id"
+                      {...textFieldProps(
+                        'clientIdKey',
+                        fieldErrors.clientIdKey,
+                      )}
                     />
                     <TextField
-                      label="Key holding the client secret"
+                      label="Key in the Secret's data that holds the client secret"
                       secondaryLabel="optional"
                       value={state.clientSecretKey}
                       onChange={setClientSecretKey}
-                      description="Defaults to client-secret."
+                      placeholder="client-secret"
+                      {...textFieldProps(
+                        'clientSecretKey',
+                        fieldErrors.clientSecretKey,
+                      )}
                     />
                   </>
                 )}

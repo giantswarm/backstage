@@ -472,11 +472,23 @@ describe('shell connector wizard', () => {
       expect(
         within(credentials).queryByLabelText(/^Client ID/),
       ).not.toBeInTheDocument();
+      // It is a Kubernetes Secret, of the type muster writes itself, and
+      // empty key fields mean the keys their placeholders show.
       expect(
         within(credentials).getByText(
-          'Whoever saves the connector must be allowed to get this Secret.',
+          /^Name a Kubernetes Secret of type Opaque that holds the client ID and secret in its data, by default under the keys client-id and client-secret\. Whoever saves the connector must be allowed to get this Secret\.$/,
         ),
       ).toBeInTheDocument();
+      expect(
+        within(credentials).getByLabelText(
+          /^Key in the Secret's data that holds the client ID/,
+        ),
+      ).toHaveAttribute('placeholder', 'client-id');
+      expect(
+        within(credentials).getByLabelText(
+          /^Key in the Secret's data that holds the client secret/,
+        ),
+      ).toHaveAttribute('placeholder', 'client-secret');
       await userEvent.type(
         within(credentials).getByLabelText(/^Secret name(?!space)/),
         'github-oauth-client',
@@ -486,11 +498,15 @@ describe('shell connector wizard', () => {
         'muster',
       );
       await userEvent.type(
-        within(credentials).getByLabelText(/^Key holding the client ID/),
+        within(credentials).getByLabelText(
+          /^Key in the Secret's data that holds the client ID/,
+        ),
         'clientId',
       );
       await userEvent.type(
-        within(credentials).getByLabelText(/^Key holding the client secret/),
+        within(credentials).getByLabelText(
+          /^Key in the Secret's data that holds the client secret/,
+        ),
         'clientSecret',
       );
       // With an issuer, one sign-in serves every session by default.
@@ -523,6 +539,167 @@ describe('shell connector wizard', () => {
             grantScope: 'subject',
           },
         },
+      });
+    });
+
+    describe('an existing Secret', () => {
+      /** Own account, an issuer, Existing Secret: its fields on screen. */
+      async function openExistingSecret() {
+        await renderSignInStep();
+        await userEvent.click(
+          screen.getByRole('radio', {
+            name: 'Each person signs in with their own account',
+          }),
+        );
+        await userEvent.click(
+          screen.getByText(
+            "Advanced: sign-in settings for apps muster can't look up",
+          ),
+        );
+        await userEvent.type(
+          await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
+          'https://github.com',
+        );
+        const credentials = screen.getByRole('group', {
+          name: 'Client credentials',
+        });
+        await userEvent.click(
+          within(credentials).getByRole('radio', { name: 'Existing Secret' }),
+        );
+        return {
+          credentials,
+          name: within(credentials).getByLabelText(/^Secret name(?!space)/),
+          namespace: within(credentials).getByLabelText(/^Secret namespace/),
+          idKey: within(credentials).getByLabelText(
+            /^Key in the Secret's data that holds the client ID/,
+          ),
+          secretKey: within(credentials).getByLabelText(
+            /^Key in the Secret's data that holds the client secret/,
+          ),
+        };
+      }
+
+      const NAME_RULE =
+        'Use lowercase letters, numbers, hyphens and dots, starting and ending with a letter or number (at most 253 characters), e.g. github-oauth-client.';
+      const NAMESPACE_RULE =
+        'Use lowercase letters, numbers and hyphens, starting and ending with a letter or number (at most 63 characters), e.g. muster.';
+
+      it('checks the Secret name as a Kubernetes name on leaving it, not while it is typed', async () => {
+        const { credentials, name } = await openExistingSecret();
+
+        await userEvent.type(name, 'github oauth');
+        expect(
+          within(credentials).queryByText(NAME_RULE),
+        ).not.toBeInTheDocument();
+
+        await userEvent.tab();
+        expect(
+          await within(credentials).findByText(NAME_RULE),
+        ).toBeInTheDocument();
+        expect(name).toHaveAttribute('aria-invalid', 'true');
+
+        // Fixed, the error goes at once.
+        await userEvent.clear(name);
+        await userEvent.type(name, 'github-oauth');
+        expect(
+          within(credentials).queryByText(NAME_RULE),
+        ).not.toBeInTheDocument();
+        expect(name).not.toHaveAttribute('aria-invalid', 'true');
+      });
+
+      it('checks the namespace and the keys on leaving them', async () => {
+        const { credentials, namespace, idKey, secretKey } =
+          await openExistingSecret();
+
+        await userEvent.type(namespace, 'My_Namespace');
+        await userEvent.tab();
+        expect(
+          await within(credentials).findByText(NAMESPACE_RULE),
+        ).toBeInTheDocument();
+
+        await userEvent.type(idKey, 'client id');
+        await userEvent.tab();
+        expect(
+          await within(credentials).findByText(
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-id.',
+          ),
+        ).toBeInTheDocument();
+
+        await userEvent.type(secretKey, 'client/secret');
+        await userEvent.tab();
+        expect(
+          await within(credentials).findByText(
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-secret.',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('leaves empty optional fields alone when tabbing through them', async () => {
+        const { credentials, name } = await openExistingSecret();
+        name.focus();
+        await userEvent.tab();
+        await userEvent.tab();
+        await userEvent.tab();
+        await userEvent.tab();
+        expect(
+          within(credentials).queryByText(
+            "Enter the Secret's name, e.g. github-oauth-client.",
+          ),
+        ).not.toBeInTheDocument();
+        expect(
+          within(credentials).queryByText(NAMESPACE_RULE),
+        ).not.toBeInTheDocument();
+      });
+
+      it('runs the same checks on save, showing each error on its field and focusing the first', async () => {
+        const { name, namespace, idKey } = await openExistingSecret();
+        await userEvent.type(name, 'GitHub Client');
+        await userEvent.type(namespace, '-muster');
+        // Not left by the person: only the save shows its problem.
+        await userEvent.type(idKey, 'id?');
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        // A blocked save remounts the disclosure open around its fields.
+        const credentials = await screen.findByRole('group', {
+          name: 'Client credentials',
+        });
+
+        expect(
+          await within(credentials).findByText(NAME_RULE),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).getByText(NAMESPACE_RULE),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).getByText(
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-id.',
+          ),
+        ).toBeInTheDocument();
+        await waitFor(() =>
+          expect(screen.getByLabelText(/^Secret name(?!space)/)).toHaveFocus(),
+        );
+        expect(toolCalls('core_mcpserver_create')).toEqual([]);
+      });
+
+      it('sends the default keys by sending none, and trims what was typed', async () => {
+        const { name } = await openExistingSecret();
+        await userEvent.type(name, ' github-oauth-client ');
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+
+        const call = toolCalls('core_mcpserver_create')[0][1] as {
+          auth: {
+            authorizationServer: { clientCredentialsSecretRef: object };
+          };
+        };
+        expect(
+          call.auth.authorizationServer.clientCredentialsSecretRef,
+        ).toEqual({ name: 'github-oauth-client' });
       });
     });
 
@@ -580,6 +757,15 @@ describe('shell connector wizard', () => {
         expect(
           within(credentials).queryByLabelText(/^Secret name/),
         ).not.toBeInTheDocument();
+        // Says where the client goes, in Kubernetes terms.
+        expect(
+          within(credentials).getByText(
+            'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).getByText('It cannot be read back once saved.'),
+        ).toBeInTheDocument();
       });
 
       it('drops the typed values of the side it switches away from', async () => {
@@ -1309,6 +1495,11 @@ describe('shell connector wizard', () => {
 
         expect(
           within(credentials).getByText('Client secret stored'),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).getByText(
+            'Muster keeps the client in a Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.',
+          ),
         ).toBeInTheDocument();
         expect(
           within(credentials).queryByLabelText(/^Client secret/),
