@@ -47,13 +47,13 @@ describe('getSentryTransportConfig', () => {
 
 describe('the Sentry filters', () => {
   const options = transportConfig({ backend: { errorReporter: { sentry } } })!;
+  const isIgnored = (message: string) =>
+    options.ignoreErrors.some(pattern => pattern.test(message));
 
   it('ignores the startup 503 the errorHandler logs', () => {
     expect(
-      options.ignoreErrors.some(pattern =>
-        pattern.test(
-          'Request failed with status 503 Service has not started up yet',
-        ),
+      isIgnored(
+        'Request failed with status 503 Service has not started up yet',
       ),
     ).toBe(true);
   });
@@ -62,23 +62,18 @@ describe('the Sentry filters', () => {
     'ignores the empty TechDocs index the search engine says was not %s',
     verb => {
       expect(
-        options.ignoreErrors.some(pattern =>
-          pattern.test(
-            `Index for techdocs was not ${verb}: indexer received 0 documents`,
-          ),
+        isIgnored(
+          `Index for techdocs was not ${verb}: indexer received 0 documents`,
         ),
       ).toBe(true);
     },
   );
 
-  it('still reports an empty software catalog index', () => {
-    expect(
-      options.ignoreErrors.some(pattern =>
-        pattern.test(
-          'Index for software-catalog was not replaced: indexer received 0 documents',
-        ),
-      ),
-    ).toBe(false);
+  it.each([
+    'Index for techdocs was not replaced: an error was encountered',
+    'Index for software-catalog was not replaced: indexer received 0 documents',
+  ])('still reports %s', message => {
+    expect(isIgnored(message)).toBe(false);
   });
 
   it('drops an events poll failure caused by the backend starting up', () => {
