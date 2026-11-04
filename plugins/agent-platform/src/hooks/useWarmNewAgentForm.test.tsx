@@ -14,8 +14,9 @@ import {
 import {
   NewAgentFormProvider,
   useNewAgentForm,
+  useTenantChoicesSync,
 } from '../components/NewAgentFormProvider';
-import { useOwnerField } from '../components/NewAgentPage/useOwnerField';
+import { useOwnerField } from '../components/NewAgentPage/hooks/useOwnerField';
 import { useWarmNewAgentForm } from './useWarmNewAgentForm';
 
 let mockInstallations: { name: string }[];
@@ -48,7 +49,7 @@ function muster(calls: string[]): MusterApi {
   } as unknown as MusterApi;
 }
 
-function warm() {
+function warm(options?: { enabled?: boolean }) {
   const calls: string[] = [];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -58,7 +59,7 @@ function warm() {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  renderHook(() => useWarmNewAgentForm(), { wrapper });
+  renderHook(() => useWarmNewAgentForm(options), { wrapper });
   return { calls, queryClient };
 }
 
@@ -97,6 +98,16 @@ describe('useWarmNewAgentForm', () => {
     ).toBeUndefined();
   });
 
+  it('reads nothing where it is not enabled (an edit)', async () => {
+    const { calls, queryClient } = warm({ enabled: false });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(calls).toEqual([]);
+    expect(
+      queryClient.getQueryData(musterServersQueryKey('gazelle')),
+    ).toBeUndefined();
+  });
+
   it('reads nothing among several without a home installation', async () => {
     mockInstallations = [{ name: 'alpha' }, { name: 'golem' }];
     const { calls, queryClient } = warm();
@@ -130,6 +141,7 @@ describe('useWarmNewAgentForm', () => {
           setInstallation('gazelle');
         }
       }, [state.installation, setInstallation]);
+      useTenantChoicesSync();
       return <>{useOwnerField().field}</>;
     }
     await renderInTestApp(

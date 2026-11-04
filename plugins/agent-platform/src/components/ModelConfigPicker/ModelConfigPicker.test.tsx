@@ -3,8 +3,12 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
-import { useOwnerField } from '../NewAgentPage/useOwnerField';
+import {
+  NewAgentFormProvider,
+  useNewAgentForm,
+  useTenantChoicesSync,
+} from '../NewAgentFormProvider';
+import { useOwnerField } from '../NewAgentPage/hooks/useOwnerField';
 import { ModelConfigPicker } from './ModelConfigPicker';
 
 type FakeModelConfig = {
@@ -15,8 +19,9 @@ type FakeModelConfig = {
   getProvider: () => string;
 };
 
-/** The Owner field, wherever the page would put it. */
+/** The Owner field, wherever the page would put it, fed as a step feeds it. */
 function OwnerFieldHarness() {
+  useTenantChoicesSync();
   return <>{useOwnerField().field}</>;
 }
 

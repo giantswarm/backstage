@@ -41,7 +41,7 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
   useRouteRef: () => () => '/customize/connectors',
 }));
 
-jest.mock('../NewAgentFormProvider', () => ({
+jest.mock('../../NewAgentFormProvider', () => ({
   useNewAgentForm: () => ({
     state: mockState,
     edit: mockEdit,
@@ -62,7 +62,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
 }));
 
-jest.mock('../ModelConfigsProvider', () => ({
+jest.mock('../../ModelConfigsProvider', () => ({
   useModelConfigs: () => mockModelConfigs,
 }));
 
@@ -74,7 +74,7 @@ const mockRecheck = jest.fn(() => Promise.resolve());
 
 // Feature detection: which installations' musters list agent-manager. Driven per
 // case; the hook itself is covered with the muster API in useAgentManager's tests.
-jest.mock('../../hooks/useAgentManager', () => ({
+jest.mock('../../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: (installations: string[]) => ({
     available: installations.filter(name => mockPresence[name] === 'available'),
     missing: installations.filter(name => mockPresence[name] === 'missing'),
@@ -518,16 +518,20 @@ describe('useEnvironmentField', () => {
       expect(queryByRole('button', { name: /Environment/ })).toBeNull();
     });
 
-    it('keeps explaining unreachable installations', () => {
+    it('keeps explaining unreachable installations, in the main form rather than under More options', () => {
       mockModelConfigs = {
         ...mockModelConfigs,
         unreachableInstallations: ['beta'],
       };
 
-      const { getByText } = render(<EnvironmentFieldHarness />);
+      const { getByText, getByRole } = render(<EnvironmentFieldHarness />);
 
       expect(getByText(SOLE)).toBeInTheDocument();
       expect(getByText(/Could not read 1 environment/)).toBeInTheDocument();
+      // A warning that an environment is not offered stays in sight.
+      expect(getByRole('region', { name: 'main' })).toHaveTextContent(
+        /Could not read 1 environment/,
+      );
       expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
 
@@ -537,10 +541,13 @@ describe('useEnvironmentField', () => {
         inaccessibleInstallations: ['gamma'],
       };
 
-      const { getByText } = render(<EnvironmentFieldHarness />);
+      const { getByText, getByRole } = render(<EnvironmentFieldHarness />);
 
       expect(getByText('Could not check gamma')).toBeInTheDocument();
       expect(getByText(/Cluster access to gamma is not healthy/)).toBeVisible();
+      expect(getByRole('region', { name: 'main' })).toHaveTextContent(
+        /Could not check gamma/,
+      );
     });
   });
 

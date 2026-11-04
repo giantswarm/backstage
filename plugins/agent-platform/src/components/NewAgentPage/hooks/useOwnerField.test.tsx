@@ -4,14 +4,20 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useFieldValidation } from '@giantswarm/backstage-plugin-ui-react';
 
-import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
+import {
+  NewAgentFormProvider,
+  useNewAgentForm,
+  useTenantChoicesSync,
+} from '../../NewAgentFormProvider';
 import { type OwnerFieldOptions, useOwnerField } from './useOwnerField';
 
 /**
  * The field in a region named by where it puts the pair: `main`, or `line`
- * (wherever the other field goes).
+ * (wherever the other field goes), with the form taking agent-manager's
+ * answer as every step of the wizard does (`NewAgentStep`).
  */
 function OwnerFieldHarness(props: OwnerFieldOptions) {
+  useTenantChoicesSync();
   const { inMain, field } = useOwnerField(props);
   return field ? (
     <section aria-label={inMain ? 'main' : 'line'}>{field}</section>
@@ -20,22 +26,27 @@ function OwnerFieldHarness(props: OwnerFieldOptions) {
 
 /**
  * What agent-manager's `get_info` answers for the person on each
- * environment: where they may create.
+ * environment: where they may create; `null` for an answer without a
+ * `managed` list, `undefined` for none (the read failed).
  */
-let mockManaged: Record<string, string[] | undefined> = {};
+let mockManaged: Record<string, string[] | null | undefined> = {};
 /** get_info still in flight: no answer yet. */
 let mockReading = false;
 const mockRefetch = jest.fn();
 /** Whether there is a muster plugin to ask. */
 let mockCanRead = true;
-jest.mock('../../hooks/useAgentManager', () => ({
+jest.mock('../../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: (installation: string | undefined) => {
     const managed =
       installation && !mockReading ? mockManaged[installation] : undefined;
+    let info;
+    if (managed === null) {
+      info = { namespaces: { default: 'kagent' } };
+    } else if (managed) {
+      info = { namespaces: { default: 'kagent', managed } };
+    }
     return {
-      info: managed
-        ? { namespaces: { default: 'kagent', managed } }
-        : undefined,
+      info,
       isLoading: mockReading,
       error: null,
       canRead: mockCanRead,
@@ -50,7 +61,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
  * are known; prints what the form holds, and switches the environment.
  */
 function FormProbe() {
-  const { state, setInstallation, selectModelConfig, fieldErrors } =
+  const { state, setInstallation, selectModelConfig, fieldErrors, reset } =
     useNewAgentForm();
   useEffect(() => {
     if (!state.installation) {
@@ -73,6 +84,18 @@ function FormProbe() {
       </output>
       <button type="button" onClick={() => setInstallation('golem')}>
         Switch to golem
+      </button>
+      <button type="button" onClick={() => setInstallation('gazelle')}>
+        Switch to gazelle
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          picked.current = false;
+          reset();
+        }}
+      >
+        Start over
       </button>
     </>
   );
@@ -271,6 +294,67 @@ describe('useOwnerField', () => {
     expect(radio(/^Platform/)).toBeChecked();
   });
 
+  it('takes the answer again on switching back to an environment that answers the same', async () => {
+    // A platform-only person: the same answer everywhere, cached, so it
+    // arrives in the render of the switch itself.
+    mockManaged = { gazelle: ['kagent'], golem: ['kagent'] };
+    await renderInTestApp(
+      <NewAgentFormProvider>
+        <ValidatedPicker />
+      </NewAgentFormProvider>,
+    );
+
+    await screen.findByRole('region', { name: 'line' });
+    expect(form()).toHaveTextContent(/^tenant=kagent .*error=$/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Switch to golem' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Switch to gazelle' }),
+    );
+
+    expect(
+      await screen.findByRole('region', { name: 'line' }),
+    ).toHaveTextContent(
+      'Owner: Platform, the only one you may create agents for on gazelle.',
+    );
+    expect(form()).toHaveTextContent(/^tenant=kagent .*error=$/);
+  });
+
+  it('forgets the person’s pick on Start over, and preselects Platform again', async () => {
+    mockManaged = { gazelle: ['kagent', 'org-acme', 'org-beta'] };
+    await renderPicker();
+
+    await screen.findByRole('region', { name: 'main' });
+    await userEvent.click(radio(/^Organization/));
+    await userEvent.click(organizations());
+    await userEvent.click(screen.getByRole('option', { name: 'beta' }));
+    expect(form()).toHaveTextContent('tenant=org-beta');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start over' }));
+    await screen.findByRole('region', { name: 'main' });
+    expect(form()).toHaveTextContent('tenant=kagent');
+    expect(radio(/^Platform/)).toBeChecked();
+    // Nor does Organization bring back the discarded pick.
+    await userEvent.click(radio(/^Organization/));
+    expect(form()).toHaveTextContent('tenant=org-acme');
+  });
+
+  it('asks for no owner where agent-manager answers without a list, and lets Continue through', async () => {
+    mockManaged = { gazelle: null };
+    await renderInTestApp(
+      <NewAgentFormProvider>
+        <ValidatedPicker />
+      </NewAgentFormProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    // The create call gets agent-manager's own answer.
+    expect(form()).toHaveTextContent(/^tenant= .*error=$/);
+    expect(screen.queryByRole('region', { name: /^(main|line)$/ })).toBeNull();
+    expect(screen.queryByText(/where you may create agents/)).toBeNull();
+  });
+
   it('blocks Continue while reading where the person may create, and says so', async () => {
     mockManaged = { gazelle: ['org-acme', 'org-beta'] };
     mockReading = true;
@@ -343,6 +427,24 @@ describe('useOwnerField', () => {
     expect(owner()).not.toHaveAttribute('data-invalid');
     expect(form()).toHaveTextContent(/error=$/);
     expect(screen.queryByText('Choose an owner.')).toBeNull();
+  });
+
+  it('ties the blocked Continue to the field where the person may create nowhere, and focuses it', async () => {
+    mockManaged = { gazelle: [] };
+    await renderInTestApp(
+      <NewAgentFormProvider>
+        <ValidatedPicker />
+      </NewAgentFormProvider>,
+    );
+
+    await screen.findByText('You may not create agents here');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const group = screen.getByRole('group', { name: 'Owner' });
+    expect(group).toHaveAttribute('data-invalid');
+    expect(group).toHaveFocus();
+    expect(group).toHaveAccessibleDescription(
+      /^You may not create agents on gazelle\. Choose another environment/,
+    );
   });
 
   it('says who grants access where the person may create in no organization, and blocks the form', async () => {

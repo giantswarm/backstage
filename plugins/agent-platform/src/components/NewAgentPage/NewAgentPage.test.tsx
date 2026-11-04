@@ -48,7 +48,7 @@ const mockField = (kind: MockKind, text: string) => ({
   alone: kind === 'alone',
   field: kind === 'none' ? null : <p>{text}</p>,
 });
-jest.mock('./useEnvironmentField', () => ({
+jest.mock('./hooks/useEnvironmentField', () => ({
   useEnvironmentField: function useMockEnvironmentField({
     error,
   }: {
@@ -89,7 +89,7 @@ jest.mock('../ModelConfigPicker', () => ({
     return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
-jest.mock('./useOwnerField', () => ({
+jest.mock('./hooks/useOwnerField', () => ({
   useOwnerField: () => ({
     ...mockField(mockOwner, 'tenant picker'),
     sole: mockOwner === 'line' ? 'org-acme' : undefined,

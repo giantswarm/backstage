@@ -115,6 +115,18 @@ to Platform, or its first organization. Editing an agent never moves it. The
 usage pages, which group by organization, keep the label **Organization**
 there, with "None" for the platform's agents.
 
+Continue needs the owner: while agent-manager's `get_info` is read it says
+so, and where the read failed it says it could not read it, with **Check
+again**; where the person may create nowhere, the field's warning names who
+grants access. An agent-manager that answers without a `managed` list says
+nothing either way, so no owner is asked for and the create call gets its own
+answer. The form takes the answer in one place (`useTenantChoicesSync`,
+mounted by every step), and every step starts `get_info` for the likely
+environment (the only one configured, or the home installation) beside the
+reads that pick it (`useWarmNewAgentForm`), as the agents list does, so the
+owner does not arrive after the environment. Warnings about environments that
+are not offered keep the pair in the main form even where both are lines.
+
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
 configured; every skill is pinned to a commit. An `agentManagement` meta-agent

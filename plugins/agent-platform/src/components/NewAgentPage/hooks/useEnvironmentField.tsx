@@ -23,13 +23,13 @@ import {
 import { withQuery } from '@giantswarm/backstage-plugin-muster';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
-import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
-import { musterServersExternalRouteRef } from '../../routes';
-import { useNewAgentForm } from '../NewAgentFormProvider';
-import { SharedIdentityNote } from '../SharedIdentityNote';
-import { useModelConfigs } from '../ModelConfigsProvider';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
-import { LabelledField } from '../LabelledField';
+import { useAgentManagerAvailability } from '../../../hooks/useAgentManager';
+import { musterServersExternalRouteRef } from '../../../routes';
+import { useNewAgentForm } from '../../NewAgentFormProvider';
+import { SharedIdentityNote } from '../../SharedIdentityNote';
+import { useModelConfigs } from '../../ModelConfigsProvider';
+import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
+import { LabelledField } from '../../LabelledField';
 
 const LABEL = 'Environment';
 
@@ -190,17 +190,17 @@ export type EnvironmentFieldOptions = {
 
 export type EnvironmentField = {
   /**
-   * Whether the field puts itself and Organization in the main form: a real
+   * Whether the field puts itself and Owner in the main form: a real
    * choice, or a state that says why there is none. Otherwise it is a line
-   * (or nothing) that goes wherever Organization goes.
+   * (or nothing) that goes wherever Owner goes.
    */
   inMain: boolean;
   /**
    * The portal's only environment: a line under More options whatever
-   * Organization does, not one of the pair.
+   * Owner does, not one of the pair.
    */
   alone?: boolean;
-  /** The field itself, for the page to put directly before Organization. */
+  /** The field itself, for the page to put directly before Owner. */
   field: ReactNode;
 };
 
@@ -427,9 +427,11 @@ export function useEnvironmentField({
     });
 
     // The only usable environment: nothing to choose, so a line says where
-    // the agent runs, with the notes on the others.
+    // the agent runs, with the notes on the others. Notes keep the pair in
+    // the main form: a warning that an environment is not offered never
+    // hides behind a closed More options.
     const soleField = (sole: string): EnvironmentField => ({
-      inMain: shownInMain,
+      inMain: shownInMain || hasNotes,
       field: (
         <Flex direction="column" gap="2">
           <Text as="p" variant="body-small" color="secondary">

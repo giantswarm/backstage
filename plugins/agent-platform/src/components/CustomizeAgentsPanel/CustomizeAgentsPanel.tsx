@@ -180,29 +180,29 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
-  // Where the rows name organizations: room for one beside the name, or the
+  // Where the rows name owners: room for one beside the name, or the
   // facts move under the name rather than squeeze them. A list without them
   // keeps its rows on one line down to the narrower 220px.
-  mainWithOrganization: {
+  mainWithOwner: {
     flexBasis: 320,
   },
-  // The name, its organization and its state on one baseline, as the facts.
+  // The name, its owner and its state on one baseline, as the facts.
   nameLine: {
     display: 'flex',
     alignItems: 'baseline',
     columnGap: 'var(--bui-space-2)',
     rowGap: 2,
     minWidth: 0,
-    // A phone's name takes two lines: its organization goes under it.
+    // A phone's name takes two lines: its owner goes under it.
     [PHONE_MEDIA]: {
       flexWrap: 'wrap',
     },
   },
   // Whose agent it is, beside its name: never more than half the line, so a
-  // long name and a long organization each keep some of it, and never
+  // long name and a long owner each keep some of it, and never
   // squeezed out by the name.
   // On a phone it shrinks to its line and wraps there instead.
-  organization: {
+  owner: {
     flex: 'none',
     maxWidth: '50%',
     [PHONE_MEDIA]: {
@@ -340,7 +340,7 @@ type AgentFact = {
  * and what that means). Another namespace already says what it is
  * (`namespace sre-team`).
  */
-function organizationText(namespace: string): string {
+function ownerText(namespace: string): string {
   const kind = tenantKindOf(namespace);
   if (kind === 'platform') {
     return '';
@@ -351,10 +351,10 @@ function organizationText(namespace: string): string {
 }
 
 /**
- * One agent as the prototype's list row: avatar, name — with its organization
+ * One agent as the prototype's list row: avatar, name — with its owner
  * and, only when it is not Ready, its state — and what it is for, then its
  * model, its Harness, its skills and connectors and its environment, the
- * organization, Harness and environment when the list has more than one of
+ * owner, Harness and environment when the list has more than one of
  * each.
  */
 function AgentListItem({
@@ -387,15 +387,15 @@ function AgentListItem({
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const organization = showTenant ? organizationText(row.namespace) : '';
-  const organizationId = useId();
-  // The name's tooltip, with the organization beside it on a line of its own:
+  const owner = showTenant ? ownerText(row.namespace) : '';
+  const ownerId = useId();
+  // The name's tooltip, with the owner beside it on a line of its own:
   // the name link's hit area covers the row, so the row shows this tooltip
-  // wherever it is pointed at, the organization's text included, and either
+  // wherever it is pointed at, the owner's text included, and either
   // can be read in full however it is cut. A phone has no hover.
   const nameTitle = isPhone
     ? undefined
-    : [row.name, organization].filter(Boolean).join('\n');
+    : [row.name, owner].filter(Boolean).join('\n');
   const facts: AgentFact[] = [
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
@@ -428,7 +428,7 @@ function AgentListItem({
         <div
           className={
             showTenant
-              ? `${classes.main} ${classes.mainWithOrganization}`
+              ? `${classes.main} ${classes.mainWithOwner}`
               : classes.main
           }
         >
@@ -443,7 +443,7 @@ function AgentListItem({
                 weight="bold"
                 truncate={truncate}
                 title={nameTitle}
-                aria-describedby={organization ? organizationId : undefined}
+                aria-describedby={owner ? ownerId : undefined}
                 className={[
                   classes.nameLink,
                   stretched.link,
@@ -470,16 +470,16 @@ function AgentListItem({
                 every row keeps the same fact columns, and a platform agent's
                 row has nothing here. Its tooltip is the name's (above): a
                 title of its own would sit under the link's hit area. */}
-            {organization && (
+            {owner && (
               <Text
                 as="span"
-                id={organizationId}
+                id={ownerId}
                 variant="body-small"
                 color="secondary"
                 truncate={truncate}
-                className={classes.organization}
+                className={classes.owner}
               >
-                {organization}
+                {owner}
               </Text>
             )}
             {/* The state shows only when it needs a look, as in the

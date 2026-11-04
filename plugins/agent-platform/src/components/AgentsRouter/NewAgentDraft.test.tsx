@@ -68,7 +68,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => mockAgentManagerInfo,
 }));
 jest.mock('../ModelConfigPicker', () => ({ ModelConfigPicker: () => null }));
-jest.mock('../NewAgentPage/useOwnerField', () => ({
+jest.mock('../NewAgentPage/hooks/useOwnerField', () => ({
   useOwnerField: () => ({ inMain: false, field: null }),
 }));
 jest.mock('../HarnessPicker', () => ({
@@ -89,11 +89,20 @@ jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 
 /** Every name the Tools step was rendered with, in order. */
 let toolsStepNames: string[] = [];
+/**
+ * Whether the Tools step goes back to Details on an incomplete form, as the
+ * real one does (`<Navigate>`, whose effect runs before its parents').
+ */
+let mockToolsRedirects = false;
 jest.mock('../NewAgentToolsPage', () => ({
   NewAgentToolsPage: function MockToolsStep() {
     const { AgentWizardFrame } = jest.requireActual('../AgentWizardFrame');
-    const { state } = useNewAgentForm();
+    const { Navigate } = jest.requireActual('react-router-dom');
+    const { state, isComplete } = useNewAgentForm();
     toolsStepNames.push(state.name);
+    if (mockToolsRedirects && !isComplete) {
+      return <Navigate to="/customize/agents/new" replace />;
+    }
     return (
       <AgentWizardFrame step="tools">
         <p>{`tools step for "${state.name}" in ${
@@ -131,6 +140,7 @@ const nameField = () => screen.findByLabelText(/^Name/);
 beforeEach(() => {
   window.sessionStorage.clear();
   toolsStepNames = [];
+  mockToolsRedirects = false;
   mockAgentManagerInfo = { isLoading: false };
 });
 
@@ -306,6 +316,23 @@ describe('the new-agent draft', () => {
     expect(
       await screen.findByText('tools step for "Support triage" in team-b'),
     ).toBeInTheDocument();
+  });
+
+  it('keeps a later step for a draft without a tenant where the answer is already cached', async () => {
+    // Warmed from the agents list: the answer is there on the first render,
+    // before the form has taken it.
+    keepCompleteDraft(undefined);
+    mockToolsRedirects = true;
+    mockAgentManagerInfo = {
+      isLoading: false,
+      info: { namespaces: { managed: ['team-a', 'team-c'] } },
+    };
+    await renderFlow('/customize/agents/new/tools');
+
+    expect(
+      await screen.findByText('tools step for "Support triage" in team-a'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
   });
 
   it('drops the draft when the person discards their changes', async () => {

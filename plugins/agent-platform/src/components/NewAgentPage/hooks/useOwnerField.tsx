@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -13,7 +13,7 @@ import {
   useGroupFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
 import {
   ACCESS_GRANT_HINT,
   OWNER_LABEL,
@@ -22,9 +22,9 @@ import {
   tenantGroups,
   tenantKindOf,
   type TenantKind,
-} from '../../lib/tenants';
-import { useNewAgentForm } from '../NewAgentFormProvider';
-import { LabelledField } from '../LabelledField';
+} from '../../../lib/tenants';
+import { useNewAgentForm } from '../../NewAgentFormProvider';
+import { LabelledField } from '../../LabelledField';
 
 const DESCRIPTION = 'Who can use the agent, and whose editors can change it.';
 
@@ -86,76 +86,77 @@ export type OwnerField = {
 export function useOwnerField({
   errorFor = quiet,
 }: OwnerFieldOptions = {}): OwnerField {
-  const {
-    state,
-    edit,
-    fieldErrors,
-    setTenantChoices,
-    setTenantChoicesFailed,
-    selectTenant,
-    selectTenantKind,
-  } = useNewAgentForm();
+  const { state, edit, fieldErrors, selectTenant, selectTenantKind } =
+    useNewAgentForm();
   const installation = edit ? undefined : state.installation;
-  const { info, isLoading, canRead, refetch } =
-    useAgentManagerInfo(installation);
-  const answered = info?.namespaces?.managed;
-  const choicesKey = answered?.join(',');
-  // The places as the form holds them: agent-manager's answer once
-  // `setTenantChoices` has taken it (and picked one), so the field never
-  // shows a pick the form does not hold.
-  const managed =
-    answered && state.tenantChoices?.join(',') === choicesKey
-      ? answered
-      : undefined;
-  // agent-manager answered without the places or failed; or there is no
-  // muster plugin to ask, which the Environment field explains (no Check
-  // again then: there is nothing to read again).
-  const failed =
-    Boolean(installation) && (!canRead || (!isLoading && !answered));
+  // For Check again only: the form takes the answer itself
+  // (`useTenantChoicesSync`, mounted by every step).
+  const { canRead, refetch } = useAgentManagerInfo(installation);
+  // The places as the form holds them, so the field never shows a pick the
+  // form does not hold.
+  const managed = state.tenantChoices;
+  // `get_info` failed, or there is no muster plugin to ask, which the
+  // Environment field explains (no Check again then: there is nothing to
+  // read again).
+  const failed = state.tenantChoicesUnread === 'failed';
 
-  useEffect(() => {
-    if (choicesKey !== undefined) {
-      setTenantChoices(choicesKey ? choicesKey.split(',') : []);
-    }
-  }, [choicesKey, setTenantChoices]);
-  useEffect(() => {
-    setTenantChoicesFailed(failed);
-  }, [failed, setTenantChoicesFailed]);
-
-  // A blocked Continue's problem while there is nothing to pick from yet.
-  // Once there is, one is always picked, so the choice itself has none.
-  const unreadError = useGroupFieldError(
-    !managed ? errorFor('tenant', fieldErrors.tenant) : undefined,
+  // A blocked Continue's problem: while there is nothing to pick from yet,
+  // or where there is nothing the person may pick. Once there is, one is
+  // always picked, so the choice itself has none.
+  const blockError = useGroupFieldError(
+    !managed || managed.length === 0
+      ? errorFor('tenant', fieldErrors.tenant)
+      : undefined,
+  );
+  // The group takes the focus itself where it holds no control (`forms`
+  // skill: a blocked Continue focuses the first invalid field), and reads
+  // its message to a screen reader then.
+  const blockGroup = (children: ReactNode, focusable: boolean) => (
+    <div
+      aria-label={OWNER_LABEL}
+      {...blockError.groupProps}
+      // Only while it is in error and holds no control: the invalid field a
+      // blocked Continue must focus has nothing else to take it, and
+      // `focusFirstInvalidField` takes no `tabIndex` -1.
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      tabIndex={focusable && blockError.message ? 0 : undefined}
+    >
+      {children}
+    </div>
   );
 
   if (!installation) {
     return { inMain: false, field: null };
   }
   if (!managed) {
-    // Still reading, or agent-manager did not answer (or the form has not
-    // taken its answer yet). Nothing, rather than a line that would vanish a
-    // moment later in the common single-place case, until a blocked Continue
-    // asks for the owner: then the field says why there is none yet, and
-    // offers to read it again where it failed.
-    if (!unreadError.message) {
+    // Still reading, or agent-manager did not answer (or answered without
+    // a list, where no owner is asked for). Nothing, rather than a line that
+    // would vanish a moment later in the common single-place case, until a
+    // blocked Continue asks for the owner: then the field says why there is
+    // none yet, and offers to read it again where it failed.
+    if (!blockError.message) {
       return { inMain: false, field: null };
     }
+    const offersRetry = failed && canRead;
     return {
       inMain: true,
       field: (
         <LabelledField label={OWNER_LABEL} description={DESCRIPTION}>
-          <div aria-label={OWNER_LABEL} {...unreadError.groupProps}>
-            {unreadError.message}
-            {failed && canRead && (
-              <Button
-                size="small"
-                variant="secondary"
-                onPress={() => refetch()}
-              >
-                Check again
-              </Button>
-            )}
-          </div>
+          {blockGroup(
+            <>
+              {blockError.message}
+              {offersRetry && (
+                <Button
+                  size="small"
+                  variant="secondary"
+                  onPress={() => refetch()}
+                >
+                  Check again
+                </Button>
+              )}
+            </>,
+            !offersRetry,
+          )}
         </LabelledField>
       ),
     };
@@ -166,11 +167,17 @@ export function useOwnerField({
       inMain: true,
       field: (
         <LabelledField label={OWNER_LABEL} description={DESCRIPTION}>
-          <Alert
-            status="warning"
-            title="You may not create agents here"
-            description={`On ${installation}, you may create agents neither for the platform nor for an organization. ${ACCESS_GRANT_HINT}`}
-          />
+          {blockGroup(
+            <Flex direction="column" gap="2">
+              <Alert
+                status="warning"
+                title="You may not create agents here"
+                description={`On ${installation}, you may create agents neither for the platform nor for an organization. ${ACCESS_GRANT_HINT}`}
+              />
+              {blockError.message}
+            </Flex>,
+            true,
+          )}
         </LabelledField>
       ),
     };
