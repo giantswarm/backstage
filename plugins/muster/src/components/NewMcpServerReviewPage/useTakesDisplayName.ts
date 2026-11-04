@@ -2,16 +2,20 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 
 import { musterApiRef, type MusterApi } from '../../apis';
-import { takesDisplayName } from '../../lib/mcpServerDefinition';
+import {
+  takesClientCredentials,
+  takesDisplayName,
+} from '../../lib/mcpServerDefinition';
 import { toolDescriptionQuery } from '../shared/useToolDescription';
 
 /**
- * `describe_tool` of `tool`, read to learn whether it takes a display name: the
- * tool page's cache entry, fresh for a few minutes so a save does not ask again
- * right after the Connect step did, and never retried, so a failed read does
- * not hold a save back through the plugin's retry backoff.
+ * `describe_tool` of a muster write tool, read to learn which optional
+ * arguments it takes (a display name, a client to store): the tool page's
+ * cache entry, fresh for a few minutes so a save does not ask again right
+ * after a step did, and never retried, so a failed read does not hold a save
+ * back through the plugin's retry backoff.
  */
-export function displayNameSupportQuery(
+export function writeToolSchemaQuery(
   musterApi: MusterApi,
   tool: string,
   installation: string | undefined,
@@ -34,9 +38,30 @@ export function useTakesDisplayName(
 ): boolean {
   const musterApi = useApi(musterApiRef);
   const { data } = useQuery({
-    ...displayNameSupportQuery(musterApi, tool, installation),
+    ...writeToolSchemaQuery(musterApi, tool, installation),
     enabled,
     select: detail => takesDisplayName(detail.inputSchema),
   });
   return data ?? false;
+}
+
+/**
+ * Whether the installation's muster `tool` takes `clientCredentials`
+ * (giantswarm/muster#1737): false once its schema is read without it,
+ * undefined while it is read or when it cannot be. The client fields wait
+ * only for a "no": a failed read leaves the save to ask again, and to say
+ * so.
+ */
+export function useTakesClientCredentials(
+  tool: string,
+  installation: string | undefined,
+  { enabled = true }: { enabled?: boolean } = {},
+): boolean | undefined {
+  const musterApi = useApi(musterApiRef);
+  const { data } = useQuery({
+    ...writeToolSchemaQuery(musterApi, tool, installation),
+    enabled,
+    select: detail => takesClientCredentials(detail.inputSchema),
+  });
+  return data;
 }

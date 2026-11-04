@@ -6,13 +6,14 @@ import { musterApiRef } from '../../apis';
 import { isMusterAuthError } from '../../lib/authError';
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import {
+  takesClientCredentials,
   takesDisplayName,
   withoutClientSecretRef,
   type ClientCredentials,
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
-import { displayNameSupportQuery } from './useTakesDisplayName';
+import { writeToolSchemaQuery } from './useTakesDisplayName';
 
 /**
  * Client credentials handed to exactly one write. React Query keeps a
@@ -92,31 +93,49 @@ export function useRegisterMcpServer() {
         ? withoutClientSecretRef(composed)
         : composed;
       const { displayName, ...withoutDisplayName } = definition;
+      const schemaOf = (name: string, asking: string) =>
+        queryClient
+          .fetchQuery(writeToolSchemaQuery(musterApi, name, installation))
+          .then(detail => detail.inputSchema)
+          .catch(error => {
+            if (isMusterAuthError(error)) {
+              throw error;
+            }
+            throw new Error(
+              `Muster could not be asked whether it ${asking} (${
+                (error as Error)?.message ?? error
+              }). Nothing was saved; try again.`,
+            );
+          });
       const definitionFor = async (
         name: string,
       ): Promise<McpServerDefinition> => {
         if (displayName === undefined) {
           return definition;
         }
-        const detail = await queryClient
-          .fetchQuery(displayNameSupportQuery(musterApi, name, installation))
-          .catch(error => {
-            if (isMusterAuthError(error)) {
-              throw error;
-            }
-            throw new Error(
-              `Muster could not be asked whether it keeps the connector's name (${
-                (error as Error)?.message ?? error
-              }). Nothing was saved; try again.`,
-            );
-          });
-        return takesDisplayName(detail.inputSchema)
+        return takesDisplayName(
+          await schemaOf(name, "keeps the connector's name"),
+        )
           ? definition
           : withoutDisplayName;
+      };
+      // An older muster refuses the argument as unknown, after the person
+      // typed a client: say what it cannot do instead (the sign-in step
+      // hides the fields once it knows).
+      const takesClient = async () => {
+        if (
+          clientCredentials &&
+          !takesClientCredentials(await schemaOf(tool, 'can store a client'))
+        ) {
+          throw new Error(
+            'Muster on this installation cannot store a client yet. Nothing was saved; choose Existing Secret to name a Secret that holds the client instead.',
+          );
+        }
       };
       const [validated, sent] = await Promise.all([
         definitionFor('core_mcpserver_validate'),
         definitionFor(tool),
+        takesClient(),
       ]);
       await musterApi.callTool(
         'core_mcpserver_validate',

@@ -310,6 +310,17 @@ export function takesDisplayName(
 }
 
 /**
+ * Whether a muster write tool takes the `clientCredentials` argument
+ * (giantswarm/muster#1737), read from its input schema like
+ * {@link takesDisplayName}: an older muster refuses it as an unknown field.
+ */
+export function takesClientCredentials(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  return Boolean(inputSchema?.properties?.clientCredentials);
+}
+
+/**
  * A pre-registered OAuth client's credentials as typed into the wizard, for
  * muster to store in a Secret bound to the connector. Held apart from the form
  * state and the definition: they go into the create or update call as its
@@ -453,11 +464,12 @@ export function clientCredentialsArgument(
   credentials: ClientCredentials,
 ): ClientCredentials | undefined {
   const trimmed = trimmedCredentials(credentials);
+  // Applicable, with a client ID and no problem: the secret is there too (a
+  // half client is a problem), and so is the issuer.
   if (
     state.authMode !== 'own-account' ||
     state.useExistingSecret ||
     !trimmed.clientId ||
-    !trimmed.clientSecret ||
     clientCredentialsProblems(state, credentials).length > 0
   ) {
     return undefined;
@@ -807,19 +819,36 @@ export function effectiveGrantScope(
 }
 
 // A key of a Secret's `data`, as the API server checks it
-// (`IsConfigMapKey`): letters, digits, `-`, `_` and `.`, at most 253.
+// (`IsConfigMapKey`): letters, digits, `-`, `_` and `.`, at most 253, and
+// neither `.` nor `..` nor starting with `..`.
 const SECRET_DATA_KEY_PATTERN = /^[-._a-zA-Z0-9]{1,253}$/;
+
+function isSecretDataKey(key: string): boolean {
+  return (
+    SECRET_DATA_KEY_PATTERN.test(key) && key !== '.' && !key.startsWith('..')
+  );
+}
 
 /**
  * Problems of the Existing Secret fields: the reference must name a Secret
  * the API server could hold, or muster refuses the server once it is saved.
- * Values are trimmed first, as they are composed.
+ * Values are trimmed first, as they are composed. All four empty is no client
+ * at all, as with New Secret: nothing is composed and nothing is required.
  */
 function existingSecretProblems(
   state: NewMcpServerFormState,
 ): McpServerProblem[] {
   const problems: McpServerProblem[] = [];
   const name = state.clientSecretName.trim();
+  const namespace = state.clientSecretNamespace.trim();
+  if (
+    !name &&
+    !namespace &&
+    !state.clientIdKey.trim() &&
+    !state.clientSecretKey.trim()
+  ) {
+    return problems;
+  }
   if (!name) {
     problems.push({
       field: 'clientSecretName',
@@ -831,8 +860,15 @@ function existingSecretProblems(
       message:
         'Use lowercase letters, numbers, hyphens and dots, starting and ending with a letter or number (at most 253 characters), e.g. github-oauth-client.',
     });
+  } else if (isStoredClientSecret(state.slug.trim(), name)) {
+    // muster reserves the form for the client Secrets it writes: in any
+    // namespace it reads one only with an ownerReference to this connector,
+    // so a Secret made by hand under such a name never signs anyone in.
+    problems.push({
+      field: 'clientSecretName',
+      message: `Names like ${state.slug.trim()}-oauth-client-a1b2c are kept for the client muster stores; choose another name.`,
+    });
   }
-  const namespace = state.clientSecretNamespace.trim();
   if (namespace && !isValidSlug(namespace)) {
     problems.push({
       field: 'clientSecretNamespace',
@@ -844,10 +880,10 @@ function existingSecretProblems(
     ['clientIdKey', state.clientIdKey.trim(), 'client-id'],
     ['clientSecretKey', state.clientSecretKey.trim(), 'client-secret'],
   ] as const) {
-    if (key && !SECRET_DATA_KEY_PATTERN.test(key)) {
+    if (key && !isSecretDataKey(key)) {
       problems.push({
         field,
-        message: `Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. ${example}.`,
+        message: `Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. ${example}.`,
       });
     }
   }
@@ -1113,8 +1149,8 @@ const WIZARD_AUTH_KEYS: Record<McpServerAuthMode, string[]> = {
 };
 /**
  * `authorizationServer` keys the wizard has no field for but keeps: an edit
- * carries them over from the server unchanged while the issuer stays
- * ({@link mergeOntoExisting}). Kept rather than dropped because muster binds
+ * carries them over from the server unchanged while the issuer or the pinned
+ * endpoints stay ({@link mergeOntoExisting}). Kept rather than dropped because muster binds
  * a stored client to the revocation endpoint too. `expectedIssuer` stays out:
  * a server pinning one keeps being edited as JSON rather than silently
  * losing it.
@@ -1364,15 +1400,24 @@ export function mergeOntoExisting(
     merged.auth = { type: 'none' };
   }
   // The authorization server's keys the wizard does not render ride along
-  // while it still sends to the same issuer; another issuer is another
-  // server, whose endpoints muster discovers.
+  // while it still is the same server: the same issuer, or the same pinned
+  // endpoints (a provider without metadata, whose revocation endpoint muster
+  // cannot discover, keeps it when only its issuer is corrected). Another
+  // issuer with other or no pinned endpoints is another server, whose
+  // endpoints muster discovers; its revocation endpoint would get the new
+  // provider's tokens sent to the old one.
   const existingServer = (existing.auth as MCPServerAuth | undefined)
     ?.authorizationServer;
   const composedServer = merged.auth?.authorizationServer;
+  const samePinnedEndpoints =
+    Boolean(composedServer?.authorizationEndpoint) &&
+    composedServer?.authorizationEndpoint ===
+      existingServer?.authorizationEndpoint &&
+    composedServer?.tokenEndpoint === existingServer?.tokenEndpoint;
   if (
     composedServer &&
     existingServer &&
-    composedServer.issuer === existingServer.issuer
+    (composedServer.issuer === existingServer.issuer || samePinnedEndpoints)
   ) {
     const carried = Object.fromEntries(
       CARRIED_AUTHORIZATION_SERVER_KEYS.filter(

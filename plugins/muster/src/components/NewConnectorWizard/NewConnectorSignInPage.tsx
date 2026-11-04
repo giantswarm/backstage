@@ -42,6 +42,7 @@ import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import {
   OneTimeClientCredentials,
   useRegisterMcpServer,
+  useTakesClientCredentials,
 } from '../NewMcpServerReviewPage';
 import { SelectableCard } from '../SelectableCard';
 import { DisclosureAccordion, SessionGate } from '../shared';
@@ -239,10 +240,18 @@ export function NewConnectorSignInPage() {
   } = useNewMcpServerForm();
 
   // A client's ID and secret live here only, never in the form state: they
-  // go into the create or update call and are cleared once it settles,
-  // whatever its outcome, so a failed save is retyped.
+  // go into the create or update call and are cleared once it succeeds. A
+  // refused save keeps them for the retry (see `onRegister`).
   const [credentials, setCredentials] =
     useState<ClientCredentials>(NO_CREDENTIALS);
+  // An older muster takes no `clientCredentials` (giantswarm/muster#1737):
+  // New Secret then has no fields to type a client into, and says why.
+  const takesClient = useTakesClientCredentials(
+    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+    state.installation,
+    { enabled: state.authMode === 'own-account' },
+  );
+  const cannotStoreClient = takesClient === false;
   const [replacing, setReplacing] = useState(false);
   // A client muster stored for this connector. It is used only while an
   // issuer is set; it is bound to its authorization server, so pointing the
@@ -255,7 +264,9 @@ export function NewConnectorSignInPage() {
   const serverChanged = clientSecretStored && authorizationServerChanged;
   const replaceMode = clientSecretStored && (replacing || serverChanged);
   const enteringCredentials =
-    !state.useExistingSecret && (!clientSecretStored || replaceMode);
+    !state.useExistingSecret &&
+    !cannotStoreClient &&
+    (!clientSecretStored || replaceMode);
   const credentialProblems = enteringCredentials
     ? clientCredentialsProblems(state, credentials, { required: replaceMode })
     : [];
@@ -275,10 +286,12 @@ export function NewConnectorSignInPage() {
     }
     setFocusAfter(undefined);
   }, [focusAfter]);
-  // The other side's values go: a typed secret is never kept around.
+  // What was typed on the other side stays for the way back (the forms
+  // skill), except the client secret: a typed secret is never kept around
+  // out of sight.
   const chooseSource = (existing: boolean) => {
     setUseExistingSecret(existing);
-    setCredentials(NO_CREDENTIALS);
+    setCredentials(prev => ({ ...prev, clientSecret: '' }));
     setReplacing(false);
   };
   const startReplacing = () => {
@@ -408,6 +421,16 @@ export function NewConnectorSignInPage() {
     wizardLinks,
     navigate,
   ]);
+
+  let newSecretText =
+    'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.';
+  if (cannotStoreClient && !clientSecretStored) {
+    newSecretText =
+      'Muster on this installation cannot store a client yet. To use your own client, choose Existing Secret and name a Secret that holds it.';
+  } else if (!enteringCredentials) {
+    newSecretText =
+      'Muster keeps the client in a Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.';
+  }
 
   const registerLabel = isEdit ? 'Save changes' : 'Add connector';
   const busyLabel = isEdit ? 'Saving…' : 'Adding…';
@@ -617,22 +640,22 @@ export function NewConnectorSignInPage() {
                   </Text>
                 ) : (
                   <Text variant="body-small" color="secondary">
-                    {enteringCredentials
-                      ? 'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.'
-                      : 'Muster keeps the client in a Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.'}
+                    {newSecretText}
                   </Text>
                 )}
                 {clientSecretStored && !replaceMode && (
                   <Flex align="center" justify="between" gap="3">
                     <Text variant="body-medium">Client secret stored</Text>
-                    <Button
-                      ref={replaceButtonRef}
-                      variant="secondary"
-                      size="small"
-                      onPress={startReplacing}
-                    >
-                      Replace
-                    </Button>
+                    {!cannotStoreClient && (
+                      <Button
+                        ref={replaceButtonRef}
+                        variant="secondary"
+                        size="small"
+                        onPress={startReplacing}
+                      >
+                        Replace
+                      </Button>
+                    )}
                   </Flex>
                 )}
                 {serverChanged && (

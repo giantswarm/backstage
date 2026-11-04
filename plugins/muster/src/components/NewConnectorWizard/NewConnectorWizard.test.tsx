@@ -118,9 +118,13 @@ async function renderSignInStep() {
 
 /**
  * `describe_tool` of a muster whose create and update take a display name
- * (v5.43.0 and later) or not.
+ * (v5.43.0 and later) or not, and a client to store (giantswarm/muster#1737)
+ * unless `client` is false.
  */
-function musterTakesDisplayName(takes: boolean) {
+function musterTakesDisplayName(
+  takes: boolean,
+  { client = true }: { client?: boolean } = {},
+) {
   describeTool.mockImplementation((name: string) =>
     Promise.resolve({
       name,
@@ -129,6 +133,9 @@ function musterTakesDisplayName(takes: boolean) {
         properties: {
           name: { type: 'string' },
           ...(takes ? { displayName: { type: 'string' } } : {}),
+          ...(client && name !== 'core_mcpserver_validate'
+            ? { clientCredentials: { type: 'object' } }
+            : {}),
         },
       },
     }),
@@ -621,7 +628,7 @@ describe('shell connector wizard', () => {
         await userEvent.tab();
         expect(
           await within(credentials).findByText(
-            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-id.',
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-id.',
           ),
         ).toBeInTheDocument();
 
@@ -629,7 +636,7 @@ describe('shell connector wizard', () => {
         await userEvent.tab();
         expect(
           await within(credentials).findByText(
-            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-secret.',
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-secret.',
           ),
         ).toBeInTheDocument();
       });
@@ -674,13 +681,30 @@ describe('shell connector wizard', () => {
         ).toBeInTheDocument();
         expect(
           within(credentials).getByText(
-            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-id.',
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-id.',
           ),
         ).toBeInTheDocument();
         await waitFor(() =>
           expect(screen.getByLabelText(/^Secret name(?!space)/)).toHaveFocus(),
         );
         expect(toolCalls('core_mcpserver_create')).toEqual([]);
+      });
+
+      it('saves with Existing Secret left empty, as no client', async () => {
+        await openExistingSecret();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+
+        expect(
+          (
+            toolCalls('core_mcpserver_create')[0][1] as {
+              auth: { authorizationServer: object };
+            }
+          ).auth.authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
       });
 
       it('sends the default keys by sending none, and trims what was typed', async () => {
@@ -768,7 +792,7 @@ describe('shell connector wizard', () => {
         ).toBeInTheDocument();
       });
 
-      it('drops the typed values of the side it switches away from', async () => {
+      it('keeps what was typed on either side for the way back, except the client secret', async () => {
         await renderSignInStep();
         const credentials = await typeClient(
           'hubspot-client',
@@ -782,12 +806,19 @@ describe('shell connector wizard', () => {
           within(credentials).getByLabelText(/^Secret name(?!space)/),
           'hubspot-oauth-client',
         );
+        await userEvent.type(
+          within(credentials).getByLabelText(
+            /^Key in the Secret's data that holds the client ID/,
+          ),
+          'id',
+        );
         await userEvent.click(
           within(credentials).getByRole('radio', { name: 'New Secret' }),
         );
 
+        // The client ID comes back; a typed secret is never kept out of sight.
         expect(within(credentials).getByLabelText(/^Client ID/)).toHaveValue(
-          '',
+          'hubspot-client',
         );
         expect(
           within(credentials).getByLabelText(/^Client secret/),
@@ -797,7 +828,80 @@ describe('shell connector wizard', () => {
         );
         expect(
           within(credentials).getByLabelText(/^Secret name(?!space)/),
-        ).toHaveValue('');
+        ).toHaveValue('hubspot-oauth-client');
+        expect(
+          within(credentials).getByLabelText(
+            /^Key in the Secret's data that holds the client ID/,
+          ),
+        ).toHaveValue('id');
+
+        // Only the chosen side is sent: the Secret, no typed client.
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+        const [create] = toolCalls('core_mcpserver_create');
+        expect(create[1]).not.toHaveProperty('clientCredentials');
+        expect(create[1]).toMatchObject({
+          auth: {
+            authorizationServer: {
+              clientCredentialsSecretRef: {
+                name: 'hubspot-oauth-client',
+                clientIdKey: 'id',
+              },
+            },
+          },
+        });
+      });
+
+      it('composes no Secret typed under Existing Secret once New Secret is chosen', async () => {
+        await renderSignInStep();
+        const credentials = await typeClient('', '');
+        await userEvent.click(
+          within(credentials).getByRole('radio', { name: 'Existing Secret' }),
+        );
+        await userEvent.type(
+          within(credentials).getByLabelText(/^Secret name(?!space)/),
+          'hubspot-oauth-client',
+        );
+        await userEvent.click(
+          within(credentials).getByRole('radio', { name: 'New Secret' }),
+        );
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+        expect(
+          (
+            toolCalls('core_mcpserver_create')[0][1] as {
+              auth: { authorizationServer: object };
+            }
+          ).auth.authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+      });
+
+      it('offers no client fields on a muster that cannot store a client', async () => {
+        musterTakesDisplayName(true, { client: false });
+        await renderSignInStep();
+        const credentials = await typeClient('', '');
+
+        expect(
+          await within(credentials).findByText(
+            'Muster on this installation cannot store a client yet. To use your own client, choose Existing Secret and name a Secret that holds it.',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          within(credentials).queryByLabelText(/^Client ID/),
+        ).not.toBeInTheDocument();
+        // Existing Secret still works, and the save goes through without one.
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Add connector' }),
+        );
+        await screen.findByText('Test the connection');
+        expect(toolCalls('core_mcpserver_create')[0][1]).not.toHaveProperty(
+          'clientCredentials',
+        );
       });
 
       it('lists issuer, endpoints and scopes in that order, scopes never greyed out', async () => {

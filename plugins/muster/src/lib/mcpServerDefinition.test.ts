@@ -588,14 +588,72 @@ describe('validateNewMcpServerForm', () => {
         {
           field: 'clientIdKey',
           message:
-            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-id.',
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-id.',
         },
         {
           field: 'clientSecretKey',
           message:
-            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters), e.g. client-secret.',
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-secret.',
         },
       ]);
+    });
+
+    it.each(['.', '..', '..data'])(
+      'rejects the data key %j, which no Secret can hold',
+      clientIdKey => {
+        expect(existing({ clientIdKey })).toEqual([
+          expect.objectContaining({ field: 'clientIdKey' }),
+        ]);
+      },
+    );
+
+    it('asks for nothing while all four fields are empty: no client, as with New Secret', () => {
+      expect(existing({ clientSecretName: '' })).toEqual([]);
+      expect(
+        composeMcpServerDefinition(
+          state({
+            authMode: 'own-account',
+            issuer: 'https://auth.example.com',
+            useExistingSecret: true,
+          }),
+        ).auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
+    });
+
+    it('wants the name once another of the fields is filled in', () => {
+      expect(
+        existing({ clientSecretName: '', clientSecretNamespace: 'muster' }),
+      ).toEqual([
+        {
+          field: 'clientSecretName',
+          message: "Enter the Secret's name, e.g. github-oauth-client.",
+        },
+      ]);
+    });
+
+    it("refuses a name of the form muster keeps for this connector's stored client", () => {
+      expect(
+        existing({
+          slug: 'github',
+          clientSecretName: 'github-oauth-client-prod1',
+        }),
+      ).toEqual([
+        {
+          field: 'clientSecretName',
+          message:
+            'Names like github-oauth-client-a1b2c are kept for the client muster stores; choose another name.',
+        },
+      ]);
+      // Another connector's prefix, or another length, is an ordinary name.
+      expect(
+        existing({ slug: 'github', clientSecretName: 'github-oauth-client' }),
+      ).toEqual([]);
+      expect(
+        existing({
+          slug: 'github',
+          clientSecretName: 'gitlab-oauth-client-prod1',
+        }),
+      ).toEqual([]);
     });
 
     it('leaves empty optional fields to their defaults', () => {
@@ -1732,6 +1790,52 @@ describe('client credentials typed into the wizard', () => {
     );
   });
 
+  it('keeps the revocation endpoint of pinned endpoints when only the issuer changes', () => {
+    const pinned = {
+      authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+      tokenEndpoint: 'https://github.com/login/oauth/access_token',
+    };
+    const server = registered({
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://github.com',
+          ...pinned,
+          revocationEndpoint: 'https://github.com/revoke',
+        },
+      },
+    });
+    const form = formStateFromServer(server);
+    const existing = toMcpServerDefinition(server);
+
+    // The same provider under a corrected issuer: muster cannot discover its
+    // revocation endpoint, so it stays.
+    const corrected = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({ ...form, issuer: 'https://github.com/' }),
+    );
+    expect(corrected.auth?.authorizationServer).toMatchObject({
+      issuer: 'https://github.com/',
+      ...pinned,
+      revocationEndpoint: 'https://github.com/revoke',
+    });
+
+    // Other endpoints are another provider: the old endpoint must not get
+    // its tokens.
+    const otherProvider = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({
+        ...form,
+        issuer: 'https://gitlab.com',
+        authorizationEndpoint: 'https://gitlab.com/oauth/authorize',
+        tokenEndpoint: 'https://gitlab.com/oauth/token',
+      }),
+    );
+    expect(otherProvider.auth?.authorizationServer).not.toHaveProperty(
+      'revocationEndpoint',
+    );
+  });
+
   it('lets an issuer be cleared on a connector with a stored client', () => {
     const form = ownAccount({
       issuer: '',
@@ -1739,6 +1843,15 @@ describe('client credentials typed into the wizard', () => {
     });
     expect(validateNewMcpServerForm(form)).toEqual([]);
     expect(composeMcpServerDefinition(form).auth).toEqual({ type: 'oauth' });
+  });
+
+  it('sends no half client: an ID without its secret is none', () => {
+    expect(
+      clientCredentialsArgument(ownAccount(), {
+        clientId: 'hubspot-client',
+        clientSecret: ' ',
+      }),
+    ).toBeUndefined();
   });
 
   it('sends only complete, applicable credentials, trimmed', () => {

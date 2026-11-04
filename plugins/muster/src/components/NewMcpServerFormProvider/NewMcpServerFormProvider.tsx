@@ -192,6 +192,31 @@ type EditBase = {
 /** An unfinished registration an edit set aside. */
 type Draft = { state: NewMcpServerFormState; slugEdited: boolean };
 
+/** The four Secret fields of a client's Secret reference. */
+type SecretFields = Pick<
+  NewMcpServerFormState,
+  | 'clientSecretName'
+  | 'clientSecretNamespace'
+  | 'clientIdKey'
+  | 'clientSecretKey'
+>;
+
+const NO_SECRET_FIELDS: SecretFields = {
+  clientSecretName: '',
+  clientSecretNamespace: '',
+  clientIdKey: '',
+  clientSecretKey: '',
+};
+
+function secretFieldsOf(form: NewMcpServerFormState): SecretFields {
+  return {
+    clientSecretName: form.clientSecretName,
+    clientSecretNamespace: form.clientSecretNamespace,
+    clientIdKey: form.clientIdKey,
+    clientSecretKey: form.clientSecretKey,
+  };
+}
+
 /**
  * Shared form state for the connector registration wizard (connect →
  * sign-in → test), modelled on agent creation's
@@ -239,6 +264,11 @@ export function NewMcpServerFormProvider({
   const latest = useRef({ state, slugEdited, registeredName, base });
   latest.current = { state, slugEdited, registeredName, base };
   const draft = useRef<Draft>();
+  // The Existing Secret fields typed before New Secret was chosen, for the
+  // way back (the forms skill: hiding a field never clears it). Outside the
+  // form state, so it is neither composed nor part of a draft; a save, an
+  // edit, a reset or another sign-in mode drops it.
+  const existingSecretAside = useRef<SecretFields>();
 
   const markSaved = useCallback(
     (
@@ -287,6 +317,7 @@ export function NewMcpServerFormProvider({
             }
           : {}),
       };
+      existingSecretAside.current = undefined;
       setState(form);
       setBase({ definition: saved, form, displayName });
     },
@@ -315,6 +346,7 @@ export function NewMcpServerFormProvider({
       setLastSave(undefined);
       setLastSaveAt(undefined);
       setStoredClientCredentials(false);
+      existingSecretAside.current = undefined;
       setBase({
         definition: toMcpServerDefinition(server),
         form,
@@ -336,6 +368,7 @@ export function NewMcpServerFormProvider({
     setLastSave(undefined);
     setLastSaveAt(undefined);
     setStoredClientCredentials(false);
+    existingSecretAside.current = undefined;
     setBase(undefined);
     setState(restored?.state ?? initialState);
   }, [initialState]);
@@ -377,7 +410,10 @@ export function NewMcpServerFormProvider({
       // current mode (a click on the already-selected card) is no switch and
       // keeps what is filled in; switching back to the registered server's own
       // mode brings its values back rather than an empty answer.
-      setAuthMode: authMode =>
+      setAuthMode: authMode => {
+        if (latest.current.state.authMode !== authMode) {
+          existingSecretAside.current = undefined;
+        }
         setState(prev => {
           if (prev.authMode === authMode) {
             return prev;
@@ -387,35 +423,40 @@ export function NewMcpServerFormProvider({
               ? authAnswerOf(base.form)
               : emptyAuthAnswer;
           return { ...prev, authMode, ...answer };
-        }),
+        });
+      },
       setIssuer: issuer => setState(prev => ({ ...prev, issuer })),
       setScopes: scopes => setState(prev => ({ ...prev, scopes })),
       setAuthorizationEndpoint: authorizationEndpoint =>
         setState(prev => ({ ...prev, authorizationEndpoint })),
       setTokenEndpoint: tokenEndpoint =>
         setState(prev => ({ ...prev, tokenEndpoint })),
-      setUseExistingSecret: useExistingSecret =>
-        setState(prev => {
-          if (prev.useExistingSecret === useExistingSecret) {
-            return prev;
-          }
-          const saved = base?.form;
-          const keepsSaved =
-            saved &&
-            (useExistingSecret
-              ? saved.useExistingSecret
-              : hasStoredClientSecret(saved));
-          return {
-            ...prev,
-            useExistingSecret,
-            clientSecretName: keepsSaved ? saved.clientSecretName : '',
-            clientSecretNamespace: keepsSaved
-              ? saved.clientSecretNamespace
-              : '',
-            clientIdKey: keepsSaved ? saved.clientIdKey : '',
-            clientSecretKey: keepsSaved ? saved.clientSecretKey : '',
-          };
-        }),
+      // The four Secret fields belong to the chosen side: the Secret named
+      // under Existing Secret, or the one muster stored under New Secret. A
+      // side opens on the saved server's values where they are its own, and
+      // Existing Secret on what was typed into it before New Secret was
+      // chosen. Read outside an updater, which may run twice: it moves what
+      // was typed aside.
+      setUseExistingSecret: useExistingSecret => {
+        const prev = latest.current.state;
+        if (prev.useExistingSecret === useExistingSecret) {
+          return;
+        }
+        const saved = base?.form;
+        const keepsSaved =
+          saved &&
+          (useExistingSecret
+            ? saved.useExistingSecret
+            : hasStoredClientSecret(saved));
+        const fromSaved = keepsSaved ? secretFieldsOf(saved) : NO_SECRET_FIELDS;
+        const next = useExistingSecret
+          ? (existingSecretAside.current ?? fromSaved)
+          : fromSaved;
+        existingSecretAside.current = useExistingSecret
+          ? undefined
+          : secretFieldsOf(prev);
+        setState(current => ({ ...current, useExistingSecret, ...next }));
+      },
       setClientSecretName: clientSecretName =>
         setState(prev => ({ ...prev, clientSecretName })),
       setClientSecretNamespace: clientSecretNamespace =>

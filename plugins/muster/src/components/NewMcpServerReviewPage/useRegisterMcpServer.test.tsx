@@ -65,8 +65,14 @@ function renderRegister() {
   };
 }
 
-/** `describe_tool` of a muster whose tools take a display name or not. */
-function schemaWith(displayName: boolean) {
+/**
+ * `describe_tool` of a muster whose tools take a display name or not, and
+ * whose writes take a client to store unless `client` is false.
+ */
+function schemaWith(
+  displayName: boolean,
+  { client = true }: { client?: boolean } = {},
+) {
   return (name: string) =>
     Promise.resolve({
       name,
@@ -75,6 +81,9 @@ function schemaWith(displayName: boolean) {
         properties: {
           name: { type: 'string' },
           ...(displayName ? { displayName: { type: 'string' } } : {}),
+          ...(client && name !== 'core_mcpserver_validate'
+            ? { clientCredentials: { type: 'object' } }
+            : {}),
         },
       },
     });
@@ -110,6 +119,32 @@ describe('useRegisterMcpServer', () => {
         clientId: 'hubspot-client',
         clientSecret: SECRET,
       });
+
+    // An older muster refuses the argument as unknown: the save says what
+    // it cannot do instead, and nothing is written.
+    it('writes nothing to a muster whose write takes no client, and says so', async () => {
+      describeTool.mockImplementation(schemaWith(true, { client: false }));
+      const { result } = renderRegister();
+
+      let error: Error | undefined;
+      await act(async () => {
+        await result.current
+          .mutateAsync({
+            ...registration,
+            definition: withClient,
+            clientCredentials: clientCredentials(),
+          })
+          .catch(e => {
+            error = e;
+          });
+      });
+
+      expect(error?.message).toBe(
+        'Muster on this installation cannot store a client yet. Nothing was saved; choose Existing Secret to name a Secret that holds the client instead.',
+      );
+      expect(error?.message).not.toContain(SECRET);
+      expect(callTool).not.toHaveBeenCalled();
+    });
 
     it.each([
       [false, 'core_mcpserver_create'],
