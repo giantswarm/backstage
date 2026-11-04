@@ -33,7 +33,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export type CodeBlockProps = {
+export type FileViewProps = {
   content: string;
   /** File name shown in the header (with a file icon). */
   filename?: string;
@@ -43,12 +43,12 @@ export type CodeBlockProps = {
   language?: 'yaml' | 'text';
 };
 
-export function CodeBlock({
+export function FileView({
   content,
   filename,
   path,
   language = 'text',
-}: CodeBlockProps) {
+}: FileViewProps) {
   const classes = useStyles();
   const theme = useTheme();
 

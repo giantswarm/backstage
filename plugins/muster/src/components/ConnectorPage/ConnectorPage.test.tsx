@@ -141,7 +141,14 @@ const makeServers = () => [
   makeServer({
     name: 'jira',
     spec: {
-      auth: { type: 'oauth' },
+      // One sign-in for all of the person's sessions, so it reads Connected.
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://auth.jira.example.test',
+          grantScope: 'subject',
+        },
+      },
       description: 'Search, read and update tickets',
     },
   }),
@@ -706,6 +713,72 @@ describe('ConnectorPage', () => {
 
     expect(signedOutHeader).toEqual(['Edit', 'More actions']);
     expect(headerButtons()).toEqual(signedOutHeader);
+  });
+
+  describe('a connector whose sign-in serves one session', () => {
+    beforeEach(() => {
+      mockServers = [
+        ...makeServers(),
+        makeServer({
+          name: 'grafana-cloud',
+          spec: { auth: { type: 'oauth' } },
+        }),
+      ];
+    });
+
+    function signedIn(status: Record<string, unknown> = {}) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana-cloud',
+            status: 'connected',
+            kind: 'grant',
+            ...status,
+          },
+        ],
+      } as never);
+      return api;
+    }
+
+    it('says the sign-in covers the portal only, not plain Connected', async () => {
+      const user = userEvent.setup();
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'session' }),
+      });
+
+      expect(await screen.findByText('Portal only')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).toBeNull();
+      // react-aria opens a tooltip on hover only once it has seen a pointer
+      // move, and a hover's own move lands after its enter.
+      await user.hover(document.body);
+      await user.hover(
+        screen.getByRole('button', {
+          name: 'About the state of grafana-cloud',
+        }),
+      );
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+      );
+    });
+
+    it('keeps muster’s state until muster reports this session signed in', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
+      await renderAt(`${BASE}/grafana-cloud`, { api });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+
+    it('reads Connected where muster reports the grant as the person’s', async () => {
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'subject' }),
+      });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
   });
 
   describe('an SSO connector', () => {

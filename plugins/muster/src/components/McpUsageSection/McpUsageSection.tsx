@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   formatCount,
   formatSeconds,
+  lastDaysNoun,
   parseUsageWindowParam,
   USAGE_WINDOW_PARAM,
   type UsageWindowDays,
@@ -175,8 +176,8 @@ function UsageBody({
 
   const { totals } = data;
   const errorRatio = errorRatioFigure(totals.error_ratio);
-  const rangeLabel = `${windowDays}d`;
-  const windowNote = `over the last ${windowDays} days`;
+  const windowNoun = lastDaysNoun(windowDays);
+  const windowNote = `over ${windowNoun}`;
 
   return (
     <>
@@ -211,9 +212,9 @@ function UsageBody({
 
       {totals.calls === 0 ? (
         <Text as="p" variant="body-medium" color="secondary">
-          No tool calls were dispatched to connectors in the last {rangeLabel}.
-          If usage is expected, this environment's muster may not export
-          dispatch metrics yet.
+          No tool calls were dispatched to connectors in {windowNoun}. If usage
+          is expected, this environment's muster may not export dispatch metrics
+          yet.
         </Text>
       ) : (
         <>
@@ -351,7 +352,7 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="Connector tool calls on this environment"
-        description={`This covers every caller's tool calls, not only yours, over the last ${windowDays} days.`}
+        description={`This covers every caller's tool calls, not only yours, over ${lastDaysNoun(windowDays)}.`}
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

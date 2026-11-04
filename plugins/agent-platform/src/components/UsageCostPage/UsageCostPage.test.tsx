@@ -10,6 +10,7 @@ import {
 } from '../../lib/usageWindow';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageCostPage } from './UsageCostPage';
+import { SHELL_CONTENT_MAX_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 // The chart and the two tables have their own tests; this file is about which
 // figures the Cost tab carries, so they stand in as markers.
@@ -138,7 +139,9 @@ describe('UsageCostPage without gateway metrics (mimirEnabled: false)', () => {
     ).toBeInTheDocument();
     // The ShellPage idiom: a centered max-width column, not full bleed.
     expect(
-      container.querySelector('[style*="max-width: 1080px"]'),
+      container.querySelector(
+        `[style*="max-width: ${SHELL_CONTENT_MAX_WIDTH}px"]`,
+      ),
     ).not.toBeNull();
     // No invented figures.
     expect(screen.queryByText('Reported cost')).toBeNull();

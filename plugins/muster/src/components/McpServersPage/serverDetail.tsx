@@ -45,16 +45,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   block: {
     marginBottom: theme.spacing(2),
   },
-  // bui's Link is underlined by default and takes the body colour. Both rules
-  // live in bui's `components` cascade layer, so these unlayered ones win
-  // without needing extra specificity.
-  link: {
-    color: theme.palette.link,
-    textDecoration: 'none',
-    '&:hover': {
-      textDecoration: 'underline',
-    },
-  },
   // A tool tag is already a pill: the underline only crowds the rows.
   //
   // The pill is also the hit target the reader sees -- bui highlights it and
@@ -509,10 +499,7 @@ export function ServerTools({
       <Note>
         {data?.total ?? tools.length} tool(s) under <Mono>{pattern}</Mono>
         {data?.truncated ? ' (first page)' : ''} —{' '}
-        <Link
-          className={classes.link}
-          href={links.server(serverKey, installation) ?? '#'}
-        >
+        <Link href={links.server(serverKey, installation) ?? '#'}>
           Open the server’s tools
         </Link>
       </Note>
@@ -528,7 +515,9 @@ export function ServerTools({
                 renders an `href`-carrying Tag as a pressable grid row, not an
                 anchor, which would cost the tool list middle-click and
                 open-in-new-tab. The title carries the summary on hover. */}
+            {/* `standalone`: a control filling the pill, not a text link. */}
             <Link
+              standalone
               className={classes.tagLink}
               href={links.tool(serverKey, tool.name, installation) ?? '#'}
               title={tool.summary ?? tool.description ?? tool.name}

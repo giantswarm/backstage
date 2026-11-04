@@ -35,7 +35,7 @@ import {
   type ToolchainTool,
 } from '../../lib/toolchainManager';
 import { toolchainsRouteRef } from '../../routes';
-import { CodeBlock } from '../CodeBlock';
+import { FileView } from '../FileView';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
@@ -165,7 +165,7 @@ function Described({
         <FactList facts={facts} />
       </PageSection>
       <PageSection title="Dockerfile">
-        <CodeBlock
+        <FileView
           content={toolchain.dockerfile}
           filename="Dockerfile"
           path={`toolchains/${toolchain.name}`}
