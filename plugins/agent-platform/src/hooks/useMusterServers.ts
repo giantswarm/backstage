@@ -16,6 +16,7 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
   const namespace = server.getNamespace();
   const tenant = namespace?.startsWith(ORGANIZATION_PREFIX) ? namespace : '';
   const prefix = server.getToolNamePrefix();
+  const tags = server.getTags();
   return {
     name: tenant ? `${tenant}/${server.getName()}` : server.getName(),
     family: server.getFamily(),
@@ -28,6 +29,7 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
     signInTool:
       server.getAuth()?.type === 'oauth' && !server.isServedPerSession(),
     ...(displayName ? { displayName } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
   };
 }
 

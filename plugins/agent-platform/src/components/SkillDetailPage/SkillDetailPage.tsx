@@ -17,6 +17,7 @@ import {
   MoreActionsMenu,
   type MoreActionsMenuItem,
   PageSection,
+  TagList,
   type RouteTabSpec,
   ShellPage,
   ShellPageBadgeSkeleton,
@@ -25,6 +26,7 @@ import {
   usePhoneLayout,
   CommitSha,
   shortSha,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -42,6 +44,7 @@ import {
   resolveSkillDetailPath,
   sameCommit,
   skillSourceUrl,
+  skillTags,
   type DiscoveredSkill,
   type SkillDetailTab,
 } from '../../lib/skills';
@@ -119,9 +122,9 @@ function FactCommit({ commit }: { commit: string }) {
 }
 
 /**
- * What the skill is for, in its own words, then where it lives, and why the
- * page offers less than usual when it does: a repository the portal cannot
- * propose changes to, or a SKILL.md it could not read.
+ * What the skill is for, in its own words, and its tags, then where it lives,
+ * and why the page offers less than usual when it does: a repository the
+ * portal cannot propose changes to, or a SKILL.md it could not read.
  */
 function OverviewTab({
   skill,
@@ -135,6 +138,8 @@ function OverviewTab({
   proposable: boolean;
 }) {
   const classes = useStyles();
+  const tags = skillTags(skill);
+  const { skills: skillsPath } = useCustomizePaths();
   return (
     <div className={classes.sections}>
       {!proposable && (
@@ -161,6 +166,10 @@ function OverviewTab({
             Its SKILL.md gives no description.
           </Text>
         )}
+        <TagList
+          tags={tags}
+          getHref={skillsPath ? tag => tagHref(skillsPath, tag) : undefined}
+        />
       </PageSection>
       <PageSection title="Where it lives">
         <FactList facts={facts} labelWidth={160} />

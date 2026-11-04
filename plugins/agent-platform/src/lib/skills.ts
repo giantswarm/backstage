@@ -9,6 +9,11 @@ export interface DiscoveredSkill {
   name: string;
   /** Frontmatter `description` (may be empty). */
   description: string;
+  /**
+   * Frontmatter `metadata.tags`, valid tags only. Absent from older backends;
+   * read it through {@link skillTags}.
+   */
+  tags?: string[];
   /** Repository URL the skill lives in. */
   repoUrl: string;
   /** Subdirectory within the repo that is the skill root; '' at repo root. */
@@ -91,6 +96,11 @@ export function isSkillContentReadable(
   skill: Pick<DiscoveredSkill, 'contentReadable'>,
 ): boolean {
   return skill.contentReadable !== false;
+}
+
+/** A skill's tags; none from a backend that predates them. */
+export function skillTags(skill: Pick<DiscoveredSkill, 'tags'>): string[] {
+  return skill.tags ?? [];
 }
 
 /** Stable identity for a discovered/selected skill (repo + path). */

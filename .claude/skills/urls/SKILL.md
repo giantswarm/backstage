@@ -29,7 +29,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/skills[/new]
 /customize/skills/<owner>/<repo>[/<dir…>][/instructions|/used-by]   (+ the -/<host>/… form)
 /customize/skills/edit/<owner>/<repo>[/<dir…>]
-/customize/connectors[/infrastructure|/internal]
+/customize/connectors                                   tool groups are tags (?tags=)
 /customize/connectors/new[/auth|/verify]
 /customize/connectors/<inst>/<server>[/resources|/prompts|/usage|/used-by|/instances|/details]
 /customize/connectors/<inst>/<server>/tools/<tool>[/run|/usage]
@@ -120,11 +120,12 @@ catch-all that does this.
 ### 6. Reserved words
 
 `new` (under agents, connectors and models), `edit`, `hosting` (under
-models), and the Connectors sub-tab names (`infrastructure`, `internal`, and
-the retired `families`). A new static segment is checked against them and
+models), and the Connectors tab's retired sub-tab names (`infrastructure`,
+`internal`, `families`), which redirect to the list with `?tags=` until the
+end of 2026. A new static segment is checked against them and
 against the dynamic segment it sits beside: at the same depth a static
 segment outranks an installation name, so it makes that name unusable.
-The connector sub-tabs stay apart from connector pages by depth (one segment
+The retired sub-tabs stay apart from connector pages by depth (one segment
 against two).
 
 ### 7. Links through route refs, never string literals
@@ -133,7 +134,7 @@ against two).
   in `packages/app/src/App.tsx`, or a helper built on one. Helpers:
   `useCustomizePaths`, `useSkillPaths`, `useNewSessionHref`
   (agent-platform); `useServerPageLinks`, `useWorkflowPageLinks`,
-  `useConnectorGroupPaths`, `useConnectorWizardLinks` (muster).
+  `useConnectorListPaths`, `useConnectorWizardLinks` (muster).
 - Every route ref is exported in its plugin's `routes`, so the app and the
   other plugin can bind and link to it.
 - Splat paths (skills) are built through one helper (`useSkillPaths` on

@@ -9,10 +9,32 @@ import {
   DateTimeZoneProvider,
   ShellDocumentTitleProvider,
   ShellScopeProvider,
+  type TagSource,
+  TagVocabularyProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  AgentTagSource,
+  SkillTagSource,
+} from '@giantswarm/backstage-plugin-agent-platform';
+import {
+  ConnectorTagSource,
+  WorkflowTagSource,
+} from '@giantswarm/backstage-plugin-muster';
 import { useAgentShellArea } from './agentArea';
 import { RailWidthProvider } from './RailWidthProvider';
 import { ShellMain } from './ShellMain';
+
+/**
+ * Every kind of resource with tags. The shell mounts the one vocabulary over
+ * them, as only it sees both plugins; they read only while a tags field is on
+ * screen.
+ */
+const TAG_SOURCES: readonly TagSource[] = [
+  AgentTagSource,
+  SkillTagSource,
+  ConnectorTagSource,
+  WorkflowTagSource,
+];
 
 /**
  * The app's layout, as `@backstage/plugin-app` builds it, with the page
@@ -46,7 +68,15 @@ function AgentShellLayout({
           <RailWidthProvider active={shellActive}>
             <SidebarPage>
               {nav}
-              {shellActive ? <ShellMain>{content}</ShellMain> : content}
+              {shellActive ? (
+                <ShellMain>
+                  <TagVocabularyProvider sources={TAG_SOURCES}>
+                    {content}
+                  </TagVocabularyProvider>
+                </ShellMain>
+              ) : (
+                content
+              )}
             </SidebarPage>
           </RailWidthProvider>
         </ShellDocumentTitleProvider>

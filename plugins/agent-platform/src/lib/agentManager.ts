@@ -106,6 +106,8 @@ export type AgentSpec = {
   name: string;
   displayName: string;
   description?: string;
+  /** Keywords to find the agent by (the `ui.giantswarm.io/tags` annotation). */
+  tags?: string[];
   systemMessage?: string;
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
@@ -636,6 +638,7 @@ export type AgentManagerAgent = {
   exists: boolean;
   displayName?: string;
   description?: string;
+  tags?: string[];
   modelConfig?: string;
   iconUrl?: string;
   systemMessage?: string;
@@ -673,6 +676,19 @@ export type AgentManagerModelConfig = {
   managedBy?: string;
 };
 
+/**
+ * `get_info`'s capability for `tags` on create and update: where the agent
+ * form offers tags.
+ */
+export const TAGS_CAPABILITY = 'tags';
+
+/** Whether an installation's agent-manager takes tags. */
+export function supportsTags(
+  info: Pick<AgentManagerInfo, 'capabilities'> | undefined,
+): boolean {
+  return info?.capabilities?.[TAGS_CAPABILITY] === true;
+}
+
 /** `get_info`'s capability for `egressPolicyRefs` and `list_egress_policies`. */
 export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
 
@@ -706,6 +722,8 @@ export type AgentUpdate = {
   name: string;
   displayName?: string;
   description?: string;
+  /** Replaces the whole list; an empty list clears it. */
+  tags?: string[];
   systemMessage?: string;
   modelConfig?: string;
   iconUrl?: string;

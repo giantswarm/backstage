@@ -1,3 +1,4 @@
+import { sameTags, tagProblem } from '@giantswarm/backstage-plugin-ui-react';
 import type {
   AgentManagerAgent,
   AgentPluginEntry,
@@ -32,6 +33,7 @@ import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 export type AgentEditState = {
   displayName: string;
   description: string;
+  tags: string[];
   systemMessage: string;
   /** Name of a ModelConfig in the agent's namespace. */
   modelConfig: string;
@@ -63,6 +65,7 @@ export type AgentEditState = {
 export const AGENT_EDIT_FIELDS = [
   'displayName',
   'description',
+  'tags',
   'systemMessage',
   'modelConfig',
   'toolset',
@@ -80,6 +83,8 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
   return {
     displayName: agent.displayName ?? '',
     description: agent.description ?? '',
+    // A tag the chart refuses is never sent back with an edit.
+    tags: (agent.tags ?? []).filter(tag => tagProblem(tag) === undefined),
     systemMessage: agent.systemMessage ?? '',
     modelConfig: agent.modelConfig ?? '',
     toolset: normalizeSelection(agent.toolset ?? []),
@@ -160,6 +165,9 @@ export function changedFields(
       changed.push(field);
     }
   }
+  if (!sameTags(edit.tags, baseline.tags)) {
+    changed.push('tags');
+  }
   if (edit.modelConfig && edit.modelConfig !== baseline.modelConfig) {
     changed.push('modelConfig');
   }
@@ -204,9 +212,10 @@ export function changedFields(
  *
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
- * `toolset`, `skills`, `egress` and `egressPolicyRefs` replace their whole
- * list (an empty `egress` or `egressPolicyRefs` clears it); an emptied default workspace is sent as `""`, which
- * removes it; the empty selection is sent
+ * `tags`, `toolset`, `skills`, `egress` and `egressPolicyRefs` replace their
+ * whole list (an empty `tags`, `egress` or `egressPolicyRefs` clears it); an
+ * emptied default workspace is sent as `""`, which removes it; the empty
+ * selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
  * Nothing else is ever sent — no `force`, no runtime.
  */
@@ -221,6 +230,9 @@ export function updateOf(
       case 'description':
       case 'systemMessage':
         update[field] = edit[field].trim() === '' ? '' : edit[field];
+        break;
+      case 'tags':
+        update.tags = edit.tags;
         break;
       case 'modelConfig':
         update.modelConfig = edit.modelConfig;
@@ -262,6 +274,7 @@ export function hasChanges(update: AgentUpdate): boolean {
 export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   displayName: 'Name',
   description: "What it's for",
+  tags: 'Tags',
   systemMessage: 'Instructions',
   modelConfig: 'Model',
   toolset: 'Tools',
@@ -345,6 +358,7 @@ export function formStateOfAgent(
     name: baseline.displayName || agent.name,
     slug: agent.name,
     description: baseline.description,
+    tags: baseline.tags,
     installation: options.installation,
     modelConfigName: baseline.modelConfig || undefined,
     modelConfigNamespace: agent.namespace,
@@ -442,16 +456,24 @@ function pluginEntriesOfForm(
   return entries;
 }
 
-/** The edit the wizard's state amounts to, for {@link updateOf}. */
+/**
+ * The edit the wizard's state amounts to, for {@link updateOf}.
+ *
+ * @param options.tags whether the installation's agent-manager takes tags
+ *   (`get_info`'s `tags`); without it the agent's own tags stand, so no
+ *   update carries `tags`
+ */
 export function editStateOfForm(
   agent: AgentManagerAgent,
   form: NewAgentFormState,
+  options: { tags?: boolean } = {},
 ): AgentEditState {
   const untouchedTechnicalName =
     !agent.displayName && form.name.trim() === agent.name;
   return {
     displayName: untouchedTechnicalName ? '' : form.name,
     description: form.description,
+    tags: options.tags === false ? editStateOf(agent).tags : form.tags,
     systemMessage: form.systemMessage,
     modelConfig: form.modelConfigName ?? '',
     toolset: form.toolset,

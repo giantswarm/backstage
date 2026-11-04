@@ -1,11 +1,15 @@
 import { ReactNode } from 'react';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
   DateComponent,
   PageSection,
+  TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MusterWorkflow } from '../../../lib/k8s';
+import { workflowsRouteRef } from '../../../routes';
+import { withInstallationQuery } from '../../../lib/installationLink';
 import { ServerPrefixInfo } from '../../../lib/toolGrouping';
 import { WorkflowFlowCanvas } from '../WorkflowFlowCanvas';
 
@@ -156,6 +160,7 @@ export function WorkflowOverviewTab({
   const description = workflow.getDescription();
   const created = workflow.getCreatedTimestamp();
   const validationErrors = workflow.getValidationErrors();
+  const workflowsPath = useRouteRef(workflowsRouteRef)?.();
 
   return (
     <div className={classes.sections}>
@@ -191,6 +196,18 @@ export function WorkflowOverviewTab({
             Its definition gives no description.
           </Text>
         )}
+        <TagList
+          tags={workflow.getTags()}
+          getHref={
+            // On the workflow's own installation, as for a connector's.
+            workflowsPath
+              ? tag =>
+                  withInstallationQuery(workflowsPath, workflow.cluster, {
+                    tags: tag,
+                  })
+              : undefined
+          }
+        />
         {created && (
           <Text as="p" variant="body-small" color="secondary">
             Created <DateComponent value={created} relative tooltip />

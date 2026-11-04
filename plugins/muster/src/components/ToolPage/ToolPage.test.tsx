@@ -16,6 +16,15 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
 }));
 
 // The muster providers, whose instance the mock below stands for.
+// The router's own query client is the module-level one; the test's fresh
+// client above it stands in for it, so each test reads afresh.
+jest.mock('../QueryClientProvider', () => ({
+  ...jest.requireActual('../QueryClientProvider'),
+  QueryClientProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 jest.mock('../MusterSubPage', () => ({
   MusterSubPage: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -630,14 +639,14 @@ describe('ToolPage at phone width', () => {
   });
   afterEach(() => layout.restore());
 
-  it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
+  it('leads its Connectors crumb to the Connectors list', async () => {
     await renderAt(`${BASE}/gazelle/muster/tools/core_service_list`);
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
         { name: 'Connectors' },
       ),
-    ).toHaveAttribute('href', '/customize/connectors/internal');
+    ).toHaveAttribute('href', '/customize/connectors');
   });
 
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {

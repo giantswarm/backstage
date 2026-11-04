@@ -25,8 +25,7 @@ skill-instructions	skill	tab	Instructions	/customize/skills/:owner/:repo/instruc
 skill-used-by	skill	tab	Used by	/customize/skills/:owner/:repo/used-by
 add-skill	customize-skills	page	Add skill	/customize/skills/new	open /customize/skills > click "Add skill"	never open the pull request
 customize-connectors	customize	tab	Connectors	/customize/connectors
-connectors-infrastructure	customize-connectors	page	Infrastructure	/customize/connectors/infrastructure		a sub-tab of Connectors; its default sub-tab, Your connectors, is the Connectors tab card itself
-connector	connectors-infrastructure	tabs	Connector	/customize/connectors/:installation/:server	open /customize/connectors/infrastructure > row "Kubernetes"	a tab shows only where the connector has something for it
+connector	customize-connectors	tabs	Connector	/customize/connectors/:installation/:server	open /customize/connectors?tags=infrastructure > row "Kubernetes"	a tab shows only where the connector has something for it
 connector-tools	connector	tab	Tools	/customize/connectors/:installation/:server
 tool	connector-tools	tabs	Tool	/customize/connectors/:installation/:server/tools/:tool	open the Kubernetes connector > click the first tool row	not a muster tool: those have no Usage tab
 tool-overview	tool	tab	Overview	/customize/connectors/:installation/:server/tools/:tool
@@ -40,7 +39,6 @@ connector-usage	connector	tab	Usage	/customize/connectors/:installation/:server/
 connector-used-by	connector	tab	Used by	/customize/connectors/:installation/:server/used-by
 connector-instances	connector	tab	Instances	/customize/connectors/:installation/:server/instances		only for a connector family, as Kubernetes is
 connector-details	connector	tab	Details	/customize/connectors/:installation/:server/details
-connectors-internal	customize-connectors	page	Internal	/customize/connectors/internal		a sub-tab of Connectors; its default sub-tab, Your connectors, is the Connectors tab card itself
 new-connector	customize-connectors	wizard	Add connector	/customize/connectors/new	open /customize/connectors > click "Add connector"	never click Add connector on the Sign-in step: it registers the connector
 new-connector-connect	new-connector	step	Connect	/customize/connectors/new
 new-connector-sign-in	new-connector	step	Sign-in	/customize/connectors/new/auth	fill Server address=https://example.com/mcp, Name=demo, What does it give access to?=demo > click Continue

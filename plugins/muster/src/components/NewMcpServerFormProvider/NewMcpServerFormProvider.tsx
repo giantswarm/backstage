@@ -7,6 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  tagsFieldUpdaters,
+  type TagsFieldUpdaters,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
@@ -32,8 +36,9 @@ import {
   type McpServerTransport,
   type NewMcpServerFormState,
 } from '../../lib/mcpServerDefinition';
+import { useToolTakesArgument } from '../shared/hooks';
 
-export type NewMcpServerFormContextValue = {
+export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
   state: NewMcpServerFormState;
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
@@ -109,6 +114,14 @@ export type NewMcpServerFormContextValue = {
    * empty form.
    */
   reset: () => void;
+  /**
+   * Whether the installation's muster keeps tags, read from the schema of the
+   * tool this run writes with. False until it is read: the Tags field is shown,
+   * and its problems count, only while true.
+   */
+  takesTags: boolean;
+  /** The edited server's tags as read, for the Tags field; none on create. */
+  storedTags: readonly string[];
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -148,19 +161,22 @@ export type NewMcpServerFormContextValue = {
   definition: McpServerDefinition;
 };
 
+const NO_TAGS: readonly string[] = [];
+
 const NewMcpServerFormContext = createContext<
   NewMcpServerFormContextValue | undefined
 >(undefined);
 
 /**
- * The registered server a run edits, the form state it reads back as, and its
- * `ui.giantswarm.io/display-name` (`undefined` without one) — what an update
- * leaves alone unless the name changes.
+ * The registered server a run edits, the form state it reads back as, its
+ * `ui.giantswarm.io/display-name` (`undefined` without one) and its tags —
+ * what an update leaves alone unless they change.
  */
 type EditBase = {
   definition: Record<string, unknown>;
   form: NewMcpServerFormState;
   displayName: string | undefined;
+  tags: string[];
 };
 
 /** An unfinished registration an edit set aside. */
@@ -225,9 +241,11 @@ export function NewMcpServerFormProvider({
       saved.displayName === undefined
         ? latest.current.base?.displayName
         : saved.displayName || undefined;
+    // Likewise tags: a save without them kept what was there.
+    const tags = saved.tags ?? latest.current.base?.tags ?? [];
     const form = { ...current.state, name: displayName ?? saved.name };
     setState(form);
-    setBase({ definition: saved, form, displayName });
+    setBase({ definition: saved, form, displayName, tags });
   }, []);
 
   const startEdit = useCallback(
@@ -255,6 +273,7 @@ export function NewMcpServerFormProvider({
         definition: toMcpServerDefinition(server),
         form,
         displayName: server.getDisplayNameAnnotation(),
+        tags: server.getTags(),
       });
       setState(form);
     },
@@ -275,8 +294,23 @@ export function NewMcpServerFormProvider({
     setState(restored?.state ?? initialState);
   }, [initialState]);
 
+  const storedTags = base?.tags ?? NO_TAGS;
+  const tagUpdaters = useMemo(
+    () => tagsFieldUpdaters<NewMcpServerFormState>(setState, storedTags),
+    [storedTags],
+  );
+
+  const takesTags = useToolTakesArgument(
+    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+    registeredName ? registeredInstallation : state.installation,
+    'tags',
+  );
+
   const value = useMemo<NewMcpServerFormContextValue>(() => {
-    const detailsProblems = mcpServerDetailsProblems(state);
+    const detailsProblems = mcpServerDetailsProblems(state, {
+      storedTags,
+      takesTags,
+    });
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
     const validationErrors = problems.map(problem => problem.message);
@@ -296,6 +330,7 @@ export function NewMcpServerFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
+      ...tagUpdaters,
       setInstallation: installation =>
         setState(prev => ({ ...prev, installation })),
       setUrl: url => setState(prev => ({ ...prev, url })),
@@ -349,6 +384,8 @@ export function NewMcpServerFormProvider({
       markSaved,
       startEdit,
       reset,
+      takesTags,
+      storedTags,
       isComplete: validationErrors.length === 0,
       validationErrors,
       detailsErrors,
@@ -358,7 +395,10 @@ export function NewMcpServerFormProvider({
       definition: base
         ? mergeOntoExisting(
             base.definition,
-            composeMcpServerDefinition(state, { stored: base.displayName }),
+            composeMcpServerDefinition(state, {
+              stored: base.displayName,
+              tags: base.tags,
+            }),
           )
         : composeMcpServerDefinition(state),
     };
@@ -374,6 +414,9 @@ export function NewMcpServerFormProvider({
     markSaved,
     startEdit,
     reset,
+    tagUpdaters,
+    takesTags,
+    storedTags,
   ]);
 
   return (
