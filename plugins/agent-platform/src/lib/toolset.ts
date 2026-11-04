@@ -521,6 +521,8 @@ export interface ServerInfo {
   displayName?: string;
   /** The CR's `ui.giantswarm.io/tags`; none when absent. */
   tags?: string[];
+  /** The CR's `.status.icon`, for its logo (`ConnectorLogo`). */
+  icon?: string;
 }
 
 /** The name a server surface goes by: the family for a family member, else the CR name. */

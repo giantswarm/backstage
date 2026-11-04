@@ -1,10 +1,16 @@
 import {
   Agent,
   AgentMcpBinding,
+  RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { connectorIconOf } from '@giantswarm/backstage-plugin-muster';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
-import { isGatewayBinding } from '../../lib/toolset';
+import {
+  isGatewayBinding,
+  surfaceName,
+  type ServerInfo,
+} from '../../lib/toolset';
 
 export { MUSTER_MCP_SERVER_NAME } from '../../lib/toolset';
 import { MUSTER_MCP_SERVER_NAME } from '../../lib/toolset';
@@ -30,6 +36,47 @@ export function isGatewayServerBinding(
  */
 export function mcpBindingId(binding: AgentMcpBinding): string {
   return `${binding.server.kind} ${binding.server.name}`;
+}
+
+/**
+ * Each muster connector's icon, by surface name: the first CR of a family
+ * whose `.status.icon` is usable (`connectorIconOf`), so one unusable icon
+ * does not hide a later member's.
+ */
+export function connectorIcons(
+  servers: readonly ServerInfo[],
+): Map<string, string> {
+  const bySurface = new Map<string, string>();
+  for (const server of servers) {
+    const name = surfaceName(server);
+    const icon = connectorIconOf(server.icon);
+    if (icon && !bySurface.has(name)) {
+      bySurface.set(name, icon);
+    }
+  }
+  return bySurface;
+}
+
+const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
+
+/**
+ * A directly bound server's name, read from the resource the binding names
+ * and nothing else: its display-name annotation, else its name. Never from
+ * muster's connectors, whose names can coincide with an unrelated server in
+ * the agent's namespace. Matched by kind as well as name; a kind the page
+ * does not read (a kagent `MCPServer`) shows its name.
+ */
+export function directServerName(
+  binding: AgentMcpBinding,
+  remotes: readonly RemoteMCPServer[] | undefined,
+): string {
+  const { kind, apiGroup, name } = binding.server;
+  const remote =
+    kind === RemoteMCPServer.kind &&
+    (!apiGroup || apiGroup === RemoteMCPServer.group)
+      ? remotes?.find(server => server.getName() === name)
+      : undefined;
+  return remote?.getAnnotations()?.[DISPLAY_NAME_ANNOTATION] || name;
 }
 
 /**
