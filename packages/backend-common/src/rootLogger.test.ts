@@ -81,3 +81,23 @@ describe('the Sentry filters', () => {
     ).toMatchObject({ message: 'Processing of an entity failed' });
   });
 });
+
+describe('the Postgres search engine warning', () => {
+  const message =
+    'Postgres search engine is not supported, skipping registration of search-backend-module-pg';
+
+  function isIgnored(client: string) {
+    const options = transportConfig({
+      backend: { database: { client }, errorReporter: { sentry } },
+    })!;
+    return options.ignoreErrors.some(pattern => pattern.test(message));
+  }
+
+  it('is ignored on SQLite', () => {
+    expect(isIgnored('better-sqlite3')).toBe(true);
+  });
+
+  it('still reaches Sentry on Postgres', () => {
+    expect(isIgnored('pg')).toBe(false);
+  });
+});

@@ -11,6 +11,17 @@ import { normalizeSentryEvent, SentryEvent } from './normalizeSentryEvent';
 import { isStartupPollFailure, STARTUP_REQUEST_FAILURE } from './startupRace';
 
 /**
+ * Logged at `warn` by `@backstage/plugin-search-backend-module-pg` on every
+ * start of a backend without Postgres 12+, where the in-memory search engine
+ * stays, as intended on SQLite. On Postgres it is the only sign that search
+ * fell back to memory (the module's version check swallows its own errors),
+ * so it is ignored only when the database client is not `pg`.
+ * See giantswarm/giantswarm#38982.
+ */
+const PG_SEARCH_ENGINE_UNSUPPORTED =
+  /^Postgres search engine is not supported, skipping registration of search-backend-module-pg$/;
+
+/**
  * The options of the Sentry transport, passed to `Sentry.init` as they are;
  * `undefined` when backend Sentry is not configured.
  */
@@ -43,6 +54,9 @@ export function getSentryTransportConfig(config: RootConfigService) {
       // A request that reached the backend before it finished starting up;
       // the caller retries. See giantswarm/giantswarm#37351.
       STARTUP_REQUEST_FAILURE,
+      ...(config.getOptionalString('backend.database.client') === 'pg'
+        ? []
+        : [PG_SEARCH_ENGINE_UNSUPPORTED]),
     ],
     // The events poll loop's startup failures need the event's cause, which
     // `ignoreErrors` cannot see.
