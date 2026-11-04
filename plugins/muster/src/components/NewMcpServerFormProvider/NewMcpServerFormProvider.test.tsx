@@ -443,6 +443,7 @@ describe('NewMcpServerFormProvider', () => {
       // A later save sends no reference: muster keeps the client it stored.
       expect(result.current.definition.auth?.authorizationServer).toEqual({
         issuer: 'https://app.hubspot.com',
+        grantScope: 'subject',
       });
 
       act(() => result.current.reset());
