@@ -3,7 +3,9 @@ import {
   AgentInterface,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { ServerInfo } from '../../lib/toolset';
 import {
+  connectorIcons,
   describeToolScope,
   directServerName,
   isGatewayServerBinding,
@@ -49,6 +51,33 @@ describe('isGatewayServerBinding', () => {
 describe('mcpBindingId', () => {
   it('names the kind and the server', () => {
     expect(mcpBindingId(binding('grafana'))).toBe('RemoteMCPServer grafana');
+  });
+});
+
+describe('connectorIcons', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+  const member = (name: string, icon?: string): ServerInfo => ({
+    name,
+    family: 'github',
+    group: 'registered',
+    toolNamePrefix: 'x_github',
+    oauth: false,
+    ...(icon ? { icon } : {}),
+  });
+
+  it('takes the first family member whose icon is usable', () => {
+    expect(
+      connectorIcons([
+        member('github-a', 'https://example.com/icon.png'),
+        member('github-b'),
+        member('github-c', PNG),
+        member('github-d', 'data:image/png;base64,AAAA'),
+      ]),
+    ).toEqual(new Map([['github', PNG]]));
+  });
+
+  it('has no entry for a family without a usable icon', () => {
+    expect(connectorIcons([member('github-a', 'not an icon')]).size).toBe(0);
   });
 });
 

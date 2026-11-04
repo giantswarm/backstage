@@ -3,9 +3,14 @@ import {
   AgentMcpBinding,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { connectorIconOf } from '@giantswarm/backstage-plugin-muster';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
-import { isGatewayBinding } from '../../lib/toolset';
+import {
+  isGatewayBinding,
+  surfaceName,
+  type ServerInfo,
+} from '../../lib/toolset';
 
 export { MUSTER_MCP_SERVER_NAME } from '../../lib/toolset';
 import { MUSTER_MCP_SERVER_NAME } from '../../lib/toolset';
@@ -31,6 +36,25 @@ export function isGatewayServerBinding(
  */
 export function mcpBindingId(binding: AgentMcpBinding): string {
   return `${binding.server.kind} ${binding.server.name}`;
+}
+
+/**
+ * Each muster connector's icon, by surface name: the first CR of a family
+ * whose `.status.icon` is usable (`connectorIconOf`), so one unusable icon
+ * does not hide a later member's.
+ */
+export function connectorIcons(
+  servers: readonly ServerInfo[],
+): Map<string, string> {
+  const bySurface = new Map<string, string>();
+  for (const server of servers) {
+    const name = surfaceName(server);
+    const icon = connectorIconOf(server.icon);
+    if (icon && !bySurface.has(name)) {
+      bySurface.set(name, icon);
+    }
+  }
+  return bySurface;
 }
 
 const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';

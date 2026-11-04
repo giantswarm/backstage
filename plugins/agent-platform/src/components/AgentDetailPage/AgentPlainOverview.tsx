@@ -40,7 +40,7 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { bindsGateway, surfaceName } from '../../lib/toolset';
+import { bindsGateway } from '../../lib/toolset';
 import {
   describeReach,
   reachedConnectors,
@@ -61,6 +61,7 @@ import {
   defaultWorkspaceName,
 } from '../../lib/defaultWorkspace';
 import {
+  connectorIcons,
   describeToolScope,
   directServerName,
   isGatewayServerBinding,
@@ -304,16 +305,7 @@ function ConnectorsSection({
   const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
 
-  // Each muster connector's icon, by surface name: the first CR of a family
-  // with one.
-  const icons = useMemo(() => {
-    const bySurface = new Map<string, string | undefined>();
-    for (const server of muster.servers) {
-      const name = surfaceName(server);
-      bySurface.set(name, bySurface.get(name) ?? server.icon);
-    }
-    return bySurface;
-  }, [muster.servers]);
+  const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
 
   const marks: ConnectorMark[] = [
     ...(hasGateway ? reachedConnectors(declared, groups) : []).map(name => ({
