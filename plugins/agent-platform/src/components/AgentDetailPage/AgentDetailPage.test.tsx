@@ -3,10 +3,11 @@ import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type {
-  AgentCondition,
-  AgentInterface,
-  AgentStatus,
+import {
+  RemoteMCPServer,
+  type AgentCondition,
+  type AgentInterface,
+  type AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   customizeExternalRouteRef,
@@ -28,6 +29,7 @@ import {
   formatLocalDateFull,
   getRelativeDate,
 } from '@giantswarm/backstage-plugin-ui-react';
+import type { ServerInfo } from '../../lib/toolset';
 import { AgentDetailPage } from './AgentDetailPage';
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
@@ -287,6 +289,23 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
 // `lib/toolsetReach` covers the words.
 jest.mock('../../hooks/useReachCatalogue', () => ({
   useReachCatalogue: () => undefined,
+}));
+// The installation's connectors, as `serverInfoOf` reads them.
+const mockMusterServers: { servers: ServerInfo[] } = { servers: [] };
+const mockUseMusterServers = jest.fn();
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: (installation: string | undefined) => {
+    mockUseMusterServers(installation);
+    const { connectorLabels: labelsOf } =
+      jest.requireActual('../../lib/toolset');
+    return {
+      servers: mockMusterServers.servers,
+      resources: [],
+      labels: labelsOf(mockMusterServers.servers),
+      isLoading: false,
+      isUnavailable: false,
+    };
+  },
 }));
 const READ_ONLY_TOOLSET = {
   declared: {
@@ -2617,6 +2636,173 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeNull();
       expect(screen.queryByRole('heading', { name: 'Status' })).toBeNull();
       expect(screen.queryByText('System prompt')).toBeNull();
+    });
+
+    it('shows the connectors it names as logos, by their display names', async () => {
+      mockMusterServers.servers = [
+        {
+          name: 'github',
+          displayName: 'GitHub',
+          group: 'registered',
+          toolNamePrefix: 'x_github',
+          oauth: false,
+        },
+      ];
+      mockUseAgentToolset.mockReturnValue({
+        ...READ_ONLY_TOOLSET,
+        declared: {
+          ...READ_ONLY_TOOLSET.declared,
+          selectors: ['server:github'],
+        },
+      });
+      stubResources({ resource: makeAgent() });
+
+      try {
+        await renderShell();
+
+        expect(screen.getByText('Can use GitHub.')).toBeInTheDocument();
+        const logos = screen.getByRole('list', { name: 'Connectors' });
+        expect(
+          within(logos).getByRole('img', { name: 'GitHub' }),
+        ).toBeInTheDocument();
+      } finally {
+        mockMusterServers.servers = [];
+      }
+    });
+    it('reads no connectors when the toolset names none', async () => {
+      mockUseMusterServers.mockClear();
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'github' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('list', { name: 'Connectors' }),
+      ).toBeInTheDocument();
+      expect(mockUseMusterServers).not.toHaveBeenCalledWith('gazelle');
+    });
+
+    it('marks the directly bound servers that ask before every call, and names them', async () => {
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'deploys' },
+                  requireApproval: true,
+                  tools: ['rollout'],
+                },
+              },
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'docs' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      const logos = screen.getByRole('list', { name: 'Connectors' });
+      expect(within(logos).getAllByTestId('approval-mark')).toHaveLength(1);
+      expect(
+        within(logos)
+          .getByRole('img', { name: 'deploys' })
+          .closest('li')
+          ?.querySelector('[data-testid="approval-mark"]'),
+      ).not.toBeNull();
+      expect(
+        screen.getByText('Asks before every call: deploys'),
+      ).toBeInTheDocument();
+      // The scope stays in the tooltip, read as the logo's description.
+      expect(
+        within(logos).getByRole('img', { name: 'deploys' }),
+      ).toHaveAccessibleDescription(
+        '1 tool: rollout · asks you before every call',
+      );
+      expect(
+        within(logos).getByRole('img', { name: 'docs' }),
+      ).toHaveAccessibleDescription('All tools from this server');
+    });
+
+    it('has no approval line when no bound server asks first', async () => {
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'docs' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(screen.queryByText(/Asks before every call/)).toBeNull();
+      expect(screen.queryByTestId('approval-mark')).toBeNull();
+    });
+
+    // A directly bound server is its own resource: a muster connector that
+    // happens to share its name lends it neither its name nor its icon.
+    it('names a directly bound server from its own resource, not a muster connector of that name', async () => {
+      mockMusterServers.servers = [
+        {
+          name: 'github',
+          displayName: 'GitHub',
+          group: 'registered',
+          toolNamePrefix: 'x_github',
+          oauth: false,
+          icon: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      ];
+      mockUseAgentToolset.mockReturnValue({
+        ...READ_ONLY_TOOLSET,
+        servers: [
+          new RemoteMCPServer(
+            {
+              apiVersion: 'api.kagent.dev/v1alpha3',
+              kind: 'RemoteMCPServer',
+              metadata: {
+                name: 'github',
+                namespace: 'agent-platform',
+                annotations: {
+                  'ui.giantswarm.io/display-name': 'Internal GHE',
+                },
+              },
+              spec: { url: 'https://ghe.corp.example/mcp' },
+            } as never,
+            'gazelle',
+          ),
+        ],
+      });
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'github' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      try {
+        await renderShell();
+
+        const logos = screen.getByRole('list', { name: 'Connectors' });
+        expect(
+          within(logos).getByRole('img', { name: 'Internal GHE' }),
+        ).toBeInTheDocument();
+        expect(within(logos).queryByRole('img', { name: 'GitHub' })).toBeNull();
+        expect(logos.querySelector('img')).toBeNull();
+      } finally {
+        mockMusterServers.servers = [];
+      }
     });
 
     it('shows each skill as a readable card that opens its page', async () => {
