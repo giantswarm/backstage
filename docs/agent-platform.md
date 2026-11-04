@@ -71,45 +71,49 @@ counting a session only when its agent is still on the fleet. An agent that
 cannot start a session now stays in it. Like every item of the list, each
 opens the agent's page, where **Use this agent** starts a session.
 
-Every agent belongs to the platform or to one organization, shown under the
-label **Organization**: the organization's plain name (`acme`) for its
-`org-acme` namespace, and "None" for the installation's `kagent` namespace,
-since the platform is no organization; beside "None", an info icon
-(`InfoHint`, a button the keyboard reaches) says "Available to all
-organizations" (`OrganizationValue`). (The code and agent-manager call this the
-agent's tenant; the UI never does.) The agent's page names it beside the
-overview. Where the agents belong to more than one, the filter bar filters by
-it, the platform's agents under the option "None", and the row of an
-organization's agent names it beside the agent's name, "Organization: acme",
-since it says whose agent it is: a row has no labels, and a bare `acme` would
-read like the environment among the facts. The name is the filter option's
-(`organization none` for an organization named `none`); a long one truncates,
-taking at most half the name's line. The name link's tooltip gives the name
-and the organization in full, wherever the row is pointed at: the link's hit
-area covers the row, the organization's text included, which is also the
-link's accessible description. A
-platform agent's row names none: a "None" without its label would say
-nothing. An agent in another namespace reads `namespace <name>` there. The
-facts (model, Harness, skills and connectors, environment) are the same fixed
-columns on every row, so they line up from row to row: beside the name where
-the name keeps at least 320px (220px in a list that names no organizations),
-otherwise on one line under the name and its description, on every row of the
-list alike. At phone width they wrap under the name, and the organization goes
-under a name too long for its line and wraps there. A
-row's link is the agent's name, its hit area stretched over the row, so the
-star is a button of its own above it. The New
-agent form asks for it on Details from the places agent-manager lets the person
-create in (`get_info.namespaces.managed`): the only one is picked and stated
-in a line. Several are one **Organization** dropdown: **Platform**, then the
-organizations by plain name and, for a managed namespace that is no
-organization (not `org-<name>`), the namespace by its name; organizations and
-other namespaces get a section each where both are offered. The first is
-preselected; a pick of the person's own stays while the environment offers
-it, and an environment that does not offers its own first instead. A dropdown
-that appears after a blocked Continue stays
-quiet until the next, and editing an agent never moves it. The form keeps
-"Platform" as the name of that choice. An organization named `none` reads
-`organization none`, never as the platform's "None".
+Every agent belongs to the platform or to one organization, its owner, shown
+under the label **Owner**: the organization's plain name (`acme`) for its
+`org-acme` namespace, and "Platform" for the installation's `kagent` namespace;
+beside "Platform", an info icon (`InfoHint`, a button the keyboard reaches)
+says "Available to all organizations" (`OwnerValue`). (The code and
+agent-manager call this the agent's tenant; the UI never does.) The agent's
+page names it beside the overview. Where the agents belong to more than one,
+the filter bar filters by it (**Owner**, the platform's agents under the
+option "Platform"), and the row of an organization's agent names it beside
+the agent's name, "Owner: acme", since it says whose agent it is: a row has no
+labels, and a bare `acme` would read like the environment among the facts.
+The name is the filter option's (`organization platform` for an organization
+named `platform`); a long one truncates, taking at most half the name's line.
+The name link's tooltip gives the name and the owner in full, wherever the row
+is pointed at: the link's hit area covers the row, the owner's text included,
+which is also the link's accessible description. A platform agent's row names
+none: the platform is the usual owner, so the rows that name one stand out as
+an organization's. An agent in another namespace reads `namespace <name>`
+there. The facts (model, Harness, skills and connectors, environment) are the
+same fixed columns on every row, so they line up from row to row: beside the
+name where the name keeps at least 320px (220px in a list that names no
+organizations), otherwise on one line under the name and its description, on
+every row of the list alike. At phone width they wrap under the name, and the
+owner goes under a name too long for its line and wraps there. A row's link
+is the agent's name, its hit area stretched over the row, so the star is a
+button of its own above it.
+
+The New agent form asks for the owner on Details, from the places agent-manager
+lets the person create in (`get_info.namespaces.managed`). Where it offers the
+platform and organizations, the **Owner** field is a radio group, **Platform**
+or **Organization** (and **Other namespace** for a managed namespace that is
+no organization, not `org-<name>`), so the either/or stays in sight: the
+platform is no organization. **Platform** is preselected. Choosing
+**Organization** shows a dropdown of the organizations by plain name below it,
+one always picked: the person's own last pick of an organization, else the
+first. Where it offers organizations only, the field is that dropdown alone,
+its first preselected. The only place is picked and stated in a line under
+**More options** ("Owner: **acme**, the only one you may create agents for on
+…"), as is the case for the platform alone. A pick of the person's own stays
+while another environment offers it; an environment that does not falls back
+to Platform, or its first organization. Editing an agent never moves it. The
+usage pages, which group by organization, keep the label **Organization**
+there, with "None" for the platform's agents.
 
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
@@ -125,7 +129,7 @@ it: coming back to the form fills it in again and says so ("Your draft is
 back") on the step it reopens on, with **Start over** to begin empty instead;
 the note closes once the person moves to another step. The draft is everything
 typed and picked on the four steps (name, description, instructions,
-environment, organization, model, runtime, default workspace, technical name,
+environment, owner, model, runtime, default workspace, technical name,
 EgressPolicies, egress origins, skills, plugins and tools); the form holds no secret or token, and the
 helper's side chat is not part of it. It lives in the browser tab's session
 storage, per signed-in person, so another tab or another person on the same
@@ -509,10 +513,10 @@ agent-manager's dry run and the deploy is agent-manager's `create_agent`, both
 called through the installation's muster as the signed-in person.
 
 1. **Details** — `/customize/agents/new` (`NewAgentPage`). Environment and
-   Organization sit together, Environment first: in the main form when
-   either is a dropdown, else both are lines under **More options**. A
+   Owner sit together, Environment first: in the main form when either is a
+   choice, else both are lines under **More options**. A
    single-installation portal names its environment in a line first under
-   More options, whatever Organization does; with several usable, its dropdown preselects the home installation
+   More options, whatever Owner does; with several usable, its dropdown preselects the home installation
    (`gs.authProvider`'s), else the first usable one; a sole usable
    environment is a line. **More options** holds the model, the runtime, the
    technical name and extra egress origins.

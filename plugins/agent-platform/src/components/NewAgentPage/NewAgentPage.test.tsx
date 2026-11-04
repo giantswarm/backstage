@@ -42,7 +42,7 @@ jest.mock('../ModelConfigsProvider', () => ({
 type MockKind = 'none' | 'choice' | 'line' | 'alone';
 let mockEnvironment: MockKind;
 let mockPicksInstallation: boolean;
-let mockOrganization: MockKind;
+let mockOwner: MockKind;
 const mockField = (kind: MockKind, text: string) => ({
   inMain: kind === 'choice',
   alone: kind === 'alone',
@@ -89,11 +89,10 @@ jest.mock('../ModelConfigPicker', () => ({
     return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
-jest.mock('./useOrganizationField', () => ({
-  soleOrganizationLabel: () => 'acme',
-  useOrganizationField: () => ({
-    ...mockField(mockOrganization, 'tenant picker'),
-    sole: mockOrganization === 'line' ? 'org-acme' : undefined,
+jest.mock('./useOwnerField', () => ({
+  useOwnerField: () => ({
+    ...mockField(mockOwner, 'tenant picker'),
+    sole: mockOwner === 'line' ? 'org-acme' : undefined,
   }),
 }));
 let mockHarnessChoices: HarnessChoice[] = [];
@@ -190,7 +189,7 @@ beforeEach(() => {
   // A single-installation portal: the sole one picked, the field nowhere.
   mockEnvironment = 'none';
   mockPicksInstallation = true;
-  mockOrganization = 'choice';
+  mockOwner = 'choice';
 });
 
 describe('NewAgentPage', () => {
@@ -321,20 +320,20 @@ describe('NewAgentPage', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  describe('where Environment and Organization sit', () => {
+  describe('where Environment and Owner sit', () => {
     const inMoreOptions = (text: string) =>
       screen.getByText(text).closest('details') === moreOptions();
     const summary = () => moreOptions().querySelector('summary');
 
-    it('keeps an organization choice in the main form on a single-installation portal', async () => {
+    it('keeps an owner choice in the main form on a single-installation portal', async () => {
       await renderPage();
 
       expect(screen.queryByText('installation select')).toBeNull();
       expect(inMoreOptions('tenant picker')).toBe(false);
-      expect(summary()).not.toHaveTextContent(/environment|organization/);
+      expect(summary()).not.toHaveTextContent(/environment|owner/);
     });
 
-    it('names the only environment first under More options, whatever Organization does', async () => {
+    it('names the only environment first under More options, whatever Owner does', async () => {
       mockEnvironment = 'alone';
       await renderPage();
 
@@ -343,9 +342,9 @@ describe('NewAgentPage', () => {
       expect(summary()).not.toHaveTextContent(/environment/);
     });
 
-    it('puts the only environment’s line before the sole organization’s', async () => {
+    it('puts the only environment’s line before the sole owner’s', async () => {
       mockEnvironment = 'alone';
-      mockOrganization = 'line';
+      mockOwner = 'line';
       await renderPage();
 
       expect(inMoreOptions('installation select')).toBe(true);
@@ -354,19 +353,19 @@ describe('NewAgentPage', () => {
       );
     });
 
-    it('puts the sole organization’s line under More options, named in the summary', async () => {
-      mockOrganization = 'line';
+    it('puts the sole owner’s line under More options, named in the summary', async () => {
+      mockOwner = 'line';
       await renderPage();
 
       expect(inMoreOptions('tenant picker')).toBe(true);
       expect(summary()).toHaveTextContent(
-        'More options · Platform default runtime, organization acme',
+        'More options · Platform default runtime, owner acme',
       );
     });
 
     it('keeps both in the main form, Environment first, when the environment is a choice', async () => {
       mockEnvironment = 'choice';
-      mockOrganization = 'line';
+      mockOwner = 'line';
       await renderPage();
 
       const environment = screen.getByText('installation select');
@@ -374,10 +373,10 @@ describe('NewAgentPage', () => {
       expect(inMoreOptions('installation select')).toBe(false);
       expect(inMoreOptions('tenant picker')).toBe(false);
       expect(environment.nextElementSibling).toBe(organization);
-      expect(summary()).not.toHaveTextContent(/environment|organization/);
+      expect(summary()).not.toHaveTextContent(/environment|owner/);
     });
 
-    it('keeps the environment’s line beside an organization choice in the main form', async () => {
+    it('keeps the environment’s line beside an owner choice in the main form', async () => {
       mockEnvironment = 'line';
       await renderPage();
 
@@ -387,7 +386,7 @@ describe('NewAgentPage', () => {
 
     it('puts both lines under More options when neither is a choice', async () => {
       mockEnvironment = 'line';
-      mockOrganization = 'line';
+      mockOwner = 'line';
       await renderPage();
 
       expect(screen.getByText('installation select').nextElementSibling).toBe(
@@ -396,7 +395,7 @@ describe('NewAgentPage', () => {
       expect(inMoreOptions('installation select')).toBe(true);
       expect(inMoreOptions('tenant picker')).toBe(true);
       expect(summary()).toHaveTextContent(
-        'More options · Platform default runtime, organization acme',
+        'More options · Platform default runtime, owner acme',
       );
     });
 

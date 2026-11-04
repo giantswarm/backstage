@@ -1,6 +1,7 @@
 import {
   defaultTenant,
   organizationOf,
+  ownerOf,
   tenantGroups,
   tenantInSentence,
   tenantOf,
@@ -19,6 +20,21 @@ describe('tenantOf', () => {
     ['org-platform', 'platform'],
   ])('names namespace %s as %s', (namespace, tenant) => {
     expect(tenantOf(namespace)).toBe(tenant);
+  });
+});
+
+describe('ownerOf', () => {
+  it.each([
+    ['kagent', 'Platform'],
+    ['org-acme', 'acme'],
+    ['team-a', 'namespace team-a'],
+    ['org-', 'namespace org-'],
+    // An organization called platform never reads as the platform.
+    ['org-platform', 'organization platform'],
+    ['org-Platform', 'organization Platform'],
+    ['org-none', 'none'],
+  ])('names namespace %s as %s', (namespace, owner) => {
+    expect(ownerOf(namespace)).toBe(owner);
   });
 });
 

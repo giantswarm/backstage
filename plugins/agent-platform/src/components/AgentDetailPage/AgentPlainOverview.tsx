@@ -44,10 +44,10 @@ import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { HarnessSummary } from '../HarnessSummary';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { OrganizationValue } from '../OrganizationValue';
+import { OwnerValue } from '../OwnerValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
-import { CREATED_BY_ANNOTATION } from '../../lib/tenants';
+import { CREATED_BY_ANNOTATION, OWNER_LABEL } from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -604,7 +604,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to, who created it and how long ago.
+ * its owner (the platform or an organization), who created it and how long ago.
  */
 export function agentFacts({
   agent,
@@ -656,8 +656,8 @@ export function agentFacts({
     },
     { label: 'Environment', value: installation },
     {
-      label: 'Organization',
-      value: <OrganizationValue namespace={agent.getNamespace() ?? ''} />,
+      label: OWNER_LABEL,
+      value: <OwnerValue namespace={agent.getNamespace() ?? ''} />,
     },
   ];
   const defaultWorkspace = defaultWorkspaceName(

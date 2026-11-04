@@ -4,7 +4,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
-import { useOrganizationField } from '../NewAgentPage/useOrganizationField';
+import { useOwnerField } from '../NewAgentPage/useOwnerField';
 import { ModelConfigPicker } from './ModelConfigPicker';
 
 type FakeModelConfig = {
@@ -15,9 +15,9 @@ type FakeModelConfig = {
   getProvider: () => string;
 };
 
-/** The Organization field, wherever the page would put it. */
-function OrganizationFieldHarness() {
-  return <>{useOrganizationField().field}</>;
+/** The Owner field, wherever the page would put it. */
+function OwnerFieldHarness() {
+  return <>{useOwnerField().field}</>;
 }
 
 function modelConfig(name: string, displayName: string): FakeModelConfig {
@@ -79,7 +79,7 @@ describe('ModelConfigPicker', () => {
     mockManaged = ['kagent', 'org-acme'];
     mockModelConfigs = [modelConfig('default-model-config', 'Claude Sonnet')];
 
-    function WithOrganizationField() {
+    function WithOwnerField() {
       const { state, setInstallation } = useNewAgentForm();
       useEffect(() => {
         if (!state.installation) {
@@ -88,14 +88,14 @@ describe('ModelConfigPicker', () => {
       }, [state.installation, setInstallation]);
       return state.installation ? (
         <>
-          <OrganizationFieldHarness />
+          <OwnerFieldHarness />
           <ModelConfigPicker />
         </>
       ) : null;
     }
     await renderInTestApp(
       <NewAgentFormProvider>
-        <WithOrganizationField />
+        <WithOwnerField />
       </NewAgentFormProvider>,
     );
 
@@ -123,7 +123,7 @@ describe('ModelConfigPicker', () => {
       }, [state.installation, setInstallation]);
       return state.installation ? (
         <>
-          <OrganizationFieldHarness />
+          <OwnerFieldHarness />
           <ModelConfigPicker />
         </>
       ) : null;

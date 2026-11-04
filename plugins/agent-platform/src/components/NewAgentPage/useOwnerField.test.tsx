@@ -5,17 +5,14 @@ import userEvent from '@testing-library/user-event';
 import { useFieldValidation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
-import {
-  type OrganizationFieldOptions,
-  useOrganizationField,
-} from './useOrganizationField';
+import { type OwnerFieldOptions, useOwnerField } from './useOwnerField';
 
 /**
  * The field in a region named by where it puts the pair: `main`, or `line`
  * (wherever the other field goes).
  */
-function OrganizationFieldHarness(props: OrganizationFieldOptions) {
-  const { inMain, field } = useOrganizationField(props);
+function OwnerFieldHarness(props: OwnerFieldOptions) {
+  const { inMain, field } = useOwnerField(props);
   return field ? (
     <section aria-label={inMain ? 'main' : 'line'}>{field}</section>
   ) : null;
@@ -88,7 +85,7 @@ async function renderPicker() {
   await renderInTestApp(
     <NewAgentFormProvider>
       <FormProbe />
-      <OrganizationFieldHarness errorFor={shown} />
+      <OwnerFieldHarness errorFor={shown} />
     </NewAgentFormProvider>,
   );
 }
@@ -99,7 +96,7 @@ function ValidatedPicker() {
   return (
     <>
       <FormProbe />
-      <OrganizationFieldHarness errorFor={validation.errorFor} />
+      <OwnerFieldHarness errorFor={validation.errorFor} />
       <button type="button" onClick={validation.reveal}>
         Continue
       </button>
@@ -108,12 +105,16 @@ function ValidatedPicker() {
 }
 
 const form = () => screen.getByRole('status', { name: 'form' });
-const dropdown = () => screen.getByRole('button', { name: /Organization$/ });
+const owner = () => screen.getByRole('radiogroup', { name: 'Owner' });
+const radio = (name: RegExp) => screen.getByRole('radio', { name });
+/** The organization dropdown under the radio group, by its radio's name. */
+const organizations = () =>
+  screen.getByRole('button', { name: /Organization$/ });
 const options = () =>
   screen.getAllByRole('option').map(option => option.textContent);
 const DESCRIPTION = 'Who can use the agent, and whose editors can change it.';
 
-describe('useOrganizationField', () => {
+describe('useOwnerField', () => {
   beforeEach(() => {
     mockManaged = {};
     mockReading = false;
@@ -126,13 +127,15 @@ describe('useOrganizationField', () => {
 
     const field = await screen.findByRole('region', { name: 'line' });
     expect(field).toHaveTextContent(
-      'Belongs to acme, the only place on gazelle where you may create agents.',
+      'Owner: acme, the only one you may create agents for on gazelle.',
     );
     // The platform tenant's model is not the new agent's: the picker
     // preselects the organization's own instead.
     expect(form()).toHaveTextContent('tenant=org-acme model=/ error=');
     // Informational only: no control.
-    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Owner|Organization/ }),
+    ).toBeNull();
     expect(screen.queryByRole('radiogroup')).toBeNull();
     // The probe prints `tenant=`; the picker never says tenant.
     expect(screen.queryByText(/Tenant|tenant /)).toBeNull();
@@ -144,62 +147,87 @@ describe('useOrganizationField', () => {
 
     expect(
       await screen.findByRole('region', { name: 'line' }),
-    ).toHaveTextContent('Belongs to Platform, the only place on gazelle');
+    ).toHaveTextContent(
+      'Owner: Platform, the only one you may create agents for on gazelle.',
+    );
     expect(form()).toHaveTextContent('tenant=kagent');
+    expect(screen.queryByRole('radiogroup')).toBeNull();
   });
 
-  it('offers Platform and the organizations by name in one dropdown, Platform picked', async () => {
+  it('offers Platform or Organization as radios, Platform picked, the organizations only once Organization is chosen', async () => {
     mockManaged = { gazelle: ['org-acme', 'kagent', 'org-beta'] };
     await renderPicker();
 
     expect(
       await screen.findByRole('region', { name: 'main' }),
-    ).toContainElement(dropdown());
-    // Labelled like the form's other fields, no heading, no radio.
+    ).toContainElement(owner());
+    // Labelled like the form's other fields, no heading.
     expect(screen.getByText(DESCRIPTION)).toBeInTheDocument();
     expect(screen.queryByRole('heading')).toBeNull();
-    expect(screen.queryByRole('radiogroup')).toBeNull();
     expect(screen.queryByText(/Tenant|tenant /)).toBeNull();
-    // The first offered is picked, and never a placeholder.
+    expect(
+      screen
+        .getAllByRole('radio')
+        .map(option => option.closest('label')?.textContent),
+    ).toEqual([
+      'Platform — the platform’s agents, for everyone',
+      'Organization — one organization’s agents, for its people',
+    ]);
+    // The platform by default; no organization dropdown with it.
+    expect(radio(/^Platform/)).toBeChecked();
     expect(form()).toHaveTextContent(
       'tenant=kagent model=kagent/default-model-config error=',
     );
-    expect(dropdown()).toHaveTextContent(/^Platform/);
-    expect(dropdown()).not.toHaveTextContent(/Select an option/);
+    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
 
-    await userEvent.click(dropdown());
-    expect(options()).toEqual([
-      'PlatformAvailable to all organizations.',
-      'acme',
-      'beta',
-    ]);
-    await userEvent.click(screen.getByRole('option', { name: 'beta' }));
+    // Organization brings its dropdown, the first organization picked, never
+    // a placeholder.
+    await userEvent.click(radio(/^Organization/));
+    expect(radio(/^Organization/)).toBeChecked();
     // Organization over the platform's preselected model: it goes.
-    expect(form()).toHaveTextContent('tenant=org-beta model=/ error=');
-    expect(dropdown()).toHaveTextContent(/^beta/);
-    expect(screen.queryByText(/organization beta/)).toBeNull();
+    expect(form()).toHaveTextContent('tenant=org-acme model=/ error=');
+    expect(organizations()).toHaveTextContent(/^acme/);
+    expect(organizations()).not.toHaveTextContent(/Select an option/);
+    await userEvent.click(organizations());
+    expect(options()).toEqual(['acme', 'beta']);
+    await userEvent.click(screen.getByRole('option', { name: 'beta' }));
+    expect(form()).toHaveTextContent('tenant=org-beta');
+    expect(organizations()).toHaveTextContent(/^beta/);
+
+    // Back to the platform, and back again: the person's organization returns.
+    await userEvent.click(radio(/^Platform/));
+    expect(form()).toHaveTextContent('tenant=kagent');
+    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
+    await userEvent.click(radio(/^Organization/));
+    expect(form()).toHaveTextContent('tenant=org-beta');
   });
 
-  it('picks the first organization where the platform is not the person’s', async () => {
+  it('offers the organizations alone where the platform is not the person’s, the first picked', async () => {
     mockManaged = { gazelle: ['org-acme', 'org-beta'] };
     await renderPicker();
 
     await screen.findByRole('region', { name: 'main' });
+    expect(screen.queryByRole('radiogroup')).toBeNull();
     expect(form()).toHaveTextContent('tenant=org-acme');
-    await userEvent.click(dropdown());
+    const dropdown = screen.getByRole('button', { name: /Owner$/ });
+    expect(dropdown).toHaveTextContent(/^acme/);
+    expect(screen.getByText(DESCRIPTION)).toBeInTheDocument();
+    await userEvent.click(dropdown);
     expect(options()).toEqual(['acme', 'beta']);
   });
 
-  it('sections organizations and other namespaces where both are offered', async () => {
-    mockManaged = { gazelle: ['team-a', 'org-acme', 'team-b'] };
+  it('offers Other namespace as a third radio, its namespaces by their own name', async () => {
+    mockManaged = { gazelle: ['team-a', 'kagent', 'org-acme', 'team-b'] };
     await renderPicker();
 
     await screen.findByRole('region', { name: 'main' });
-    expect(form()).toHaveTextContent('tenant=org-acme');
-    await userEvent.click(dropdown());
-    expect(options()).toEqual(['acme', 'team-a', 'team-b']);
-    expect(screen.getByText('Organizations')).toBeInTheDocument();
-    expect(screen.getByText('Other namespaces')).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(form()).toHaveTextContent('tenant=kagent');
+    await userEvent.click(radio(/^Other namespace/));
+    expect(form()).toHaveTextContent('tenant=team-a');
+    const dropdown = screen.getByRole('button', { name: /Other namespace$/ });
+    await userEvent.click(dropdown);
+    expect(options()).toEqual(['team-a', 'team-b']);
     await userEvent.click(screen.getByRole('option', { name: 'team-b' }));
     expect(form()).toHaveTextContent('tenant=team-b');
   });
@@ -211,9 +239,9 @@ describe('useOrganizationField', () => {
     };
     await renderPicker();
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /Organization$/ }),
-    );
+    await screen.findByRole('region', { name: 'main' });
+    await userEvent.click(radio(/^Organization/));
+    await userEvent.click(organizations());
     await userEvent.click(screen.getByRole('option', { name: 'beta' }));
     await userEvent.click(
       screen.getByRole('button', { name: 'Switch to golem' }),
@@ -221,27 +249,26 @@ describe('useOrganizationField', () => {
 
     await screen.findByRole('region', { name: 'main' });
     expect(form()).toHaveTextContent('tenant=org-beta');
-    expect(dropdown()).toHaveTextContent(/^beta/);
+    expect(radio(/^Organization/)).toBeChecked();
+    expect(organizations()).toHaveTextContent(/^beta/);
   });
 
-  it('picks the new environment’s first where it does not offer the pick', async () => {
+  it('picks the platform on the new environment where it does not offer the pick', async () => {
     mockManaged = {
       gazelle: ['kagent', 'org-acme', 'org-beta'],
-      golem: ['org-zeta', 'org-eta'],
+      golem: ['kagent', 'org-zeta'],
     };
     await renderPicker();
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /Organization$/ }),
-    );
-    await userEvent.click(screen.getByRole('option', { name: 'acme' }));
+    await screen.findByRole('region', { name: 'main' });
+    await userEvent.click(radio(/^Organization/));
     await userEvent.click(
       screen.getByRole('button', { name: 'Switch to golem' }),
     );
 
     await screen.findByRole('region', { name: 'main' });
-    expect(form()).toHaveTextContent(/^tenant=org-zeta .*error=$/);
-    expect(dropdown()).toHaveTextContent(/^zeta/);
+    expect(form()).toHaveTextContent(/^tenant=kagent .*error=$/);
+    expect(radio(/^Platform/)).toBeChecked();
   });
 
   it('blocks Continue while reading where the person may create, and says so', async () => {
@@ -263,7 +290,7 @@ describe('useOrganizationField', () => {
     expect(field).toHaveTextContent(
       'Still reading where you may create agents.',
     );
-    expect(screen.getByRole('group', { name: 'Organization' })).toHaveAttribute(
+    expect(screen.getByRole('group', { name: 'Owner' })).toHaveAttribute(
       'data-invalid',
     );
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
@@ -312,8 +339,10 @@ describe('useOrganizationField', () => {
 
     await screen.findByRole('region', { name: 'main' });
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(dropdown()).not.toHaveAttribute('aria-invalid', 'true');
-    expect(screen.queryByText('Choose an organization.')).toBeNull();
+    expect(radio(/^Platform/)).toBeChecked();
+    expect(owner()).not.toHaveAttribute('data-invalid');
+    expect(form()).toHaveTextContent(/error=$/);
+    expect(screen.queryByText('Choose an owner.')).toBeNull();
   });
 
   it('says who grants access where the person may create in no organization, and blocks the form', async () => {
@@ -333,7 +362,7 @@ describe('useOrganizationField', () => {
     );
   });
 
-  it('offers nothing while editing: the agent stays in its organization', async () => {
+  it('offers nothing while editing: the agent keeps its owner', async () => {
     mockManaged = { gazelle: ['kagent', 'org-acme'] };
     await renderInTestApp(
       <NewAgentFormProvider
@@ -350,7 +379,7 @@ describe('useOrganizationField', () => {
           detailHref: undefined,
         }}
       >
-        <OrganizationFieldHarness errorFor={shown} />
+        <OwnerFieldHarness errorFor={shown} />
       </NewAgentFormProvider>,
     );
 

@@ -15,7 +15,7 @@ import {
   NewAgentFormProvider,
   useNewAgentForm,
 } from '../components/NewAgentFormProvider';
-import { useOrganizationField } from '../components/NewAgentPage/useOrganizationField';
+import { useOwnerField } from '../components/NewAgentPage/useOwnerField';
 import { useWarmNewAgentForm } from './useWarmNewAgentForm';
 
 let mockInstallations: { name: string }[];
@@ -110,7 +110,7 @@ describe('useWarmNewAgentForm', () => {
     }
   });
 
-  it('lets the form show Organization at once from the warm cache', async () => {
+  it('lets the form show Owner at once from the warm cache', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -130,7 +130,7 @@ describe('useWarmNewAgentForm', () => {
           setInstallation('gazelle');
         }
       }, [state.installation, setInstallation]);
-      return <>{useOrganizationField().field}</>;
+      return <>{useOwnerField().field}</>;
     }
     await renderInTestApp(
       <TestApiProvider apis={[[musterApiRef, pending]]}>
@@ -143,7 +143,7 @@ describe('useWarmNewAgentForm', () => {
     );
 
     expect(
-      screen.getByText(/the only place on gazelle where you may create agents/),
-    ).toHaveTextContent(/^Belongs to acme,/);
+      screen.getByText(/the only one you may create agents for on gazelle/),
+    ).toHaveTextContent(/^Owner: acme,/);
   });
 });

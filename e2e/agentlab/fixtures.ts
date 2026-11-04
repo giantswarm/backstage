@@ -700,9 +700,10 @@ async function restoreInboxToasts(page: Page): Promise<void> {
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  *
  * Where the person may create agents in several places (agent-manager's
- * `get_info` `namespaces.managed`), the wizard offers no model until one is
- * picked: `options.organization`, by its name, or else Platform. The only
- * place is picked by the wizard itself.
+ * `get_info` `namespaces.managed`), the Owner field preselects Platform (or
+ * the first organization where Platform is not offered); the wizard picks
+ * `options.organization`, by its name, or else Platform. The only place is
+ * picked by the wizard itself.
  *
  * `options.harness` picks that Runtime card under More options instead of the
  * platform Harness; `options.onStep` runs on Details (once the pick is made),
@@ -751,36 +752,43 @@ export async function createAgentInWizard(
   const model = page
     .getByRole('radiogroup', { name: 'Model' })
     .getByRole('radio', { name: options.model ?? /default-model-config/ });
-  // Several places are one dropdown (Platform, then the organizations). The
-  // Select's name is its value and its label: "Select an option
-  // Organization".
+  // Platform beside the organizations: the Owner radio group, whose
+  // Organization radio brings the organization dropdown. The organizations
+  // alone: that dropdown, as the Owner field. A Select's name is its value
+  // and its label: "acme Organization", "acme Owner".
+  const owner = page.getByRole('radiogroup', { name: 'Owner' });
   const organizationPicker = page.getByRole('button', {
-    name: /\bOrganization$/,
+    name: /\b(Organization|Owner)$/,
   });
   // The only place, stated in a line: under More options (opened above), or
   // under an Environment dropdown in the main form.
-  const soleOrganization = page.getByText(
-    /^Belongs to .+, the only place on .+ where you may create agents\.$/,
+  const soleOwner = page.getByText(
+    /^Owner: .+, the only one you may create agents for on .+\.$/,
   );
-  // The Organization field shows once agent-manager's get_info answers; the
-  // models may be offered before. Decide on the place only once it is known.
-  await expect(organizationPicker.or(soleOrganization).first()).toBeVisible({
+  // The Owner field shows once agent-manager's get_info answers; the models
+  // may be offered before. Decide on the owner only once it is known.
+  await expect(owner.or(organizationPicker).or(soleOwner).first()).toBeVisible({
     timeout: 60_000,
   });
-  if (await organizationPicker.isVisible()) {
+  if (await owner.isVisible()) {
+    await owner
+      .getByRole('radio', {
+        name: options.organization ? /^Organization/ : /^Platform/,
+      })
+      .check();
+  }
+  if (options.organization && (await organizationPicker.isVisible())) {
     await organizationPicker.click();
-    await page.getByRole('option').first().waitFor();
-    const platform = page.getByRole('option', { name: /^Platform/ });
-    if (!options.organization && !(await platform.isVisible())) {
-      throw new Error(
-        'the wizard offers organizations only, no Platform: pass options.organization',
-      );
-    }
-    await (
-      options.organization
-        ? page.getByRole('option', { name: options.organization, exact: true })
-        : platform
-    ).click();
+    await page
+      .getByRole('option', { name: options.organization, exact: true })
+      .click();
+  } else if (
+    !(await owner.isVisible()) &&
+    (await organizationPicker.isVisible())
+  ) {
+    throw new Error(
+      'the wizard offers organizations only, no Platform: pass options.organization',
+    );
   }
   await model.check();
   if (options.harness) {

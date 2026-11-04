@@ -2795,7 +2795,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
-    it('names the organization of an agent in an organization, under Organization', async () => {
+    it('names the organization of an agent in an organization, under Owner', async () => {
       stubResources(
         {
           resource: makeAgent({
@@ -2813,14 +2813,17 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       const facts = screen.getByRole('complementary', {
         name: 'About this agent',
       });
-      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).getByText('Owner')).toBeInTheDocument();
+      expect(within(facts).queryByText('Organization')).toBeNull();
       expect(within(facts).queryByText('Tenant')).toBeNull();
       expect(within(facts).getByText('acme')).toBeInTheDocument();
       expect(within(facts).queryByText('organization acme')).toBeNull();
-      expect(within(facts).queryByRole('button', { name: /None/ })).toBeNull();
+      expect(
+        within(facts).queryByRole('button', { name: /Platform/ }),
+      ).toBeNull();
     });
 
-    it('says an agent of the platform belongs to no organization, and is available to all', async () => {
+    it('says the platform owns an agent of the platform, available to all organizations', async () => {
       stubResources(
         {
           resource: makeAgent({
@@ -2835,20 +2838,18 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       const facts = screen.getByRole('complementary', {
         name: 'About this agent',
       });
-      expect(within(facts).getByText('Organization')).toBeInTheDocument();
-      expect(within(facts).getByText(/^None/)).toBeInTheDocument();
-      // Nothing about the platform in its organization; the Runtime fact's
-      // "Platform default" is about the Harness, so the check stays on the
-      // Organization fact's value.
-      const organization = within(facts)
-        .getByText('Organization')
+      // The Runtime fact's "Platform default" is about the Harness, so the
+      // check stays on the Owner fact's value.
+      const owner = within(facts)
+        .getByText('Owner')
         .closest('dt')?.nextElementSibling;
-      expect(organization?.tagName).toBe('DD');
-      expect(organization).not.toHaveTextContent(/Platform/);
+      expect(owner?.tagName).toBe('DD');
+      expect(owner).toHaveTextContent(/^Platform/);
+      expect(owner).not.toHaveTextContent(/None/);
       const hint = within(facts).getByRole('button', {
-        name: 'What None means',
+        name: 'What Platform means',
       });
-      // In the tab order; its text is `OrganizationValue`'s own test.
+      // In the tab order; its text is `OwnerValue`'s own test.
       expect(hint.tabIndex).toBeGreaterThanOrEqual(0);
     });
 

@@ -5,10 +5,11 @@
  * platform tenant, the platform's agents for everyone, and an Organization's
  * `org-<name>` namespace is that organization's tenant. Kubernetes RBAC in the
  * namespace decides who sees and changes its agents; the portal only names the
- * tenant. The portal never says "tenant": under the label "Organization" a
- * person reads the organization's name, or "None" for the platform, whose
- * agents are available to all organizations; the New agent form offers the
- * platform as "Platform".
+ * tenant. The portal never says "tenant": an agent's tenant is its owner,
+ * shown under the label "Owner" as "Platform" (whose agents are available to
+ * all organizations) or the organization's name (`ownerOf`). Where a page
+ * groups by organization (usage), the platform reads "None" under the label
+ * "Organization" instead (`tenantOf`).
  */
 
 import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
@@ -34,13 +35,16 @@ export function organizationOf(namespace: string): string | undefined {
   return namespace.slice(ORGANIZATION_PREFIX.length) || undefined;
 }
 
-/** The platform as the New agent form offers it, a kind of place. */
+/** The label under which an agent's tenant is chosen and shown. */
+export const OWNER_LABEL = 'Owner';
+
+/** The platform as an owner, and as the New agent form offers it. */
 const PLATFORM_LABEL = 'Platform';
 
 /**
- * What the platform tenant reads as under the label "Organization": the
- * platform is no organization, its agents are available to all of them
- * (`OrganizationValue` says so beside it).
+ * What the platform tenant reads as under the label "Organization", where a
+ * page groups by organization: the platform is no organization, its agents
+ * are available to all of them.
  */
 const NO_ORGANIZATION = 'None';
 
@@ -62,6 +66,27 @@ export function tenantOf(namespace: string): string {
     return `namespace ${namespace}`;
   }
   return organization.toLowerCase() === NO_ORGANIZATION.toLowerCase()
+    ? `organization ${organization}`
+    : organization;
+}
+
+/**
+ * The tenant a namespace is, as a value under the label "Owner": `Platform`
+ * for the platform tenant (`OwnerValue` says beside it that its agents are
+ * available to all organizations), the organization's plain name for an
+ * Organization's `org-<name>` namespace, and `namespace <name>` for any other
+ * namespace agents live in. An organization whose plain name would read as
+ * the platform keeps its qualifier (`organization platform`).
+ */
+export function ownerOf(namespace: string): string {
+  if (namespace === PLATFORM_TENANT_NAMESPACE) {
+    return PLATFORM_LABEL;
+  }
+  const organization = organizationOf(namespace);
+  if (organization === undefined) {
+    return `namespace ${namespace}`;
+  }
+  return organization.toLowerCase() === PLATFORM_LABEL.toLowerCase()
     ? `organization ${organization}`
     : organization;
 }
@@ -111,9 +136,9 @@ export function tenantGroups(choices: readonly string[]): {
 }
 
 /**
- * The place a new agent's form picks among `choices`: the first in the order
- * the form offers them (Platform, then the organizations, then the other
- * namespaces).
+ * The place a new agent's form picks among `choices`: the platform where it
+ * is one, else the first in the order the form offers them (the
+ * organizations, then the other namespaces).
  */
 export function defaultTenant(choices: readonly string[]): string | undefined {
   const { kinds, byKind } = tenantGroups(choices);

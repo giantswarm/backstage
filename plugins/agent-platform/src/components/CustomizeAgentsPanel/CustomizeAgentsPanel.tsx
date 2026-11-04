@@ -27,7 +27,12 @@ import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
 import { useWarmNewAgentForm } from '../../hooks/useWarmNewAgentForm';
-import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
+import {
+  ACCESS_GRANT_HINT,
+  ownerOf,
+  OWNER_LABEL,
+  tenantKindOf,
+} from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
@@ -249,7 +254,7 @@ export type CustomizeAgentsPanelProps = {
 };
 
 /**
- * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
+ * The Agents tab's facets (T49): the agent's owner (its tenant), the model it
  * runs on, its Harness, who created it and the person's favorites. The
  * environment is not one of them: the page's Environment select already
  * scopes the tab to one installation, and shows only where there is more than
@@ -258,7 +263,7 @@ export type CustomizeAgentsPanelProps = {
  *
  * @param harnesses the fleet's Harnesses ({@link agentHarnesses}); the
  *   Harness facet is offered only when there are two or more.
- * @param tenants how many tenants the rows belong to; the Tenant facet is
+ * @param tenants how many tenants the rows belong to; the Owner facet is
  *   offered only from two on, as the Harness one.
  * @param isMine whether the person created the row's agent: the "Created by"
  *   facet, which the bar shows only when some row is theirs.
@@ -276,7 +281,7 @@ export function agentFacets(
       ? [
           {
             id: 'tenant',
-            label: 'Organization',
+            label: OWNER_LABEL,
             value: (row: AgentRow) => row.tenant,
           },
         ]
@@ -326,14 +331,13 @@ type AgentFact = {
 };
 
 /**
- * A row's organization, beside its name, where the list's agents belong to
- * more than one tenant, in the words of the Organization filter's options
- * (`tenantOf`). A row has no labels, so an organization reads
- * "Organization: acme", as the agent's page has it, and is not taken for the
- * environment among the facts.
- * An agent of the platform belongs to no organization and has no text there:
- * a "None" without its label says nothing (its page says "None", and what
- * that means). Another namespace already says what it is
+ * A row's owner, beside its name, where the list's agents belong to more
+ * than one tenant, in the words of the Owner filter's options (`ownerOf`). A
+ * row has no labels, so an organization reads "Owner: acme", as the agent's
+ * page has it, and is not taken for the environment among the facts.
+ * An agent of the platform, the usual owner, has no text there: the rows
+ * that name one stand out as an organization's (its page says "Platform",
+ * and what that means). Another namespace already says what it is
  * (`namespace sre-team`).
  */
 function organizationText(namespace: string): string {
@@ -342,8 +346,8 @@ function organizationText(namespace: string): string {
     return '';
   }
   return kind === 'organization'
-    ? `Organization: ${tenantOf(namespace)}`
-    : tenantOf(namespace);
+    ? `${OWNER_LABEL}: ${ownerOf(namespace)}`
+    : ownerOf(namespace);
 }
 
 /**
@@ -615,7 +619,7 @@ function AgentGroup({
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
-  // The New agent form's reads, started from here so its Organization field
+  // The New agent form’s reads, started from here so its Owner field
   // does not arrive a moment after the form opens.
   useWarmNewAgentForm();
   const {

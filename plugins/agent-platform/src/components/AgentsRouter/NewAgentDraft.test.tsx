@@ -68,9 +68,8 @@ jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => mockAgentManagerInfo,
 }));
 jest.mock('../ModelConfigPicker', () => ({ ModelConfigPicker: () => null }));
-jest.mock('../NewAgentPage/useOrganizationField', () => ({
-  soleOrganizationLabel: (namespace: string) => namespace,
-  useOrganizationField: () => ({ inMain: false, field: null }),
+jest.mock('../NewAgentPage/useOwnerField', () => ({
+  useOwnerField: () => ({ inMain: false, field: null }),
 }));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => null,

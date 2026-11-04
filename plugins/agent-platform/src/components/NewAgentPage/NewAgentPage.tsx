@@ -25,10 +25,8 @@ import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { useEnvironmentField } from './useEnvironmentField';
-import {
-  soleOrganizationLabel,
-  useOrganizationField,
-} from './useOrganizationField';
+import { useOwnerField } from './useOwnerField';
+import { ownerOf } from '../../lib/tenants';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker, useRuntimeChoices } from '../HarnessPicker';
 import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
@@ -109,7 +107,7 @@ function NewAgentPageContent() {
   const { errorFor, fieldProps, textFieldProps } = validation;
   // "More options" holds the technical knobs (model, runtime, default
   // workspace, technical name, EgressPolicies and extra egress, and the lines
-  // naming an environment and organization with nothing to choose),
+  // naming an environment and owner with nothing to choose),
   // collapsed: their defaults fit most agents. The shared `MoreOptions`
   // disclosure keeps
   // the pickers inside mounted while closed — the model picker's preselection
@@ -117,8 +115,8 @@ function NewAgentPageContent() {
   // it.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
-  // Where the agent runs and who it belongs to, a pair kept together,
-  // Environment first: the organizations offered depend on the environment,
+  // Where the agent runs and who owns it, a pair kept together, Environment
+  // first: the owners offered depend on the environment,
   // so changing one never resets the other out of sight. In the main form if
   // either is a choice (or says why there is none), else both are lines under
   // More options. Each field's hook runs here, once, wherever the pair goes,
@@ -127,22 +125,21 @@ function NewAgentPageContent() {
   const environment = useEnvironmentField({
     error: errorFor('installation', fieldErrors.installation),
   });
-  const organization = useOrganizationField({ errorFor });
+  const owner = useOwnerField({ errorFor });
   // The portal's only environment is no part of the pair: its line sits
-  // first under More options whatever Organization does.
-  const pairInMain =
-    (!environment.alone && environment.inMain) || organization.inMain;
+  // first under More options whatever Owner does.
+  const pairInMain = (!environment.alone && environment.inMain) || owner.inMain;
   const pair = (
     <>
       {!environment.alone && environment.field}
-      {organization.field}
+      {owner.field}
     </>
   );
 
   // A problem with a field behind the disclosure opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
-  // Environment and Organization are never among them: under More options
-  // they are lines with nothing to fix, and Organization's blocked Continue
+  // Environment and Owner are never among them: under More options they are
+  // lines with nothing to fix, and Owner's blocked Continue
   // ("Still reading…") shows in the main form.
   const hasHiddenProblem = Boolean(
     fieldErrors.slug || fieldErrors.model || fieldErrors.egress,
@@ -186,7 +183,7 @@ function NewAgentPageContent() {
 
   // The disclosure's one-line summary of what it holds: the runtime (the
   // platform Harness, by the runtime field's title for it, unless another is
-  // picked), the sole organization when its line is in there, and, while
+  // picked), the sole owner when its line is in there, and, while
   // creating, the technical name it can override. An edited
   // agent's Harness is known by its name until the picker reads it.
   let runtimeName = platformChoice
@@ -199,9 +196,7 @@ function NewAgentPageContent() {
         : state.harness.name;
   }
   const defaultsSummary = `${runtimeName} runtime${
-    !pairInMain && organization.sole
-      ? `, organization ${soleOrganizationLabel(organization.sole)}`
-      : ''
+    !pairInMain && owner.sole ? `, owner ${ownerOf(owner.sole)}` : ''
   }${
     state.defaultWorkspace
       ? `, default workspace ${state.defaultWorkspace}`

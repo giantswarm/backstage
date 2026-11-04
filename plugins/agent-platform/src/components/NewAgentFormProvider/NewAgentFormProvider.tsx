@@ -21,7 +21,12 @@ import {
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
-import { defaultTenant } from '../../lib/tenants';
+import {
+  defaultTenant,
+  tenantGroups,
+  tenantKindOf,
+  type TenantKind,
+} from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
@@ -195,13 +200,21 @@ export type NewAgentFormContextValue = {
   /**
    * Sets {@link NewAgentFormState.tenantChoices}. The tenant held stays when
    * it is still a choice; else the person's own last pick, when it is one
-   * (it survives an environment change); else the first choice offered.
+   * (it survives an environment change); else the platform, or the first
+   * choice offered where the platform is none.
    */
   setTenantChoices: (choices: string[]) => void;
   /** Sets {@link NewAgentFormState.tenantChoicesFailed}. */
   setTenantChoicesFailed: (failed: boolean) => void;
   /** Picks the tenant; a model of another namespace is dropped. */
   selectTenant: (tenant: string) => void;
+  /**
+   * Chooses the kind of owner (Platform, Organization, Other namespace) and
+   * picks a tenant of it at once, so the kind's dropdown always has a value:
+   * the person's own last pick of that kind where it is still a choice, else
+   * the kind's first.
+   */
+  selectTenantKind: (kind: TenantKind) => void;
   selectModelConfig: (
     name: string,
     namespace: string,
@@ -484,8 +497,10 @@ export function NewAgentFormProvider({
 }) {
   const [state, setState] = useState<NewAgentFormState>(seed);
   // The tenant the person picked themselves, so another environment that
-  // offers it too picks it again instead of its own first.
+  // offers it too picks it again instead of its own first; and their last
+  // pick of each kind, so choosing Organization again brings back theirs.
   const ownTenantPick = useRef<string>();
+  const ownTenantPickByKind = useRef<Partial<Record<TenantKind, string>>>({});
   // The slug auto-derives from the name until the user edits it by hand — and
   // never while editing: an existing agent's technical name cannot change.
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
@@ -557,7 +572,7 @@ export function NewAgentFormProvider({
       } else if (state.tenantChoices) {
         // A guard only: a choice is always picked once there are choices
         // (`setTenantChoices`).
-        fieldErrors.tenant = 'Choose an organization.';
+        fieldErrors.tenant = 'Choose an owner.';
       } else if (state.tenantChoicesFailed) {
         fieldErrors.tenant = 'Could not read where you may create agents.';
       } else {
@@ -663,8 +678,23 @@ export function NewAgentFormProvider({
         ),
       selectTenant: tenant => {
         ownTenantPick.current = tenant;
+        ownTenantPickByKind.current[tenantKindOf(tenant)] = tenant;
         setState(prev => withTenant(prev, tenant));
       },
+      selectTenantKind: kind =>
+        setState(prev => {
+          if (prev.tenant && tenantKindOf(prev.tenant) === kind) {
+            return prev;
+          }
+          const members = tenantGroups(prev.tenantChoices ?? []).byKind[kind];
+          const own = ownTenantPickByKind.current[kind];
+          const tenant = own && members.includes(own) ? own : members[0];
+          if (!tenant) {
+            return prev;
+          }
+          ownTenantPick.current = tenant;
+          return withTenant(prev, tenant);
+        }),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick. A model outside the picked tenant is not taken: a
