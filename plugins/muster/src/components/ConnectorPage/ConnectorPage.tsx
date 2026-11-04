@@ -25,6 +25,7 @@ import {
   BreadcrumbItem,
   type Fact,
   CopyButton,
+  DateComponent,
   DisabledAction,
   EmptyStateCard,
   LoadingIndicator,
@@ -97,12 +98,7 @@ import {
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
-import {
-  addedLine,
-  callsLine,
-  healthLine,
-  signInLabel,
-} from './connectorFacts';
+import { addedAt, callsLine, healthLine, signInLabel } from './connectorFacts';
 import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
@@ -582,9 +578,12 @@ function ConnectorPageContent({
       value: calls,
     });
   }
-  const added = addedLine(members);
+  const added = addedAt(members);
   if (added) {
-    facts.push({ label: 'Added', value: added });
+    facts.push({
+      label: 'Added',
+      value: <DateComponent value={added} relative />,
+    });
   }
   // Last, as the agent page's Overview is first: the tab people open least.
   // muster itself has neither facts nor an MCPServer, so no Details.

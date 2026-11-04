@@ -160,8 +160,8 @@ export function NewConnectorTestPage() {
     return () => clearInterval(timer);
   }, [applying]);
 
-  // Live per-session runtime view; shares the query key with the server
-  // manager's RuntimeState so the two agree. Background refetch stays on: the
+  // Live per-session runtime view; shares the query key with the connector
+  // page's capability counts (`useServerCapabilityCounts`) so the two agree. Background refetch stays on: the
   // connector takes up to a minute to connect, precisely the window where the
   // person switches tabs.
   const { data: runtimeData } = useQuery({
