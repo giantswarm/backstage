@@ -2348,7 +2348,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(screen.queryByText('agent-platform/pr-reviewer')).toBeNull();
     });
 
-    it('says how long ago the agent was created beside the overview, not in the technical details', async () => {
+    it('says how long ago the agent was created beside the overview, and only there', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
       await renderShell();
@@ -2372,10 +2372,10 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         screen.getByRole('button', { name: 'Technical details' }),
       );
       expect(await screen.findByText('Deployed by')).toBeInTheDocument();
-      // The header's line under the name and the facts', nothing more.
-      const mentions = screen.getAllByText('Created');
-      expect(mentions).toHaveLength(2);
-      expect(mentions).toContain(within(facts).getByText('Created'));
+      // The facts' alone: not under the name, not in Configuration.
+      expect(screen.getAllByText(/^Created\b/)).toEqual([
+        within(facts).getByText('Created'),
+      ]);
     });
 
     it('offers Overview, Sessions, Tools and Usage, each at its own URL', async () => {

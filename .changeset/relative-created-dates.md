@@ -5,8 +5,8 @@
 ---
 
 Created and connection times read as relative dates, the local date and time
-on hover. The agent page says "Created 3 days ago" in its header and in the
-facts beside the Overview, no longer in Technical details. A connector's "Added" fact says how long ago it was
+on hover. The agent page says "Created 3 days ago" once, in the facts beside the
+Overview, no longer in its header or in Technical details. A connector's "Added" fact says how long ago it was
 added instead of a fixed UK-format UTC date. Its Health block ("Last
 connected", "Next retry") and the Instances tab's "Last connected" column drop
 the browser-locale timestamp and show the exact time on hover; a retry time
