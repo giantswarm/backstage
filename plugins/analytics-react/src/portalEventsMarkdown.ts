@@ -1,4 +1,4 @@
-import { portalEvents, type PortalEventSpec } from './events';
+import { COUNT, portalEvents, type PortalEventSpec } from './events';
 
 /**
  * The event list as the Markdown table `docs/telemetry.md` carries between its
@@ -8,9 +8,10 @@ export function portalEventsMarkdown(): string {
   const rows = Object.entries(portalEvents as Record<string, PortalEventSpec>)
     .map(([name, { description, attributes }]) => {
       const values = Object.entries(attributes)
-        .map(
-          ([key, allowed]) =>
-            `\`${key}\`: ${allowed.map(v => `\`${v}\``).join(', ')}`,
+        .map(([key, allowed]) =>
+          allowed === COUNT
+            ? `\`${key}\`: a count, a whole number of 0 or more`
+            : `\`${key}\`: ${allowed.map(v => `\`${v}\``).join(', ')}`,
         )
         .join('; ');
       return `| \`${name}\` | ${description} | ${values} |`;

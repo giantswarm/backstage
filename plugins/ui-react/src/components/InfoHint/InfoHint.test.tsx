@@ -1,4 +1,11 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  getDefaultNormalizer,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   mockDesktopLayout,
@@ -8,6 +15,12 @@ import {
 import type { ReactElement } from 'react';
 import { ShellScopeProvider } from '../ShellScope';
 import { InfoHint } from './InfoHint';
+
+/** Matches text as it is, newlines included. */
+const keepWhitespace = getDefaultNormalizer({
+  collapseWhitespace: false,
+  trim: false,
+});
 
 /** Renders as the agent-platform shell does: inside its scope. */
 function renderInShell(ui: ReactElement) {
@@ -34,6 +47,28 @@ describe('InfoHint', () => {
     expect(button).toHaveFocus();
     expect(await screen.findByRole('tooltip')).toHaveTextContent('It broke.');
   });
+
+  // `toHaveTextContent` collapses whitespace, so it cannot tell a line break
+  // from a space: match the text with its newline, and read the style that
+  // keeps it on screen.
+  it.each([
+    ['on classic pages', render],
+    ['in the shell', renderInShell],
+  ])(
+    'keeps a multi-line hint’s line breaks in its tooltip %s, and wraps a long word',
+    async (_where, renderHint) => {
+      const user = userEvent.setup();
+      renderHint(<InfoHint label="Why">{'It broke.\nTry again.'}</InfoHint>);
+
+      await user.tab();
+      expect(
+        within(await screen.findByRole('tooltip')).getByText(
+          'It broke.\nTry again.',
+          { normalizer: keepWhitespace },
+        ),
+      ).toHaveStyle({ whiteSpace: 'pre-line', overflowWrap: 'anywhere' });
+    },
+  );
 
   it('keeps the tooltip alone on classic pages: a press opens nothing', async () => {
     layout = mockPhoneLayout();

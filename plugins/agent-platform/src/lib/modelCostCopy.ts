@@ -1,4 +1,5 @@
 import type { ModelCostFallbackReason } from '../hooks/useModelCost';
+import { lastDaysNoun } from './usageWindow';
 
 /**
  * The one line that says why "Your sessions" shows an estimate rather than
@@ -24,7 +25,7 @@ export function describeModelCostFallback(
     case 'not-recorded':
       return `No actual cost: the gateway on ${installation} does not record who made each model call.`;
     case 'no-spend':
-      return `No actual cost: the gateway priced none of your model calls on ${installation} in the last ${days} days.`;
+      return `No actual cost: the gateway priced none of your model calls on ${installation} in ${lastDaysNoun(days)}.`;
     case 'unreadable':
       return `No actual cost: ${installation}’s gateway metrics could not be read just now.`;
     case 'no-mimir':
@@ -51,7 +52,7 @@ export function describeActualCost({
   converted: boolean;
 }): string {
   const parts = [
-    `Sums the gateway’s price for every model call made as you on ${installation} in the last ${days} days. That includes calls outside these sessions, so it can be more than the tokens beside it suggest. Models missing from its catalogue add nothing.`,
+    `Sums the gateway’s price for every model call made as you on ${installation} in ${lastDaysNoun(days)}. That includes calls outside these sessions, so it can be more than the tokens beside it suggest. Models missing from its catalogue add nothing.`,
   ];
   if (partial) {
     parts.push(
@@ -82,7 +83,7 @@ export function describeActualCostByAgent({
   converted: boolean;
 }): string {
   const parts = [
-    `Cost is the gateway’s price for every model call each agent made as you in the last ${days} days, in these sessions or not, so it need not match the tokens beside it. A call from outside any agent’s pod, or through an agent with no session in the window, has no row.`,
+    `Cost is the gateway’s price for every model call each agent made as you in ${lastDaysNoun(days)}, in these sessions or not, so it need not match the tokens beside it. A call from outside any agent’s pod, or through an agent with no session in the window, has no row.`,
   ];
   if (partial) {
     parts.push(

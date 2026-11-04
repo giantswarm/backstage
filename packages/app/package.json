@@ -97,6 +97,7 @@
     "@backstage/config": "backstage:^",
     "@backstage/config-loader": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
+    "@backstage/plugin-app": "backstage:^",
     "@backstage/types": "backstage:^",
     "@giantswarm/backstage-plugin-gs-react": "workspace:^",
     "@playwright/test": "^1.32.3",

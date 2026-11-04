@@ -1,5 +1,7 @@
 export {
+  COUNT,
   defineEvents,
+  isCount,
   isPortalEventShaped,
   portalEvents,
   toPortalEvent,
@@ -14,3 +16,4 @@ export {
   type MutationTracking,
   type TrackedMutationOptions,
 } from './useTrackedMutation';
+export { useTrackedView } from './useTrackedView';

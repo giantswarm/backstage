@@ -288,6 +288,22 @@ describe('ServerTools', () => {
       screen.getByRole('link', { name: 'Open the server’s tools' }),
     ).toHaveAttribute('href', '/customize/connectors/gazelle/aws-root');
   });
+
+  it('marks a tool pill’s link as a control, and the text link as text', async () => {
+    // The agent shell underlines every bui link that is not `standalone`; a
+    // link filling a pill is a control, not a text link.
+    await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
+      total: 1,
+      tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
+    });
+
+    expect(
+      await screen.findByRole('link', { name: 'list_buckets' }),
+    ).toHaveAttribute('data-standalone', 'true');
+    expect(
+      screen.getByRole('link', { name: 'Open the server’s tools' }),
+    ).not.toHaveAttribute('data-standalone', 'true');
+  });
 });
 
 describe('ServerTools with no tools to show', () => {
