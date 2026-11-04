@@ -5,7 +5,12 @@ import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 
 import { egressOriginFor, EgressRefusedItem } from '../../lib/egressRefusals';
 import { EGRESS_ALERT_COPY } from '../../lib/egressCopy';
-import type { EgressRemedy } from '../../lib/egressRemedy';
+import {
+  isRawTcp,
+  unknownAgentRemedy,
+  type EgressRemedy,
+  type EgressRemedyFor,
+} from '../../lib/egressRemedy';
 
 const useStyles = makeStyles({
   // A host or origin is one long word: it wraps anywhere at phone width
@@ -24,10 +29,10 @@ export type EgressSettingsLink = {
   /** The agent's name as the page shows it. */
   agentName?: string;
   /**
-   * What the person can do about a refusal, for this agent; absent offers
-   * the neutral remedy, which promises nothing.
+   * What the person can do about a refusal, by its scheme, for this agent;
+   * absent offers raw TCP's remedy or the neutral one, which promises nothing.
    */
-  remedy?: EgressRemedy;
+  remedyFor?: EgressRemedyFor;
 };
 
 function destinationOf(item: EgressRefusedItem): string {
@@ -72,9 +77,9 @@ function Remedy({
 }
 
 /**
- * The remedy that applies to the agent (`egressRemedyKind`), in plain words
- * (`EGRESS_ALERT_COPY`). Nothing while the agent is being read: no remedy
- * rather than a wrong one.
+ * The remedy that applies to the destination and the agent
+ * (`egressRemedyKind`), in plain words (`EGRESS_ALERT_COPY`). Nothing while
+ * the agent is being read: no remedy rather than a wrong one.
  */
 function remedyOf(
   item: EgressRefusedItem,
@@ -87,9 +92,11 @@ function remedyOf(
   switch (remedy.kind) {
     case 'pending':
       return null;
+    case 'tcp':
+      return <Remedy text={says.tcp(agent, host)} />;
     case 'toolchains':
-      // A toolchain declares http(s) origins: a raw TCP or folded
-      // destination is the platform team's alone.
+      // A toolchain declares http(s) origins: a folded destination is the
+      // platform team's alone.
       return origin ? (
         <Remedy
           text={says.toolchains(subject, remedy.runtime, host)}
@@ -112,20 +119,13 @@ function remedyOf(
           links={[{ href: remedy.agentHref, label: links.agentPage(subject) }]}
         />
       );
-    case 'edit': {
-      let text = says.editUnnamed(agent);
-      if (origin) {
-        text = says.edit(agent, origin);
-      } else if (item.scheme === 'tcp') {
-        text = says.editTcp(subject);
-      }
+    case 'edit':
       return (
         <Remedy
-          text={text}
+          text={origin ? says.edit(agent, origin) : says.editUnnamed(agent)}
           links={[{ href: remedy.editHref, label: links.edit(agent) }]}
         />
       );
-    }
     default:
       return <Remedy text={says.neutral(agent, host)} />;
   }
@@ -153,10 +153,9 @@ export function EgressRefusedEntry({
     subject: name ?? EGRESS_ALERT_COPY.subjectStandIn,
   };
   const origin = egressOriginFor(item);
-  const reason =
-    item.scheme === 'tcp'
-      ? EGRESS_ALERT_COPY.tcpReason
-      : EGRESS_ALERT_COPY.reason(names.subject);
+  const reason = isRawTcp(item.scheme)
+    ? EGRESS_ALERT_COPY.tcpReason
+    : EGRESS_ALERT_COPY.reason(names.subject);
   const facts = [
     reason,
     timeOf(item.at),
@@ -164,11 +163,8 @@ export function EgressRefusedEntry({
   ]
     .filter(Boolean)
     .join(' · ');
-  const remedy = remedyOf(
-    item,
-    names,
-    egressSettings?.remedy ?? { kind: 'neutral' },
-  );
+  const remedyFor = egressSettings?.remedyFor ?? unknownAgentRemedy;
+  const remedy = remedyOf(item, names, remedyFor(item.scheme));
 
   return (
     <div

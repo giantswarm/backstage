@@ -4,9 +4,12 @@ import type { AgentManagerAgent } from './agentManager';
 import { isCodingRuntime } from './harnesses';
 
 /**
- * What a person can do about an egress refusal in a Session, by what the
- * agent is (giantswarm/giantswarm#38814):
+ * What a person can do about an egress refusal in a Session, by what was
+ * refused and what the agent is (giantswarm/giantswarm#38814):
  *
+ * - `tcp`: a raw TCP destination. kagent's egress declares HTTP and HTTPS
+ *   origins only, and agent-manager's per-Harness egress is a list of origins
+ *   too, so no one can allow it, on any runtime: no link, no one to ask.
  * - `toolchains`: a coding Harness reaches the platform's list for it only
  *   (agent-manager's `guardCoding`), and the installation's Sessions mount
  *   toolchains, whose images declare the origins their tools need.
@@ -21,6 +24,7 @@ import { isCodingRuntime } from './harnesses';
 export type EgressRemedyKind =
   | 'pending'
   | 'neutral'
+  | 'tcp'
   | 'toolchains'
   | 'platform'
   | 'git'
@@ -29,7 +33,7 @@ export type EgressRemedyKind =
 
 /** What the alert under a refusal offers, with the links it needs. */
 export type EgressRemedy =
-  | { kind: 'pending' | 'neutral' | 'git' }
+  | { kind: 'pending' | 'neutral' | 'tcp' | 'git' }
   | {
       kind: 'toolchains';
       /** The Harness as a person names it (`harnessTitle`). */
@@ -44,11 +48,31 @@ export type EgressRemedy =
   | { kind: 'edit'; editHref?: string };
 
 /**
+ * The remedy for a refused destination by its scheme (`http`, `https` or
+ * `tcp`), for the Session's agent (`useEgressRemedy`).
+ */
+export type EgressRemedyFor = (scheme: string) => EgressRemedy;
+
+/** Whether a refused destination is raw TCP, which no egress setting allows. */
+export function isRawTcp(scheme: string): boolean {
+  return scheme === 'tcp';
+}
+
+/**
+ * The remedy where nothing is known of the agent: raw TCP's, which needs
+ * nothing of it, else the neutral one, which promises nothing.
+ */
+export const unknownAgentRemedy: EgressRemedyFor = scheme =>
+  isRawTcp(scheme) ? { kind: 'tcp' } : { kind: 'neutral' };
+
+/**
  * What is known about the agent, each `undefined` while it is being read and
  * `null` where it could not be (agent-manager not on the installation, or its
  * read failed): a remedy that needs it is then the neutral one.
  */
 export type EgressRemedyFacts = {
+  /** The refused destination's scheme: `http`, `https` or `tcp`. */
+  scheme: string;
   /** The runtime of the agent's Harness. */
   runtime: HarnessRuntime | null | undefined;
   /** agent-manager's `get_agent`, as the person. */
@@ -85,13 +109,18 @@ export function isDefinedOutsideAgentManager(
 }
 
 /**
- * The remedy that applies, in the issue's order: a coding Harness first (its
- * egress is the platform's, wherever the agent is defined), then where the
- * agent is defined and who may change it. An unknown runtime promises nothing,
- * since an origin added to a coding agent is refused.
+ * The remedy that applies, in the issue's order: raw TCP first (no egress
+ * setting allows it, whatever the agent is, so nothing about the agent is
+ * waited for), then a coding Harness (its egress is the platform's, wherever
+ * the agent is defined), then where the agent is defined and who may change
+ * it. An unknown runtime promises nothing, since an origin added to a coding
+ * agent is refused.
  */
 export function egressRemedyKind(facts: EgressRemedyFacts): EgressRemedyKind {
-  const { runtime, agent, toolchains, canCommit, mayUpdate } = facts;
+  const { scheme, runtime, agent, toolchains, canCommit, mayUpdate } = facts;
+  if (isRawTcp(scheme)) {
+    return 'tcp';
+  }
   if (runtime === undefined) {
     return 'pending';
   }

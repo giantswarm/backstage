@@ -454,7 +454,7 @@ describe('SessionDetailPage', () => {
     mockPricedRate = undefined;
     mockEgressRefusals = [];
     mockUseEgressRemedy.mockReset();
-    mockUseEgressRemedy.mockReturnValue({ kind: 'pending' });
+    mockUseEgressRemedy.mockReturnValue(() => ({ kind: 'pending' }));
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
@@ -733,6 +733,25 @@ describe('SessionDetailPage', () => {
     expect(screen.queryByTestId('timeline-egress-refused')).toBeNull();
   });
 
+  it('reads no remedy for raw TCP refusals alone, which need none of the agent', async () => {
+    mockEgressRefusals = [
+      {
+        scheme: 'tcp',
+        host: 'github.com',
+        port: 22,
+        at: new Date().toISOString(),
+        count: 1,
+      },
+    ];
+
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(screen.getByTestId('timeline-egress-refused')).toBeInTheDocument();
+  });
+
   it('shows the remedy for the session’s agent under its egress refusal', async () => {
     mockEgressRefusals = [
       {
@@ -743,10 +762,10 @@ describe('SessionDetailPage', () => {
         count: 2,
       },
     ];
-    mockUseEgressRemedy.mockReturnValue({
+    mockUseEgressRemedy.mockReturnValue(() => ({
       kind: 'platform',
       runtime: 'Claude Code',
-    });
+    }));
 
     await render();
 

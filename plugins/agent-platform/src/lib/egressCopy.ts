@@ -46,12 +46,19 @@ export const EGRESS_ALERT_COPY = {
   attempts: (count: number) => countNoun(count, 'attempt'),
 
   remedy: {
+    /**
+     * A raw TCP destination, on every runtime and whoever the person is: no
+     * egress setting can allow it (klaus-gateway's Slack notice says the same,
+     * giantswarm/klaus-gateway#564).
+     */
+    tcp: (agent: string, host: string) =>
+      `No egress setting can allow it. If ${host} offers HTTPS, have ${agent} use that instead.`,
     /** Coding Harness, Sessions mount toolchains; an http(s) destination. */
     toolchains: (subject: string, runtime: string, host: string) =>
       `${subject} can only reach the addresses the platform allows for ${runtime}. Start a session with a toolchain that includes ${host}, or ask your platform team to allow it.`,
     /**
      * Coding Harness without toolchains, or with them for a destination no
-     * toolchain declares (raw TCP, a folded host).
+     * toolchain declares (a folded host).
      */
     platform: (subject: string, runtime: string, host: string) =>
       `${subject} can only reach the addresses the platform allows for ${runtime}. Ask your platform team to allow ${host}.`,
@@ -67,9 +74,6 @@ export const EGRESS_ALERT_COPY = {
     /** The person can change it, for a folded host. */
     editUnnamed: (agent: string) =>
       `You can allow it in ${agent}’s egress settings.`,
-    /** The person can change it, for a raw TCP destination. */
-    editTcp: (subject: string) =>
-      `${subject}’s egress settings list the HTTP and HTTPS origins it may reach.`,
     /** The agent could not be read: nothing is promised. */
     neutral: (agent: string, host: string) =>
       `If ${agent} needs ${host}, ask your platform team.`,

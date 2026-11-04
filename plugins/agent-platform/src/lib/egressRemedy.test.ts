@@ -1,6 +1,7 @@
 import {
   egressRemedyKind,
   isDefinedOutsideAgentManager,
+  unknownAgentRemedy,
   type EgressRemedyFacts,
 } from './egressRemedy';
 
@@ -14,6 +15,7 @@ const helmRelease = {
 };
 
 const editable: EgressRemedyFacts = {
+  scheme: 'https',
   runtime: 'kagent',
   agent: { namespace: 'team', managed: 'helmrelease', helmRelease },
   toolchains: false,
@@ -142,6 +144,68 @@ describe('egressRemedyKind', () => {
 
   it('links the edit page for a person who may', () => {
     expect(egressRemedyKind(editable)).toBe('edit');
+    expect(egressRemedyKind({ ...editable, scheme: 'http' })).toBe('edit');
+  });
+
+  describe('a raw TCP destination', () => {
+    const tcp: EgressRemedyFacts = { ...editable, scheme: 'tcp' };
+
+    it('is allowed by no one on a coding Harness, with toolchains or without', () => {
+      expect(
+        egressRemedyKind({ ...tcp, runtime: 'claude', toolchains: false }),
+      ).toBe('tcp');
+      expect(
+        egressRemedyKind({ ...tcp, runtime: 'codex', toolchains: true }),
+      ).toBe('tcp');
+    });
+
+    it('is allowed by no one for a person who may edit the agent', () => {
+      expect(egressRemedyKind(tcp)).toBe('tcp');
+      expect(egressRemedyKind({ ...tcp, mayUpdate: false })).toBe('tcp');
+    });
+
+    it('needs nothing of an agent that cannot be read, or is still read', () => {
+      expect(
+        egressRemedyKind({
+          ...tcp,
+          runtime: null,
+          agent: null,
+          toolchains: null,
+          canCommit: null,
+          mayUpdate: null,
+        }),
+      ).toBe('tcp');
+      expect(
+        egressRemedyKind({
+          ...tcp,
+          runtime: undefined,
+          agent: undefined,
+          toolchains: undefined,
+          canCommit: undefined,
+          mayUpdate: undefined,
+        }),
+      ).toBe('tcp');
+    });
+
+    it('comes before an agent defined in Git', () => {
+      expect(
+        egressRemedyKind({
+          ...tcp,
+          agent: {
+            namespace: 'team',
+            managed: 'gitops',
+            helmRelease: { ...helmRelease, namespace: 'flux-giantswarm' },
+          },
+        }),
+      ).toBe('tcp');
+    });
+  });
+});
+
+describe('unknownAgentRemedy', () => {
+  it('gives raw TCP its remedy and promises nothing for the rest', () => {
+    expect(unknownAgentRemedy('tcp')).toEqual({ kind: 'tcp' });
+    expect(unknownAgentRemedy('https')).toEqual({ kind: 'neutral' });
   });
 });
 

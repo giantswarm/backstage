@@ -1689,6 +1689,7 @@ Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
 
 | Case                                                        | Remedy                                                     |
 | ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Raw TCP destination, on any runtime, for anyone             | No egress setting allows it; use HTTPS if the host has it  |
 | Coding Harness, `get_info` reports `toolchains`             | Start a session with a toolchain, or ask the platform team |
 | Coding Harness, no toolchains                               | Ask the platform team                                      |
 | From Git, HelmRelease outside the agent's namespace         | Changed in Git                                             |
@@ -1697,8 +1698,15 @@ Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
 | Written live (or by pull request), the person may update it | Add the origin; links the edit page                        |
 | The agent or its runtime cannot be read                     | Neutral: ask the platform team; nothing is promised        |
 
+Raw TCP comes first because no one can allow it: kagent's egress declares
+HTTP and HTTPS origins only, and agent-manager's `harness.egress.<harness>` is
+a list of origins too. Its remedy has no link and needs nothing of the agent,
+so a Session whose refusals are all raw TCP reads nothing for it. The wording
+matches klaus-gateway's Slack notice (giantswarm/klaus-gateway#564); if raw
+TCP becomes allowable, both change together.
+
 A coding Harness (every runtime but `kagent`) reaches the platform's list for
-it only (agent-manager's `guardCoding`), so it is decided first, from the
+it only (agent-manager's `guardCoding`), so it is decided next, from the
 fleet's Agent row or the namespace's Harnesses, without `get_agent`. "Outside
 agent-manager's directory" is the cheap signal from `get_agent` (`managed:
 gitops` and a HelmRelease namespace other than the agent's). While anything

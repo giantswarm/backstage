@@ -1806,10 +1806,10 @@ describe('egress refusals', () => {
       <SessionTimeline
         timeline={timeline({})}
         agentName="otter-coder"
-        egressRemedy={{
+        egressRemedyFor={() => ({
           kind: 'edit',
           editHref: '/customize/agents/lab/agents/otter-coder/edit',
-        }}
+        })}
       />,
     );
 
@@ -1851,6 +1851,11 @@ describe('egress refusals', () => {
     expect(
       within(entry).getByText(
         /Raw TCP connections are not available to agents · .* · 1 attempt$/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If 10.0.0.7 offers HTTPS, have otter-coder use that instead.',
       ),
     ).toBeInTheDocument();
     expect(within(entry).queryByRole('link')).not.toBeInTheDocument();

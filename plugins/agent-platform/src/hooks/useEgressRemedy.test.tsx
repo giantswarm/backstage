@@ -113,8 +113,31 @@ describe('useEgressRemedy', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, enabled: false }),
     );
-    expect(result.current).toEqual({ kind: 'pending' });
+    expect(result.current('https')).toEqual({ kind: 'pending' });
     expect(mockInfoAsked).not.toHaveBeenCalledWith('lab');
+  });
+
+  it('gives raw TCP its remedy without reading the agent', () => {
+    const { result } = renderHook(() =>
+      useEgressRemedy({ ...options, enabled: false }),
+    );
+    expect(result.current('tcp')).toEqual({ kind: 'tcp' });
+    expect(mockInfoAsked).not.toHaveBeenCalledWith('lab');
+  });
+
+  it('gives raw TCP the same remedy on every runtime, with no link', () => {
+    mockInfo.mockReturnValue(info({ toolchains: true }));
+    const coding = renderHook(() =>
+      useEgressRemedy({ ...options, row: claudeRow }),
+    );
+    expect(coding.result.current('tcp')).toEqual({ kind: 'tcp' });
+    expect(coding.result.current('https').kind).toBe('toolchains');
+
+    const editable = renderHook(() =>
+      useEgressRemedy({ ...options, row: kagentRow }),
+    );
+    expect(editable.result.current('tcp')).toEqual({ kind: 'tcp' });
+    expect(editable.result.current('https').kind).toBe('edit');
   });
 
   it('shows no remedy while muster’s server list is read, for a coding agent too', () => {
@@ -125,7 +148,7 @@ describe('useEgressRemedy', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: claudeRow }),
     );
-    expect(result.current).toEqual({ kind: 'pending' });
+    expect(result.current('https')).toEqual({ kind: 'pending' });
   });
 
   it('takes the runtime from the fleet’s row, with the toolchain links', () => {
@@ -133,7 +156,7 @@ describe('useEgressRemedy', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: claudeRow }),
     );
-    expect(result.current).toEqual({
+    expect(result.current('https')).toEqual({
       kind: 'toolchains',
       runtime: 'Claude Code',
       toolchainsHref: '/customize/toolchains',
@@ -147,7 +170,7 @@ describe('useEgressRemedy', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: claudeRow }),
     );
-    expect(result.current).toEqual({ kind: 'pending' });
+    expect(result.current('https')).toEqual({ kind: 'pending' });
   });
 
   it('promises nothing where get_info failed', () => {
@@ -159,7 +182,7 @@ describe('useEgressRemedy', () => {
     const coding = renderHook(() =>
       useEgressRemedy({ ...options, row: claudeRow }),
     );
-    expect(coding.result.current).toEqual({ kind: 'neutral' });
+    expect(coding.result.current('https')).toEqual({ kind: 'neutral' });
     mockAgentRead.mockReturnValue({
       agent: { ...editableAgent, managed: 'gitops' },
       isLoading: false,
@@ -167,7 +190,7 @@ describe('useEgressRemedy', () => {
     const gitops = renderHook(() =>
       useEgressRemedy({ ...options, row: kagentRow }),
     );
-    expect(gitops.result.current).toEqual({ kind: 'neutral' });
+    expect(gitops.result.current('https')).toEqual({ kind: 'neutral' });
   });
 
   it('looks the runtime up among the namespace’s Harnesses where the row has none', () => {
@@ -182,14 +205,17 @@ describe('useEgressRemedy', () => {
         row: { id: 'lab/team/otter', harness: 'codex' },
       }),
     );
-    expect(result.current).toEqual({ kind: 'platform', runtime: 'Codex' });
+    expect(result.current('https')).toEqual({
+      kind: 'platform',
+      runtime: 'Codex',
+    });
   });
 
   it('never reads an inline Harness as the platform’s', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: { id: 'lab/team/otter' } }),
     );
-    expect(result.current).toEqual({ kind: 'neutral' });
+    expect(result.current('https')).toEqual({ kind: 'neutral' });
   });
 
   it('gives the coding remedy where agent-manager cannot read the agent', () => {
@@ -201,7 +227,7 @@ describe('useEgressRemedy', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: claudeRow }),
     );
-    expect(result.current).toEqual({
+    expect(result.current('https')).toEqual({
       kind: 'platform',
       runtime: 'Claude Code',
     });
@@ -219,7 +245,7 @@ describe('useEgressRemedy', () => {
         row: { id: 'lab/team/otter', harness: 'codex' },
       }),
     );
-    expect(result.current).toEqual({ kind: 'pending' });
+    expect(result.current('https')).toEqual({ kind: 'pending' });
   });
 
   it('promises nothing for a Harness whose runtime cannot be read', () => {
@@ -234,14 +260,14 @@ describe('useEgressRemedy', () => {
         row: { id: 'lab/team/otter', harness: 'codex' },
       }),
     );
-    expect(result.current).toEqual({ kind: 'neutral' });
+    expect(result.current('https')).toEqual({ kind: 'neutral' });
   });
 
   it('links the edit page for an editor of a kagent agent', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: kagentRow }),
     );
-    expect(result.current).toEqual({
+    expect(result.current('https')).toEqual({
       kind: 'edit',
       editHref: '/customize/agents/lab/team/otter',
     });
@@ -252,7 +278,7 @@ describe('useEgressRemedy', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, row: kagentRow }),
     );
-    expect(result.current.kind).toBe('ask-editor');
+    expect(result.current('https').kind).toBe('ask-editor');
   });
 
   it('asks nothing until get_info says who writes, and nothing where agent-manager does', () => {
@@ -260,14 +286,14 @@ describe('useEgressRemedy', () => {
     const loading = renderHook(() =>
       useEgressRemedy({ ...options, row: kagentRow }),
     );
-    expect(loading.result.current).toEqual({ kind: 'pending' });
+    expect(loading.result.current('https')).toEqual({ kind: 'pending' });
     expect(mockAccessAsked).not.toHaveBeenCalled();
 
     mockInfo.mockReturnValue(info({}, 'serviceAccount'));
     const serviceAccount = renderHook(() =>
       useEgressRemedy({ ...options, row: kagentRow }),
     );
-    expect(serviceAccount.result.current.kind).toBe('edit');
+    expect(serviceAccount.result.current('https').kind).toBe('edit');
     expect(mockAccessAsked).not.toHaveBeenCalled();
   });
 
@@ -277,7 +303,7 @@ describe('useEgressRemedy', () => {
       isLoading: false,
     });
     const { result } = renderHook(() => useEgressRemedy(options));
-    expect(result.current.kind).toBe('edit');
+    expect(result.current('https').kind).toBe('edit');
   });
 
   it('promises nothing, and reads nothing more, where agent-manager is not on the installation', () => {
@@ -291,7 +317,8 @@ describe('useEgressRemedy', () => {
         row: { id: 'lab/team/otter', harness: 'codex' },
       }),
     );
-    expect(result.current).toEqual({ kind: 'neutral' });
+    expect(result.current('https')).toEqual({ kind: 'neutral' });
+    expect(result.current('tcp')).toEqual({ kind: 'tcp' });
     expect(mockInfoAsked).not.toHaveBeenCalledWith('lab');
     expect(mockHarnessesAsked).not.toHaveBeenCalledWith('lab');
   });

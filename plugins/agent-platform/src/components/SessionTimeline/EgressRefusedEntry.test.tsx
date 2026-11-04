@@ -17,13 +17,24 @@ const npm: EgressRefusedItem = {
   count: 2,
 };
 
+const ssh: EgressRefusedItem = {
+  ...npm,
+  scheme: 'tcp',
+  host: 'github.com',
+  port: 22,
+  count: 1,
+};
+
 async function renderEntry(
-  remedy: EgressRemedy | undefined,
+  remedy: EgressRemedy,
   item: EgressRefusedItem = npm,
   agentName: string | undefined = 'Claude Code',
 ) {
   await renderInTestApp(
-    <EgressRefusedEntry item={item} egressSettings={{ agentName, remedy }} />,
+    <EgressRefusedEntry
+      item={item}
+      egressSettings={{ agentName, remedyFor: () => remedy }}
+    />,
   );
   return screen.getByTestId('timeline-egress-refused');
 }
@@ -186,20 +197,44 @@ describe('EgressRefusedEntry', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers no toolchain for a raw TCP destination', async () => {
-    const entry = await renderEntry(
-      { kind: 'toolchains', runtime: 'Claude Code', toolchainsHref: '/t' },
-      { ...npm, scheme: 'tcp', host: '10.0.0.7', port: 22, count: 1 },
-    );
+  it('says no egress setting allows raw TCP, with no link', async () => {
+    const entry = await renderEntry({ kind: 'tcp' }, ssh, 'otter');
 
+    expect(
+      within(entry).getByText('Outgoing connection to github.com blocked'),
+    ).toBeInTheDocument();
     expect(
       within(entry).getByText(
         /^Raw TCP connections are not available to agents · .+ · 1 attempt$/,
       ),
     ).toBeInTheDocument();
     expect(
-      within(entry).getByText(/Ask your platform team to allow 10\.0\.0\.7\./),
+      within(entry).getByText(
+        'No egress setting can allow it. If github.com offers HTTPS, have otter use that instead.',
+      ),
     ).toBeInTheDocument();
+    expect(within(entry).queryByText(/platform team|editor/)).toBeNull();
     expect(within(entry).queryByRole('link')).toBeNull();
+  });
+
+  it('asks the agent’s remedy by the refused destination’s scheme', async () => {
+    const remedyFor = jest.fn((): EgressRemedy => ({ kind: 'tcp' }));
+    await renderInTestApp(
+      <EgressRefusedEntry item={ssh} egressSettings={{ remedyFor }} />,
+    );
+
+    expect(remedyFor).toHaveBeenCalledWith('tcp');
+  });
+
+  it('gives raw TCP its remedy when none is given', async () => {
+    await renderInTestApp(<EgressRefusedEntry item={ssh} />);
+    const entry = screen.getByTestId('timeline-egress-refused');
+
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If github.com offers HTTPS, have this agent use that instead.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByText(/platform team/)).toBeNull();
   });
 });
