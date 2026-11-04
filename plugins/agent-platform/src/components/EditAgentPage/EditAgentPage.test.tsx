@@ -164,7 +164,7 @@ jest.mock('../../hooks/useUnderlyingModel', () => ({
 }));
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  FileView: ({ content, filename }: { content: string; filename?: string }) => (
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));

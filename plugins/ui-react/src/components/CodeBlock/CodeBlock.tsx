@@ -1,6 +1,11 @@
+import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import classNames from 'classnames';
 import { CopyButton } from '../CopyButton';
+import { PHONE_MEDIA } from '../../utils/breakpoints';
+
+/** Carries the `maxHeight` prop into the stylesheet's phone rule. */
+const MAX_HEIGHT_VAR = '--code-block-max-height';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -26,8 +31,15 @@ const useStyles = makeStyles(theme => ({
   },
   // A capped block scrolls inside itself, so a long log does not stretch the
   // page; lines still wrap, so it never scrolls sideways.
-  scrolling: {
+  capped: {
+    maxHeight: `var(${MAX_HEIGHT_VAR})`,
     overflowY: 'auto',
+    // On a phone a tall cap is most of the view, and a swipe that lands in the
+    // block scrolls the block, not the page: two fifths of the view leave room
+    // above and below to scroll past it (as the session timeline's blocks).
+    [PHONE_MEDIA]: {
+      maxHeight: `min(var(${MAX_HEIGHT_VAR}), 40dvh)`,
+    },
   },
   copyButton: {
     position: 'absolute',
@@ -43,35 +55,93 @@ export type CodeBlockProps = {
   copyEnabled?: boolean;
   transparent?: boolean;
   /**
-   * Caps the block's height (any CSS length, such as `'400px'`); longer text
-   * scrolls inside it. Without it the block grows with its text.
+   * Caps the block's height (any CSS length, such as `'400px'`; at most two
+   * fifths of the view on a phone); longer text scrolls inside it. Without it
+   * the block grows with its text.
    */
   maxHeight?: string;
+  /**
+   * With `maxHeight`, opens the block scrolled to the end of its text, where a
+   * log's error is.
+   */
+  scrollToEnd?: boolean;
+  /**
+   * Names the block while it scrolls, when it is a focusable region; prefer
+   * `aria-labelledby` pointing at a visible heading.
+   */
+  'aria-label'?: string;
+  /** The id of the visible text that names the block while it scrolls. */
+  'aria-labelledby'?: string;
 };
+
+/** Whether the element's content is taller than its box, kept up to date. */
+function useOverflows(
+  ref: RefObject<HTMLElement>,
+  enabled: boolean,
+  text: string,
+): boolean {
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!enabled || !element) {
+      setOverflows(false);
+      return undefined;
+    }
+    const measure = () =>
+      setOverflows(element.scrollHeight > element.clientHeight);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    // A narrower block wraps into more lines; a wider one may stop scrolling.
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, enabled, text]);
+  return overflows;
+}
 
 export const CodeBlock = ({
   text,
   copyEnabled = true,
   transparent = false,
   maxHeight,
+  scrollToEnd = false,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
 }: CodeBlockProps) => {
   const classes = useStyles();
+  const preRef = useRef<HTMLPreElement>(null);
+  const capped = Boolean(maxHeight);
+  // Only a block that really scrolls is a region and a tab stop: it is named,
+  // and it scrolls from the keyboard (WCAG 2.1.1).
+  const scrolls = useOverflows(preRef, capped, text);
+
+  useLayoutEffect(() => {
+    const element = preRef.current;
+    if (capped && scrollToEnd && element) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [capped, scrollToEnd, text]);
 
   return (
     <div className={classes.root}>
       <pre
+        ref={preRef}
         className={classNames(classes.codeBlock, {
           [classes.withCopyButton]: copyEnabled,
-          [classes.scrolling]: Boolean(maxHeight),
+          [classes.capped]: capped,
         })}
         style={{
           backgroundColor: transparent ? 'transparent' : undefined,
-          maxHeight,
+          ...(maxHeight ? { [MAX_HEIGHT_VAR]: maxHeight } : {}),
         }}
-        // A scrolling block takes focus, so it scrolls from the keyboard too
-        // (WCAG 2.1.1; axe's scrollable-region-focusable).
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-        tabIndex={maxHeight ? 0 : undefined}
+        {...(scrolls
+          ? {
+              role: 'region',
+              tabIndex: 0,
+              'aria-label': ariaLabel,
+              'aria-labelledby': ariaLabelledBy,
+            }
+          : {})}
       >
         {text}
       </pre>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -61,6 +61,7 @@ export const INSTALLATION_SEARCH_PARAM = 'installation';
 /**
  * The failed job's log scrolls inside this height, so a long log does not
  * push the rest of the page down; the same cap as a YAML `FileView`.
+ * `CodeBlock` lowers it to two fifths of the view on a phone.
  */
 const BUILD_LOG_MAX_HEIGHT = '520px';
 
@@ -109,6 +110,7 @@ function BuildStatus({
 }) {
   const client = useToolchainManagerClient(installation);
   const detailRoute = useRouteRef(toolchainDetailRouteRef);
+  const logHeadingId = useId();
   const status = useQuery({
     queryKey: musterToolchainBuildQueryKey(installation, source, name, pull),
     queryFn: () => client!.buildStatus({ name, source, pull }),
@@ -166,10 +168,16 @@ function BuildStatus({
       )}
       {build.log && (
         <Flex direction="column" gap="1">
-          <Text variant="body-small" weight="bold">
+          <Text as="h3" id={logHeadingId} variant="body-small" weight="bold">
             Log of the failed job
           </Text>
-          <CodeBlock text={build.log} maxHeight={BUILD_LOG_MAX_HEIGHT} />
+          {/* The error is at the log's end: it opens there. */}
+          <CodeBlock
+            text={build.log}
+            maxHeight={BUILD_LOG_MAX_HEIGHT}
+            scrollToEnd
+            aria-labelledby={logHeadingId}
+          />
         </Flex>
       )}
     </Flex>

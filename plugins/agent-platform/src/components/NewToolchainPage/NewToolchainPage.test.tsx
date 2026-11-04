@@ -51,7 +51,11 @@ jest.mock('../../hooks/useToolchainWrites', () => ({
 }));
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  FileView: (props: { content: string }) => <pre>{props.content}</pre>,
+  FileView: (props: { content: string; filename: string }) => (
+    <pre data-testid="file-view" data-filename={props.filename}>
+      {props.content}
+    </pre>
+  ),
 }));
 
 function renderPage() {
@@ -167,14 +171,23 @@ describe('NewToolchainPage', () => {
     });
 
     expect(
-      await screen.findByText('Log of the failed job'),
+      await screen.findByRole('heading', {
+        name: 'Log of the failed job',
+        level: 3,
+      }),
     ).toBeInTheDocument();
     const block = screen.getByText(/unable to select packages/, {
       selector: 'pre',
     });
     expect(block).toHaveTextContent('helmx (no such package)');
-    expect(block).toHaveStyle({ maxHeight: '520px' });
-    expect(screen.queryByText('Failed job')).not.toBeInTheDocument();
+    expect(block.style.getPropertyValue('--code-block-max-height')).toBe(
+      '520px',
+    );
+    // The Dockerfile is the one file on the page; the log is not one.
+    const files = screen.getAllByTestId('file-view');
+    expect(files).toHaveLength(1);
+    expect(files[0]).toHaveAttribute('data-filename', 'Dockerfile');
+    expect(files[0]).not.toContainElement(block);
   });
 
   it('drops a Dockerfile written for a name changed meanwhile', async () => {

@@ -49,7 +49,7 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   // The editor does not lay text out in jsdom; the document as plain text.
-  FileView: ({ filename, content }: { filename?: string; content: string }) => (
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid="code-block" data-filename={filename}>
       {content}
     </pre>

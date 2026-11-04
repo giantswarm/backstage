@@ -667,10 +667,7 @@ function CreateAgentReview() {
                     content={valuesYaml}
                     language="yaml"
                   />
-                  <CodeBlock
-                    text={helmInstallCommand(spec, chart)}
-                    language="bash"
-                  />
+                  <CodeBlock text={helmInstallCommand(spec, chart)} />
                 </div>
               </details>
             )}

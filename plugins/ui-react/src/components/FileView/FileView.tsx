@@ -36,8 +36,11 @@ const useStyles = makeStyles(theme => ({
 
 export type FileViewProps = {
   content: string;
-  /** File name shown in the header (with a file icon). */
-  filename?: string;
+  /**
+   * File name shown in the header (with a file icon). Text that is not a file,
+   * such as a command or a log, belongs in a `CodeBlock`.
+   */
+  filename: string;
   /** Secondary muted path shown after the filename. */
   path?: string;
   /** 'yaml' renders a read-only CodeMirror viewer; otherwise a plain code block. */
@@ -65,11 +68,9 @@ export function FileView({
       <Flex align="center" justify="between" gap="2" className={classes.header}>
         <Flex align="center" gap="1" style={{ minWidth: 0 }}>
           <CodeIcon fontSize="small" className={classes.icon} />
-          {filename && (
-            <Text variant="body-small" weight="bold">
-              {filename}
-            </Text>
-          )}
+          <Text variant="body-small" weight="bold">
+            {filename}
+          </Text>
           {path && (
             <Text variant="body-small" className={classes.path}>
               {path}
