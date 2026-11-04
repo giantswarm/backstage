@@ -42,7 +42,7 @@ import {
 } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { CodeBlock } from '../CodeBlock';
+import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';
@@ -536,7 +536,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                     </>
                   }
                 />
-                <CodeBlock
+                <FileView
                   filename={`${agent.name}-values.yaml`}
                   content={valuesYaml}
                   language="yaml"

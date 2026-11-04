@@ -35,8 +35,8 @@ import {
   PICK_A_ZONE,
 } from './PoolPlacementPicker';
 
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
+jest.mock('../FileView', () => ({
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));

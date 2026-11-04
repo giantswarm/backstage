@@ -50,7 +50,7 @@ import {
   sharedIdentityTitle,
 } from '../../lib/sharedIdentity';
 import { toolchainDetailRouteRef, toolchainsRouteRef } from '../../routes';
-import { CodeBlock } from '../CodeBlock';
+import { FileView } from '../FileView';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
@@ -157,7 +157,7 @@ function BuildStatus({
           <Link href={detailRoute?.({ installation, name })}>Open {name}</Link>
         </Text>
       )}
-      {build.log && <CodeBlock content={build.log} filename="Failed job" />}
+      {build.log && <FileView content={build.log} filename="Failed job" />}
     </Flex>
   );
 }
@@ -507,7 +507,7 @@ function NewToolchainForm({ installation }: { installation: string }) {
           />
         )}
         {written ? (
-          <CodeBlock
+          <FileView
             content={written.dockerfile}
             filename="Dockerfile"
             path={written.path.replace(/\/Dockerfile$/, '')}

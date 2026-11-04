@@ -76,14 +76,10 @@ jest.mock('../../hooks/useAgentIconUrl', () => ({
 
 // CodeMirror does not lay out in jsdom; a plain block exposes the YAML the
 // page hands it, which is what the assertions read.
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({
-    content,
-    filename,
-  }: {
-    content: string;
-    filename?: string;
-  }) => <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>,
+jest.mock('../FileView', () => ({
+  FileView: ({ content, filename }: { content: string; filename?: string }) => (
+    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
+  ),
 }));
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
