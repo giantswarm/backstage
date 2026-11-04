@@ -30,7 +30,8 @@ jest.mock('../../hooks/useToolchainManager', () => ({
     },
   }),
 }));
-jest.mock('../FileView', () => ({
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   FileView: (props: { content: string }) => <pre>{props.content}</pre>,
 }));
 

@@ -16,7 +16,9 @@ import {
 } from '@backstage/ui';
 import {
   type BreadcrumbItem,
+  CodeBlock,
   EmptyStateCard,
+  FileView,
   LoadingIndicator,
   PageSection,
   ShellPage,
@@ -50,12 +52,17 @@ import {
   sharedIdentityTitle,
 } from '../../lib/sharedIdentity';
 import { toolchainDetailRouteRef, toolchainsRouteRef } from '../../routes';
-import { FileView } from '../FileView';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
 /** The address's installation: `?installation=<name>`. */
 export const INSTALLATION_SEARCH_PARAM = 'installation';
+
+/**
+ * The failed job's log scrolls inside this height, so a long log does not
+ * push the rest of the page down; the same cap as a YAML `FileView`.
+ */
+const BUILD_LOG_MAX_HEIGHT = '520px';
 
 /** How often the build state is read while it moves. */
 const BUILD_POLL_MS = 10_000;
@@ -157,7 +164,14 @@ function BuildStatus({
           <Link href={detailRoute?.({ installation, name })}>Open {name}</Link>
         </Text>
       )}
-      {build.log && <FileView content={build.log} filename="Failed job" />}
+      {build.log && (
+        <Flex direction="column" gap="1">
+          <Text variant="body-small" weight="bold">
+            Log of the failed job
+          </Text>
+          <CodeBlock text={build.log} maxHeight={BUILD_LOG_MAX_HEIGHT} />
+        </Flex>
+      )}
     </Flex>
   );
 }

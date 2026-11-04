@@ -1,7 +1,8 @@
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, useTheme } from '@material-ui/core';
 import CodeIcon from '@material-ui/icons/Code';
-import { CopyButton, YamlEditor } from '@giantswarm/backstage-plugin-ui-react';
+import { CopyButton } from '../CopyButton';
+import { YamlEditor } from '../YamlEditor';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -43,6 +44,13 @@ export type FileViewProps = {
   language?: 'yaml' | 'text';
 };
 
+/**
+ * A read-only view of a file: a header with a file icon, the file name, an
+ * optional muted path and a copy button, above the content. YAML renders in a
+ * read-only `YamlEditor` (capped at 520px, scrolling inside); anything else in
+ * a plain block that scrolls sideways. For a command or a log, which is not a
+ * file, use `CodeBlock`.
+ */
 export function FileView({
   content,
   filename,

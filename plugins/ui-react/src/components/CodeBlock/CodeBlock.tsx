@@ -1,4 +1,5 @@
 import { makeStyles } from '@material-ui/core/styles';
+import classNames from 'classnames';
 import { CopyButton } from '../CopyButton';
 
 const useStyles = makeStyles(theme => ({
@@ -23,6 +24,11 @@ const useStyles = makeStyles(theme => ({
   withCopyButton: {
     paddingRight: theme.spacing(5),
   },
+  // A capped block scrolls inside itself, so a long log does not stretch the
+  // page; lines still wrap, so it never scrolls sideways.
+  scrolling: {
+    overflowY: 'auto',
+  },
   copyButton: {
     position: 'absolute',
     top: theme.spacing(0.5),
@@ -36,24 +42,36 @@ export type CodeBlockProps = {
   language?: string;
   copyEnabled?: boolean;
   transparent?: boolean;
+  /**
+   * Caps the block's height (any CSS length, such as `'400px'`); longer text
+   * scrolls inside it. Without it the block grows with its text.
+   */
+  maxHeight?: string;
 };
 
 export const CodeBlock = ({
   text,
   copyEnabled = true,
   transparent = false,
+  maxHeight,
 }: CodeBlockProps) => {
   const classes = useStyles();
 
   return (
     <div className={classes.root}>
       <pre
-        className={
-          copyEnabled
-            ? `${classes.codeBlock} ${classes.withCopyButton}`
-            : classes.codeBlock
-        }
-        style={transparent ? { backgroundColor: 'transparent' } : undefined}
+        className={classNames(classes.codeBlock, {
+          [classes.withCopyButton]: copyEnabled,
+          [classes.scrolling]: Boolean(maxHeight),
+        })}
+        style={{
+          backgroundColor: transparent ? 'transparent' : undefined,
+          maxHeight,
+        }}
+        // A scrolling block takes focus, so it scrolls from the keyboard too
+        // (WCAG 2.1.1; axe's scrollable-region-focusable).
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={maxHeight ? 0 : undefined}
       >
         {text}
       </pre>

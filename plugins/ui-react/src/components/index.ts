@@ -21,6 +21,7 @@ export * from './FactList';
 export * from './FactsColumn';
 export * from './FoldOutAlignedSection';
 export * from './FieldValidation';
+export * from './FileView';
 export * from './FormFieldGrid';
 export * from './DataBar';
 export * from './DateComponent';

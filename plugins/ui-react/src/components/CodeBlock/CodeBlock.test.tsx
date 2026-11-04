@@ -48,4 +48,20 @@ describe('CodeBlock', () => {
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
     expect(errorApi.post).not.toHaveBeenCalled();
   });
+
+  it('grows with its text by default', () => {
+    renderCodeBlock({ text: 'some command' });
+
+    const block = screen.getByText('some command');
+    expect(block.style.maxHeight).toBe('');
+    expect(block).not.toHaveAttribute('tabindex');
+  });
+
+  it('scrolls inside a maximum height, from the keyboard too', () => {
+    renderCodeBlock({ text: 'line 1\nline 2', maxHeight: '400px' });
+
+    const block = screen.getByText(/line 1/);
+    expect(block).toHaveStyle({ maxHeight: '400px', overflowY: 'auto' });
+    expect(block).toHaveAttribute('tabindex', '0');
+  });
 });

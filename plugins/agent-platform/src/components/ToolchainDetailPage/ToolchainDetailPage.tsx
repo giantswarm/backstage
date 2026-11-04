@@ -14,6 +14,7 @@ import {
   EmptyStateCard,
   type Fact,
   FactList,
+  FileView,
   getRelativeDate,
   PageSection,
   ShellPage,
@@ -35,7 +36,6 @@ import {
   type ToolchainTool,
 } from '../../lib/toolchainManager';
 import { toolchainsRouteRef } from '../../routes';
-import { FileView } from '../FileView';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 

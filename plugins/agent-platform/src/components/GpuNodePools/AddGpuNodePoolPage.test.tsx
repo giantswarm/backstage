@@ -35,7 +35,8 @@ import {
   PICK_A_ZONE,
 } from './PoolPlacementPicker';
 
-jest.mock('../FileView', () => ({
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),

@@ -70,3 +70,26 @@ export const Multiline: Story = {
     ].join('\n'),
   },
 };
+
+export const WithMaxHeight: Story = {
+  name: 'With a maximum height',
+  args: {
+    maxHeight: '160px',
+    text: Array.from(
+      { length: 40 },
+      (_, i) =>
+        `#${i + 1} [build 3/4] RUN apk add --no-cache git jq kubectl helm`,
+    ).join('\n'),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`maxHeight` caps the block for text of unknown length, such as a ' +
+          'build log: it scrolls inside the cap instead of stretching the ' +
+          'page, and takes keyboard focus so it scrolls from the keyboard. ' +
+          'The copy button stays in the corner and copies the whole text.',
+      },
+    },
+  },
+};
