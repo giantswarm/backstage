@@ -92,6 +92,9 @@ export function ConnectorLogo({
   const classes = useStyles({ size });
   const src = connectorIconOf(icon);
 
+  // Security: the icon may be a server-provided SVG. It goes only into the
+  // `<img src>` bui's Avatar renders: never into dangerouslySetInnerHTML,
+  // <object>, <embed> or <iframe>, nor fetched to theme it (connectorIconOf).
   const tile = src ? (
     <Avatar
       src={src}

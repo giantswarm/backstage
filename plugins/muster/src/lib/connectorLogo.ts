@@ -14,6 +14,13 @@ const MAX_ICON_LENGTH = 65536;
 /**
  * The MCPServer's `.status.icon` when it is safe to put in an `<img>`: a
  * base64 `data:` URI of an SVG, PNG, JPEG or WebP image within muster's cap.
+ *
+ * Security: the icon may be an SVG from the MCP server. Only ever render it
+ * as an `<img src>` (bui's `Avatar`), where the browser runs no script and
+ * loads nothing. Never `dangerouslySetInnerHTML`, `<object>`, `<embed>` or
+ * `<iframe>`, and never fetch the markup to theme it. This check stays even
+ * though muster validates too: the CRD does not, so it is the only check
+ * every writer of `.status.icon` passes.
  */
 export function connectorIconOf(icon: unknown): string | undefined {
   return typeof icon === 'string' &&
