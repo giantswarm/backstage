@@ -151,7 +151,7 @@ jest.mock('../../hooks/useTokenRates', () => ({
     model: undefined,
     isLoading: false,
     isAvailable: true,
-    window: '7d',
+    windowDays: 7,
   }),
 }));
 
@@ -1580,21 +1580,21 @@ describe('SessionDetailPage', () => {
         turnProgress: { kind: 'stalled' as const, since },
         currentTaskId: 'task-9',
       };
-      const clock = new Date(since).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 
       it('says the agent has stopped reporting progress, and since when', async () => {
-        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSessionDetail.mockReturnValue({
+          ...stalledView,
+          turnProgress: {
+            kind: 'stalled' as const,
+            since: Date.now() - 12 * 60 * 1000,
+          },
+        });
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(
-            `The agent has not reported progress since ${clock}.`,
-          ),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+          'The agent last reported progress 12 minutes ago.',
+        );
       });
 
       it('names the stall in the state too, not Working (R2-4)', async () => {
@@ -1638,9 +1638,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
 
       it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
@@ -1691,9 +1689,7 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Stop the turn' }),
         ).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
     });
 
@@ -1777,9 +1773,7 @@ describe('SessionDetailPage', () => {
         );
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
@@ -4033,14 +4027,16 @@ describe('SessionDetailPage', () => {
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
     });
 
-    it('shows the workspace’s name, last sync and fetched repositories as a chip opening a drawer', async () => {
+    it('shows the workspace’s name as a chip opening a drawer, its last sync and fetched repositories in its name and tooltip', async () => {
       withWorkspace();
       await renderWithWorkspaces();
 
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      // The chip shows the name alone; its accessible name keeps the rest.
       const chip = screen.getByRole('button', {
-        name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
+        name: 'Workspace: ws-docs · Synchronized 4 h ago · 1 repository fetched',
       });
+      expect(chip).toHaveTextContent(/^ws-docs$/);
       await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
@@ -4073,16 +4069,92 @@ describe('SessionDetailPage', () => {
       expect(within(drawer).getByText('github')).toBeVisible();
     });
 
+    it('tells the workspace’s last sync and fetched repositories in a tooltip on hover, gone once the drawer opens', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // react-aria opens a tooltip on hover only once it has seen the pointer
+      // move over the page.
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      expect(tooltip).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
+      );
+      // A bold headline that says what the chip shows.
+      expect(within(tooltip).getByText('Workspace')).toHaveStyle({
+        display: 'block',
+        fontWeight: '700',
+      });
+
+      await user.click(chip);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('tells the same on keyboard focus, and Enter still opens the drawer', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // A key press puts react-aria in keyboard modality, so the focus that
+      // follows is a visible one, whatever comes before the chip in the
+      // header.
+      await user.keyboard('{Tab}');
+      act(() => chip.focus());
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
+      );
+
+      await user.keyboard('{Enter}');
+      expect(
+        within(screen.getByRole('dialog')).getByRole('heading', {
+          name: 'Workspace: ws-docs',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('adds the full name under the tooltip’s headline when the chip cuts it off', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+      // jsdom lays nothing out: the label reports itself wider than its box.
+      const label = within(chip).getByText('ws-docs');
+      Object.defineProperty(label, 'scrollWidth', { value: 400 });
+      Object.defineProperty(label, 'clientWidth', { value: 320 });
+
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      await waitFor(() =>
+        expect(tooltip).toHaveTextContent(
+          /^Workspacews-docsSynchronized 4 h ago · 1 repository fetched$/,
+        ),
+      );
+      // Under the bold headline, on a line of its own in the regular weight.
+      expect(within(tooltip).getByText('ws-docs')).toHaveStyle({
+        display: 'block',
+      });
+      expect(within(tooltip).getByText('ws-docs')).not.toHaveStyle({
+        fontWeight: '700',
+      });
+    });
+
     it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
       withWorkspace();
       mockWorkspaceName = { status: 'unnamed' };
       await renderWithWorkspaces();
 
-      await userEvent.click(
-        screen.getByRole('button', {
-          name: 'Workspace: Workspace · 1 fetched',
-        }),
-      );
+      const chip = screen.getByRole('button', {
+        name: 'Workspace: Workspace · 1 repository fetched',
+      });
+      expect(chip).toHaveTextContent(/^Workspace$/);
+      await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
       expect(

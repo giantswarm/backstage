@@ -131,9 +131,11 @@ export type NewMcpServerFormState = {
   /** `own-account` only: key of the client secret inside the Secret. */
   clientSecretKey: string;
   /**
-   * `own-account` only: whether a person's grant lives per login session
+   * `own-account` only: whether a person's grant lives per muster session
    * (`session`, muster's default) or is reused across their sessions
-   * (`subject`).
+   * (`subject`, the wizard's default). muster only takes it on a pinned
+   * authorization server, so it reaches the definition only with an issuer:
+   * see {@link effectiveGrantScope}.
    */
   grantScope: 'session' | 'subject';
   /** `platform-sso` only: audiences the forwarded token must carry. */
@@ -185,7 +187,10 @@ export const emptyFormState: NewMcpServerFormState = {
   clientSecretNamespace: '',
   clientIdKey: '',
   clientSecretKey: '',
-  grantScope: 'session',
+  // One sign-in for all of a person's sessions: the portal is one muster
+  // session and every agent conversation another, so `session` would have the
+  // agents ask again in each conversation.
+  grantScope: 'subject',
   requiredAudiences: [],
   sigv4Region: '',
   sigv4Service: '',
@@ -522,8 +527,9 @@ function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
           }
           authorizationServer.clientCredentialsSecretRef = secretRef;
         }
-        // `session` is muster's default, so only `subject` is spelled out —
-        // the same omit-the-default rule as the rest of the composition.
+        // `session` is muster's default, so only `subject` (the wizard's
+        // default) is spelled out — the same omit-muster's-default rule as
+        // the rest of the composition.
         if (state.grantScope === 'subject') {
           authorizationServer.grantScope = 'subject';
         }
@@ -756,8 +762,11 @@ const ENDPOINT_PATTERN = /^https:\/\/\S+$/;
 
 /**
  * Whether any of the advanced authorization-server settings (pinned endpoints,
- * client-credentials Secret, a non-default grant scope) is filled in — they all
- * live on the `authorizationServer` block, so they need an issuer to hang off.
+ * client-credentials Secret) is filled in — they all live on the
+ * `authorizationServer` block, so they need an issuer to hang off. The grant
+ * scope lives there too but is no such setting: it has a default either way,
+ * and without an issuer it is muster's (`session`), see
+ * {@link effectiveGrantScope}.
  */
 export function hasAdvancedAuthorizationServer(
   state: NewMcpServerFormState,
@@ -775,9 +784,22 @@ export function hasAdvancedAuthorizationServer(
   return Boolean(
     state.authorizationEndpoint.trim() ||
     state.tokenEndpoint.trim() ||
-    secretFields ||
-    state.grantScope === 'subject',
+    secretFields,
   );
+}
+
+/**
+ * The grant scope an `own-account` connector ends up with: the chosen one
+ * where an issuer is pinned, else muster's `session`. muster only takes
+ * `grantScope` on a pinned authorization server (`issuer` is required on
+ * `spec.auth.authorizationServer`), so a connector whose authorization server
+ * muster looks up has every sign-in serve one muster session until muster
+ * accepts it there too (giantswarm/muster#1755).
+ */
+export function effectiveGrantScope(
+  state: NewMcpServerFormState,
+): 'session' | 'subject' {
+  return state.issuer.trim() ? state.grantScope : 'session';
 }
 
 /**
@@ -1215,10 +1237,14 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     clientSecretKey:
       auth?.authorizationServer?.clientCredentialsSecretRef?.clientSecretKey ??
       '',
-    grantScope:
-      auth?.authorizationServer?.grantScope === 'subject'
-        ? 'subject'
-        : 'session',
+    // A pinned authorization server keeps what it says, its absent
+    // `grantScope` being muster's `session`. Without a pin there is no value
+    // to keep (the connector is `session` whatever the field holds, see
+    // `effectiveGrantScope`), so the wizard's default stands for an issuer the
+    // edit adds.
+    grantScope: auth?.authorizationServer
+      ? (auth.authorizationServer.grantScope ?? 'session')
+      : emptyFormState.grantScope,
     requiredAudiences: auth?.requiredAudiences ?? [],
     sigv4Region: auth?.sigv4?.region ?? '',
     sigv4Service: auth?.sigv4?.service ?? '',

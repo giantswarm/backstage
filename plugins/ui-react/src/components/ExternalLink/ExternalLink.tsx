@@ -32,7 +32,14 @@ export const ExternalLink = ({
 }: ExternalLinkProps) => {
   return (
     <Link href={href} target="_blank" rel="noopener noreferrer">
-      <Box display={display} alignItems="center">
+      {/* An underline does not reach into an inline-flex box, so the box
+          takes its link's own (the agent shell's solid one, MUI's on
+          hover). */}
+      <Box
+        display={display}
+        alignItems="center"
+        style={{ textDecoration: 'inherit' }}
+      >
         {children}
         <StyledLaunchOutlinedIcon aria-hidden />
         <VisuallyHidden> (opens in a new tab)</VisuallyHidden>

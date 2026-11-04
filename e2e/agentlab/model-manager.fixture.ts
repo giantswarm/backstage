@@ -50,13 +50,18 @@ const TOOL_PREFIX = 'x_model-manager_';
 let modelManagerVerdict: Promise<string | undefined> | undefined;
 
 /**
- * Why the lab cannot show Model hosting, or undefined when it can: the
- * portal draws the serving layer where model-manager answers (or KServe's API
+ * Why the lab cannot show Model hosting's serving layer (Running models and
+ * what serves on it), or undefined when it can: the portal draws the serving
+ * layer where model-manager answers (or KServe's API
  * is served, which a lab has only with model-manager), and a lab runs
  * model-manager only with `platform.modelManager` on. Read from muster's
  * server list as the signed-in admin, the list the portal reads, once per
  * worker. The first read loads `/` on the page to read the portal's tokens:
  * call it before opening the view or staging answers on the page.
+ *
+ * Not a reason to skip GPU pools or Model cache: those tabs are drawn where
+ * cluster-manager runs, model-manager or not, so a test that stubs
+ * cluster-manager in muster's server list reaches them on any lab.
  */
 export function modelManagerUnavailable(
   page: Page,
@@ -87,9 +92,10 @@ async function readModelManagerVerdict(
 
 /**
  * Skips every test of the enclosing file or `describe` with the reason where
- * the lab has no serving layer ({@link modelManagerUnavailable}): Model
- * hosting is not drawn there, so its pages — stubbed answers or not — have
- * nothing to prove. Call it before the scope's own `beforeEach` hooks, which
+ * the lab has no serving layer ({@link modelManagerUnavailable}): Running
+ * models and the serve flows are not drawn there, so those pages — stubbed
+ * answers or not — have nothing to prove. Only for serving-layer pages: GPU
+ * pools and Model cache need cluster-manager (stubbed or real), not this. Call it before the scope's own `beforeEach` hooks, which
  * open the view.
  */
 export function skipWithoutModelManager(): void {

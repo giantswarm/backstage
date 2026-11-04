@@ -5,6 +5,7 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   displayNameArgument,
+  effectiveGrantScope,
   emptyFormState,
   formStateFromServer,
   hasUserInput,
@@ -112,7 +113,34 @@ describe('composeMcpServerDefinition', () => {
         authorizationServer: {
           issuer: 'https://auth.example.com',
           scopes: 'openid profile mcp:read',
+          // The wizard's default: one sign-in serves all of a person's
+          // sessions, agent conversations included.
+          grantScope: 'subject',
         },
+      },
+    });
+  });
+
+  it('defaults own-account connectors to subject, written only with an issuer', () => {
+    expect(emptyFormState.grantScope).toBe('subject');
+    const discovered = state({ authMode: 'own-account' });
+    // muster takes grantScope only on a pinned authorization server.
+    expect(effectiveGrantScope(discovered)).toBe('session');
+    expect(composeMcpServerDefinition(discovered).auth).toEqual({
+      type: 'oauth',
+    });
+    expect(validateNewMcpServerForm(discovered)).toEqual([]);
+
+    const pinned = state({
+      authMode: 'own-account',
+      issuer: 'https://auth.example.com',
+    });
+    expect(effectiveGrantScope(pinned)).toBe('subject');
+    expect(composeMcpServerDefinition(pinned).auth).toEqual({
+      type: 'oauth',
+      authorizationServer: {
+        issuer: 'https://auth.example.com',
+        grantScope: 'subject',
       },
     });
   });
@@ -443,7 +471,6 @@ describe('validateNewMcpServerForm', () => {
     for (const overrides of [
       { tokenEndpoint: 'https://idp/token' },
       { useExistingSecret: true, clientSecretName: 'oauth-client' },
-      { grantScope: 'subject' as const },
     ]) {
       expect(
         validateNewMcpServerForm(
@@ -503,7 +530,7 @@ describe('validateNewMcpServerForm', () => {
     expect(validateNewMcpServerForm(leftOver)).toEqual([]);
     expect(
       composeMcpServerDefinition(leftOver).auth?.authorizationServer,
-    ).toEqual({ issuer: 'https://auth.example.com' });
+    ).toEqual({ issuer: 'https://auth.example.com', grantScope: 'subject' });
   });
 
   it('requires a signing region for AWS SigV4', () => {
@@ -905,11 +932,19 @@ describe('CRD conformance', () => {
     ['no auth', state()],
     ['own account (discovery)', state({ authMode: 'own-account' })],
     [
-      'own account (issuer override)',
+      'own account (issuer override, default subject grant)',
       state({
         authMode: 'own-account',
         issuer: 'https://auth.example.com',
         scopes: 'openid mcp:read',
+      }),
+    ],
+    [
+      'own account (issuer override, session grant)',
+      state({
+        authMode: 'own-account',
+        issuer: 'https://auth.example.com',
+        grantScope: 'session',
       }),
     ],
     [
@@ -1210,6 +1245,32 @@ describe('editing a registered server in the wizard', () => {
     });
     expect(validateNewMcpServerForm(form)).toEqual([]);
     expect(composeMcpServerDefinition(form).auth).toEqual(server.getAuth());
+  });
+
+  it('keeps a pinned server’s grant scope on edit, its absence being session', () => {
+    const pinned = (authorizationServer: Record<string, unknown>) =>
+      formStateFromServer(
+        registered({ auth: { type: 'oauth', authorizationServer } }),
+      );
+    expect(
+      pinned({ issuer: 'https://idp', grantScope: 'subject' }),
+    ).toMatchObject({ grantScope: 'subject' });
+    const session = pinned({ issuer: 'https://idp' });
+    expect(session.grantScope).toBe('session');
+    expect(composeMcpServerDefinition(session).auth).toEqual({
+      type: 'oauth',
+      authorizationServer: { issuer: 'https://idp' },
+    });
+
+    // Without a pin there is nothing to keep: the connector serves one session
+    // either way, and an issuer the edit adds gets the wizard's default.
+    const discovered = formStateFromServer(
+      registered({ auth: { type: 'oauth' } }),
+    );
+    expect(effectiveGrantScope(discovered)).toBe('session');
+    expect(effectiveGrantScope({ ...discovered, issuer: 'https://idp' })).toBe(
+      'subject',
+    );
   });
 
   it('names the form by the server’s display name, keeping its technical name', () => {

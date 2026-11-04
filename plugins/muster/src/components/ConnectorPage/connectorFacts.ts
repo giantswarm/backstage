@@ -71,21 +71,15 @@ export function callsLine(usage: McpUsage): string | undefined {
   return `${count} · ${percent}% errors`;
 }
 
-/** When the oldest of `servers` was created, as "4 Aug 2026". */
-export function addedLine(servers: MCPServer[]): string | undefined {
-  const times = servers
+/**
+ * When the oldest of `servers` was created, as its timestamp, for a relative
+ * `DateComponent` ("3 months ago", the local date and time on hover).
+ */
+export function addedAt(servers: MCPServer[]): string | undefined {
+  return servers
     .map(server => server.getCreatedTimestamp())
     .filter((value): value is string => Boolean(value))
-    .map(value => new Date(value))
-    .filter(date => !Number.isNaN(date.getTime()))
-    .sort((a, b) => a.getTime() - b.getTime());
-  if (times.length === 0) {
-    return undefined;
-  }
-  return times[0].toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+    .map(value => ({ value, time: new Date(value).getTime() }))
+    .filter(({ time }) => !Number.isNaN(time))
+    .sort((a, b) => a.time - b.time)[0]?.value;
 }

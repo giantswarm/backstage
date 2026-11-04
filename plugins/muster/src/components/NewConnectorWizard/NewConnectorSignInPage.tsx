@@ -14,7 +14,6 @@ import {
   PasswordField,
   Radio,
   RadioGroup,
-  Select,
   Text,
   TextField,
 } from '@backstage/ui';
@@ -29,6 +28,7 @@ import {
   SIGV4_SHARED_IDENTITY_WARNING,
   clientCredentialsArgument,
   clientCredentialsProblems,
+  effectiveGrantScope,
   hasAdvancedAuthorizationServer,
   hasStoredClientSecret,
   mcpServerFieldErrors,
@@ -125,18 +125,72 @@ const SIGN_IN_CHOICES: Array<{
   },
 ];
 
-// Plain first, muster's `grantScope` value in parentheses for whoever is
-// matching this up with the MCPServer resource.
-const GRANT_SCOPE_OPTIONS = [
-  {
-    id: 'session',
-    label: 'Sign in again in every new session (session, default)',
-  },
-  {
-    id: 'subject',
-    label: "Sign in once, reused across the person's sessions (subject)",
-  },
-];
+/**
+ * What `grantScope: session` means for the people using the connector: the
+ * portal is one muster session and every agent conversation another.
+ */
+const SESSION_GRANT_WARNING =
+  'Agents will ask you to sign in again in every conversation.';
+
+/**
+ * How often people sign in to an own-account connector, outside the Advanced
+ * disclosure: it decides whether their agents see the sign-in at all. Plain
+ * first, muster's `grantScope` value in parentheses for whoever is matching
+ * this up with the MCPServer resource. muster takes `subject` only on a pinned
+ * authorization server, so without an issuer the choice shows `session`,
+ * disabled, and says what lifts it.
+ */
+function GrantScopeChoice({
+  grantScope,
+  hasIssuer,
+  onChange,
+}: {
+  /** The scope the connector ends up with (`effectiveGrantScope`). */
+  grantScope: 'session' | 'subject';
+  hasIssuer: boolean;
+  onChange: (grantScope: 'session' | 'subject') => void;
+}) {
+  let description: string | undefined;
+  if (!hasIssuer) {
+    description =
+      "Signing in once needs the app's issuer URL, under Advanced: muster can't yet reuse a sign-in to an app whose sign-in settings it looks up.";
+  } else if (grantScope === 'subject') {
+    description = 'A sign-in lasts until the person signs out of it.';
+  }
+  // Why the choice is disabled is the description's to say; the warning only
+  // says what a session sign-in means.
+  const warning =
+    grantScope === 'session'
+      ? 'A sign-in covers one session only: the portal, or one agent conversation.'
+      : undefined;
+  return (
+    <Flex direction="column" gap="3">
+      <RadioGroup
+        label="How often people sign in"
+        value={grantScope}
+        onChange={value => {
+          if (value === 'session' || value === 'subject') {
+            onChange(value);
+          }
+        }}
+        isDisabled={!hasIssuer}
+        description={description}
+      >
+        <Radio value="subject">
+          Once, for the portal and every agent conversation (subject)
+        </Radio>
+        <Radio value="session">Again in every conversation (session)</Radio>
+      </RadioGroup>
+      {warning && (
+        <Alert
+          status="warning"
+          title={SESSION_GRANT_WARNING}
+          description={warning}
+        />
+      )}
+    </Flex>
+  );
+}
 
 /**
  * Step 2 (Sign-in) of the shell's connector wizard: how people sign in to the
@@ -449,6 +503,11 @@ export function NewConnectorSignInPage() {
               {callbackUrl}
             </Text>
           )}
+          <GrantScopeChoice
+            grantScope={effectiveGrantScope(state)}
+            hasIssuer={Boolean(state.issuer.trim())}
+            onChange={setGrantScope}
+          />
           {/* Remounted on each blocked attempt, open when a field inside
               has a problem: a collapsed panel unmounts its fields, and the
               one that says what is wrong must be on screen. */}
@@ -459,7 +518,10 @@ export function NewConnectorSignInPage() {
                 Advanced: sign-in settings for apps muster can&apos;t look up
               </span>
             }
+            // An issuer opens it too: the grant-scope choice above depends on
+            // it and sends people here for it.
             defaultExpanded={
+              Boolean(state.issuer.trim()) ||
               hasAdvancedAuthorizationServer(state) ||
               hadClient ||
               (validation.submitted && hasAdvancedProblem)
@@ -643,17 +705,6 @@ export function NewConnectorSignInPage() {
                   </>
                 )}
               </div>
-              <Select
-                label="How long a sign-in lasts"
-                options={GRANT_SCOPE_OPTIONS}
-                selectedKey={state.grantScope}
-                onSelectionChange={key => {
-                  if (key === 'session' || key === 'subject') {
-                    setGrantScope(key);
-                  }
-                }}
-                description="Reuse suits personal accounts like GitHub; it lasts until the person signs out."
-              />
             </div>
           </DisclosureAccordion>
         </Flex>

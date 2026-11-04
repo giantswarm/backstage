@@ -27,7 +27,6 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   type BreadcrumbItem,
-  DateComponent,
   EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
@@ -1001,7 +1000,6 @@ function AgentDetailPageContent() {
   );
 
   const displayName = agent.getDisplayName();
-  const created = agent.getCreatedTimestamp();
 
   return (
     <AgentFrame
@@ -1018,13 +1016,6 @@ function AgentDetailPageContent() {
         <ReadinessBadge
           readiness={READINESS_PRESENTATION[agent.getReadiness()]}
         />
-      }
-      meta={
-        created ? (
-          <>
-            Created <DateComponent value={created} />
-          </>
-        ) : undefined
       }
       actions={shellActions}
       menu={menu}
