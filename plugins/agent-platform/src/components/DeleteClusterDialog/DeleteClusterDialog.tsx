@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useApi } from '@backstage/core-plugin-api';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import {
   Alert,
   Button,
@@ -40,10 +42,13 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PartialWriteOutcome } from '../GpuNodePools/PartialWriteOutcome';
 import { NextPassOutcome } from './NextPassOutcome';
 import { PassOutcome } from './PassOutcome';
+import { readBeingRemoved } from './beingRemoved';
 import {
   REMOVAL_CHECK_INTERVAL_MS,
   REMOVAL_CHECK_LIMIT,
+  describeObjects,
   judgeNextPass,
+  objectKey,
   type NextPass,
   type RemovalPass,
 } from './removalPasses';
@@ -56,6 +61,8 @@ type NextCheck = {
   /** No further check is scheduled: what is left is not cluster-manager's, or the round ran out. */
   paused: boolean;
 };
+
+const NONE_BEING_REMOVED: ReadonlySet<string> = new Set();
 
 export type DeleteClusterDialogProps = {
   isOpen: boolean;
@@ -86,6 +93,14 @@ export type DeleteClusterDialogProps = {
  * a failed check, for 30 minutes at most, and not once
  * what is left is not cluster-manager's to remove; **Check again** starts
  * another round.
+ *
+ * cluster-manager answers a delete of an object that is already terminating
+ * like any other, so the dialog reads every object a dry run would delete as
+ * the person, on the installation's API: one whose deletion was requested
+ * already (its `deletionTimestamp`) shows as still being removed, and neither
+ * counts as removed by the next pass nor brings back Finish removal — after
+ * the dialog was reopened mid-removal too, when no pass of this opening
+ * deleted it. An object that cannot be read counts as a new removal.
  */
 export function DeleteClusterDialog({
   isOpen,
@@ -96,6 +111,7 @@ export function DeleteClusterDialog({
   commitOffered,
 }: DeleteClusterDialogProps) {
   const write = useClusterWrite(installation);
+  const kubernetesApi = useApi(kubernetesApiRef);
   const [verdicts, setVerdicts] = useState<ModeVerdicts>();
   const [mode, setMode] = useState<WriteMode>();
   const [typed, setTyped] = useState('');
@@ -106,6 +122,18 @@ export function DeleteClusterDialog({
   const [passFailed, setPassFailed] = useState(false);
   const [nextCheck, setNextCheck] = useState<NextCheck>();
   const [committed, setCommitted] = useState<ClusterWriteResult>();
+  /**
+   * The objects a dry run of this opening would delete that were read as
+   * being removed already ({@link objectKey}). A deletion once requested
+   * stays so until the object is gone, so the set only grows.
+   */
+  const [beingRemoved, setBeingRemoved] =
+    useState<ReadonlySet<string>>(NONE_BEING_REMOVED);
+  const noteBeingRemoved = (found: ReadonlySet<string>) => {
+    if (found.size > 0) {
+      setBeingRemoved(previous => new Set([...previous, ...found]));
+    }
+  };
   const input: DeleteClusterInput = { organization, name };
   const startAnswer = useOpenGeneration(isOpen);
   // A Delete without the name typed says so on the field and focuses it, as
@@ -130,6 +158,18 @@ export function DeleteClusterDialog({
     write.reset();
     setVerdicts(judged);
     setMode(preferredMode(judged));
+    if (judged.apply.state === 'ready') {
+      // The preview shows already: a pass started before the read answers
+      // counts the objects as new, as without it.
+      const found = await readBeingRemoved(
+        kubernetesApi,
+        installation,
+        judged.apply.result.objects,
+      );
+      if (isCurrent()) {
+        noteBeingRemoved(found);
+      }
+    }
   };
 
   useEffect(() => {
@@ -143,6 +183,7 @@ export function DeleteClusterDialog({
       setPassFailed(false);
       setNextCheck(undefined);
       setCommitted(undefined);
+      setBeingRemoved(NONE_BEING_REMOVED);
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,12 +191,18 @@ export function DeleteClusterDialog({
 
   /** Delete, Continue after a partial answer, Finish removal and the live step after a merge: the same call. */
   const onPass = async (label: string) => {
+    // What was read as being removed before the pass: a read answered later
+    // could see the pass's own delete.
+    const before = beingRemoved;
     setNextCheck(undefined);
     setPassFailed(false);
     setPassing(true);
     try {
       const result = await write.remove(input, { mode: 'apply' });
-      setPasses(previous => [...previous, { label, result, at: new Date() }]);
+      setPasses(previous => [
+        ...previous,
+        { label, result, at: new Date(), beingRemoved: before },
+      ]);
     } catch {
       // Shown from `write.failure`.
       setPassFailed(true);
@@ -218,11 +265,18 @@ export function DeleteClusterDialog({
       checks += 1;
       const isCurrent = startAnswer();
       let next: NextPass | undefined;
+      let found: ReadonlySet<string> = NONE_BEING_REMOVED;
       try {
-        next = judgeNextPass(
-          await write.remove(input, { mode: 'apply', dryRun: true }),
-          passes,
+        const result = await write.remove(input, {
+          mode: 'apply',
+          dryRun: true,
+        });
+        found = await readBeingRemoved(
+          kubernetesApi,
+          installation,
+          result.objects,
         );
+        next = judgeNextPass(result, passes, found);
       } catch {
         // Shown from `write.failure` and tried again: a blip must not end the
         // watch. Nothing left reads as the removal complete and ends it.
@@ -230,6 +284,7 @@ export function DeleteClusterDialog({
       if (cancelled || !isCurrent()) {
         return;
       }
+      noteBeingRemoved(found);
       const paused =
         next?.state === 'stuck' ||
         (next?.state !== 'ready' && checks >= REMOVAL_CHECK_LIMIT);
@@ -287,7 +342,9 @@ export function DeleteClusterDialog({
                 </Flex>
               )}
 
-              {preview && !started && <WhatGoes result={preview} />}
+              {preview && !started && (
+                <WhatGoes result={preview} beingRemoved={beingRemoved} />
+              )}
 
               {refusedEverywhere && verdicts && (
                 <Alert
@@ -491,10 +548,25 @@ export function DeleteClusterDialog({
   );
 }
 
-/** The dry run's answer: the releases and models that go with the cluster. */
-function WhatGoes({ result }: { result: ClusterWriteResult }) {
+/**
+ * The dry run's answer: the releases and models that go with the cluster, and
+ * what is being removed already — the dialog reopened mid-removal.
+ */
+function WhatGoes({
+  result,
+  beingRemoved,
+}: {
+  result: ClusterWriteResult;
+  beingRemoved: ReadonlySet<string>;
+}) {
   const withCluster = result.withCluster ?? [];
   const models = result.models ?? [];
+  const going = result.objects.filter(object =>
+    beingRemoved.has(objectKey(object)),
+  );
+  const rest = result.objects.filter(
+    object => !beingRemoved.has(objectKey(object)),
+  );
   return (
     <Flex direction="column" gap="2" data-testid="what-goes">
       <Text variant="body-small">
@@ -505,9 +577,14 @@ function WhatGoes({ result }: { result: ClusterWriteResult }) {
       <Text variant="body-small">
         {servedModelsLine(result.modelsNote, models)}
       </Text>
-      {result.objects.length > 0 && (
+      {going.length > 0 && (
+        <Text variant="body-small">
+          Still being removed: {describeObjects(going)}.
+        </Text>
+      )}
+      {rest.length > 0 && (
         <Text variant="body-small" color="secondary">
-          {result.objects
+          {rest
             .map(
               object =>
                 `${object.kind} ${object.namespace}/${object.name}: ${object.action}`,

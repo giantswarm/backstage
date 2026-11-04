@@ -1,4 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor } from '@testing-library/react';
@@ -172,7 +173,36 @@ type Scenario = {
   passes?: Answer[];
   /** The answers to the dry runs after a pass, in order; the last repeats. */
   checks?: Answer[];
+  /** The dialog's opening dry run in mode apply; `DRY_RUN` by default. */
+  opening?: ClusterWriteResult;
+  /**
+   * The objects, by name, whose deletion was requested before the dialog
+   * opened, as the person reads them on the installation's API; the others
+   * read as not being removed.
+   */
+  beingRemoved?: string[];
+  /** Of those, the releases into the gone cluster that are not suspended yet (giantswarm/cluster-manager#210). */
+  unsuspended?: string[];
 };
+
+/** The installation's API as the person reads it: GET of one object. */
+function makeKubernetesApi(scenario: Scenario = {}) {
+  const proxy = jest.fn(async ({ path }: { path: string }) => {
+    const name = path.split('/').at(-1)!;
+    const terminating = scenario.beingRemoved?.includes(name);
+    const unsuspended = scenario.unsuspended?.includes(name);
+    const body = {
+      metadata: terminating
+        ? { deletionTimestamp: '2026-11-03T10:00:00Z' }
+        : {},
+      spec: unsuspended
+        ? { kubeConfig: { secretRef: { name: 'demo1-kubeconfig' } } }
+        : {},
+    };
+    return { ok: true, status: 200, json: async () => body } as Response;
+  });
+  return { proxy };
+}
 
 function answer(answers: Answer[], index: number): ClusterWriteResult {
   const next = answers[Math.min(index, answers.length - 1)];
@@ -221,7 +251,7 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.inGit) {
             throw new Error(IN_GIT);
           }
-          return DRY_RUN;
+          return scenario.opening ?? DRY_RUN;
         }
         return answer(checks, dryRuns - 2);
       }
@@ -243,7 +273,12 @@ async function renderDialog(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [kubernetesApiRef, makeKubernetesApi(scenario)],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <DeleteClusterDialog
           isOpen
@@ -449,6 +484,112 @@ describe('DeleteClusterDialog', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText('muster: request timed out')).toBeNull();
     expect(writesOf(callTool)).toHaveLength(2);
+  });
+
+  describe('reopened mid-removal', () => {
+    it('shows what is being removed already, and a pass deleting it again as not removing it anew', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderDialog(
+        {
+          // An earlier opening's Finish removal deleted demo1-llm-d: it is
+          // suspended and terminating. demo1-observability is new.
+          opening: LEFTOVERS,
+          beingRemoved: ['demo1-llm-d'],
+          passes: [LEFTOVERS_REMOVED],
+          checks: [ORPHAN_GOING],
+        },
+        false,
+      );
+
+      const whatGoes = await screen.findByTestId('what-goes');
+      await waitFor(() =>
+        expect(whatGoes).toHaveTextContent(
+          'Still being removed: HelmRelease org-acme/demo1-llm-d.',
+        ),
+      );
+      expect(whatGoes).toHaveTextContent(
+        'HelmRelease org-acme/demo1-observability: would-delete',
+      );
+      expect(whatGoes).not.toHaveTextContent('demo1-llm-d: would-delete');
+      await deleteCluster(user);
+
+      const first = await screen.findByTestId('delete-pass');
+      expect(first).toHaveTextContent('Removed as you: 1 object');
+      expect(first).toHaveTextContent(
+        'Still being removed: HelmRelease org-acme/demo1-llm-d.',
+      );
+      expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Finish removal' }),
+      ).not.toBeInTheDocument();
+      expect(writesOf(callTool)).toHaveLength(1);
+    });
+
+    it('does not offer Finish removal for an object being removed that no pass of this opening deleted', async () => {
+      const user = userEvent.setup();
+      await renderDialog(
+        {
+          // Reopened while the Cluster was still going: Delete writes nothing.
+          opening: CLUSTER_GOING,
+          passes: [pass([], { nextStep: BEING_REMOVED })],
+          // Then the Cluster is gone, and a source the uninstall deleted is
+          // still terminating.
+          checks: [
+            dryRun([
+              {
+                ...object(
+                  'OCIRepository',
+                  'demo1-observability',
+                  'would-delete',
+                ),
+                apiVersion: 'source.toolkit.fluxcd.io/v1',
+              },
+            ]),
+          ],
+          beingRemoved: ['demo1-observability'],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(await screen.findByTestId('delete-pass')).toHaveTextContent(
+        'Nothing could be removed yet',
+      );
+      expect(
+        await screen.findByText(
+          '1 object is still being removed: OCIRepository org-acme/demo1-observability.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Finish removal' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('still offers Finish removal for a terminating release into the gone cluster that a pass would suspend', async () => {
+      const user = userEvent.setup();
+      await renderDialog(
+        {
+          opening: CLUSTER_GOING,
+          passes: [pass([], { nextStep: BEING_REMOVED })],
+          checks: [
+            dryRun([object('HelmRelease', 'demo1-llm-d', 'would-delete')]),
+          ],
+          // Deleted with the serving slice while its install ran: terminating,
+          // held by helm-controller's finalizer, not suspended.
+          beingRemoved: ['demo1-llm-d'],
+          unsuspended: ['demo1-llm-d'],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(
+        await screen.findByRole('button', { name: 'Finish removal' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('removal-next')).toHaveTextContent(
+        '1 object is left to remove now: HelmRelease org-acme/demo1-llm-d.',
+      );
+    });
   });
 
   it('commits the removal where git owns the cluster, then runs the live step after the merge', async () => {

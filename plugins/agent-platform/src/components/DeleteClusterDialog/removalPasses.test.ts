@@ -4,6 +4,7 @@ import type {
 } from '../../lib/clusterManager';
 import {
   judgeNextPass,
+  objectKey,
   summarizePass,
   type RemovalPass,
 } from './removalPasses';
@@ -36,8 +37,19 @@ function result(
 function passOf(
   objects: ObjectAction[],
   extra: Partial<ClusterWriteResult> = {},
+  beingRemoved: ReadonlySet<string> = new Set(),
 ): RemovalPass {
-  return { label: 'Delete', result: result(objects, extra), at: new Date() };
+  return {
+    label: 'Delete',
+    result: result(objects, extra),
+    at: new Date(),
+    beingRemoved,
+  };
+}
+
+/** The keys of the objects read as being removed. */
+function keys(...names: string[]): ReadonlySet<string> {
+  return new Set(names.map(name => objectKey(object(name, 'would-delete'))));
 }
 
 describe('summarizePass', () => {
@@ -54,6 +66,22 @@ describe('summarizePass', () => {
       changed: [],
     });
     expect(summarizePass(passes, 0).removed).toHaveLength(1);
+  });
+
+  it('tells an object read as being removed before the pass from one removed anew, after a reopen', () => {
+    // The dialog reopened: no earlier pass of this opening deleted demo1.
+    const passes = [
+      passOf(
+        [object('demo1', 'delete'), object('demo1-apps', 'delete')],
+        {},
+        keys('demo1'),
+      ),
+    ];
+
+    expect(summarizePass(passes, 0)).toMatchObject({
+      removed: [object('demo1-apps', 'delete')],
+      stillGoing: [object('demo1', 'delete')],
+    });
   });
 
   it('counts the past-tense deleted as a delete too', () => {
@@ -140,6 +168,35 @@ describe('judgeNextPass', () => {
       state: 'waiting',
       reason: '1 object is still being removed: HelmRelease org-acme/demo1.',
     });
+  });
+
+  it('waits when a pass would only delete objects read as being removed, though no pass deleted them', () => {
+    // The dialog reopened and its first pass wrote nothing: the Cluster was
+    // still going. Its leftovers include a source terminating since before.
+    const reopened = [passOf([], { nextStep: 'cluster is being removed' })];
+
+    expect(
+      judgeNextPass(
+        result([object('demo1-apps', 'would-delete')]),
+        reopened,
+        keys('demo1-apps'),
+      ),
+    ).toEqual({
+      state: 'waiting',
+      // The last pass's step spoke of the Cluster, not of this object.
+      reason:
+        '1 object is still being removed: HelmRelease org-acme/demo1-apps.',
+    });
+    expect(
+      judgeNextPass(
+        result([
+          object('demo1-apps', 'would-delete'),
+          object('demo1-x', 'would-delete'),
+        ]),
+        reopened,
+        keys('demo1-apps'),
+      ),
+    ).toEqual({ state: 'ready', objects: [object('demo1-x', 'would-delete')] });
   });
 
   it("is stuck when what is left is not cluster-manager's to remove", () => {
