@@ -201,8 +201,25 @@ included: `shortSha` (`gs-common`, re-exported by `ui-react`) for the text,
 copy button on touch screens (`copy={false}` inside a link or a row). Never
 `sha.slice(0, n)`. A resource's namespace
 and name in a `FactList` are two facts through `namespacedNameFacts`. See
-"Commits and resource names" in `docs/ui.md`; the shell's own rules for both,
-and for links on tinted surfaces, are in the `agent-platform-ux-coding` skill.
+"Commits and resource names" in `docs/ui.md`; the shell's own rules for both
+are in the `agent-platform-ux-coding` skill.
+
+### Links: underlined, in the link colour
+
+A link is underlined and in the link colour. Exceptions only where the click
+target is larger than the text — a table or list row, a card, a nav or rail
+item, a breadcrumb, a tab, a button — and anything else needs a reason. A link
+in a table cell stays underlined. See "Links" in `docs/ui.md`.
+
+### Links in the Agent Platform shell
+
+Every text link in the shell takes the shell's link colour and a solid
+underline, from one rule in `agent-shell.css`: never colour or underline a
+link per component. A bui `Link` that is a control rather than text (a nav
+item, a breadcrumb, a row or card title stretched over its area, an
+icon-only link) passes `standalone` to opt out. See "Links in the Agent
+Platform shell" in `docs/ui.md` and "Links" in the `agent-platform-ux-coding`
+skill.
 
 ### Overriding bui component sizes
 

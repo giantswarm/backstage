@@ -647,7 +647,7 @@ export function SessionDetailPage() {
   const {
     rates,
     tier: rateTier,
-    window: rateWindow,
+    windowDays: rateWindowDays,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -1353,7 +1353,7 @@ export function SessionDetailPage() {
         tier: rateTier,
         model: row.agentModel,
         installation: row.installation,
-        window: rateWindow,
+        windowDays: rateWindowDays,
         inputTokens: timeline.tokens.prompt,
         outputTokens: timeline.tokens.completion,
         unpricedTokens:

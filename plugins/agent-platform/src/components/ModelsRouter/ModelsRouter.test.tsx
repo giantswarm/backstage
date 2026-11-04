@@ -95,10 +95,12 @@ jest.mock('../ModelHostingSharedIdentity', () => ({
 // Whether an installation in view runs cluster-manager: what offers the GPU
 // pools and the Model cache tab.
 let mockClusterManager: string[] = [];
+// Whether muster's server lists are still being read.
+let mockClusterManagerLoading = false;
 jest.mock('../../hooks/useClusterManager', () => ({
   useClusterManagerAvailability: () => ({
     available: mockClusterManager,
-    isLoading: false,
+    isLoading: mockClusterManagerLoading,
   }),
 }));
 
@@ -170,6 +172,7 @@ describe('ModelsRouter', () => {
   beforeEach(() => {
     mockSharedIdentity = { clusterManager: [], modelManager: [] };
     mockClusterManager = [];
+    mockClusterManagerLoading = false;
     scopeState.scope = 'all';
     mockUnknownPin = undefined;
     mockUseServing.mockReset();
@@ -389,12 +392,41 @@ describe('ModelsRouter', () => {
       });
     });
 
-    it('shows no figures on a portal without a serving layer', async () => {
+    it('offers the tabs at all installations where cluster-manager runs without a serving layer', async () => {
+      mockUseServing.mockReturnValue(noServingLayer);
+      mockClusterManager = ['inst-1'];
+      renderTab('/customize/models/hosting/capacity');
+
+      expect(await screen.findByText('capacity-view')).toBeInTheDocument();
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Running models',
+        'GPU pools',
+        'Model cache',
+      ]);
+      // The tab the Add GPU node pool form's cache note points to.
+      expect(screen.getByRole('tab', { name: 'Model cache' })).toHaveAttribute(
+        'href',
+        '/customize/models/hosting/cache',
+      );
+    });
+
+    it('draws no tabs at all installations while cluster-manager is still being asked', async () => {
+      mockUseServing.mockReturnValue(noServingLayer);
+      mockClusterManagerLoading = true;
+      renderTab('/customize/models/hosting');
+
+      expect(await screen.findByText('serving-view')).toBeInTheDocument();
+      // A portal with neither would otherwise flash a strip on every load.
+      expect(screen.queryAllByRole('tab')).toEqual([]);
+    });
+
+    it('shows no figures and no tabs at all installations on a portal with neither a serving layer nor cluster-manager', async () => {
       mockUseServing.mockReturnValue(noServingLayer);
       renderTab('/customize/models/hosting');
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
       expect(screen.queryByText(/^hosting-kpis/)).toBeNull();
+      expect(screen.queryAllByRole('tab')).toEqual([]);
     });
   });
 

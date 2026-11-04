@@ -61,6 +61,7 @@ export function RailLink({
     return (
       <li className={barClasses.slot}>
         <Link
+          standalone
           href={href}
           target={item.newTab ? '_blank' : undefined}
           className={barClasses.item}
@@ -79,6 +80,7 @@ export function RailLink({
   return (
     <li>
       <Link
+        standalone
         href={href}
         target={item.newTab ? '_blank' : undefined}
         className={`${classes.link} ${isActive ? classes.active : ''}`}

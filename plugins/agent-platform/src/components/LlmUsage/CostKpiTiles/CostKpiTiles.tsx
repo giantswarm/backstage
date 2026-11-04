@@ -6,10 +6,11 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { spendChangePct } from '../../../lib/usageKpis';
 import {
+  lastDaysNoun,
   previousUsageMonth,
   usageMonthLabel,
-  usageWindowNoun,
   type UsageWindow,
+  usageWindowNoun,
 } from '../../../lib/usageWindow';
 import {
   formatMoney,
@@ -72,7 +73,7 @@ export function CostKpiTiles({
 
   const windowNote = window
     ? usageWindowNoun(window)
-    : `the last ${windowDays} days`;
+    : lastDaysNoun(windowDays);
   // Said in the hint because the change is hidden, not zero, when the data
   // does not reach back to the previous window (`dataBeforePreviousWindow`),
   // and never shown for a month still being written.

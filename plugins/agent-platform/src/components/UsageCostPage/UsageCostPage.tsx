@@ -14,7 +14,11 @@ import {
 import type { LlmOrganizationRow } from '../../lib/llmUsage';
 import { tenantInSentence } from '../../lib/tenants';
 import { withUsageOrganization } from '../../lib/usageOrganization';
-import { usageWindowNoun, usageWindowPhrase } from '../../lib/usageWindow';
+import {
+  lastDaysNoun,
+  usageWindowNoun,
+  usageWindowPhrase,
+} from '../../lib/usageWindow';
 import {
   CostKpiTiles,
   CostPerDayCard,
@@ -149,7 +153,7 @@ export function UsageCostPage() {
                 label="Reported cost"
                 hint="Shows what your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost, and there is never a fleet total."
                 value={formatUsd(costUsd)}
-                sub={`your sessions, over the last ${sessionWindowDays} days`}
+                sub={`your sessions, over ${lastDaysNoun(sessionWindowDays)}`}
               />
             </div>
             <Text variant="body-small" color="secondary">
