@@ -13,6 +13,7 @@ import { connectorLabels, type ServerInfo } from '../lib/toolset';
  */
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
+  const icon = server.getStatusIcon();
   const namespace = server.getNamespace();
   const tenant = namespace?.startsWith(ORGANIZATION_PREFIX) ? namespace : '';
   const prefix = server.getToolNamePrefix();
@@ -30,6 +31,7 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
       server.getAuth()?.type === 'oauth' && !server.isServedPerSession(),
     ...(displayName ? { displayName } : {}),
     ...(tags.length > 0 ? { tags } : {}),
+    ...(icon ? { icon } : {}),
   };
 }
 

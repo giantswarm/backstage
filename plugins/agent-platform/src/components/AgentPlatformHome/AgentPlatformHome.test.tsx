@@ -120,6 +120,16 @@ jest.mock('../SessionsDataProvider', () => ({
 jest.mock('../../hooks/useReachCatalogue', () => ({
   useReachCatalogue: () => undefined,
 }));
+// Connector names from the MCPServer CRs: none here.
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: [],
+    resources: [],
+    labels: new Map(),
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
 
 const mockUseCreateSession = jest.fn();
 jest.mock('../../hooks/useCreateSession', () => ({
