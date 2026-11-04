@@ -436,6 +436,7 @@ function AgentListItem({
                 its ellipsis, as the text does without one. */}
             {href ? (
               <Link
+                standalone
                 href={href}
                 variant="body-medium"
                 weight="bold"

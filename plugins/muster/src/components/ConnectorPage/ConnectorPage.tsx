@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import {
+  lastDaysLabel,
   parseUsageWindowParam,
   USAGE_WINDOW_PARAM,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -84,9 +85,12 @@ import {
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
   deactivatedSignInGate,
+  type ExplainedStatusText,
   familyHealthLabel,
+  portalOnlyStatus,
   ServerAuthActions,
   serverStateLabel,
+  StatusWithHint,
   SessionGate,
   useConnectorListPaths,
   useServerSignIn,
@@ -206,7 +210,28 @@ function connectorMeta(
  * words stay muster's own (`serverStateLabel`, `familyHealthLabel`), with the
  * Ready condition's explanation as the tooltip.
  */
-function StatusBadge({ row }: { row: ServerPageRow }) {
+function StatusBadge({
+  row,
+  displayName,
+  portalOnly,
+}: {
+  row: ServerPageRow;
+  displayName: string;
+  /**
+   * The person's sign-in serves this muster session only, so the state says
+   * so in place of muster's healthy one, as the Customize list does.
+   */
+  portalOnly?: ExplainedStatusText;
+}) {
+  if (row.kind === 'server' && portalOnly) {
+    return (
+      <StatusWithHint
+        {...portalOnly}
+        subject={displayName}
+        title={row.server.getStateExplanation()}
+      />
+    );
+  }
   if (row.kind === 'server') {
     return (
       <span title={row.server.getStateExplanation()}>
@@ -315,6 +340,17 @@ function ConnectorPageContent({
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
+  // muster's report of this person's sign-in where it was read, so the badge
+  // and the Customize list agree on "Portal only"; without one (no muster
+  // session, still loading) nobody signed in, and the badge keeps muster's
+  // state.
+  const portalOnly = singular
+    ? portalOnlyStatus(
+        singular,
+        displayName,
+        canSignIn ? signIn.status : undefined,
+      )
+    : undefined;
   const canSignOut =
     canSignIn &&
     !signIn.isSsoManaged &&
@@ -542,7 +578,7 @@ function ConnectorPageContent({
   }
   if (calls !== undefined) {
     facts.push({
-      label: `Calls, last ${CONNECTOR_USAGE_DAYS} days`,
+      label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
       value: calls,
     });
   }
@@ -616,7 +652,13 @@ function ConnectorPageContent({
         title={displayName}
         breadcrumbs={breadcrumbs}
         leading={<ConnectorTile name={displayName} />}
-        badges={<StatusBadge row={row} />}
+        badges={
+          <StatusBadge
+            row={row}
+            displayName={displayName}
+            portalOnly={portalOnly}
+          />
+        }
         meta={connectorMeta(row, representative?.getDescription())}
         description={
           endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined

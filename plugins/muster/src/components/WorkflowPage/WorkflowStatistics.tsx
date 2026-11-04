@@ -5,7 +5,7 @@ import {
   StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowExecutionSummary } from '../../apis/types';
-import { formatDuration } from '../../lib/formatDuration';
+import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { executionOutcome } from '../../lib/workflowDisplay';
 import { WorkflowStatsPanel } from '../WorkflowDetailPage/WorkflowStatsPanel';
@@ -52,7 +52,7 @@ function LastRun({ run }: { run: WorkflowExecutionSummary }) {
       </span>
       {run.status !== 'inprogress' && (
         <span className={classes.meta}>
-          took {formatDuration(run.duration_ms)}
+          took {formatMilliseconds(run.duration_ms)}
         </span>
       )}
       {run.status === 'failed' && run.error && (

@@ -154,6 +154,7 @@ describe('NewMcpServerFormProvider', () => {
       authorizationServer: {
         issuer: 'https://auth.example.com',
         scopes: 'openid',
+        grantScope: 'subject',
       },
     });
 

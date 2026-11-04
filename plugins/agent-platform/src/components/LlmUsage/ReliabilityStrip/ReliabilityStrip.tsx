@@ -7,6 +7,7 @@ import {
   formatSeconds,
   formatTokensPerSecond,
 } from '../../../lib/formatNumbers';
+import { lastDaysNoun } from '../../../lib/usageWindow';
 
 const useStyles = makeStyles((theme: Theme) => ({
   strip: {
@@ -32,15 +33,31 @@ const useStyles = makeStyles((theme: Theme) => ({
  *
  * `windowDays` is the window the figures were queried over (the selected time
  * range), which every hint names.
+ *
+ * `narrowedTo` is the organization the view is narrowed to, in a sentence
+ * (`the acme organization`), when it is. The durations and the speed follow
+ * the scope; the error rate and the 429 count cannot, because the request
+ * metric carries no organization, so they say they are every organization's.
  */
 export function ReliabilityStrip({
   reliability,
   windowDays,
+  windowLabel,
+  narrowedTo,
 }: {
   reliability: LlmReliability;
   windowDays: number;
+  /** The window as a noun (`October 2026`); `the last N days` otherwise. */
+  windowLabel?: string;
+  narrowedTo?: string;
 }) {
   const classes = useStyles();
+  const over = windowLabel ?? lastDaysNoun(windowDays);
+
+  const everyOrganization = narrowedTo
+    ? ` Counted across every organization, not only ${narrowedTo}: the request metric carries no organization.`
+    : '';
+  const listenerWide = narrowedTo ? 'all organizations' : undefined;
 
   // A tone only once there is enough traffic for a rate to mean anything: one
   // failure out of three calls is 33% and not yet a signal.
@@ -56,7 +73,7 @@ export function ReliabilityStrip({
   }
 
   const duration = (quantile: string) =>
-    `Shows the ${quantile} model call duration over the last ${windowDays} days, from first request byte to last response byte, so a long answer reads as slow.`;
+    `Shows the ${quantile} model call duration over ${over}, from first request byte to last response byte, so a long answer reads as slow.`;
 
   return (
     <div className={classes.strip}>
@@ -73,19 +90,21 @@ export function ReliabilityStrip({
       <Stat
         label="Tokens per second"
         value={formatTokensPerSecond(reliability.outputTokensPerSecond)}
-        hint={`Shows the median output speed of streamed calls over the last ${windowDays} days, from the gateway's coarse seconds-per-token buckets, so it is a rough rate. Unstreamed calls and idle time are not counted.`}
+        hint={`Shows the median output speed of streamed calls over ${over}, from the gateway's coarse seconds-per-token buckets, so it is a rough rate. Unstreamed calls and idle time are not counted.`}
       />
       <Stat
         label="Error rate"
         value={formatPercent(reliability.errorRatePct)}
         tone={errorTone()}
-        hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over the last ${windowDays} days.`}
+        sub={listenerWide}
+        hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over ${over}.${everyOrganization}`}
       />
       <Stat
         label="Rate limited"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
-        hint={`Counts requests answered 429 over the last ${windowDays} days by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.`}
+        sub={listenerWide}
+        hint={`Counts requests answered 429 over ${over} by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.${everyOrganization}`}
       />
     </div>
   );

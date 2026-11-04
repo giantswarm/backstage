@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "0.41.0",
+  "version": "0.42.0",
   "private": true,
   "bundled": true,
   "backstage": {
@@ -97,6 +97,7 @@
     "@backstage/config": "backstage:^",
     "@backstage/config-loader": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
+    "@backstage/plugin-app": "backstage:^",
     "@backstage/types": "backstage:^",
     "@giantswarm/backstage-plugin-gs-react": "workspace:^",
     "@playwright/test": "^1.32.3",

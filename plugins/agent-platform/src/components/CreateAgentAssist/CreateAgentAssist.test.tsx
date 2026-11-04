@@ -127,6 +127,7 @@ const emptyView: SessionDetailView = {
   isAgentWorking: false,
   taskCount: 0,
   hasConversation: false,
+  isConversationCurrent: false,
   isLoading: false,
   isNotFound: false,
 };

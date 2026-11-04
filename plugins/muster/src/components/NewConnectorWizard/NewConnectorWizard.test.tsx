@@ -615,12 +615,12 @@ describe('shell connector wizard', () => {
         within(credentials).getByLabelText(/^Key holding the client secret/),
         'clientSecret',
       );
-      // The grant's lifetime in plain words, muster's term in parentheses.
+      // With an issuer, one sign-in serves every session by default.
       expect(
-        screen.getAllByText(
-          'Sign in again in every new session (session, default)',
-        ).length,
-      ).toBeGreaterThan(0);
+        screen.getByRole('radio', {
+          name: 'Once, for the portal and every agent conversation (subject)',
+        }),
+      ).toBeChecked();
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Add connector' }),
@@ -642,9 +642,83 @@ describe('shell connector wizard', () => {
               clientIdKey: 'clientId',
               clientSecretKey: 'clientSecret',
             },
+            grantScope: 'subject',
           },
         },
       });
+    });
+
+    it('asks how often people sign in outside the advanced settings, saying what a session sign-in means for agents', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      );
+
+      // Without an issuer muster can only file the sign-in per session: the
+      // choice shows it, disabled, and says what lifts it.
+      const once = screen.getByRole('radio', {
+        name: 'Once, for the portal and every agent conversation (subject)',
+      });
+      const again = screen.getByRole('radio', {
+        name: 'Again in every conversation (session)',
+      });
+      expect(again).toBeChecked();
+      expect(once).toBeDisabled();
+      expect(
+        screen.getByText(/needs the app's issuer URL/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Agents will ask you to sign in again in every conversation.',
+        ),
+      ).toBeInTheDocument();
+
+      // An issuer makes one sign-in the default, and the warning goes.
+      await userEvent.click(
+        screen.getByText(
+          "Advanced: sign-in settings for apps muster can't look up",
+        ),
+      );
+      await userEvent.type(
+        await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
+        'https://auth.example.com',
+      );
+      expect(once).toBeEnabled();
+      expect(once).toBeChecked();
+      expect(
+        screen.queryByText(
+          'Agents will ask you to sign in again in every conversation.',
+        ),
+      ).not.toBeInTheDocument();
+
+      // Picking a session sign-in on purpose brings it back.
+      await userEvent.click(again);
+      expect(
+        screen.getByText(
+          'Agents will ask you to sign in again in every conversation.',
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+      // `session` is muster's default, so it is not spelled out.
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        auth: {
+          type: 'oauth',
+          authorizationServer: { issuer: 'https://auth.example.com' },
+        },
+      });
+      expect(
+        (
+          toolCalls('core_mcpserver_create')[0][1] as {
+            auth: { authorizationServer: object };
+          }
+        ).auth.authorizationServer,
+      ).not.toHaveProperty('grantScope');
     });
 
     it('reopens the advanced settings around a field that blocks registration', async () => {
@@ -777,7 +851,7 @@ describe('shell connector wizard', () => {
   });
 
   describe('editing a registered connector', () => {
-    const registered = () =>
+    const registered = (auth: Record<string, unknown> = { type: 'oauth' }) =>
       new MCPServer(
         {
           apiVersion: 'muster.giantswarm.io/v1alpha1',
@@ -788,7 +862,7 @@ describe('shell connector wizard', () => {
             url: 'https://jira.example.com/mcp',
             autoStart: true,
             description: 'Search, read and update tickets',
-            auth: { type: 'oauth' },
+            auth,
           },
           status: { state: 'Connected' },
         } as never,
@@ -838,6 +912,45 @@ describe('shell connector wizard', () => {
         'href',
         '/customize/connectors/gazelle/jira',
       );
+    });
+
+    it('keeps a pinned connector’s session sign-in on save, saying what it means', async () => {
+      mockMcpServers = [
+        registered({
+          type: 'oauth',
+          authorizationServer: { issuer: 'https://auth.example.com' },
+        }),
+      ];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByLabelText(/^Server address/);
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      expect(
+        await screen.findByRole('radio', {
+          name: 'Again in every conversation (session)',
+        }),
+      ).toBeChecked();
+      // The issuer the choice depends on is on screen, Advanced open.
+      expect(
+        screen.getByLabelText(/^Where people sign in \(issuer URL\)/),
+      ).toHaveValue('https://auth.example.com');
+      expect(
+        screen.getByText(
+          'Agents will ask you to sign in again in every conversation.',
+        ),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(
+        (
+          toolCalls('core_mcpserver_update')[0][1] as {
+            auth: { authorizationServer: object };
+          }
+        ).auth.authorizationServer,
+      ).toEqual({ issuer: 'https://auth.example.com' });
     });
 
     it('names the connector by its display name in the edit frame', async () => {

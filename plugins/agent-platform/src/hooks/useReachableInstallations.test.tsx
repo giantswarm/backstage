@@ -6,10 +6,7 @@ import {
   ClusterAccessStatusEntry,
   clusterAccessStatusApiRef,
 } from '@giantswarm/backstage-plugin-gs';
-import {
-  homeFirst,
-  useReachableInstallations,
-} from './useReachableInstallations';
+import { useReachableInstallations } from './useReachableInstallations';
 
 // The home installation comes from gs (`oidcTokenProvider` = `gs.authProvider`);
 // here it is whatever the test says. `mock`-prefixed, as jest requires inside a
@@ -63,27 +60,6 @@ const entry = (
   state: ClusterAccessStatusEntry['state'],
 ): ClusterAccessStatusEntry => ({ installation, state, lastChecked: 0 });
 
-describe('homeFirst', () => {
-  it('moves the home to the front and keeps the rest in order', () => {
-    expect(homeFirst(['gazelle', 'graveler', 'grizzly'], 'graveler')).toEqual([
-      'graveler',
-      'gazelle',
-      'grizzly',
-    ]);
-  });
-
-  it('leaves the order alone without a home, or with one that is not listed', () => {
-    expect(homeFirst(['gazelle', 'graveler'], undefined)).toEqual([
-      'gazelle',
-      'graveler',
-    ]);
-    expect(homeFirst(['gazelle', 'graveler'], 'grizzly')).toEqual([
-      'gazelle',
-      'graveler',
-    ]);
-  });
-});
-
 describe('useReachableInstallations', () => {
   beforeEach(() => {
     mockHome = undefined;
@@ -130,6 +106,22 @@ describe('useReachableInstallations', () => {
       'gazelle',
       'graveler',
     ]);
+  });
+
+  it('does not add a home that is not configured', () => {
+    mockHome = 'grizzly';
+    const { result: fallback } = renderWith(['gazelle', 'graveler'], []);
+    expect(fallback.current.installations).toEqual(['gazelle', 'graveler']);
+
+    const { result } = renderWith(
+      ['gazelle', 'graveler'],
+      [
+        entry('gazelle', 'healthy'),
+        entry('graveler', 'healthy'),
+        entry('grizzly', 'healthy'),
+      ],
+    );
+    expect(result.current.installations).toEqual(['gazelle', 'graveler']);
   });
 
   it('keeps only healthy installations', () => {

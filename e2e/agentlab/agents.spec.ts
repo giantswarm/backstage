@@ -80,12 +80,21 @@ test('an agent in the roster opens its detail page', async ({
     admin.getByRole('heading', { level: 1, name: labAgent.name }),
   ).toBeVisible();
   // The trail leads back to the list.
+  const crumb = admin
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    // Exact: the back arrow's "Back to Agents" also contains the name.
+    .getByRole('link', { name: 'Agents', exact: true });
+  await expect(crumb).toHaveAttribute('href', '/customize/agents');
+  // A crumb and the rail's logo are controls, not text links: they keep
+  // their own look rather than the shell's text-link underline
+  // (agent-shell.css). The crumb keeps the link colour.
+  await expect(crumb).toHaveCSS('text-decoration-line', 'none');
+  await expect(crumb).toHaveCSS('color', 'rgb(0, 96, 156)');
   await expect(
     admin
-      .getByRole('navigation', { name: 'Breadcrumb' })
-      // Exact: the back arrow's "Back to Agents" also contains the name.
-      .getByRole('link', { name: 'Agents', exact: true }),
-  ).toHaveAttribute('href', '/customize/agents');
+      .getByRole('navigation', { name: 'Main', exact: true })
+      .getByRole('link', { name: 'Agent Platform', exact: true }),
+  ).toHaveCSS('text-decoration-line', 'none');
   // The shell's tabs, Overview's sections and the facts beside them. No
   // Tools tab: the fixture agent has no tools.
   await expect(

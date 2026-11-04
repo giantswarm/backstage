@@ -24,6 +24,8 @@ import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
 let mockCustomizeData: Record<string, unknown>;
 let mockMusterCounts: Record<string, unknown>;
 let mockCanAddSkill = false;
+/** Each mount of the view tracking, with the muster counts it was handed. */
+const mockViewTracking = jest.fn();
 
 function mockPanel(name: string) {
   return function MockPanel(props: { search: string }) {
@@ -85,6 +87,12 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeDataProvider: ({ children }: { children: ReactNode }) => children,
     useCustomizeData: () => mockCustomizeData,
     useCanAddSkill: () => mockCanAddSkill,
+    useTrackCustomizeView: (muster: unknown) => {
+      const { useEffect } = jest.requireActual('react');
+      useEffect(() => {
+        mockViewTracking(muster);
+      }, [muster]);
+    },
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
@@ -221,6 +229,7 @@ describe('CustomizePage', () => {
       workflows: 2,
     };
     mockCanAddSkill = false;
+    mockViewTracking.mockClear();
   });
 
   it('draws a tab per area with its count', async () => {
@@ -764,6 +773,16 @@ describe('CustomizePage', () => {
     await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
 
     await waitFor(() => expect(document.title).toBe('Workflows · Customize'));
+  });
+
+  it('tracks its opening once, with muster’s counts, not once per tab', async () => {
+    await renderCustomize('/customize/agents');
+
+    await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
+    await userEvent.click(screen.getByRole('tab', { name: /^Connectors/ }));
+
+    expect(mockViewTracking).toHaveBeenCalledTimes(1);
+    expect(mockViewTracking).toHaveBeenCalledWith(mockMusterCounts);
   });
 
   describe('the Connectors tab', () => {

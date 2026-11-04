@@ -38,6 +38,7 @@ import {
   EnvironmentSelect,
   useCanAddSkill,
   useCustomizeData,
+  useTrackCustomizeView,
   WorkflowCreateAssist,
   WorkspaceOrganizationSelect,
 } from '@giantswarm/backstage-plugin-agent-platform';
@@ -415,6 +416,16 @@ function CustomizeTabPage({ tab }: { tab: CustomizeTab }) {
 }
 
 /**
+ * Reports the opening of the Customize screen with what its tabs count, once
+ * every count is read: here, below both providers, because it reads muster's
+ * counts and the agent platform's, and it stays mounted across the tabs.
+ */
+function CustomizeViewTracking() {
+  useTrackCustomizeView(useMusterCustomizeCounts());
+  return null;
+}
+
+/**
  * The Customize screen itself, one tab of it, over the data the tabs share.
  * Every tab's address renders this same element, so switching tabs keeps
  * the providers (and their reads) mounted.
@@ -439,6 +450,7 @@ function CustomizeScreen({ tab }: { tab: CustomizeTab }) {
     <SharedTagsProvider tags={tags} onTagsChange={setTags}>
       <CustomizeMusterProvider>
         <CustomizeDataProvider>
+          <CustomizeViewTracking />
           <CustomizeTabPage tab={tab} />
         </CustomizeDataProvider>
       </CustomizeMusterProvider>

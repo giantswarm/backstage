@@ -162,14 +162,10 @@ jest.mock('../../hooks/useUnderlyingModel', () => ({
     namespace: string | undefined,
   ) => (name && namespace ? `${name}-model · Anthropic` : undefined),
 }));
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({
-    content,
-    filename,
-  }: {
-    content: string;
-    filename?: string;
-  }) => <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>,
+jest.mock('../FileView', () => ({
+  FileView: ({ content, filename }: { content: string; filename?: string }) => (
+    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
+  ),
 }));
 
 const PR_REVIEW: AgentSkillEntry = {

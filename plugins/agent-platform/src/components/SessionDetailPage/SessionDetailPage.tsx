@@ -30,6 +30,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -404,6 +405,7 @@ export function SessionDetailPage() {
     tasks,
     taskCount,
     hasConversation,
+    isConversationCurrent,
     isLoading,
     isNotFound,
     error,
@@ -415,6 +417,22 @@ export function SessionDetailPage() {
     justCreated: Boolean(handoff),
   });
   const cancellation = useCancelTask(installation, sessionId);
+
+  // How long the sessions people open are: once per opening, when the
+  // session and a current read of its turns are in hand (not an older cache
+  // the opening read is about to replace), and not again as it polls.
+  const turns = detail && isConversationCurrent ? taskCount : undefined;
+  const viewEvent = useMemo(
+    () =>
+      turns === undefined
+        ? undefined
+        : {
+            name: 'AgentPlatform.sessionViewed' as const,
+            attributes: { turns },
+          },
+    [turns],
+  );
+  useTrackedView(viewEvent, `${installation}/${sessionId}`);
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
@@ -629,7 +647,7 @@ export function SessionDetailPage() {
   const {
     rates,
     tier: rateTier,
-    window: rateWindow,
+    windowDays: rateWindowDays,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -1335,7 +1353,7 @@ export function SessionDetailPage() {
         tier: rateTier,
         model: row.agentModel,
         installation: row.installation,
-        window: rateWindow,
+        windowDays: rateWindowDays,
         inputTokens: timeline.tokens.prompt,
         outputTokens: timeline.tokens.completion,
         unpricedTokens:

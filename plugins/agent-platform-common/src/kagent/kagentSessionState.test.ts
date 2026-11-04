@@ -1,6 +1,5 @@
 import {
   ACTIVE_MAX_AGE_MS,
-  deriveSessionState,
   describeSessionState,
   isAgentWorking,
   isAwaitingInput,
@@ -15,7 +14,7 @@ import unknownState from './__fixtures__/tasks.unknown-state.json';
 import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
 
 function stateFor(fixture: unknown) {
-  return deriveSessionState(normalizeTaskList(fixture).tasks);
+  return readNewestTaskState(normalizeTaskList(fixture).tasks)?.state;
 }
 
 describe('describeSessionState', () => {
@@ -83,41 +82,6 @@ describe('describeSessionState', () => {
       });
     },
   );
-});
-
-describe('deriveSessionState', () => {
-  it('takes the state of the most recent task', () => {
-    // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
-    // An earlier turn having completed says nothing about whether the session is
-    // working now.
-    expect(stateFor(kagentPrefixed)).toMatchObject({
-      raw: 'working',
-      isActive: true,
-    });
-  });
-
-  it('keeps an unrecognised newest state rather than falling back to an older one', () => {
-    expect(stateFor(unknownState)).toMatchObject({
-      raw: 'quantum-superposition',
-      label: 'quantum-superposition',
-    });
-  });
-
-  it('skips trailing tasks that report no state at all', () => {
-    const tasks = normalizeTaskList(kagentPrefixed).tasks;
-    const stateless = { ...tasks[tasks.length - 1], status: undefined };
-
-    expect(deriveSessionState([...tasks, stateless])).toMatchObject({
-      raw: 'working',
-    });
-  });
-
-  it('returns undefined for a session with no tasks', () => {
-    // A real condition — created but never run — and distinct from every state
-    // kagent could report, so it must not be flattened into one of them.
-    expect(stateFor(emptyNoData)).toBeUndefined();
-    expect(deriveSessionState([])).toBeUndefined();
-  });
 });
 
 describe('isAgentWorking', () => {
@@ -280,6 +244,39 @@ describe('readTurnProgress', () => {
 });
 
 describe('readNewestTaskState', () => {
+  it('takes the state of the most recent task', () => {
+    // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
+    // An earlier turn having completed says nothing about whether the session is
+    // working now.
+    expect(stateFor(kagentPrefixed)).toMatchObject({
+      raw: 'working',
+      isActive: true,
+    });
+  });
+
+  it('keeps an unrecognised newest state rather than falling back to an older one', () => {
+    expect(stateFor(unknownState)).toMatchObject({
+      raw: 'quantum-superposition',
+      label: 'quantum-superposition',
+    });
+  });
+
+  it('skips trailing tasks that report no state at all', () => {
+    const tasks = normalizeTaskList(kagentPrefixed).tasks;
+    const stateless = { ...tasks[tasks.length - 1], status: undefined };
+
+    expect(readNewestTaskState([...tasks, stateless])?.state).toMatchObject({
+      raw: 'working',
+    });
+  });
+
+  it('returns undefined for a session with no tasks', () => {
+    // A real condition — created but never run — and distinct from every state
+    // kagent could report, so it must not be flattened into one of them.
+    expect(stateFor(emptyNoData)).toBeUndefined();
+    expect(readNewestTaskState([])).toBeUndefined();
+  });
+
   it('takes the state and its timestamp from the same task', () => {
     // A trailing task carrying no state must not lend its timestamp to an
     // earlier task's state.
