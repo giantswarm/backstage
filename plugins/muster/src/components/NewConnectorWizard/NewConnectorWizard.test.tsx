@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -22,6 +22,15 @@ jest.setTimeout(30_000);
 let mockMcpServers: MCPServer[] = [];
 
 // The muster providers, whose instance the mock below stands for.
+// The router's own query client is the module-level one; the test's fresh
+// client above it stands in for it, so each test reads afresh.
+jest.mock('../QueryClientProvider', () => ({
+  ...jest.requireActual('../QueryClientProvider'),
+  QueryClientProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 jest.mock('../MusterSubPage', () => ({
   MusterSubPage: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -136,6 +145,23 @@ function musterTakesDisplayName(
           ...(client && name !== 'core_mcpserver_validate'
             ? { clientCredentials: { type: 'object' } }
             : {}),
+        },
+      },
+    }),
+  );
+}
+
+/** `describe_tool` of a muster whose create and update take tags too. */
+function musterTakesTags() {
+  describeTool.mockImplementation((name: string) =>
+    Promise.resolve({
+      name,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          displayName: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
         },
       },
     }),
@@ -430,6 +456,107 @@ describe('shell connector wizard', () => {
           autoStart: true,
         });
       }
+    });
+
+    it('asks for no tags on a muster that does not take them', async () => {
+      await renderWizard('/customize/connectors/new');
+      await screen.findByLabelText(/^Server address/);
+      await waitFor(() => expect(describeTool).toHaveBeenCalled());
+
+      expect(screen.queryByRole('textbox', { name: /^Tags/ })).toBeNull();
+    });
+
+    it('registers the tags added, normalized, where muster takes them', async () => {
+      musterTakesTags();
+      mockMcpServers = [
+        new MCPServer(
+          {
+            apiVersion: 'muster.giantswarm.io/v1alpha1',
+            kind: 'MCPServer',
+            metadata: {
+              name: 'pagerduty',
+              annotations: { 'ui.giantswarm.io/tags': 'ops' },
+            },
+            spec: { type: 'streamable-http', url: 'https://pd.example/mcp' },
+          } as never,
+          'gazelle',
+        ),
+      ];
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Jira');
+      const tags = await screen.findByRole('textbox', { name: /^Tags/ });
+      // The installation's connectors' tags are offered while typing.
+      await userEvent.type(tags, 'op');
+      expect(
+        within(screen.getByRole('grid', { name: 'Suggested tags' })).getByText(
+          'ops',
+        ),
+      ).toBeInTheDocument();
+      await userEvent.clear(tags);
+      await userEvent.type(tags, 'Ticket Triage, ops{Enter}');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        tags: ['ticket-triage', 'ops'],
+      });
+    });
+
+    it('adds a typed tag on Continue, as the agent form does', async () => {
+      musterTakesTags();
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Jira');
+      await userEvent.type(
+        await screen.findByRole('textbox', { name: /^Tags/ }),
+        'Ticket Triage',
+      );
+      // Pressed without the field losing focus first, so its blur adds nothing.
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        tags: ['ticket-triage'],
+      });
+    });
+
+    it('keeps Continue from a typed tag that cannot be one', async () => {
+      musterTakesTags();
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Jira');
+      await userEvent.type(
+        await screen.findByRole('textbox', { name: /^Tags/ }),
+        '!!',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(
+        await screen.findByText('Use letters and numbers.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('How do people sign in?')).toBeNull();
     });
 
     it('registers "own account" with the advanced override behind the disclosure', async () => {
@@ -1463,6 +1590,73 @@ describe('shell connector wizard', () => {
       expect(toolCalls('core_mcpserver_update')[0][1]).toMatchObject({
         name: 'jira',
         displayName: 'Acme Tickets',
+      });
+    });
+
+    it('sends the tags on save only when they changed', async () => {
+      musterTakesTags();
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/tags': 'ticketing,ops',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByRole('textbox', { name: /^Tags/ });
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+      expect(toolCalls('core_mcpserver_update')[0][1]).not.toHaveProperty(
+        'tags',
+      );
+    });
+
+    it('saves an edit on a muster without tags, whatever tags the connector carries', async () => {
+      // More than MAX_TAGS, written outside the portal: a reader keeps them.
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/tags': Array.from(
+          { length: 51 },
+          (_, index) => `tag-${index}`,
+        ).join(','),
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByLabelText(/^Server address/);
+      await waitFor(() => expect(describeTool).toHaveBeenCalled());
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+      expect(toolCalls('core_mcpserver_update')[0][1]).not.toHaveProperty(
+        'tags',
+      );
+    });
+
+    it('replaces the tags on save when one is removed', async () => {
+      musterTakesTags();
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/tags': 'ticketing,ops',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByRole('textbox', { name: /^Tags/ });
+      const added = screen.getByRole('grid', { name: 'Tags' });
+      const ops = within(added).getByRole('row', { name: /ops/ });
+      await userEvent.click(within(ops).getByRole('button'));
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+      expect(toolCalls('core_mcpserver_update')[0][1]).toMatchObject({
+        tags: ['ticketing'],
       });
     });
 

@@ -1,14 +1,38 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { TestApiProvider } from '@backstage/test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { musterApiRef, type MusterApi } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import {
   NewMcpServerFormProvider,
   useNewMcpServerForm,
 } from './NewMcpServerFormProvider';
 
+/** The input schema muster's create and update tools describe. */
+let toolArguments: Record<string, unknown> = { tags: { type: 'array' } };
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <NewMcpServerFormProvider>{children}</NewMcpServerFormProvider>;
+  const musterApi = {
+    describeTool: jest.fn(async () => ({
+      inputSchema: { properties: toolArguments },
+    })),
+  } as unknown as MusterApi;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>
+        <NewMcpServerFormProvider>{children}</NewMcpServerFormProvider>
+      </QueryClientProvider>
+    </TestApiProvider>
+  );
 }
+
+beforeEach(() => {
+  toolArguments = { tags: { type: 'array' } };
+});
 
 function renderForm() {
   const { result } = renderHook(() => useNewMcpServerForm(), { wrapper });
@@ -280,6 +304,29 @@ describe('NewMcpServerFormProvider', () => {
         requiredAudiences: ['dex-k8s-authenticator'],
       },
     });
+  });
+
+  it('checks the Tags field only where the muster keeps tags', async () => {
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setTagDraft('!!'));
+    await waitFor(() => expect(result.current.takesTags).toBe(true));
+    expect(result.current.fieldErrors.tags).toBeDefined();
+  });
+
+  it('leaves a hidden Tags field out of every step’s problems', async () => {
+    toolArguments = { name: { type: 'string' } };
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setTagDraft('!!'));
+    // Give the schema read time to land; it says the muster keeps no tags.
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    expect(result.current.takesTags).toBe(false);
+    expect(result.current.fieldErrors.tags).toBeUndefined();
+    expect(result.current.detailsErrors).toEqual([]);
+    expect(result.current.isComplete).toBe(true);
   });
 
   describe('editing a registered server', () => {

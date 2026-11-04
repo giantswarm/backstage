@@ -15,8 +15,8 @@ import {
   normalizedRepoUrl,
   type DiscoveredSkill,
   repoSlug,
+  skillTags,
 } from './skills';
-import { parseSelector, toolsetShape } from './toolset';
 
 /** A state as the shell's Customize screen shows it: a dot and a few words. */
 export type CustomizeStatus = {
@@ -48,45 +48,6 @@ export function agentStatus(row: AgentRow): CustomizeStatus {
   }
   const { label, intent } = READINESS_PRESENTATION[row.readiness];
   return { label, tone: toneOfIntent(intent) };
-}
-
-/**
- * How many connectors (MCP servers) an agent's toolset names, read off its
- * carrier. `undefined` when the toolset does not say: unread, the whole
- * gateway, or presets and single tools whose servers are only known to muster.
- */
-export function connectorCount(row: AgentRow): number | undefined {
-  const toolset = row.toolset;
-  if (!toolset) {
-    return undefined;
-  }
-  if (toolset.state === 'no-gateway') {
-    return 0;
-  }
-  if (toolset.state !== 'declared') {
-    return undefined;
-  }
-  const shape = toolsetShape(toolset.selectors);
-  if (shape === 'none') {
-    return 0;
-  }
-  if (shape === 'full') {
-    return undefined;
-  }
-  const selectors = toolset.selectors.map(parseSelector);
-  if (selectors.some(selector => selector?.kind !== 'server')) {
-    return undefined;
-  }
-  return new Set(selectors.map(selector => selector?.name)).size;
-}
-
-/** "2 skills · 3 connectors", leaving out the connectors when unknown. */
-export function agentParts(row: AgentRow): string {
-  const connectors = connectorCount(row);
-  return [
-    countNoun(row.skillCount, 'skill'),
-    ...(connectors === undefined ? [] : [countNoun(connectors, 'connector')]),
-  ].join(' · ');
 }
 
 /**
@@ -195,6 +156,7 @@ export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {
           row.model,
           row.harness,
           row.harnessTitle,
+          ...row.tags,
         ]),
       )
     : rows;
@@ -212,8 +174,8 @@ export function searchModels(rows: ModelRow[], search: string): ModelRow[] {
 /**
  * The skill catalog's one search, for Customize › Skills and the agent
  * wizard's skill step alike: token-boundary matching (`matchesQuery`) over the
- * name, description, path and source, so one query finds the same skills in
- * both places.
+ * name, description, path, source and tags, so one query finds the same
+ * skills in both places.
  */
 export function searchSkills<T extends DiscoveredSkill>(
   skills: T[],
@@ -224,9 +186,13 @@ export function searchSkills<T extends DiscoveredSkill>(
     ? skills.filter(skill =>
         matchesQuery(
           query,
-          [skill.name, skill.description, skill.path, skillSource(skill)].join(
-            ' ',
-          ),
+          [
+            skill.name,
+            skill.description,
+            skill.path,
+            skillSource(skill),
+            ...skillTags(skill),
+          ].join(' '),
         ),
       )
     : skills;

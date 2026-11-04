@@ -277,6 +277,8 @@ export interface ScannedSkill {
   name?: string;
   /** Frontmatter `description`, when present. */
   description?: string;
+  /** Frontmatter `metadata.tags`, parsed; empty when absent. */
+  tags: string[];
   /** The raw `SKILL.md`. */
   content: string;
 }
@@ -315,8 +317,8 @@ async function walkCheckout(
         files.push({ path: entryRel, size });
         if (entry.name === SKILL_FILE) {
           const content = await readFile(entryPath, 'utf8');
-          const { name, description } = parseFrontmatter(content);
-          skills.push({ path: rel, name, description, content });
+          const { name, description, tags } = parseFrontmatter(content);
+          skills.push({ path: rel, name, description, tags, content });
         }
       }
     }
@@ -488,6 +490,7 @@ export async function discoverAgentSkillsFromGit(options: {
           repoBasename(repoUrl) ||
           'skill',
         description: s.description?.trim() ?? '',
+        tags: s.tags,
         repoUrl,
         path: s.path,
         ref: cloned.ref,

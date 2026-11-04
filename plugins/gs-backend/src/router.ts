@@ -57,6 +57,8 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import { readSignedInConfig } from './signedInConfig';
 import {
+  isValidTag,
+  MAX_TAG_LENGTH,
   shortSha,
   SUBJECT_TOKEN_HEADER,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -878,6 +880,9 @@ export async function createRouter({
    * - description: frontmatter `description`
    * - instructions: the SKILL.md body (up to 100,000 characters; the route's
    *   JSON body limit is raised to fit it)
+   * - tags: frontmatter `metadata.tags`, each lowercase letters and digits
+   *   with single `-` between, at most 63 characters; replaces the skill's
+   *   tags (`[]` removes them); absent keeps an update's
    * - kind: `create` (default) or `update`
    * - path: for `update`, the skill directory ('' at the repository root)
    * - baseCommit: for `update`, the commit the edit started from — a 409 when
@@ -920,6 +925,15 @@ export async function createRouter({
         }),
       description: z.string().trim().min(1).max(1024),
       instructions: z.string().trim().min(1).max(MAX_SKILL_INSTRUCTIONS),
+      tags: z
+        .array(
+          z.string().refine(isValidTag, {
+            message: `Each tag must be lowercase letters and digits with single dashes between, at most ${MAX_TAG_LENGTH} characters`,
+          }),
+        )
+        // The limit is checked against the stored tags when the SKILL.md is
+        // written (`withSkillTags`): an unchanged list past it goes through.
+        .optional(),
       kind: z.enum(['create', 'update']).optional(),
       path: z
         .string()
@@ -937,6 +951,10 @@ export async function createRouter({
       throw new InputError(parsed.error.toString());
     }
     const { repoUrl, skillName, description, instructions, kind } = parsed.data;
+    const tags =
+      parsed.data.tags === undefined
+        ? undefined
+        : [...new Set(parsed.data.tags)];
     if (kind === 'update') {
       if (parsed.data.path === undefined) {
         throw new InputError(
@@ -983,6 +1001,7 @@ export async function createRouter({
           skillName,
           description,
           instructions,
+          ...(tags !== undefined ? { tags } : {}),
           token,
           ...(kind === 'update'
             ? {

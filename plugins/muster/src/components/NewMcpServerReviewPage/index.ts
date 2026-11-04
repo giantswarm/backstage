@@ -4,7 +4,3 @@ export {
   OneTimeClientCredentials,
   type McpServerRegistration,
 } from './useRegisterMcpServer';
-export {
-  useTakesClientCredentials,
-  useTakesDisplayName,
-} from './useTakesDisplayName';

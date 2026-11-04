@@ -403,6 +403,57 @@ describe('useRegisterMcpServer', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
+  it('sends tags to a muster whose tool takes them, and drops them elsewhere', async () => {
+    describeTool.mockImplementation((name: string) =>
+      Promise.resolve({
+        name,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            ...(name === 'core_mcpserver_create'
+              ? { tags: { type: 'array' } }
+              : {}),
+          },
+        },
+      }),
+    );
+    const tagged = { ...definition, tags: ['ops'] };
+    const { result } = renderRegister();
+
+    await act(() =>
+      result.current.mutateAsync({ ...registration, definition: tagged }),
+    );
+
+    expect(callTool.mock.calls).toEqual([
+      ['core_mcpserver_validate', definition, 'gazelle'],
+      ['core_mcpserver_create', tagged, 'gazelle'],
+    ]);
+  });
+
+  it('saves nothing when it cannot learn whether muster keeps tags', async () => {
+    describeTool.mockRejectedValue(new Error('upstream 502'));
+    const { result } = renderRegister();
+
+    let error: Error | undefined;
+    await act(async () => {
+      error = await result.current
+        .mutateAsync({
+          ...registration,
+          definition: { ...definition, tags: ['ops'] },
+        })
+        .then(
+          () => undefined,
+          (e: Error) => e,
+        );
+    });
+
+    expect(error?.message).toBe(
+      "Muster could not be asked whether it keeps the connector's tags (upstream 502). Nothing was saved; try again.",
+    );
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
   it('asks for no schema when there is no display name to send', async () => {
     const { result } = renderRegister();
 

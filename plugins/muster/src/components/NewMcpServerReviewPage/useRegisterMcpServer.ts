@@ -6,14 +6,13 @@ import { musterApiRef } from '../../apis';
 import { isMusterAuthError } from '../../lib/authError';
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import {
-  takesClientCredentials,
-  takesDisplayName,
+  takesArgument,
   withoutClientSecretRef,
   type ClientCredentials,
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
-import { writeToolSchemaQuery } from './useTakesDisplayName';
+import { toolArgumentsQuery } from '../shared/hooks';
 
 /**
  * Client credentials handed to exactly one write. React Query keeps a
@@ -70,9 +69,10 @@ export type McpServerRegistration = {
  * The definition's `displayName` goes only to a tool whose input schema
  * declares it (muster v5.43.0 and later); an older muster refuses unknown
  * fields, so it gets the definition without it — the connector is then named
- * by its resource name, as before. Each tool's schema is checked on its own.
- * When a schema cannot be read, nothing is written: dropping the name then
- * would lose it without a word. Resolves to the definition the write tool was
+ * by its resource name, as before. Its `tags` likewise go only to a tool that
+ * declares them. Each tool's schema is checked on its own. When a schema
+ * cannot be read, nothing is written: dropping the name or the tags then
+ * would lose them without a word. Resolves to the definition the write tool was
  * sent.
  */
 export function useRegisterMcpServer() {
@@ -92,10 +92,10 @@ export function useRegisterMcpServer() {
       const definition = clientCredentials
         ? withoutClientSecretRef(composed)
         : composed;
-      const { displayName, ...withoutDisplayName } = definition;
+      const { displayName, tags } = definition;
       const schemaOf = (name: string, asking: string) =>
         queryClient
-          .fetchQuery(writeToolSchemaQuery(musterApi, name, installation))
+          .fetchQuery(toolArgumentsQuery(musterApi, name, installation))
           .then(detail => detail.inputSchema)
           .catch(error => {
             if (isMusterAuthError(error)) {
@@ -110,14 +110,21 @@ export function useRegisterMcpServer() {
       const definitionFor = async (
         name: string,
       ): Promise<McpServerDefinition> => {
-        if (displayName === undefined) {
+        if (displayName === undefined && tags === undefined) {
           return definition;
         }
-        return takesDisplayName(
-          await schemaOf(name, "keeps the connector's name"),
-        )
-          ? definition
-          : withoutDisplayName;
+        const inputSchema = await schemaOf(
+          name,
+          `keeps the connector's ${displayName === undefined ? 'tags' : 'name'}`,
+        );
+        const sent = { ...definition };
+        if (!takesArgument(inputSchema, 'displayName')) {
+          delete sent.displayName;
+        }
+        if (!takesArgument(inputSchema, 'tags')) {
+          delete sent.tags;
+        }
+        return sent;
       };
       // An older muster refuses the argument as unknown, after the person
       // typed a client: say what it cannot do instead (the sign-in step
@@ -125,7 +132,10 @@ export function useRegisterMcpServer() {
       const takesClient = async () => {
         if (
           clientCredentials &&
-          !takesClientCredentials(await schemaOf(tool, 'can store a client'))
+          !takesArgument(
+            await schemaOf(tool, 'can store a client'),
+            'clientCredentials',
+          )
         ) {
           throw new Error(
             'Muster on this installation cannot store a client yet. Nothing was saved; choose Existing Secret to name a Secret that holds the client instead.',
