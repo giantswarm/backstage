@@ -2689,6 +2689,65 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(mockUseMusterServers).not.toHaveBeenCalledWith('gazelle');
     });
 
+    it('marks the directly bound servers that ask before every call, and names them', async () => {
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'deploys' },
+                  requireApproval: true,
+                  tools: ['rollout'],
+                },
+              },
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'docs' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      const logos = screen.getByRole('list', { name: 'Connectors' });
+      expect(within(logos).getAllByTestId('approval-mark')).toHaveLength(1);
+      expect(
+        within(logos)
+          .getByRole('img', { name: 'deploys' })
+          .closest('li')
+          ?.querySelector('[data-testid="approval-mark"]'),
+      ).not.toBeNull();
+      expect(
+        screen.getByText('Asks before every call: deploys'),
+      ).toBeInTheDocument();
+      // The scope stays in the tooltip, read as the logo's description.
+      expect(
+        within(logos).getByRole('img', { name: 'deploys' }),
+      ).toHaveAccessibleDescription(
+        '1 tool: rollout · asks you before every call',
+      );
+      expect(
+        within(logos).getByRole('img', { name: 'docs' }),
+      ).toHaveAccessibleDescription('All tools from this server');
+    });
+
+    it('has no approval line when no bound server asks first', async () => {
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'docs' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(screen.queryByText(/Asks before every call/)).toBeNull();
+      expect(screen.queryByTestId('approval-mark')).toBeNull();
+    });
+
     // A directly bound server is its own resource: a muster connector that
     // happens to share its name lends it neither its name nor its icon.
     it('names a directly bound server from its own resource, not a muster connector of that name', async () => {

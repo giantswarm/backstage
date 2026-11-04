@@ -2,6 +2,7 @@ import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
 import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import SecurityIcon from '@material-ui/icons/Security';
 import {
   Agent,
   AgentSkill,
@@ -115,6 +116,27 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     padding: 0,
     listStyle: 'none',
+  },
+  logo: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
+  // The approval request's shield, small on the logo's corner.
+  approvalMark: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    backgroundColor: 'var(--bui-warning-bg-subdued, #fff3e8)',
+    color: 'var(--bui-warning-fg-subdued, #7d3900)',
+    boxShadow: '0 0 0 2px var(--bui-bg-surface-1, #fff)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    '& svg': { width: 11, height: 11 },
   },
 }));
 
@@ -276,6 +298,8 @@ type ConnectorMark = {
   name: string;
   icon?: string;
   detail?: string;
+  /** The binding pauses for the person's approval before every call. */
+  approval?: boolean;
 };
 
 /**
@@ -326,7 +350,11 @@ function ConnectorsSection({
       detail: `${describeToolScope(binding)}${
         binding.requireApproval ? ' · asks you before every call' : ''
       }`,
+      approval: Boolean(binding.requireApproval),
     })),
+  ];
+  const asksFirst = [
+    ...new Set(marks.filter(mark => mark.approval).map(mark => mark.name)),
   ];
 
   let reach: string;
@@ -351,16 +379,30 @@ function ConnectorsSection({
       {marks.length > 0 && (
         <ul className={classes.logos} aria-label="Connectors">
           {marks.map(mark => (
-            <li key={mark.key}>
+            <li key={mark.key} className={classes.logo}>
               <ConnectorLogo
                 name={mark.name}
                 icon={mark.icon}
                 detail={mark.detail}
                 tooltip
               />
+              {mark.approval && (
+                <span
+                  className={classes.approvalMark}
+                  data-testid="approval-mark"
+                  aria-hidden
+                >
+                  <SecurityIcon />
+                </span>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {asksFirst.length > 0 && (
+        <Text variant="body-small" color="secondary">
+          Asks before every call: {asksFirst.join(', ')}
+        </Text>
       )}
       {subAgents.length > 0 && (
         <div className={classes.rows}>
