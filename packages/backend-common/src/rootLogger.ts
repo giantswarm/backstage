@@ -30,7 +30,12 @@ export function getSentryTransportConfig(config: RootConfigService) {
     autoSessionTracking: false,
     tracesSampleRate: sentryConfig.getNumber('tracesSampleRate'),
     ignoreErrors: [
-      /^Index for techdocs was not created: indexer received 0 documents$/,
+      // TechDocs are built on first view, so the collator often has nothing
+      // to index. The search engine says "created" for an index that doesn't
+      // exist yet (in-memory, first run) and "replaced" otherwise (always on
+      // Postgres). TechDocs only: an empty catalog index is a real fault.
+      // See giantswarm/giantswarm#38983.
+      /^Index for techdocs was not (created|replaced): indexer received 0 documents$/,
       // Benign warning from @pagerduty/backstage-plugin-backend when we
       // use the legacy single-token config (`pagerDuty.apiToken`) instead
       // of the newer `pagerDuty.accounts` format. PagerDuty works fine —

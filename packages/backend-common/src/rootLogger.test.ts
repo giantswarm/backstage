@@ -58,6 +58,29 @@ describe('the Sentry filters', () => {
     ).toBe(true);
   });
 
+  it.each(['created', 'replaced'])(
+    'ignores the empty TechDocs index the search engine says was not %s',
+    verb => {
+      expect(
+        options.ignoreErrors.some(pattern =>
+          pattern.test(
+            `Index for techdocs was not ${verb}: indexer received 0 documents`,
+          ),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it('still reports an empty software catalog index', () => {
+    expect(
+      options.ignoreErrors.some(pattern =>
+        pattern.test(
+          'Index for software-catalog was not replaced: indexer received 0 documents',
+        ),
+      ),
+    ).toBe(false);
+  });
+
   it('drops an events poll failure caused by the backend starting up', () => {
     expect(
       options.beforeSend({
