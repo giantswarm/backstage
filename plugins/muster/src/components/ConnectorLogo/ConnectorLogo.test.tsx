@@ -44,6 +44,29 @@ describe('ConnectorLogo', () => {
     );
   });
 
+  it('is a focusable image named by the connector and described by its detail', () => {
+    render(<ConnectorLogo name="PagerDuty" detail="All tools" tooltip />);
+    const logo = screen.getByRole('img', { name: 'PagerDuty' });
+    expect(logo).toHaveAttribute('tabindex', '0');
+    expect(logo).toHaveAccessibleDescription('All tools');
+  });
+
+  it.each(['{Enter}', ' '])(
+    'keeps %s on the logo off the row it sits in',
+    async key => {
+      const onRowKeyDown = jest.fn();
+      render(
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div onKeyDown={onRowKeyDown}>
+          <ConnectorLogo name="PagerDuty" tooltip />
+        </div>,
+      );
+      await userEvent.tab();
+      await userEvent.keyboard(key);
+      expect(onRowKeyDown).not.toHaveBeenCalled();
+    },
+  );
+
   it('keeps one tooltip open: hovering a logo closes the focused one', async () => {
     const user = userEvent.setup();
     render(
