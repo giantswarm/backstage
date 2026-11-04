@@ -26,6 +26,7 @@
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
     "@backstage/config-loader": "backstage:^",
+    "@giantswarm/backstage-plugin-gs-node": "^0.4.0",
     "knex": "^3.1.0"
   },
   "files": [

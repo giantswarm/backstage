@@ -10237,6 +10237,7 @@ __metadata:
     "@backstage/config-loader": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/integration": "backstage:^"
+    "@giantswarm/backstage-plugin-gs-node": "npm:^0.4.0"
     knex: "npm:^3.1.0"
     undici: "npm:^8.10.2"
     winston: "npm:^3.17.0"

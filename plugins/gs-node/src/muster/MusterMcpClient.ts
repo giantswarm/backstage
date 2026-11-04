@@ -20,6 +20,7 @@ import {
   parseAuthLoginResult,
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
+import { musterUnreachableMessage } from './musterUnreachable';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -56,6 +57,14 @@ const LIST_TOOLS_PAGE_SIZE = 1000;
  * looping.
  */
 const LIST_TOOLS_MAX_PAGES = 20;
+
+/**
+ * How many recovered session losses on one installation, within
+ * {@link FREQUENT_LOST_SESSIONS_WINDOW_MS}, are reported as a warning: far
+ * more than an idle TTL or a roll causes.
+ */
+const FREQUENT_LOST_SESSIONS = 10;
+const FREQUENT_LOST_SESSIONS_WINDOW_MS = 10 * 60_000;
 
 /** What the paging reads of a `list_tools` page; the rest passes through. */
 type ListToolsPage = Record<string, unknown> & {
@@ -396,6 +405,9 @@ async function connectProgressClient(
  */
 export class MusterMcpClient {
   private readonly cache: McpClientCache;
+  /** When the last {@link FREQUENT_LOST_SESSIONS} recovered losses happened. */
+  private readonly lostSessionTimes: number[] = [];
+  private lastFrequentLossWarning = -Infinity;
   private readonly signIns: PendingSignIns;
 
   constructor(
@@ -676,11 +688,13 @@ export class MusterMcpClient {
       }
       this.cache.markDead(first.cacheKey, first.client);
       // Expected and usually recovered by the retry below, so not a warning:
-      // only a second failure is actionable, and explain() reports that.
+      // only a second failure is actionable, and explain() reports that. A
+      // loss on most requests is, though; noteLostSession() warns about that.
       this.logger.info(
         'Muster MCP session was lost; re-initializing and retrying once',
         { installation: this.installation.name, cause: messageOf(error) },
       );
+      this.noteLostSession();
     }
 
     const second = await this.connectOrExplain(options);
@@ -691,6 +705,37 @@ export class MusterMcpClient {
         this.cache.markDead(second.cacheKey, second.client);
       }
       throw this.explain(error);
+    }
+  }
+
+  /**
+   * Warn, at most once per {@link FREQUENT_LOST_SESSIONS_WINDOW_MS}, when this
+   * installation lost {@link FREQUENT_LOST_SESSIONS} sessions within that
+   * window. Each loss is recovered and logged at `info`, so a gateway that drops
+   * sessions on nearly every request (a TTL shorter than the request interval,
+   * a session-key rotation) would otherwise only show as slower requests, each
+   * paying for a second `initialize`.
+   */
+  private noteLostSession(): void {
+    const now = Date.now();
+    this.lostSessionTimes.push(now);
+    if (this.lostSessionTimes.length > FREQUENT_LOST_SESSIONS) {
+      this.lostSessionTimes.shift();
+    }
+    if (
+      this.lostSessionTimes.length === FREQUENT_LOST_SESSIONS &&
+      now - this.lostSessionTimes[0] < FREQUENT_LOST_SESSIONS_WINDOW_MS &&
+      now - this.lastFrequentLossWarning >= FREQUENT_LOST_SESSIONS_WINDOW_MS
+    ) {
+      this.lastFrequentLossWarning = now;
+      this.logger.warn(
+        'Muster MCP sessions are lost often; requests re-initialize before they run',
+        {
+          installation: this.installation.name,
+          lostSessions: FREQUENT_LOST_SESSIONS,
+          windowMinutes: FREQUENT_LOST_SESSIONS_WINDOW_MS / 60_000,
+        },
+      );
     }
   }
 
@@ -722,11 +767,8 @@ export class MusterMcpClient {
       installation: this.installation.name,
       cause: messageOf(error),
     });
-    // The person reads this text, and the muster plugin's installationError
-    // matches on it, so it keeps the installation. Its Sentry event (the error
-    // middleware's 503) is collapsed in backend-common's normalizeSentryEvent.
     return new ServiceUnavailableError(
-      `${this.installation.name} did not answer: ${reason}`,
+      musterUnreachableMessage(this.installation.name, reason),
     );
   }
 
@@ -874,7 +916,9 @@ export class MusterMcpClient {
       }
     }
     throw new ServiceUnavailableError(
-      `Muster's list_tools on '${this.installation.name}' was still truncated after ${LIST_TOOLS_MAX_PAGES} pages`,
+      // No installation in the text: the error middleware's Sentry event would
+      // be one issue per installation. Pages print it under the installation.
+      `Muster's list_tools was still truncated after ${LIST_TOOLS_MAX_PAGES} pages`,
     );
   }
 

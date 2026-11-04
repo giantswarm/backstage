@@ -131,6 +131,79 @@ describe('MusterMcpClient session recovery (unit)', () => {
     );
   });
 
+  describe('a session lost on most requests', () => {
+    afterEach(() => jest.useRealTimers());
+
+    async function loseAndRecover(client: MusterMcpClient, times: number) {
+      for (let i = 0; i < times; i++) {
+        await client.callTool('x_cm_list_clusters', {});
+      }
+    }
+
+    /**
+     * Every MCP client answers its first request and has lost its session by
+     * the next one, so each request after the first loses the cached
+     * client's session and recovers on a fresh one.
+     */
+    async function lostOnEveryRequest() {
+      const executes = Array.from({ length: 50 }, () =>
+        jest
+          .fn()
+          .mockResolvedValueOnce(callToolResult({ ok: true }))
+          .mockRejectedValue(transportError(404, SESSION_NOT_FOUND)),
+      );
+      const { client } = buildClient(executes);
+      await client.callTool('x_cm_list_clusters', {});
+      return client;
+    }
+
+    const FREQUENT_WARNING =
+      'Muster MCP sessions are lost often; requests re-initialize before they run';
+
+    it('warns once ten recovered losses fall within ten minutes, and not again in that window', async () => {
+      jest.useFakeTimers({ now: 0 });
+      const client = await lostOnEveryRequest();
+
+      await loseAndRecover(client, 9);
+      expect(logger.warn).not.toHaveBeenCalled();
+
+      await loseAndRecover(client, 1);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(FREQUENT_WARNING, {
+        installation: 'gazelle',
+        lostSessions: 10,
+        windowMinutes: 10,
+      });
+
+      await loseAndRecover(client, 10);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+
+      // Ten minutes on, the idle cached client is replaced without a loss;
+      // the ten requests after it lose theirs, so the warning comes again.
+      jest.setSystemTime(10 * 60_000);
+      await loseAndRecover(client, 11);
+      expect(logger.warn).toHaveBeenCalledTimes(2);
+    });
+
+    it('stays quiet when the losses are spread out', async () => {
+      jest.useFakeTimers({ now: 0 });
+      const client = await lostOnEveryRequest();
+
+      for (let i = 0; i < 20; i++) {
+        jest.setSystemTime(i * 2 * 60_000);
+        await loseAndRecover(client, 1);
+      }
+      expect(
+        logger.info.mock.calls.filter(
+          ([message]) =>
+            message ===
+            'Muster MCP session was lost; re-initializing and retrying once',
+        ).length,
+      ).toBeGreaterThanOrEqual(15);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+  });
+
   it('warns about a failed request with the installation in the metadata, not the message', async () => {
     const execute = jest
       .fn()

@@ -1,3 +1,7 @@
+import {
+  describeMcpFailure,
+  musterUnreachableMessage,
+} from '@giantswarm/backstage-plugin-gs-node';
 import type { SentryEvent } from './normalizeSentryEvent';
 import { normalizeSentryEvent } from './normalizeSentryEvent';
 
@@ -34,38 +38,76 @@ describe('normalizeSentryEvent', () => {
     expect(first.fingerprint).toEqual(second.fingerprint);
   });
 
-  it('collapses Muster 503s across installations, keeping the installation as extra data', () => {
-    const muster503 = (installation: string, reason: string) =>
-      normalizeSentryEvent<SentryEvent>({
+  describe("muster's 503 for an installation it cannot reach", () => {
+    /** One error per reason `describeMcpFailure` gives, as the SDK throws it. */
+    function transportError(status: number, body: string) {
+      const error = new Error(
+        `MCP HTTP Transport Error: POSTing to endpoint (HTTP ${status}): ${body}`,
+      ) as Error & { statusCode?: number };
+      error.name = 'MCPClientError';
+      error.statusCode = status;
+      return error;
+    }
+    const fetchFailed = Object.assign(new TypeError('fetch failed'), {
+      cause: { code: 'UND_ERR_CONNECT_TIMEOUT' },
+    });
+    const failures = [
+      transportError(404, 'mcp: session not found'),
+      new Error('Attempted to send a request from a closed client'),
+      transportError(502, 'upstream connect error'),
+      fetchFailed,
+      transportError(0, 'socket hang up'),
+    ];
+    const reasons = failures.map(failure => describeMcpFailure(failure)!);
+
+    /**
+     * The event of the error middleware's `Request failed with status 503`
+     * for the text gs-node's MusterMcpClient answers, built with gs-node's own
+     * code: rewording it there fails here.
+     */
+    function middleware503(installation: string, reason: string) {
+      return normalizeSentryEvent<SentryEvent>({
         exception: {
           values: [
             {
-              value: `Request failed with status 503 ${installation} did not answer: ${reason}`,
+              value: `Request failed with status 503 ${musterUnreachableMessage(installation, reason)}`,
             },
           ],
         },
       });
-    const first = muster503(
-      'gazelle',
-      'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
-    );
-    const second = muster503(
-      'golem',
-      'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
-    );
-    const lostSession = muster503(
-      'gazelle',
-      'the MCP session was lost and could not be re-established',
-    );
+    }
 
-    expect(first.exception!.values![0].value).toBe(
-      'Request failed with status 503 <installation> did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
-    );
-    expect(first.fingerprint).toEqual(second.fingerprint);
-    expect(first.fingerprint).not.toEqual(lostSession.fingerprint);
-    expect(second.extra).toEqual({
-      original_message:
-        'Request failed with status 503 golem did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+    it('gives every reason a distinct text', () => {
+      expect(new Set(reasons).size).toBe(failures.length);
+    });
+
+    it.each(reasons)('collapses "%s" across installations', reason => {
+      const first = middleware503('gazelle', reason);
+      const second = middleware503('golem', reason);
+
+      expect(first.exception!.values![0].value).toBe(
+        `Request failed with status 503 <installation> did not answer: ${reason}`,
+      );
+      expect(first.fingerprint).toEqual(second.fingerprint);
+      expect(second.extra).toEqual({
+        original_message: `Request failed with status 503 golem did not answer: ${reason}`,
+      });
+    });
+
+    it('keeps the reasons apart', () => {
+      const fingerprints = reasons.map(
+        reason => middleware503('gazelle', reason).fingerprint![0],
+      );
+      expect(new Set(fingerprints).size).toBe(reasons.length);
+    });
+
+    it('leaves another service\'s "did not answer" alone', () => {
+      const event = middleware503('Mimir', 'the query timed out');
+
+      expect(event.fingerprint).toBeUndefined();
+      expect(event.exception!.values![0].value).toBe(
+        'Request failed with status 503 Mimir did not answer: the query timed out',
+      );
     });
   });
 
