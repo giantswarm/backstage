@@ -200,19 +200,22 @@ that pins an older commit.
 
 ### Connectors
 
-Connectors are muster's MCP servers, on three sub-tabs by the
+Connectors are muster's MCP servers, one list at `/customize/connectors`; a
+family (`spec.family`) is one row. The
 `agent-platform.giantswarm.io/tool-group` label the shipping chart sets on the
-MCPServer, a family (`spec.family`, one row) and a single server alike:
+MCPServer adds a read-only tag, which the Tags filter and `?tags=` select:
 
-- **Your connectors** (`/customize/connectors`): servers and families without
-  the label, everything the installation or its users registered.
-- **Infrastructure** (`/customize/connectors/infrastructure`): servers and
-  families labelled `infrastructure`, those for the management clusters the
-  platform runs on. `/customize/connectors/families` redirects here.
-- **Internal** (`/customize/connectors/internal`): servers labelled
-  `agent-platform` (agent-manager, model-manager, cluster-manager) and muster
-  itself where it runs. muster's page shows its endpoint to copy for MCP
-  clients.
+| Label            | Tag              | Servers                                                     |
+| ---------------- | ---------------- | ----------------------------------------------------------- |
+| none             | none             | what the installation or its users registered; listed first |
+| `infrastructure` | `infrastructure` | those for the management clusters the platform runs on      |
+| `agent-platform` | `agent-platform` | agent-manager, model-manager, cluster-manager, and muster   |
+
+Other tags come from the `ui.giantswarm.io/tags` annotation, which the edit
+form writes. The retired sub-tab addresses redirect until the end of 2026:
+`/customize/connectors/infrastructure` and `/families` to
+`?tags=infrastructure`, `/internal` to `?tags=agent-platform`. muster's page
+shows its endpoint to copy for MCP clients.
 
 **Add connector** probes the address, sets the sign-in mode (company login,
 each person's own account, none, or AWS request signing) and registers the

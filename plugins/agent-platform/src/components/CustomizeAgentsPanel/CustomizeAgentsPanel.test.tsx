@@ -141,6 +141,7 @@ function row(overrides: Partial<AgentRow>): AgentRow {
     name: 'Agent',
     technicalName: 'agent',
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready' as const,
     ...overrides,
@@ -330,10 +331,13 @@ describe('CustomizeAgentsPanel', () => {
     );
     const triageRow = items[0];
     expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
-    expect(within(triageRow).getByText('Sonnet 4.5')).toBeInTheDocument();
+    // The model, skills and connectors are technical: the agent's page has them.
+    expect(within(triageRow).queryByText('Sonnet 4.5')).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText(/connector/)).not.toBeInTheDocument();
+    // No tags, no tag list.
     expect(
-      within(triageRow).getByText('2 skills · 2 connectors'),
-    ).toBeInTheDocument();
+      within(triageRow).queryByRole('list', { name: 'Tags' }),
+    ).not.toBeInTheDocument();
     expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     // A Ready agent shows no state; one that needs a look says so inline.
     expect(within(triageRow).queryByText('Ready')).not.toBeInTheDocument();
@@ -364,6 +368,75 @@ describe('CustomizeAgentsPanel', () => {
     await renderPanel('triage');
     expect(screen.getByText('Support triage')).toBeInTheDocument();
     expect(screen.queryByText('Release notes')).not.toBeInTheDocument();
+  });
+
+  it('shows the first three tags of an agent on its row, then how many more', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['util', 'ops', 'support', 'tickets'] }, notes],
+    };
+    await renderPanel();
+
+    const [triageItem] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    const tags = within(triageItem).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(tag => tag.textContent),
+    ).toEqual(['util', 'ops', 'support', '+11 more tags']);
+    // Shown, not operated: nothing in them takes the focus.
+    expect(within(tags).queryByRole('grid')).not.toBeInTheDocument();
+    expect(within(tags).queryAllByRole('row')).toHaveLength(0);
+    expect(within(tags).getByText('+1')).toHaveAttribute('aria-hidden');
+    expect(within(tags).getByText('1 more tags')).toBeInTheDocument();
+    // The row's link carries them as its description, and all of them in
+    // its tooltip.
+    const link = within(triageItem).getByRole('link', { name: triage.name });
+    expect(link).toHaveAccessibleDescription(/util ops support 1 more tags/);
+    expect(link).toHaveAttribute(
+      'title',
+      expect.stringContaining('Tags: util, ops, support, tickets'),
+    );
+  });
+
+  it('keeps a tag named "more" apart from the count of the rest', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['a', 'b', 'c', 'more', 'e'] }, notes],
+    };
+    await renderPanel();
+
+    const [triageItem] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(
+      within(within(triageItem).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(tag => tag.textContent),
+    ).toEqual(['a', 'b', 'c', '+22 more tags']);
+  });
+
+  it('offers a Tags filter once an agent has tags, and narrows to any picked', async () => {
+    const tagsFilter = () =>
+      screen.queryByRole('button', { name: /Filter by tags/, hidden: true });
+    const { unmount } = await renderPanel();
+    expect(tagsFilter()).not.toBeInTheDocument();
+    unmount();
+
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['util', 'ops'] }, notes],
+    };
+    await renderPanel();
+    await userEvent.click(tagsFilter()!);
+    await userEvent.click(await screen.findByRole('option', { name: /ops/ }));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByText('Release notes')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('Support triage')).toBeInTheDocument();
   });
 
   it('renders 300 agents a page of 25 at a time', async () => {
@@ -1051,7 +1124,7 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
   });
   afterEach(() => layout.restore());
 
-  it('wraps the name, the description and the facts instead of cutting them', async () => {
+  it('wraps the name and the description instead of cutting them', async () => {
     await renderPanel();
 
     const name = screen.getByText(longName);
@@ -1062,9 +1135,6 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
         'Reconciles the cloud bills against the budget every quarter',
       ),
     ).not.toHaveAttribute('data-truncate');
-    expect(within(items()[0]).getByText('Sonnet 4.5')).not.toHaveAttribute(
-      'data-truncate',
-    );
   });
 
   it('wraps an organization under the name instead of cutting it', async () => {
@@ -1188,7 +1258,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   /** A row's fact columns, in order, as text. */
   const factsOf = (item: HTMLElement) =>
     Array.from(
-      within(item).getByText('Opus').parentElement!.children,
+      within(item).getByTestId('agent-facts').children,
       fact => fact.textContent,
     );
 
@@ -1255,10 +1325,11 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     // Room for the organization beside the name, on every row of the list.
     expect(getComputedStyle(nameColumnOf(billing)).flexBasis).toBe('320px');
     expect(getComputedStyle(nameColumnOf(sre)).flexBasis).toBe('320px');
-    // Not among the facts: both rows have the same fact columns, the model
-    // first, so they line up from row to row however the facts wrap.
+    // Not among the facts: both rows have the same fact columns, so they
+    // line up from row to row however the facts wrap. The model is not one
+    // of them: the agent's page has it.
     expect(factsOf(billing)).toEqual(factsOf(sre));
-    expect(factsOf(billing)[0]).toBe('Opus');
+    expect(factsOf(billing).join()).not.toMatch(/Opus/);
     expect(factsOf(billing).join()).not.toMatch(/Owner|acme/);
     expect(await filterOptions('owner')).toEqual(['acme 2', 'Platform 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);
@@ -1326,7 +1397,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     expect(getComputedStyle(nameColumnOf(listed()[0])).flexBasis).toBe('220px');
   });
 
-  it('offers the model dropdown over three agents on one model, none starred', async () => {
+  it('offers no dropdown over three agents on one model, none starred', async () => {
     mockAgents = {
       rows: [
         row({ name: 'A', technicalName: 'a', model: 'Sonnet 4.5' }),
@@ -1340,11 +1411,10 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     await renderPanel();
 
     expect(listed()).toHaveLength(3);
-    // One model is still a dropdown, of one option (T64); nothing starred is
-    // nothing to offer.
-    expect(await filterOptions('model')).toEqual(['Sonnet 4.5 3']);
+    // One model for all is no choice, and nothing starred is nothing to
+    // offer: no filters at all.
     expect(
-      screen.queryByRole('button', { name: /Filter by favorites/ }),
+      screen.queryByRole('group', { name: 'Filters' }),
     ).not.toBeInTheDocument();
   });
 
@@ -1443,8 +1513,28 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       await renderPanel();
 
       expect(listed()).toHaveLength(3);
-      // The singleHarness rule: no dropdown of one, unlike Model.
-      expect(filterDropdown('model')).toBeInTheDocument();
+      // The singleHarness rule: no Harness fact, and no dropdown of one.
+      expect(
+        screen.queryByRole('button', { name: /Filter by harness/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    });
+
+    it('shows neither the Harness nor its filter while one Harness is all some agents report', async () => {
+      mockAgents = {
+        rows: [
+          { ...triage, ...onHarness('claude-code', 'Claude Code') },
+          { ...notes, ...onHarness('claude-code', 'Claude Code') },
+          // No Harness read for this one: not a second Harness to choose.
+          row({ name: 'Coder', technicalName: 'coder' }),
+        ],
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      expect(listed()).toHaveLength(3);
       expect(
         screen.queryByRole('button', { name: /Filter by harness/ }),
       ).not.toBeInTheDocument();

@@ -36,7 +36,7 @@ import {
   SessionGate,
   useServerPageLinks,
   useToolDescription,
-  useConnectorGroupPaths,
+  useConnectorListPaths,
 } from '../shared';
 import {
   ToolRunPanel,
@@ -100,7 +100,7 @@ function ToolPageContent() {
   };
   // The Usage tab's window, as the connector's Usage tab linked here with it.
   const usageDays = parseUsageWindowParam(params.get(USAGE_WINDOW_PARAM));
-  const paths = useConnectorGroupPaths();
+  const paths = useConnectorListPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const session = useMusterSession();
@@ -296,8 +296,7 @@ function ToolPageContent() {
         { label: 'Customize', href: paths.customize },
         {
           label: 'Connectors',
-          // The sub-tab that lists the tool's connector.
-          href: paths.customize ? paths.listOf(key, row) : listHref,
+          href: paths.customize ? paths.connectors : listHref,
         },
         // No "Tools" crumb: Tools is the connector page's index, so it
         // would repeat the connector's own link.

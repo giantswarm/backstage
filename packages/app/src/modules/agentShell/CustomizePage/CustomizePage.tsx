@@ -17,10 +17,13 @@ import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
   type RouteTabCount,
-  RouteTabs,
   ShellDocumentTitle,
+  SharedTagsProvider,
   ShellPage,
+  tagsOfSearch,
   usePhoneLayout,
+  useSharedTags,
+  withTagsSearch,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   agentPlatformPlugin,
@@ -40,14 +43,10 @@ import {
   WorkspaceOrganizationSelect,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import musterPlugin, {
-  CONNECTOR_GROUPS,
-  type ConnectorGroup,
-  connectorGroupInfo,
   CustomizeConnectorsPanel,
   CustomizeMusterProvider,
   CustomizeWorkflowsPanel,
-  LEGACY_CONNECTOR_GROUP_PATHS,
-  type MusterCustomizeCounts,
+  RETIRED_CONNECTOR_GROUP_TAGS,
   useMusterCustomizeCounts,
 } from '@giantswarm/backstage-plugin-muster';
 import { customizeRouteRef } from '../routes';
@@ -140,8 +139,6 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
 
 const DEFAULT_TAB: CustomizeTabId = 'agents';
 
-const CONNECTORS_TAB = CUSTOMIZE_TABS.find(tab => tab.id === 'connectors')!;
-
 /**
  * Whether the strip shows a tab besides the open one: Skills unless no skill
  * repository is configured, Workspaces and Toolchains only once an
@@ -195,15 +192,7 @@ function CreateAction({
   );
 }
 
-function TabPanel({
-  tab,
-  search,
-  connectorGroup,
-}: {
-  tab: CustomizeTabId;
-  search: string;
-  connectorGroup: ConnectorGroup;
-}) {
+function TabPanel({ tab, search }: { tab: CustomizeTabId; search: string }) {
   switch (tab) {
     case 'agents':
       return <CustomizeAgentsPanel search={search} />;
@@ -214,9 +203,7 @@ function TabPanel({
     case 'toolchains':
       return <CustomizeToolchainsPanel search={search} />;
     case 'connectors':
-      return (
-        <CustomizeConnectorsPanel search={search} group={connectorGroup} />
-      );
+      return <CustomizeConnectorsPanel search={search} />;
     case 'models':
       return <CustomizeModelsPanel search={search} />;
     default:
@@ -249,34 +236,6 @@ function useCustomizePath(): string {
 }
 
 /**
- * The Connectors tab's sub-tabs (`CONNECTOR_GROUPS`): the customer's own
- * connectors at the tab's own address, those for the platform's
- * infrastructure and the platform's internal servers each at a path under it. Routed tabs like Model hosting's
- * views, keeping the query string, so the installation scope and a search the
- * palette brought (`?q=`) survive a switch.
- */
-function ConnectorGroupTabs({
-  counts,
-}: {
-  counts: MusterCustomizeCounts['connectorGroups'];
-}) {
-  const customize = useCustomizePath();
-  const { search } = useLocation();
-  return (
-    <RouteTabs
-      basePath={`${customize}/connectors`}
-      search={search}
-      tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
-        id,
-        path,
-        title,
-        count: counts?.[id],
-      }))}
-    />
-  );
-}
-
-/**
  * One tab: its search and action, and its panel. Global-only (D4): no
  * organization filter; the Environment select shows only with more than one.
  *
@@ -286,14 +245,7 @@ function ConnectorGroupTabs({
  * under the search, from its own data, and only those that would change the
  * list.
  */
-function CustomizeTabContent({
-  tab,
-  connectorGroup = 'yours',
-}: {
-  tab: CustomizeTab;
-  /** The Connectors tab's sub-tab; the customer's own connectors by default. */
-  connectorGroup?: ConnectorGroup;
-}) {
+function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const { counts, hasSkillRepositories, hasWorkspaces, hasToolchains } =
     useCustomizeData();
   const canAddSkill = useCanAddSkill();
@@ -301,6 +253,8 @@ function CustomizeTabContent({
   const musterCounts = useMusterCustomizeCounts();
   const location = useLocation();
   const isPhone = usePhoneLayout();
+  // The Tags pick goes with a switch to another tab.
+  const sharedTags = useSharedTags()?.tags ?? [];
   // Seeded once from `?q=`, so a link (the command palette's "+N more") can
   // open the tab already searched. Not written back.
   const [search, setSearch] = useState(
@@ -312,10 +266,6 @@ function CustomizeTabContent({
     connectors: musterCounts.connectors,
     workflows: musterCounts.workflows,
   };
-  const groupTitle =
-    tab.id === 'connectors' && connectorGroup !== 'yours'
-      ? connectorGroupInfo(connectorGroup).title
-      : undefined;
   const tabs = CUSTOMIZE_TABS.filter(
     candidate =>
       candidate.id === tab.id ||
@@ -332,11 +282,7 @@ function CustomizeTabContent({
       // Each tab names itself, as the section's pages do: "Agents · Customize
       // · Agent Platform". Without it every tab carried the bare "Customize"
       // (live round 2, R5).
-      documentTitle={
-        groupTitle
-          ? [groupTitle, tab.title, 'Customize']
-          : [tab.title, 'Customize']
-      }
+      documentTitle={[tab.title, 'Customize']}
       description="Manage the agents, skills, connectors, models, workspaces and toolchains behind your sessions."
       actions={
         tab.id === 'workspaces' ? (
@@ -349,11 +295,9 @@ function CustomizeTabContent({
         )
       }
       tabs={tabs}
+      tabsSearch={withTagsSearch('', sharedTags)}
     >
       <Flex direction="column" gap="5">
-        {tab.id === 'connectors' && (
-          <ConnectorGroupTabs counts={musterCounts.connectorGroups} />
-        )}
         {tab.id === 'workspaces' && <CustomizeWorkspacesIntro />}
         <Flex
           align="center"
@@ -383,11 +327,7 @@ function CustomizeTabContent({
             create && <CreateAction create={create} fullWidth={isPhone} />
           )}
         </Flex>
-        <TabPanel
-          tab={tab.id}
-          search={search}
-          connectorGroup={connectorGroup}
-        />
+        <TabPanel tab={tab.id} search={search} />
       </Flex>
     </ShellPage>
   );
@@ -408,16 +348,19 @@ function DefaultTabRedirect() {
   );
 }
 
-/** Opens a Connectors sub-tab at its own address, keeping the query string. */
-function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
+/**
+ * A retired Connectors sub-tab (`RETIRED_CONNECTOR_GROUP_TAGS`), sent to the
+ * Connectors list filtered by the tag it became, keeping the rest of the
+ * query string.
+ */
+function RetiredConnectorGroupRedirect({ tag }: { tag: string }) {
   const { search } = useLocation();
   const customize = useCustomizePath();
-  const { path } = connectorGroupInfo(group);
   return (
     <Navigate
       to={{
-        pathname: `${customize}/connectors${path ? `/${path}` : ''}`,
-        search,
+        pathname: `${customize}/connectors`,
+        search: withTagsSearch(search, [tag]),
       }}
       replace
     />
@@ -441,17 +384,11 @@ function NearestTabRedirect() {
   );
 }
 
-function CustomizeTabPage({
-  tab,
-  connectorGroup,
-}: {
-  tab: CustomizeTab;
-  connectorGroup?: ConnectorGroup;
-}) {
+function CustomizeTabPage({ tab }: { tab: CustomizeTab }) {
   const { pathname, search } = useLocation();
   const { hasSkillRepositories } = useCustomizeData();
   // A trailing slash names the same tab, at its own address, so the strips
-  // can tell which tab and sub-tab are open.
+  // can tell which tab is open.
   if (pathname.length > 1 && pathname.endsWith('/')) {
     return (
       <Navigate
@@ -471,15 +408,11 @@ function CustomizeTabPage({
   // address's `q`, so a link that brings a search (the palette's "+N more")
   // reseeds it even when it lands on the tab already open. Typing never
   // writes `q` back, so a keystroke does not remount anything.
-  const query = new URLSearchParams(search).get('q') ?? '';
-  // Not keyed by the sub-tab: a search carries over to the next one.
-  return (
-    <CustomizeTabContent
-      key={`${tab.id}?${query}`}
-      tab={tab}
-      connectorGroup={connectorGroup}
-    />
-  );
+  const params = new URLSearchParams(search);
+  const query = params.get('q') ?? '';
+  // Keyed by the address's tags too, so a tag link reseeds the Tags filter.
+  const tags = params.get('tags') ?? '';
+  return <CustomizeTabContent key={`${tab.id}?${query}&${tags}`} tab={tab} />;
 }
 
 /**
@@ -497,20 +430,31 @@ function CustomizeViewTracking() {
  * Every tab's address renders this same element, so switching tabs keeps
  * the providers (and their reads) mounted.
  */
-function CustomizeScreen({
-  tab,
-  connectorGroup,
-}: {
-  tab: CustomizeTab;
-  connectorGroup?: ConnectorGroup;
-}) {
+function CustomizeScreen({ tab }: { tab: CustomizeTab }) {
+  // One Tags pick for every tab: seeded from `?tags=` (a tag link from a
+  // detail page), carried to the tab switched to, never written back.
+  // Re-seeded while rendering, not in an effect: the tab content the new
+  // address keys mounts in the same pass and reads the tags once.
+  const { search } = useLocation();
+  const linked = tagsOfSearch(search);
+  const linkedKey = linked.join(',');
+  const [tags, setTags] = useState<readonly string[]>(linked);
+  const [seededFrom, setSeededFrom] = useState(linkedKey);
+  if (linkedKey !== seededFrom) {
+    setSeededFrom(linkedKey);
+    if (linked.length > 0) {
+      setTags(linked);
+    }
+  }
   return (
-    <CustomizeMusterProvider>
-      <CustomizeDataProvider>
-        <CustomizeViewTracking />
-        <CustomizeTabPage tab={tab} connectorGroup={connectorGroup} />
-      </CustomizeDataProvider>
-    </CustomizeMusterProvider>
+    <SharedTagsProvider tags={tags} onTagsChange={setTags}>
+      <CustomizeMusterProvider>
+        <CustomizeDataProvider>
+          <CustomizeViewTracking />
+          <CustomizeTabPage tab={tab} />
+        </CustomizeDataProvider>
+      </CustomizeMusterProvider>
+    </SharedTagsProvider>
   );
 }
 
@@ -524,8 +468,8 @@ export type CustomizeSubPage = {
 
 /**
  * The shell's Customize page: a tab per area at `/customize/<tab>`, with
- * `/customize` opening the first, the Connectors tab's sub-tabs at
- * `/customize/connectors/<group>`, and everything deeper under a tab — a
+ * `/customize` opening the first, the Connectors tab's retired sub-tabs
+ * redirecting to its list filtered by a tag, and everything deeper under a tab — a
  * resource's page, its create and edit flows — the router of the plugin that
  * attached the tab (`pages`). A static path outranks the sub-page's splat,
  * so each tab's bare path is this screen and never the plugin's router.
@@ -550,21 +494,13 @@ export function CustomizePage({ pages = [] }: { pages?: CustomizeSubPage[] }) {
             element={<CustomizeScreen tab={tab} />}
           />
         ))}
-        {CONNECTOR_GROUPS.filter(group => group.path).map(group => (
-          <Route
-            key={group.id}
-            path={`connectors/${group.path}`}
-            element={
-              <CustomizeScreen tab={CONNECTORS_TAB} connectorGroup={group.id} />
-            }
-          />
-        ))}
-        {/* A retired sub-tab path (`families`) names the sub-tab it became. */}
-        {Object.entries(LEGACY_CONNECTOR_GROUP_PATHS).map(([path, group]) => (
+        {/* The retired sub-tabs (Infrastructure, Families, Internal) name
+            the tag that replaced each, until the end of 2026. */}
+        {Object.entries(RETIRED_CONNECTOR_GROUP_TAGS).map(([path, tag]) => (
           <Route
             key={path}
             path={`connectors/${path}`}
-            element={<ConnectorsTabRedirect group={group} />}
+            element={<RetiredConnectorGroupRedirect tag={tag} />}
           />
         ))}
         {pages

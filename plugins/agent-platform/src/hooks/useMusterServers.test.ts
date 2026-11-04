@@ -120,3 +120,25 @@ describe('serverInfoOf', () => {
     });
   });
 });
+
+describe('serverInfoOf tags', () => {
+  it('carries the tags of a tagged server and none otherwise', () => {
+    const tagged = new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: {
+          name: 'jira',
+          namespace: 'muster',
+          annotations: { 'ui.giantswarm.io/tags': 'ticketing,ops' },
+        },
+        spec: { type: 'streamable-http' },
+      } as never,
+      'gazelle',
+    );
+    expect(serverInfoOf(tagged).tags).toEqual(['ticketing', 'ops']);
+    expect(serverInfoOf(mcpServer('muster', 'github'))).not.toHaveProperty(
+      'tags',
+    );
+  });
+});

@@ -12,6 +12,7 @@ import {
   InfoHint,
   MoreOptions,
   useFieldValidation,
+  TagsField,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -79,11 +80,17 @@ function NewAgentPageContent() {
     setName,
     setSlug,
     setDescription,
+    addTags,
+    removeTag,
+    setTagDraft,
+    commitTagDraft,
     setSystemMessage,
     setEgressText,
     setEgressSetByPlatform,
     validationErrors,
     fieldErrors,
+    tagsOffered,
+    storedTags,
   } = useNewAgentForm();
   // The platform Harness the runtime field shows, for the summary below.
   const { platformChoice } = useRuntimeChoices();
@@ -162,10 +169,23 @@ function NewAgentPageContent() {
       reveal();
       return;
     }
+    // A typed tag not yet added goes with the agent, however step 1 is left.
+    // Where the field is not offered, its text stays out of the agent.
+    if (tagsOffered) {
+      commitTagDraft();
+    }
     if (nextLink) {
       navigate(nextLink());
     }
-  }, [errorCount, hasHiddenProblem, nextLink, navigate, reveal]);
+  }, [
+    errorCount,
+    hasHiddenProblem,
+    nextLink,
+    navigate,
+    reveal,
+    tagsOffered,
+    commitTagDraft,
+  ]);
 
   // Memoized so the frame's footer slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -313,6 +333,17 @@ function NewAgentPageContent() {
           placeholder="e.g. Sorts, summarises and routes support tickets"
           description="Shown to people when they pick an agent."
         />
+        {tagsOffered && (
+          <TagsField
+            tags={state.tags}
+            draft={state.tagDraft ?? ''}
+            error={errorFor('tags', fieldErrors.tags)}
+            stored={storedTags}
+            onDraftChange={setTagDraft}
+            onAdd={addTags}
+            onRemove={removeTag}
+          />
+        )}
         <TextAreaField
           label="Instructions"
           secondaryLabel="optional"

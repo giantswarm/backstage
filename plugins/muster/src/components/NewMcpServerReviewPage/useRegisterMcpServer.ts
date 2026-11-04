@@ -6,11 +6,11 @@ import { musterApiRef } from '../../apis';
 import { isMusterAuthError } from '../../lib/authError';
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import {
-  takesDisplayName,
+  takesArgument,
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
-import { displayNameSupportQuery } from './useTakesDisplayName';
+import { toolArgumentsQuery } from '../shared/hooks';
 
 export type McpServerRegistration = {
   definition: McpServerDefinition;
@@ -38,9 +38,10 @@ export type McpServerRegistration = {
  * The definition's `displayName` goes only to a tool whose input schema
  * declares it (muster v5.43.0 and later); an older muster refuses unknown
  * fields, so it gets the definition without it — the connector is then named
- * by its resource name, as before. Each tool's schema is checked on its own.
- * When a schema cannot be read, nothing is written: dropping the name then
- * would lose it without a word. Resolves to the definition the write tool was
+ * by its resource name, as before. Its `tags` likewise go only to a tool that
+ * declares them. Each tool's schema is checked on its own. When a schema
+ * cannot be read, nothing is written: dropping the name or the tags then
+ * would lose them without a word. Resolves to the definition the write tool was
  * sent.
  */
 export function useRegisterMcpServer() {
@@ -54,28 +55,35 @@ export function useRegisterMcpServer() {
       isEdit,
     }: McpServerRegistration): Promise<McpServerDefinition> => {
       const tool = isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create';
-      const { displayName, ...withoutDisplayName } = definition;
+      const { displayName, tags } = definition;
       const definitionFor = async (
         name: string,
       ): Promise<McpServerDefinition> => {
-        if (displayName === undefined) {
+        if (displayName === undefined && tags === undefined) {
           return definition;
         }
         const detail = await queryClient
-          .fetchQuery(displayNameSupportQuery(musterApi, name, installation))
+          .fetchQuery(toolArgumentsQuery(musterApi, name, installation))
           .catch(error => {
             if (isMusterAuthError(error)) {
               throw error;
             }
             throw new Error(
-              `Muster could not be asked whether it keeps the connector's name (${
+              `Muster could not be asked whether it keeps the connector's ${
+                displayName === undefined ? 'tags' : 'name'
+              } (${
                 (error as Error)?.message ?? error
               }). Nothing was saved; try again.`,
             );
           });
-        return takesDisplayName(detail.inputSchema)
-          ? definition
-          : withoutDisplayName;
+        const sent = { ...definition };
+        if (!takesArgument(detail.inputSchema, 'displayName')) {
+          delete sent.displayName;
+        }
+        if (!takesArgument(detail.inputSchema, 'tags')) {
+          delete sent.tags;
+        }
+        return sent;
       };
       const [validated, sent] = await Promise.all([
         definitionFor('core_mcpserver_validate'),

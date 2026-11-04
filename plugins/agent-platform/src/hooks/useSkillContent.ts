@@ -18,6 +18,8 @@ export type SkillContent = {
   commit: string;
   name: string;
   description: string;
+  /** Frontmatter `metadata.tags`; absent from older backends. */
+  tags?: string[];
   /** The Markdown body under the frontmatter. */
   instructions: string;
 } & SkillFileListing;
