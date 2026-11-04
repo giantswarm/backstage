@@ -41,6 +41,7 @@ export {
   ServerSignInStatus,
   SignInStatusActions,
   SignInStatusText,
+  StatusWithHint,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
 export {
@@ -50,6 +51,7 @@ export {
 } from './hooks';
 export type { ConnectorGroupPaths, WorkflowPageLinks } from './hooks';
 export type {
+  ExplainedStatusText,
   ServerSignInStatusState,
   StatusText,
   UseServerSignInStatusOptions,
@@ -80,6 +82,7 @@ export type {
 } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { familyHealthLabel } from './familyHealth';
+export { PORTAL_ONLY_LABEL, portalOnlyStatus } from './portalOnlyStatus';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
 export { useToolDescription } from './useToolDescription';
 export { DefinitionEditorDialog } from './DefinitionEditorDialog';

@@ -1,5 +1,6 @@
 export { useServerSignInStatus } from './useServerSignInStatus';
 export type {
+  ExplainedStatusText,
   ServerSignInStatusState,
   StatusText,
   UseServerSignInStatusOptions,
