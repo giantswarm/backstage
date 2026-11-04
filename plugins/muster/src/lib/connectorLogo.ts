@@ -8,8 +8,8 @@
 const ICON_PATTERN =
   /^data:image\/(?:svg\+xml|png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 
-/** muster's 64 KiB cap, base64-encoded, plus the longest prefix. */
-const MAX_ICON_LENGTH = Math.ceil((64 * 1024) / 3) * 4 + 32;
+/** The whole data: URI is at most 65536 characters, muster's cap. */
+const MAX_ICON_LENGTH = 65536;
 
 /**
  * The MCPServer's `.status.icon` when it is safe to put in an `<img>`: a
