@@ -35,11 +35,9 @@ import {
 import { getMcpUsage } from './mcpUsage';
 
 /**
- * muster's connector writes and their dry run. A tool error of one is muster
- * refusing the request: an invalid definition, or a Secret the person may not
- * create for the connector's client (giantswarm/giantswarm#38849). Reads
- * (`get`, `list`, `detect`) and `delete` keep the 500 every other tool
- * answers.
+ * muster's connector writes and their dry run, whose refusals answer 422
+ * ({@link isConnectorRefusal}). Reads (`get`, `list`, `detect`) and `delete`
+ * keep the 500 every other tool answers.
  */
 const CONNECTOR_WRITE_TOOLS = new Set([
   'core_mcpserver_create',
@@ -58,14 +56,45 @@ const CONNECTOR_WRITE_TOOLS = new Set([
 const CONNECTOR_REFUSAL_STATUS = 422;
 
 /**
- * A connector write's refusal as a 422 that keeps muster's message and further
- * text blocks for the page. Built from the tool error alone: the request's
- * arguments, which may carry a client secret, never reach it.
+ * The texts muster answers a refusal of a connector write with: a tool error
+ * carries no structured reason, and muster reports its own failures as tool
+ * errors too (a Kubernetes API error, a webhook that could not be called, a
+ * Secret it could not write), which must stay 500 and reach Sentry. So only
+ * these count, from muster's `internal/mcpserver` and `internal/callerwrite`:
+ *
+ * - the API server or the caller's RBAC refused the write (`Permission
+ *   denied: your user may not …`), also as the cause of a client Secret that
+ *   was not stored;
+ * - the definition is invalid (`Invalid MCP server definition: …`, and the
+ *   dry run's `Validation failed: …`);
+ * - the name is taken (`MCP server 'x' already exists`, or the generated
+ *   Secret name: `Secret "x" already exists …; retry …`);
+ * - muster's own rules (`Cannot create|update MCP server 'x': …`: another
+ *   server describes the issuer differently, the stored client belongs to
+ *   another authorization server, a server outside muster's namespace);
+ * - an admission policy denied the MCPServer (`ValidatingAdmissionPolicy …
+ *   denied request: …`, e.g. a Secret its writer may not get).
+ *
+ * A failure in the same breath as a refusal stays a failure: a server left
+ * behind because removing it failed too.
  */
-function connectorRefusal(error: MusterToolError): MusterToolError {
-  return Object.assign(new MusterToolError(error.message, error.details), {
-    statusCode: CONNECTOR_REFUSAL_STATUS,
-  });
+const CONNECTOR_REFUSALS = [
+  /^Permission denied: your user may not /,
+  /^Invalid MCP server definition: /,
+  /^Validation failed: /,
+  /^MCP server '[^']*' already exists$/,
+  /^Cannot (create|update) MCP server '[^']*': /,
+  /^Cannot store the client credentials of MCP server '[^']*'(, so it was not (created|updated))?: (Permission denied: your user may not |Secret "[^"]*" already exists in namespace )/,
+  /ValidatingAdmissionPolicy '[^']*' with binding '[^']*' denied request: /,
+];
+const CONNECTOR_FAILURES = [/Removing the server failed too/];
+
+/** Whether a connector write's tool error is muster refusing the request. */
+function isConnectorRefusal(message: string): boolean {
+  return (
+    CONNECTOR_REFUSALS.some(refusal => refusal.test(message)) &&
+    !CONNECTOR_FAILURES.some(failure => failure.test(message))
+  );
 }
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
@@ -627,9 +656,12 @@ export async function createRouter(
       if (
         CONNECTOR_WRITE_TOOLS.has(name) &&
         error instanceof MusterToolError &&
-        !(error instanceof MusterAuthRequiredError)
+        !(error instanceof MusterAuthRequiredError) &&
+        isConnectorRefusal(error.message)
       ) {
-        throw connectorRefusal(error);
+        // The tool error holds muster's message and text blocks only, never
+        // the request's arguments (which may carry a client secret).
+        throw Object.assign(error, { statusCode: CONNECTOR_REFUSAL_STATUS });
       }
       throw error;
     }

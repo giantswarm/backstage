@@ -1358,6 +1358,55 @@ describe('createRouter', () => {
       expect(response.body.error.reason).toBe('token_expired');
     });
 
+    // muster's refusals, as its connector write tools word them.
+    it.each([
+      'Permission denied: your user may not create MCPServer "jira" (mcpservers) in namespace "muster". Ask a platform admin to grant you the mcpserver-editor role. API server response: forbidden',
+      'Invalid MCP server definition: url is required',
+      'Validation failed: auth.authorizationServer needs an issuer',
+      "MCP server 'jira' already exists",
+      "Cannot create MCP server 'jira': server 'hubspot' pins issuer https://app.hubspot.com with another client. One issuer, one client: use an existing Secret with that server's client, or another issuer",
+      "Cannot update MCP server 'jira': its stored client belongs to the previous issuer and endpoints of auth.authorizationServer; re-enter it with clientCredentials",
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster".',
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: Secret "jira-oauth-client-ab12c" already exists in namespace "muster"; retry to generate another name',
+      "Failed to create MCP server: mcpservers.muster.giantswarm.io \"jira\" is forbidden: ValidatingAdmissionPolicy 'muster-mcpserver-secret-references' with binding 'muster-mcpserver-secret-references' denied request: the writer of an MCPServer may name only Secrets they may get",
+    ])('answers the refusal %j as a 422', async message => {
+      callTool.mockRejectedValue(new MusterToolError(message));
+
+      const response = await create();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.message).toBe(message);
+    });
+
+    // muster's own failures are tool errors too: they stay 500 and reach
+    // Sentry rather than read as the person's mistake.
+    it.each([
+      'Failed to create MCP server: etcdserver: request timed out',
+      'Failed to update MCP server: Internal error occurred: failed calling webhook "mcpservers.muster.giantswarm.io": connection refused',
+      'Failed to get existing MCP server: the server is currently unable to handle the request',
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: failed to create Secret "jira-oauth-client-ab12c" in namespace "muster": connection refused',
+      "Cannot store the client credentials of MCP server 'jira': it has no UID to own the Secret",
+      'Cannot store the client credentials of MCP server \'jira\': Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster". Removing the server failed too, so it is left behind without its client: delete MCP server \'jira\' (connection refused)',
+      'unknown args: [clientCredentials]. Allowed args: [name url]',
+    ])("leaves muster's failure %j a 500", async message => {
+      callTool.mockRejectedValue(new MusterToolError(message));
+
+      const response = await create();
+
+      expect(response.status).toBe(500);
+    });
+
+    it('keeps the stack of the tool error it answers 422', async () => {
+      const error = new MusterToolError(refusal);
+      callTool.mockRejectedValue(error);
+
+      const response = await create();
+
+      // The 422 is set on muster's own error, not on a copy without its stack.
+      expect(response.status).toBe(422);
+      expect((error as { statusCode?: number }).statusCode).toBe(422);
+    });
+
     it.each(['core_mcpserver_update', 'core_mcpserver_validate'])(
       "answers %s's refusal as a 422 too",
       async name => {
