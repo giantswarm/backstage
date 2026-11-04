@@ -343,7 +343,18 @@ test.describe('a connector whose client is typed into the wizard', () => {
 
     const group = credentialsGroup(admin);
     await expect(group.getByText('Client secret stored')).toBeVisible();
+    // The stored secret is in no text and in no field: text content does not
+    // cover what an input holds, so their values are read too.
     await expect(admin.locator('body')).not.toContainText(fixture.clientSecret);
+    await expect(group.getByLabel(/^Client secret/)).toHaveCount(0);
+    const values = await admin
+      .locator('input, textarea')
+      .evaluateAll(fields =>
+        fields.map(field => (field as HTMLInputElement).value),
+      );
+    expect(
+      values.filter(value => value.includes(fixture.clientSecret)),
+    ).toEqual([]);
 
     await group.getByRole('button', { name: 'Replace', exact: true }).click();
     await typeClient(admin, fixture.clientId, fixture.clientSecret);

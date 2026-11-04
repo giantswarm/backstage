@@ -66,16 +66,23 @@ export async function completeDexLogin(
   // The first form may take a moment (the popup opens blank and is sent
   // through muster first); a second one follows its submission at once.
   const first = !mayBeGranted || (await nextDexLogin(dex, 15_000)) === 'login';
-  if (first) {
-    await submitDexLogin(dex, user, password);
+  // Only a submission Dex answered with another login form has one to wait
+  // for: a single login goes straight to closing the popup.
+  if (first && (await submitDexLogin(dex, user, password)) === 'next') {
     if ((await nextDexLogin(dex, 5_000)) === 'login') {
       await submitDexLogin(dex, user, password);
     }
   }
   if (!dex.isClosed()) {
-    // A completion page that did not close itself: close it the way a
-    // person would.
-    await dex.close();
+    // A completion page: give it a moment in case it closes itself, then
+    // close it the way a person would.
+    await Promise.race([
+      dex.waitForEvent('close').catch(() => undefined),
+      new Promise(resolve => setTimeout(resolve, 3000)),
+    ]);
+    if (!dex.isClosed()) {
+      await dex.close();
+    }
   }
 }
 
@@ -106,14 +113,15 @@ async function nextDexLogin(
 
 /**
  * One submission of the lab Dex's login form; see {@link completeDexLogin}.
- * Done once the popup closes, leaves Dex, or shows a fresh login form (the
- * next login of a per-server sign-in); a form naming the refusal throws.
+ * `done` once the popup closes or leaves Dex, `next` when Dex shows a fresh
+ * login form (the next login of a per-server sign-in); a form naming the
+ * refusal throws.
  */
 async function submitDexLogin(
   dex: Page,
   user: LabUser,
   password: string,
-): Promise<void> {
+): Promise<'done' | 'next'> {
   await dex.waitForLoadState('domcontentloaded');
   await expect(dex, 'the popup lands on the lab Dex').toHaveURL(/\/dex\//);
   await dex.locator('input[name="login"]').fill(user.email);
@@ -166,14 +174,17 @@ async function submitDexLogin(
     ),
     settled(
       loaded.then(page => page === 'next'),
-      'done',
+      'next',
     ),
     timedOut,
   ]).finally(() => clearTimeout(timer));
   if (outcome === 'refused') {
     throw new DexRefusedLogin(user.email, await refusal.innerText());
   }
-  expect(outcome, 'Dex accepted the login and sent the popup on').toBe('done');
+  expect(outcome, 'Dex accepted the login and sent the popup on').not.toBe(
+    'timeout',
+  );
+  return outcome === 'next' ? 'next' : 'done';
 }
 
 /**
