@@ -32,6 +32,12 @@ export interface DiscoveredSkill {
    * content (`GET /agent-skills/content`). Absent from older backends.
    */
   fileCount?: number;
+  /**
+   * From a read-only source (`readOnly` in `agentPlatform.skills.repositories`,
+   * e.g. the platform's own skills): listed and addable to agents, but no
+   * edit pull requests. Absent reads as writable.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -163,6 +169,17 @@ export function githubRepoParts(
  */
 export function canProposeSkillTo(repoUrl: string): boolean {
   return repoUrl.startsWith('https://github.com/');
+}
+
+/**
+ * Whether the portal can propose a change to this skill: a github.com
+ * repository that is not a read-only source (the pull-request endpoint
+ * refuses both).
+ */
+export function canProposeSkillChange(
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'readOnly'>,
+): boolean {
+  return !skill.readOnly && canProposeSkillTo(skill.repoUrl);
 }
 
 /** A skill's directory with no leading/trailing slashes ('' at repo root). */

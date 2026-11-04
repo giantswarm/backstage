@@ -118,6 +118,39 @@ describe('discoverAgentSkills', () => {
     jest.restoreAllMocks();
   });
 
+  it('scans only below scanPath at the given ref, keeping repository-relative paths', async () => {
+    const fetchMock = mockGitHub(
+      [
+        { path: 'demo/SKILL.md', type: 'blob' },
+        { path: 'skills/overview/SKILL.md', type: 'blob' },
+        { path: 'skills/overview/refs/a.md', type: 'blob' },
+        { path: 'skillset/x/SKILL.md', type: 'blob' },
+      ],
+      { 'skills/overview/SKILL.md': '---\nname: overview\n---\nbody' },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { skills, ref, commit } = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-platform',
+      ref: 'v1.2.3',
+      scanPath: 'skills',
+      githubCredentialsProvider: credentialsProvider,
+    });
+
+    expect(ref).toBe('v1.2.3');
+    expect(commit).toBe(HEAD);
+    expect(skills.map(s => [s.path, s.commit, s.fileCount])).toEqual([
+      ['skills/overview', HEAD, 2],
+    ]);
+    // A tag needs no default-branch lookup.
+    expect(
+      fetchMock.mock.calls.some(([url]) => /\/repos\/[^/]+\/[^/]+$/.test(url)),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([url]) => url.includes('/commits/v1.2.3')),
+    ).toBe(true);
+  });
+
   it('finds every SKILL.md and maps it to a skill (repo url + dir path)', async () => {
     global.fetch = mockGitHub(
       [

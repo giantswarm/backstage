@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { DiscoveredSkill } from '../lib/skills';
+import { skillRepositoriesFrom } from '../lib/skillRepositories';
 import type { DiscoveredPlugin } from '../lib/plugins';
 
 export type SkillCatalog = {
@@ -38,8 +39,9 @@ export function useSkillCatalog(): SkillCatalog {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
 
-  const repositories =
-    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+  const repositories = skillRepositoriesFrom(config).map(
+    repository => repository.url,
+  );
 
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['agent-platform', 'skills', repositories.join(',')],

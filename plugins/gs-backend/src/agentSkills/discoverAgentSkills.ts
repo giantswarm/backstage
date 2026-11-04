@@ -2,7 +2,12 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { parseFrontmatter } from './frontmatter';
-import { assignSkillFiles, SkillFile, SkillFileList } from './skillFiles';
+import {
+  assignSkillFiles,
+  isBelowPath,
+  SkillFile,
+  SkillFileList,
+} from './skillFiles';
 import { DiscoveredPlugin, pluginsOf } from './discoverPlugins';
 
 /**
@@ -439,6 +444,11 @@ export async function discoverAgentSkills(options: {
   githubCredentialsProvider: GithubCredentialsProvider;
   /** Git ref to read; defaults to the repo's default branch. */
   ref?: string;
+  /**
+   * Directory to scan, repository-relative ('' or absent: the whole tree).
+   * Skills keep their repository-relative paths.
+   */
+  scanPath?: string;
   /** The last snapshot of this repository and ref, to reuse what it read. */
   previous?: SkillDiscoverySnapshot;
   logger?: LoggerService;
@@ -486,8 +496,12 @@ export async function discoverAgentSkills(options: {
     files = previous.files;
   } else {
     const tree = await readGitHubTree(owner, repo, commit, token, signal);
-    ({ skillDirs, files } = skillFilesFromTree(tree.entries, tree.truncated));
-    treePaths = tree.entries
+    const scanPath = options.scanPath ?? '';
+    const entries = tree.entries.filter(entry =>
+      isBelowPath(entry.path, scanPath),
+    );
+    ({ skillDirs, files } = skillFilesFromTree(entries, tree.truncated));
+    treePaths = entries
       .filter(entry => entry.type === 'blob')
       .map(entry => entry.path);
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some

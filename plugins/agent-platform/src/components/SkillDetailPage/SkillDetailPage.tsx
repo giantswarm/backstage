@@ -36,7 +36,7 @@ import { skillSource } from '../../lib/customize';
 import {
   canonicalRepoUrl,
   canonicalSkillId,
-  canProposeSkillTo,
+  canProposeSkillChange,
   isSkillContentReadable,
   resolveSkillDetailPath,
   sameCommit,
@@ -140,7 +140,11 @@ function OverviewTab({
         <Alert
           status="info"
           title="Read-only in the portal"
-          description="This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change or evaluate the skill in its repository."
+          description={
+            skill.readOnly
+              ? 'This skill comes from a read-only source.'
+              : "This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change or evaluate the skill in its repository."
+          }
         />
       )}
       {!readable && (
@@ -398,9 +402,9 @@ function SkillPage({
 
   // Edit and Evaluate both end in a pull request (the portal's own, or the
   // evaluator's), and pull requests are github.com only — the skill-PR
-  // endpoint refuses any other repository. A skill elsewhere is read-only
-  // here, and the Overview says why.
-  const proposable = canProposeSkillTo(skill.repoUrl);
+  // endpoint refuses any other repository and read-only sources. Such a
+  // skill is read-only here, and the Overview says why.
+  const proposable = canProposeSkillChange(skill);
 
   // "Evaluate with …" exists only where the Skill Evaluator role is
   // configured and resolves to an agent that can take a session (decisions

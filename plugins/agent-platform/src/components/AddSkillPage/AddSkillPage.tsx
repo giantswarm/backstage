@@ -34,6 +34,7 @@ import {
   repoSlug,
   type DiscoveredSkill,
 } from '../../lib/skills';
+import { skillRepositoriesFrom } from '../../lib/skillRepositories';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { skillsRouteRef } from '../../routes';
@@ -117,12 +118,15 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   // The target repositories: the github.com entries of the same
   // signed-in-config list the catalog is discovered from — the pull-request
   // endpoint refuses any other repository, so offering one would only end in
-  // an error. An edit targets the skill's own repository.
+  // an error. Read-only sources are never targets. An edit targets the
+  // skill's own repository.
   const { config } = useSignedInConfig();
   const editRepoUrl = edit?.skill.repoUrl;
   const configured = useMemo(
     () =>
-      config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [],
+      skillRepositoriesFrom(config)
+        .filter(repository => !repository.readOnly)
+        .map(repository => repository.url),
     [config],
   );
   const repositories = useMemo(

@@ -269,3 +269,10 @@ export function assignSkillFiles(
   }
   return lists;
 }
+
+/** Whether a repository-relative path is at or below `scanPath` ('' = all). */
+export function isBelowPath(path: string, scanPath: string): boolean {
+  return (
+    scanPath === '' || path === scanPath || path.startsWith(`${scanPath}/`)
+  );
+}

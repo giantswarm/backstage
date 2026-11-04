@@ -17,10 +17,10 @@ import {
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: string[] = [];
+let mockRepositories: Array<string | { url: string; readOnly?: boolean }> = [];
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
-    config: { getOptionalStringArray: () => mockRepositories },
+    config: { getOptional: () => mockRepositories },
     isLoading: false,
   }),
 }));
@@ -391,6 +391,20 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
         /Adding skills here needs a github\.com skill repository/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('offers no Add skill when the only github.com repository is read-only', async () => {
+    mockRepositories = [{ url: REPO, readOnly: true }];
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('link', { name: /Add skill/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /Adding skills here needs a github\.com skill repository/,
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('offers Add skill when one configured repository is on github.com', async () => {

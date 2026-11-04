@@ -41,6 +41,11 @@ export interface CreateSkillPullRequestOptions {
    */
   path?: string;
   /**
+   * For `create`: the directory the new skill goes below (the repository's
+   * configured scan `path`); the repository root when absent.
+   */
+  parentDir?: string;
+  /**
    * For `update`: the commit the edit started from. The SKILL.md there is the
    * version the edit replaces: when the default branch's file is no longer
    * that blob, the update is refused with 409 instead of overwriting what
@@ -255,7 +260,10 @@ export async function createSkillPullRequest(
   const isUpdate = options.kind === 'update';
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const api = `https://api.github.com/repos/${owner}/${repo}`;
-  const dir = isUpdate ? (options.path ?? '') : skillName;
+  const newDir = options.parentDir
+    ? `${options.parentDir}/${skillName}`
+    : skillName;
+  const dir = isUpdate ? (options.path ?? '') : newDir;
   const baseBranch = isUpdate
     ? updateBranchName(dir, repo)
     : `add-skill/${skillName}`;

@@ -15,7 +15,7 @@ import { useSkillContent } from '../../hooks/useSkillContent';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import {
   canonicalSkillId,
-  canProposeSkillTo,
+  canProposeSkillChange,
   isSkillContentReadable,
   parseSkillDetailPath,
 } from '../../lib/skills';
@@ -56,7 +56,7 @@ export function EditSkillPage() {
   // Pull requests are github.com only (the skill-PR endpoint refuses any
   // other repository), so a skill elsewhere is not read for a form it could
   // never submit.
-  const proposable = skill ? canProposeSkillTo(skill.repoUrl) : false;
+  const proposable = skill ? canProposeSkillChange(skill) : false;
   const { content, isLoading, error } = useSkillContent(
     readable && proposable ? skill : undefined,
   );
@@ -81,7 +81,11 @@ export function EditSkillPage() {
       <Alert
         status="info"
         title="Read-only in the portal"
-        description="This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change the skill in its repository."
+        description={
+          skill.readOnly
+            ? 'This skill comes from a read-only source.'
+            : "This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change the skill in its repository."
+        }
       />
     );
   } else if (skill && !readable) {

@@ -134,6 +134,32 @@ describe('createSkillPullRequest', () => {
     }
   });
 
+  it('adds the skill below parentDir', async () => {
+    const calls = mockGithub({
+      ...happyHandlers,
+      [`GET ${API}/contents/skills/ticket-triage/SKILL.md?ref=${HEAD_A}`]:
+        () => ({ status: 404 }),
+      [`PUT ${API}/contents/skills/ticket-triage/SKILL.md`]: () => ({
+        status: 201,
+        body: {},
+      }),
+    });
+
+    const result = await createSkillPullRequest({
+      ...input,
+      parentDir: 'skills',
+    });
+
+    expect(result.path).toBe('skills/ticket-triage/SKILL.md');
+    expect(result.branch).toBe('add-skill/ticket-triage');
+    expect(
+      calls.some(
+        call =>
+          call.key === `PUT ${API}/contents/skills/ticket-triage/SKILL.md`,
+      ),
+    ).toBe(true);
+  });
+
   it('refuses in words when the person has no push access', async () => {
     mockGithub({
       [`GET ${API}`]: () => ({

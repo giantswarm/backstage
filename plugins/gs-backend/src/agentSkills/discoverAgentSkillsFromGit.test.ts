@@ -154,6 +154,32 @@ describe('discoverAgentSkillsFromGit', () => {
     ]);
   });
 
+  it('scans only below scanPath, keeping repository-relative paths', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      scanPath: 'skills',
+      gitClient: fakeClone({
+        demo: '---\nname: demo\n---\n',
+        'skills/overview': '---\nname: overview\n---\n',
+        'skillset/x': '---\nname: x\n---\n',
+      }),
+    });
+
+    expect(result.skills.map(s => s.path)).toEqual(['skills/overview']);
+    expect([...result.contents.keys()]).toEqual(['skills/overview']);
+    expect([...(result.files?.keys() ?? [])]).toEqual(['skills/overview']);
+  });
+
+  it('finds no skills when scanPath does not exist', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      scanPath: 'skills/missing',
+      gitClient: fakeClone({ demo: '---\nname: demo\n---\n' }),
+    });
+
+    expect(result.skills).toEqual([]);
+  });
+
   it('discovers skills from a checkout, pins each to the head commit and keeps every SKILL.md', async () => {
     const result = await discoverAgentSkillsFromGit({
       repoUrl: 'http://gitserver.lab.local/skills.git/',

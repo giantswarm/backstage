@@ -296,6 +296,7 @@ interface ScannedFile {
  */
 async function walkCheckout(
   rootDir: string,
+  scanPath = '',
 ): Promise<{ skills: ScannedSkill[]; files: ScannedFile[] }> {
   const skills: ScannedSkill[] = [];
   const files: ScannedFile[] = [];
@@ -322,7 +323,21 @@ async function walkCheckout(
     }
   }
 
-  await walk(rootDir, '');
+  if (scanPath) {
+    // Only below `scanPath`, still reported repository-relative. A symlink on
+    // the way is not followed; a missing directory has no skills.
+    let dir = rootDir;
+    for (const segment of scanPath.split('/')) {
+      dir = path.join(dir, segment);
+      const stat = await lstat(dir).catch(() => undefined);
+      if (!stat?.isDirectory()) {
+        return { skills, files };
+      }
+    }
+    await walk(dir, scanPath);
+  } else {
+    await walk(rootDir, '');
+  }
   return { skills, files };
 }
 
@@ -450,6 +465,11 @@ export async function discoverAgentSkillsFromGit(options: {
   ref?: string;
   /** The commit the head must be; any head when absent. */
   commit?: string;
+  /**
+   * Directory to scan, repository-relative ('' or absent: the whole tree).
+   * Skills keep their repository-relative paths.
+   */
+  scanPath?: string;
   /** A repository-relative file whose bytes to keep whatever the budget. */
   mustRead?: string;
   /** Aborts the clone (the read guard's deadline). */
@@ -472,7 +492,7 @@ export async function discoverAgentSkillsFromGit(options: {
       throw movedOn(cloned, repoUrl, commit);
     }
 
-    const walked = await walkCheckout(dir);
+    const walked = await walkCheckout(dir, options.scanPath ?? '');
     const scanned = walked.skills;
     const { files, fileContents } = await listCheckoutFiles(
       await realpath(dir),

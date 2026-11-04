@@ -14,12 +14,12 @@ import { AddSkillPage, type SkillEdit } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: string[] = [];
+let mockRepositories: Array<string | { url: string; readOnly?: boolean }> = [];
 let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
     config: {
-      getOptionalStringArray: () => mockRepositories,
+      getOptional: () => mockRepositories,
       getOptionalString: (key: string) =>
         mockMetaAgents[key.replace('agentPlatform.metaAgents.', '')],
     },
@@ -310,6 +310,23 @@ describe('AddSkillPage', () => {
     expect(
       screen.getByText(/Only github.com repositories are offered/),
     ).toBeInTheDocument();
+  });
+
+  it('never offers a read-only repository', async () => {
+    mockRepositories = [
+      { url: 'https://github.com/giantswarm/agent-platform', readOnly: true },
+      REPO,
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Only github.com repositories are offered/),
+    ).not.toBeInTheDocument();
   });
 
   it('has nothing to propose to when no configured repository is on github.com', async () => {
