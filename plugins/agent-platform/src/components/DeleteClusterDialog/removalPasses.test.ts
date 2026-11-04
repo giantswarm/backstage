@@ -7,6 +7,8 @@ import {
   objectKey,
   summarizePass,
   type RemovalPass,
+  type RemovalState,
+  type RemovalStates,
 } from './removalPasses';
 
 function object(name: string, action: string): ObjectAction {
@@ -37,19 +39,21 @@ function result(
 function passOf(
   objects: ObjectAction[],
   extra: Partial<ClusterWriteResult> = {},
-  beingRemoved: ReadonlySet<string> = new Set(),
+  states: RemovalStates = new Map(),
 ): RemovalPass {
   return {
     label: 'Delete',
     result: result(objects, extra),
     at: new Date(),
-    beingRemoved,
+    states,
   };
 }
 
-/** The keys of the objects read as being removed. */
-function keys(...names: string[]): ReadonlySet<string> {
-  return new Set(names.map(name => objectKey(object(name, 'would-delete'))));
+/** The objects, by name, read in one state. */
+function read(state: RemovalState, ...names: string[]): RemovalStates {
+  return new Map(
+    names.map(name => [objectKey(object(name, 'would-delete')), state]),
+  );
 }
 
 describe('summarizePass', () => {
@@ -74,13 +78,31 @@ describe('summarizePass', () => {
       passOf(
         [object('demo1', 'delete'), object('demo1-apps', 'delete')],
         {},
-        keys('demo1'),
+        read('going', 'demo1'),
       ),
     ];
 
     expect(summarizePass(passes, 0)).toMatchObject({
       removed: [object('demo1-apps', 'delete')],
       stillGoing: [object('demo1', 'delete')],
+    });
+  });
+
+  it('counts a release that needed the pass as removed by it, though an earlier pass deleted it', () => {
+    // The Delete pass deleted the slice child while the cluster stood; the
+    // cluster gone, Finish removal suspends and deletes it again.
+    const passes = [
+      passOf([object('demo1-llm-d', 'delete')]),
+      passOf(
+        [object('demo1-llm-d', 'delete')],
+        {},
+        read('needs-pass', 'demo1-llm-d'),
+      ),
+    ];
+
+    expect(summarizePass(passes, 1)).toMatchObject({
+      removed: [object('demo1-llm-d', 'delete')],
+      stillGoing: [],
     });
   });
 
@@ -179,7 +201,7 @@ describe('judgeNextPass', () => {
       judgeNextPass(
         result([object('demo1-apps', 'would-delete')]),
         reopened,
-        keys('demo1-apps'),
+        read('going', 'demo1-apps'),
       ),
     ).toEqual({
       state: 'waiting',
@@ -194,9 +216,34 @@ describe('judgeNextPass', () => {
           object('demo1-x', 'would-delete'),
         ]),
         reopened,
-        keys('demo1-apps'),
+        read('going', 'demo1-apps'),
       ),
     ).toEqual({ state: 'ready', objects: [object('demo1-x', 'would-delete')] });
+  });
+
+  it('is ready for a release a pass deleted when it is read as needing another pass', () => {
+    const deletedWhileClusterStood = [
+      passOf([object('demo1-llm-d', 'delete')], { nextStep: 'uninstall' }),
+    ];
+
+    expect(
+      judgeNextPass(
+        result([object('demo1-llm-d', 'would-delete')]),
+        deletedWhileClusterStood,
+        read('needs-pass', 'demo1-llm-d'),
+      ),
+    ).toEqual({
+      state: 'ready',
+      objects: [object('demo1-llm-d', 'would-delete')],
+    });
+    // Suspended by that pass: going, nothing new.
+    expect(
+      judgeNextPass(
+        result([object('demo1-llm-d', 'would-delete')]),
+        deletedWhileClusterStood,
+        read('going', 'demo1-llm-d'),
+      ).state,
+    ).toBe('waiting');
   });
 
   it("is stuck when what is left is not cluster-manager's to remove", () => {

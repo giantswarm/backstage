@@ -1,6 +1,11 @@
 import type { ObjectAction } from '../../lib/clusterManager';
-import { isBeingRemoved, objectPath, readBeingRemoved } from './beingRemoved';
-import { objectKey } from './removalPasses';
+import {
+  mergeRemovalStates,
+  objectPath,
+  readRemovalStates,
+  removalStateOf,
+} from './beingRemoved';
+import { objectKey, type RemovalStates } from './removalPasses';
 
 function object(
   kind: string,
@@ -24,14 +29,14 @@ function response(status: number, body: unknown = {}): Response {
 describe('objectPath', () => {
   it("builds the object's path at the version cluster-manager read it", () => {
     expect(objectPath(object('HelmRelease', 'demo1'))).toBe(
-      '/apis/helm.toolkit.fluxcd.io/v2/namespaces/org-acme/helmreleases/demo1',
+      '/apis/helm.toolkit.fluxcd.io/v2/namespaces/org-acme/helmreleases/demo1/',
     );
     expect(
       objectPath(
         object('OCIRepository', 'demo1', 'source.toolkit.fluxcd.io/v1beta2'),
       ),
     ).toBe(
-      '/apis/source.toolkit.fluxcd.io/v1beta2/namespaces/org-acme/ocirepositories/demo1',
+      '/apis/source.toolkit.fluxcd.io/v1beta2/namespaces/org-acme/ocirepositories/demo1/',
     );
     expect(
       objectPath(
@@ -42,10 +47,10 @@ describe('objectPath', () => {
         ),
       ),
     ).toBe(
-      '/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/org-acme/kustomizations/inst-1-clusters-demo1',
+      '/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/org-acme/kustomizations/inst-1-clusters-demo1/',
     );
     expect(objectPath(object('ConfigMap', 'demo1-cluster-values', 'v1'))).toBe(
-      '/api/v1/namespaces/org-acme/configmaps/demo1-cluster-values',
+      '/api/v1/namespaces/org-acme/configmaps/demo1-cluster-values/',
     );
   });
 
@@ -54,45 +59,49 @@ describe('objectPath', () => {
     expect(
       objectPath(object('HelmRelease', 'demo1', 'other.io/v1')),
     ).toBeUndefined();
+    expect(
+      objectPath(object('ConfigMap', 'demo1', 'other.io/v1')),
+    ).toBeUndefined();
   });
 });
 
-describe('isBeingRemoved', () => {
-  it('is so once the deletion was requested', () => {
-    expect(isBeingRemoved(object('HelmRelease', 'demo1'), {})).toBe(false);
+describe('removalStateOf', () => {
+  it('is going once the deletion was requested', () => {
+    expect(removalStateOf(object('HelmRelease', 'demo1'), {})).toBe('live');
     expect(
-      isBeingRemoved(object('HelmRelease', 'demo1'), { metadata: TERMINATING }),
-    ).toBe(true);
+      removalStateOf(object('HelmRelease', 'demo1'), { metadata: TERMINATING }),
+    ).toBe('going');
     expect(
-      isBeingRemoved(object('OCIRepository', 'demo1'), {
+      removalStateOf(object('OCIRepository', 'demo1'), {
         metadata: TERMINATING,
       }),
-    ).toBe(true);
+    ).toBe('going');
   });
 
-  it('is not so for a release into the cluster that a pass would still suspend', () => {
+  it('needs a pass for a release into the cluster that a pass would still suspend', () => {
     const child = object('HelmRelease', 'demo1-llm-d');
     const kubeConfig = { secretRef: { name: 'demo1-kubeconfig' } };
 
     expect(
-      isBeingRemoved(child, { metadata: TERMINATING, spec: { kubeConfig } }),
-    ).toBe(false);
+      removalStateOf(child, { metadata: TERMINATING, spec: { kubeConfig } }),
+    ).toBe('needs-pass');
     expect(
-      isBeingRemoved(child, {
+      removalStateOf(child, {
         metadata: TERMINATING,
         spec: { kubeConfig, suspend: true },
       }),
-    ).toBe(true);
+    ).toBe('going');
+    expect(removalStateOf(child, { spec: { kubeConfig } })).toBe('live');
   });
 });
 
-describe('readBeingRemoved', () => {
-  it('reads each object a pass would delete as the person, and keeps those being removed', async () => {
+describe('readRemovalStates', () => {
+  it('reads each object a pass would delete as the person, and answers the state of those read', async () => {
     const proxy = jest.fn(async ({ path }: { path: string }) => {
-      if (path.endsWith('/helmreleases/demo1')) {
+      if (path.endsWith('/helmreleases/demo1/')) {
         return response(200, { metadata: TERMINATING });
       }
-      if (path.endsWith('/ocirepositories/demo1')) {
+      if (path.endsWith('/ocirepositories/demo1/')) {
         return response(200, { metadata: {} });
       }
       return response(403);
@@ -100,35 +109,94 @@ describe('readBeingRemoved', () => {
     const objects = [
       object('HelmRelease', 'demo1'),
       object('OCIRepository', 'demo1', 'source.toolkit.fluxcd.io/v1'),
-      // Not allowed to read: counts as new.
+      // Not allowed to read: not in the answer.
       object('ConfigMap', 'demo1-cluster-values', 'v1'),
       // Not a delete: not read.
       object('HelmRelease', 'demo1-x', undefined, 'would-update'),
     ];
 
-    const found = await readBeingRemoved({ proxy }, 'inst-1', objects);
+    const read = await readRemovalStates(
+      { proxy },
+      'inst-1',
+      objects,
+      new Map(),
+    );
 
-    expect([...found]).toEqual([objectKey(objects[0])]);
+    expect([...read]).toEqual([
+      [objectKey(objects[0]), 'going'],
+      [objectKey(objects[1]), 'live'],
+    ]);
     expect(proxy).toHaveBeenCalledTimes(3);
     expect(proxy).toHaveBeenCalledWith({
       clusterName: 'inst-1',
-      path: '/apis/helm.toolkit.fluxcd.io/v2/namespaces/org-acme/helmreleases/demo1',
+      path: '/apis/helm.toolkit.fluxcd.io/v2/namespaces/org-acme/helmreleases/demo1/',
+      init: { signal: expect.any(AbortSignal) },
     });
   });
 
-  it('counts an object as new when its read fails or takes too long', async () => {
+  it('does not read again an object known to be going', async () => {
+    const proxy = jest.fn(async () => response(200, { metadata: {} }));
+    const going = object('HelmRelease', 'demo1');
+    const live = object('HelmRelease', 'demo1-apps');
+    const known: RemovalStates = new Map([
+      [objectKey(going), 'going'],
+      [objectKey(live), 'live'],
+    ]);
+
+    await readRemovalStates({ proxy }, 'inst-1', [going, live], known);
+
+    expect(proxy).toHaveBeenCalledTimes(1);
+    expect(proxy).toHaveBeenCalledWith(
+      expect.objectContaining({ path: expect.stringMatching(/demo1-apps\/$/) }),
+    );
+  });
+
+  it('leaves out an object whose read fails, and aborts one that takes too long', async () => {
+    let signal: AbortSignal | undefined;
     const proxy = jest
       .fn()
       .mockRejectedValueOnce(new Error('proxy down'))
-      .mockReturnValueOnce(new Promise(() => {}));
+      .mockImplementationOnce(({ init }: { init: RequestInit }) => {
+        signal = init.signal ?? undefined;
+        return new Promise(() => {});
+      });
 
-    const found = await readBeingRemoved(
+    const read = await readRemovalStates(
       { proxy },
       'inst-1',
       [object('HelmRelease', 'a'), object('HelmRelease', 'b')],
+      new Map(),
       10,
     );
 
-    expect(found.size).toBe(0);
+    expect(read.size).toBe(0);
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe('mergeRemovalStates', () => {
+  const a = object('HelmRelease', 'a');
+  const b = object('HelmRelease', 'b');
+  const c = object('HelmRelease', 'c');
+
+  it('replaces what was read, keeps what was not, and forgets what is no longer listed', () => {
+    const known: RemovalStates = new Map([
+      [objectKey(a), 'going'],
+      [objectKey(b), 'going'],
+      [objectKey(c), 'going'],
+    ]);
+
+    const merged = mergeRemovalStates(
+      known,
+      // c is gone: the dry run no longer lists it.
+      [a, b],
+      // a was deleted and made again; b's read failed.
+      new Map([[objectKey(a), 'live']]),
+    );
+
+    expect([...merged]).toEqual([
+      [objectKey(a), 'live'],
+      [objectKey(b), 'going'],
+    ]);
   });
 });

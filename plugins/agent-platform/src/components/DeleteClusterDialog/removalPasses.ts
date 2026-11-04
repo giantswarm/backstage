@@ -25,18 +25,30 @@ export const REMOVAL_CHECK_WINDOW_MS = 30 * 60_000;
 export const REMOVAL_CHECK_LIMIT =
   REMOVAL_CHECK_WINDOW_MS / REMOVAL_CHECK_INTERVAL_MS;
 
+/**
+ * What another pass would do to an object a dry run would delete, as the
+ * person reads it (`beingRemoved.ts`): `live` — its deletion was not requested,
+ * a delete is a removal anew; `going` — it was, a delete again changes
+ * nothing; `needs-pass` — it was, but a pass would still suspend it so that
+ * helm-controller lets it go (giantswarm/cluster-manager#210).
+ */
+export type RemovalState = 'live' | 'going' | 'needs-pass';
+
+/** The states known of the objects, by their key ({@link objectKey}); an object not in it was never read. */
+export type RemovalStates = ReadonlyMap<string, RemovalState>;
+
 /** One `delete_cluster` call in mode apply, and the button that made it. */
 export type RemovalPass = {
   label: string;
   result: ClusterWriteResult;
   at: Date;
   /**
-   * The objects read as being removed already before the pass started
-   * ({@link objectKey}), by their `deletionTimestamp`: a delete of one is not
-   * a removal anew — after the dialog was reopened, too, when no earlier pass
-   * of this opening deleted it.
+   * What was read of the objects before the pass started: a delete of one
+   * `going` is not a removal anew — after the dialog was reopened, too, when
+   * no earlier pass of this opening deleted it — and the delete of one that
+   * `needs-pass` is, though an earlier pass deleted it.
    */
-  beingRemoved: ReadonlySet<string>;
+  states: RemovalStates;
 };
 
 /** What one pass did, against the passes before it in the dialog. */
@@ -108,19 +120,35 @@ function removedKeys(passes: readonly RemovalPass[]): Set<string> {
 }
 
 /**
+ * Whether a delete of the object is one again, of an object still terminating:
+ * read as `going`, or deleted by a pass already — unless it was read as
+ * needing the pass.
+ */
+function deletedAgain(
+  object: ObjectAction,
+  removed: ReadonlySet<string>,
+  states: RemovalStates,
+): boolean {
+  const state = states.get(objectKey(object));
+  if (state === 'needs-pass') {
+    return false;
+  }
+  return state === 'going' || removed.has(objectKey(object));
+}
+
+/**
  * What the pass at `index` removed: an object an earlier pass deleted already,
  * or one read as being removed before the pass, is still going
  * (cluster-manager deletes a terminating object again and answers `delete`),
- * not removed anew.
+ * not removed anew — unless it was read as needing the pass.
  */
 export function summarizePass(
   passes: readonly RemovalPass[],
   index: number,
 ): PassSummary {
   const before = removedKeys(passes.slice(0, index));
-  const { result, beingRemoved } = passes[index];
-  const going = (object: ObjectAction) =>
-    before.has(objectKey(object)) || beingRemoved.has(objectKey(object));
+  const { result, states } = passes[index];
+  const going = (object: ObjectAction) => deletedAgain(object, before, states);
   const deleted = result.objects.filter(isDelete);
   const others = result.objects.filter(object => !isDelete(object));
   return {
@@ -134,22 +162,21 @@ export function summarizePass(
 }
 
 /**
- * Judges the dry run of the next pass against the passes made and the objects
- * read as being removed: it is worth running when it would change anything
- * but delete again an object a pass deleted already or one being removed
- * (which is still terminating). Otherwise the reason to wait is
- * cluster-manager's next step — the dry run's, or the last pass's while the
- * objects it deleted are still going.
+ * Judges the dry run of the next pass against the passes made and the states
+ * read of its objects: it is worth running when it would change anything but
+ * delete again an object a pass deleted already or one read as `going`
+ * (which is still terminating) — one read as needing the pass is worth it.
+ * Otherwise the reason to wait is cluster-manager's next step — the dry
+ * run's, or the last pass's while the objects it deleted are still going.
  */
 export function judgeNextPass(
   check: ClusterWriteResult,
   passes: readonly RemovalPass[],
-  beingRemoved: ReadonlySet<string> = new Set(),
+  states: RemovalStates = new Map(),
 ): NextPass {
   const removed = removedKeys(passes);
   const again = (object: ObjectAction) =>
-    object.action === WOULD_DELETE &&
-    (removed.has(objectKey(object)) || beingRemoved.has(objectKey(object)));
+    object.action === WOULD_DELETE && deletedAgain(object, removed, states);
   const fresh = check.objects.filter(
     object => object.action.startsWith(WOULD) && !again(object),
   );

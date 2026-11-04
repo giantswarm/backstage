@@ -26,6 +26,7 @@ import {
   isNothingLeft,
   type ClusterWriteResult,
   type DeleteClusterInput,
+  type ObjectAction,
   type WriteMode,
 } from '../../lib/clusterManager';
 import {
@@ -42,7 +43,7 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PartialWriteOutcome } from '../GpuNodePools/PartialWriteOutcome';
 import { NextPassOutcome } from './NextPassOutcome';
 import { PassOutcome } from './PassOutcome';
-import { readBeingRemoved } from './beingRemoved';
+import { mergeRemovalStates, readRemovalStates } from './beingRemoved';
 import {
   REMOVAL_CHECK_INTERVAL_MS,
   REMOVAL_CHECK_LIMIT,
@@ -51,6 +52,7 @@ import {
   objectKey,
   type NextPass,
   type RemovalPass,
+  type RemovalStates,
 } from './removalPasses';
 
 /** The last dry run of the next pass, judged against the passes made. */
@@ -62,7 +64,7 @@ type NextCheck = {
   paused: boolean;
 };
 
-const NONE_BEING_REMOVED: ReadonlySet<string> = new Set();
+const NO_STATES: RemovalStates = new Map();
 
 export type DeleteClusterDialogProps = {
   isOpen: boolean;
@@ -123,17 +125,18 @@ export function DeleteClusterDialog({
   const [nextCheck, setNextCheck] = useState<NextCheck>();
   const [committed, setCommitted] = useState<ClusterWriteResult>();
   /**
-   * The objects a dry run of this opening would delete that were read as
-   * being removed already ({@link objectKey}). A deletion once requested
-   * stays so until the object is gone, so the set only grows.
+   * What was read of the objects the dry runs of this opening would delete
+   * (`beingRemoved.ts`), kept in a ref too: the check's effect and a pass
+   * started while a read is out both need the latest.
    */
-  const [beingRemoved, setBeingRemoved] =
-    useState<ReadonlySet<string>>(NONE_BEING_REMOVED);
-  const noteBeingRemoved = (found: ReadonlySet<string>) => {
-    if (found.size > 0) {
-      setBeingRemoved(previous => new Set([...previous, ...found]));
-    }
+  const [states, setStates] = useState<RemovalStates>(NO_STATES);
+  const statesRef = useRef<RemovalStates>(NO_STATES);
+  const updateStates = (next: RemovalStates) => {
+    statesRef.current = next;
+    setStates(next);
   };
+  /** The read after the opening dry run: a pass waits for it before writing. */
+  const openingRead = useRef<Promise<void>>();
   const input: DeleteClusterInput = { organization, name };
   const startAnswer = useOpenGeneration(isOpen);
   // A Delete without the name typed says so on the field and focuses it, as
@@ -159,16 +162,21 @@ export function DeleteClusterDialog({
     setVerdicts(judged);
     setMode(preferredMode(judged));
     if (judged.apply.state === 'ready') {
-      // The preview shows already: a pass started before the read answers
-      // counts the objects as new, as without it.
-      const found = await readBeingRemoved(
+      // The preview shows already; a pass pressed before the read answers
+      // waits for it (onPass).
+      const { objects } = judged.apply.result;
+      const reading = readRemovalStates(
         kubernetesApi,
         installation,
-        judged.apply.result.objects,
-      );
-      if (isCurrent()) {
-        noteBeingRemoved(found);
-      }
+        objects,
+        statesRef.current,
+      ).then(read => {
+        if (isCurrent()) {
+          updateStates(mergeRemovalStates(statesRef.current, objects, read));
+        }
+      });
+      openingRead.current = reading;
+      await reading;
     }
   };
 
@@ -183,7 +191,8 @@ export function DeleteClusterDialog({
       setPassFailed(false);
       setNextCheck(undefined);
       setCommitted(undefined);
-      setBeingRemoved(NONE_BEING_REMOVED);
+      updateStates(NO_STATES);
+      openingRead.current = undefined;
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -191,17 +200,19 @@ export function DeleteClusterDialog({
 
   /** Delete, Continue after a partial answer, Finish removal and the live step after a merge: the same call. */
   const onPass = async (label: string) => {
-    // What was read as being removed before the pass: a read answered later
-    // could see the pass's own delete.
-    const before = beingRemoved;
     setNextCheck(undefined);
     setPassFailed(false);
     setPassing(true);
     try {
+      // The opening read must answer before the write: answered after, it
+      // could see the pass's own delete. It gives up within its timeout.
+      await openingRead.current;
+      // What was read before the pass, which it is judged against.
+      const before = statesRef.current;
       const result = await write.remove(input, { mode: 'apply' });
       setPasses(previous => [
         ...previous,
-        { label, result, at: new Date(), beingRemoved: before },
+        { label, result, at: new Date(), states: before },
       ]);
     } catch {
       // Shown from `write.failure`.
@@ -232,6 +243,8 @@ export function DeleteClusterDialog({
     }
   };
 
+  /** A call on its way, or a pass waiting for the opening read. */
+  const busy = write.isBusy || passing;
   const checking = isOpen && !verdicts;
   const last = passes.at(-1);
   const removed = last?.result;
@@ -265,18 +278,22 @@ export function DeleteClusterDialog({
       checks += 1;
       const isCurrent = startAnswer();
       let next: NextPass | undefined;
-      let found: ReadonlySet<string> = NONE_BEING_REMOVED;
+      let known: RemovalStates | undefined;
       try {
         const result = await write.remove(input, {
           mode: 'apply',
           dryRun: true,
         });
-        found = await readBeingRemoved(
+        // Only what is not known to be going: a read that fails keeps what
+        // an earlier one found.
+        const read = await readRemovalStates(
           kubernetesApi,
           installation,
           result.objects,
+          statesRef.current,
         );
-        next = judgeNextPass(result, passes, found);
+        known = mergeRemovalStates(statesRef.current, result.objects, read);
+        next = judgeNextPass(result, passes, known);
       } catch {
         // Shown from `write.failure` and tried again: a blip must not end the
         // watch. Nothing left reads as the removal complete and ends it.
@@ -284,7 +301,9 @@ export function DeleteClusterDialog({
       if (cancelled || !isCurrent()) {
         return;
       }
-      noteBeingRemoved(found);
+      if (known) {
+        updateStates(known);
+      }
       const paused =
         next?.state === 'stuck' ||
         (next?.state !== 'ready' && checks >= REMOVAL_CHECK_LIMIT);
@@ -307,9 +326,9 @@ export function DeleteClusterDialog({
         variant="secondary"
         size="small"
         onPress={() => onPass('Finish removal')}
-        isDisabled={write.isBusy}
+        isDisabled={busy}
       >
-        {write.isWriting ? 'Removing…' : 'Finish removal'}
+        {write.isWriting || passing ? 'Removing…' : 'Finish removal'}
       </Button>
     </div>
   );
@@ -318,7 +337,8 @@ export function DeleteClusterDialog({
     <BusyDialog
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      isBusy={write.isWriting}
+      // A pass waiting for the opening read is on its way too.
+      isBusy={write.isWriting || passing}
       width="min(90vw, 720px)"
     >
       {close => (
@@ -343,7 +363,7 @@ export function DeleteClusterDialog({
               )}
 
               {preview && !started && (
-                <WhatGoes result={preview} beingRemoved={beingRemoved} />
+                <WhatGoes result={preview} states={states} />
               )}
 
               {refusedEverywhere && verdicts && (
@@ -452,7 +472,7 @@ export function DeleteClusterDialog({
                     result={pass.result}
                     action={pass.label}
                     onContinue={() => onPass('Continue')}
-                    isBusy={write.isBusy}
+                    isBusy={busy}
                   />
                 ) : (
                   <PassOutcome
@@ -507,11 +527,9 @@ export function DeleteClusterDialog({
                         variant="secondary"
                         size="small"
                         onPress={() => onPass('Live step')}
-                        isDisabled={write.isBusy}
+                        isDisabled={busy}
                       >
-                        {write.isBusy
-                          ? 'Running…'
-                          : 'Merged: run the live step'}
+                        {busy ? 'Running…' : 'Merged: run the live step'}
                       </Button>
                     )
                   }
@@ -535,9 +553,9 @@ export function DeleteClusterDialog({
                   onPress={onConfirm}
                   // Waits only for the dry run's answer and the call in flight;
                   // a missing name is said on the field instead.
-                  isDisabled={!preview || !mode || write.isBusy}
+                  isDisabled={!preview || !mode || busy}
                 >
-                  {deleteLabel(mode, write.isBusy)}
+                  {deleteLabel(mode, busy)}
                 </Button>
               )}
             </Flex>
@@ -554,19 +572,18 @@ export function DeleteClusterDialog({
  */
 function WhatGoes({
   result,
-  beingRemoved,
+  states,
 }: {
   result: ClusterWriteResult;
-  beingRemoved: ReadonlySet<string>;
+  states: RemovalStates;
 }) {
   const withCluster = result.withCluster ?? [];
   const models = result.models ?? [];
-  const going = result.objects.filter(object =>
-    beingRemoved.has(objectKey(object)),
-  );
-  const rest = result.objects.filter(
-    object => !beingRemoved.has(objectKey(object)),
-  );
+  // Read as terminating, whether or not a pass would still help it go.
+  const terminating = (object: ObjectAction) =>
+    (states.get(objectKey(object)) ?? 'live') !== 'live';
+  const going = result.objects.filter(terminating);
+  const rest = result.objects.filter(object => !terminating(object));
   return (
     <Flex direction="column" gap="2" data-testid="what-goes">
       <Text variant="body-small">

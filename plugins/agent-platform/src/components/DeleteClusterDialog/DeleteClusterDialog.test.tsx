@@ -183,12 +183,15 @@ type Scenario = {
   beingRemoved?: string[];
   /** Of those, the releases into the gone cluster that are not suspended yet (giantswarm/cluster-manager#210). */
   unsuspended?: string[];
+  /** The reads answer only once this settles: a slow Kubernetes proxy. */
+  holdReads?: Promise<void>;
 };
 
 /** The installation's API as the person reads it: GET of one object. */
 function makeKubernetesApi(scenario: Scenario = {}) {
   const proxy = jest.fn(async ({ path }: { path: string }) => {
-    const name = path.split('/').at(-1)!;
+    await scenario.holdReads;
+    const name = path.split('/').filter(Boolean).at(-1)!;
     const terminating = scenario.beingRemoved?.includes(name);
     const unsuspended = scenario.unsuspended?.includes(name);
     const body = {
@@ -269,6 +272,7 @@ async function renderDialog(
   musterApi = makeMusterApi(scenario),
 ) {
   const { api, callTool } = musterApi;
+  const kubernetesApi = makeKubernetesApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -276,7 +280,7 @@ async function renderDialog(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
-        [kubernetesApiRef, makeKubernetesApi(scenario)],
+        [kubernetesApiRef, kubernetesApi],
       ]}
     >
       <QueryClientProvider client={queryClient}>
@@ -291,7 +295,7 @@ async function renderDialog(
       </QueryClientProvider>
     </TestApiProvider>,
   );
-  return { callTool };
+  return { callTool, proxy: kubernetesApi.proxy };
 }
 
 /** Types the name and presses Delete cluster, once the dry runs answered. */
@@ -563,6 +567,105 @@ describe('DeleteClusterDialog', () => {
       expect(
         screen.queryByRole('button', { name: 'Finish removal' }),
       ).not.toBeInTheDocument();
+    });
+
+    it('waits for the opening read when Delete is pressed before it answers', async () => {
+      let release!: () => void;
+      const user = userEvent.setup();
+      const { callTool } = await renderDialog(
+        {
+          opening: LEFTOVERS,
+          beingRemoved: ['demo1-llm-d'],
+          passes: [LEFTOVERS_REMOVED],
+          checks: [ORPHAN_GOING],
+          holdReads: new Promise(resolve => {
+            release = resolve;
+          }),
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      // The pass waits for what the person reads before it writes.
+      expect(screen.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+      expect(writesOf(callTool)).toHaveLength(0);
+      release();
+
+      const first = await screen.findByTestId('delete-pass');
+      expect(first).toHaveTextContent('Removed as you: 1 object');
+      expect(first).toHaveTextContent(
+        'Still being removed: HelmRelease org-acme/demo1-llm-d.',
+      );
+      expect(writesOf(callTool)).toHaveLength(1);
+    });
+
+    it('does not read again what it read as going, so a failed read cannot bring Finish removal back', async () => {
+      jest.useFakeTimers();
+      try {
+        const user = userEvent.setup({ delay: null });
+        const source = {
+          ...object('OCIRepository', 'demo1-observability', 'would-delete'),
+          apiVersion: 'source.toolkit.fluxcd.io/v1',
+        };
+        const { proxy } = await renderDialog(
+          {
+            opening: CLUSTER_GOING,
+            passes: [pass([], { nextStep: BEING_REMOVED })],
+            checks: [dryRun([source])],
+            beingRemoved: ['demo1-observability'],
+          },
+          false,
+        );
+        await deleteCluster(user);
+        expect(
+          await screen.findByText(
+            '1 object is still being removed: OCIRepository org-acme/demo1-observability.',
+          ),
+        ).toBeInTheDocument();
+        expect(proxy).toHaveBeenCalledTimes(1);
+        // From now on every read would fail.
+        proxy.mockRejectedValue(new Error('proxy down'));
+
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+
+        expect(proxy).toHaveBeenCalledTimes(1);
+        expect(
+          screen.queryByRole('button', { name: 'Finish removal' }),
+        ).not.toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('offers Finish removal for a release a pass of this opening deleted when a pass would still suspend it', async () => {
+      const user = userEvent.setup();
+      await renderDialog(
+        {
+          // Delete removed the slice child while the cluster still stood;
+          // the cluster gone, it hangs unsuspended on helm-controller's
+          // finalizer.
+          passes: [pass([object('HelmRelease', 'demo1-llm-d', 'delete')])],
+          checks: [
+            dryRun([object('HelmRelease', 'demo1-llm-d', 'would-delete')]),
+          ],
+          beingRemoved: ['demo1-llm-d'],
+          unsuspended: ['demo1-llm-d'],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(
+        await screen.findByRole('button', { name: 'Finish removal' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('removal-next')).toHaveTextContent(
+        '1 object is left to remove now: HelmRelease org-acme/demo1-llm-d.',
+      );
     });
 
     it('still offers Finish removal for a terminating release into the gone cluster that a pass would suspend', async () => {
