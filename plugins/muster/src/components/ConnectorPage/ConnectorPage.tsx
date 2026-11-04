@@ -91,7 +91,8 @@ import {
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
-import { addedAt, callsLine, healthLine, signInLabel } from './connectorFacts';
+import { addedAt, healthLine, signInLabel } from './connectorFacts';
+import { CallsFactValue } from './CallsFactValue';
 import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
@@ -288,7 +289,6 @@ function ConnectorPageContent({
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
   });
-  const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
   // The person's own sign-in to the connector. Signing in is offered where its
   // absence shows — the Tools tab's gate, in place of the hidden tools — so
@@ -519,10 +519,18 @@ function ConnectorPageContent({
   if (members.length > 0) {
     facts.push({ label: 'Health', value: healthLine(members) });
   }
-  if (calls !== undefined) {
+  // From the first paint, with a skeleton while the session and the read are
+  // pending, so the facts below it do not move when the figure lands.
+  if (hasUsage) {
     facts.push({
       label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
-      value: calls,
+      value: (
+        <CallsFactValue
+          usage={usage}
+          authenticated={authenticated}
+          sessionPending={session.pending}
+        />
+      ),
     });
   }
   const added = addedAt(members);
