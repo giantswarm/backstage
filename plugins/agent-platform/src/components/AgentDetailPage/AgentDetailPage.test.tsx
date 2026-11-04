@@ -292,8 +292,10 @@ jest.mock('../../hooks/useReachCatalogue', () => ({
 }));
 // The installation's connectors, as `serverInfoOf` reads them.
 const mockMusterServers: { servers: ServerInfo[] } = { servers: [] };
+const mockUseMusterServers = jest.fn();
 jest.mock('../../hooks/useMusterServers', () => ({
-  useMusterServers: () => {
+  useMusterServers: (installation: string | undefined) => {
+    mockUseMusterServers(installation);
     const { connectorLabels: labelsOf } =
       jest.requireActual('../../lib/toolset');
     return {
@@ -2667,6 +2669,26 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         mockMusterServers.servers = [];
       }
     });
+    it('reads no connectors when the toolset names none', async () => {
+      mockUseMusterServers.mockClear();
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'github' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('list', { name: 'Connectors' }),
+      ).toBeInTheDocument();
+      expect(mockUseMusterServers).not.toHaveBeenCalledWith('gazelle');
+    });
+
     // A directly bound server is its own resource: a muster connector that
     // happens to share its name lends it neither its name nor its icon.
     it('names a directly bound server from its own resource, not a muster connector of that name', async () => {

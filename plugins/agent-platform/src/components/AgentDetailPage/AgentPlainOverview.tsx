@@ -298,17 +298,22 @@ function ConnectorsSection({
     agent.cluster,
     reachNeedsCatalogue(declared),
   );
-  const muster = useMusterServers(agent.cluster);
   const direct = agent
     .getMcpBindings()
     .filter(binding => !isGatewayServerBinding(agent, binding));
   const hasGateway = bindsGateway(agent);
+  const reached = hasGateway ? reachedConnectors(declared, groups) : [];
+  // Labels and icons: read only when the toolset names a connector, as the
+  // composer's reach line does.
+  const muster = useMusterServers(
+    reached.length > 0 ? agent.cluster : undefined,
+  );
   const subAgents = agent.getSubAgentBindings();
 
   const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
 
   const marks: ConnectorMark[] = [
-    ...(hasGateway ? reachedConnectors(declared, groups) : []).map(name => ({
+    ...reached.map(name => ({
       key: `server:${name}`,
       name: muster.labels.get(name) ?? name,
       icon: icons.get(name),
