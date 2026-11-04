@@ -11,13 +11,13 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
+  DateComponent,
   DetailsPane,
   INITIAL_ROWS,
   ShowMore,
   useDetailsPane,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer, mcpServerStateSeverity } from '../../../lib/k8s';
-import { formatRelativeTime } from '../../../lib/formatRelativeTime';
 import {
   AuthChain,
   DetailBlock,
@@ -163,9 +163,19 @@ export function ServerInstancesTab({
     {
       id: 'lastConnected',
       label: 'Last connected',
+      // As the expanded row's Health says it: relative, the local date and
+      // time on hover.
       cell: row => {
         const last = row.server.getLastConnected();
-        return <CellText title={(last && formatRelativeTime(last)) || '—'} />;
+        return last ? (
+          <Cell>
+            <Text variant="body-medium">
+              <DateComponent value={last} relative />
+            </Text>
+          </Cell>
+        ) : (
+          <CellText title="—" />
+        );
       },
     },
     {

@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+  getRelativeDate,
   PageHeaderActionsProvider,
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -75,6 +78,7 @@ function makeServer(opts: {
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
   displayName?: string;
+  lastConnected?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -107,11 +111,17 @@ function makeServer(opts: {
           : {}),
         ...opts.spec,
       },
-      status: { state: opts.state ?? 'Connected' },
+      status: {
+        state: opts.state ?? 'Connected',
+        ...(opts.lastConnected ? { lastConnected: opts.lastConnected } : {}),
+      },
     } as never,
     'gazelle',
   );
 }
+
+/** When the failed kubernetes instance last connected. */
+const LAST_CONNECTED = '2026-10-16T14:05:12Z';
 
 const makeServers = () => [
   makeServer({
@@ -126,6 +136,7 @@ const makeServers = () => [
     mc: 'gazelle',
     state: 'Failed',
     labels: INFRASTRUCTURE,
+    lastConnected: LAST_CONNECTED,
   }),
   makeServer({
     name: 'jira',
@@ -253,24 +264,27 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    // The shell mounts the scope around its pages, as the app does.
-    <ShellScopeProvider>
-      <QueryClientProvider client={queryClient}>
-        <PageHeaderActionsProvider>
-          <Routes>
-            {/* The connector wizard, where Edit leads. */}
-            <Route
-              path="/customize/connectors/:installation/:server/edit"
-              element={<LocationProbe />}
-            />
-            <Route
-              path="/customize/connectors/:installation/:server/*"
-              element={<ConnectorPage usedBy={usedBy} />}
-            />
-          </Routes>
-        </PageHeaderActionsProvider>
-      </QueryClientProvider>
-    </ShellScopeProvider>,
+    // The shell mounts the scope and its clock around its pages, as the app
+    // does.
+    <DateTimeZoneProvider timeZone="local">
+      <ShellScopeProvider>
+        <QueryClientProvider client={queryClient}>
+          <PageHeaderActionsProvider>
+            <Routes>
+              {/* The connector wizard, where Edit leads. */}
+              <Route
+                path="/customize/connectors/:installation/:server/edit"
+                element={<LocationProbe />}
+              />
+              <Route
+                path="/customize/connectors/:installation/:server/*"
+                element={<ConnectorPage usedBy={usedBy} />}
+              />
+            </Routes>
+          </PageHeaderActionsProvider>
+        </QueryClientProvider>
+      </ShellScopeProvider>
+    </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
@@ -445,7 +459,15 @@ describe('ConnectorPage', () => {
       hours: 720,
       servers: ['jira'],
     });
-    expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
+    // Added: how long ago, the local date and time on hover.
+    const added = within(facts).getByText(
+      getRelativeDate('2026-08-04T10:00:00Z', new Date()),
+    );
+    expect(added).toHaveTextContent(/ ago$/);
+    expect(added).toHaveAttribute(
+      'title',
+      formatLocalDateFull('2026-08-04T10:00:00Z'),
+    );
     // The address is technical: in the fold-out's configuration.
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
   });
@@ -602,6 +624,20 @@ describe('ConnectorPage', () => {
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
+    // Last connected: how long ago, the local date and time on hover, as
+    // the expanded row's Health says it; a dash for one that never has.
+    const lastConnected = screen.getByText(
+      getRelativeDate(LAST_CONNECTED, new Date()),
+    );
+    expect(lastConnected).toHaveAttribute(
+      'title',
+      formatLocalDateFull(LAST_CONNECTED),
+    );
+    expect(
+      within(
+        screen.getByRole('row', { name: /walrus-mcp-kubernetes/ }),
+      ).getByTitle('—'),
+    ).toBeInTheDocument();
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
