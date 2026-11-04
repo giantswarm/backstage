@@ -40,6 +40,8 @@ function callToolResult(payload: unknown) {
 describe('MusterMcpClient session recovery (unit)', () => {
   const logger = mockServices.logger.mock();
 
+  beforeEach(() => jest.clearAllMocks());
+
   function fakeMcpClient(execute: jest.Mock): MCPClient {
     return {
       toolsFromDefinitions: jest.fn(
@@ -107,6 +109,46 @@ describe('MusterMcpClient session recovery (unit)', () => {
     expect(failure?.message).not.toMatch(/session header is required|MCP HTTP/);
     expect(factory).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs a recovered lost session at info, with the installation in the metadata', async () => {
+    const first = jest
+      .fn()
+      .mockRejectedValue(transportError(404, SESSION_NOT_FOUND));
+    const second = jest.fn().mockResolvedValue(callToolResult({ ok: true }));
+    const { client } = buildClient([first, second]);
+
+    await client.callTool('x_cm_list_clusters', {});
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      'Muster MCP session was lost; re-initializing and retrying once',
+      {
+        installation: 'gazelle',
+        cause: expect.stringContaining(SESSION_NOT_FOUND),
+      },
+    );
+  });
+
+  it('warns about a failed request with the installation in the metadata, not the message', async () => {
+    const execute = jest
+      .fn()
+      .mockRejectedValue(transportError(400, SESSION_HEADER_REQUIRED));
+    const { client } = buildClient([execute, execute]);
+
+    await expect(client.callTool('x_cm_list_node_pools', {})).rejects.toThrow(
+      ServiceUnavailableError,
+    );
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Muster MCP request failed: the MCP session was lost and could not be re-established',
+      {
+        installation: 'gazelle',
+        cause: expect.stringContaining(SESSION_HEADER_REQUIRED),
+      },
+    );
   });
 
   it('does not retry a tool-level error and passes it through unchanged', async () => {

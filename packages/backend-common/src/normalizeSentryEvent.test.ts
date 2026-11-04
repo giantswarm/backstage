@@ -34,6 +34,52 @@ describe('normalizeSentryEvent', () => {
     expect(first.fingerprint).toEqual(second.fingerprint);
   });
 
+  it('collapses Muster 503s across installations, keeping the installation as extra data', () => {
+    const muster503 = (installation: string, reason: string) =>
+      normalizeSentryEvent<SentryEvent>({
+        exception: {
+          values: [
+            {
+              value: `Request failed with status 503 ${installation} did not answer: ${reason}`,
+            },
+          ],
+        },
+      });
+    const first = muster503(
+      'gazelle',
+      'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+    );
+    const second = muster503(
+      'golem',
+      'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+    );
+    const lostSession = muster503(
+      'gazelle',
+      'the MCP session was lost and could not be re-established',
+    );
+
+    expect(first.exception!.values![0].value).toBe(
+      'Request failed with status 503 <installation> did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+    );
+    expect(first.fingerprint).toEqual(second.fingerprint);
+    expect(first.fingerprint).not.toEqual(lostSession.fingerprint);
+    expect(second.extra).toEqual({
+      original_message:
+        'Request failed with status 503 golem did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+    });
+  });
+
+  it('leaves other 503s alone', () => {
+    const event = normalizeSentryEvent<SentryEvent>({
+      message: 'Request failed with status 503 Service Unavailable',
+    });
+
+    expect(event.message).toBe(
+      'Request failed with status 503 Service Unavailable',
+    );
+    expect(event.fingerprint).toBeUndefined();
+  });
+
   it('collapses messages that differ only by URL', () => {
     const first = normalizeSentryEvent<SentryEvent>({
       message:

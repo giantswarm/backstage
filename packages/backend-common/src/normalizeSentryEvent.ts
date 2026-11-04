@@ -28,6 +28,14 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   // @backstage/plugin-catalog-backend DefaultCatalogProcessingEngine: one
   // issue per catalog entity.
   [/^Processing of \S+ failed/, 'Processing of an entity failed'],
+  // The error middleware logging the 503 that gs-node's MusterMcpClient
+  // throws when an installation's muster cannot be reached: one issue per
+  // installation. The message names the installation because the person reads
+  // it in the UI, so it cannot change at the source.
+  [
+    /^Request failed with status 503 \S+ did not answer:/,
+    'Request failed with status 503 <installation> did not answer:',
+  ],
 ];
 
 /**

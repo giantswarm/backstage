@@ -675,9 +675,11 @@ export class MusterMcpClient {
         throw this.explain(error);
       }
       this.cache.markDead(first.cacheKey, first.client);
-      this.logger.warn(
-        `Muster MCP session for '${this.installation.name}' was lost; re-initializing and retrying once`,
-        { cause: messageOf(error) },
+      // Expected and usually recovered by the retry below, so not a warning:
+      // only a second failure is actionable, and explain() reports that.
+      this.logger.info(
+        'Muster MCP session was lost; re-initializing and retrying once',
+        { installation: this.installation.name, cause: messageOf(error) },
       );
     }
 
@@ -713,10 +715,16 @@ export class MusterMcpClient {
     if (reason === undefined) {
       return error;
     }
-    this.logger.warn(
-      `Muster MCP request to '${this.installation.name}' failed: ${reason}`,
-      { cause: messageOf(error) },
-    );
+    // The installation goes in the metadata, not the message: Sentry groups
+    // on the message, and `reason` is one of a few fixed texts, so this is one
+    // issue per kind of failure rather than one per installation.
+    this.logger.warn(`Muster MCP request failed: ${reason}`, {
+      installation: this.installation.name,
+      cause: messageOf(error),
+    });
+    // The person reads this text, and the muster plugin's installationError
+    // matches on it, so it keeps the installation. Its Sentry event (the error
+    // middleware's 503) is collapsed in backend-common's normalizeSentryEvent.
     return new ServiceUnavailableError(
       `${this.installation.name} did not answer: ${reason}`,
     );
