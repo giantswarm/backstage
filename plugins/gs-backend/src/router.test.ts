@@ -1987,6 +1987,7 @@ describe('skill repositories with ref, path and readOnly', () => {
     ref: 'v1.2.3',
     commit: COMMIT,
     contentReadable: true,
+    tags: [],
   };
 
   async function buildSourcesApp() {
