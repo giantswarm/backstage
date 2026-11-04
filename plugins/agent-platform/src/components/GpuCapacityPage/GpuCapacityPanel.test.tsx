@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { formatLocalDateFull } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -281,6 +282,9 @@ describe('formatGpuMemory', () => {
   });
 
   it('adds the memory budget and the model cache when a serving backend reports them', async () => {
+    const TWO_DAYS_AGO = new Date(
+      Date.now() - 2 * 24 * 60 * 60 * 1000,
+    ).toISOString();
     await renderInTestApp(
       <GpuCapacityPanel
         nodes={[
@@ -296,6 +300,7 @@ describe('formatGpuMemory', () => {
               models: 3,
               bytesUsed: 77540453864,
               error: 'scan pod timed out',
+              scannedAt: TWO_DAYS_AGO,
             },
           },
         ]}
@@ -317,7 +322,14 @@ describe('formatGpuMemory', () => {
     ).toBeInTheDocument();
     // A cluster node has no accelerated flag: no marker either way.
     expect(screen.queryByText('accelerated')).not.toBeInTheDocument();
-    expect(screen.getByText('3 models · 72.2 GiB')).toBeInTheDocument();
+    // When it was scanned, relative so yesterday does not read as today,
+    // the date and time after it.
+    expect(screen.getByText('3 models · 72.2 GiB')).toHaveAttribute(
+      'title',
+      `Claim hf-cache, mounted at /mnt/models, scanned 2 days ago (${formatLocalDateFull(
+        TWO_DAYS_AGO,
+      )})`,
+    );
     expect(screen.getByText('scan failed')).toBeInTheDocument();
     expect(
       screen.getByText(/what the serving layer fit-checks/),

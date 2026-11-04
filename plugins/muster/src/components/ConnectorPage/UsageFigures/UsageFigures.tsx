@@ -3,6 +3,8 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import {
   formatCount,
   formatSeconds,
+  lastDaysLabel,
+  lastDaysNoun,
   type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
@@ -159,12 +161,12 @@ export function UsageFigures({
 
   const { totals } = usage;
   const errorRatio = errorRatioFigure(totals.error_ratio);
-  const sub = `every caller's, last ${days} days`;
+  const sub = `every caller's, ${lastDaysLabel(days)}`;
 
   return (
     <Flex direction="column" gap="4">
       <Text as="p" variant="body-medium" color="secondary">
-        {words.intro} over the last {days} days on {installation}.
+        {words.intro} over {lastDaysNoun(days)} on {installation}.
       </Text>
       <McpDataStartNote usage={usage} windowDays={days} />
 
@@ -215,7 +217,7 @@ export function UsageFigures({
         </>
       ) : (
         <EmptyStateCard
-          title={`${words.noCalls} in the last ${days} days`}
+          title={`${words.noCalls} in ${lastDaysNoun(days)}`}
           description={`Calls from agents, sessions and this portal show here once they reach ${words.reach}.`}
         />
       )}

@@ -665,7 +665,7 @@ export function WizardFrame({
             {/* No links in the phone's hidden list: a focusable element no
                 one can see. Back in the footer goes back there. */}
             {done && step.href && !isPhone ? (
-              <Link href={step.href} className={classes.stepLink}>
+              <Link standalone href={step.href} className={classes.stepLink}>
                 {label}
               </Link>
             ) : (
@@ -720,6 +720,7 @@ export function WizardFrame({
         <header className={classes.header}>
           <div className={classes.heading}>
             <Link
+              standalone
               href={closeHref}
               aria-label="Close"
               className={classes.close}
@@ -772,6 +773,7 @@ export function WizardFrame({
         </WizardRailContext.Provider>
         <footer ref={footerRef} className={classes.footer}>
           <Link
+            standalone
             href={closeHref}
             variant="body-medium"
             color="secondary"

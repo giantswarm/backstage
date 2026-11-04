@@ -86,19 +86,25 @@ describe('RoamingSettingsStorage', () => {
   });
 
   it.each`
-    failure               | answer
-    ${'a server error'}   | ${() => Promise.resolve(json({}, 503))}
-    ${'a network error'}  | ${() => Promise.reject(new TypeError('Failed to fetch'))}
-    ${'a non-JSON reply'} | ${() => Promise.resolve(new Response('<html>'))}
-  `('reads $failure as unknown, never as absent', async ({ answer }) => {
-    const { storage, fetch } = setup();
-    fetch.mockImplementationOnce(answer);
+    failure               | answer                                                    | why
+    ${'a server error'}   | ${() => Promise.resolve(json({}, 503))}                   | ${{ status: 503 }}
+    ${'a refusal'}        | ${() => Promise.resolve(json({}, 403))}                   | ${{ status: 403 }}
+    ${'a network error'}  | ${() => Promise.reject(new TypeError('Failed to fetch'))} | ${{ network: true }}
+    ${'a non-JSON reply'} | ${() => Promise.resolve(new Response('<html>'))}          | ${{}}
+  `(
+    'reads $failure as unknown, never as absent, and says why',
+    async ({ answer, why }) => {
+      const { storage, fetch } = setup();
+      fetch.mockImplementationOnce(answer);
 
-    const { seen } = watch(storage);
-    await settle();
+      const { seen } = watch(storage);
+      await settle();
 
-    expect(seen).toEqual([{ key: 'someSetting', presence: 'unknown' }]);
-  });
+      expect(seen).toEqual([
+        { key: 'someSetting', presence: 'unknown', ...why },
+      ]);
+    },
+  );
 
   it('reads the key afresh when another tab’s change is announced, right after a read', async () => {
     const { storage, fetch, send } = setup();
@@ -173,9 +179,20 @@ describe('RoamingSettingsStorage', () => {
     await settle();
     fetch.mockResolvedValueOnce(json({}, 413));
 
-    await expect(storage.set('someSetting', 'too big')).rejects.toThrow(
-      'answered 413',
-    );
+    // Why, for a writer to tell a refusal from a failure worth retrying.
+    await expect(storage.set('someSetting', 'too big')).rejects.toMatchObject({
+      message: expect.stringContaining('answered 413'),
+      status: 413,
+    });
+    fetch.mockResolvedValueOnce(json({}, 503));
+    await expect(storage.set('someSetting', 'later')).rejects.toMatchObject({
+      status: 503,
+    });
+    fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(storage.set('someSetting', 'later')).rejects.toMatchObject({
+      name: 'UserSettingsWriteError',
+      network: true,
+    });
     expect(seen.map(snapshot => snapshot.value)).toEqual(['before']);
   });
 

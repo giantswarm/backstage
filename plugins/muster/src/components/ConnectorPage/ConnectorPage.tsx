@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import {
+  lastDaysLabel,
   parseUsageWindowParam,
   USAGE_WINDOW_PARAM,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -524,7 +525,7 @@ function ConnectorPageContent({
   }
   if (calls !== undefined) {
     facts.push({
-      label: `Calls, last ${CONNECTOR_USAGE_DAYS} days`,
+      label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
       value: calls,
     });
   }

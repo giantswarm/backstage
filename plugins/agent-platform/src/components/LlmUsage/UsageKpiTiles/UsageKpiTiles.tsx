@@ -9,7 +9,11 @@ import {
   USD,
   type Currency,
 } from '../../../lib/formatNumbers';
-import { usageWindowNoun, type UsageWindow } from '../../../lib/usageWindow';
+import {
+  lastDaysNoun,
+  type UsageWindow,
+  usageWindowNoun,
+} from '../../../lib/usageWindow';
 
 export type UsageKpiSessions = {
   /**
@@ -75,7 +79,7 @@ export function UsageKpiTiles({
 
   const windowNote = window
     ? usageWindowNoun(window)
-    : `the last ${windowDays} days`;
+    : lastDaysNoun(windowDays);
   const modelsNoun = totals.models === 1 ? 'model' : 'models';
 
   return (
@@ -123,7 +127,7 @@ export function UsageKpiTiles({
           }
           sub={
             sessions.windowDays
-              ? `yours, over the last ${sessions.windowDays} days — see Your sessions`
+              ? `yours, over ${lastDaysNoun(sessions.windowDays)} — see Your sessions`
               : 'yours — see Your sessions'
           }
         />

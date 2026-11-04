@@ -11,8 +11,9 @@ export const CONTEXT_WINDOWS_DOCS_URL =
 const TABLE_KEY = 'agentPlatform.models.contextWindows';
 
 const useStyles = makeStyles({
-  // bui `Text` and `Link` set their own colour (`--bui-fg-primary`); on the
-  // alert's tinted background they take the alert's instead, like its title.
+  // bui `Text` sets its own colour (`--bui-fg-primary`); on the alert's
+  // tinted background it takes the alert's instead, like its title. Links
+  // take the shell's link style (agent-shell.css).
   inherit: {
     color: 'inherit',
   },
@@ -81,7 +82,6 @@ export function ContextWindowNote({
               target="_blank"
               rel="noopener noreferrer"
               variant="body-small"
-              className={classes.inherit}
             >
               How to configure it
             </Link>
