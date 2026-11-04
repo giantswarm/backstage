@@ -184,19 +184,22 @@ that pins an older commit.
 
 ### Connectors
 
-Connectors are muster's MCP servers, on three sub-tabs by the
+Connectors are muster's MCP servers, one list at `/customize/connectors`; a
+family (`spec.family`) is one row. The
 `agent-platform.giantswarm.io/tool-group` label the shipping chart sets on the
-MCPServer, a family (`spec.family`, one row) and a single server alike:
+MCPServer adds a read-only tag, which the Tags filter and `?tags=` select:
 
-- **Your connectors** (`/customize/connectors`): servers and families without
-  the label, everything the installation or its users registered.
-- **Infrastructure** (`/customize/connectors/infrastructure`): servers and
-  families labelled `infrastructure`, those for the management clusters the
-  platform runs on. `/customize/connectors/families` redirects here.
-- **Internal** (`/customize/connectors/internal`): servers labelled
-  `agent-platform` (agent-manager, model-manager, cluster-manager) and muster
-  itself where it runs. muster's page shows its endpoint to copy for MCP
-  clients.
+| Label            | Tag              | Servers                                                     |
+| ---------------- | ---------------- | ----------------------------------------------------------- |
+| none             | none             | what the installation or its users registered; listed first |
+| `infrastructure` | `infrastructure` | those for the management clusters the platform runs on      |
+| `agent-platform` | `agent-platform` | agent-manager, model-manager, cluster-manager, and muster   |
+
+Other tags come from the `ui.giantswarm.io/tags` annotation, which the edit
+form writes. The retired sub-tab addresses redirect until the end of 2026:
+`/customize/connectors/infrastructure` and `/families` to
+`?tags=infrastructure`, `/internal` to `?tags=agent-platform`. muster's page
+shows its endpoint to copy for MCP clients.
 
 **Add connector** probes the address, sets the sign-in mode (company login,
 each person's own account, none, or AWS request signing) and registers the
@@ -436,10 +439,26 @@ page.
 
 ## Usage
 
-`/usage` reports over 7, 30 (the default) or 90 days:
+`/usage` reports over 7, 30 (the default) or 90 days, or over one calendar
+month: the Time range select offers this month so far and the two before it
+(`?window=2026-10`; the installations keep about three months of metrics). A
+past month is its exact UTC days, evaluated at its end, with the change
+against the month before; the current month is month-to-date, with no change
+shown yet.
 
 - **Overview** — platform health and trends from the LLM gateway.
-- **Cost** — spend from the gateway, by agent and model.
+- **Cost** — spend from the gateway, by organization, agent and model. The
+  **By organization** table has one row per organization whose agents the
+  gateway recorded calls for: the organization's name, `None` for the
+  platform's shared agents, `namespace <name>` for another namespace agents
+  run in, and Unattributed for calls the gateway placed in no namespace; each
+  row carries its model calls, tokens, spend and share of spend. A row opens
+  the same page narrowed to that organization. In a calendar month, Cost
+  also shows a **By person** table: spend, tokens and share of spend by the
+  gateway's `user` label, the person the runtime ran the turn for (an email),
+  with the calls it named nobody for as "No person recorded" (the Claude
+  harness sends no person, and an environment may switch the label off).
+  One organization, one month, by agent and by person is the chargeback view.
 - **Connectors** — every caller's tool calls from muster's metrics. Only where
   the muster plugin is registered. Each connector in its table links to that
   connector's Usage tab on the selected installation and window; an instance
@@ -447,8 +466,9 @@ page.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled options there, each saying
-  how many days kagent keeps. Its cost is the
+  30 days by default); wider ranges and the calendar months are disabled
+  options there, each saying why, and a month a link names there reads as the
+  default 30 days, as it does on Connectors. Its cost is the
   gateway's price for the person's own model calls, in total and per agent —
   every call made as them, in these sessions or not. Where that cannot be read,
   it shows an estimate labelled **Est. cost**, and its tooltip says why.
@@ -456,6 +476,21 @@ page.
 Overview and Cost cover everyone's traffic and need the installation's metrics
 (see the configuration page); without them, Overview and Cost say so and still
 show the person's own session figures.
+
+**Organization.** The scope bar's Organization select, shown on Overview and
+Cost from two organizations on, narrows every gateway figure to one
+organization's agents, by the namespace they run in (the gateway's
+`agent_namespace` label). It travels in the URL as `?organization=<namespace>`
+and is left out for every organization. Its options are the namespaces the
+gateway recorded calls for in the window, so a removed organization keeps its
+spend, plus the namespaces the roster's agents run in; a deep link to any other
+namespace is kept as the selection. Error rate, Rate limited and the
+unpriced-models warning cannot follow the scope, because their metrics carry
+no organization: narrowed, they say they are every organization's. The Cost
+caption says whose spend the page shows and for whom: every organization's, for everyone who can read the
+environment's metrics. The portal adds no access check of its own: who may
+read an installation's metrics is the observability platform's decision
+(agent-permissions plan, D8 T1).
 
 Each installation's metrics start on a different day. When the selected range
 reaches back further than the records, Overview, Cost and Connectors say since
@@ -1876,7 +1911,14 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   unread rows, waits for all of them and reports
   `AgentPlatform.notificationsMarkedRead` once if any marked something;
   opening a plain row reports `AgentPlatform.notificationOpened` with
-  `kind: plain`.
+  `kind: plain`. When "Mark all read" or a row the person opened could not be
+  marked, the overlay says so in a danger alert with Try again (not a toast,
+  which the overlay covers), and the rows stay unread; the alert goes once
+  they are read, by Try again, a later mark or another tab. Try again marks
+  only the rows the alert names, not rows that arrived since, and a "Mark all
+  read" that marked part of the rows is not reported again. A row only marked
+  because its page is on screen fails quietly and is marked again with the
+  next read.
 - **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
   keys as the rail's dots: every 10 s while the tab is visible, and on the
   60 s baseline tier while it is hidden. A state for a session the sessions
@@ -2001,7 +2043,14 @@ user-settings storage is our own `RoamingSettingsStorage`
 the backend does not answer is "unknown", never "absent", and no read is
 cached. Every write reads the key first (`useStoredSetting`) and refuses to
 write on a read that was not answered, so a tab that wakes up offline erases
-nothing. A shown value stays until a read answers. The storage is created with
+nothing. The storage says why a read or write failed (`status`, or `network`
+when the backend could not be reached), and a write the person waits on (a
+row opened, "Mark all read"; `retry` on the update) is tried twice more, after
+250 ms and 500 ms, when that is a 5xx or the network, so a single 503 does not
+fail it. A 4xx, an answer that is not JSON, a read that timed out and a mark
+of a row on screen are not retried. A retry reads and applies again in the
+write's own place in the queue, so a write queued behind it still lands after
+it. A shown value stays until a read answers. The storage is created with
 the signals API, so a write in one tab reaches the person's other tabs, and
 the record is read again whenever a tab becomes visible. Two tabs writing the
 same key within one read-and-write still race: the backend has no
@@ -2566,6 +2615,14 @@ question answered, the `id` echoed), so the backend builds it from **the
 request the controller recorded** (`GetTask` first), never from the browser's
 claims. The browser sends only approve or reject and, for questions, the
 answers in order.
+
+The browser also sends `askedIn`, the `messageId` of the status message it
+answers (`PendingConfirmation.askedIn`). Slack answers the same task, so by
+the time an answer arrives the task may have been answered there and paused
+again: it keeps its id but asks in a new status message. The backend then
+refuses the answer with a 409 instead of applying it to a request the person
+never saw. An answer without `askedIn` is checked against the task's state
+alone.
 
 - **A tool approval decides every requested tool at once**: the one verdict
   applies to every `tools[].id`. A rejection carries the reason on each; an
@@ -3220,11 +3277,14 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 `/usage` has routed tabs, Overview at the bare path; an unknown view redirects
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
-environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
-select labelled "Time range" with the options "Last 7 days", "Last 30 days"
-and "Last 90 days", the same label, box and height as the Environment select
-beside it.
+environment and the window: the last 7, 30 or 90 days, or a calendar month
+(`?window=7d`, `?window=2026-10`; `lib/usageWindow.ts`). The window control is
+`UsageWindowSelect`: a select labelled "Time range" with "Last 7 days", "Last
+30 days" and "Last 90 days", then this month so far and the two before it, the
+same label, box and height as the Environment select beside it. In a month
+still being written the gateway queries re-key with the clock every five
+minutes; `useLlmUsage` holds the previous answer across that
+(`keepPreviousAnswer`) and reports a change of scope as loading.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |
@@ -3339,6 +3399,39 @@ that falls back to the ModelConfig's resource name and never matches
 `gen_ai_response_model`. It is the agent's model now: kagent pins no model to a
 session.
 
+#### The rate counts each token once, and is the window's mix
+
+The gateway's `input` token type already holds the cache reads and writes:
+since v1.5.0, agentgateway normalises every provider's input count to include
+them (agentgateway#2880) and records them again as `input_cache_read` and
+`input_cache_write`. `deriveTokenRates` therefore divides the spend by `input`
+plus `output` (plus any type it does not know), never by the sum of all four.
+Summing them counted cached input twice and halved the rate: on `gazelle`,
+claude-sonnet-5-5 read $0.30/1M where $0.59/1M was right
+(giantswarm/giantswarm#38457).
+
+An older gateway leaves the cache types out of `input`, and subtracting them
+there would inflate the rate about tenfold. The totals tell the two apart:
+inside `input`, the cache types cannot exceed it (on `gazelle` they sit at
+99.8–99.998% of it per agent and model), while outside it a cache-heavy mix
+has them at many times `input`. So `deriveTokenRates` subtracts them only when
+they are at most 1% above `input`. A 7-day window that straddles the upgrade
+holds both conventions and can be off either way until it rolls past.
+
+Even counted once, the blend is the window's token mix, not the session's.
+Over a week most input is cache reads, which Claude models price at a tenth of
+fresh input, so the rate undercharges a session that reads little from cache.
+The issue's one-turn session (9,800 input, 1,000 output, billed $0.0296)
+estimates at $0.0064. A long session, whose own mix is mostly cache reads like
+the window's, comes out close. Pricing the two apart takes spend by token type,
+which the cost metric does not carry (see below).
+
+The estimate stays a 7-day average, and says so wherever it shows: the cost
+popover's basis line (`describeCostBasis`) and the Your sessions note
+(`ByAgentTable`) call it the average cost per token over the last 7 days and
+add `AVERAGE_RATE_CAVEAT`: "An average can be low for short sessions that read
+little from cache."
+
 **A model without a usable price contributes no cost, not an error.** Only
 `agentgateway_cost_catalog_lookups_total` tells zero spend from unpriced spend,
 which is why the Cost tab has a pricing-coverage alert and an unpriced-models
@@ -3425,7 +3518,8 @@ it out of its debug log (`redactQuery`).
   `dailyWindowDayKeys` and `todayDayKey` take the range instead of reading the
   clock, so they cannot straddle midnight.
 - **The cost metric has no `gen_ai_token_type`.** Tokens split four ways
-  (`input`, `output`, `input_cache_read`, `input_cache_write`); spend does not.
+  (`input`, `output`, `input_cache_read`, `input_cache_write`, the two cache
+  types also counted in `input`); spend does not.
   `deriveTokenRates` returns only `blended`; its per-type branch waits for a
   gateway release that adds the label. Check with
   `count by (gen_ai_token_type) (agentgateway_gen_ai_client_cost_usd_total)`.

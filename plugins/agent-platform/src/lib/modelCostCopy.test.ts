@@ -1,4 +1,4 @@
-import { describeModelCostFallback } from './modelCostCopy';
+import { describeActualCost, describeModelCostFallback } from './modelCostCopy';
 
 describe('describeModelCostFallback', () => {
   it.each([
@@ -21,5 +21,29 @@ describe('describeModelCostFallback', () => {
     expect(
       describeModelCostFallback('no-mimir', 'gazelle', 30),
     ).toBeUndefined();
+  });
+});
+
+describe('the window in the copy', () => {
+  // kagent's session window is configurable, down to one day, and these
+  // sentences sit beside the cost basis, which names its window in words.
+  it('reads a one-day window in the singular', () => {
+    expect(describeModelCostFallback('no-spend', 'gazelle', 1)).toContain(
+      'in the last day.',
+    );
+    expect(
+      describeActualCost({
+        installation: 'gazelle',
+        days: 1,
+        partial: false,
+        converted: false,
+      }),
+    ).toContain('on gazelle in the last day.');
+  });
+
+  it('reads any other window in days', () => {
+    expect(describeModelCostFallback('no-spend', 'gazelle', 30)).toContain(
+      'in the last 30 days.',
+    );
   });
 });

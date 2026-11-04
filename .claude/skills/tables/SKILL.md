@@ -286,6 +286,10 @@ plain values; class getters do not, and you would otherwise need `customSort` +
 
 ### Link Columns with Route Refs
 
+A link in a cell is a text link: underlined and in the link colour (see "Links"
+in `docs/ui.md`). Only a title whose hit area is the whole row, as in
+`StackedRowList`, drops the underline.
+
 ```tsx
 render: row => {
   const LinkWrapper = () => {

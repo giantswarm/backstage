@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import {
+  lastDaysLabel,
   parseUsageWindowParam,
   USAGE_WINDOW_PARAM,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -35,6 +36,7 @@ import {
   ShellPageBadgeSkeleton,
   StatusDot,
   type StatusDotTone,
+  TagList,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -44,12 +46,18 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef } from '../../routes';
-import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
+import {
+  INFRASTRUCTURE_FAMILY_NOTE,
+  MUSTER_PAGE_DESCRIPTION,
+  rowTags,
+} from '../../lib/connectorTags';
 import {
   familyGroups,
+  familyToolGroup,
   findServerRow,
   fleetManagementClusters,
   partitionServers,
@@ -77,11 +85,14 @@ import {
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
   deactivatedSignInGate,
+  type ExplainedStatusText,
   familyHealthLabel,
+  portalOnlyStatus,
   ServerAuthActions,
   serverStateLabel,
+  StatusWithHint,
   SessionGate,
-  useConnectorGroupPaths,
+  useConnectorListPaths,
   useServerSignIn,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
@@ -167,12 +178,60 @@ const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
 };
 
 /**
+ * The line under the connector's name: its description; for muster, what it
+ * is and that it is fixed; for an infrastructure family, that it has an
+ * instance per management cluster.
+ */
+function connectorMeta(
+  row: ServerPageRow,
+  description: string | undefined,
+): string | undefined {
+  if (row.kind === 'core') {
+    return MUSTER_PAGE_DESCRIPTION;
+  }
+  if (
+    row.kind === 'family' &&
+    familyToolGroup(row.servers) === 'infrastructure'
+  ) {
+    if (!description) {
+      return INFRASTRUCTURE_FAMILY_NOTE;
+    }
+    const sentence = /[.!?]$/.test(description.trim())
+      ? description.trim()
+      : `${description.trim()}.`;
+    return `${sentence} ${INFRASTRUCTURE_FAMILY_NOTE}`;
+  }
+  return description;
+}
+
+/**
  * The connector's state beside its name: a dot and its words, as the
  * Customize list and the agent, model and session headers draw a state. The
  * words stay muster's own (`serverStateLabel`, `familyHealthLabel`), with the
  * Ready condition's explanation as the tooltip.
  */
-function StatusBadge({ row }: { row: ServerPageRow }) {
+function StatusBadge({
+  row,
+  displayName,
+  portalOnly,
+}: {
+  row: ServerPageRow;
+  displayName: string;
+  /**
+   * The person's sign-in serves this muster session only, so the state says
+   * so in place of muster's healthy one, as the Customize list does.
+   */
+  portalOnly?: ExplainedStatusText;
+}) {
+  if (row.kind === 'server' && portalOnly) {
+    return (
+      <StatusWithHint
+        {...portalOnly}
+        subject={displayName}
+        title={row.server.getStateExplanation()}
+      />
+    );
+  }
   if (row.kind === 'server') {
     return (
       <span title={row.server.getStateExplanation()}>
@@ -218,9 +277,9 @@ function ConnectorPageContent({
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
-  const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector, where its crumb and a removal lead.
-  const listPath = paths.listOf(serverRowKey(row), row);
+  const paths = useConnectorListPaths();
+  // The list, where its crumb, its tags and a removal lead.
+  const listPath = paths.connectors;
   const { activeInstallationInfo } = useMusterInstance();
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
@@ -281,6 +340,17 @@ function ConnectorPageContent({
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
+  // muster's report of this person's sign-in where it was read, so the badge
+  // and the Customize list agree on "Portal only"; without one (no muster
+  // session, still loading) nobody signed in, and the badge keeps muster's
+  // state.
+  const portalOnly = singular
+    ? portalOnlyStatus(
+        singular,
+        displayName,
+        canSignIn ? signIn.status : undefined,
+      )
+    : undefined;
   const canSignOut =
     canSignIn &&
     !signIn.isSsoManaged &&
@@ -481,6 +551,25 @@ function ConnectorPageContent({
   // The Details tab's plain facts; the address and the rest of the MCPServer
   // are in its Technical details.
   const facts: Fact[] = [];
+  const tags = rowTags(row);
+  if (tags.length > 0) {
+    facts.push({
+      label: 'Tags',
+      value: (
+        <TagList
+          tags={tags}
+          getHref={
+            // On the connector's own installation: the list's scope may be
+            // another one, which does not list it.
+            listPath
+              ? tag =>
+                  withInstallationQuery(listPath, installation, { tags: tag })
+              : undefined
+          }
+        />
+      ),
+    });
+  }
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });
   }
@@ -489,7 +578,7 @@ function ConnectorPageContent({
   }
   if (calls !== undefined) {
     facts.push({
-      label: `Calls, last ${CONNECTOR_USAGE_DAYS} days`,
+      label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
       value: calls,
     });
   }
@@ -563,12 +652,14 @@ function ConnectorPageContent({
         title={displayName}
         breadcrumbs={breadcrumbs}
         leading={<ConnectorTile name={displayName} />}
-        badges={<StatusBadge row={row} />}
-        meta={
-          row.kind === 'core'
-            ? MUSTER_PAGE_DESCRIPTION
-            : representative?.getDescription()
+        badges={
+          <StatusBadge
+            row={row}
+            displayName={displayName}
+            portalOnly={portalOnly}
+          />
         }
+        meta={connectorMeta(row, representative?.getDescription())}
         description={
           endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined
         }
@@ -775,11 +866,8 @@ function ConnectorPageBody({
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const { installation = '' } = useParams();
-  const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector: known from a cached row (or for
-  // muster) even while loading; otherwise the crumb has no link rather than
-  // one to a sub-tab that does not list it.
-  const listPath = paths.listOf(key, row);
+  const paths = useConnectorListPaths();
+  const listPath = paths.connectors;
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,

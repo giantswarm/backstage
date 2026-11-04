@@ -141,7 +141,7 @@ function ConnectorCard({
  * *Read-only* picks the tools it marks read-only today, *All* the whole
  * connector (`server:x`, so tools it adds later too). Tools picked one by one
  * in the catalogue show as a count, neither choice checked. A page at a time,
- * with a search from `SEARCH_MIN` connectors on.
+ * with a search (names and tags) from `SEARCH_MIN` connectors on.
  */
 export function ConnectorGrid({
   connectors,
@@ -169,7 +169,8 @@ export function ConnectorGrid({
         : connectors.filter(
             bucket =>
               matchesQuery(trimmed, bucket.name) ||
-              matchesQuery(trimmed, bucketLabel(bucket)),
+              matchesQuery(trimmed, bucketLabel(bucket)) ||
+              (bucket.tags ?? []).some(tag => matchesQuery(trimmed, tag)),
           ),
     [connectors, trimmed],
   );

@@ -86,9 +86,11 @@ function renderPanel(search = '') {
 function listedRows(): HTMLElement[] {
   // The prototype's presentation: a grid of cards, no table.
   expect(screen.queryByRole('grid')).not.toBeInTheDocument();
-  return within(screen.getByRole('list', { name: 'Skills' })).getAllByRole(
-    'listitem',
-  );
+  const list = screen.getByRole('list', { name: 'Skills' });
+  // The cards only, not the items of a card's own tag list.
+  return within(list)
+    .getAllByRole('listitem')
+    .filter(item => item.parentElement === list);
 }
 
 describe('CustomizeSkillsPanel', () => {
@@ -497,6 +499,56 @@ describe('CustomizeSkillsPanel filters (T49, T64)', () => {
     await pickFilter('source', 'acme/agent-skills 1');
     expect(cardNames().sort()).toEqual(['notes', 'summarise']);
     expect(filterDropdown('source')).toHaveTextContent('Source 2');
+  });
+
+  it('filters by tag, once a skill has one, and searches tags', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [
+        { ...skill('summarise'), tags: ['notes', 'util'] },
+        { ...skill('triage'), tags: ['ops'] },
+        skill('plain'),
+      ],
+    };
+    await renderPanel();
+
+    expect(await filterOptions('tags')).toEqual(['notes 1', 'ops 1', 'util 1']);
+    await pickFilter('tags', 'ops 1');
+    expect(cardNames()).toEqual(['triage']);
+  });
+
+  it('offers no tags filter when no skill has tags', async () => {
+    mockCatalog = loaded;
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('button', { name: /Filter by tags/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the first three tags on a card, then +N', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill('triage'), tags: ['a', 'b', 'c', 'd', 'e'] }],
+    };
+    await renderPanel();
+
+    const tags = within(listedRows()[0]).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(i => i.textContent),
+    ).toEqual(['a', 'b', 'c', '+22 more tags']);
+  });
+
+  it('matches a skill by its tag in the search', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill('triage'), tags: ['on-call'] }, skill('summarise')],
+    };
+    await renderPanel('on-call');
+
+    expect(cardNames()).toEqual(['triage']);
   });
 
   it('offers no usage filter while the agents are still read', async () => {

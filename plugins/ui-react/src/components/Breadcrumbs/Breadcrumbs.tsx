@@ -107,6 +107,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
     <nav aria-label="Breadcrumb" style={navStyle}>
       {parent && (
         <Link
+          standalone
           href={parent.href}
           aria-label={`Back to ${parent.label}`}
           className={classes.back}
@@ -120,7 +121,12 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           return (
             <li key={`${index}-${item.label}`} style={itemStyle}>
               {item.href && !last ? (
-                <Link href={item.href} variant="body-small" style={labelStyle}>
+                <Link
+                  standalone
+                  href={item.href}
+                  variant="body-small"
+                  style={labelStyle}
+                >
                   {item.label}
                 </Link>
               ) : (

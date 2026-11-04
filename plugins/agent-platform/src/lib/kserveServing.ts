@@ -11,6 +11,7 @@ import {
   Pod,
   type LLMInferenceServiceInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { formatSeconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_PLATFORM_PRESET_LABEL } from './modelServingConfig';
 import {
   explanationWithoutReason,
@@ -78,19 +79,25 @@ export function isPodStarting(pod: Pod): boolean {
 }
 
 /**
- * A start in words: `Starting on gpu-a for 4 min: downloading the weights.`
+ * A start in words: `Starting on gpu-a for 4 min 30 s: downloading the weights.`
  * or `…: the runtime loads the weights and warms up.`
+ *
+ * The span is in whole seconds, rounded down: `startTime` has no finer
+ * precision, and `now` is only as fresh as the last read. Below a second —
+ * a pod started just before the read, or a browser clock behind the
+ * cluster's — the span is left out rather than read `for 420 ms` or
+ * `for 0 ms`.
  */
 export function describeStart(pod: Pod, now: number): string {
   const node = pod.getNodeName();
   const started = Date.parse(pod.jsonData.status?.startTime ?? '');
-  const minutes = Number.isNaN(started)
-    ? undefined
-    : Math.max(0, Math.floor((now - started) / 60_000));
+  const seconds = Number.isNaN(started)
+    ? 0
+    : Math.floor((now - started) / 1000);
   return [
     'Starting',
     node ? ` on ${node}` : '',
-    minutes === undefined ? '' : ` for ${minutes} min`,
+    seconds >= 1 ? ` for ${formatSeconds(seconds)}` : '',
     pod.jsonData.status?.phase === 'Running'
       ? ': the runtime loads the weights and warms up.'
       : ': downloading the weights.',

@@ -157,6 +157,29 @@ describe('CatalogFilterBar', () => {
     expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
   });
 
+  it('cuts a long value to one line and shows it whole on hover', async () => {
+    const tag = `team-${'x'.repeat(58)}`;
+    render(
+      <Catalog
+        items={[
+          { name: 'a', provider: tag },
+          { name: 'b', provider: 'OpenAI' },
+        ]}
+      />,
+    );
+    await openOptions('provider');
+    const label = within(
+      await screen.findByRole('option', { name: `${tag} 1` }),
+    ).getByTitle(tag);
+    // jsdom computes neither max-width nor text-overflow: read them as set.
+    expect(label.style).toMatchObject({
+      maxWidth: '16rem',
+      overflow: 'hidden',
+      whiteSpace: 'nowrap',
+      textOverflow: 'ellipsis',
+    });
+  });
+
   it('wraps its dropdowns itself, without the shell’s stylesheet', () => {
     render(
       <Catalog

@@ -48,6 +48,7 @@ function makeWorkflow(
     description?: string;
     category?: string;
     gitops?: boolean;
+    tags?: string;
   } = {},
 ) {
   return new MusterWorkflow(
@@ -56,6 +57,9 @@ function makeWorkflow(
       kind: 'Workflow',
       metadata: {
         name,
+        ...(options.tags
+          ? { annotations: { 'ui.giantswarm.io/tags': options.tags } }
+          : {}),
         labels: {
           ...(options.category
             ? { [WORKFLOW_CATEGORY_LABEL]: options.category }
@@ -330,6 +334,46 @@ describe('CustomizeWorkflowsPanel', () => {
 
     expect(screen.getByText('ticket-report')).toBeInTheDocument();
     expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('finds workflows by tag, and shows the category beside the tags', async () => {
+    mockWorkflows = [
+      makeWorkflow('ticket-report', 4, {
+        category: 'support',
+        tags: 'weekly,reports',
+      }),
+      makeWorkflow('upgrade-check', 1),
+    ];
+    await renderPanel('weekly');
+
+    const report = screen.getByRole('row', { name: /ticket-report/ });
+    expect(within(report).getByText('support')).toBeInTheDocument();
+    expect(
+      within(within(report).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['weekly', 'reports']);
+    expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('filters by tags, even without a muster session', async () => {
+    mockAuthenticated = false;
+    mockWorkflows = [
+      makeWorkflow('alpha', 1, { tags: 'ops' }),
+      makeWorkflow('bravo', 1, { tags: 'ops,billing' }),
+      makeWorkflow('charlie', 1),
+    ];
+    await renderPanel();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by tags/, hidden: true }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'billing 1' }),
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getAllByRole('row').slice(1)).toHaveLength(1);
+    expect(screen.getByRole('row', { name: /bravo/ })).toBeInTheDocument();
   });
 
   it('shows three workflows plainly: no reveal control, no pagination footer', async () => {

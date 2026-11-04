@@ -58,6 +58,7 @@ const STATE: NewAgentFormState = {
   name: 'Builder',
   slug: 'builder',
   description: '',
+  tags: [],
   installation: 'gazelle',
   tenant: 'org-otter',
   modelConfigName: 'sonnet',

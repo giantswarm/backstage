@@ -1,5 +1,6 @@
 import { ReactNode, useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, within } from '@testing-library/react';
 import userEvent, {
   PointerEventsCheckLevel,
@@ -167,13 +168,15 @@ function PluginProbe() {
 
 async function renderStep() {
   return renderInTestApp(
-    <NewAgentFormProvider>
-      <Seed>
-        <NewAgentSkillsPage />
-        <SelectionProbe />
-        <PluginProbe />
-      </Seed>
-    </NewAgentFormProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NewAgentFormProvider>
+        <Seed>
+          <NewAgentSkillsPage />
+          <SelectionProbe />
+          <PluginProbe />
+        </Seed>
+      </NewAgentFormProvider>
+    </QueryClientProvider>,
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }

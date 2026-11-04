@@ -9,6 +9,11 @@ import {
   USD,
   type Currency,
 } from '../../../lib/formatNumbers';
+import {
+  lastDaysNoun,
+  type UsageWindow,
+  usageWindowNoun,
+} from '../../../lib/usageWindow';
 
 export type UsageKpiSessions = {
   /**
@@ -32,6 +37,8 @@ export type UsageKpiTilesProps = {
   currency?: Currency;
   /** The window the gateway figures cover, for the labels. */
   windowDays: number;
+  /** The window as the screen selected it, when it is a month; the days otherwise. */
+  window?: UsageWindow;
   /**
    * The reader's own session count beside the platform figures, when the
    * page has one to offer. Absent on a portal without kagent.
@@ -63,13 +70,16 @@ export function UsageKpiTiles({
   usage,
   currency = USD,
   windowDays,
+  window,
   sessions,
   costHref,
 }: UsageKpiTilesProps) {
   const { totals } = usage;
   const converted = isConvertedCurrency(currency);
 
-  const windowNote = `the last ${windowDays} days`;
+  const windowNote = window
+    ? usageWindowNoun(window)
+    : lastDaysNoun(windowDays);
   const modelsNoun = totals.models === 1 ? 'model' : 'models';
 
   return (
@@ -117,7 +127,7 @@ export function UsageKpiTiles({
           }
           sub={
             sessions.windowDays
-              ? `yours, over the last ${sessions.windowDays} days — see Your sessions`
+              ? `yours, over ${lastDaysNoun(sessions.windowDays)} — see Your sessions`
               : 'yours — see Your sessions'
           }
         />

@@ -455,7 +455,7 @@ test.describe('serving: the served model’s step timeline', () => {
       await expect(
         panel.getByTestId('served-model-try'),
         'one completion without a token and one as the person, both outcomes shown',
-      ).toContainText('401 without a token · 200 as you in 1 s — “pong”');
+      ).toContainText('401 without a token · 200 as you in 1.2 s — “pong”');
       await expect(panel).toContainText(
         `POST ${ENDPOINT}/v1/chat/completions · model Qwen/Qwen3-4B-Instruct-2507`,
       );

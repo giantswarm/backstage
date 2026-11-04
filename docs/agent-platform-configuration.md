@@ -92,7 +92,9 @@ with the tabs the plugins attach to it (`sub-page:agent-platform/agents`,
 enabled by default and mounted only where the shell is on, so
 `app.portals.agentPlatform` alone switches the Agent Platform on; `false` for
 one in `app.extensions` turns it off. The classic sidebar's Agent Platform item
-follows `app.portals`, not `nav-item:agent-platform`.
+follows `app.portals`. There is no `nav-item:agent-platform` extension: an
+`app.extensions` entry naming it logs `INVALID_EXTENSION_CONFIG_KEY` at
+start-up.
 
 ```yaml
 app:

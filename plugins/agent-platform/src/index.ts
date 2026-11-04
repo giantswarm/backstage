@@ -1,6 +1,7 @@
 export { agentPlatformPlugin as default } from './plugin';
 export { agentPlatformPlugin } from './plugin';
 export { AgentPlatformProviders } from './components/AgentPlatformProviders';
+export { AgentTagSource, SkillTagSource } from './components/TagSources';
 export { RecentSessions } from './components/RecentSessions';
 export type { RecentSessionsProps } from './components/RecentSessions';
 export { AgentAvatar } from './components/AgentAvatar';
@@ -44,6 +45,10 @@ export type {
   CustomizeCounts,
   CustomizeDataValue,
 } from './components/CustomizeDataProvider';
+export {
+  useTrackCustomizeView,
+  type MusterViewCounts,
+} from './hooks/useTrackCustomizeView';
 export { CustomizeAgentsPanel } from './components/CustomizeAgentsPanel';
 export type { CustomizeAgentsPanelProps } from './components/CustomizeAgentsPanel';
 export {

@@ -2,6 +2,7 @@ import { Progress } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
 import type { LlmUsageViewModel } from '../../../hooks/useLlmUsageView';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
+import { lastDaysNoun, usageWindowPhrase } from '../../../lib/usageWindow';
 import { InstallationScopeNote } from '../../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
@@ -73,9 +74,11 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       // busy it is. The window is the one queried, i.e. the selected range.
       return (
         <Text variant="body-medium" color="secondary">
-          No model calls went through {installation}'s LLM gateway in the last{' '}
-          {view.usage?.windowDays ?? WINDOW_DAYS} days. Agents configured to
-          call a provider directly do not appear here.
+          No model calls went through {installation}'s LLM gateway{' '}
+          {view.usage?.window
+            ? usageWindowPhrase(view.usage.window)
+            : `over ${lastDaysNoun(view.usage?.windowDays ?? WINDOW_DAYS)}`}
+          . Agents configured to call a provider directly do not appear here.
         </Text>
       );
 

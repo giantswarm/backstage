@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { analyticsApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
@@ -264,6 +265,18 @@ jest.mock('./AgentToolsetCard', () => ({
 const mockUseAgentToolset = jest.fn();
 jest.mock('../../hooks/useAgentToolset', () => ({
   useAgentToolset: (...args: unknown[]) => mockUseAgentToolset(...args),
+}));
+// muster's resolution of the toolset, which the page counts the agent's tools
+// from for its view signal; `useAgentViewEvent`'s own test covers the rest.
+const mockUseToolsetResolution = jest.fn(() => ({
+  tools: [{ name: 'gh_list_prs' }, { name: 'gh_get_pr' }, { name: 'gh_diff' }],
+  unmatched: [],
+  truncated: false,
+  isLoading: false,
+  status: 'resolved',
+}));
+jest.mock('../../hooks/useToolsetResolution', () => ({
+  useToolsetResolution: () => mockUseToolsetResolution(),
 }));
 // The catalogue that names individually picked tools by connector (T103);
 // `lib/toolsetReach` covers the words.
@@ -751,6 +764,38 @@ describe('AgentDetailPage', () => {
       screen.getByText('https://*.githubusercontent.com'),
     ).toBeInTheDocument();
     expect(screen.getByText('tls://db.example.com:5432')).toBeInTheDocument();
+  });
+
+  it('reports how many skills and tools the agent has, once per opening', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+    const analyticsApi = mockApis.analytics.mock();
+
+    await renderInTestApp(<AgentDetailPage />, {
+      apis: [[analyticsApiRef, analyticsApi]],
+      mountedRoutes: {
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/usage': usageRouteRef,
+      },
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
+      initialRouteEntries: [AGENT_PATH],
+    });
+    await userEvent.click(await screen.findByRole('tab', { name: 'Sessions' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+
+    // Counts only: neither the agent, its skills nor its tools by name.
+    const views = jest
+      .mocked(analyticsApi.captureEvent)
+      .mock.calls.map(([event]) => event)
+      .filter(event => event.action === 'AgentPlatform.agentViewed');
+    expect(views).toEqual([
+      expect.objectContaining({
+        action: 'AgentPlatform.agentViewed',
+        attributes: { skills: 1, tools: 3 },
+      }),
+    ]);
   });
 
   // Update skills runs from this page and navigates to the URL it is already
@@ -2456,6 +2501,48 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   });
 
   describe('the plain Overview', () => {
+    it('shows the agent’s tags under what it is for', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: {
+              annotations: {
+                'ui.giantswarm.io/display-name': 'PR reviewer',
+                'ui.giantswarm.io/tags': 'review,github',
+              },
+            } as AgentInterface['metadata'],
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell();
+
+      expect(
+        within(screen.getByRole('list', { name: 'Tags' }))
+          .getAllByRole('listitem')
+          .map(item => item.textContent),
+      ).toEqual(['review', 'github']);
+      // Each opens Customize → Agents with that tag picked.
+      expect(screen.getByRole('link', { name: 'review' })).toHaveAttribute(
+        'href',
+        '/customize/agents?tags=review',
+      );
+    });
+
+    it('draws no tags for an agent without any', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      expect(
+        screen.getByText('Reviews pull requests in depth.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Tags' }),
+      ).not.toBeInTheDocument();
+    });
+
     it('leads with what the agent does, its instructions, skills and reach', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 

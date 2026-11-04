@@ -92,18 +92,21 @@ describe('scanSkillsTree', () => {
         path: '',
         name: 'root',
         description: 'At root.',
+        tags: [],
         content: '---\nname: root\ndescription: At root.\n---\n',
       },
       {
         path: 'group/deep',
         name: undefined,
         description: undefined,
+        tags: [],
         content: 'No frontmatter at all.',
       },
       {
         path: 'notes',
         name: 'notes',
         description: undefined,
+        tags: [],
         content: '---\nname: notes\n---\nBody.',
       },
     ]);
@@ -173,6 +176,7 @@ describe('discoverAgentSkillsFromGit', () => {
           // Directory basename when the frontmatter has no name.
           name: 'a-skill',
           description: '',
+          tags: [],
           repoUrl: 'http://gitserver.lab.local/skills.git',
           path: 'a-skill',
           ref: 'main',
@@ -183,6 +187,7 @@ describe('discoverAgentSkillsFromGit', () => {
         {
           name: 'beta',
           description: 'Second.',
+          tags: [],
           repoUrl: 'http://gitserver.lab.local/skills.git',
           path: 'b-skill',
           ref: 'main',

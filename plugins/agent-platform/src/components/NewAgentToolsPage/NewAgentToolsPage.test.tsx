@@ -363,6 +363,7 @@ const BASE_STATE: NewAgentFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,

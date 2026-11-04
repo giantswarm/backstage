@@ -57,3 +57,15 @@ export const agentShellLightColors = {
   inputFocusBorder: '#0088db',
   inputFocusHalo: 'rgba(0, 159, 255, 0.15)',
 } as const;
+
+/*
+ * The shell renders light, but a toast (`@backstage/plugin-app`'s
+ * ToastContainer) inverts the theme the person picked, so its links sit on
+ * bui's dark surfaces whenever they picked the light theme. agent-shell.css
+ * repeats these under `[data-theme-mode='dark']`; theme.test.ts checks them
+ * against bui's dark surfaces.
+ */
+export const agentShellDarkColors = {
+  link: '#bcdcff',
+  linkHover: '#ffffff',
+} as const;

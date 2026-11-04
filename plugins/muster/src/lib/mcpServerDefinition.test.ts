@@ -5,6 +5,7 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   displayNameArgument,
+  effectiveGrantScope,
   emptyFormState,
   formStateFromServer,
   hasUserInput,
@@ -14,13 +15,24 @@ import {
   WIZARD_ANSWER_MODES,
   WIZARD_AUTH_MODES,
   sigv4Advisories,
-  takesDisplayName,
-  validateNewMcpServerForm,
+  takesArgument,
+  tagsArgument,
+  mcpServerDetailsProblems,
+  validateMcpServerAuth,
+  validateMcpServerDetails,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
 import { toMcpServerDefinition } from './gitops';
 import { MCPServer } from './k8s';
 import { AUTH_MODE_LABELS, serverAuthMode } from './serverAuthMode';
+
+/**
+ * Every validation problem of the form, in form order: the two steps the
+ * form provider combines.
+ */
+function validateNewMcpServerForm(form: NewMcpServerFormState): string[] {
+  return [...validateMcpServerDetails(form), ...validateMcpServerAuth(form)];
+}
 
 function state(
   overrides: Partial<NewMcpServerFormState> = {},
@@ -97,7 +109,34 @@ describe('composeMcpServerDefinition', () => {
         authorizationServer: {
           issuer: 'https://auth.example.com',
           scopes: 'openid profile mcp:read',
+          // The wizard's default: one sign-in serves all of a person's
+          // sessions, agent conversations included.
+          grantScope: 'subject',
         },
+      },
+    });
+  });
+
+  it('defaults own-account connectors to subject, written only with an issuer', () => {
+    expect(emptyFormState.grantScope).toBe('subject');
+    const discovered = state({ authMode: 'own-account' });
+    // muster takes grantScope only on a pinned authorization server.
+    expect(effectiveGrantScope(discovered)).toBe('session');
+    expect(composeMcpServerDefinition(discovered).auth).toEqual({
+      type: 'oauth',
+    });
+    expect(validateNewMcpServerForm(discovered)).toEqual([]);
+
+    const pinned = state({
+      authMode: 'own-account',
+      issuer: 'https://auth.example.com',
+    });
+    expect(effectiveGrantScope(pinned)).toBe('subject');
+    expect(composeMcpServerDefinition(pinned).auth).toEqual({
+      type: 'oauth',
+      authorizationServer: {
+        issuer: 'https://auth.example.com',
+        grantScope: 'subject',
       },
     });
   });
@@ -333,24 +372,30 @@ describe('displayNameArgument', () => {
   );
 });
 
-describe('takesDisplayName', () => {
+describe('takesArgument', () => {
   it('reads the argument from the tool’s input schema', () => {
     expect(
-      takesDisplayName({
-        properties: {
-          name: { type: 'string' },
-          displayName: { type: 'string' },
+      takesArgument(
+        {
+          properties: {
+            name: { type: 'string' },
+            displayName: { type: 'string' },
+          },
         },
-      }),
+        'displayName',
+      ),
     ).toBe(true);
   });
 
   it('is false for a muster from before display names, or no schema', () => {
-    expect(takesDisplayName({ properties: { name: { type: 'string' } } })).toBe(
-      false,
-    );
-    expect(takesDisplayName({})).toBe(false);
-    expect(takesDisplayName(undefined)).toBe(false);
+    expect(
+      takesArgument(
+        { properties: { name: { type: 'string' } } },
+        'displayName',
+      ),
+    ).toBe(false);
+    expect(takesArgument({}, 'displayName')).toBe(false);
+    expect(takesArgument(undefined, 'displayName')).toBe(false);
   });
 });
 
@@ -426,7 +471,6 @@ describe('validateNewMcpServerForm', () => {
     for (const overrides of [
       { tokenEndpoint: 'https://idp/token' },
       { clientSecretName: 'oauth-client' },
-      { grantScope: 'subject' as const },
     ]) {
       expect(
         validateNewMcpServerForm(
@@ -885,11 +929,19 @@ describe('CRD conformance', () => {
     ['no auth', state()],
     ['own account (discovery)', state({ authMode: 'own-account' })],
     [
-      'own account (issuer override)',
+      'own account (issuer override, default subject grant)',
       state({
         authMode: 'own-account',
         issuer: 'https://auth.example.com',
         scopes: 'openid mcp:read',
+      }),
+    ],
+    [
+      'own account (issuer override, session grant)',
+      state({
+        authMode: 'own-account',
+        issuer: 'https://auth.example.com',
+        grantScope: 'session',
       }),
     ],
     [
@@ -1190,6 +1242,32 @@ describe('editing a registered server in the wizard', () => {
     expect(composeMcpServerDefinition(form).auth).toEqual(server.getAuth());
   });
 
+  it('keeps a pinned server’s grant scope on edit, its absence being session', () => {
+    const pinned = (authorizationServer: Record<string, unknown>) =>
+      formStateFromServer(
+        registered({ auth: { type: 'oauth', authorizationServer } }),
+      );
+    expect(
+      pinned({ issuer: 'https://idp', grantScope: 'subject' }),
+    ).toMatchObject({ grantScope: 'subject' });
+    const session = pinned({ issuer: 'https://idp' });
+    expect(session.grantScope).toBe('session');
+    expect(composeMcpServerDefinition(session).auth).toEqual({
+      type: 'oauth',
+      authorizationServer: { issuer: 'https://idp' },
+    });
+
+    // Without a pin there is nothing to keep: the connector serves one session
+    // either way, and an issuer the edit adds gets the wizard's default.
+    const discovered = formStateFromServer(
+      registered({ auth: { type: 'oauth' } }),
+    );
+    expect(effectiveGrantScope(discovered)).toBe('session');
+    expect(effectiveGrantScope({ ...discovered, issuer: 'https://idp' })).toBe(
+      'subject',
+    );
+  });
+
   it('names the form by the server’s display name, keeping its technical name', () => {
     const server = registered({});
     server.jsonData.metadata.annotations = {
@@ -1476,5 +1554,93 @@ describe('wizardAuthModeLabel', () => {
     ).map(wizardAuthModeLabel);
 
     expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+describe('tags', () => {
+  it('sends tags on create only when there are some', () => {
+    expect(composeMcpServerDefinition(state()).tags).toBeUndefined();
+    expect(
+      composeMcpServerDefinition(state({ tags: ['ops', 'ticketing'] })).tags,
+    ).toEqual(['ops', 'ticketing']);
+  });
+
+  it('sends the whole list on an edit only when it changed', () => {
+    const edit = { stored: ['ops', 'ticketing'] };
+    expect(tagsArgument(['ticketing', 'ops'], edit)).toBeUndefined();
+    expect(tagsArgument(['ops'], edit)).toEqual(['ops']);
+    expect(tagsArgument([], edit)).toEqual([]);
+    expect(
+      composeMcpServerDefinition(state({ tags: ['ops'] }), {
+        stored: 'Weather MCP',
+        tags: ['ops'],
+      }).tags,
+    ).toBeUndefined();
+  });
+
+  it('never carries the stored tags into an update', () => {
+    const merged = mergeOntoExisting(
+      { name: 'weather-mcp', tags: ['ops'], timeout: 30 },
+      composeMcpServerDefinition(state(), { stored: undefined, tags: [] }),
+    );
+    expect(merged).not.toHaveProperty('tags');
+    expect(merged).toHaveProperty('timeout', 30);
+  });
+
+  it('blocks Continue on a typed tag that cannot be one', () => {
+    expect(mcpServerDetailsProblems(state({ tagDraft: '!!' }))).toContainEqual({
+      field: 'tags',
+      message: 'Use letters and numbers.',
+    });
+    expect(
+      mcpServerDetailsProblems(state({ tagDraft: 'on call' })).map(
+        problem => problem.field,
+      ),
+    ).not.toContain('tags');
+  });
+
+  it('blocks Continue on a typed tag past the cap', () => {
+    const full = Array.from({ length: 50 }, (_, index) => `tag-${index}`);
+    expect(
+      mcpServerDetailsProblems(state({ tags: full, tagDraft: 'more' })),
+    ).toContainEqual({ field: 'tags', message: 'At most 50 tags.' });
+    expect(
+      mcpServerDetailsProblems(
+        state({ tags: full.slice(1), tagDraft: 'more' }),
+      ).map(problem => problem.field),
+    ).not.toContain('tags');
+  });
+
+  it('checks no tags where the muster keeps none', () => {
+    const full = Array.from({ length: 51 }, (_, index) => `tag-${index}`);
+    expect(
+      mcpServerDetailsProblems(state({ tags: full, tagDraft: '!!' }), {
+        takesTags: false,
+      }).map(problem => problem.field),
+    ).not.toContain('tags');
+  });
+
+  it('reads an edited server’s tags into the form', () => {
+    const server = new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: {
+          name: 'weather',
+          annotations: { 'ui.giantswarm.io/tags': 'ops,weather' },
+        },
+        spec: { type: 'streamable-http', url: 'https://w.example.com/mcp' },
+      } as never,
+      'gaggle',
+    );
+    expect(formStateFromServer(server).tags).toEqual(['ops', 'weather']);
+  });
+
+  it('takes tags only from a tool whose schema declares them', () => {
+    expect(
+      takesArgument({ properties: { tags: { type: 'array' } } }, 'tags'),
+    ).toBe(true);
+    expect(takesArgument({ properties: { name: {} } }, 'tags')).toBe(false);
+    expect(takesArgument(undefined, 'tags')).toBe(false);
   });
 });

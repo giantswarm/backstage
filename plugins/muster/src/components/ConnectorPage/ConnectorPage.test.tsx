@@ -75,6 +75,7 @@ function makeServer(opts: {
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
   displayName?: string;
+  tags?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -83,13 +84,12 @@ function makeServer(opts: {
       metadata: {
         name: opts.name,
         namespace: 'muster',
-        ...(opts.displayName
-          ? {
-              annotations: {
-                'ui.giantswarm.io/display-name': opts.displayName,
-              },
-            }
-          : {}),
+        annotations: {
+          ...(opts.displayName
+            ? { 'ui.giantswarm.io/display-name': opts.displayName }
+            : {}),
+          ...(opts.tags ? { 'ui.giantswarm.io/tags': opts.tags } : {}),
+        },
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -130,7 +130,14 @@ const makeServers = () => [
   makeServer({
     name: 'jira',
     spec: {
-      auth: { type: 'oauth' },
+      // One sign-in for all of the person's sessions, so it reads Connected.
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://auth.jira.example.test',
+          grantScope: 'subject',
+        },
+      },
       description: 'Search, read and update tickets',
     },
   }),
@@ -307,40 +314,36 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('leads its Connectors crumb back to the sub-tab that lists it', async () => {
-    await renderAt(`${BASE}/kubernetes`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/infrastructure',
-    );
-  });
-
-  it('points the Connectors crumb at the sub-tab while loading, once it is known', async () => {
+  it('leads its Connectors crumb back to the list, while loading too', async () => {
     mockLoading = true;
-    // Read before (the persisted cache): the row is known while loading.
     await renderAt(`${BASE}/kubernetes`);
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/infrastructure',
+      '/customize/connectors',
     );
-    cleanup();
-
-    await renderAt(`${BASE}/muster`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/internal',
-    );
-    cleanup();
-
-    // Not read yet: no link rather than one to a sub-tab that may not list it.
-    mockServers = [];
-    await renderAt(`${BASE}/jira`);
-    expect(
-      screen.queryByRole('link', { name: 'Connectors' }),
-    ).not.toBeInTheDocument();
   });
 
-  it("shows muster's own page with its endpoint to copy, under Internal", async () => {
+  it('says an infrastructure family has an instance per management cluster', async () => {
+    await renderAt(`${BASE}/kubernetes`);
+    expect(
+      screen.getByText(/It has an instance per management cluster/),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the tag a family’s tool-group label reads as, linking to the list', async () => {
+    await renderAt(`${BASE}/kubernetes/details`);
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(facts).getByRole('link', { name: 'infrastructure' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=infrastructure',
+    );
+  });
+
+  it("shows muster's own page with its endpoint to copy, and that it is fixed", async () => {
     await renderAt(`${BASE}/muster`);
 
     expect(
@@ -348,7 +351,7 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/internal',
+      '/customize/connectors',
     );
     expect(
       screen.getByText(/It comes with the Agent Platform/),
@@ -410,6 +413,27 @@ describe('ConnectorPage', () => {
         // The back arrow has no text, only its label.
         .map(link => link.textContent || link.getAttribute('aria-label')),
     ).toEqual(['Back to Connectors', 'Connectors']);
+  });
+
+  it('lists a connector’s tags on the Details tab', async () => {
+    mockServers = [makeServer({ name: 'jira', tags: 'ticketing,support' })];
+    await renderAt(`${BASE}/jira`);
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(within(facts).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['ticketing', 'support']);
+    // Each opens the connector's Customize list with that tag picked.
+    expect(
+      within(facts).getByRole('link', { name: 'support' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=support',
+    );
   });
 
   it('lists the facts on the Details tab, not beside the content', async () => {
@@ -670,6 +694,72 @@ describe('ConnectorPage', () => {
 
     expect(signedOutHeader).toEqual(['Edit', 'More actions']);
     expect(headerButtons()).toEqual(signedOutHeader);
+  });
+
+  describe('a connector whose sign-in serves one session', () => {
+    beforeEach(() => {
+      mockServers = [
+        ...makeServers(),
+        makeServer({
+          name: 'grafana-cloud',
+          spec: { auth: { type: 'oauth' } },
+        }),
+      ];
+    });
+
+    function signedIn(status: Record<string, unknown> = {}) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana-cloud',
+            status: 'connected',
+            kind: 'grant',
+            ...status,
+          },
+        ],
+      } as never);
+      return api;
+    }
+
+    it('says the sign-in covers the portal only, not plain Connected', async () => {
+      const user = userEvent.setup();
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'session' }),
+      });
+
+      expect(await screen.findByText('Portal only')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).toBeNull();
+      // react-aria opens a tooltip on hover only once it has seen a pointer
+      // move, and a hover's own move lands after its enter.
+      await user.hover(document.body);
+      await user.hover(
+        screen.getByRole('button', {
+          name: 'About the state of grafana-cloud',
+        }),
+      );
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+      );
+    });
+
+    it('keeps muster’s state until muster reports this session signed in', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
+      await renderAt(`${BASE}/grafana-cloud`, { api });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+
+    it('reads Connected where muster reports the grant as the person’s', async () => {
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'subject' }),
+      });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
   });
 
   describe('an SSO connector', () => {
