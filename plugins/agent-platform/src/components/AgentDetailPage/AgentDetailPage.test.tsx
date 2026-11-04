@@ -3,10 +3,11 @@ import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type {
-  AgentCondition,
-  AgentInterface,
-  AgentStatus,
+import {
+  RemoteMCPServer,
+  type AgentCondition,
+  type AgentInterface,
+  type AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   customizeExternalRouteRef,
@@ -2667,6 +2668,64 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         mockMusterServers.servers = [];
       }
     });
+    // A directly bound server is its own resource: a muster connector that
+    // happens to share its name lends it neither its name nor its icon.
+    it('names a directly bound server from its own resource, not a muster connector of that name', async () => {
+      mockMusterServers.servers = [
+        {
+          name: 'github',
+          displayName: 'GitHub',
+          group: 'registered',
+          toolNamePrefix: 'x_github',
+          oauth: false,
+          icon: 'data:image/png;base64,iVBORw0KGgo=',
+          url: 'https://api.githubcopilot.com/mcp/',
+        },
+      ];
+      mockUseAgentToolset.mockReturnValue({
+        ...READ_ONLY_TOOLSET,
+        servers: [
+          new RemoteMCPServer(
+            {
+              apiVersion: 'api.kagent.dev/v1alpha3',
+              kind: 'RemoteMCPServer',
+              metadata: {
+                name: 'github',
+                namespace: 'agent-platform',
+                annotations: {
+                  'ui.giantswarm.io/display-name': 'Internal GHE',
+                },
+              },
+              spec: { url: 'https://ghe.corp.example/mcp' },
+            } as never,
+            'gazelle',
+          ),
+        ],
+      });
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              { mcp: { server: { kind: 'RemoteMCPServer', name: 'github' } } },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      try {
+        await renderShell();
+
+        const logos = screen.getByRole('list', { name: 'Connectors' });
+        expect(
+          within(logos).getByRole('img', { name: 'Internal GHE' }),
+        ).toBeInTheDocument();
+        expect(within(logos).queryByRole('img', { name: 'GitHub' })).toBeNull();
+        expect(logos.querySelector('img')).toBeNull();
+      } finally {
+        mockMusterServers.servers = [];
+      }
+    });
+
     it('shows each skill as a readable card that opens its page', async () => {
       mockSkillCatalog.skills = [
         {

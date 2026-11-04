@@ -1,6 +1,7 @@
 import {
   Agent,
   AgentMcpBinding,
+  RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -30,6 +31,35 @@ export function isGatewayServerBinding(
  */
 export function mcpBindingId(binding: AgentMcpBinding): string {
   return `${binding.server.kind} ${binding.server.name}`;
+}
+
+const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
+
+/** What a directly bound server's logo shows: its name and its URL. */
+export type DirectServerLogo = { name: string; url?: string };
+
+/**
+ * A directly bound server's name and URL, read from the resource the binding
+ * names and nothing else: its display-name annotation, else its name, and its
+ * `.spec.url`. Never from muster's connectors, whose names can coincide with
+ * an unrelated server in the agent's namespace. Matched by kind as well as
+ * name; a kind the page does not read (a kagent `MCPServer`) shows its name.
+ */
+export function directServerLogo(
+  binding: AgentMcpBinding,
+  remotes: readonly RemoteMCPServer[] | undefined,
+): DirectServerLogo {
+  const { kind, apiGroup, name } = binding.server;
+  const remote =
+    kind === RemoteMCPServer.kind &&
+    (!apiGroup || apiGroup === RemoteMCPServer.group)
+      ? remotes?.find(server => server.getName() === name)
+      : undefined;
+  const url = remote?.getUrl();
+  return {
+    name: remote?.getAnnotations()?.[DISPLAY_NAME_ANNOTATION] || name,
+    ...(url ? { url } : {}),
+  };
 }
 
 /**

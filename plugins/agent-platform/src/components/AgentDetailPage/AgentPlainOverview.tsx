@@ -62,7 +62,9 @@ import {
 } from '../../lib/defaultWorkspace';
 import {
   describeToolScope,
+  directServerLogo,
   isGatewayServerBinding,
+  mcpBindingId,
   skillLabel,
 } from './helpers';
 
@@ -324,21 +326,15 @@ function ConnectorsSection({
       name: muster.labels.get(name) ?? name,
       ...sources.get(name),
     })),
-    ...direct.map((binding, index) => {
-      const name = binding.server.name;
-      const remote = servers?.find(server => server.getName() === name);
-      return {
-        // The server name is not unique: two bindings may scope one server
-        // differently.
-        key: `${name}#${index}`,
-        name: muster.labels.get(name) ?? name,
-        icon: sources.get(name)?.icon,
-        url: remote?.getUrl() ?? sources.get(name)?.url,
-        detail: `${describeToolScope(binding)}${
-          binding.requireApproval ? ' · asks you before every call' : ''
-        }`,
-      };
-    }),
+    ...direct.map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      ...directServerLogo(binding, servers),
+      detail: `${describeToolScope(binding)}${
+        binding.requireApproval ? ' · asks you before every call' : ''
+      }`,
+    })),
   ];
 
   let reach: string;

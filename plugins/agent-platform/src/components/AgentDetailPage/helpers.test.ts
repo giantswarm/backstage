@@ -1,9 +1,11 @@
 import {
   Agent,
   AgentInterface,
+  RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   describeToolScope,
+  directServerLogo,
   isGatewayServerBinding,
   mcpBindingId,
   skillLabel,
@@ -47,6 +49,60 @@ describe('isGatewayServerBinding', () => {
 describe('mcpBindingId', () => {
   it('names the kind and the server', () => {
     expect(mcpBindingId(binding('grafana'))).toBe('RemoteMCPServer grafana');
+  });
+});
+
+describe('directServerLogo', () => {
+  const remote = (
+    name: string,
+    url: string,
+    annotations?: Record<string, string>,
+  ) =>
+    new RemoteMCPServer(
+      {
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'RemoteMCPServer',
+        metadata: { name, namespace: 'agent-platform', annotations },
+        spec: { url },
+      } as never,
+      'gazelle',
+    );
+
+  it('reads the bound RemoteMCPServer’s display name and URL', () => {
+    expect(
+      directServerLogo(binding('ghe'), [
+        remote('ghe', 'https://ghe.corp.example/mcp', {
+          'ui.giantswarm.io/display-name': 'GitHub Enterprise',
+        }),
+      ]),
+    ).toEqual({
+      name: 'GitHub Enterprise',
+      url: 'https://ghe.corp.example/mcp',
+    });
+  });
+
+  it('falls back to the resource’s name without a display name', () => {
+    expect(
+      directServerLogo(binding('github'), [
+        remote('github', 'https://ghe.corp.example/mcp'),
+      ]),
+    ).toEqual({ name: 'github', url: 'https://ghe.corp.example/mcp' });
+  });
+
+  // A kagent MCPServer of the same name is a different resource: it must not
+  // take the RemoteMCPServer's URL.
+  it('matches the binding’s kind as well as its name', () => {
+    expect(
+      directServerLogo({ server: { kind: 'MCPServer', name: 'github' } }, [
+        remote('github', 'https://ghe.corp.example/mcp'),
+      ]),
+    ).toEqual({ name: 'github' });
+  });
+
+  it('shows the bare name until the namespace is read', () => {
+    expect(directServerLogo(binding('github'), undefined)).toEqual({
+      name: 'github',
+    });
   });
 });
 
