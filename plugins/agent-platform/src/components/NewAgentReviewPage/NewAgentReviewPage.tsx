@@ -46,7 +46,7 @@ import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useRuntimeChoices } from '../HarnessPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { CodeBlock } from '../CodeBlock';
+import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { EditAgentReview } from './EditAgentReview';
@@ -631,12 +631,12 @@ function CreateAgentReview() {
                   }
                 />
                 <div className={classes.files}>
-                  <CodeBlock
+                  <FileView
                     filename={`${spec.name}.yaml`}
                     content={dryRun.manifests.helmRelease}
                     language="yaml"
                   />
-                  <CodeBlock
+                  <FileView
                     filename="agent.yaml"
                     content={dryRun.manifests.ociRepository}
                     language="yaml"
@@ -661,12 +661,12 @@ function CreateAgentReview() {
                     copy the resources above, or save the composed values and
                     run the command once against the cluster.
                   </Text>
-                  <CodeBlock
+                  <FileView
                     filename={`${spec.name}-values.yaml`}
                     content={valuesYaml}
                     language="yaml"
                   />
-                  <CodeBlock content={helmInstallCommand(spec, chart)} />
+                  <FileView content={helmInstallCommand(spec, chart)} />
                 </div>
               </details>
             )}

@@ -9,7 +9,6 @@ import {
   formatMoney,
   formatCount,
   formatPercent,
-  formatSeconds,
   formatTokens,
   formatTokensPerSecond,
   formatUsd,
@@ -119,21 +118,6 @@ describe('formatPercent', () => {
   it('is an em dash for an undefined or non-finite share', () => {
     expect(formatPercent(undefined)).toBe('—');
     expect(formatPercent(Number.NaN)).toBe('—');
-  });
-});
-
-describe('formatSeconds', () => {
-  it('switches to milliseconds under a second', () => {
-    expect(formatSeconds(0.42)).toBe('420 ms');
-    expect(formatSeconds(1.5)).toBe('1.5 s');
-    expect(formatSeconds(42)).toBe('42 s');
-  });
-
-  it('is an em dash for an empty histogram', () => {
-    // histogram_quantile over no observations is NaN, which is the normal
-    // answer on an idle installation — not an error, and not 0ms.
-    expect(formatSeconds(Number.NaN)).toBe('—');
-    expect(formatSeconds(undefined)).toBe('—');
   });
 });
 

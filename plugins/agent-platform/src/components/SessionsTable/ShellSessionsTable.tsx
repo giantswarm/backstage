@@ -37,6 +37,7 @@ import {
   type CatalogFilterSelection,
   formatLocalDateFull,
   isCatalogFiltered,
+  PinIcon,
   StackedRowList,
   StatusDot,
   stopRowPress,
@@ -56,7 +57,6 @@ import {
   UNNAMED_WORKSPACE_LABEL,
   workspaceNameLabel,
 } from '../../lib/sessionWorkspace';
-import { PinIcon } from '../PinIcon';
 import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';

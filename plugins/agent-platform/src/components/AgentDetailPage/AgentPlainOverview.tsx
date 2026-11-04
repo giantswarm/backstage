@@ -604,7 +604,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to, who created it and since when.
+ * the organization it belongs to, who created it and how long ago.
  */
 export function agentFacts({
   agent,
@@ -675,7 +675,7 @@ export function agentFacts({
       label: 'Created',
       value: (
         <Text variant="body-small">
-          <DateComponent value={created} />
+          <DateComponent value={created} relative />
         </Text>
       ),
     });

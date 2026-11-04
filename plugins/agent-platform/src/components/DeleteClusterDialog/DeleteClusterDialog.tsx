@@ -38,6 +38,24 @@ import {
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PartialWriteOutcome } from '../GpuNodePools/PartialWriteOutcome';
+import { NextPassOutcome } from './NextPassOutcome';
+import { PassOutcome } from './PassOutcome';
+import {
+  REMOVAL_CHECK_INTERVAL_MS,
+  REMOVAL_CHECK_LIMIT,
+  judgeNextPass,
+  type NextPass,
+  type RemovalPass,
+} from './removalPasses';
+
+/** The last dry run of the next pass, judged against the passes made. */
+type NextCheck = {
+  /** Absent when the check failed: its failure is shown from `write.failure`. */
+  next?: NextPass;
+  at: Date;
+  /** No further check is scheduled: what is left is not cluster-manager's, or the round ran out. */
+  paused: boolean;
+};
 
 export type DeleteClusterDialogProps = {
   isOpen: boolean;
@@ -54,12 +72,20 @@ export type DeleteClusterDialogProps = {
  * signed-in person, behind typing the cluster's name. On opening it shows both
  * modes' dry runs: what goes with the cluster (its GPU pools, operator and
  * serving slice, the models served on it), or the refusal with its reason and
- * the way out. **Delete** removes the cluster's release as the person and
- * offers **Finish removal**, the second call cluster-manager names once the
- * cluster is gone; **Commit** opens the removal pull request and, once it is
- * merged, offers the live step its answer names. cluster-manager's
- * `notFound.nothingLeft` answer, to a dry run or a call, reads as the removal
- * complete.
+ * the way out. **Delete** removes the cluster's release as the person;
+ * **Commit** opens the removal pull request and, once it is merged, offers
+ * the live step its answer names. cluster-manager's `notFound.nothingLeft`
+ * answer, to a dry run or a call, reads as the removal complete.
+ *
+ * Every call in mode apply is a pass of the removal, shown with what it
+ * removed, what is left and why, and what it waits for. After each pass the
+ * dialog asks cluster-manager by a dry run whether another pass would remove
+ * something new — while the uninstall runs a pass answers the same — and
+ * offers **Finish removal** only then, checking again every
+ * {@link REMOVAL_CHECK_INTERVAL_MS} while there is nothing new to do — through
+ * a failed check, for 30 minutes at most, and not once
+ * what is left is not cluster-manager's to remove; **Check again** starts
+ * another round.
  */
 export function DeleteClusterDialog({
   isOpen,
@@ -73,7 +99,12 @@ export function DeleteClusterDialog({
   const [verdicts, setVerdicts] = useState<ModeVerdicts>();
   const [mode, setMode] = useState<WriteMode>();
   const [typed, setTyped] = useState('');
-  const [removed, setRemoved] = useState<ClusterWriteResult>();
+  const [passes, setPasses] = useState<RemovalPass[]>([]);
+  /** A pass in flight: no check runs beside it. */
+  const [passing, setPassing] = useState(false);
+  /** The last pass in mode apply was refused: no check runs over its failure. */
+  const [passFailed, setPassFailed] = useState(false);
+  const [nextCheck, setNextCheck] = useState<NextCheck>();
   const [committed, setCommitted] = useState<ClusterWriteResult>();
   const input: DeleteClusterInput = { organization, name };
   const startAnswer = useOpenGeneration(isOpen);
@@ -108,7 +139,9 @@ export function DeleteClusterDialog({
       setVerdicts(undefined);
       setMode(undefined);
       setTyped('');
-      setRemoved(undefined);
+      setPasses([]);
+      setPassFailed(false);
+      setNextCheck(undefined);
       setCommitted(undefined);
       write.reset();
     }
@@ -116,11 +149,18 @@ export function DeleteClusterDialog({
   }, [isOpen, installation, organization, name]);
 
   /** Delete, Continue after a partial answer, Finish removal and the live step after a merge: the same call. */
-  const onDelete = async () => {
+  const onPass = async (label: string) => {
+    setNextCheck(undefined);
+    setPassFailed(false);
+    setPassing(true);
     try {
-      setRemoved(await write.remove(input, { mode: 'apply' }));
+      const result = await write.remove(input, { mode: 'apply' });
+      setPasses(previous => [...previous, { label, result, at: new Date() }]);
     } catch {
       // Shown from `write.failure`.
+      setPassFailed(true);
+    } finally {
+      setPassing(false);
     }
   };
 
@@ -141,11 +181,13 @@ export function DeleteClusterDialog({
     if (mode === 'commit') {
       onCommit();
     } else {
-      onDelete();
+      onPass('Delete');
     }
   };
 
   const checking = isOpen && !verdicts;
+  const last = passes.at(-1);
+  const removed = last?.result;
   const started = Boolean(removed || committed);
   const notConnected =
     write.failure?.kind === 'not-connected'
@@ -155,8 +197,67 @@ export function DeleteClusterDialog({
   const preview = nothingLeft ? undefined : previewOf(verdicts);
   const refusedEverywhere =
     Boolean(verdicts) && !preview && !notConnected && !nothingLeft;
-  const secondPass =
-    removed && !removed.partial && removed.nextStep && !nothingLeft;
+  /** After a pass that was not cut short: what the next one would do. */
+  const afterPass = Boolean(removed && !removed.partial && !nothingLeft);
+  const watching =
+    isOpen &&
+    afterPass &&
+    !passing &&
+    !passFailed &&
+    !nextCheck?.paused &&
+    nextCheck?.next?.state !== 'ready';
+
+  useEffect(() => {
+    if (!watching) {
+      return undefined;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let checks = 0;
+    const run = async () => {
+      checks += 1;
+      const isCurrent = startAnswer();
+      let next: NextPass | undefined;
+      try {
+        next = judgeNextPass(
+          await write.remove(input, { mode: 'apply', dryRun: true }),
+          passes,
+        );
+      } catch {
+        // Shown from `write.failure` and tried again: a blip must not end the
+        // watch. Nothing left reads as the removal complete and ends it.
+      }
+      if (cancelled || !isCurrent()) {
+        return;
+      }
+      const paused =
+        next?.state === 'stuck' ||
+        (next?.state !== 'ready' && checks >= REMOVAL_CHECK_LIMIT);
+      setNextCheck({ next, at: new Date(), paused });
+      if (next?.state !== 'ready' && !paused) {
+        timer = setTimeout(run, REMOVAL_CHECK_INTERVAL_MS);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watching, passes]);
+
+  const finishButton = (
+    <div>
+      <Button
+        variant="secondary"
+        size="small"
+        onPress={() => onPass('Finish removal')}
+        isDisabled={write.isBusy}
+      >
+        {write.isWriting ? 'Removing…' : 'Finish removal'}
+      </Button>
+    </div>
+  );
 
   return (
     <BusyDialog
@@ -287,54 +388,46 @@ export function DeleteClusterDialog({
                   server={CLUSTER_MANAGER_SERVER}
                 />
               )}
-              {removed?.partial && (
-                <PartialWriteOutcome
-                  result={removed}
-                  action="Delete"
-                  onContinue={onDelete}
-                  isBusy={write.isBusy}
-                />
+              {passes.map((pass, index) =>
+                index === passes.length - 1 && pass.result.partial ? (
+                  <PartialWriteOutcome
+                    key={index}
+                    result={pass.result}
+                    action={pass.label}
+                    onContinue={() => onPass('Continue')}
+                    isBusy={write.isBusy}
+                  />
+                ) : (
+                  <PassOutcome
+                    key={index}
+                    passes={passes}
+                    index={index}
+                    // An earlier pass's next step is superseded by the later
+                    // pass, and every one by the removal complete.
+                    current={index === passes.length - 1 && !nothingLeft}
+                  />
+                ),
               )}
-              {removed && !removed.partial && (
-                <Alert
-                  status="success"
-                  data-testid="delete-outcome"
-                  title={`Removed as you: ${removed.objects.length} ${
-                    removed.objects.length === 1 ? 'object' : 'objects'
-                  }`}
-                  description={
-                    <Flex direction="column" gap="2">
-                      <Text variant="body-small" color="secondary">
-                        {removed.objects
-                          .map(
-                            object =>
-                              `${object.kind} ${object.name}: ${object.action}`,
-                          )
-                          .join(' · ')}
-                      </Text>
-                      {(removed.warnings ?? []).map(warning => (
-                        <Text key={warning} variant="body-small">
-                          {warning}
-                        </Text>
-                      ))}
-                      {secondPass && (
-                        <>
-                          <Text variant="body-small">{removed.nextStep}</Text>
-                          <div>
-                            <Button
-                              variant="secondary"
-                              size="small"
-                              onPress={onDelete}
-                              isDisabled={write.isBusy}
-                            >
-                              {write.isBusy ? 'Removing…' : 'Finish removal'}
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </Flex>
-                  }
-                />
+              {afterPass && (
+                <Flex direction="column" gap="2" data-testid="removal-next">
+                  {(passing || passFailed) && finishButton}
+                  {!passing && !passFailed && !nextCheck && (
+                    <Text variant="body-small" color="secondary">
+                      Checking what is left to remove…
+                    </Text>
+                  )}
+                  {!passing && !passFailed && nextCheck && (
+                    <NextPassOutcome
+                      next={nextCheck.next}
+                      at={nextCheck.at}
+                      paused={nextCheck.paused}
+                      last={last!.result}
+                      finishButton={finishButton}
+                      onCheckAgain={() => setNextCheck(undefined)}
+                      isBusy={write.isBusy}
+                    />
+                  )}
+                </Flex>
               )}
               {nothingLeft && (
                 <Alert
@@ -356,7 +449,7 @@ export function DeleteClusterDialog({
                       <Button
                         variant="secondary"
                         size="small"
-                        onPress={onDelete}
+                        onPress={() => onPass('Live step')}
                         isDisabled={write.isBusy}
                       >
                         {write.isBusy

@@ -30,8 +30,8 @@ jest.mock('../../hooks/useToolchainManager', () => ({
     },
   }),
 }));
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: (props: { content: string }) => <pre>{props.content}</pre>,
+jest.mock('../FileView', () => ({
+  FileView: (props: { content: string }) => <pre>{props.content}</pre>,
 }));
 
 function described(version: string): ToolchainDescribeResult {

@@ -54,7 +54,8 @@ export const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
 
     const givenDate = parseDate(value);
     const distance = differenceInMinutes(currentTime, givenDate);
-    if (Math.abs(distance) > REFRESH_PERIOD) {
+    // An unparsable value shows as given and has nothing to count towards.
+    if (!isFinite(distance) || Math.abs(distance) > REFRESH_PERIOD) {
       if (timeoutId.current) {
         clearTimeout(timeoutId.current);
       }
