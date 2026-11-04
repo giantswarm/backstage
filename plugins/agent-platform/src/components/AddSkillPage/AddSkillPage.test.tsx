@@ -14,7 +14,9 @@ import { AddSkillPage, type SkillEdit } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: Array<string | { url: string; readOnly?: boolean }> = [];
+let mockRepositories: Array<
+  string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+> = [];
 let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
@@ -44,6 +46,11 @@ jest.mock('../AgentsDataProvider', () => ({
     <>{children}</>
   ),
   useAgents: () => ({ rows: [mockSkillCreator], isLoading: false }),
+}));
+// What discovery found each configured ref to be, by repository key.
+let mockRefKinds: Record<string, string> = {};
+jest.mock('../../hooks/useSkillCatalog', () => ({
+  useSkillCatalog: () => ({ refKinds: mockRefKinds }),
 }));
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
@@ -124,6 +131,7 @@ beforeEach(() => {
   proposeSkill.mockResolvedValue(opened);
   mockState = { isProposing: false, error: null };
   mockRepositories = [REPO];
+  mockRefKinds = {};
   mockMetaAgents = {};
   createSession.mockReset();
 });
@@ -327,6 +335,22 @@ describe('AddSkillPage', () => {
     expect(
       screen.queryByText(/Only github.com repositories are offered/),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers a repository with a configured ref only once it is known to be a branch', async () => {
+    const TAGGED = 'https://github.com/giantswarm/tagged';
+    mockRepositories = [
+      { url: TAGGED, ref: 'v1' },
+      { url: REPO, ref: 'develop', path: 'skills' },
+    ];
+    mockRefKinds = { [TAGGED]: 'tag', [REPO]: 'branch' };
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('has nothing to propose to when no configured repository is on github.com', async () => {

@@ -14,8 +14,12 @@ import http from 'isomorphic-git/http/node';
 import { InputError } from '@backstage/errors';
 import { createHash } from 'node:crypto';
 import { parseFrontmatter } from './frontmatter';
-import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
-import { pluginsOf } from './discoverPlugins';
+import {
+  DiscoveredSkill,
+  RefKind,
+  SkillDiscoverySnapshot,
+} from './discoverAgentSkills';
+import { pluginManifestPaths, pluginsOf } from './discoverPlugins';
 import {
   assignSkillFiles,
   gitBlobSha,
@@ -55,12 +59,51 @@ export class GitFetchError extends Error {
 
 const SKILL_FILE = 'SKILL.md';
 
-/** What a clone resolved to: the branch read and its head commit. */
+/** What a clone resolved to: the ref read and its commit. */
 export interface GitCloneResult {
   /** Full commit id HEAD pointed at — the pin an agent carries. */
   commit: string;
-  /** The branch that was read (the remote's default branch when none given). */
+  /** The ref that was read (the remote's default branch when none given). */
   ref: string;
+  /** What `ref` is; a branch when absent. */
+  refKind?: RefKind;
+}
+
+/** A ref the server advertises, as `listServerRefs` answers it. */
+export interface ServerRef {
+  ref: string;
+  oid: string;
+  peeled?: string;
+}
+
+/** A full commit id (SHA-1 or SHA-256). */
+const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+
+/**
+ * What a configured ref is on the server and what to fetch for it: a commit
+ * id is fetched as itself (the server must allow it, as GitHub and Gitea
+ * do), a branch or tag by its full name, a branch winning over a tag of the
+ * same name (as `git` does). Undefined when the server has no such ref.
+ */
+export function classifyRemoteRef(
+  refs: ServerRef[],
+  ref: string,
+): { kind: RefKind; fetchRef: string; oid: string } | undefined {
+  if (COMMIT_RE.test(ref)) {
+    return { kind: 'commit', fetchRef: ref, oid: ref };
+  }
+  const byName = new Map(refs.map(r => [r.ref, r] as const));
+  const branch = byName.get(`refs/heads/${ref}`);
+  if (branch) {
+    return { kind: 'branch', fetchRef: branch.ref, oid: branch.oid };
+  }
+  const tag = byName.get(`refs/tags/${ref}`);
+  if (tag) {
+    // An annotated tag's commit is its peeled id.
+    const peeled = tag.peeled ?? byName.get(`${tag.ref}^{}`)?.oid;
+    return { kind: 'tag', fetchRef: tag.ref, oid: peeled ?? tag.oid };
+  }
+  return undefined;
 }
 
 /**
@@ -126,9 +169,46 @@ function abortableBody(
 /** The real client: isomorphic-git over Node's http(s), no git binary. */
 const isomorphicGitClient: GitClient = {
   async clone(dir, repoUrl, ref, signal) {
+    const client = signal ? abortableHttp(signal) : http;
+    if (ref) {
+      const target = classifyRemoteRef(
+        await git.listServerRefs({
+          http: client,
+          url: repoUrl,
+          protocolVersion: 1,
+          peelTags: true,
+        }),
+        ref,
+      );
+      if (!target) {
+        throw new GitFetchError(
+          404,
+          `Ref ${ref} is not a branch or tag of ${repoUrl}.`,
+        );
+      }
+      if (target.kind !== 'branch') {
+        // A tag or commit: fetch exactly it (depth 1) and check it out
+        // detached; `git.clone` only checks out branches.
+        await git.init({ fs, dir });
+        await git.addRemote({ fs, dir, remote: 'origin', url: repoUrl });
+        await git.fetch({
+          fs,
+          http: client,
+          dir,
+          remote: 'origin',
+          ref: target.fetchRef,
+          singleBranch: true,
+          depth: 1,
+          tags: false,
+        });
+        await git.checkout({ fs, dir, ref: target.oid, force: true });
+        const commit = await git.resolveRef({ fs, dir, ref: 'HEAD' });
+        return { commit, ref, refKind: target.kind };
+      }
+    }
     await git.clone({
       fs,
-      http: signal ? abortableHttp(signal) : http,
+      http: client,
       dir,
       url: repoUrl,
       ref: ref || undefined,
@@ -141,7 +221,7 @@ const isomorphicGitClient: GitClient = {
     // must name that branch, never ''.
     const branch =
       ref || (await git.currentBranch({ fs, dir, fullname: false })) || 'HEAD';
-    return { commit, ref: branch };
+    return { commit, ref: branch, refKind: 'branch' };
   },
 };
 
@@ -325,9 +405,19 @@ async function walkCheckout(
 
   if (scanPath) {
     // Only below `scanPath`, still reported repository-relative. A symlink on
-    // the way is not followed; a missing directory has no skills.
+    // the way is not followed; a missing directory has no skills. A plugin
+    // rooted above it keeps its manifest (its skills can lie below).
     let dir = rootDir;
+    let rel = '';
     for (const segment of scanPath.split('/')) {
+      for (const manifest of pluginManifestPaths(rel)) {
+        const file = path.join(rootDir, ...manifest.split('/'));
+        const stat = await lstat(file).catch(() => undefined);
+        if (stat?.isFile()) {
+          files.push({ path: manifest, size: stat.size });
+        }
+      }
+      rel = rel ? `${rel}/${segment}` : segment;
       dir = path.join(dir, segment);
       const stat = await lstat(dir).catch(() => undefined);
       if (!stat?.isDirectory()) {
@@ -492,6 +582,8 @@ export async function discoverAgentSkillsFromGit(options: {
       throw movedOn(cloned, repoUrl, commit);
     }
 
+    // Said only for a configured ref; the default branch is a branch.
+    const refKind = ref ? { refKind: cloned.refKind ?? 'branch' } : {};
     const walked = await walkCheckout(dir, options.scanPath ?? '');
     const scanned = walked.skills;
     const { files, fileContents } = await listCheckoutFiles(
@@ -511,6 +603,7 @@ export async function discoverAgentSkillsFromGit(options: {
         repoUrl,
         path: s.path,
         ref: cloned.ref,
+        ...refKind,
         commit: cloned.commit,
         // Read from the checkout just now.
         contentReadable: true,
@@ -534,6 +627,7 @@ export async function discoverAgentSkillsFromGit(options: {
         },
       ),
       ref: cloned.ref,
+      ...refKind,
       commit: cloned.commit,
       // A full checkout was scanned; nothing can be missing.
       truncated: false,

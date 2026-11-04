@@ -50,12 +50,15 @@ export interface Config {
        * An entry is a URL, or an object:
        * - `url`: the repository URL, as above.
        * - `ref`: branch, tag or commit to read; the default branch when unset.
-       *   Picked skills pin to the commit it resolves to.
+       *   Picked skills pin to the commit it resolves to. Pull requests target
+       *   it when it is a branch; a tag or commit takes none.
        * - `path`: directory to scan for skills; the whole repository when
-       *   unset. Skill paths stay repository-relative.
+       *   unset. Skill paths stay repository-relative; new skills go below it.
        * - `readOnly`: no Add skill or edit pull requests into it (e.g. the
        *   platform's own skills). Its skills still list and can be added to
        *   agents.
+       *
+       * A URL listed twice is read once, by its first entry.
        */
       repositories?: Array<
         | string

@@ -1,19 +1,55 @@
 import type { Config } from '@backstage/config';
-import { canProposeSkillTo } from './skills';
+import { canProposeSkillTo, type RefKind } from './skills';
 
 /**
  * One entry of `agentPlatform.skills.repositories`: a plain URL, or
- * `{ url, ref?, path?, readOnly? }`. Mirrors `readSkillRepositories` in
- * plugins/gs-backend/src/agentSkills/skillRepositories.ts, which applies `ref`
- * and `path` and refuses pull requests into a read-only source; the frontend
- * only needs the URL and `readOnly`.
+ * `{ url, ref?, path?, readOnly? }`. Parsed by the same rules as
+ * `readSkillRepositories` in
+ * plugins/gs-backend/src/agentSkills/skillRepositories.ts (which logs what it
+ * leaves out): a malformed entry and a later entry for a URL already listed
+ * are left out, and `path` is normalized the same way.
  */
 export interface SkillRepositoryEntry {
   url: string;
+  /** Branch, tag or commit read; the default branch when absent. */
+  ref?: string;
+  /** Directory scanned, repository-relative; '' = the whole repository. */
+  path: string;
   readOnly: boolean;
 }
 
-/** The configured skill repositories; malformed entries are left out. */
+/** A full commit id (SHA-1 or SHA-256). */
+const COMMIT_ID_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+
+/**
+ * How the backend compares repository URLs (`repositoryKey`): trimmed, no
+ * trailing slashes or `.git`, lowercase.
+ */
+export function repositoryKey(repoUrl: string): string {
+  return repoUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\.git$/i, '')
+    .toLowerCase();
+}
+
+/**
+ * A configured `path`, repository-relative: `.` and empty segments dropped;
+ * undefined for one that is not a plain relative directory.
+ */
+export function normalizeScanPath(path: string): string | undefined {
+  const segments = path
+    .trim()
+    .split('/')
+    .filter(segment => segment !== '' && segment !== '.');
+  // eslint-disable-next-line no-control-regex
+  const bad = /[\\\u0000-\u001f\u007f]/;
+  return segments.some(segment => segment === '..' || bad.test(segment))
+    ? undefined
+    : segments.join('/');
+}
+
+/** The configured skill repositories, each URL once. */
 export function skillRepositoriesFrom(
   config: Config | undefined,
 ): SkillRepositoryEntry[] {
@@ -22,11 +58,13 @@ export function skillRepositoriesFrom(
     return [];
   }
   const entries: SkillRepositoryEntry[] = [];
+  const seen = new Set<string>();
   for (const entry of raw) {
+    let parsed: SkillRepositoryEntry | undefined;
     if (typeof entry === 'string') {
-      if (entry.trim()) {
-        entries.push({ url: entry.trim(), readOnly: false });
-      }
+      parsed = entry.trim()
+        ? { url: entry.trim(), path: '', readOnly: false }
+        : undefined;
     } else if (
       typeof entry === 'object' &&
       entry !== null &&
@@ -34,24 +72,54 @@ export function skillRepositoriesFrom(
       typeof entry.url === 'string' &&
       entry.url.trim()
     ) {
-      entries.push({
-        url: entry.url.trim(),
-        readOnly: entry.readOnly === true,
-      });
+      const path = normalizeScanPath(
+        typeof entry.path === 'string' ? entry.path : '',
+      );
+      const ref = typeof entry.ref === 'string' ? entry.ref.trim() : '';
+      parsed =
+        path === undefined
+          ? undefined
+          : {
+              url: entry.url.trim(),
+              ...(ref ? { ref } : {}),
+              path,
+              readOnly: entry.readOnly === true,
+            };
+    }
+    if (parsed && !seen.has(repositoryKey(parsed.url))) {
+      seen.add(repositoryKey(parsed.url));
+      entries.push(parsed);
     }
   }
   return entries;
 }
 
 /**
- * The repositories Add skill can target: writable github.com ones, the only
- * ones `POST /agent-skills/pull-request` accepts.
+ * Whether Add skill can target the source: writable, on github.com, and read
+ * on a branch — the default one, or a configured `ref` discovery found to be
+ * a branch (`refKinds`, by `repositoryKey`). The same rules
+ * `POST /agent-skills/pull-request` enforces.
  */
+export function canProposeTo(
+  repository: SkillRepositoryEntry,
+  refKinds: Record<string, RefKind> = {},
+): boolean {
+  if (repository.readOnly || !canProposeSkillTo(repository.url)) {
+    return false;
+  }
+  if (!repository.ref) {
+    return true;
+  }
+  return (
+    !COMMIT_ID_RE.test(repository.ref) &&
+    refKinds[repositoryKey(repository.url)] === 'branch'
+  );
+}
+
+/** The sources Add skill can target (see `canProposeTo`). */
 export function proposableRepositories(
   repositories: SkillRepositoryEntry[],
-): string[] {
-  return repositories
-    .filter(repository => !repository.readOnly)
-    .map(repository => repository.url)
-    .filter(canProposeSkillTo);
+  refKinds?: Record<string, RefKind>,
+): SkillRepositoryEntry[] {
+  return repositories.filter(repository => canProposeTo(repository, refKinds));
 }

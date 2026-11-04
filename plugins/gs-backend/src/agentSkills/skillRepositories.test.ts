@@ -3,6 +3,7 @@ import { JsonValue } from '@backstage/types';
 import {
   findSkillRepository,
   isBelowPath,
+  normalizeScanPath,
   readSkillRepositories,
 } from './skillRepositories';
 
@@ -48,16 +49,35 @@ describe('readSkillRepositories', () => {
     ]);
   });
 
-  it('leaves malformed entries out', () => {
+  it('leaves malformed entries and repeated URLs out, logging each', () => {
+    const logger = mockServices.logger.mock();
     expect(
       readSkillRepositories(
         configWith([
           { ref: 'main' },
           { url: 'https://github.com/a/b', path: '../etc' },
           '',
+          'https://github.com/a/c',
+          { url: 'https://github.com/A/c.git/', readOnly: true },
         ]),
+        logger,
       ),
-    ).toEqual([]);
+    ).toEqual([{ url: 'https://github.com/a/c', path: '', readOnly: false }]);
+    expect(logger.error).toHaveBeenCalledTimes(4);
+    expect(logger.error).toHaveBeenLastCalledWith(
+      'agentPlatform.skills.repositories[4] ignored: https://github.com/A/c.git/ is already listed',
+    );
+  });
+
+  it.each([
+    ['.', ''],
+    ['./', ''],
+    ['skills//x/', 'skills/x'],
+    ['./skills/./x', 'skills/x'],
+    ['/skills', 'skills'],
+    ['a/../b', undefined],
+  ])('normalizes the path %p to %p', (path, expected) => {
+    expect(normalizeScanPath(path)).toBe(expected);
   });
 
   it('answers nothing when unset', () => {

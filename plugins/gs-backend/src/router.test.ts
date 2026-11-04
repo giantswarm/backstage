@@ -1923,6 +1923,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   const COMMIT = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
   const PLATFORM = 'https://github.com/giantswarm/agent-platform';
   const TEAM = 'https://github.com/giantswarm/team-skills';
+  const PINNED = 'https://github.com/giantswarm/pinned-skills';
   const skill = {
     name: 'agent-platform-overview',
     description: 'The platform.',
@@ -1940,7 +1941,10 @@ describe('skill repositories with ref, path and readOnly', () => {
           skills: {
             repositories: [
               { url: PLATFORM, ref: 'v1.2.3', path: 'skills', readOnly: true },
-              { url: TEAM, path: './skills/' },
+              { url: TEAM, path: './skills/', ref: 'develop' },
+              // A second entry for a listed URL is left out.
+              { url: `${PLATFORM}.git/` },
+              { url: PINNED, ref: COMMIT },
             ],
           },
         },
@@ -2051,8 +2055,44 @@ describe('skill repositories with ref, path and readOnly', () => {
 
     expect(response.status).toBe(200);
     expect(createSkillPullRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ repoUrl: TEAM, parentDir: 'skills' }),
+      expect.objectContaining({
+        repoUrl: TEAM,
+        parentDir: 'skills',
+        baseBranch: 'develop',
+      }),
     );
+  });
+
+  it('refuses a pull request into a source pinned to a commit', async () => {
+    const response = await request(await buildApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: PINNED,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toContain('not a branch');
+    expect(createSkillPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('matches the pull-request repository like discovery does', async () => {
+    const response = await request(await buildApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: `${PLATFORM.toUpperCase().replace('HTTPS://GITHUB.COM', 'https://github.com')}.git`,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+      });
+
+    // The first entry for the URL wins: read-only.
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toContain('read-only');
   });
 
   it('refuses an update of a skill outside the configured path', async () => {

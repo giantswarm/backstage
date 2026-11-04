@@ -34,7 +34,12 @@ import {
   repoSlug,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { skillRepositoriesFrom } from '../../lib/skillRepositories';
+import {
+  proposableRepositories,
+  repositoryKey,
+  skillRepositoriesFrom,
+} from '../../lib/skillRepositories';
+import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { skillsRouteRef } from '../../routes';
@@ -115,26 +120,30 @@ function SkillPullRequestOutcome({
  */
 export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const navigate = useNavigate();
-  // The target repositories: the github.com entries of the same
-  // signed-in-config list the catalog is discovered from — the pull-request
-  // endpoint refuses any other repository, so offering one would only end in
-  // an error. Read-only sources are never targets. An edit targets the
-  // skill's own repository.
+  // The target repositories: the entries of the same signed-in-config list
+  // the catalog is discovered from that the pull-request endpoint accepts
+  // (`canProposeTo`: writable, github.com, read on a branch), so offering
+  // another would only end in an error. An edit targets the skill's own
+  // repository.
   const { config } = useSignedInConfig();
+  const { refKinds } = useSkillCatalog();
   const editRepoUrl = edit?.skill.repoUrl;
-  const configured = useMemo(
-    () =>
-      skillRepositoriesFrom(config)
-        .filter(repository => !repository.readOnly)
-        .map(repository => repository.url),
-    [config],
+  const configured = useMemo(() => skillRepositoriesFrom(config), [config]);
+  const targets = useMemo(
+    () => proposableRepositories(configured, refKinds),
+    [configured, refKinds],
   );
   const repositories = useMemo(
-    () => (editRepoUrl ? [editRepoUrl] : configured.filter(canProposeSkillTo)),
-    [configured, editRepoUrl],
+    () => (editRepoUrl ? [editRepoUrl] : targets.map(target => target.url)),
+    [targets, editRepoUrl],
   );
-  /** Configured repositories left out of the targets for not being on github.com. */
-  const skippedCount = edit ? 0 : configured.length - repositories.length;
+  /** Writable repositories left out of the targets for not being on github.com. */
+  const skippedCount = edit
+    ? 0
+    : configured.filter(
+        repository =>
+          !repository.readOnly && !canProposeSkillTo(repository.url),
+      ).length;
   const { skills: customizeSkills } = useCustomizePaths();
   const skillsRoute = useRouteRef(skillsRouteRef);
   const closeHref = useCloseHref(
@@ -233,6 +242,11 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
 
   // What the skill creator hand-off is about, read when it is pressed: the
   // skill being changed, or the new skill as typed so far.
+  const selectedTarget = targets.find(
+    target =>
+      repositoryKey(target.url) ===
+      repositoryKey(repoUrl ?? repositories[0] ?? ''),
+  );
   const getCreationTarget = useCallback(
     (): SkillCreationTarget =>
       edit
@@ -252,11 +266,22 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         : {
             kind: 'create',
             repoUrl: repoUrl ?? repositories[0] ?? '',
+            // Where discovery scans, and the branch it reads.
+            ...(selectedTarget?.path ? { path: selectedTarget.path } : {}),
+            ...(selectedTarget?.ref ? { branch: selectedTarget.ref } : {}),
             name: skillName,
             description,
             instructions,
           },
-    [edit, repoUrl, repositories, skillName, description, instructions],
+    [
+      edit,
+      repoUrl,
+      repositories,
+      selectedTarget,
+      skillName,
+      description,
+      instructions,
+    ],
   );
 
   // Memoized so the frame's footer slot only updates when the handlers change,

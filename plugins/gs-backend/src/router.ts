@@ -15,7 +15,6 @@ import {
 import {
   discoverAgentSkills,
   GitHubApiError,
-  parseRepoUrl,
   SkillDiscoverySnapshot,
 } from './agentSkills/discoverAgentSkills';
 import {
@@ -44,6 +43,7 @@ import {
 } from './agentSkills/skillDiscoveryCache';
 import { UpstreamReadGuard } from './agentSkills/upstreamReadGuard';
 import {
+  COMMIT_ID_RE,
   findSkillRepository,
   isBelowPath,
   readSkillRepositories,
@@ -103,6 +103,9 @@ export async function createRouter({
   // Every skill read upstream on a cache miss: misses remembered, concurrent
   // reads shared and capped (security audit 1, M2).
   const upstreamReads = new UpstreamReadGuard();
+  // Said once at start: the skill sources left out of the configuration (a
+  // malformed entry, a URL listed twice). The routes read the same list.
+  readSkillRepositories(config, logger);
 
   /**
    * The entry of `agentPlatform.skills.repositories` a caller-named
@@ -467,6 +470,7 @@ export async function createRouter({
                   signal,
                 }),
           ),
+        scanPath,
       );
       res.json({
         ...result,
@@ -1004,18 +1008,7 @@ export async function createRouter({
 
     // Only the configured sources: the catalog lists these and nothing else,
     // so a pull request anywhere else would add a skill no one can see.
-    const slugOf = (url: string) => {
-      const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
-      return `${owner}/${repo}`.toLowerCase();
-    };
-    const target = slugOf(repoUrl);
-    const repository = readSkillRepositories(config).find(entry => {
-      try {
-        return slugOf(entry.url) === target;
-      } catch {
-        return false;
-      }
-    });
+    const repository = configuredSkillRepository(repoUrl);
     if (!repository) {
       throw new InputError(
         `${repoUrl} is not one of the configured skill repositories`,
@@ -1025,6 +1018,14 @@ export async function createRouter({
     // from the portal; agent-manager refuses the same.
     if (repository.readOnly) {
       throw new InputError(`${repoUrl} is a read-only skill repository`);
+    }
+    // Pull requests target a branch: the configured one, else the default
+    // branch. A source pinned to a commit takes none (a tag is refused by
+    // `createSkillPullRequest`, which asks GitHub).
+    if (repository.ref && COMMIT_ID_RE.test(repository.ref)) {
+      throw new InputError(
+        `${repoUrl} is read at commit ${repository.ref}, not a branch`,
+      );
     }
     if (
       kind === 'update' &&
@@ -1045,6 +1046,7 @@ export async function createRouter({
           token,
           // A new skill goes where discovery scans.
           ...(repository.path ? { parentDir: repository.path } : {}),
+          ...(repository.ref ? { baseBranch: repository.ref } : {}),
           ...(kind === 'update'
             ? {
                 kind,

@@ -8,7 +8,11 @@ import {
   SkillFile,
   SkillFileList,
 } from './skillFiles';
-import { DiscoveredPlugin, pluginsOf } from './discoverPlugins';
+import {
+  DiscoveredPlugin,
+  isPluginManifestAbove,
+  pluginsOf,
+} from './discoverPlugins';
 
 /**
  * A skill discovered in a GitHub repository. Each `SKILL.md` file defines one
@@ -25,8 +29,13 @@ export interface DiscoveredSkill {
   repoUrl: string;
   /** Subdirectory within the repo that is the skill root; '' at repo root. */
   path: string;
-  /** Git ref (branch) the skill was discovered on. */
+  /** Git ref (branch, tag or commit) the skill was discovered on. */
   ref: string;
+  /**
+   * What `ref` is. Only a skill read on a branch can take a pull request.
+   * Absent from older snapshots: a branch.
+   */
+  refKind?: RefKind;
   /**
    * The full commit id `ref` pointed at when the tree was read — the pin an
    * agent carries. The tree and every `SKILL.md` are read at this commit, so
@@ -56,6 +65,8 @@ export interface DiscoveredSkill {
  */
 export interface DiscoverAgentSkillsResult {
   skills: DiscoveredSkill[];
+  /** What `ref` is (see `DiscoveredSkill.refKind`). */
+  refKind?: RefKind;
   /**
    * The plugins in the same tree (see `pluginsOf`), at the same commit. An
    * Agent Plugins package's skills are in `skills` too: each can also be
@@ -66,6 +77,12 @@ export interface DiscoverAgentSkillsResult {
   commit: string;
   truncated: boolean;
 }
+
+/** What a skill source's ref is: only a branch can take a pull request. */
+export type RefKind = 'branch' | 'tag' | 'commit';
+
+/** A full commit id (SHA-1 or SHA-256). */
+const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
 /**
  * A discovery result plus what it read on the way: the raw `SKILL.md` of each
@@ -327,6 +344,40 @@ async function resolveHeadCommit(
 }
 
 /**
+ * Whether `ref` names a branch of the repository (`git/ref/heads/<ref>`
+ * answers exactly that ref or 404). A commit id is never one; a ref that
+ * resolved to a commit but is not a branch is a tag.
+ */
+export async function githubRefKind(
+  owner: string,
+  repo: string,
+  ref: string,
+  token: string | undefined,
+  signal?: AbortSignal,
+): Promise<RefKind> {
+  if (COMMIT_RE.test(ref)) {
+    return 'commit';
+  }
+  try {
+    await githubApiFetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${ref
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/')}`,
+      token,
+      undefined,
+      signal,
+    );
+    return 'branch';
+  } catch (error) {
+    if (error instanceof GitHubApiError && error.status === 404) {
+      return 'tag';
+    }
+    throw error;
+  }
+}
+
+/**
  * The whole recursive git tree at a commit, one request. `truncated` is
  * GitHub capping it (~100k entries / 7 MB): then some entries are missing.
  */
@@ -483,6 +534,15 @@ export async function discoverAgentSkills(options: {
     previous.commit === commit &&
     previous.ref === branch &&
     !previous.truncated;
+  // The default branch is a branch; a configured ref is asked about once per
+  // commit it points at.
+  let refKind: RefKind = 'branch';
+  if (ref !== undefined) {
+    refKind =
+      unchanged && previous.refKind
+        ? previous.refKind
+        : await githubRefKind(owner, repo, ref, token, signal);
+  }
 
   let skillDirs: string[];
   let files: Map<string, SkillFileList>;
@@ -501,8 +561,14 @@ export async function discoverAgentSkills(options: {
       isBelowPath(entry.path, scanPath),
     );
     ({ skillDirs, files } = skillFilesFromTree(entries, tree.truncated));
-    treePaths = entries
-      .filter(entry => entry.type === 'blob')
+    // A plugin rooted above the scanned directory keeps its manifest.
+    treePaths = tree.entries
+      .filter(
+        entry =>
+          entry.type === 'blob' &&
+          (isBelowPath(entry.path, scanPath) ||
+            isPluginManifestAbove(entry.path, scanPath)),
+      )
       .map(entry => entry.path);
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing.
@@ -552,6 +618,7 @@ export async function discoverAgentSkills(options: {
         repoUrl: canonicalRepoUrl,
         path: dir,
         ref: branch,
+        ...(ref !== undefined ? { refKind } : {}),
         commit,
         fileCount: files.get(dir)?.total ?? 0,
       };
@@ -597,6 +664,7 @@ export async function discoverAgentSkills(options: {
     skills,
     plugins,
     ref: branch,
+    ...(ref !== undefined ? { refKind } : {}),
     commit,
     truncated: treeTruncated,
     contents,

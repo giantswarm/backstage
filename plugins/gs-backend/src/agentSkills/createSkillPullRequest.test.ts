@@ -160,6 +160,41 @@ describe('createSkillPullRequest', () => {
     ).toBe(true);
   });
 
+  it('targets the configured branch', async () => {
+    const calls = mockGithub({
+      ...happyHandlers,
+      [`GET ${API}/git/ref/heads/develop`]: () => ({ status: 200, body: {} }),
+      [`GET ${API}/commits/develop`]: () => ({
+        status: 200,
+        body: { sha: HEAD_A },
+      }),
+    });
+
+    const result = await createSkillPullRequest({
+      ...input,
+      baseBranch: 'develop',
+    });
+
+    expect(result.base).toBe('develop');
+    expect(
+      calls.find(call => call.key === `POST ${API}/pulls`)?.body,
+    ).toMatchObject({ base: 'develop' });
+  });
+
+  it('refuses a configured ref that is not a branch', async () => {
+    mockGithub({
+      ...happyHandlers,
+      [`GET ${API}/git/ref/heads/v1.2.3`]: () => ({ status: 404 }),
+    });
+
+    await expect(
+      createSkillPullRequest({ ...input, baseBranch: 'v1.2.3' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('v1.2.3 is not a branch'),
+    });
+  });
+
   it('refuses in words when the person has no push access', async () => {
     mockGithub({
       [`GET ${API}`]: () => ({

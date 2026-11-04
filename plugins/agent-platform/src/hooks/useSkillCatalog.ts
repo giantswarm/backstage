@@ -6,8 +6,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import { DiscoveredSkill } from '../lib/skills';
-import { skillRepositoriesFrom } from '../lib/skillRepositories';
+import { DiscoveredSkill, type RefKind } from '../lib/skills';
+import { repositoryKey, skillRepositoriesFrom } from '../lib/skillRepositories';
 import type { DiscoveredPlugin } from '../lib/plugins';
 
 export type SkillCatalog = {
@@ -24,6 +24,11 @@ export type SkillCatalog = {
   failureMessages?: Record<string, string>;
   /** True when a repo's listing was capped, so some skills may be missing. */
   truncated: boolean;
+  /**
+   * What each read repository's ref is, by `repositoryKey`: whether Add
+   * skill can target a source with a configured `ref`.
+   */
+  refKinds?: Record<string, RefKind>;
 };
 
 /**
@@ -39,12 +44,12 @@ export function useSkillCatalog(): SkillCatalog {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
 
-  const repositories = skillRepositoriesFrom(config).map(
-    repository => repository.url,
-  );
+  const entries = skillRepositoriesFrom(config);
+  const repositories = entries.map(repository => repository.url);
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['agent-platform', 'skills', repositories.join(',')],
+    // Every field of an entry changes what the backend lists.
+    queryKey: ['agent-platform', 'skills', JSON.stringify(entries)],
     enabled: !configIsLoading && repositories.length > 0,
     queryFn: async () => {
       const baseUrl = await discoveryApi.getBaseUrl('gs');
@@ -74,6 +79,8 @@ export function useSkillCatalog(): SkillCatalog {
             /** Absent from older backends. */
             plugins?: DiscoveredPlugin[];
             truncated?: boolean;
+            /** Absent for the default branch and from older backends. */
+            refKind?: RefKind;
           };
           return body;
         }),
@@ -83,9 +90,12 @@ export function useSkillCatalog(): SkillCatalog {
       const plugins: DiscoveredPlugin[] = [];
       const failedRepositories: string[] = [];
       const failureMessages: Record<string, string> = {};
+      const refKinds: Record<string, RefKind> = {};
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
+          refKinds[repositoryKey(repositories[index])] =
+            result.value.refKind ?? 'branch';
           skills.push(...result.value.skills);
           plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
@@ -104,6 +114,7 @@ export function useSkillCatalog(): SkillCatalog {
         failedRepositories,
         failureMessages,
         truncated,
+        refKinds,
       };
     },
   });
@@ -118,5 +129,6 @@ export function useSkillCatalog(): SkillCatalog {
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
+    refKinds: data?.refKinds ?? {},
   };
 }

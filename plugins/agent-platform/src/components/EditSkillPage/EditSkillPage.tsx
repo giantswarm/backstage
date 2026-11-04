@@ -18,6 +18,7 @@ import {
   canProposeSkillChange,
   isSkillContentReadable,
   parseSkillDetailPath,
+  readOnlyReason,
 } from '../../lib/skills';
 import { skillsRouteRef } from '../../routes';
 import { AddSkillPage } from '../AddSkillPage';
@@ -81,11 +82,7 @@ export function EditSkillPage() {
       <Alert
         status="info"
         title="Read-only in the portal"
-        description={
-          skill.readOnly
-            ? 'This skill comes from a read-only source.'
-            : "This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change the skill in its repository."
-        }
+        description={readOnlyReason(skill)}
       />
     );
   } else if (skill && !readable) {

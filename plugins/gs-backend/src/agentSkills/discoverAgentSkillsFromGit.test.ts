@@ -17,6 +17,7 @@ import {
   GitClient,
   GitFetchError,
   scanSkillsTree,
+  classifyRemoteRef,
   toGitFetchError,
 } from './discoverAgentSkillsFromGit';
 import { gitBlobSha, MAX_INLINE_FILE_BYTES } from './skillFiles';
@@ -168,6 +169,37 @@ describe('discoverAgentSkillsFromGit', () => {
     expect(result.skills.map(s => s.path)).toEqual(['skills/overview']);
     expect([...result.contents.keys()]).toEqual(['skills/overview']);
     expect([...(result.files?.keys() ?? [])]).toEqual(['skills/overview']);
+  });
+
+  it('keeps a plugin manifest above scanPath', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      scanPath: 'skills',
+      gitClient: fakeCloneFiles({
+        'plugin.json': '{}',
+        'other/.claude-plugin/plugin.json': '{}',
+        'skills/overview/SKILL.md': '---\nname: overview\n---\n',
+      }),
+    });
+
+    expect(result.plugins?.map(p => [p.path, p.skills.length])).toEqual([
+      ['', 1],
+    ]);
+  });
+
+  it('reports what a configured ref is', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      ref: 'v1.2.3',
+      gitClient: fakeClone({ a: '---\nname: a\n---\n' }, {
+        commit: HEAD,
+        ref: 'v1.2.3',
+        refKind: 'tag',
+      } as never),
+    });
+
+    expect(result.refKind).toBe('tag');
+    expect(result.skills[0].refKind).toBe('tag');
   });
 
   it('finds no skills when scanPath does not exist', async () => {
@@ -678,5 +710,46 @@ describe('toGitFetchError', () => {
   it('passes an existing GitFetchError through', () => {
     const original = new GitFetchError(404, 'gone');
     expect(toGitFetchError(original, url, undefined)).toBe(original);
+  });
+});
+
+describe('classifyRemoteRef', () => {
+  const TAG_OBJECT = 'b'.repeat(40);
+  const refs = [
+    { ref: 'HEAD', oid: HEAD },
+    { ref: 'refs/heads/main', oid: HEAD },
+    { ref: 'refs/heads/release/1', oid: HEAD },
+    { ref: 'refs/tags/v1.2.3', oid: TAG_OBJECT, peeled: HEAD },
+    { ref: 'refs/tags/light', oid: HEAD },
+  ];
+
+  it.each([
+    ['main', { kind: 'branch', fetchRef: 'refs/heads/main', oid: HEAD }],
+    [
+      'release/1',
+      { kind: 'branch', fetchRef: 'refs/heads/release/1', oid: HEAD },
+    ],
+    // An annotated tag checks out the commit it points at.
+    ['v1.2.3', { kind: 'tag', fetchRef: 'refs/tags/v1.2.3', oid: HEAD }],
+    ['light', { kind: 'tag', fetchRef: 'refs/tags/light', oid: HEAD }],
+    [HEAD, { kind: 'commit', fetchRef: HEAD, oid: HEAD }],
+  ])('%s', (ref, expected) => {
+    expect(classifyRemoteRef(refs, ref)).toEqual(expected);
+  });
+
+  it('peels an annotated tag advertised the protocol-v1 way', () => {
+    expect(
+      classifyRemoteRef(
+        [
+          { ref: 'refs/tags/v1', oid: TAG_OBJECT },
+          { ref: 'refs/tags/v1^{}', oid: HEAD },
+        ],
+        'v1',
+      )?.oid,
+    ).toBe(HEAD);
+  });
+
+  it('knows no ref the server does not advertise', () => {
+    expect(classifyRemoteRef(refs, 'nope')).toBeUndefined();
   });
 });
