@@ -1,15 +1,31 @@
-import { Skeleton, Text, VisuallyHidden } from '@backstage/ui';
-import { useFactTextVariant } from '@giantswarm/backstage-plugin-ui-react';
+import { Text } from '@backstage/ui';
+import {
+  CellSkeleton,
+  useFactTextVariant,
+} from '@giantswarm/backstage-plugin-ui-react';
+import type {
+  MusterSession,
+  MusterSessionFailureKind,
+} from '../../MusterInstanceProvider';
 import { callsLine } from '../connectorFacts';
 import type { ConnectorUsage } from '../hooks/useConnectorUsage';
+
+/** Why there is no session to read the calls through, per failure. */
+const NO_SESSION: Record<MusterSessionFailureKind, string> = {
+  unreachable: 'muster is not reachable from this portal',
+  'session-expired': 'Your sign-in has expired',
+  'mint-failed': 'No muster session could be started',
+  'muster-rejected': 'muster refused the session',
+};
 
 export type CallsFactValueProps = {
   /** The connector's usage read (`useConnectorUsage`). */
   usage: ConnectorUsage;
-  /** Whether there is a muster session, which the read goes through. */
-  authenticated: boolean;
-  /** Whether the muster session is still being established. */
-  sessionPending: boolean;
+  /** The muster session the read goes through. */
+  session: Pick<
+    MusterSession,
+    'authenticated' | 'pending' | 'connecting' | 'failure'
+  >;
 };
 
 /**
@@ -18,11 +34,7 @@ export type CallsFactValueProps = {
  * move: a skeleton one line of the list's text high while the session or the
  * read is pending, then the figure, or why there is none in muted text.
  */
-export function CallsFactValue({
-  usage: { usage, error },
-  authenticated,
-  sessionPending,
-}: CallsFactValueProps) {
+export function CallsFactValue({ usage, session }: CallsFactValueProps) {
   const variant = useFactTextVariant();
   const muted = (text: string) => (
     <Text variant={variant} color="secondary">
@@ -30,37 +42,30 @@ export function CallsFactValue({
     </Text>
   );
 
-  if (usage) {
-    return usage.available ? (
-      <Text variant={variant}>{callsLine(usage)}</Text>
+  // A figure already read stays through a later read's failure.
+  if (usage.usage) {
+    return usage.usage.available ? (
+      <Text variant={variant}>{callsLine(usage.usage)}</Text>
     ) : (
       muted('Not available for this environment')
     );
   }
-  if (error) {
+  if (usage.error) {
     return muted('Could not be read');
   }
-  // Pending until the read has an answer: a read about to start (enabled a
-  // render later) counts, so the skeleton never gives way to nothing.
-  if (sessionPending || authenticated) {
+  // The read, or the session it waits for, is under way; a reconnect too, so
+  // the line does not say "no session" on its way to the figure.
+  if (usage.isLoading || session.pending || session.connecting) {
     return (
-      // Inside a `Text` of the list's variant, `1lh` is the line the figure
-      // will take, so the row keeps its height when it lands.
-      <Text variant={variant}>
-        <Skeleton
-          data-testid="calls-skeleton"
-          width={140}
-          height="1lh"
-          style={{
-            display: 'inline-block',
-            verticalAlign: 'top',
-            maxWidth: '100%',
-          }}
-          rounded
-        />
-        <VisuallyHidden>Reading calls…</VisuallyHidden>
-      </Text>
+      <CellSkeleton width={140} variant={variant} label="Reading calls…" />
     );
   }
-  return muted('Needs a muster session');
+  if (session.failure) {
+    return muted(NO_SESSION[session.failure.kind]);
+  }
+  if (!session.authenticated) {
+    return muted('Needs a muster session');
+  }
+  // A session and no read: never an endless skeleton.
+  return muted('Not available');
 }

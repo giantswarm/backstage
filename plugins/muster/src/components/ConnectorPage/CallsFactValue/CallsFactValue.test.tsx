@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import type { McpUsage } from '../../../apis';
 import type { ConnectorUsage } from '../hooks/useConnectorUsage';
-import { CallsFactValue } from './CallsFactValue';
+import { CallsFactValue, type CallsFactValueProps } from './CallsFactValue';
 
 function usageOf(overrides: Partial<McpUsage> = {}): McpUsage {
   return {
@@ -22,20 +22,21 @@ function usageOf(overrides: Partial<McpUsage> = {}): McpUsage {
   };
 }
 
-function renderValue(
-  usage: ConnectorUsage,
-  { authenticated = true, sessionPending = false } = {},
-) {
+type Session = CallsFactValueProps['session'];
+
+const SESSION: Session = {
+  authenticated: true,
+  pending: false,
+  connecting: false,
+};
+
+function renderValue(usage: ConnectorUsage, session: Partial<Session> = {}) {
   return render(
-    <CallsFactValue
-      usage={usage}
-      authenticated={authenticated}
-      sessionPending={sessionPending}
-    />,
+    <CallsFactValue usage={usage} session={{ ...SESSION, ...session }} />,
   );
 }
 
-const skeleton = () => screen.queryByTestId('calls-skeleton');
+const skeleton = () => screen.queryByTestId('cell-skeleton');
 
 describe('CallsFactValue', () => {
   it('holds the line with a skeleton while the usage is read', () => {
@@ -45,22 +46,31 @@ describe('CallsFactValue', () => {
     expect(screen.getByText('Reading calls…')).toBeInTheDocument();
   });
 
-  it('holds the line with a skeleton until a read about to start answers', () => {
-    // Enabled with the session, the read has not started on this render.
-    renderValue({ isLoading: false });
+  it('holds the line with a skeleton while the muster session is pending', () => {
+    renderValue({ isLoading: false }, { authenticated: false, pending: true });
 
     expect(skeleton()).toBeInTheDocument();
   });
 
-  it('holds the line with a skeleton while the muster session is pending', () => {
+  it('holds the line with a skeleton through a reconnect', () => {
     renderValue(
       { isLoading: false },
-      { authenticated: false, sessionPending: true },
+      {
+        authenticated: false,
+        connecting: true,
+        failure: { kind: 'session-expired', message: 'Expired.' },
+      },
     );
 
     expect(skeleton()).toBeInTheDocument();
   });
 
+  it('ends an idle read with a reason, not an endless skeleton', () => {
+    renderValue({ isLoading: false });
+
+    expect(screen.getByText('Not available')).toBeInTheDocument();
+    expect(skeleton()).toBeNull();
+  });
   it('shows the calls and their error share once read', () => {
     renderValue({ isLoading: false, usage: usageOf() });
 
@@ -120,4 +130,22 @@ describe('CallsFactValue', () => {
     expect(screen.getByText('Needs a muster session')).toBeInTheDocument();
     expect(skeleton()).toBeNull();
   });
+
+  it.each([
+    ['unreachable', 'muster is not reachable from this portal'],
+    ['session-expired', 'Your sign-in has expired'],
+    ['mint-failed', 'No muster session could be started'],
+    ['muster-rejected', 'muster refused the session'],
+  ] as const)(
+    'says why there is no session after a %s failure',
+    (kind, text) => {
+      renderValue(
+        { isLoading: false },
+        { authenticated: false, failure: { kind, message: 'Why.' } },
+      );
+
+      expect(screen.getByText(text)).toBeInTheDocument();
+      expect(skeleton()).toBeNull();
+    },
+  );
 });

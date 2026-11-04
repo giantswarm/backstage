@@ -276,7 +276,9 @@ function ConnectorPageContent({
   // none for muster itself, whose own tools no connector counts. Only on
   // those two tabs: Tools, where a connector opens, shows no usage, and
   // each connector's read repeats the installation-wide `data_start` query.
-  const { '*': tabPath = '' } = useParams();
+  const { '*': splat = '' } = useParams();
+  // A trailing slash names the same tab, which the nested routes render.
+  const tabPath = splat.replace(/\/+$/, '');
   // The Usage tab's window follows the `?window=` Usage → Connectors links
   // with, so a row's figures and the tab it opens agree. Details keeps its 30
   // days, which its label names.
@@ -524,13 +526,7 @@ function ConnectorPageContent({
   if (hasUsage) {
     facts.push({
       label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
-      value: (
-        <CallsFactValue
-          usage={usage}
-          authenticated={authenticated}
-          sessionPending={session.pending}
-        />
-      ),
+      value: <CallsFactValue usage={usage} session={session} />,
     });
   }
   const added = addedAt(members);

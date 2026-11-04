@@ -493,19 +493,33 @@ describe('ConnectorPage', () => {
       'Calls, last 30 days',
       'Added',
     ]);
-    expect(within(facts).getByTestId('calls-skeleton')).toBeInTheDocument();
+    expect(within(facts).getByTestId('cell-skeleton')).toBeInTheDocument();
 
     answer(await makeApi().getMcpUsage());
     expect(
       await within(facts).findByText('3,418 · 0.4% errors'),
     ).toBeInTheDocument();
-    expect(within(facts).queryByTestId('calls-skeleton')).toBeNull();
+    expect(within(facts).queryByTestId('cell-skeleton')).toBeNull();
     expect(labels()).toEqual([
       'Sign-in',
       'Health',
       'Calls, last 30 days',
       'Added',
     ]);
+  });
+
+  it('reads the calls on the Details tab addressed with a trailing slash', async () => {
+    const api = await renderAt(`${BASE}/jira/details/`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
   });
 
   it('keeps the Calls line without a muster session, saying why', async () => {
