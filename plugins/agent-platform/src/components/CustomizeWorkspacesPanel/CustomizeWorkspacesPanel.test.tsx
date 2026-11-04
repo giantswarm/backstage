@@ -18,7 +18,6 @@ const docs: WorkspaceRow = {
       filters: { topics: { names: ['docs'] } },
     },
   ],
-  sync: { schedule: 'nightly' },
   resourceVersion: '1',
   createdAt: '2026-10-01T00:00:00Z',
   lastSync: { time: '2026-10-14T03:00:00Z', result: 'Succeeded' },

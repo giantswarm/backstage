@@ -16,6 +16,9 @@ export type StatusText = Required<Pick<StatusDotProps, 'tone'>> & {
   label: string;
 };
 
+/** A state with the sentence a hint beside it says, where it has one. */
+export type ExplainedStatusText = StatusText & { explanation?: string };
+
 export interface UseServerSignInStatusOptions {
   /** The muster server name, as reported by `auth://status`. */
   serverName: string;

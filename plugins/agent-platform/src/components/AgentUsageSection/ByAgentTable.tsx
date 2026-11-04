@@ -10,6 +10,7 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
+import { AVERAGE_RATE_CAVEAT } from '../../lib/costBasis';
 import {
   formatCount,
   formatMoney,
@@ -19,6 +20,7 @@ import {
   type Currency,
 } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
+import { lastDaysNoun } from '../../lib/usageWindow';
 import { NameCell } from '../LlmUsage/NameCell';
 import { sortUsageRows } from './helpers';
 import type { ByAgentRow } from './helpers';
@@ -55,8 +57,8 @@ export type ByAgentTableProps = {
   emptyMessage: string;
   /** The installation's observed $/token, for the estimated cost column. */
   rates?: TokenRates;
-  /** The window that rate was averaged over, named in the column's caveat. */
-  rateWindow?: string;
+  /** The days that rate was averaged over, named in the column's caveat. */
+  rateWindowDays?: number;
   /** Named in the caveat, so the blend's scope is not left to inference. */
   installation?: string;
   /** The rate's two Mimir queries are still in flight. */
@@ -111,7 +113,7 @@ export function ByAgentTable({
   rows,
   emptyMessage,
   rates,
-  rateWindow,
+  rateWindowDays,
   installation,
   isRateLoading,
   hasRate = true,
@@ -368,11 +370,13 @@ export function ByAgentTable({
         {showsEstimate && hasRate && (
           <>
             Cost is estimated: your token counts priced at{' '}
-            {rateWindow ? `the last ${rateWindow} of ` : ''}
-            {installation ?? 'this environment'}&apos;s observed cost per token
-            — <strong>a blend across every model</strong>, not each agent&apos;s
-            own. Session pages use each session&apos;s own model rate, so the
-            figures differ. It is not a billed figure.
+            {installation ?? 'this environment'}&apos;s average cost per token
+            {rateWindowDays
+              ? ` over ${lastDaysNoun(rateWindowDays)}`
+              : ''} — <strong>a blend across every model</strong>, not each
+            agent&apos;s own. {AVERAGE_RATE_CAVEAT} Session pages use each
+            session&apos;s own model rate, so the figures differ. It is not a
+            billed figure.
           </>
         )}
         {showsEstimate && !hasRate && (

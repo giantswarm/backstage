@@ -1,6 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import { Flex } from '@backstage/ui';
-import { UsageColumn } from '../UsageColumn';
+import { ContentColumn } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The Usage screen's Connectors view: how the connectors behind this
@@ -22,13 +22,13 @@ import { UsageColumn } from '../UsageColumn';
  */
 export function UsageConnectorsPage({ sections }: { sections: ReactNode[] }) {
   return (
-    <UsageColumn>
+    <ContentColumn>
       <Flex direction="column" gap="6">
         {/* Contributed elements carry no key of their own. */}
         {sections.map((section, index) => (
           <Fragment key={index}>{section}</Fragment>
         ))}
       </Flex>
-    </UsageColumn>
+    </ContentColumn>
   );
 }

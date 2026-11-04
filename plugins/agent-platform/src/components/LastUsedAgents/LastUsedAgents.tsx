@@ -140,6 +140,7 @@ export function LastUsedAgents() {
             />
             <span className={classes.text}>
               <Link
+                standalone
                 href={agentDetailRoute({
                   installation: agent.installation,
                   namespace: agent.namespace,

@@ -7,6 +7,7 @@ import {
   formatSeconds,
   formatTokensPerSecond,
 } from '../../../lib/formatNumbers';
+import { lastDaysNoun } from '../../../lib/usageWindow';
 
 const useStyles = makeStyles((theme: Theme) => ({
   strip: {
@@ -51,7 +52,7 @@ export function ReliabilityStrip({
   narrowedTo?: string;
 }) {
   const classes = useStyles();
-  const over = windowLabel ?? `the last ${windowDays} days`;
+  const over = windowLabel ?? lastDaysNoun(windowDays);
 
   const everyOrganization = narrowedTo
     ? ` Counted across every organization, not only ${narrowedTo}: the request metric carries no organization.`

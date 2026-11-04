@@ -16,6 +16,7 @@ import {
 import { makeStyles } from '@material-ui/core';
 import { PHONE_MEDIA, usePhoneLayout } from '../../utils/breakpoints';
 import { BreadcrumbItem, Breadcrumbs } from '../Breadcrumbs';
+import { SHELL_CONTENT_MAX_WIDTH } from '../ContentColumn';
 import {
   useOwnPageHeader,
   usePageHeaderActionsSlot,
@@ -85,7 +86,7 @@ const DESCRIPTION_MIN_WIDTH = 320;
 const useStyles = makeStyles({
   root: {
     boxSizing: 'border-box',
-    maxWidth: 1080,
+    maxWidth: SHELL_CONTENT_MAX_WIDTH,
     margin: '0 auto',
     [SHELL_PAGE_PADDING_BOTTOM_VAR]: '40px',
     padding: `28px ${GUTTER}px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,

@@ -29,7 +29,7 @@ import {
   type AddBackendResult,
   type BackendKind,
 } from '../../lib/modelManagerBackends';
-import { CodeBlock } from '../CodeBlock';
+import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
@@ -621,7 +621,7 @@ export function AddModelBackendPage({
               {' on '}
               {installation}. model-manager validates it when it reads it.
             </Text>
-            <CodeBlock
+            <FileView
               filename={`${review.configMap.name}.yaml`}
               content={review.document}
               language="yaml"

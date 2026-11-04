@@ -31,6 +31,10 @@ import {
   mockCollapsibleLayout,
   type MockedCollapsibleLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -519,29 +523,41 @@ describe('SessionTimeline', () => {
 
   describe('a stalled turn', () => {
     const since = Date.parse('2026-09-13T13:52:00Z');
-    const clock = new Date(since).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
 
     it('replaces the working row with when progress last came, and a cancel', async () => {
+      // Relative to the real clock, which the row reads: taken as the test
+      // runs, not when the file is collected.
+      const stalledSince = Date.now() - 12 * 60 * 1000;
       const onCancelTurn = jest.fn();
       await renderInTestApp(
-        <SessionTimeline
-          timeline={timelineFor(tasksV099)}
-          agentName="Issue tracker"
-          // The page never passes both; if it did, the stall must win — a
-          // spinner next to "no progress" contradicts itself.
-          isAgentWorking
-          stalledSince={since}
-          onCancelTurn={onCancelTurn}
-        />,
+        <DateTimeZoneProvider timeZone="local">
+          <SessionTimeline
+            timeline={timelineFor(tasksV099)}
+            agentName="Issue tracker"
+            // The page never passes both; if it did, the stall must win — a
+            // spinner next to "no progress" contradicts itself.
+            isAgentWorking
+            stalledSince={stalledSince}
+            onCancelTurn={onCancelTurn}
+          />
+        </DateTimeZoneProvider>,
       );
 
       expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-      expect(
-        screen.getByText(`The agent has not reported progress since ${clock}.`),
-      ).toBeInTheDocument();
+      // Relative, so a stall from yesterday does not read as today; the
+      // date and time on hover.
+      expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+        'The agent last reported progress 12 minutes ago.',
+      );
+      const time = screen.getByText('12 minutes ago');
+      expect(time).toHaveAttribute(
+        'title',
+        formatLocalDateFull(new Date(stalledSince)),
+      );
+      // It ticks every minute: kept out of the status's announcements, so
+      // the stall is announced once.
+      expect(time.closest('[role="status"]')).not.toBeNull();
+      expect(time).toHaveAttribute('aria-live', 'off');
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Stop the turn' }),
@@ -558,7 +574,7 @@ describe('SessionTimeline', () => {
         />,
       );
 
-      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Stop the turn' }),
       ).not.toBeInTheDocument();
@@ -576,7 +592,7 @@ describe('SessionTimeline', () => {
         />,
       );
 
-      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Stop the turn' }),
       ).toBeInTheDocument();
@@ -1002,7 +1018,7 @@ describe('a lost stream', () => {
     );
 
     expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
-    expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+    expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
   });
 });
 

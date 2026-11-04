@@ -13,19 +13,19 @@ app:
   portals:
     platformPortal: true
     agentPlatform: false
+  # Every id listed here must name an extension the app installs: an unknown
+  # one logs INVALID_EXTENSION_CONFIG_KEY at start-up and will fail it once
+  # the check is strict (packages/app/src/appExtensions.test.ts checks this
+  # list). There are no `nav-item:*` extensions since Backstage 1.51: a page's
+  # nav entry comes from its own title and icon.
   extensions:
     - api:home/visits
     - app-root-element:home/visit-listener
     - page:gs/clusters
-    - nav-item:gs/clusters
     - page:gs/deployments
-    - nav-item:gs/deployments
     - page:gs/installations
-    - nav-item:gs/installations
     - page:flux
-    - nav-item:flux
     - page:agent-platform
-    - nav-item:agent-platform
     - page:ai-chat
     - api:ai-chat/service
     - api:ai-chat/drawer
@@ -36,7 +36,6 @@ app:
     # can still use pagerDutyApiRef.
     - entity-card:pagerduty/EntityPagerDutyCard: false
     - entity-card:pagerduty/EntityPagerDutySmallCard: false
-    - nav-item:pagerduty/PagerDutyNavBarItem: false
     - page:pagerduty: false
 
     # Entity overview card order: app-deployment, then who-is-on-call, then about.
