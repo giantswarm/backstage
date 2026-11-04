@@ -1934,7 +1934,7 @@ describe('skill repositories with ref, path and readOnly', () => {
     contentReadable: true,
   };
 
-  async function buildApp() {
+  async function buildSourcesApp() {
     const router = await createRouter({
       config: makeConfig({
         agentPlatform: {
@@ -1997,7 +1997,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('reads the configured ref below the configured path and marks a read-only source', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .get('/agent-skills')
       .query({ repoUrl: PLATFORM });
 
@@ -2015,7 +2015,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('refuses a skill outside the configured path', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .get('/agent-skills/content')
       .query({ repoUrl: PLATFORM, path: 'internal/demo', commit: COMMIT });
 
@@ -2025,7 +2025,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('refuses a pull request into a read-only source', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .post('/agent-skills/pull-request')
       .set('gs-github-token', 'gh-token')
       .send({
@@ -2043,7 +2043,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('adds a new skill below the configured path', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .post('/agent-skills/pull-request')
       .set('gs-github-token', 'gh-token')
       .send({
@@ -2064,7 +2064,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('refuses a pull request into a source pinned to a commit', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .post('/agent-skills/pull-request')
       .set('gs-github-token', 'gh-token')
       .send({
@@ -2080,7 +2080,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('matches the pull-request repository like discovery does', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .post('/agent-skills/pull-request')
       .set('gs-github-token', 'gh-token')
       .send({
@@ -2096,7 +2096,7 @@ describe('skill repositories with ref, path and readOnly', () => {
   });
 
   it('refuses an update of a skill outside the configured path', async () => {
-    const response = await request(await buildApp())
+    const response = await request(await buildSourcesApp())
       .post('/agent-skills/pull-request')
       .set('gs-github-token', 'gh-token')
       .send({
