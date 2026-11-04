@@ -111,7 +111,8 @@ export function ConnectorLogo({
         ? { 'aria-hidden': true }
         : { role: 'img', 'aria-label': name })}
     >
-      {name.trim().charAt(0)}
+      {/* The whole first character: an emoji is two UTF-16 units. */}
+      {Array.from(name.trim())[0]}
     </span>
   );
 

@@ -8,6 +8,13 @@ describe('ConnectorLogo', () => {
     expect(screen.getByRole('img', { name: 'weather' })).toHaveTextContent('w');
   });
 
+  it('shows a leading emoji whole', () => {
+    render(<ConnectorLogo name="🚀 Deploys" />);
+    expect(screen.getByRole('img', { name: '🚀 Deploys' })).toHaveTextContent(
+      /^🚀$/u,
+    );
+  });
+
   it('shows the letter for an icon that is not a safe data: image', () => {
     render(
       <ConnectorLogo name="weather" icon="https://example.com/icon.png" />,
