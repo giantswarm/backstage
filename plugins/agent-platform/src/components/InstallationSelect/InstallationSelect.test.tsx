@@ -651,7 +651,7 @@ describe('InstallationSelect', () => {
       );
     };
 
-    it('offers three environments without a search', async () => {
+    it('offers type-ahead over three environments', async () => {
       offer(['alpha', 'beta', 'gamma']);
       render(<InstallationSelect />);
 
@@ -661,7 +661,7 @@ describe('InstallationSelect', () => {
       expect(
         await screen.findByRole('option', { name: 'gamma' }),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('searchbox')).toBeNull();
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
     });
 
     it('offers type-ahead over 300 environments', async () => {

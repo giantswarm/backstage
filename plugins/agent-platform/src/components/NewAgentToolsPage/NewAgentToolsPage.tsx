@@ -14,6 +14,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
   CatalogNoMatch,
+  isSearchableList,
   LoadingIndicator,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -46,10 +47,7 @@ import {
 } from '../../lib/toolset';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import {
-  AUTO_EXPAND_MAX,
-  ToolsetResolutionList,
-} from '../ToolsetResolutionList';
+import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { AccessLevelCards } from './AccessLevelCards';
 import {
   EFFECT_FILTER_ID,
@@ -450,27 +448,28 @@ export function NewAgentToolsPage() {
   const individualOpen = showIndividual && !selectionOff;
 
   // The catalogue's search and its All / Reads / Changes things filter, both
-  // only over a catalogue too long to read whole (AUTO_EXPAND_MAX).
+  // from SEARCH_MIN entries on (`isSearchableList`): its tools and workflows,
+  // and the connectors awaiting sign-in, which are found by their name. Kept
+  // while either narrows, so a re-read that shrinks the catalogue (a
+  // sign-out) leaves what narrowed it visible and clearable.
   const [query, setQuery] = useState('');
+  const [effect, setEffect] = useState<EffectFilter>('all');
+  const activeQuery = query.trim();
+  const isNarrowed = activeQuery !== '' || effect !== 'all';
+  const awaitingSignIn = groups.reduce(
+    (count, group) =>
+      count + group.servers.filter(bucket => bucket.needsSignIn).length,
+    0,
+  );
   const isShortCatalogue =
     !isCatalogueLoading &&
-    inventory.servers +
-      inventory.tools +
-      inventory.platformAdministration +
-      inventory.workflows <=
-      AUTO_EXPAND_MAX;
-  // Dropped when the catalogue shrinks under the bar (a re-read after a
-  // sign-out), so neither is reapplied if it grows back.
-  const activeQuery = isShortCatalogue ? '' : query.trim();
-  const [effectPick, setEffect] = useState<EffectFilter>('all');
-  const effect: EffectFilter = isShortCatalogue ? 'all' : effectPick;
-  useEffect(() => {
-    if (isShortCatalogue) {
-      setQuery('');
-      setEffect('all');
-    }
-  }, [isShortCatalogue]);
-  const isNarrowed = activeQuery !== '' || effect !== 'all';
+    !isSearchableList(
+      awaitingSignIn +
+        inventory.tools +
+        inventory.platformAdministration +
+        inventory.workflows,
+      isNarrowed,
+    );
 
   const searchedGroups = useMemo(
     () => filterCatalogue(groups, activeQuery),

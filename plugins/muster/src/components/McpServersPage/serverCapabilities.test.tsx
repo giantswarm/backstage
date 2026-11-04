@@ -213,26 +213,26 @@ describe('resource and prompt lists at scale', () => {
       server: 'pro',
     }));
 
-  it('lists three resources with no search and no reveal control', async () => {
+  it('lists two resources with no search and no reveal control', async () => {
     const filterResources = jest.fn().mockResolvedValue({
-      total: 3,
-      filtered_count: 3,
+      total: 2,
+      filtered_count: 2,
       truncated: false,
-      resources: resources(3),
+      resources: resources(2),
     });
 
     await render(<ServerResources server={makeServer()} />, {
       filterResources,
     });
 
-    expect(await screen.findByText('doc://item-3')).toBeInTheDocument();
+    expect(await screen.findByText('doc://item-2')).toBeInTheDocument();
     // The tab carries the count; the list repeats none of its own.
     expect(screen.queryByText(/resource\(s\)/)).toBeNull();
     expect(
       within(screen.getByRole('list', { name: 'Resources' })).getAllByRole(
         'listitem',
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -269,17 +269,17 @@ describe('resource and prompt lists at scale', () => {
     expect(screen.getByText('doc://item-150')).toBeInTheDocument();
   });
 
-  it('lists three prompts with no search and no reveal control', async () => {
+  it('lists two prompts with no search and no reveal control', async () => {
     const filterPrompts = jest.fn().mockResolvedValue({
-      total: 3,
-      filtered_count: 3,
+      total: 2,
+      filtered_count: 2,
       truncated: false,
-      prompts: prompts(3),
+      prompts: prompts(2),
     });
 
     await render(<ServerPrompts server={makeServer()} />, { filterPrompts });
 
-    expect(await screen.findByText('prompt_3')).toBeInTheDocument();
+    expect(await screen.findByText('prompt_2')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });

@@ -27,11 +27,7 @@ import {
   type ToolSummary,
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
-import {
-  countNoun,
-  INITIAL_ROWS,
-  SEARCH_MIN,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { countNoun, INITIAL_ROWS } from '@giantswarm/backstage-plugin-ui-react';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -523,6 +519,8 @@ export interface ServerInfo {
   signInTool?: boolean;
   /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
   displayName?: string;
+  /** The CR's `ui.giantswarm.io/tags`; none when absent. */
+  tags?: string[];
 }
 
 /** The name a server surface goes by: the family for a family member, else the CR name. */
@@ -696,6 +694,8 @@ export interface ServerBucket {
   state?: string;
   /** Present when muster listed tools for a server no CR describes. */
   unknownServer: boolean;
+  /** The CRs' tags, every member's for a family; none when absent. */
+  tags?: string[];
 }
 
 /** A bucket's name as people read it: its display name, else its name. */
@@ -787,6 +787,11 @@ export function buildCatalogue(
       existing.needsSignIn = existing.needsSignIn || needsSignIn;
       existing.canSignIn = existing.canSignIn || server.oauth;
       existing.state = worstState(existing.state, server.state);
+      if (server.tags?.length) {
+        existing.tags = [
+          ...new Set([...(existing.tags ?? []), ...server.tags]),
+        ];
+      }
       continue;
     }
     const displayName = labels.get(name) ?? name;
@@ -799,6 +804,7 @@ export function buildCatalogue(
       canSignIn: server.oauth || needsSignIn,
       state: server.state,
       unknownServer: false,
+      ...(server.tags?.length ? { tags: [...server.tags] } : {}),
       group: server.group,
     });
   }
@@ -936,11 +942,9 @@ export function serverSelector(name: string): string {
   return `server:${name}`;
 }
 
-// The list-scale constants and `countNoun` live in ui-react beside `ShowMore`
-// (muster uses them too); re-exported here for this plugin's existing imports.
-// Lists behind disclosures use the higher `AUTO_EXPAND_MAX` (20) instead of
-// `SEARCH_MIN`.
-export { countNoun, INITIAL_ROWS, SEARCH_MIN };
+// `countNoun` and `INITIAL_ROWS` live in ui-react beside `ShowMore` (muster
+// uses them too); re-exported here for this plugin's existing imports.
+export { countNoun, INITIAL_ROWS };
 
 /**
  * Below this many workflows there is nothing to group — one short list reads

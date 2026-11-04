@@ -17,6 +17,7 @@ const state: NewAgentFormState = {
   name: 'Go service reviewer',
   slug: 'go-service-reviewer',
   description: 'Reviews pull requests.',
+  tags: [],
   installation: 'gazelle',
   modelConfigName: 'opus-4-7',
   modelConfigNamespace: 'kagent',
@@ -162,17 +163,29 @@ describe('agentSpecOf', () => {
     });
   });
 
+  it('sends the tags as added, only where agent-manager takes them', () => {
+    const tagged = { ...state, tags: ['review', 'github'] };
+    expect(
+      agentSpecOf(tagged, { toolset: ['preset:none'], tags: true }).tags,
+    ).toEqual(['review', 'github']);
+    expect(
+      agentSpecOf(tagged, { toolset: ['preset:none'] }),
+    ).not.toHaveProperty('tags');
+  });
+
   it('leaves optional fields out so the chart defaults apply', () => {
     const spec = agentSpecOf(
       {
         ...state,
         description: '  ',
+        tags: [],
         systemMessage: '',
         selectedSkills: [],
       },
       { toolset: ['preset:none'] },
     );
     expect(spec).not.toHaveProperty('description');
+    expect(spec).not.toHaveProperty('tags');
     expect(spec).not.toHaveProperty('systemMessage');
     expect(spec).not.toHaveProperty('iconUrl');
     expect(spec).not.toHaveProperty('skills');

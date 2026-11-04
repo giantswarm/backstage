@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Select, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  SEARCH_MIN,
   matchesQuery,
+  searchableIf,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -136,28 +136,38 @@ export function WorkspacePicker({
 
   const multipleOrganizations =
     new Set(workspaces.map(workspace => workspace.organization)).size > 1;
-  const options = useMemo(() => {
-    const listed = workspaces.map(workspace => ({
-      id: workspace.name,
-      label: workspace.name,
-      description: workspaceOptionDescription(workspace, multipleOrganizations),
-    }));
-    const all = [...listed, { id: NO_WORKSPACE_ID, label: 'No workspace' }];
-    return searchText.trim()
-      ? all.filter(option =>
-          matchesQuery(
-            searchText,
-            `${option.label} ${'description' in option ? option.description : ''}`,
-          ),
-        )
-      : all;
-  }, [workspaces, multipleOrganizations, searchText]);
+  const allOptions = useMemo(
+    () => [
+      ...workspaces.map(workspace => ({
+        id: workspace.name,
+        label: workspace.name,
+        description: workspaceOptionDescription(
+          workspace,
+          multipleOrganizations,
+        ),
+      })),
+      { id: NO_WORKSPACE_ID, label: 'No workspace' },
+    ],
+    [workspaces, multipleOrganizations],
+  );
+  const options = useMemo(
+    () =>
+      searchText.trim()
+        ? allOptions.filter(option =>
+            matchesQuery(
+              searchText,
+              `${option.label} ${'description' in option ? option.description : ''}`,
+            ),
+          )
+        : allOptions,
+    [allOptions, searchText],
+  );
 
   if (workspaces.length === 0) {
     return null;
   }
 
-  const isSearchable = workspaces.length + 1 > SEARCH_MIN;
+  const isSearchable = searchableIf(allOptions);
 
   return (
     <>

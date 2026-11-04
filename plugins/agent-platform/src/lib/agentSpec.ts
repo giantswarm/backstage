@@ -30,6 +30,8 @@ export function agentSpecOf(
     toolset: string[];
     /** The canonical avatar URL for the technical name, when resolvable. */
     iconUrl?: string;
+    /** Whether agent-manager takes `tags` (`get_info`'s `tags`). */
+    tags?: boolean;
   },
 ): AgentSpec {
   const spec: AgentSpec = {
@@ -41,6 +43,9 @@ export function agentSpecOf(
   };
   if (state.description.trim()) {
     spec.description = state.description;
+  }
+  if (options.tags && state.tags.length > 0) {
+    spec.tags = state.tags;
   }
   if (state.systemMessage.trim()) {
     spec.systemMessage = state.systemMessage;

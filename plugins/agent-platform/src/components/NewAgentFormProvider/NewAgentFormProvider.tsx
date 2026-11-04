@@ -6,16 +6,24 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSessionDraft } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  tagsFieldUpdaters,
+  type TagsFieldUpdaters,
+  draftProblem,
+  useSessionDraft,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import type {
-  AgentManagerAgent,
-  AgentPluginEntry,
-  AgentSkillEntry,
-  WriteMode,
+import {
+  supportsTags,
+  type AgentManagerAgent,
+  type AgentPluginEntry,
+  type AgentSkillEntry,
+  type WriteMode,
 } from '../../lib/agentManager';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
   changedFields,
+  editStateOf,
   editStateOfForm,
   skillEntryKey,
 } from '../../lib/agentEdit';
@@ -48,6 +56,14 @@ export type NewAgentFormState = {
   name: string;
   slug: string;
   description: string;
+  /** Keywords to find the agent by, normalized and unique, as added. */
+  tags: string[];
+  /**
+   * What the Tags field holds but has not added yet. Not part of the agent;
+   * kept here so a draft that cannot be a tag blocks Continue like any other
+   * invalid field.
+   */
+  tagDraft?: string;
   installation: string | undefined;
   /**
    * Creating only: the tenants (namespaces) on the installation in which the
@@ -189,7 +205,7 @@ export type AgentWizardEdit = {
   detailHref: string | undefined;
 };
 
-export type NewAgentFormContextValue = {
+export type NewAgentFormContextValue = TagsFieldUpdaters & {
   state: NewAgentFormState;
   /** Set when the wizard edits an existing agent rather than creating one. */
   edit: AgentWizardEdit | undefined;
@@ -306,6 +322,14 @@ export type NewAgentFormContextValue = {
    * and model are left out, since the form picks those itself.
    */
   isDirty: boolean;
+  /**
+   * Whether the installation's agent-manager keeps tags. False until its
+   * `get_info` is read: the Tags field is shown, and its problems count, only
+   * while true.
+   */
+  tagsOffered: boolean;
+  /** An edited agent's tags as read, for the Tags field; none on create. */
+  storedTags: readonly string[];
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -323,6 +347,7 @@ export type NewAgentFormContextValue = {
 /** The step-1 fields a validation problem can belong to. */
 export type NewAgentField =
   | 'name'
+  | 'tags'
   | 'systemMessage'
   | 'installation'
   | 'tenant'
@@ -337,6 +362,7 @@ const initialState: NewAgentFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
@@ -397,10 +423,12 @@ function hasCreateInput(state: NewAgentFormState): boolean {
       state.description,
       state.systemMessage,
       state.egressText,
+      state.tagDraft ?? '',
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.egressPolicyRefs.length > 0 ||
     state.defaultWorkspace !== '' ||
+    state.tags.length > 0 ||
     state.selectedSkills.length > 0 ||
     state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
@@ -485,6 +513,8 @@ function baselineOf(agent: AgentManagerAgent): AgentManagerAgent {
     : agent;
 }
 
+const NO_TAGS: readonly string[] = [];
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
@@ -516,7 +546,14 @@ export function NewAgentFormProvider({
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
-  const isDirtyCreate = !edit && hasCreateInput(state);
+  const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const tagsOffered = supportsTags(agentManagerInfo);
+
+  // Text left in a Tags field the installation does not offer is out of
+  // sight, so it does not make the form one to keep.
+  const isDirtyCreate =
+    !edit &&
+    hasCreateInput(tagsOffered ? state : { ...state, tagDraft: undefined });
   const draftValue = useMemo<NewAgentDraft>(() => {
     // The notice of a removal is said once, and whether the platform sets the
     // egress is read again, like the tenant choices.
@@ -546,6 +583,16 @@ export function NewAgentFormProvider({
     dismissRestored: dismissDraftNotice,
   } = draft;
 
+  // An edited agent's tags as read: past the limit they may stay.
+  const storedTags = useMemo(
+    () => (edit ? editStateOf(edit.agent).tags : NO_TAGS),
+    [edit],
+  );
+  const tagUpdaters = useMemo(
+    () => tagsFieldUpdaters<NewAgentFormState>(setState, storedTags),
+    [storedTags],
+  );
+
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
     // agent.systemMessage, so an empty field means "use the chart default"
@@ -556,6 +603,10 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
+    // Not offered where agent-manager keeps no tags, so not checked there.
+    fieldErrors.tags = tagsOffered
+      ? draftProblem(state.tagDraft ?? '', state.tags, storedTags)
+      : undefined;
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -597,6 +648,7 @@ export function NewAgentFormProvider({
         'systemMessage',
         'egress',
         'name',
+        'tags',
         'slug',
         'installation',
         'tenant',
@@ -641,6 +693,7 @@ export function NewAgentFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
+      ...tagUpdaters,
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
       // here.
@@ -867,6 +920,8 @@ export function NewAgentFormProvider({
       },
       clearSavedDraft: clearDraft,
       isDirty,
+      tagsOffered,
+      storedTags,
       isComplete,
       validationErrors,
       fieldErrors,
@@ -882,6 +937,9 @@ export function NewAgentFormProvider({
     draftNoticeStep,
     dismissDraftNotice,
     clearDraft,
+    tagUpdaters,
+    tagsOffered,
+    storedTags,
   ]);
 
   return (

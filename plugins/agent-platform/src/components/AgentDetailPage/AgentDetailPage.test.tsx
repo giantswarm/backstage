@@ -2542,6 +2542,48 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   });
 
   describe('the plain Overview', () => {
+    it('shows the agent’s tags under what it is for', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: {
+              annotations: {
+                'ui.giantswarm.io/display-name': 'PR reviewer',
+                'ui.giantswarm.io/tags': 'review,github',
+              },
+            } as AgentInterface['metadata'],
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell();
+
+      expect(
+        within(screen.getByRole('list', { name: 'Tags' }))
+          .getAllByRole('listitem')
+          .map(item => item.textContent),
+      ).toEqual(['review', 'github']);
+      // Each opens Customize → Agents with that tag picked.
+      expect(screen.getByRole('link', { name: 'review' })).toHaveAttribute(
+        'href',
+        '/customize/agents?tags=review',
+      );
+    });
+
+    it('draws no tags for an agent without any', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      expect(
+        screen.getByText('Reviews pull requests in depth.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Tags' }),
+      ).not.toBeInTheDocument();
+    });
+
     it('leads with what the agent does, its instructions, skills and reach', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
