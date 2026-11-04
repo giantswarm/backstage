@@ -18,7 +18,15 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
+import {
+  Alert,
+  Button,
+  ButtonIcon,
+  Flex,
+  Link,
+  Skeleton,
+  Text,
+} from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
@@ -861,7 +869,8 @@ function ConnectorPageBody({
           { label: 'Connectors', href: listPath },
           { label: shownName },
         ]}
-        leading={<ConnectorLogo name={shownName} size={56} decorative />}
+        // The logo's place held: the letter, then the icon, would flicker.
+        leading={<Skeleton width={56} height={56} />}
         badges={<ShellPageBadgeSkeleton />}
         // Tools with its count's place held, so the tab keeps its width as
         // the page and then the tools land.

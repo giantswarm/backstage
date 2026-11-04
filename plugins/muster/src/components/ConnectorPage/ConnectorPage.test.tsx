@@ -530,6 +530,14 @@ describe('ConnectorPage', () => {
     ).not.toBeNull();
   });
 
+  it('holds the logo’s place with a skeleton, not the letter, while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira`);
+
+    expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(screen.queryByText('j')).toBeNull();
+  });
+
   it('holds the Tools count’s place while the tools load', async () => {
     const api = makeApi();
     let answer: (value: unknown) => void = () => {};
