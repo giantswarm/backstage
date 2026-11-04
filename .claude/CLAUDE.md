@@ -544,6 +544,7 @@ reach Sentry.
 ## Platform skills
 
 - The Agent Platform's skills in [giantswarm/agent-platform `skills/`](https://github.com/giantswarm/agent-platform/tree/main/skills) describe the Dev Portal's Agent Platform pages. A change that alters what an agent or a person can do, see or configure through it comes with a pull request there updating the affected skills, linked from this one.
+
 ## Configuration Files
 
 - **`app-config.yaml`** - Base configuration (checked in)
