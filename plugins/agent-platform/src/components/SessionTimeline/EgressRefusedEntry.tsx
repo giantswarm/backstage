@@ -3,10 +3,13 @@ import { Alert, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 
-import { egressOriginFor, EgressRefusedItem } from '../../lib/egressRefusals';
+import {
+  egressOriginFor,
+  EgressRefusedItem,
+  isOriginScheme,
+} from '../../lib/egressRefusals';
 import { EGRESS_ALERT_COPY } from '../../lib/egressCopy';
 import {
-  isRawTcp,
   unknownAgentRemedy,
   type EgressRemedy,
   type EgressRemedyFor,
@@ -93,7 +96,8 @@ function remedyOf(
     case 'pending':
       return null;
     case 'tcp':
-      return <Remedy text={says.tcp(agent, host)} />;
+      // A folded host cannot be named, so neither can its HTTPS.
+      return <Remedy text={says.tcp(agent, item.host)} />;
     case 'toolchains':
       // A toolchain declares http(s) origins: a folded destination is the
       // platform team's alone.
@@ -153,9 +157,9 @@ export function EgressRefusedEntry({
     subject: name ?? EGRESS_ALERT_COPY.subjectStandIn,
   };
   const origin = egressOriginFor(item);
-  const reason = isRawTcp(item.scheme)
-    ? EGRESS_ALERT_COPY.tcpReason
-    : EGRESS_ALERT_COPY.reason(names.subject);
+  const reason = isOriginScheme(item.scheme)
+    ? EGRESS_ALERT_COPY.reason(names.subject)
+    : EGRESS_ALERT_COPY.tcpReason;
   const facts = [
     reason,
     timeOf(item.at),

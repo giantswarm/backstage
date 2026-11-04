@@ -1,15 +1,17 @@
 import type { HarnessRuntime } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type { AgentManagerAgent } from './agentManager';
+import { isOriginScheme } from './egressRefusals';
 import { isCodingRuntime } from './harnesses';
 
 /**
  * What a person can do about an egress refusal in a Session, by what was
  * refused and what the agent is (giantswarm/giantswarm#38814):
  *
- * - `tcp`: a raw TCP destination. kagent's egress declares HTTP and HTTPS
- *   origins only, and agent-manager's per-Harness egress is a list of origins
- *   too, so no one can allow it, on any runtime: no link, no one to ask.
+ * - `tcp`: a raw TCP destination, or any other that is not HTTP(S). kagent's
+ *   egress declares HTTP and HTTPS origins only, and agent-manager's
+ *   per-Harness egress is a list of origins too, so no one can allow it, on
+ *   any runtime: no link, no one to ask.
  * - `toolchains`: a coding Harness reaches the platform's list for it only
  *   (agent-manager's `guardCoding`), and the installation's Sessions mount
  *   toolchains, whose images declare the origins their tools need.
@@ -48,22 +50,29 @@ export type EgressRemedy =
   | { kind: 'edit'; editHref?: string };
 
 /**
- * The remedy for a refused destination by its scheme (`http`, `https` or
- * `tcp`), for the Session's agent (`useEgressRemedy`).
+ * The remedy for a refused destination by its scheme (`http`, `https`, `tcp`
+ * or another label the gateway gives), for the Session's agent
+ * (`useEgressRemedy`).
  */
 export type EgressRemedyFor = (scheme: string) => EgressRemedy;
 
-/** Whether a refused destination is raw TCP, which no egress setting allows. */
-export function isRawTcp(scheme: string): boolean {
-  return scheme === 'tcp';
+/**
+ * Whether the remedy for a refused destination depends on the agent: only an
+ * HTTP(S) origin can be allowed by an egress setting, so every other scheme
+ * gets the `tcp` remedy whatever the agent is. `egressRemedyKind`,
+ * `unknownAgentRemedy` and whether the Session page reads the agent at all
+ * go by this one test, so they change together.
+ */
+export function remedyNeedsAgent(scheme: string): boolean {
+  return isOriginScheme(scheme);
 }
 
 /**
- * The remedy where nothing is known of the agent: raw TCP's, which needs
+ * The remedy where nothing is known of the agent: the `tcp` one, which needs
  * nothing of it, else the neutral one, which promises nothing.
  */
 export const unknownAgentRemedy: EgressRemedyFor = scheme =>
-  isRawTcp(scheme) ? { kind: 'tcp' } : { kind: 'neutral' };
+  remedyNeedsAgent(scheme) ? { kind: 'neutral' } : { kind: 'tcp' };
 
 /**
  * What is known about the agent, each `undefined` while it is being read and
@@ -71,7 +80,10 @@ export const unknownAgentRemedy: EgressRemedyFor = scheme =>
  * read failed): a remedy that needs it is then the neutral one.
  */
 export type EgressRemedyFacts = {
-  /** The refused destination's scheme: `http`, `https` or `tcp`. */
+  /**
+   * The refused destination's scheme: `http`, `https`, `tcp`, or another
+   * label the gateway gives, which is treated as `tcp`.
+   */
   scheme: string;
   /** The runtime of the agent's Harness. */
   runtime: HarnessRuntime | null | undefined;
@@ -109,8 +121,8 @@ export function isDefinedOutsideAgentManager(
 }
 
 /**
- * The remedy that applies, in the issue's order: raw TCP first (no egress
- * setting allows it, whatever the agent is, so nothing about the agent is
+ * The remedy that applies, in the issue's order: raw TCP, or any scheme
+ * but HTTP(S), first (no egress setting allows it, whatever the agent is, so nothing about the agent is
  * waited for), then a coding Harness (its egress is the platform's, wherever
  * the agent is defined), then where the agent is defined and who may change
  * it. An unknown runtime promises nothing, since an origin added to a coding
@@ -118,7 +130,7 @@ export function isDefinedOutsideAgentManager(
  */
 export function egressRemedyKind(facts: EgressRemedyFacts): EgressRemedyKind {
   const { scheme, runtime, agent, toolchains, canCommit, mayUpdate } = facts;
-  if (isRawTcp(scheme)) {
+  if (!remedyNeedsAgent(scheme)) {
     return 'tcp';
   }
   if (runtime === undefined) {

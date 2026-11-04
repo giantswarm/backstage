@@ -16,8 +16,19 @@ jest.mock('./useAgentManager', () => ({
 }));
 
 const mockAgentRead = jest.fn();
+const mockAgentAsked = jest.fn();
 jest.mock('./useAgentManagerAgent', () => ({
-  useAgentManagerAgent: () => mockAgentRead(),
+  useAgentManagerAgent: (
+    _installation: string,
+    _namespace: string,
+    _name: string,
+    options: { enabled: boolean },
+  ) => {
+    if (options.enabled) {
+      mockAgentAsked();
+    }
+    return mockAgentRead();
+  },
 }));
 
 const mockChoices = jest.fn();
@@ -109,20 +120,16 @@ beforeEach(() => {
 });
 
 describe('useEgressRemedy', () => {
-  it('reads nothing until enabled', () => {
+  it('reads nothing until enabled, and gives raw TCP its remedy without it', () => {
     const { result } = renderHook(() =>
       useEgressRemedy({ ...options, enabled: false }),
     );
     expect(result.current('https')).toEqual({ kind: 'pending' });
-    expect(mockInfoAsked).not.toHaveBeenCalledWith('lab');
-  });
-
-  it('gives raw TCP its remedy without reading the agent', () => {
-    const { result } = renderHook(() =>
-      useEgressRemedy({ ...options, enabled: false }),
-    );
     expect(result.current('tcp')).toEqual({ kind: 'tcp' });
     expect(mockInfoAsked).not.toHaveBeenCalledWith('lab');
+    expect(mockAgentAsked).not.toHaveBeenCalled();
+    expect(mockHarnessesAsked).not.toHaveBeenCalledWith('lab');
+    expect(mockAccessAsked).not.toHaveBeenCalled();
   });
 
   it('gives raw TCP the same remedy on every runtime, with no link', () => {
@@ -138,6 +145,16 @@ describe('useEgressRemedy', () => {
     );
     expect(editable.result.current('tcp')).toEqual({ kind: 'tcp' });
     expect(editable.result.current('https').kind).toBe('edit');
+  });
+
+  it('offers no edit for a scheme other than HTTP(S), whatever its label', () => {
+    const { result } = renderHook(() =>
+      useEgressRemedy({ ...options, row: kagentRow }),
+    );
+    expect(result.current('https').kind).toBe('edit');
+    for (const scheme of ['TCP', 'tls']) {
+      expect(result.current(scheme)).toEqual({ kind: 'tcp' });
+    }
   });
 
   it('shows no remedy while muster’s server list is read, for a coding agent too', () => {

@@ -226,6 +226,36 @@ describe('EgressRefusedEntry', () => {
     expect(remedyFor).toHaveBeenCalledWith('tcp');
   });
 
+  it('suggests no HTTPS for a raw TCP host the gateway folded', async () => {
+    const entry = await renderEntry(
+      { kind: 'tcp' },
+      { ...ssh, host: undefined, port: undefined },
+    );
+
+    expect(
+      within(entry).getByText('No egress setting can allow it.'),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByText(/HTTPS/)).toBeNull();
+  });
+
+  it('treats a scheme other than HTTP(S) as raw TCP, with no edit', async () => {
+    await renderInTestApp(
+      <EgressRefusedEntry item={{ ...ssh, scheme: 'tls' }} />,
+    );
+    const entry = screen.getByTestId('timeline-egress-refused');
+
+    expect(
+      within(entry).getByText(
+        /^Raw TCP connections are not available to agents · /,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(/^No egress setting can allow it\./),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByText(/You can allow/)).toBeNull();
+    expect(within(entry).queryByRole('link')).toBeNull();
+  });
+
   it('gives raw TCP its remedy when none is given', async () => {
     await renderInTestApp(<EgressRefusedEntry item={ssh} />);
     const entry = screen.getByTestId('timeline-egress-refused');

@@ -1,6 +1,7 @@
 import {
   egressRemedyKind,
   isDefinedOutsideAgentManager,
+  remedyNeedsAgent,
   unknownAgentRemedy,
   type EgressRemedyFacts,
 } from './egressRemedy';
@@ -187,6 +188,15 @@ describe('egressRemedyKind', () => {
       ).toBe('tcp');
     });
 
+    it('is any scheme but HTTP(S), so no other label reaches an edit', () => {
+      for (const scheme of ['TCP', 'tls', 'udp', '']) {
+        expect(egressRemedyKind({ ...editable, scheme })).toBe('tcp');
+        expect(
+          egressRemedyKind({ ...editable, scheme, runtime: 'claude' }),
+        ).toBe('tcp');
+      }
+    });
+
     it('comes before an agent defined in Git', () => {
       expect(
         egressRemedyKind({
@@ -202,9 +212,19 @@ describe('egressRemedyKind', () => {
   });
 });
 
+describe('remedyNeedsAgent', () => {
+  it('is HTTP(S) only', () => {
+    expect(remedyNeedsAgent('https')).toBe(true);
+    expect(remedyNeedsAgent('http')).toBe(true);
+    expect(remedyNeedsAgent('tcp')).toBe(false);
+    expect(remedyNeedsAgent('tls')).toBe(false);
+  });
+});
+
 describe('unknownAgentRemedy', () => {
-  it('gives raw TCP its remedy and promises nothing for the rest', () => {
+  it('gives raw TCP and any other non-HTTP scheme its remedy, and promises nothing for the rest', () => {
     expect(unknownAgentRemedy('tcp')).toEqual({ kind: 'tcp' });
+    expect(unknownAgentRemedy('tls')).toEqual({ kind: 'tcp' });
     expect(unknownAgentRemedy('https')).toEqual({ kind: 'neutral' });
   });
 });

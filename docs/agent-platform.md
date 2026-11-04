@@ -1684,12 +1684,13 @@ is not allowed to reach this address · {time} · {n} attempts"), read from
 (`useSessionEgressRefusals`). The port, scheme and origin are folded under
 Technical details.
 
-Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
-(`egressRemedyKind`, giantswarm/giantswarm#38814), in this order:
+Once a refusal other than raw TCP shows, `useEgressRemedy` reads the agent;
+the remedy is picked by `egressRemedyKind` (giantswarm/giantswarm#38814) in
+this order:
 
 | Case                                                        | Remedy                                                     |
 | ----------------------------------------------------------- | ---------------------------------------------------------- |
-| Raw TCP destination, on any runtime, for anyone             | No egress setting allows it; use HTTPS if the host has it  |
+| Raw TCP (any scheme but HTTP(S)), any runtime, for anyone   | No egress setting allows it; use HTTPS if the host has it  |
 | Coding Harness, `get_info` reports `toolchains`             | Start a session with a toolchain, or ask the platform team |
 | Coding Harness, no toolchains                               | Ask the platform team                                      |
 | From Git, HelmRelease outside the agent's namespace         | Changed in Git                                             |
@@ -1700,8 +1701,11 @@ Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
 
 Raw TCP comes first because no one can allow it: kagent's egress declares
 HTTP and HTTPS origins only, and agent-manager's `harness.egress.<harness>` is
-a list of origins too. Its remedy has no link and needs nothing of the agent,
-so a Session whose refusals are all raw TCP reads nothing for it. The wording
+a list of origins too. Every scheme the gateway labels other than `http`
+and `https` counts as raw TCP. Its remedy has no link and needs nothing of the
+agent, so a Session whose refusals are all raw TCP reads nothing for it; one
+test, `remedyNeedsAgent`, decides both. Where the gateway folded the host, the
+remedy is only "No egress setting can allow it." The wording
 matches klaus-gateway's Slack notice (giantswarm/klaus-gateway#564); if raw
 TCP becomes allowable, both change together.
 

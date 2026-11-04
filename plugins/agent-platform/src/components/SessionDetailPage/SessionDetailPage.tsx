@@ -130,7 +130,7 @@ import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
 import { useEgressRemedy } from '../../hooks/useEgressRemedy';
-import { isRawTcp } from '../../lib/egressRemedy';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -889,7 +889,7 @@ export function SessionDetailPage() {
     installation,
     agent,
     row: agentRow,
-    enabled: egressRefusals.some(refusal => !isRawTcp(refusal.scheme)),
+    enabled: egressRefusals.some(refusal => remedyNeedsAgent(refusal.scheme)),
   });
 
   // Owned by the page, unlike the delete dialog's state, because two things open

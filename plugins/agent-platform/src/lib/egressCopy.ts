@@ -47,12 +47,15 @@ export const EGRESS_ALERT_COPY = {
 
   remedy: {
     /**
-     * A raw TCP destination, on every runtime and whoever the person is: no
-     * egress setting can allow it (klaus-gateway's Slack notice says the same,
-     * giantswarm/klaus-gateway#564).
+     * A raw TCP (or other non-HTTP) destination, on every runtime and whoever
+     * the person is: no egress setting can allow it (klaus-gateway's Slack
+     * notice says the same, giantswarm/klaus-gateway#564). Where the gateway
+     * folded the host, no HTTPS of it can be suggested.
      */
-    tcp: (agent: string, host: string) =>
-      `No egress setting can allow it. If ${host} offers HTTPS, have ${agent} use that instead.`,
+    tcp: (agent: string, host: string | undefined) =>
+      host
+        ? `No egress setting can allow it. If ${host} offers HTTPS, have ${agent} use that instead.`
+        : 'No egress setting can allow it.',
     /** Coding Harness, Sessions mount toolchains; an http(s) destination. */
     toolchains: (subject: string, runtime: string, host: string) =>
       `${subject} can only reach the addresses the platform allows for ${runtime}. Start a session with a toolchain that includes ${host}, or ask your platform team to allow it.`,
