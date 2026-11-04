@@ -2348,12 +2348,17 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(screen.queryByText('agent-platform/pr-reviewer')).toBeNull();
     });
 
-    it('says how long ago the agent was created, once, the local time on hover', async () => {
+    it('says how long ago the agent was created beside the overview, not in the technical details', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
       await renderShell();
 
-      const created = screen.getByText(
+      // The facts column: how long ago, the local date and time on hover.
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Created')).toBeInTheDocument();
+      const created = within(facts).getByText(
         getRelativeDate('2026-07-21T09:00:00Z', new Date()),
       );
       expect(created).toHaveTextContent(/ ago$/);
@@ -2361,12 +2366,16 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         'title',
         formatLocalDateFull('2026-07-21T09:00:00Z'),
       );
-      expect(created.parentElement).toHaveTextContent(/^Created /);
-      // The header says it; the Overview's facts beside it do not repeat it.
-      const facts = screen.getByRole('complementary', {
-        name: 'About this agent',
-      });
-      expect(within(facts).queryByText('Created')).toBeNull();
+
+      // Not again in the Configuration card.
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+      expect(await screen.findByText('Deployed by')).toBeInTheDocument();
+      // The header's line under the name and the facts', nothing more.
+      const mentions = screen.getAllByText('Created');
+      expect(mentions).toHaveLength(2);
+      expect(mentions).toContain(within(facts).getByText('Created'));
     });
 
     it('offers Overview, Sessions, Tools and Usage, each at its own URL', async () => {

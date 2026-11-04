@@ -10,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   CollapsibleMarkdown,
+  DateComponent,
   type Fact,
   InfoHint,
   Mono,
@@ -603,7 +604,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to and who created it; when is the header's.
+ * the organization it belongs to, who created it and how long ago.
  */
 export function agentFacts({
   agent,
@@ -628,6 +629,7 @@ export function agentFacts({
   platformHarness?: string;
 }): Fact[] {
   const failure = agent.getFailure();
+  const created = agent.getCreatedTimestamp();
   const facts: Fact[] = [
     {
       label: 'Model',
@@ -668,6 +670,15 @@ export function agentFacts({
   if (createdBy) {
     facts.push({ label: 'Created by', value: createdBy });
   }
-  // No "Created": the page header says it, above these facts.
+  if (created) {
+    facts.push({
+      label: 'Created',
+      value: (
+        <Text variant="body-small">
+          <DateComponent value={created} relative />
+        </Text>
+      ),
+    });
+  }
   return facts;
 }
