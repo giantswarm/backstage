@@ -34,6 +34,40 @@ describe('normalizeSentryEvent', () => {
     expect(first.fingerprint).toEqual(second.fingerprint);
   });
 
+  it('collapses Kubernetes proxy errors across clusters', () => {
+    const first = normalizeSentryEvent<SentryEvent>({
+      message:
+        "Kubernetes proxy error Cluster 'mc-one' request error; caused by Error: connect ETIMEDOUT 10.0.1.2:443",
+      extra: { cluster: 'mc-one' },
+    });
+    const second = normalizeSentryEvent<SentryEvent>({
+      message:
+        "Kubernetes proxy error Cluster 'mc-two' request error; caused by Error: connect ETIMEDOUT 10.0.3.4:443",
+      extra: { cluster: 'mc-two' },
+    });
+
+    expect(first.message).toBe(
+      'Kubernetes proxy error: cluster request error; caused by Error: connect ETIMEDOUT <address>',
+    );
+    expect(first.fingerprint).toEqual(second.fingerprint);
+    expect(first.extra).toMatchObject({ cluster: 'mc-one' });
+  });
+
+  it('keeps Kubernetes proxy errors with different causes apart', () => {
+    const [refused, timedOut, aggregate] = [
+      'Error: connect ECONNREFUSED 10.0.1.2:443',
+      'Error: connect ETIMEDOUT 10.0.1.2:443',
+      'AggregateError',
+    ].map(
+      cause =>
+        normalizeSentryEvent<SentryEvent>({
+          message: `Kubernetes proxy error Cluster 'mc-one' request error; caused by ${cause}`,
+        }).fingerprint,
+    );
+
+    expect(new Set([refused, timedOut, aggregate].map(String)).size).toBe(3);
+  });
+
   it('collapses messages that differ only by URL', () => {
     const first = normalizeSentryEvent<SentryEvent>({
       message:

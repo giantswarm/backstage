@@ -50,6 +50,13 @@ export function getSentryTransportConfig(config: RootConfigService) {
       // A request that reached the backend before it finished starting up;
       // the caller retries. See giantswarm/giantswarm#37351.
       STARTUP_REQUEST_FAILURE,
+      // http-proxy-middleware's own log of a failed Kubernetes proxy request,
+      // next to the backend's "Kubernetes proxy error" for the same failure,
+      // which names the cluster and the cause. Its "to undefined" is the
+      // unset static target, and its cluster is the one whose proxy was set
+      // up last, as the library's logger is global. See
+      // giantswarm/giantswarm#39002.
+      /^\[HPM\] Error occurred while proxying request /,
     ],
     // The events poll loop's startup failures need the event's cause, which
     // `ignoreErrors` cannot see.

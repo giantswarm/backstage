@@ -76,6 +76,25 @@ describe('the Sentry filters', () => {
     expect(isIgnored(message)).toBe(false);
   });
 
+  it.each(['ECONNREFUSED', 'ETIMEDOUT'])(
+    'ignores the proxy library duplicate of a Kubernetes proxy error (%s)',
+    code => {
+      expect(
+        isIgnored(
+          `[HPM] Error occurred while proxying request portal.example.com//version to undefined [${code}] (https://nodejs.org/api/errors.html#errors_common_system_errors)`,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it('still reports the Kubernetes proxy error itself', () => {
+    expect(
+      isIgnored(
+        "Kubernetes proxy error Cluster 'mc-one' request error; caused by Error: connect ECONNREFUSED 10.0.1.2:443",
+      ),
+    ).toBe(false);
+  });
+
   it('drops an events poll failure caused by the backend starting up', () => {
     expect(
       options.beforeSend({

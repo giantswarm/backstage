@@ -28,6 +28,13 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   // @backstage/plugin-catalog-backend DefaultCatalogProcessingEngine: one
   // issue per catalog entity.
   [/^Processing of \S+ failed/, 'Processing of an entity failed'],
+  // @backstage/plugin-kubernetes-backend KubernetesProxy: one issue per
+  // cluster, for a cause (refused, timed out) that is the same on each. The
+  // cluster is in extra data. See giantswarm/giantswarm#39002.
+  [
+    /^Kubernetes proxy error Cluster '[^']*' request error/,
+    'Kubernetes proxy error: cluster request error',
+  ],
 ];
 
 /**
