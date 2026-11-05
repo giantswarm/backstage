@@ -147,6 +147,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     [
       modelInstallations,
       modelConfigsFor,
+      organizations,
       servingStateFor,
       capabilitiesFor,
       backends,
