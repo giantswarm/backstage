@@ -1,3 +1,7 @@
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { KubeObject } from './KubeObject';
 import { harnessRuntimeOf, type HarnessRuntime } from './Harness';
 import {
@@ -304,6 +308,16 @@ export class Agent extends KubeObject<AgentInterface> {
   /** The `ui.giantswarm.io/icon-url` annotation, when the chart set one. */
   getIconUrl(): string | undefined {
     return this.getAnnotations()?.[ICON_URL_ANNOTATION];
+  }
+
+  /**
+   * The keywords people find the agent by: the comma-joined
+   * `ui.giantswarm.io/tags` annotation, trimmed and lowercased, without
+   * empties or repeats. A value the chart would refuse (see `tagProblem` in
+   * ui-react, the one tag rule) is left out of what is shown.
+   */
+  getTags(): string[] {
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
   }
 
   /**

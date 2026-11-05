@@ -6,8 +6,9 @@ import { lab } from './lab';
  * lab's developer reads kagent only through the chart's namespaced
  * `agent-platform:user` RoleBinding in `kagent`, so a cluster-wide list of
  * Agents, Harnesses and RemoteMCPServers is forbidden to them; the roster
- * reads the agent namespaces one by one instead and lists the worker's agent
- * with its toolset, with no "Could not read" notice.
+ * reads the agent namespaces one by one instead and lists the worker's agent,
+ * with no "Could not read" notice, and resolves its toolset from the
+ * RemoteMCPServers read the same way.
  */
 const rosterWait = 2 * 60_000;
 
@@ -23,12 +24,27 @@ test('a person with a namespaced kagent RoleBinding sees the agents of that name
   await expect(row, 'the roster lists the fixture agent').toBeVisible({
     timeout: rosterWait,
   });
-  // The toolset resolves from the RemoteMCPServers read the same way: the
-  // fixture agent carries no skills and no tools.
-  await expect(row).toContainText('0 skills · 0 connectors');
 
   await expect(
     dev.getByText(/^Could not read \d+ environments?$/),
     'no environment reads as unreadable',
   ).toHaveCount(0);
+});
+
+test('a person with a namespaced kagent RoleBinding sees an agent’s toolset resolved', async ({
+  labAgent,
+  signInAs,
+}) => {
+  test.setTimeout(rosterWait + 60_000);
+  const dev = await signInAs(lab.users.dev);
+  // The composer's agent is an AgentRow id, `installation/namespace/name`.
+  const id = labAgent.detailPath.replace(/^\/customize\/agents\//, '');
+  await open(dev, `/?agent=${encodeURIComponent(id)}`, lab.users.dev);
+
+  // The reach line renders only once the toolset resolved, through the
+  // namespaced RemoteMCPServers read: the fixture agent has no tools.
+  await expect(
+    dev.getByText('Has no connectors.', { exact: true }),
+    'the composer resolves the fixture agent’s toolset',
+  ).toBeVisible({ timeout: rosterWait });
 });

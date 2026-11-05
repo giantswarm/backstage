@@ -1,132 +1,77 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository: Giant Swarm's customized Backstage
+application, for internal use and customer portals. This file holds the
+commands, the repository map and pointers. The rules of each area live in the
+skills under `.claude/skills/` and the docs under `docs/`, named below where
+they apply.
 
-## About This Project
+## Commands
 
-Giant Swarm's customized Backstage application for both internal use and customer portals.
-
-## Development Commands
-
-### Running Locally
-
-Either method works:
+### Run
 
 ```bash
-# Start frontend and backend together:
-yarn start
-```
-
-```bash
-# Start frontend and backend separately:
+yarn start            # frontend and backend together
 yarn start backend
 yarn start app
 ```
 
-### Testing
+Local setup: `.env` (secrets in 1Password, loaded with `env-cmd`),
+`app-config.local.yaml` copied from `app-config.local.yaml.example`, SQLite by
+default (Postgres via Docker: `docs/development.md`), HTTPS via
+`certificate.yaml`. Frontend on 3000, backend on 7007.
 
-Run tests directly with the Bash tool — do not use the test-runner subagent.
+### Test
 
-`yarn test` and the per-package `test` script run once and exit (they pass
-`--watchAll=false`), so they will not hang in Jest watch mode. Watch mode is
-opt-in via `yarn test:watch`.
+Run tests directly with the Bash tool, not the test-runner subagent. `yarn test`
+runs once and exits (`--watchAll=false`); watch mode is `yarn test:watch`.
 
 ```bash
-# Run tests for a specific plugin (preferred) — single run, exits
-yarn test plugins/my-plugin
-
-# Narrower: any number of path patterns (Jest testPathPattern regexes, so a
-# directory prefix is enough). Prefer this while iterating — a plugin-wide run
-# for a one-file change costs minutes for the same signal.
+yarn test plugins/my-plugin                                      # one plugin
 yarn test plugins/muster/src/components/shared/ToolTable plugins/agent-platform/src/components/ToolsetResolutionList
-
-# Narrowest: one test by name (substring of its `it(...)` title)
 yarn test plugins/my-plugin/src/components/MyComponent -t "does the thing"
-
-# Run a single package's tests — single run, exits
 yarn workspace @giantswarm/backstage-plugin-muster test
-
-# Run all tests with coverage
-yarn test:all
-
-# Interactive watch mode (humans, TDD) — does NOT exit
-yarn test:watch plugins/my-plugin
-
-# Run Playwright E2E tests against the local dev server
-yarn test:e2e
-
-# Run the browser suite against a running agentlab (the local agent platform
-# with this Backstage in it) — see e2e/agentlab/README.md
-yarn test:e2e:agentlab
+yarn test:all                                                    # everything, with coverage
+yarn test:e2e                                                    # Playwright against the dev server
+yarn test:e2e:agentlab                                           # the browser suite against agentlab
 ```
 
-Save the plugin-wide (or two-plugin) run for a change to something shared — a
-component or helper with call sites beyond the file you edited. Then it is worth
-the minutes; otherwise the path patterns above are the same signal in seconds.
+Path patterns are Jest regexes, so a directory prefix is enough. Use them while
+iterating: a plugin-wide run for a one-file change costs minutes for the same
+signal. Save the plugin-wide run for a change to something shared, with call
+sites beyond the file you edited.
 
-#### Verifying a change in agentlab
+A change to a page is verified in a browser against agentlab before the PR
+merges, and ships with the spec that proves it: `docs/development.md`,
+"End-to-end tests in a browser, against agentlab", and `e2e/agentlab/README.md`.
+The lab users are throwaway fixtures, and signing in as them, in the Dex popup
+too, is part of the verification. Only real people's accounts and real
+installations are off-limits.
 
-A change to a page is verified in a real browser against
-[agentlab](https://github.com/giantswarm/agentlab) before the PR merges:
-build the image (`yarn ci:build`, `docker build -f packages/backend/Dockerfile`),
-swap it into the lab (`platform.devImages.backstage` in the lab's
-`agentlab.yaml`, `agentlab platform`), run `agentlab backstage-test` and
-`yarn test:e2e:agentlab`, and extend the suite for the page you changed. The
-lab users (`admin@lab.local` and friends, password `password` in the lab's
-`agentlab.yaml`) are test fixtures on a throwaway kind cluster — signing in as
-them, in the Dex popup too, is part of the verification. Only real people's
-accounts and real installations are off-limits.
-
-### Code Quality
+### Lint, format, type-check
 
 ```bash
-# Lint changed files since origin/main
-yarn lint
-
-# Lint all files
+yarn lint                        # changed files since origin/main
 yarn lint:all
-
-# Auto-fix linting issues
-yarn fix
-
-# Format code (run before committing)
-yarn prettier:fix > /dev/null
-
-# Check formatting
+yarn fix                         # auto-fix
+yarn prettier:fix > /dev/null    # before committing
 yarn prettier:check
-
-# Type checking
-yarn tsc                # With incremental mode; heap set in scripts/tsc.sh
-yarn tsc:full           # Full check without skipping lib checks
+yarn tsc                         # incremental; the heap is set in scripts/tsc.sh
+yarn tsc:full                    # no skipLibCheck, no incremental
 ```
 
-### Building
+`yarn lint` swallows warnings: check a file you wrote with `npx eslint <path>`
+from its package directory. Pre-commit runs lint-staged.
+
+### Build
 
 ```bash
-# Build all packages
 yarn build:all
-
-# Build backend only
 yarn build:backend
-
-# Build headless service
 yarn build:backend-headless-service
-
-# Build Docker image
 yarn build-image
-
-# Clean build artifacts
 yarn clean
 ```
-
-### Development Setup
-
-- **Devcontainer**: Optional development environment (VS Code devcontainer support)
-- **Environment Variables**: Requires `.env` file (not checked in), secrets in 1Password, uses `env-cmd` for loading
-- **Local Config**: Copy `app-config.local.yaml.example` to `app-config.local.yaml`
-- **Database**: Uses in-memory SQLite by default. Run PostgreSQL via Docker (see `docs/development.md`) to test with Postgres
-- **HTTPS**: Configure via `certificate.yaml` (see `certificate.yaml.example`)
-- **Ports**: Frontend on 3000, Backend on 7007
 
 ### Git worktrees
 
@@ -147,511 +92,102 @@ diff):
 Also **do not symlink `node_modules`** — run a real `yarn install` per worktree
 (a shared/symlinked tree lets an install corrupt the main checkout's tree).
 
-## Architecture Overview
-
-### Monorepo Structure
-
-This is a Yarn workspaces monorepo with:
-
-- **`packages/`** - Core application packages
-  - `app` - React frontend application
-  - `backend` - Main backend service
-  - `backend-headless-service` - Headless backend service
-  - `backend-common` - Shared backend utilities and root logger
-
-- **`plugins/`** - Custom Backstage plugins
-
-### Key Custom Plugins
-
-All plugins live under `plugins/` and are published under the
-`@giantswarm/backstage-plugin-*` npm scope. Roles below use Backstage's package
-`role` (`frontend-plugin`, `backend-plugin`, `backend-plugin-module`,
-`web-library`, `node-library`, `common-library`).
-
-#### Frontend plugins
-
-- **`gs`** - Main Giant Swarm plugin (by far the largest, 500+ files)
-  - Contains all core GS pages: Clusters, Deployments, Installations
-  - Custom scaffolder field extensions (ClusterPicker, ChartPicker, etc.)
-  - Custom APIs: gsAuth, containerRegistry, kubernetes, scaffolder
-  - Custom catalog page and entity cards
-
-- **`flux`** - Flux CD GitOps plugin shell (most logic lives in `flux-react`)
-
-- **`ai-chat`** - AI chat interface. **Deprecated** — no new features; fixes
-  and keeping it building only.
-
-- **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
-  (kagent), ported from the APUI prototype
-
-- **`muster`** - Muster (MCP tool aggregator) UI: the Customize screen's
-  Connectors tab (a page per connector and per tool, the connector wizard) and
-  Workflows tab
-
-- **`plans`** - Plans feature
-
-- **`roadmap`** - Roadmap feature
-
-#### Backend plugins
-
-- **`gs-backend`** - Backend services for GS functionality
-
-- **`ai-chat-backend`** - AI chat backend service (LLM providers).
-  **Deprecated** along with `ai-chat`.
-
-- **`muster-backend`** - Backend for the Muster plugin
-
-- **`plans-backend`** - Backend for the Plans plugin
-
-- **`roadmap-backend`** - Backend for the Roadmap plugin
-
-#### Backend plugin modules (extend upstream Backstage backends)
-
-- **`catalog-backend-module-gs`** - Custom catalog entity providers/processors
-  (largest module)
-
-- **`auth-backend-module-gs`** - Custom authentication module
-
-- **`scaffolder-backend-module-gs`** - Custom scaffolder actions
-
-- **`techdocs-backend-module-gs`** - Custom TechDocs backend functionality
-
-#### Shared libraries
-
-- **`kubernetes-react`** (web) - K8s resource classes (CRD wrappers under
-  `lib/k8s/`), hooks, and reusable components
-
-- **`flux-react`** (web) - Flux resource visualization and management components
-  (the bulk of the Flux integration)
-
-- **`ui-react`** (web) - Shared UI component library
-  - Reusable components like tables, charts, date formatting
-  - Utilities: `useTableColumns`, `isTableColumnHidden`, `sortAndFilterOptions`, `semverCompareSort`
-
-- **`ai-chat-react`** (web) - Shared components for the AI chat plugin.
-  **Deprecated** along with `ai-chat`.
-
-- **`error-reporter-react`** (web) - Error reporting components
-
-- **`analytics-react`** (web) - The portal's tracked actions: the typed event
-  list (`portalEvents`) and `useTrackedMutation`
-
-- **`gs-common`** (common) - Shared constants/utilities for frontend and backend
-
-- **`gs-node`** (node) - Shared backend-only (node) utilities
-
-### Backend Architecture
-
-The backend uses the **new Backstage backend system** (not legacy). Entry point is `packages/backend/src/index.ts` which:
-
-1. Creates backend with `createBackend()` from `@backstage/backend-defaults`
-2. Adds plugins via dynamic imports: `backend.add(import('@backstage/plugin-*'))`
-3. No manual router setup - plugins self-register
-
-Key backend plugins registered:
-
-- App, proxy, scaffolder, techdocs, auth, catalog, search, kubernetes
-- Notifications, signals, events, permission
-- Custom GS plugins and modules
-
-### Frontend Architecture
-
-Entry point: `packages/app/src/App.tsx`
-
-- React 18
-- Backstage frontend plugin system
-
-#### UI component libraries
-
-Three layers. **New and edited UI code imports from bui (`@backstage/ui`)** —
-it's the new Backstage design system and the direction we're migrating toward.
-`@backstage/core-components` (classic Backstage) and `@material-ui/core` (MUI v4)
-are legacy and allowed only for the pieces bui has no equivalent for:
-
-- `makeStyles` and `@material-ui/icons/<Icon>` (bui has no styling API for
-  one-off layout tweaks and ships no icon set)
-- the feature-rich core-components `Table` (column visibility, CSV export,
-  faceted filters) — see the **`tables`** skill
-- `Page`/`Header`/`Content` scaffolding on classic (non-NFS) pages, and the
-  core-components `Link`/`LinkButton` when the target is a route ref
-- `Progress`, `EmptyState`, `ErrorPanel`/`WarningPanel`, `MarkdownContent`,
-  `CodeSnippet`, the `Status*` dots and the sidebar/entity-page scaffolding
-
-**Everything else has a bui equivalent, including the ones that get rebuilt in
-MUI by mistake**: `Tabs`/`TabList`/`Tab`/`TabPanel`, `Dialog`, `Select`,
-`Combobox`, `Checkbox`, `Radio`, `Switch`, `Slider`, `Tag` (for `Chip`), `Badge`,
-`Alert`, `Skeleton`, `Accordion`, `TextField`, `SearchField`, `DatePicker`,
-`ToggleButtonGroup`, `Text` (for `Typography`). Before concluding bui lacks
-something, check the installed package — don't rely on a list:
-
-```bash
-grep -oE '^declare (const|function) [A-Z][A-Za-z]+' \
-  node_modules/@backstage/ui/dist/index.d.ts \
-  | sed -E 's/declare (const|function) //' | grep -v 'Definition$' | sort -u
-```
-
-MUI and bui coexist in many files — that's the migration's residue, not
-permission to add more. ESLint warns on every `@material-ui/core` import that
-has a bui equivalent (`muiWithBuiEquivalent` in the root `.eslintrc.js`), but
-**`yarn lint` swallows warnings** — check a file you wrote with
-`npx eslint <path>` from its package directory. The bui stylesheet is imported once in `packages/app/src/index.tsx`,
-and `BUIProvider` is already mounted by `@backstage/plugin-app`'s `AppRoot`, so
-bui `href`s are client-side routed (keep them absolute).
-
-See `docs/ui.md` and the **`ui`** Claude Code skill for details — the full bui
-inventory, the MUI→bui swap table, and how to read Backstage Storybook
-component/story source without cloning the monorepo.
-
-#### Forms and field validation
-
-Forms follow the **`forms`** skill (`.claude/skills/forms/SKILL.md`): a field
-is checked when the person leaves it, never while they first type; a shown
-error clears the moment it is fixed; submit stays enabled, shows every error
-next to its field and focuses the first invalid one; errors are tied to their
-field for screen readers and say how to fix the problem. Build them with
-`useFieldValidation` from `ui-react`. **A review of a change that adds or
-changes a form, a dialog with inputs or a field's validation checks it against
-that skill's review checklist.**
-
-#### URLs of the Agent Platform shell
-
-The shell's URLs follow the **`urls`** skill (`.claude/skills/urls/SKILL.md`):
-the URL tree follows the rail (`/`, `/sessions`, `/usage`, `/profile`,
-`/customize/<section>/…`; the old `/agent-platform/**` only redirects),
-identity lives in the path, create is `…/new`, edit is `<id>/edit`, every tab
-is a routed segment with the default at the bare path, and moving a URL means a
-one-hop redirect through `legacyAgentPlatformTarget` with the same telemetry
-names. Plugin and shell code never writes a shell path by hand: a link resolves
-through a route ref, an external route ref the app binds in
-`packages/app/src/App.tsx`, or a helper built on one (`useCustomizePaths`,
-`useSkillPaths`, `useNewSessionHref` in agent-platform; `useServerPageLinks`,
-`useWorkflowPageLinks` in muster). The ESLint rule
-`giantswarm/no-restricted-syntax` fails CI on such a literal in
-`plugins/*/src` and `packages/app/src/modules`; a route definition carries a
-disable comment with its reason. **A review of a change that adds or moves a
-route checks it against that skill's review checklist.**
-
-The shell's visual sitemap on Miro (a screenshot per page, tab, wizard step
-and dialog) is kept by the **`ui-sitemap`** skill (`.claude/skills/ui-sitemap/SKILL.md`).
-
-#### Analytics / Telemetry — keep in sync when adding pages
-
-Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
-which maps each `navigate` event to a page name through
-`getTelemetryPageViewPayload` in `packages/app/src/utils/telemetry.ts`. That
-mapping is a hand-maintained `switch` over path prefixes. Each case sets the
-page name and the route template sent as `path`
-(`/sessions/:installation/:sessionId`), never the path itself: a segment that
-names something becomes a placeholder, a tab only appears from its closed set,
-and no attribute takes free text from the URL (see `docs/telemetry.md`).
-
-**When you add a new top-level page/route (a new plugin page, tab, or sub-route),
-add a matching case to `getTelemetryPageViewPayload`.** A *registered* route that
-falls through to the `'Unknown page'` default is reported to Sentry as a
-`Untracked page view: <path>` warning (see `captureEvent`), so forgetting this
-step turns every visit to the new page into recurring Sentry noise across all
-deployments. (Unregistered paths — bot/scanner probes — correctly land on
-"Not Found" and are *not* reported.) Also add a representative path for the new
-route to the `knownTopLevelPaths` list in
-`packages/app/src/utils/telemetry.test.ts` — that enumeration test asserts every
-listed route resolves to a named page, so a missing mapping fails CI instead of
-silently flooding Sentry. Update
-`packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.test.tsx` too if the
-routing/reporting behaviour changes.
-
-#### Analytics / Telemetry — keep in sync when adding actions
-
-A write a person completes in a GS plugin goes through `useTrackedMutation`
-from `@giantswarm/backstage-plugin-analytics-react`, never a plain
-`useMutation` (ESLint fails `plugins/*/src` on one: the
-`giantswarm/no-restricted-imports` rule in the root `.eslintrc.js`). It takes
-`event` — the event the success reports, from the typed list `portalEvents` in
-`plugins/analytics-react/src/events.ts` — or `event: null` with an
-`untrackedReason`. Report from the hook every entry point shares, never from a
-page component. A write that is not a react-query mutation moves into a hook.
-ESLint cannot see a write run by hand (a busy flag, an `await`, a `catch`), so
-check for one in review: it goes through `useTrackedMutation` too.
-
-**When you add a tracked action**: add it to `portalEvents` (TelemetryDeck's
-naming: capitalized prefixes, a past-tense last part, at most three levels;
-every attribute a closed set of values, never free text), add the row to the
-table in `docs/telemetry.md` (a test compares them), and assert the event in the
-hook's test with `mockApis.analytics.mock()` (a test fails when no plugin test
-names the event). The TelemetryDeck connector forwards only listed events with
-valid attributes; anything else named like ours goes to Sentry as
-`Untracked action: <name>`.
-
-### Scaffolder Field Extensions
-
-Custom field components for Backstage templates (in `plugins/gs`):
-
-- `ClusterPicker` - Select GS clusters
-- `ChartPicker` - Select Helm charts
-- `ChartTagPicker` - Select chart versions
-- `InstallationPicker` - Select installations
-- `ProviderConfigPicker` - Select provider configs
-- `YamlValuesEditor` - Edit YAML values
-- And more...
-
-All registered as extensions via `createScaffolderFieldExtension` in `plugins/gs/src/plugin.ts`.
-
-## Code Patterns & Conventions
-
-### Component Structure
-
-Components must be in their own directory with:
-
-- `ComponentName.tsx` - Implementation
-- `index.ts` - Named export: `export { ComponentName } from './ComponentName'`
-
-```
-MyComponent/
-  MyComponent.tsx
-  index.ts
-  columns.tsx     (optional - for table column definitions)
-  helpers.ts      (optional)
-```
-
-Never use default exports. Always import from directory: `import { MyComponent } from '../MyComponent'`
-
-### Table Components
-
-Use `@backstage/core-components` Table with the following patterns:
-
-1. **Column Definitions** - Separate into `columns.tsx`:
-
-   ```tsx
-   export function getInitialColumns(visibleColumns): TableColumn<T>[] {
-     return columns.map(col => ({
-       ...col,
-       hidden: isTableColumnHidden(col.field, {
-         defaultValue: Boolean(col.hidden),
-         visibleColumns,
-       }),
-     }));
-   }
-   ```
-
-2. **Column Visibility** - Use `useTableColumns(TABLE_ID)` hook to persist to localStorage
-
-3. **Sorting/Filtering**:
-   - Version columns: `customSort: semverCompareSort(row => row.version)`
-   - Custom data: `sortAndFilterOptions(row => row.customField)`
-   - Dates: `type: 'datetime'`
-
-4. **Common Utilities** from `ui-react`:
-   - `isTableColumnHidden()` - Column visibility logic
-   - `semverCompareSort()` - Version sorting
-   - `sortAndFilterOptions()` - Custom sort and filter
-
-### Kubernetes Resource Classes
-
-Resource classes in `plugins/kubernetes-react/src/lib/k8s/` wrap Kubernetes CRDs.
-
-#### New Resources: Use Latest Version Only
-
-When creating a new resource class, use only the latest available API version:
-
-```typescript
-import { crds } from '@giantswarm/k8s-types';
-import { KubeObject } from './KubeObject';
-
-type MyResourceInterface = crds.mygroup.v1.MyResource;
-
-export class MyResource extends KubeObject<MyResourceInterface> {
-  static readonly supportedVersions = ['v1'] as const;
-  static readonly group = 'mygroup.example.io';
-  static readonly kind = 'MyResource' as const;
-  static readonly plural = 'myresources';
-}
-```
-
-#### Multi-Version Resources (when backward compatibility needed)
-
-For resources that must support multiple API versions:
-
-```typescript
-// 1. Define version-specific types - ONLY versions in @giantswarm/k8s-types
-type MyResourceV1Beta1 = crds.mygroup.v1beta1.MyResource;
-type MyResourceV1Beta2 = crds.mygroup.v1beta2.MyResource;
-
-// 2. Version map (source of truth)
-type MyResourceVersions = {
-  'v1beta1': MyResourceV1Beta1;
-  'v1beta2': MyResourceV1Beta2;
-};
-
-// 3. Interface is union
-type MyResourceInterface = MyResourceVersions[keyof MyResourceVersions];
-
-export class MyResource extends KubeObject<MyResourceInterface> {
-  // 4. satisfies provides compile-time enforcement
-  static readonly supportedVersions = ['v1beta1', 'v1beta2'] as const
-    satisfies readonly (keyof MyResourceVersions)[];
-
-  // 5. REQUIRED: Type guards for each supported version
-  isV1Beta1(): this is MyResource & { jsonData: MyResourceV1Beta1 } {
-    return this.getApiVersionSuffix() === 'v1beta1';
-  }
-
-  isV1Beta2(): this is MyResource & { jsonData: MyResourceV1Beta2 } {
-    return this.getApiVersionSuffix() === 'v1beta2';
-  }
-}
-```
-
-**Rules:**
-
-- For NEW resources: Use only the latest available API version
-- NEVER add a version to `supportedVersions` without a corresponding type in `@giantswarm/k8s-types`
-- Multi-version resources MUST use a version map with `satisfies` for compile-time safety
-- Multi-version resources MUST have type guard methods (`isV1Beta1()`, etc.) for each version
-- Check available types: `node_modules/@giantswarm/k8s-types/dist/types/crds/`
-- Reference: `plugins/kubernetes-react/src/lib/k8s/capi/Cluster.ts`
-
-### Logging & error reporting
-
-The backend root logger forwards **every `warn` and `error` log to Sentry**
-(winston Sentry transport at `level: 'warn'` in
-`packages/backend-common/src/rootLogger.ts`). Pick log levels by whether a human
-should act, not by how bad it sounds:
-
-- `logger.error` / `logger.warn` — a real, actionable fault (a dependency is
-  down, a credential is invalid, an invariant broke). These become Sentry issues.
-- `logger.info` / `logger.debug` — expected, already-handled outcomes, even when a
-  request "fails": an upstream 4xx you translate into a clean response, an expired
-  user token, a retry that will recover. Logging these at `warn` floods Sentry.
-
-If a failure is handled gracefully (you return a structured error to the caller
-and no user is impacted), it's `info`/`debug`, not `warn`. And avoid putting
-high-cardinality values (installation name, entity id, raw response bodies) in the
-*message* of a `warn`/`error` — Sentry fingerprints on the message, so one root
-cause fans out into one issue per value. Put those in structured metadata instead.
-
-Frontend equivalent: `SentryErrorReporter`
-(`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
-reach Sentry.
-
-### Naming Conventions
-
-- Components: PascalCase (e.g., `GSClustersPage`, `EntityGSDeploymentsContent`)
-- Hooks: camelCase with `use` prefix (e.g., `useDeploymentStatusDetails`)
-- Utilities: camelCase (e.g., `generateUID`, `parseDate`)
-- Plugins: lowercase-with-hyphens (e.g., `gs`, `flux-react`)
-- Exports: Components prefixed with `GS` for Giant Swarm customizations
-- File organization: Hooks in `hooks/` subdirectories, utilities in `utils/` subdirectories
-
-## Configuration Files
-
-- **`app-config.yaml`** - Base configuration (checked in)
-- **`app-config.local.yaml`** - Local overrides (gitignored)
-- **`app-config.production.yaml`** - Production config (empty, settings in env)
-- **`app-config.headless-service.yaml`** - Headless service config
-- **`.env`** - Environment variables (gitignored, template in `.env.example`)
-- **`github-app-*-credentials.yaml`** - GitHub OAuth credentials (gitignored)
-- **`certificate.yaml`** - HTTPS certificate for local HTTPS (gitignored)
-
-## Technology Stack
-
-- **Runtime**: Node.js (see `package.json` for supported versions)
-- **Package Manager**: Yarn (modern version with traditional node_modules)
-- **Language**: TypeScript
-- **Frontend**: React, Material-UI v4, React Router
-- **Backend**: Express, Backstage backend framework
-- **Database**: PostgreSQL (production), SQLite (local dev default)
-- **Testing**: Jest, Playwright, Testing Library
-- **Build**: Backstage CLI
-
-## Important Notes
-
-### Build & Deployment
-
-- **Docker**: Backend Dockerfile in `packages/backend/Dockerfile`
-- **Helm**: Charts in `helm/backstage/` directory
-- **CI/CD**: CircleCI (see `.circleci/config.yml`)
-- **Release Process**: Two axes.
-
-  - **App** (image + Helm chart): released on every push to `main`. git-cliff
-    turns conventional-commit PR titles into a tag + GitHub Release
-    (`zz_generated.auto_release.yaml`), which triggers the CircleCI architect
-    pipeline. The tagger does not bump `package.json`, so the root `version`
-    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it. The
-    generated notes of a final release are then curated by hand with the
-    **`release-notes`** skill.
-  - **Plugin packages**: changeset-managed, but that axis is dormant — nothing is
-    published to npm and nothing consumes `.changeset/*.md` today (see #1772).
-    Still add one for any user-facing `plugins/*` change (`minor` for a new
-    feature or export, `patch` for a fix): it's the queued release note for when
-    the axis is switched back on, and nobody reconstructs it from a diff months
-    later. `yarn changeset status` can't check your work here — it reports an
-    empty list either way, so just look for the file. The `changeset` skill has
-    the mechanics and the full state of both axes.
-
-### Dependencies
-
-- Backstage packages use `backstage:^` version specifier (managed by Backstage CLI)
-- Uses `patch-package` for dependency patches (applied in postinstall)
-- Custom resolutions for React types and CodeMirror versions in root `package.json`
-- Dependency updates: Renovate configured with grouped updates for Backstage packages
-
-### Secrets
-
-Never commit:
-
-- `.env` file
-- `*-credentials.yaml` files
-- `certificate.yaml`
-- `app-config.local.yaml`
-
-### Code Quality
-
-- Run `yarn prettier:fix` before committing
-- Check types with `yarn tsc` before committing
-- Pre-commit: lint-staged configured for automatic linting/formatting
-
-### Key Features & Integrations
-
-- **Authentication**: GitHub OAuth, custom GS auth module
-- **Kubernetes**: Full integration with custom React hooks and components
-- **Flux**: Flux CD integration for GitOps workflows
-- **Scaffolder**: Custom templates and field extensions
-- **TechDocs**: Custom TechDocs backend module
-- **Monitoring**: Sentry integration, TelemetryDeck integration
-
-### Upstream Reference
-
-This project customizes [Backstage](https://github.com/backstage/backstage). Two upstream repos serve as reference for idiomatic patterns:
-
-- **Backstage monorepo** — core packages, plugins, and APIs
-- **Community plugins** — additional plugins maintained by the community
-
-Use the `/upstream-search` skill to search these repos for implementation patterns, API usage examples, and reference code. Claude should proactively check upstream when implementing features that likely exist in the Backstage ecosystem (NFS patterns, backend plugins, scaffolder extensions, catalog entities, etc.).
-
-**Developer setup** — clone the repos and set env vars in `~/.zshrc` or `~/.bashrc`:
-
-```bash
-export BACKSTAGE_UPSTREAM_DIR="/path/to/backstage/backstage"
-export COMMUNITY_PLUGINS_DIR="/path/to/backstage/community-plugins"
-```
-
-### Backstage Plugin Skills
-
-Two Claude Code skills provide guided workflows for building new Backstage plugins:
-
-- **`/backstage-frontend-plugin`** — New Frontend System: `createFrontendPlugin`, blueprints, routes, Utility APIs, testing. Use when creating pages, nav items, entity content, or cards.
-- **`/backstage-backend-plugin`** — New Backend System: `createBackendPlugin`, core services, DI, httpRouter, secure-by-default auth, Knex DB, testing. Use when creating APIs or background jobs.
-
-These skills require the external skills repo. Clone it and set the env var:
-
-```bash
-git clone git@github.com:rothenbergt/backstage-agent-skills.git
-
-# In ~/.zshrc or ~/.bashrc
-export BACKSTAGE_AGENT_SKILLS_DIR="/path/to/backstage-agent-skills"
-```
-
-Without the env var, the skills will hard-stop and ask you to configure it.
-
-### Ownership
-
-- Code Owners: Team Bumblebee (@giantswarm/team-bumblebee)
+## Repository map
+
+A Yarn workspaces monorepo. `packages/`: `app` (the React 18 frontend, entry
+`packages/app/src/App.tsx`), `backend` (entry `packages/backend/src/index.ts`,
+the new backend system: `createBackend()` and `backend.add(import(...))`,
+plugins self-register), `backend-headless-service`, `backend-common` (shared
+backend utilities, the root logger).
+
+`plugins/`, published under `@giantswarm/backstage-plugin-*`, by Backstage
+package role:
+
+- Frontend plugins: `gs` (the core pages Clusters, Deployments and
+  Installations; the scaffolder field extensions, registered with
+  `createScaffolderFieldExtension` in `plugins/gs/src/plugin.ts`; the gsAuth,
+  containerRegistry, kubernetes and scaffolder APIs; the catalog page and
+  entity cards), `agent-platform` (agents, sessions, usage), `muster` (the
+  Customize screen's Connectors and Workflows tabs), `flux` (a shell; the logic
+  is in `flux-react`), `plans`, `roadmap`, `platform-capabilities`,
+  `repositories`, `bot-prs`. `ai-chat` is deprecated: fixes only.
+- Backend plugins: `gs-backend`, `agent-platform-backend`, `muster-backend`,
+  `plans-backend`, `roadmap-backend`, `platform-capabilities-backend`,
+  `repositories-backend`. `ai-chat-backend` is deprecated with `ai-chat`.
+- Backend modules of upstream backends: `catalog-backend-module-gs` (entity
+  providers and processors), `auth-backend-module-gs`,
+  `scaffolder-backend-module-gs`, `techdocs-backend-module-gs`.
+- Libraries: `kubernetes-react` (resource classes under `lib/k8s/`, hooks,
+  components), `flux-react`, `ui-react` (shared components and the table
+  utilities), `gs-react`, `analytics-react` (`portalEvents` and
+  `useTrackedMutation`), `error-reporter-react`, `agent-platform-common`,
+  `gs-common` (frontend and backend), `gs-node` (backend only). `ai-chat-react`
+  is deprecated with `ai-chat`.
+
+## Rules by area
+
+- UI: new and edited UI code imports from bui (`@backstage/ui`); MUI v4 and
+  `@backstage/core-components` only for the pieces bui lacks. The inventory,
+  the swap table and the allowed legacy pieces: `docs/ui.md` and the `ui`
+  skill. Pages of the Agent Platform shell: the `agent-platform-ux-coding`
+  skill.
+- Components: one directory per component, an `index.ts` with a named export,
+  no default exports: the `components` skill.
+- Tables: the `tables` skill (the bui Table for simple tables; the
+  core-components Table with `columns.tsx`, `useTableColumns` and the
+  `ui-react` sort helpers for the rest).
+- Forms and field validation: the `forms` skill. A review of a change that adds
+  or changes a form, a dialog with inputs or a field's validation checks it
+  against the skill's checklist.
+- URLs of the Agent Platform shell: the `urls` skill. A link resolves through a
+  route ref, never a path written by hand (ESLint fails CI on one). A review of
+  a change that adds or moves a route checks it against the skill's checklist.
+  The visual sitemap on Miro: the `ui-sitemap` skill.
+- Telemetry: when you add a page, a tab or a route, add its case to
+  `getTelemetryPageViewPayload` and a path to `knownTopLevelPaths`, or every
+  visit becomes a Sentry warning. A write a person completes goes through
+  `useTrackedMutation` with an event from `portalEvents`, which
+  `docs/telemetry.md` lists. Both: `docs/telemetry.md`, "For developers".
+- Kubernetes resource classes (`plugins/kubernetes-react/src/lib/k8s/`): the
+  latest version only for a new resource, a version map with type guards for
+  several: `docs/kubernetes-resource-classes.md`.
+- Log levels: every backend `warn` and `error` becomes a Sentry issue, so a
+  handled outcome logs at `info`: `docs/logging.md`.
+- Naming: components PascalCase (`GSClustersPage`), hooks `useX`, utilities
+  camelCase, plugins lowercase-with-hyphens; the `GS` prefix on Giant Swarm
+  customizations; hooks in `hooks/`, utilities in `utils/`.
+- Upstream Backstage and the community plugins as reference for idiomatic
+  patterns: the `upstream-search` skill, which names the environment variables
+  it needs.
+- A new frontend or backend plugin: the `backstage-frontend-plugin` and
+  `backstage-backend-plugin` skills, which need `BACKSTAGE_AGENT_SKILLS_DIR`.
+- Updating Backstage: the `backstage-update` skill.
+
+## Configuration and secrets
+
+`app-config.yaml` (base), `app-config.production.yaml` (settings come from the
+environment), `app-config.headless-service.yaml`. Gitignored, never committed:
+`app-config.local.yaml`, `.env` (template `.env.example`),
+`github-app-*-credentials.yaml`, `certificate.yaml`.
+
+## Build and release
+
+- Image: `packages/backend/Dockerfile`. Chart: `helm/backstage/`.
+- CI: CircleCI. `.circleci/config.yml` and `.circleci/workflows.yml` are
+  generated by devctl; `.circleci/custom.yml` is repo-owned and deep-merged
+  into them at pipeline time.
+- Release, two axes. The app (image and chart) is released on every push to
+  `main`: git-cliff turns conventional-commit PR titles into a tag and a GitHub
+  Release (`zz_generated.auto_release.yaml`), which triggers the pipeline. The
+  tagger does not bump `package.json`, so the root `version` lags the tags by
+  design. The notes of a final release are curated with the `release-notes`
+  skill. The plugin packages are changeset-managed, and that axis is dormant
+  (nothing is published, see #1772); still add a changeset for a user-facing
+  `plugins/*` change: the `changeset` skill.
+- Dependencies: Backstage packages use `backstage:^`; `patch-package` applies
+  the patches in `postinstall`; resolutions live in the root `package.json`;
+  Renovate groups the Backstage updates.
+
+## Ownership
+
+Team Bumblebee (`@giantswarm/team-bumblebee`).

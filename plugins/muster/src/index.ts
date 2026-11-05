@@ -1,4 +1,5 @@
 export { musterPlugin as default } from './plugin';
+export { ConnectorTagSource, WorkflowTagSource } from './components/TagSources';
 export {
   isMusterAuthFailure,
   isSessionExpiredError,
@@ -63,13 +64,8 @@ export {
   mcpServerDisplayNames,
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
-export {
-  CONNECTOR_GROUPS,
-  connectorGroupInfo,
-  connectorGroupOfPath,
-  LEGACY_CONNECTOR_GROUP_PATHS,
-} from './lib/connectorGroups';
-export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
+export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
+export { connectorIconOf } from './lib/connectorLogo';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
@@ -125,6 +121,8 @@ export {
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
 export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export { ConnectorLogo } from './components/ConnectorLogo';
+export type { ConnectorLogoProps } from './components/ConnectorLogo';
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';

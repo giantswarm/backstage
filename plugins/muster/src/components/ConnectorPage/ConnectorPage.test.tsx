@@ -78,6 +78,7 @@ function makeServer(opts: {
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
   displayName?: string;
+  tags?: string;
   lastConnected?: string;
 }): MCPServer {
   return new MCPServer(
@@ -87,13 +88,12 @@ function makeServer(opts: {
       metadata: {
         name: opts.name,
         namespace: 'muster',
-        ...(opts.displayName
-          ? {
-              annotations: {
-                'ui.giantswarm.io/display-name': opts.displayName,
-              },
-            }
-          : {}),
+        annotations: {
+          ...(opts.displayName
+            ? { 'ui.giantswarm.io/display-name': opts.displayName }
+            : {}),
+          ...(opts.tags ? { 'ui.giantswarm.io/tags': opts.tags } : {}),
+        },
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -328,40 +328,36 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('leads its Connectors crumb back to the sub-tab that lists it', async () => {
-    await renderAt(`${BASE}/kubernetes`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/infrastructure',
-    );
-  });
-
-  it('points the Connectors crumb at the sub-tab while loading, once it is known', async () => {
+  it('leads its Connectors crumb back to the list, while loading too', async () => {
     mockLoading = true;
-    // Read before (the persisted cache): the row is known while loading.
     await renderAt(`${BASE}/kubernetes`);
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/infrastructure',
+      '/customize/connectors',
     );
-    cleanup();
-
-    await renderAt(`${BASE}/muster`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/internal',
-    );
-    cleanup();
-
-    // Not read yet: no link rather than one to a sub-tab that may not list it.
-    mockServers = [];
-    await renderAt(`${BASE}/jira`);
-    expect(
-      screen.queryByRole('link', { name: 'Connectors' }),
-    ).not.toBeInTheDocument();
   });
 
-  it("shows muster's own page with its endpoint to copy, under Internal", async () => {
+  it('says an infrastructure family has an instance per management cluster', async () => {
+    await renderAt(`${BASE}/kubernetes`);
+    expect(
+      screen.getByText(/It has an instance per management cluster/),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the tag a family’s tool-group label reads as, linking to the list', async () => {
+    await renderAt(`${BASE}/kubernetes/details`);
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(facts).getByRole('link', { name: 'infrastructure' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=infrastructure',
+    );
+  });
+
+  it("shows muster's own page with its endpoint to copy, and that it is fixed", async () => {
     await renderAt(`${BASE}/muster`);
 
     expect(
@@ -369,7 +365,7 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/internal',
+      '/customize/connectors',
     );
     expect(
       screen.getByText(/It comes with the Agent Platform/),
@@ -433,6 +429,27 @@ describe('ConnectorPage', () => {
     ).toEqual(['Back to Connectors', 'Connectors']);
   });
 
+  it('lists a connector’s tags on the Details tab', async () => {
+    mockServers = [makeServer({ name: 'jira', tags: 'ticketing,support' })];
+    await renderAt(`${BASE}/jira`);
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(within(facts).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['ticketing', 'support']);
+    // Each opens the connector's Customize list with that tag picked.
+    expect(
+      within(facts).getByRole('link', { name: 'support' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=support',
+    );
+  });
+
   it('lists the facts on the Details tab, not beside the content', async () => {
     const api = await renderAt(`${BASE}/jira`);
     expect(
@@ -470,6 +487,68 @@ describe('ConnectorPage', () => {
     );
     // The address is technical: in the fold-out's configuration.
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
+  });
+
+  it('holds the Calls line in place with a skeleton while the usage is read', async () => {
+    const api = makeApi();
+    let answer: (usage: unknown) => void = () => {};
+    api.getMcpUsage.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          answer = resolve as typeof answer;
+        }),
+    );
+    await renderAt(`${BASE}/jira/details`, { api });
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    const labels = () =>
+      Array.from(facts.querySelectorAll('dt')).map(dt => dt.textContent);
+    // Every line from the first paint, Calls in the place it keeps.
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+    expect(within(facts).getByTestId('cell-skeleton')).toBeInTheDocument();
+
+    answer(await makeApi().getMcpUsage());
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(within(facts).queryByTestId('cell-skeleton')).toBeNull();
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+  });
+
+  it('reads the calls on the Details tab addressed with a trailing slash', async () => {
+    const api = await renderAt(`${BASE}/jira/details/`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+  });
+
+  it('keeps the Calls line without a muster session, saying why', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/jira/details`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(within(facts).getByText('Calls, last 30 days')).toBeInTheDocument();
+    expect(
+      within(facts).getByText('Needs a muster session'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 
   it('keeps the tools search across a visit to another tab', async () => {
@@ -511,6 +590,14 @@ describe('ConnectorPage', () => {
         .getByRole('tab', { name: 'Tools' })
         .querySelector('[data-count="loading"]'),
     ).not.toBeNull();
+  });
+
+  it('holds the logo’s place with a skeleton, not the letter, while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira`);
+
+    expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(screen.queryByText('j')).toBeNull();
   });
 
   it('holds the Tools count’s place while the tools load', async () => {

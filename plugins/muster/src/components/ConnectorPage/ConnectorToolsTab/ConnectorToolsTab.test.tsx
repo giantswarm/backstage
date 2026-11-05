@@ -180,10 +180,10 @@ describe('ConnectorToolsTab', () => {
     expect(screen.getByRole('link', { name: 'tool_082' })).toBeInTheDocument();
   });
 
-  it('lists three tools plainly: no search, no filter, no reveal control', async () => {
-    await renderTab(makeTools(3));
+  it('lists two tools plainly: no search, no filter, no reveal control', async () => {
+    await renderTab(makeTools(2));
 
-    expect(toolRows()).toHaveLength(3);
+    expect(toolRows()).toHaveLength(2);
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(
       screen.queryByRole('button', { name: /Filter by what it does/ }),

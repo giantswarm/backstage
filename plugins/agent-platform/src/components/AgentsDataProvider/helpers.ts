@@ -38,7 +38,7 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
-import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
+import { CREATED_BY_ANNOTATION, ownerOf } from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -174,6 +174,8 @@ export type AgentRow = {
    */
   technicalName: string;
   description: string;
+  /** Keywords to find the agent by (`Agent.getTags()`); empty when none. */
+  tags: string[];
   /**
    * Human-readable model label resolved from the referenced ModelConfig: its
    * display name, else its `spec.model`, else its resource name. `undefined`
@@ -262,8 +264,8 @@ export type AgentRow = {
    */
   isSessionPending?: boolean;
   /**
-   * The tenant the agent belongs to ({@link tenantOf} its namespace):
-   * `platform`, `organization <name>`, or `namespace <name>`.
+   * The tenant the agent belongs to, as its owner ({@link ownerOf} its
+   * namespace): `Platform`, the organization's name, or `namespace <name>`.
    */
   tenant?: string;
   /**
@@ -422,6 +424,7 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
+    tags: agent.getTags(),
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     harness: harnessName,
@@ -437,7 +440,7 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
-    tenant: tenantOf(namespace),
+    tenant: ownerOf(namespace),
     ...(createdBy ? { createdBy } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
