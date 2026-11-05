@@ -16,12 +16,17 @@
  * MCPServer its muster registers, never as a URL.
  */
 
+import {
+  type ModelManagerRefusalCode,
+  parseToolErrorCode,
+  MODEL_MANAGER_SERVER,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { safeWebURL } from '@giantswarm/backstage-plugin-ui-react';
 
 import { looksNotConnected, type CommitAgentResult } from './agentManager';
 
 /** The MCPServer name muster registers model-manager under. */
-export const MODEL_MANAGER_SERVER = 'model-manager';
+export { MODEL_MANAGER_SERVER };
 
 /**
  * The tools this plugin calls, by their model-manager name (`internal/api/mcp.go`
@@ -248,7 +253,9 @@ export function isValidEndpoint(value: string): boolean {
  * fit check's verdict rather than a fault. A word this table does not know
  * (and an answer without one) keeps the class name.
  */
-export const MODEL_MANAGER_ERROR_NAMES: Readonly<Record<string, string>> = {
+export const MODEL_MANAGER_ERROR_NAMES: Readonly<
+  Record<ModelManagerRefusalCode | 'backend_error', string>
+> = {
   not_found: 'NotFoundError',
   unsupported: 'ForbiddenError',
   conflict: 'ConflictError',
@@ -269,8 +276,9 @@ export class ModelManagerToolError extends Error {
     super(message, options);
     this.code = code;
     this.name =
-      (code !== undefined ? MODEL_MANAGER_ERROR_NAMES[code] : undefined) ??
-      'ModelManagerToolError';
+      (code !== undefined
+        ? (MODEL_MANAGER_ERROR_NAMES as Readonly<Record<string, string>>)[code]
+        : undefined) ?? 'ModelManagerToolError';
   }
 }
 
@@ -281,8 +289,6 @@ export class ModelManagerToolError extends Error {
 export class ModelManagerNotConnectedError extends Error {
   readonly name = 'ModelManagerNotConnectedError';
 }
-
-const TOOL_ERROR_CODE = /^([a-z_]+):\s/;
 
 /**
  * Classifies what a tool call threw: muster's "not connected" answers become
@@ -301,9 +307,7 @@ export function classifyModelManagerToolError(error: unknown): Error {
   if (looksNotConnected(message)) {
     return new ModelManagerNotConnectedError(message, { cause: error });
   }
-  return new ModelManagerToolError(
-    message,
-    message.match(TOOL_ERROR_CODE)?.[1],
-    { cause: error },
-  );
+  return new ModelManagerToolError(message, parseToolErrorCode(message)?.code, {
+    cause: error,
+  });
 }

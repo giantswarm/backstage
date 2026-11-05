@@ -1,6 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
-import { HttpRoute } from '../../../hooks/gatewayTopology';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { Gateway, HttpRoute } from '../../../utils/gatewayTopology';
 import { ClusterGatewaysContent } from './ClusterGateways';
 
 const parent = {
@@ -49,19 +49,101 @@ const unavailable: HttpRoute = {
   ],
 };
 
-function render(routes: HttpRoute[]) {
+function render(routes: HttpRoute[], gateways: Gateway[] = []) {
   return renderInTestApp(
     <ClusterGatewaysContent
       clusterName="demo"
-      gateways={[]}
+      gateways={gateways}
       routes={routes}
       isLoading={false}
-      mimirAvailable
+      policies={[]}
+      policiesLoading={false}
     />,
   );
 }
 
 describe('<ClusterGatewaysContent />', () => {
+  it('shows one row per Gateway with its listeners inside', async () => {
+    await render(
+      [],
+      [
+        {
+          id: 'envoy-gateway-system/giantswarm-default',
+          namespace: 'envoy-gateway-system',
+          name: 'giantswarm-default',
+          className: 'giantswarm-default',
+          accepted: { status: 'true' },
+          programmed: { status: 'true' },
+          listeners: [
+            {
+              name: 'http',
+              protocol: 'HTTP',
+              port: '80',
+              attachedRoutes: 1,
+            },
+            {
+              name: 'https',
+              protocol: 'HTTPS',
+              port: '443',
+              hostname: '*.example.com',
+              attachedRoutes: 4,
+            },
+          ],
+        },
+      ],
+    );
+    const rows = screen
+      .getAllByRole('row')
+      .filter(row => within(row).queryByText('giantswarm-default'));
+    expect(rows).toHaveLength(1);
+    expect(
+      within(rows[0]).getByText('http · HTTP/80 · any · 1 route'),
+    ).toBeInTheDocument();
+    expect(
+      within(rows[0]).getByText('https · HTTPS/443 · *.example.com · 4 routes'),
+    ).toBeInTheDocument();
+  });
+
+  it('links concrete hostnames and leaves wildcards as text', async () => {
+    await render([
+      { ...healthy, hostnames: ['healthy.example.com', '*.example.com'] },
+    ]);
+    expect(
+      screen.getByRole('link', { name: 'healthy.example.com' }),
+    ).toHaveAttribute('href', 'https://healthy.example.com/');
+    expect(
+      screen.queryByRole('link', { name: '*.example.com' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('*.example.com')).toBeInTheDocument();
+  });
+
+  it('filters routes by search', async () => {
+    await render([healthy, broken]);
+    fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+      target: { value: 'broken.example' },
+    });
+    await waitFor(() =>
+      expect(screen.queryByText('healthy')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('broken')).toBeInTheDocument();
+  });
+
+  it('says no route matches, not that the cluster has none', async () => {
+    await render([healthy]);
+    fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+      target: { value: 'nothing-matches' },
+    });
+    expect(
+      await screen.findByText('No HTTPRoutes match the search.'),
+    ).toBeInTheDocument();
+    // Clearing the field updates its value before the debounced filter.
+    fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+      target: { value: '' },
+    });
+    expect(screen.queryByText(/No HTTPRoutes found/)).not.toBeInTheDocument();
+    expect(await screen.findByText('healthy')).toBeInTheDocument();
+  });
+
   it('lists broken routes first', async () => {
     await render([healthy, broken]);
     const rows = screen
@@ -177,19 +259,22 @@ describe('<ClusterGatewaysContent />', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows a notice instead of tables without Mimir', async () => {
+  it('keeps the policies when the topology could not be loaded', async () => {
     await renderInTestApp(
       <ClusterGatewaysContent
         clusterName="demo"
         gateways={[]}
         routes={[]}
         isLoading={false}
-        mimirAvailable={false}
+        error={new Error('query failed')}
+        policies={[]}
+        policiesLoading={false}
       />,
     );
     expect(
-      screen.getByText(/not available on this installation/),
+      screen.getByText('Gateway API metrics could not be loaded.'),
     ).toBeInTheDocument();
     expect(screen.queryByText('HTTPRoutes')).not.toBeInTheDocument();
+    expect(screen.getByText('Envoy Gateway policies')).toBeInTheDocument();
   });
 });

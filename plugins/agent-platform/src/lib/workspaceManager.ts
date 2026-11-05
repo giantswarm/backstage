@@ -14,10 +14,14 @@
  * `internal/api` of giantswarm/workspace-manager.
  */
 
+import {
+  WORKSPACE_MANAGER_REFUSALS,
+  WORKSPACE_MANAGER_SERVER,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { looksNotConnected } from './agentManager';
 
 /** The MCPServer name muster registers workspace-manager under. */
-export const WORKSPACE_MANAGER_SERVER = 'workspace-manager';
+export { WORKSPACE_MANAGER_SERVER };
 
 /** The tools this plugin calls, by their workspace-manager name. */
 export const WORKSPACE_MANAGER_TOOLS = {
@@ -527,25 +531,6 @@ export class WorkspaceManagerError extends Error {
 }
 
 /**
- * The tool's refusals by their wording (`toolError` in internal/api): the
- * operation, then the class. The `forbidden:` and Kubernetes `is forbidden:`
- * shapes are the membership refusals of the two checks.
- */
-const ERROR_PATTERNS: ReadonlyArray<[WorkspaceManagerErrorKind, RegExp]> = [
-  ['not_member', /: permission denied: /],
-  ['not_member', /is not a member of Organization/],
-  ['not_member', /\bis forbidden: User\b/],
-  ['invalid', /: invalid workspace: /],
-  ['invalid', /^invalid arguments: /],
-  ['invalid', /^required argument /],
-  ['invalid', /unknown provider/],
-  ['invalid', /\bare required$/],
-  ['not_found', /: not found: /],
-  ['already_exists', /: already exists: /],
-  ['conflict', /: the workspace changed since it was read/],
-];
-
-/**
  * Classifies what a tool call threw: workspace-manager's refusals become
  * {@link WorkspaceManagerError} of their kind; muster's "not connected"
  * answers (the tool missing from the person's session) are `unavailable`;
@@ -558,7 +543,10 @@ export function classifyWorkspaceManagerError(
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
-  const match = ERROR_PATTERNS.find(([, pattern]) => pattern.test(message));
+  // Shared with gs-node, which answers these refusals 4xx.
+  const match = WORKSPACE_MANAGER_REFUSALS.find(([, pattern]) =>
+    pattern.test(message),
+  );
   if (match) {
     return new WorkspaceManagerError(match[0], message, [], [], {
       cause: error,

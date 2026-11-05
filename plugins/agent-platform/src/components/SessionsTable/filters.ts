@@ -9,6 +9,10 @@ import {
   type CatalogFacet,
   type CatalogFilterSelection,
 } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 import { tenantOf } from '../../lib/tenants';
 import {
   SessionTableRow,
@@ -221,8 +225,13 @@ export function sessionAgentOptions(
  * Organization filter names it ({@link tenantOf} the Agent CR's namespace).
  * Undefined for a row no Agent CR matched.
  */
-export function sessionOrganization(row: SessionTableRow): string | undefined {
-  return row.agentNamespace ? tenantOf(row.agentNamespace) : undefined;
+export function sessionOrganization(
+  row: SessionTableRow,
+  directory: OrganizationDirectory,
+): string | undefined {
+  return row.agentNamespace
+    ? tenantOf(row.agentNamespace, directory)
+    : undefined;
 }
 
 /**
@@ -249,35 +258,39 @@ const SHELL_STATE_OPTIONS = SHELL_SESSION_STATE_FILTERS.filter(
  * The facets, as filtering needs them: a value per row, nothing that depends
  * on the rows in hand. {@link sessionFacets} adds how each value reads.
  */
-const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
-  {
-    id: SESSION_STATE_FACET,
-    label: 'State',
-    // Rows whose state is not loaded have no value: only an unfiltered State
-    // keeps them, as only "All" did.
-    value: row => stateBucket(row),
-    optionLabel: value =>
-      SHELL_STATE_OPTIONS.find(({ id }) => id === value)?.label ?? value,
-    order: SHELL_STATE_OPTIONS.map(({ id }) => id),
-  },
-  {
-    id: SESSION_ORGANIZATION_FACET,
-    label: 'Organization',
-    value: row => sessionOrganization(row),
-  },
-  {
-    id: SESSION_AGENT_FACET,
-    label: 'Agent',
-    value: row => agentKey(row),
-  },
-  {
-    id: SESSION_PINNED_FACET,
-    label: 'Pinned',
-    value: row => (row.pinned ? PINNED_VALUE : undefined),
-    optionLabel: () => 'Pinned',
-    missingIsChoice: true,
-  },
-];
+function sessionFacetSpecs(
+  directory: OrganizationDirectory,
+): ReadonlyArray<CatalogFacet<SessionTableRow>> {
+  return [
+    {
+      id: SESSION_STATE_FACET,
+      label: 'State',
+      // Rows whose state is not loaded have no value: only an unfiltered State
+      // keeps them, as only "All" did.
+      value: row => stateBucket(row),
+      optionLabel: value =>
+        SHELL_STATE_OPTIONS.find(({ id }) => id === value)?.label ?? value,
+      order: SHELL_STATE_OPTIONS.map(({ id }) => id),
+    },
+    {
+      id: SESSION_ORGANIZATION_FACET,
+      label: 'Organization',
+      value: row => sessionOrganization(row, directory),
+    },
+    {
+      id: SESSION_AGENT_FACET,
+      label: 'Agent',
+      value: row => agentKey(row),
+    },
+    {
+      id: SESSION_PINNED_FACET,
+      label: 'Pinned',
+      value: row => (row.pinned ? PINNED_VALUE : undefined),
+      optionLabel: () => 'Pinned',
+      missingIsChoice: true,
+    },
+  ];
+}
 
 /**
  * The facets to draw: the agent options named as {@link sessionAgentOptions}
@@ -290,28 +303,37 @@ export function sessionFacets(
   {
     showStates,
     showAgents = true,
-  }: { showStates: boolean; showAgents?: boolean },
+    directory = EMPTY_ORGANIZATION_DIRECTORY,
+  }: {
+    showStates: boolean;
+    showAgents?: boolean;
+    /** Which namespace is which organization, as agent-manager answered. */
+    directory?: OrganizationDirectory;
+  },
 ): CatalogFacet<SessionTableRow>[] {
   const agentLabels = new Map(
     sessionAgentOptions(rows).map(option => [option.id, option.label]),
   );
-  return SESSION_FACETS.filter(
-    facet =>
-      (showStates || facet.id !== SESSION_STATE_FACET) &&
-      (showAgents || facet.id !== SESSION_AGENT_FACET),
-  ).map(facet =>
-    facet.id === SESSION_AGENT_FACET
-      ? { ...facet, optionLabel: value => agentLabels.get(value) ?? value }
-      : facet,
-  );
+  return sessionFacetSpecs(directory)
+    .filter(
+      facet =>
+        (showStates || facet.id !== SESSION_STATE_FACET) &&
+        (showAgents || facet.id !== SESSION_AGENT_FACET),
+    )
+    .map(facet =>
+      facet.id === SESSION_AGENT_FACET
+        ? { ...facet, optionLabel: value => agentLabels.get(value) ?? value }
+        : facet,
+    );
 }
 
 /** The rows every facet's picks keep — the shell table's `filterFn`. */
 export function filterSessionsBySelection(
   rows: SessionTableRow[],
   selection: CatalogFilterSelection,
+  directory: OrganizationDirectory = EMPTY_ORGANIZATION_DIRECTORY,
 ): SessionTableRow[] {
-  return applyCatalogFilters(rows, SESSION_FACETS, selection);
+  return applyCatalogFilters(rows, sessionFacetSpecs(directory), selection);
 }
 
 /**

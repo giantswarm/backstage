@@ -30,7 +30,8 @@ jest.mock('../../hooks/useToolchainManager', () => ({
     },
   }),
 }));
-jest.mock('../FileView', () => ({
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   FileView: (props: { content: string }) => <pre>{props.content}</pre>,
 }));
 
@@ -87,9 +88,16 @@ describe('ToolchainDetailPage', () => {
     expect(screen.getByText('go 1.25.3-r0')).toBeInTheDocument();
     expect(screen.getByText('https://proxy.golang.org')).toBeInTheDocument();
     expect(screen.getByText('# go v0.2.0')).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'giantswarm/agent-toolchains' }),
-    ).toHaveAttribute('href', 'https://github.com/giantswarm/agent-toolchains');
+    // The source repository is on GitHub: a new tab, and it says so.
+    const source = screen.getByRole('link', {
+      name: 'giantswarm/agent-toolchains (opens in a new tab)',
+    });
+    expect(source).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/agent-toolchains',
+    );
+    expect(source).toHaveAttribute('target', '_blank');
+    expect(source).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('describes the source named in the address', async () => {

@@ -4,7 +4,7 @@ import {
   StatusWarning,
 } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
-import { ConditionState } from '../../../../hooks/gatewayTopology';
+import { ConditionState } from '../../../../utils/gatewayTopology';
 
 // Reasons are CamelCase without break points; let them wrap anywhere instead
 // of being clipped.

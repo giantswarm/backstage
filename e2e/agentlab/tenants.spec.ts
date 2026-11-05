@@ -301,13 +301,19 @@ test.describe('agents per tenant', () => {
       test.setTimeout(rosterWait + 60_000);
       const dev = await signInAs(lab.users.dev);
       await open(dev, '/customize/agents/new', lab.users.dev);
+      await openWizardMoreOptions(dev);
+      await expect(
+        dev.getByText(`Runs in Environment: ${lab.installation}`, {
+          exact: true,
+        }),
+        'the lab’s only environment is named in a line under More options',
+      ).toBeVisible({ timeout: 60_000 });
       await expect(
         dev.getByText(
-          `The agent belongs to ${inSentence}: on ${lab.installation}, you may create agents only there.`,
+          `Owner: ${organization}, the only one you may create agents for on ${lab.installation}.`,
         ),
-        'the only organization is picked and named, not offered',
+        'the only organization is picked and stated under More options, not offered',
       ).toBeVisible({ timeout: 60_000 });
-      await openWizardMoreOptions(dev);
       await expect(
         dev.getByText(
           `The agents of ${inSentence} run on the platform Harness.`,
@@ -321,7 +327,7 @@ test.describe('agents per tenant', () => {
 
       await open(dev, tenantAgent, lab.users.dev);
       await expectAgentRendered(dev);
-      await expect(fact(dev, 'Organization')).toHaveText(organization);
+      await expect(fact(dev, 'Owner')).toHaveText(organization);
       await expect(fact(dev, 'Created by')).toHaveText(lab.users.dev.email);
       await expect(editButton(dev), 'its editor may edit it').toBeVisible();
       await dev.getByRole('button', { name: 'Agent actions' }).click();
@@ -348,7 +354,7 @@ test.describe('agents per tenant', () => {
           { exact: false },
         ),
       ).toBeVisible();
-      await expect(fact(alice, 'Organization')).toHaveText(organization);
+      await expect(fact(alice, 'Owner')).toHaveText(organization);
       await expectAgentRendered(alice);
       await expect(editButton(alice), 'no Edit for a user').toHaveCount(0);
       await alice.getByRole('button', { name: 'Agent actions' }).click();
@@ -377,13 +383,13 @@ test.describe('agents per tenant', () => {
       await expect(
         rosterRowOf(alice, agent.name),
         `${agent.name} is listed with its organization`,
-      ).toContainText(`Organization: ${organization}`, { timeout: rosterWait });
+      ).toContainText(`Owner: ${organization}`, { timeout: rosterWait });
       // Beside the name, on its line and inside the row; its full name is the
       // name link's tooltip, since the link's hit area covers the row, the
       // organization's text included.
       const row = rosterRowOf(alice, agent.name);
       const link = rosterLinkOf(alice, agent.name);
-      const named = row.getByText(`Organization: ${organization}`, {
+      const named = row.getByText(`Owner: ${organization}`, {
         exact: true,
       });
       const [rowBox, linkBox, namedBox] = await Promise.all([
@@ -404,7 +410,7 @@ test.describe('agents per tenant', () => {
       ).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
       await expect(link).toHaveAttribute(
         'title',
-        `${agent.name}\nOrganization: ${organization}`,
+        `${agent.name}\nOwner: ${organization}`,
       );
       expect(
         await named.evaluate(element => {
@@ -427,8 +433,8 @@ test.describe('agents per tenant', () => {
           .getByTestId('agent-facts')
           .evaluate(element => element.getBoundingClientRect().right);
       const organizationRowFactsEnd = await factsEnd(agent.name);
-      // The platform's agent belongs to no organization, and its row says
-      // nothing of one.
+      // The platform's agent, the usual owner, has its row say nothing of
+      // one.
       await searchRoster(alice, labAgent.name);
       await expect(rosterLinkOf(alice, labAgent.name)).toBeVisible({
         timeout: rosterWait,
@@ -438,14 +444,12 @@ test.describe('agents per tenant', () => {
         'the platform agent’s facts line up with the organization’s agent’s',
       ).toBeCloseTo(organizationRowFactsEnd, 0);
       await expect(
-        rosterRowOf(alice, labAgent.name).getByText(
-          /^(None|Organization: .*)$/,
-        ),
-        'the platform agent’s row names no organization',
+        rosterRowOf(alice, labAgent.name).getByText(/^Owner: /),
+        'the platform agent’s row names no owner',
       ).toHaveCount(0);
       await expect(
         rosterRowOf(alice, labAgent.name).getByRole('button', {
-          name: 'What None means',
+          name: 'What Platform means',
         }),
       ).toHaveCount(0);
 

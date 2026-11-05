@@ -88,7 +88,7 @@ jest.mock('../ModelConfigsProvider', () => ({
     isLoading: false,
     unreachableInstallations: [],
     modelConfigsFor: () => [
-      modelConfig('default-model-config', 'kagent', 'Claude Sonnet'),
+      modelConfig('anthropic-main', 'kagent', 'Claude Sonnet'),
       modelConfig('opus-4-7', 'kagent', 'Claude Opus'),
       modelConfig('elsewhere', 'other-team', 'Elsewhere'),
     ],
@@ -162,9 +162,10 @@ jest.mock('../../hooks/useUnderlyingModel', () => ({
     namespace: string | undefined,
   ) => (name && namespace ? `${name}-model · Anthropic` : undefined),
 }));
-jest.mock('../FileView', () => ({
-  FileView: ({ content, filename }: { content: string; filename?: string }) => (
-    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
 
@@ -1194,12 +1195,14 @@ describe('EditAgentPage', () => {
         screen.getByText(
           /^This agent is defined in Git outside the directory the portal writes to\. Change it in the file that defines it in/,
         ),
-      ).toHaveTextContent('in giantswarm/giantswarm-management-clusters.');
+      ).toHaveTextContent(
+        'in giantswarm/giantswarm-management-clusters (opens in a new tab).',
+      );
       // Only what agent-manager reports is linked: the repository, never a
       // guess at where the release is defined.
       expect(
         screen.getByRole('link', {
-          name: 'giantswarm/giantswarm-management-clusters',
+          name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
         }),
       ).toHaveAttribute(
         'href',

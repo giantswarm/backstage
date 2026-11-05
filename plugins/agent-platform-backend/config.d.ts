@@ -26,7 +26,10 @@ export interface Config {
        * Per-request timeout in milliseconds toward a kagent controller. Bounds
        * how long an installation whose `agentgateway.<baseDomain>` host does not
        * resolve (i.e. kagent simply is not deployed there) can hold a request
-       * open. Defaults to 10000.
+       * open. Defaults to 10000. Keep it above 8000: a dead connection is found
+       * by its keepalive ping within 8 s, and the request waiting on it should
+       * fail as unavailable rather than time out first. The backend warns at
+       * startup when it is not.
        */
       timeoutMs?: number;
 

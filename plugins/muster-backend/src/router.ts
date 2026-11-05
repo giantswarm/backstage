@@ -21,6 +21,7 @@ import {
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   MusterInstallationConfig,
@@ -578,6 +579,11 @@ export async function createRouter(
     }
     assertRunsAsPerson(name, installation);
 
+    // A tool error carries its status from the client: a refusal (agent-
+    // manager's, or muster's of a connector write) answers 4xx, below the
+    // 500 at which the error middleware sends it to Sentry. The error holds
+    // muster's message and text blocks only, never the request's arguments
+    // (which may carry a client secret).
     const result = await client.callTool(
       name,
       (toolArgs as Record<string, unknown>) ?? {},
@@ -1062,11 +1068,14 @@ export async function createRouter(
           reason: unauthorized.reason,
           ...(unauthorized.server ? { server: unauthorized.server } : {}),
         },
-        request: { method: req.method, url: req.url },
+        request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
     },
   );
+
+  // Last, so that the handlers above see the error first.
+  router.use(reportedErrorHandler());
 
   return router;
 }

@@ -15,8 +15,8 @@ import { useNewSessionHref } from './useNewSessionHref';
 import type { AgentManagerInfo } from '../lib/agentManager';
 import {
   egressRemedyKind,
-  type EgressRemedy,
   type EgressRemedyFacts,
+  type EgressRemedyFor,
 } from '../lib/egressRemedy';
 import { harnessTitle, runtimeLabel } from '../lib/harnesses';
 import { TOOLCHAINS_CAPABILITY } from '../lib/toolchainManager';
@@ -28,12 +28,24 @@ import {
 
 const NO_INSTALLATIONS: string[] = [];
 
+/** What is known of the agent, apart from the refused destination. */
+type AgentFacts = Omit<EgressRemedyFacts, 'scheme'>;
+
+const NOTHING_READ: AgentFacts = {
+  runtime: undefined,
+  agent: undefined,
+  toolchains: undefined,
+  canCommit: undefined,
+  mayUpdate: undefined,
+};
+
 /**
- * The remedy an egress refusal's alert offers for the Session's agent
- * (`egressRemedyKind`). Read only once the timeline shows a refusal
- * (`enabled`), as the signed-in person, and only where muster lists
- * agent-manager: the agent's Harness runtime from the fleet's row (or the
- * namespace's Harnesses), agent-manager's `get_agent` and `get_info`, and
+ * The remedy an egress refusal's alert offers for the Session's agent, by the
+ * refused destination's scheme (`egressRemedyKind`). Raw TCP's needs nothing
+ * of the agent. For the rest, read only once the timeline shows a refusal
+ * that needs it (`enabled`), as the signed-in person, and only where muster
+ * lists agent-manager: the agent's Harness runtime from the fleet's row (or
+ * the namespace's Harnesses), agent-manager's `get_agent` and `get_info`, and
  * whether the person may update the agent's HelmRelease, as the agent's page
  * asks it. Each is `pending` until read, so the alert shows no remedy rather
  * than one it takes back; one that cannot be read gives the neutral remedy.
@@ -54,7 +66,7 @@ export function useEgressRemedy(options: {
     harnessRuntime?: HarnessRuntime;
   };
   enabled: boolean;
-}): EgressRemedy {
+}): EgressRemedyFor {
   const { installation, agent, row, enabled } = options;
   const namespace = agent?.namespace ?? '';
   const name = agent?.name ?? '';
@@ -124,10 +136,6 @@ export function useEgressRemedy(options: {
   const agentEditRoute = useRouteRef(agentEditRouteRef);
   const toolchainsRoute = useRouteRef(toolchainsRouteRef);
   const newSessionHref = useNewSessionHref();
-
-  if (!active) {
-    return { kind: 'pending' };
-  }
 
   // agent-manager's reading: pending while listed or read, `null` where it is
   // not reached or could not read the agent.
@@ -199,31 +207,38 @@ export function useEgressRemedy(options: {
     }
     return info.capabilities?.[key] === true;
   };
-  const kind = egressRemedyKind({
-    runtime,
-    agent: agentFact,
-    toolchains: capability(TOOLCHAINS_CAPABILITY),
-    canCommit: capability('commit'),
-    mayUpdate,
-  });
+  // Not enabled: nothing about the agent is read, so only a remedy that
+  // needs none of it (raw TCP's) shows.
+  const facts: AgentFacts = active
+    ? {
+        runtime,
+        agent: agentFact,
+        toolchains: capability(TOOLCHAINS_CAPABILITY),
+        canCommit: capability('commit'),
+        mayUpdate,
+      }
+    : NOTHING_READ;
 
   const identity = { installation, namespace, name };
   const runtimeName = title ?? runtimeLabel(runtime ?? undefined);
-  switch (kind) {
-    case 'toolchains':
-      return {
-        kind,
-        runtime: runtimeName,
-        toolchainsHref: toolchainsRoute?.(),
-        newSessionHref: row ? newSessionHref?.({ id: row.id }) : undefined,
-      };
-    case 'platform':
-      return { kind, runtime: runtimeName };
-    case 'ask-editor':
-      return { kind, agentHref: agentDetailRoute?.(identity) };
-    case 'edit':
-      return { kind, editHref: agentEditRoute?.(identity) };
-    default:
-      return { kind };
-  }
+  return scheme => {
+    const kind = egressRemedyKind({ ...facts, scheme });
+    switch (kind) {
+      case 'toolchains':
+        return {
+          kind,
+          runtime: runtimeName,
+          toolchainsHref: toolchainsRoute?.(),
+          newSessionHref: row ? newSessionHref?.({ id: row.id }) : undefined,
+        };
+      case 'platform':
+        return { kind, runtime: runtimeName };
+      case 'ask-editor':
+        return { kind, agentHref: agentDetailRoute?.(identity) };
+      case 'edit':
+        return { kind, editHref: agentEditRoute?.(identity) };
+      default:
+        return { kind };
+    }
+  };
 }

@@ -2,6 +2,7 @@ import {
   LoggerService,
   RootLifecycleService,
 } from '@backstage/backend-plugin-api';
+import type { MetricsService } from '@backstage/backend-plugin-api/alpha';
 import { Config } from '@backstage/config';
 import {
   AuthenticationError,
@@ -44,6 +45,13 @@ import { SessionUsageReader } from './sessionUsage';
 import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
+import { kagentErrorHandler } from './kagentErrorHandler';
+import { createKagentCallHistogram } from './kagent/metrics';
+import {
+  createKagentTransport,
+  KAGENT_PING_INTERVAL_MS,
+  KAGENT_PING_TIMEOUT_MS,
+} from './kagent/transport';
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -62,9 +70,10 @@ export interface RouterOptions {
    * once every plugin has initialised -- rather than while they all are. The
    * probes measure the network with a wall-clock budget, and a backend
    * initialising under a CPU quota is exactly the process too busy to notice
-   * an answer in time. Tests leave it out and get an immediate warm-up.
+   * an answer in time. Tests leave it out and get an immediate warm-up. Its
+   * shutdown hook closes the avatar router's connections.
    */
-  lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  lifecycle?: Pick<RootLifecycleService, 'addStartupHook' | 'addShutdownHook'>;
   /**
    * The installations' Mimir, queried with the person's token, for their own
    * model cost. The plugin always passes the shared `mimirServiceRef`; tests
@@ -72,6 +81,11 @@ export interface RouterOptions {
    * as for an installation without one.
    */
   mimir?: MimirQuerier;
+  /**
+   * The plugin's metrics, for the duration of every kagent call
+   * (`kagent/metrics.ts`). The plugin always passes it; tests leave it out.
+   */
+  metrics?: MetricsService;
 }
 
 /**
@@ -476,6 +490,22 @@ export async function createRouter(
   const turnTimeoutMs =
     config.getOptionalNumber('agentPlatform.kagent.turnTimeoutMs') ??
     DEFAULT_KAGENT_TURN_TIMEOUT_MS;
+  // The keepalive gives a dead connection up within ping interval + timeout;
+  // a request timeout at or below that runs out first, and the call that met
+  // the dead connection times out as it did before the keepalive.
+  const keepaliveMs = KAGENT_PING_INTERVAL_MS + KAGENT_PING_TIMEOUT_MS;
+  if (timeoutMs <= keepaliveMs) {
+    logger.warn(
+      'agentPlatform.kagent.timeoutMs is too short for the kagent keepalive to replace a dead connection before a call on it times out',
+      { timeoutMs, keepaliveMs },
+    );
+  }
+
+  // One histogram for every installation's calls, the installation an
+  // attribute: an instrument is created once per name.
+  const callDuration = options.metrics
+    ? createKagentCallHistogram(options.metrics)
+    : undefined;
 
   // One client per installation. When a client is injected (tests), reuse it
   // for every installation, synthesizing one if none is configured so routing
@@ -498,7 +528,7 @@ export async function createRouter(
         new KagentClient(
           installation,
           logger,
-          undefined,
+          createKagentTransport(installation, { callDuration }),
           timeoutMs,
           turnTimeoutMs,
         ),
@@ -1304,7 +1334,14 @@ export async function createRouter(
   // The agents' avatars, fetched from each installation's avatars host and
   // served same-origin (avatarRouter.ts), so the page's Content-Security-Policy
   // names no installation. Cookie-authenticated: see plugin.ts.
-  router.use(createAvatarRouter({ config, logger }));
+  router.use(
+    createAvatarRouter({ config, logger, lifecycle: options.lifecycle }),
+  );
+
+  // Last, so that every kagent route above hands it its failures: a degraded
+  // kagent is answered here and logged once, not reported again by
+  // `MiddlewareFactory.error()` (kagentErrorHandler.ts).
+  router.use(kagentErrorHandler(logger));
 
   return router;
 }

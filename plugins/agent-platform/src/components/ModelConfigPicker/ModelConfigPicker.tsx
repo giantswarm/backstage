@@ -7,15 +7,18 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newModelRouteRef } from '../../routes';
+import { useAgentManagerModelConfigs } from '../../hooks/useAgentManagerModelConfigs';
+import { tenantInSentence } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 import {
-  isDefaultModelConfig,
-  type ModelChoice,
+  isReportedDefault,
   preselectedModelConfig,
-  type PreselectionReason,
   tenantModelConfigs,
+  unresolvedReason,
 } from './helpers';
 import { useModelConfigs } from '../ModelConfigsProvider';
+import { ModelReadinessLabel } from '../ModelsTable';
 import {
   SelectableCard,
   SelectableCardGrid,
@@ -28,23 +31,6 @@ import { ShowMore } from '../ShowMore';
  * three-column grid. Tens of models are realistic on one environment.
  */
 const MODEL_CARDS = 12;
-
-/** Says which model the form picked for the person, and why. */
-function preselectionNote(
-  reason: PreselectionReason,
-  displayName: string,
-  installation: string,
-): string {
-  switch (reason) {
-    case 'only':
-      return `Preselected: ${displayName}, the only model on ${installation}.`;
-    case 'default':
-      return `Preselected: ${displayName}, the default model on ${installation}.`;
-    case 'first':
-    default:
-      return `Preselected: ${displayName}, the first one listed, since ${installation} has no default model.`;
-  }
-}
 
 export type ModelConfigPickerProps = {
   /**
@@ -59,6 +45,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const classes = useSelectableCardStyles();
   const errorId = `${useId()}-error`;
   const { state, edit, selectModelConfig } = useNewAgentForm();
+  const { directory } = useOrganizationDirectory();
   const { isLoading, modelConfigsFor, unreachableInstallations } =
     useModelConfigs();
   const newModelLink = useRouteRef(newModelRouteRef);
@@ -79,9 +66,14 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   // cannot move the agent, so the other namespaces' models are not offered.
   // A new agent's are those of the tenant it is created in.
   const listed = installation ? modelConfigsFor(installation) : [];
-  const modelConfigs: ModelChoice[] = edit
+  const namespace = edit ? edit.agent.namespace : state.tenant;
+  const modelConfigs = edit
     ? listed.filter(mc => (mc.getNamespace() ?? '') === edit.agent.namespace)
     : tenantModelConfigs(listed, state.tenant);
+  // Which model is the namespace default, and whether each resolves, as
+  // agent-manager answers it: the portal does not resolve the default itself.
+  const { modelConfigs: reported, isLoading: isReadingDefault } =
+    useAgentManagerModelConfigs(installation, namespace ?? '');
   // The tenants are known and several, none picked yet: a model is the
   // tenant's, so none is offered (or preselected) before the tenant.
   const awaitsTenant =
@@ -97,15 +89,13 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
     !modelConfigs.some(mc => mc.getName() === state.modelConfigName)
       ? state.modelConfigName
       : undefined;
-  // The form starts with a model picked for the person -- the installation's
-  // only one, else its default, else the first listed -- so the plain view of
-  // step 1 needs no model decision. Only while nothing is picked, so a pick of
-  // their own is never replaced; an installation change clears the pick and
-  // the new installation's default takes its place.
-  const preselection = awaitsTenant
+  // The form starts with the namespace default picked for the person. Only
+  // while nothing is picked, so a pick of their own is never replaced; an
+  // installation or owner change clears the pick and the new default takes
+  // its place. Without a default the person picks.
+  const preselected = awaitsTenant
     ? undefined
-    : preselectedModelConfig(modelConfigs);
-  const preselected = preselection?.modelConfig;
+    : preselectedModelConfig(modelConfigs, reported);
   useEffect(() => {
     if (preselected && !state.modelConfigName) {
       selectModelConfig(
@@ -116,10 +106,12 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
     }
   }, [preselected, state.modelConfigName, selectModelConfig]);
   const showsPreselection =
-    preselection !== undefined &&
-    state.modelConfigName === preselection.modelConfig.getName() &&
-    state.modelConfigNamespace ===
-      (preselection.modelConfig.getNamespace() ?? '');
+    preselected !== undefined &&
+    state.modelConfigName === preselected.getName() &&
+    state.modelConfigNamespace === (preselected.getNamespace() ?? '');
+  const where = namespace
+    ? tenantInSentence(namespace, directory)
+    : (installation ?? '');
 
   if (!installation) {
     return (
@@ -151,6 +143,15 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const isPicked = (mc: (typeof modelConfigs)[number]) =>
     state.modelConfigName === mc.getName() &&
     state.modelConfigNamespace === (mc.getNamespace() ?? '');
+  const picked = modelConfigs.find(isPicked);
+  const pickedProblem = picked ? unresolvedReason(picked, reported) : undefined;
+  const needsPick =
+    !edit &&
+    !state.modelConfigName &&
+    !isLoading &&
+    !isReadingDefault &&
+    modelConfigs.length > 0 &&
+    preselected === undefined;
 
   return (
     <Flex direction="column" gap="2" {...invalidProps}>
@@ -176,12 +177,14 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
           <Alert
             status="info"
             title="No models found"
-            description={`No ModelConfigs on ${installation}. A platform admin must add one before agents can be created here.`}
+            description={`No models ${
+              namespace ? `for ${where} ` : ''
+            }on ${installation}. An admin must add one before agents can be created here.`}
           />
           {/* A new tab, like every link in the form: it stays as it is. */}
           {newModelLink && (
             <Text variant="body-small" color="secondary">
-              Platform admins can{' '}
+              Admins can{' '}
               <ExternalLink href={newModelLink()}>add a model</ExternalLink> in
               the Models tab.
             </Text>
@@ -196,14 +199,28 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         </Text>
       )}
 
-      {!edit && showsPreselection && preselection && (
+      {!edit && showsPreselection && preselected && (
         <Text variant="body-small" color="secondary">
-          {preselectionNote(
-            preselection.reason,
-            preselection.modelConfig.getDisplayName(),
-            installation,
-          )}
+          Preselected: {preselected.getDisplayName()}, the default model for{' '}
+          {where}.
         </Text>
+      )}
+
+      {needsPick && (
+        <Text variant="body-small" color="secondary">
+          No default model is set for {where}. Choose the model this agent runs
+          on.
+        </Text>
+      )}
+
+      {picked && pickedProblem && (
+        <Alert
+          status="warning"
+          title={`${picked.getDisplayName()} is not ready`}
+          description={`Agents on this model fail until an admin fixes it${
+            pickedProblem.message ? `: ${pickedProblem.message}` : '.'
+          } You can still create the agent, or choose another model.`}
+        />
       )}
 
       {modelConfigs.length > 0 && (
@@ -224,31 +241,43 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
               >
                 {(pinned ? [...page, pinned] : page).map(mc => {
                   const name = mc.getName();
-                  const namespace = mc.getNamespace() ?? '';
+                  const modelNamespace = mc.getNamespace() ?? '';
                   const provider = mc.getProvider();
+                  const isDefault = isReportedDefault(mc, reported);
+                  const problem = unresolvedReason(mc, reported);
 
                   return (
                     <SelectableCard
-                      key={`${namespace}/${name}`}
+                      key={`${modelNamespace}/${name}`}
                       role="radio"
                       selected={isPicked(mc)}
                       ariaLabel={`Select model ${mc.getDisplayName()}${
-                        isDefaultModelConfig(mc) ? ', environment default' : ''
-                      }`}
+                        isDefault ? ', default' : ''
+                      }${problem ? ', not accepted' : ''}`}
                       onSelect={() =>
-                        selectModelConfig(name, namespace, mc.getDisplayName())
+                        selectModelConfig(
+                          name,
+                          modelNamespace,
+                          mc.getDisplayName(),
+                        )
                       }
                     >
                       <Text weight="bold">{mc.getDisplayName()}</Text>
-                      {isDefaultModelConfig(mc) && (
+                      {isDefault && (
                         <Text variant="body-small" color="secondary">
-                          Environment default
+                          Default
                         </Text>
                       )}
                       <Text variant="body-x-small" color="secondary">
                         <span className={classes.code}>{mc.getModel()}</span>
                         {provider ? ` · ${provider}` : ''}
                       </Text>
+                      {problem && (
+                        <ModelReadinessLabel
+                          readiness="notAccepted"
+                          message={problem.message}
+                        />
+                      )}
                     </SelectableCard>
                   );
                 })}

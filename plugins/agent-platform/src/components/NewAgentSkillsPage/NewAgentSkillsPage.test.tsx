@@ -133,11 +133,17 @@ async function pickFilter(field: string, option: string) {
 
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
-  const { setName, setInstallation, selectModelConfig, isComplete } =
-    useNewAgentForm();
+  const {
+    setName,
+    setInstallation,
+    setTenantChoices,
+    selectModelConfig,
+    isComplete,
+  } = useNewAgentForm();
   useEffect(() => {
     setName('Reviewer');
     setInstallation('gazelle');
+    setTenantChoices(['kagent']);
     selectModelConfig('opus', 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

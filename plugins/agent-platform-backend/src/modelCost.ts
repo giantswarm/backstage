@@ -8,9 +8,10 @@ import {
   promqlString,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentgatewayGenAiClientCostUsdTotal as Cost } from '@giantswarm/backstage-plugin-gs-common';
-import type {
-  MimirQueryResponse,
-  MimirService,
+import {
+  MimirUnavailableError,
+  type MimirQueryResponse,
+  type MimirService,
 } from '@giantswarm/backstage-plugin-gs-node';
 
 /** The part of `MimirService` the cost read needs; a stub in tests. */
@@ -147,6 +148,9 @@ export async function readModelCost(options: {
       oidcToken: userToken,
       // The query names the person; keep it out of the debug log.
       redactQuery: true,
+      // Handled below, at `info`: a Mimir outage on the cost read is the page
+      // falling back to the estimate, not a warning per query.
+      logFailures: false,
     });
 
   let byAgent: MimirQueryResponse;
@@ -166,7 +170,13 @@ export async function readModelCost(options: {
       return unavailable('no-mimir');
     }
     handled('Could not read the model cost from Mimir', error);
-    return unavailable('unreadable');
+    // The page says which it was.
+    return unavailable(
+      error instanceof MimirUnavailableError &&
+        error.reason === 'older_data_unavailable'
+        ? 'older-data-unavailable'
+        : 'unreadable',
+    );
   }
 
   if (attributed && countOf(attributed) === 0) {

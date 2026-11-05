@@ -171,6 +171,16 @@ describe('describeCostBasis', () => {
     expect(describeCostBasis({ ...base, tier: 'error' })).toContain(
       'could not be read',
     );
+    // Mimir said why: the shared words, not the generic line.
+    expect(
+      describeCostBasis({
+        ...base,
+        tier: 'error',
+        error: Object.assign(new Error('x'), {
+          reason: 'older_data_unavailable',
+        }),
+      }),
+    ).toMatch(/^No estimate\. Older data is temporarily unavailable\./);
   });
 
   it('stays to one sentence per tier, and the average caveat', () => {

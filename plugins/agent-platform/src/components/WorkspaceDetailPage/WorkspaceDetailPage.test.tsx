@@ -261,15 +261,54 @@ describe('WorkspaceDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links each repository at its provider’s host', async () => {
+  it('links each repository at its provider’s host, in a new tab', async () => {
     mockProviders = [
       { name: 'github', kind: 'github', connected: true, host: 'github.com' },
     ];
+    // One repository has left the selection: linked all the same, and said.
+    const detail = docs();
+    detail.mirrors = [
+      ...detail.mirrors,
+      {
+        provider: 'github',
+        repository: 'example-org/old',
+        defaultBranch: 'main',
+        head: 'abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+        pushedAt: '2026-10-10T08:00:00Z',
+        sizeBytes: 1024 ** 2,
+        droppedAt: '2026-10-19T00:00:00Z',
+      },
+    ];
+    mockDetail = { ...mockDetail, data: detail };
     await renderPage();
 
+    const link = screen.getByRole('link', {
+      name: 'example-org/api (opens in a new tab)',
+    });
+    expect(link).toHaveAttribute('href', 'https://github.com/example-org/api');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    const dropped = screen.getByRole('row', { name: /^example-org\/old/ });
     expect(
-      screen.getByRole('link', { name: 'example-org/api' }),
-    ).toHaveAttribute('href', 'https://github.com/example-org/api');
+      within(dropped).getByRole('link', {
+        name: 'example-org/old (opens in a new tab)',
+      }),
+    ).toHaveAttribute('href', 'https://github.com/example-org/old');
+    expect(
+      within(dropped).getByText(
+        'left the selection, kept while a session uses it',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a repository as plain text where its provider names no host', async () => {
+    mockProviders = [{ name: 'github', kind: 'github', connected: true }];
+    await renderPage();
+
+    expect(screen.getByText('example-org/api')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /^example-org\/api/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('lists the Sessions on the workspace with their cleanup dates, and filters to mine', async () => {

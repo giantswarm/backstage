@@ -22,6 +22,14 @@ import {
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
+import type {
+  MemberRequest,
+  MemberResult,
+  MyOrganizations,
+  OrganizationConnector,
+  OrganizationDetails,
+  OrganizationMembers,
+} from '../lib/organizations';
 
 /**
  * A session's toolchains for `start_session`, named only when the person
@@ -266,5 +274,67 @@ export class AgentManagerClient {
       );
     }
     return { ...result, sessionId };
+  }
+
+  /**
+   * The organizations the person belongs to: the namespaces in which they
+   * may list Agents, asked with their own token. The New agent form's
+   * organization picker.
+   */
+  async listMyOrganizations(): Promise<MyOrganizations> {
+    const result = await this.call<Partial<MyOrganizations>>(
+      AGENT_MANAGER_TOOLS.listMyOrganizations,
+      {},
+    );
+    return { ...result, organizations: result.organizations ?? [] };
+  }
+
+  /** One organization, by its parent namespace and name. */
+  getOrganization(parent: string, name: string): Promise<OrganizationDetails> {
+    return this.call<OrganizationDetails>(AGENT_MANAGER_TOOLS.getOrganization, {
+      namespace: parent,
+      name,
+    });
+  }
+
+  /** An organization's members: groups first, each with its role. */
+  async listOrganizationMembers(
+    namespace: string,
+  ): Promise<OrganizationMembers> {
+    const result = await this.call<Partial<OrganizationMembers>>(
+      AGENT_MANAGER_TOOLS.listOrganizationMembers,
+      { namespace },
+    );
+    return { namespace, members: result.members ?? [] };
+  }
+
+  /** Binds a group (offered first) or a person to a role, as the person. */
+  addOrganizationMember(request: MemberRequest): Promise<MemberResult> {
+    return this.call<MemberResult>(AGENT_MANAGER_TOOLS.addOrganizationMember, {
+      ...request,
+    });
+  }
+
+  /**
+   * Unbinds a group or a person from a role, as the person. Admission keeps
+   * the last admin of `organization-admins`: that refusal comes back as
+   * agent-manager's error, with the way out in its message.
+   */
+  removeOrganizationMember(request: MemberRequest): Promise<MemberResult> {
+    return this.call<MemberResult>(
+      AGENT_MANAGER_TOOLS.removeOrganizationMember,
+      { ...request },
+    );
+  }
+
+  /** An organization's connectors (RemoteMCPServers). */
+  async listOrganizationConnectors(
+    namespace: string,
+  ): Promise<OrganizationConnector[]> {
+    const result = await this.call<{ connectors?: OrganizationConnector[] }>(
+      AGENT_MANAGER_TOOLS.listOrganizationConnectors,
+      { namespace },
+    );
+    return result.connectors ?? [];
   }
 }

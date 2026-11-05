@@ -24,6 +24,15 @@ import {
 } from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
@@ -80,6 +89,10 @@ jest.mock('../AgentsDataProvider', () => {
 // The person as agent-manager names a creator, on every installation: whom
 // "created by me" compares an agent's creator with.
 const mockCaller = 'me@example.com';
+// The New agent form's warm-up has its own tests.
+jest.mock('../../hooks/useWarmNewAgentForm', () => ({
+  useWarmNewAgentForm: () => undefined,
+}));
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilitiesMap: () => () => ({
     isUserScoped: true,
@@ -1149,12 +1162,12 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     await renderPanel();
 
     const organization = within(items()[1]).getByText(
-      'Organization: a-rather-long-organization-name',
+      'Owner: a-rather-long-organization-name',
     );
     expect(organization).not.toHaveAttribute('data-truncate');
     expect(organization.previousElementSibling).toHaveTextContent('Billing');
     // The platform agent's row names none.
-    expect(items()[0]).not.toHaveTextContent('Organization');
+    expect(items()[0]).not.toHaveTextContent('Owner');
   });
 
   it('keeps a not-Ready agent’s state to its few words; its page says why', async () => {
@@ -1263,14 +1276,14 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     mockMetaAgent = undefined;
   });
 
-  it('filters by organization and by who created the agent, each organization’s row naming its organization', async () => {
+  it('filters by owner and by who created the agent, each organization’s row naming its owner', async () => {
     mockAgents = {
       rows: [
         row({
           name: 'SRE',
           technicalName: 'sre',
           namespace: 'kagent',
-          tenant: 'None',
+          tenant: 'Platform',
           model: 'Opus',
         }),
         row({
@@ -1295,24 +1308,24 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     };
     await renderPanel();
 
-    // The platform's agent belongs to no organization, and its row says
-    // nothing of one: no "None" without its label, no info icon.
+    // The platform's agent, the usual owner, has its row say nothing of
+    // one: no owner text, no info icon.
     const sre = listed()[0];
-    expect(sre).not.toHaveTextContent(/None|Organization|Platform/);
+    expect(sre).not.toHaveTextContent(/None|Owner|Organization|Platform/);
     expect(
-      within(sre).queryByRole('button', { name: /None/ }),
+      within(sre).queryByRole('button', { name: /Platform/ }),
     ).not.toBeInTheDocument();
-    // An organization's agent names it with its label, not to be taken for
-    // the environment, beside its name: whose agent it is.
+    // An organization's agent names its owner with the label, not to be
+    // taken for the environment, beside its name: whose agent it is.
     const billing = listed()[1];
-    const organization = within(billing).getByText('Organization: acme');
+    const organization = within(billing).getByText('Owner: acme');
     expect(organization.previousElementSibling).toHaveTextContent(/^Billing$/);
     // The name link's hit area covers the row, the organization included:
     // the link's tooltip names both, and a screen reader hears whose agent
     // it opens.
     const link = within(billing).getByRole('link', { name: 'Billing' });
-    expect(link).toHaveAttribute('title', 'Billing\nOrganization: acme');
-    expect(link).toHaveAccessibleDescription('Organization: acme');
+    expect(link).toHaveAttribute('title', 'Billing\nOwner: acme');
+    expect(link).toHaveAccessibleDescription('Owner: acme');
     expect(organization).not.toHaveAttribute('title');
     expect(within(sre).getByRole('link', { name: 'SRE' })).toHaveAttribute(
       'title',
@@ -1326,8 +1339,8 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     // of them: the agent's page has it.
     expect(factsOf(billing)).toEqual(factsOf(sre));
     expect(factsOf(billing).join()).not.toMatch(/Opus/);
-    expect(factsOf(billing).join()).not.toMatch(/Organization|acme/);
-    expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
+    expect(factsOf(billing).join()).not.toMatch(/Owner|acme/);
+    expect(await filterOptions('owner')).toEqual(['acme 2', 'Platform 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);
 
     await pickFilter('created by', 'Me 1');
@@ -1336,7 +1349,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     ]);
   });
 
-  it('names another namespace as it is, an organization as its filter option does, and no organization where there is only one', async () => {
+  it('names another namespace as it is, an organization as its filter option does, and no owner where there is only one', async () => {
     const billing = row({
       name: 'Billing',
       technicalName: 'billing',
@@ -1352,13 +1365,13 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
           tenant: 'namespace sre-team',
         }),
         billing,
-        // An organization named like the platform's None keeps its filter
+        // An organization named like the platform keeps its filter
         // option's qualifier.
         row({
           name: 'Odd',
           technicalName: 'odd',
-          namespace: 'org-none',
-          tenant: 'organization none',
+          namespace: 'org-platform',
+          tenant: 'organization platform',
         }),
       ],
       isLoading: false,
@@ -1373,20 +1386,18 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       'title',
       'SRE\nnamespace sre-team',
     );
-    expect(listed()[1]).toHaveTextContent('Organization: acme');
+    expect(listed()[1]).toHaveTextContent('Owner: acme');
     expect(within(listed()[2]).getByRole('link')).toHaveAccessibleDescription(
-      'Organization: organization none',
+      'Owner: organization platform',
     );
-    expect(await filterOptions('organization')).toContain(
-      'organization none 1',
-    );
+    expect(await filterOptions('owner')).toContain('organization platform 1');
     unmount();
 
     // One organization's agents alone: the list says it of none of them, and
     // the name stands alone on its line.
     mockAgents = { ...mockAgents, rows: [billing] };
     await renderPanel();
-    expect(listed()[0]).not.toHaveTextContent('Organization');
+    expect(listed()[0]).not.toHaveTextContent('Owner');
     const name = within(listed()[0]).getByText('Billing');
     expect(name.nextElementSibling).toBe(null);
     expect(name).not.toHaveAttribute('aria-describedby');

@@ -1,35 +1,32 @@
 import { useMemo } from 'react';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { Alert, Flex, Table, Text } from '@backstage/ui';
+import {
+  InfoCard,
+  MetricsUnavailableAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { Alert, Flex, SearchField, Table, Text, useTable } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
-import { useMimirAvailable } from '../../../hooks/useMimirAvailable';
 import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology';
+import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
+import { GatewayPolicy } from '../../../utils/gatewayPolicies';
+import { PoliciesTable } from './PoliciesTable';
 import {
   Gateway,
   HttpRoute,
   gatewayRank,
   routeRank,
-} from '../../../hooks/gatewayTopology';
+  unavailableCauseOf,
+} from '../../../utils/gatewayTopology';
 import {
-  ListenerRow,
+  GatewayRow,
   RouteParentRow,
-  listenerColumns,
+  gatewayColumns,
   routeColumns,
 } from './columns';
 
-function toListenerRows(gateways: Gateway[]): ListenerRow[] {
+function toGatewayRows(gateways: Gateway[]): GatewayRow[] {
   // Failing Gateways first, then those without status. The sort is stable, so
   // each band keeps the name order.
-  const ordered = [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
-  return ordered.flatMap(gateway =>
-    gateway.listeners.length
-      ? gateway.listeners.map(listener => ({
-          id: `${gateway.id}/${listener.name}`,
-          gateway,
-          listener,
-        }))
-      : [{ id: gateway.id, gateway }],
-  );
+  return [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
 }
 
 function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
@@ -47,6 +44,23 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
   );
 }
 
+/** Matches a route row by route name, namespace, hostname or parent name. */
+export function searchRouteRows(
+  rows: RouteParentRow[],
+  search: string,
+): RouteParentRow[] {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return rows;
+  return rows.filter(({ route, parent }) =>
+    [
+      route.name,
+      route.namespace,
+      ...(route.hostnames ?? []),
+      parent?.name ?? '',
+    ].some(value => value.toLowerCase().includes(needle)),
+  );
+}
+
 /**
  * Why route conditions can't be shown, if any can't. A failed load wins over
  * an older bundle: it's the one that fixes itself on the next refetch, and
@@ -56,18 +70,11 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
 function unavailableCause(
   routes: HttpRoute[],
 ): 'load-failed' | 'not-exported' | undefined {
-  const causes = new Set(
+  return unavailableCauseOf(
     routes.flatMap(route =>
-      route.parents.flatMap(parent =>
-        [parent.accepted, parent.resolvedRefs].flatMap(c =>
-          c.status === 'not-available' ? [c.cause ?? 'load-failed'] : [],
-        ),
-      ),
+      route.parents.flatMap(parent => [parent.accepted, parent.resolvedRefs]),
     ),
   );
-  if (causes.has('load-failed')) return 'load-failed';
-  if (causes.has('not-exported')) return 'not-exported';
-  return undefined;
 }
 
 const unavailableNotice = {
@@ -83,8 +90,9 @@ export type ClusterGatewaysContentProps = {
   routes: HttpRoute[];
   isLoading: boolean;
   error?: unknown;
-  /** `false` when the installation has no Mimir; `undefined` while unknown. */
-  mimirAvailable: boolean | undefined;
+  policies: GatewayPolicy[];
+  policiesLoading: boolean;
+  policiesError?: unknown;
 };
 
 /** Renders a cluster's Gateway API topology. Data loading lives in `ClusterGateways`. */
@@ -94,32 +102,21 @@ export const ClusterGatewaysContent = ({
   routes,
   isLoading,
   error,
-  mimirAvailable,
+  policies,
+  policiesLoading,
+  policiesError,
 }: ClusterGatewaysContentProps) => {
-  const listenerRows = useMemo(() => toListenerRows(gateways), [gateways]);
+  const gatewayRows = useMemo(() => toGatewayRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
   const unavailable = useMemo(() => unavailableCause(routes), [routes]);
-
-  if (mimirAvailable === false) {
-    return (
-      <Alert
-        status="info"
-        icon
-        title="Gateway API information is based on metrics, which are not available on this installation."
-      />
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert
-        status="warning"
-        icon
-        title="Gateway API metrics could not be loaded."
-        description={error instanceof Error ? error.message : undefined}
-      />
-    );
-  }
+  // No sortFn: the rows keep the problems-first order from toRouteRows.
+  const { tableProps: routeTableProps, search } = useTable<RouteParentRow>({
+    mode: 'complete',
+    data: isLoading ? undefined : routeRows,
+    searchFn: searchRouteRows,
+    searchDebounceMs: 150,
+    paginationOptions: { type: 'none' },
+  });
 
   return (
     <Flex direction="column" gap="4">
@@ -127,33 +124,69 @@ export const ClusterGatewaysContent = ({
         Based on Gateway API metrics. Changes can take a minute or two to
         appear.
       </Text>
-      <InfoCard title="Gateways">
-        <Table<ListenerRow>
-          columnConfig={listenerColumns}
-          data={isLoading ? undefined : listenerRows}
-          isPending={isLoading}
-          pagination={{ type: 'none' }}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              No Gateways found on cluster <code>{clusterName}</code>.
-            </Text>
-          }
+      {/* The policies load on their own, so a topology error leaves them shown. */}
+      {error ? (
+        <MetricsUnavailableAlert
+          error={error}
+          title="Gateway API metrics could not be loaded."
+          description={error instanceof Error ? error.message : undefined}
         />
-      </InfoCard>
-      <InfoCard title="HTTPRoutes">
-        {!isLoading && unavailable ? (
-          <Alert status="info" icon title={unavailableNotice[unavailable]} />
-        ) : null}
-        <Table<RouteParentRow>
-          columnConfig={routeColumns}
-          data={isLoading ? undefined : routeRows}
-          isPending={isLoading}
-          pagination={{ type: 'none' }}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              No HTTPRoutes found on cluster <code>{clusterName}</code>.
-            </Text>
-          }
+      ) : (
+        <>
+          <InfoCard title="Gateways">
+            <Table<GatewayRow>
+              columnConfig={gatewayColumns}
+              data={isLoading ? undefined : gatewayRows}
+              isPending={isLoading}
+              pagination={{ type: 'none' }}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  No Gateways found on cluster <code>{clusterName}</code>.
+                </Text>
+              }
+            />
+          </InfoCard>
+          <InfoCard title="HTTPRoutes">
+            {!isLoading && unavailable ? (
+              <Alert
+                status="info"
+                icon
+                title={unavailableNotice[unavailable]}
+              />
+            ) : null}
+            <SearchField
+              aria-label="Search HTTPRoutes"
+              placeholder="Search by name, namespace, hostname or parent"
+              value={search.value}
+              onChange={search.onChange}
+              style={{ maxWidth: 420 }}
+            />
+            <Table<RouteParentRow>
+              {...routeTableProps}
+              columnConfig={routeColumns}
+              isPending={isLoading}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {/* Not search.value: the rows filter on the debounced value. */}
+                  {routeRows.length ? (
+                    'No HTTPRoutes match the search.'
+                  ) : (
+                    <>
+                      No HTTPRoutes found on cluster <code>{clusterName}</code>.
+                    </>
+                  )}
+                </Text>
+              }
+            />
+          </InfoCard>
+        </>
+      )}
+      <InfoCard title="Envoy Gateway policies">
+        <PoliciesTable
+          clusterName={clusterName}
+          policies={policies}
+          isLoading={policiesLoading}
+          error={policiesError}
         />
       </InfoCard>
     </Flex>
@@ -169,7 +202,15 @@ export const ClusterGateways = () => {
     clusterName,
     refetchInterval: 30_000,
   });
-  const mimirAvailable = useMimirAvailable(installationName);
+  const {
+    policies,
+    isLoading: policiesLoading,
+    error: policiesError,
+  } = useMimirGatewayPolicies({
+    installationName,
+    clusterName,
+    refetchInterval: 30_000,
+  });
 
   return (
     <ClusterGatewaysContent
@@ -178,7 +219,9 @@ export const ClusterGateways = () => {
       routes={routes}
       isLoading={isLoading}
       error={error}
-      mimirAvailable={mimirAvailable}
+      policies={policies}
+      policiesLoading={policiesLoading}
+      policiesError={policiesError}
     />
   );
 };

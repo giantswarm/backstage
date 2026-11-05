@@ -3,7 +3,9 @@ import { useMimirQuery } from '@giantswarm/backstage-plugin-gs';
 import { useAgents } from '../components/AgentsDataProvider';
 import { UNKNOWN_AGENT_LABEL } from '../lib/llmUsage';
 import { organizationsSeenQueryFor } from '../lib/llmUsageQueries';
+import type { OrganizationDirectory } from '../lib/organizations';
 import { tenantKindOf, tenantOf } from '../lib/tenants';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import type { UsageWindow } from '../lib/usageWindow';
 
 export type UsageOrganizationsView = {
@@ -19,10 +21,15 @@ export type UsageOrganizationsView = {
 /** Platform first, then organizations, then other namespaces; by name within. */
 const KIND_ORDER = { platform: 0, organization: 1, namespace: 2 } as const;
 
-function compareNamespaces(a: string, b: string): number {
+function compareNamespaces(
+  a: string,
+  b: string,
+  directory: OrganizationDirectory,
+): number {
   return (
-    KIND_ORDER[tenantKindOf(a)] - KIND_ORDER[tenantKindOf(b)] ||
-    tenantOf(a).localeCompare(tenantOf(b))
+    KIND_ORDER[tenantKindOf(a, directory)] -
+      KIND_ORDER[tenantKindOf(b, directory)] ||
+    tenantOf(a, directory).localeCompare(tenantOf(b, directory))
   );
 }
 
@@ -53,6 +60,7 @@ export function useUsageOrganizations(
     keepPreviousAnswer: true,
   });
   const { rows: agents, isLoading: isLoadingAgents } = useAgents();
+  const { directory } = useOrganizationDirectory();
 
   // The hold is for the clock alone. A list held across a change of
   // installation or window is another scope's, and an organization picked
@@ -85,8 +93,8 @@ export function useUsageOrganizations(
         }
       }
     }
-    return [...set].sort(compareNamespaces);
-  }, [seenResult, agents, installation]);
+    return [...set].sort((a, b) => compareNamespaces(a, b, directory));
+  }, [seenResult, agents, installation, directory]);
 
   return {
     namespaces,

@@ -130,6 +130,7 @@ import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
 import { useEgressRemedy } from '../../hooks/useEgressRemedy';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -648,6 +649,7 @@ export function SessionDetailPage() {
     rates,
     tier: rateTier,
     windowDays: rateWindowDays,
+    error: rateError,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -880,14 +882,15 @@ export function SessionDetailPage() {
     }),
     [timelineWithLive, shownItems, egressRefusals],
   );
-  // What a refusal's alert offers for this agent: read once there is one,
-  // since it takes agent-manager's reading of the agent and the person's
-  // access (giantswarm/giantswarm#38814).
-  const egressRemedy = useEgressRemedy({
+  // What a refusal's alert offers for this agent: read once there is one
+  // that needs it, since it takes agent-manager's reading of the agent and
+  // the person's access. Raw TCP's remedy needs none of it
+  // (giantswarm/giantswarm#38814).
+  const egressRemedyFor = useEgressRemedy({
     installation,
     agent,
     row: agentRow,
-    enabled: egressRefusals.length > 0,
+    enabled: egressRefusals.some(refusal => remedyNeedsAgent(refusal.scheme)),
   });
 
   // Owned by the page, unlike the delete dialog's state, because two things open
@@ -1351,6 +1354,7 @@ export function SessionDetailPage() {
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({
         tier: rateTier,
+        error: rateError,
         model: row.agentModel,
         installation: row.installation,
         windowDays: rateWindowDays,
@@ -1859,7 +1863,7 @@ export function SessionDetailPage() {
             <SessionTimeline
               timeline={shownTimeline}
               agentName={row.agentName}
-              egressRemedy={egressRemedy}
+              egressRemedyFor={egressRemedyFor}
               agentAvatarUrl={avatarUrl}
               isAgentWorking={showWorking}
               streamLost={streamLost}

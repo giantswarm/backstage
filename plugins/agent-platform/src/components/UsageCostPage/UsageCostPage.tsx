@@ -31,6 +31,7 @@ import {
   PricingCoverageAlert,
   PricingCoverageNote,
 } from '../LlmUsage';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -67,6 +68,7 @@ const useStyles = makeStyles((theme: Theme) => ({
  * measured, not estimated. Never a fleet total, and the tile says so.
  */
 export function UsageCostPage() {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   // The window: days back from today, or one calendar month, the chargeback
   // view (giantswarm/backstage#2672): a month also reads the by-person rows.
@@ -93,7 +95,9 @@ export function UsageCostPage() {
   // Whose spend the caption says it is, and where a row of the organization
   // table takes the reader: the same page, narrowed to that organization.
   // Unattributed traffic has no namespace to narrow to.
-  const scope = namespace ? tenantInSentence(namespace) : 'every organization';
+  const scope = namespace
+    ? tenantInSentence(namespace, directory)
+    : 'every organization';
   const hrefForOrganization = (row: LlmOrganizationRow) =>
     row.kind === 'unattributed'
       ? undefined

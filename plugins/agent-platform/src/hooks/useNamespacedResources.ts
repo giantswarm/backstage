@@ -20,7 +20,7 @@ import {
   kagentAgentNamespacesQueryKey,
   musterAgentManagerInfoQueryKey,
 } from '../lib/queryKeys';
-import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
+import { PLATFORM_TENANT_NAMESPACE } from '../lib/tenants';
 import { useAgentManagerAvailability } from './useAgentManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
@@ -76,7 +76,7 @@ export type NamespacedResources<R> = {
 
 /**
  * The namespaces to read an installation's kagent resources in: the platform
- * namespace, where the platform's own agents and default model live,
+ * namespace, where the platform's own agents and models live,
  * agent-manager's default and managed namespaces, where agents land (managed:
  * the ones the person may create in), and the namespaces of the Agents the
  * controller lets the person list (`listed`, their tenants that hold one).
@@ -88,7 +88,7 @@ export function agentNamespacesOf(
   const namespaces = info?.namespaces;
   return Array.from(
     new Set([
-      DEFAULT_MODEL_CONFIG_NAMESPACE,
+      PLATFORM_TENANT_NAMESPACE,
       namespaces?.default,
       ...(namespaces?.managed ?? []),
       ...listed,
