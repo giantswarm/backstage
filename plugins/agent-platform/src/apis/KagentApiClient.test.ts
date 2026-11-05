@@ -311,6 +311,12 @@ describe('KagentApiClient', () => {
           .catch((e: unknown) => e);
 
         expect(error).toMatchObject(expected);
+        // The backend's words stay on the error, for the console and Sentry.
+        expect((error as Error).cause).toEqual(
+          new Error(
+            "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+          ),
+        );
         // A failed read, not kagent being absent: it is surfaced and retried.
         expect(error).not.toMatchObject({ name: 'NotFoundError' });
         expect(error).not.toMatchObject({ name: 'ServiceUnavailableError' });
@@ -1526,6 +1532,11 @@ describe('KagentApiClient', () => {
         reason: 'unavailable',
         requestId: 'req-8',
       });
+      expect(error.cause).toEqual(
+        new Error(
+          "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+        ),
+      );
     });
   });
 

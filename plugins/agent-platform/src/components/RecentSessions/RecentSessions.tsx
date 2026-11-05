@@ -276,7 +276,8 @@ function RecentSessionsReadError({
 }) {
   return (
     <Flex direction="column" gap="1" align="start" px="2">
-      <Text variant="body-small" color="danger">
+      {/* Announced once, politely: the rail is on every page. */}
+      <Text variant="body-small" color="danger" role="status">
         Could not read your sessions.
       </Text>
       <Button
@@ -305,10 +306,10 @@ function RecentSessionsList({
   const allSessionsHref = shellRail ? sessionsRoute?.() : undefined;
   const baseId = useId();
   const { pathname } = useLocation();
-  const { rows, isLoading, unreachableInstallations, retry, isRetrying } =
-    useSessions();
-  // Nothing to list, and a read failed: not "No sessions yet".
-  const readFailed = rows.length === 0 && unreachableInstallations.length > 0;
+  const { rows, isLoading, nothingRead, retry, isRetrying } = useSessions();
+  // No installation answered: not "No sessions yet". With one that answered
+  // empty, the empty line stands and the Sessions page names the rest.
+  const readFailed = nothingRead;
   const { pinnedIds, isPinned, togglePin } = usePinnedSessions();
 
   // Every installation that has a session, not only the listed ones: the rail

@@ -47,6 +47,18 @@ export function isKagentUnavailable(error: unknown): boolean {
   return status !== undefined && status >= 500 && reason === 'unavailable';
 }
 
+/**
+ * Whether a failed kagent read means "kagent is not deployed here": the
+ * backend's 404 for every such outcome (kagent's own, an unknown installation,
+ * a connection that failed at the socket), named `NotFoundError` by the
+ * client, or a `ServiceUnavailableError`. The common case across the fleet,
+ * not a failure to report or retry.
+ */
+export function isKagentNotDeployed(error: unknown): boolean {
+  const name = (error as Error | null | undefined)?.name;
+  return name === 'NotFoundError' || name === 'ServiceUnavailableError';
+}
+
 export function describeReadFailure(error: unknown): ReadFailure {
   const { status, reason, requestId } = (error ??
     {}) as KagentRequestErrorFields;

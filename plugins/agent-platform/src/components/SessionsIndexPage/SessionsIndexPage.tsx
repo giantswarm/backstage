@@ -94,6 +94,7 @@ function SessionsIndexPageContent() {
     hasInstallations,
     unreachableInstallations,
     readFailures,
+    nothingRead,
     retry,
     isRetrying,
     notUserScopedInstallations,
@@ -217,11 +218,13 @@ function SessionsIndexPageContent() {
           resourceName="sessions"
           failures={readFailures}
           isLoading={isLoading}
-          // With no rows, the failure is the page's answer: an error the
-          // person cannot close, never the empty state. kagent down for a
-          // moment is the usual cause, so either card offers a retry.
-          isEverything={isEmpty}
-          title="Could not read your sessions"
+          // When no installation answered, the failure is the page's answer:
+          // an error the person cannot close, never the empty state. With one
+          // that answered, even empty, it is the closable warning. kagent down
+          // for a moment is the usual cause, so either card offers a retry.
+          everything={
+            nothingRead ? { title: 'Could not read your sessions' } : undefined
+          }
           onRetry={retry}
           isRetrying={isRetrying}
         />

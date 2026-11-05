@@ -66,13 +66,12 @@ export type UnreachableInstallationsAlertProps = {
   /** The retry is under way: the button shows it and takes no second press. */
   isRetrying?: boolean;
   /**
-   * The failure is the whole list's answer, nothing else having been read: a
-   * danger card under `title`, which the person cannot close, since closing it
-   * would leave a page that looks empty. A warning card otherwise.
+   * Given when the failure is the whole list's answer, nothing else having
+   * been read: a danger card under `title` ("Could not read your sessions"),
+   * which the person cannot close, since closing it would leave a page that
+   * looks empty. Without it, the closable warning.
    */
-  isEverything?: boolean;
-  /** The danger card's title, used with `isEverything`: "Could not read your sessions". */
-  title?: string;
+  everything?: { title: string };
 };
 
 /**
@@ -94,7 +93,7 @@ export type UnreachableInstallationsAlertProps = {
  * corner "X" of the dismissible banners, in bui Alert's actions slot). It
  * stays closed for this set of installations while the page is mounted; a
  * different set (a new failure) or the next visit shows it again. A failure
- * that is the list's whole answer (`isEverything`) is a danger card instead,
+ * that is the list's whole answer (`everything`) is a danger card instead,
  * which stays; with `onRetry` either card offers "Try again".
  */
 export function UnreachableInstallationsAlert({
@@ -105,8 +104,7 @@ export function UnreachableInstallationsAlert({
   consequence,
   onRetry,
   isRetrying = false,
-  isEverything = false,
-  title: everythingTitle,
+  everything,
 }: UnreachableInstallationsAlertProps) {
   // Above every early return: hiding the card while the list loads, or while
   // nothing failed, must not forget that it was closed.
@@ -117,7 +115,7 @@ export function UnreachableInstallationsAlert({
   if (
     isLoading ||
     installations.length === 0 ||
-    (closedKey === key && !isEverything)
+    (closedKey === key && !everything)
   ) {
     return null;
   }
@@ -125,14 +123,12 @@ export function UnreachableInstallationsAlert({
 
   const count = installations.length;
   const title =
-    isEverything && everythingTitle
-      ? everythingTitle
-      : `Could not read ${countNoun(count, 'environment')}`;
+    everything?.title ?? `Could not read ${countNoun(count, 'environment')}`;
   const after = consequence ? ` ${consequence}` : '';
   const card = {
     title,
-    onClose: isEverything ? undefined : onClose,
-    status: isEverything ? ('danger' as const) : ('warning' as const),
+    onClose: everything ? undefined : onClose,
+    status: everything ? ('danger' as const) : ('warning' as const),
     retry: onRetry ? { onRetry, isRetrying } : undefined,
   };
 

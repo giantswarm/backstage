@@ -90,6 +90,7 @@ const loadedSessions: SessionsContextValue = {
   hasInstallations: true,
   unreachableInstallations: [],
   readFailures: {},
+  nothingRead: false,
   retry: () => {},
   isRetrying: false,
   notUserScopedInstallations: [],
@@ -183,6 +184,7 @@ describe('SessionsIndexPage', () => {
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
       unreachableInstallations: ['gazelle'],
+      nothingRead: true,
     });
     fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
     expect(screen.getByRole('alert')).toHaveTextContent(
@@ -256,6 +258,7 @@ describe('SessionsIndexPage', () => {
         readFailures: {
           gazelle: { reason: 'temporarily unavailable', requestId: 'req-9' },
         },
+        nothingRead: true,
         retry,
       });
 
@@ -333,6 +336,7 @@ describe('SessionsIndexPage', () => {
       readFailures: {
         gazelle: { reason: 'authentication failed', requestId: 'req-7' },
       },
+      nothingRead: true,
     });
 
     await render();
@@ -342,6 +346,27 @@ describe('SessionsIndexPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/gazelle \(authentication failed, request id req-7\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the closable warning when another installation answered with no sessions', async () => {
+    // golem answered with an empty list: the failure is partial, not the
+    // page's whole answer.
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      installations: ['gazelle', 'golem'],
+      unreachableInstallations: ['gazelle'],
+      nothingRead: false,
+    });
+
+    await render();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Try again' }),
     ).toBeInTheDocument();
   });
 

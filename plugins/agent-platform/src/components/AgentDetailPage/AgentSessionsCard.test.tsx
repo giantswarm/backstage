@@ -162,4 +162,22 @@ describe('AgentSessionsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps a quiet line, without a retry, when kagent is not deployed there', async () => {
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        sessions={{ ...sessions, rows: [], isUnavailable: true }}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    expect(
+      screen.getByText('Sessions could not be read from this environment.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Try again' }),
+    ).not.toBeInTheDocument();
+  });
 });

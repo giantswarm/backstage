@@ -147,6 +147,15 @@ async function readRequestError(
   };
 }
 
+/**
+ * The backend's message as the `cause` of an error that says something
+ * friendlier, so the installation and the upstream detail survive for the
+ * console and Sentry; nothing when the body carried none.
+ */
+function backendCause(message: string | undefined): { cause?: Error } {
+  return message ? { cause: new Error(message) } : {};
+}
+
 /** How `relayStream`'s errors name the request they are about. */
 type StreamWording = {
   /** What an in-band refusal refused. */
@@ -742,7 +751,7 @@ export class KagentApiClient implements KagentApi {
         // `reason: "unavailable"` is kagent or its gateway answering gRPC
         // `Unavailable`: the controller is down for a moment, and the person
         // hears that in place of a bare status.
-        const { fields } = await readRequestError(response);
+        const { message, fields } = await readRequestError(response);
         throw Object.assign(
           streamTransportError(
             isKagentUnavailable(fields)
@@ -750,6 +759,7 @@ export class KagentApiClient implements KagentApi {
               : `The ${wording.stream} failed with status ${response.status}.`,
           ),
           fields,
+          backendCause(message),
         );
       }
       // 4xx: a decision — a malformed message, a rejected token, an unknown
@@ -1015,12 +1025,18 @@ export class KagentApiClient implements KagentApi {
       // kagent down for a moment reads as that, not as the backend's message,
       // which quotes the gateway ("upstream call failed: Connect: Connection
       // refused"). The status, reason and request id still travel on the error.
-      let message =
-        bodyMessage ?? `kagent request failed with status ${response.status}`;
-      if (isKagentUnavailable(fields)) {
-        message = KAGENT_UNAVAILABLE_MESSAGE;
-      }
-      const error = Object.assign(new Error(message), fields);
+      // The backend's own message stays on the error as its `cause`, for the
+      // console and Sentry: the installation and the gateway's words.
+      const unavailable = isKagentUnavailable(fields);
+      const message = unavailable
+        ? KAGENT_UNAVAILABLE_MESSAGE
+        : (bodyMessage ??
+          `kagent request failed with status ${response.status}`);
+      const error = Object.assign(
+        new Error(message),
+        fields,
+        unavailable ? backendCause(bodyMessage) : {},
+      );
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`
       // raises InputError for a name outside the allowlist). That allowlist is

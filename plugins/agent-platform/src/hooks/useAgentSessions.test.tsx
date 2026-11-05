@@ -118,6 +118,22 @@ describe('useAgentSessions', () => {
     expect(listSessions).toHaveBeenCalledTimes(2);
   });
 
+  it('offers no reason and no retry when kagent is not deployed there', async () => {
+    // The backend's 404 for a socket failure: no retry changes it.
+    const listSessions = jest.fn().mockRejectedValue(
+      Object.assign(new Error('not available'), {
+        name: 'NotFoundError',
+        status: 404,
+      }),
+    );
+
+    const { result } = renderAgentSessions(listSessions);
+
+    await waitFor(() => expect(result.current.isUnavailable).toBe(true));
+    expect(result.current.failure).toBeUndefined();
+    expect(result.current.isRetrying).toBe(false);
+  });
+
   // react-query keeps `data` and sets `error` on a failed *refetch*. Since this
   // query is shared with the Sessions tab, arriving from that tab after its entry
   // went stale triggers a background refetch whose failure must not hide sessions

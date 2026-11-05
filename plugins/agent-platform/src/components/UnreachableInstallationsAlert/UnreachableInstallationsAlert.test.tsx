@@ -283,8 +283,7 @@ describe('UnreachableInstallationsAlert', () => {
         <UnreachableInstallationsAlert
           installations={['gremlin']}
           resourceName="sessions"
-          isEverything
-          title="Could not read your sessions"
+          everything={{ title: 'Could not read your sessions' }}
           onRetry={() => {}}
         />,
       );
@@ -309,8 +308,7 @@ describe('UnreachableInstallationsAlert', () => {
       rerender(
         <UnreachableInstallationsAlert
           installations={['gremlin']}
-          isEverything
-          title="Could not read your sessions"
+          everything={{ title: 'Could not read your sessions' }}
         />,
       );
       expect(screen.getByRole('alert')).toHaveTextContent(

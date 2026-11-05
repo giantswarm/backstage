@@ -1933,9 +1933,9 @@ describe('AgentDetailPage', () => {
 
       await renderPage('sessions');
 
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'Could not read your sessions',
-      );
+      expect(
+        screen.getByText('Sessions could not be read from this environment.'),
+      ).toBeInTheDocument();
       expect(
         screen.queryByText(/You have no sessions with this agent/),
       ).not.toBeInTheDocument();

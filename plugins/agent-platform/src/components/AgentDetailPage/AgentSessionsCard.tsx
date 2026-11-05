@@ -63,19 +63,29 @@ export function AgentSessionsCard({
     [rows, currentRevision],
   );
 
-  if (isUnavailable) {
-    // The tab's whole answer: an error with why and a retry, the Sessions
-    // page's own card, never the "no sessions" line below.
+  if (isUnavailable && failure) {
+    // kagent answered and failed: the tab's whole answer is an error with why
+    // and a retry, the Sessions page's own card, never the "no sessions" line
+    // below.
     return (
       <UnreachableInstallationsAlert
         installations={[installation]}
         resourceName="sessions"
-        failures={failure ? { [installation]: failure } : undefined}
-        isEverything
-        title="Could not read your sessions"
+        failures={{ [installation]: failure }}
+        everything={{ title: 'Could not read your sessions' }}
         onRetry={retry}
         isRetrying={isRetrying}
       />
+    );
+  }
+
+  if (isUnavailable) {
+    // kagent is not deployed or not reachable here: nothing a retry changes,
+    // and not an error of the person's reads.
+    return (
+      <Text variant="body-medium" color="secondary">
+        Sessions could not be read from this environment.
+      </Text>
     );
   }
 

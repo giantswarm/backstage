@@ -697,6 +697,10 @@ describe('RecentSessions', () => {
         expect(
           await screen.findByText('Could not read your sessions.'),
         ).toBeInTheDocument();
+        // Announced, politely, as the page's card is.
+        expect(screen.getByRole('status')).toHaveTextContent(
+          'Could not read your sessions.',
+        );
         expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument();
         expect(listSessions).toHaveBeenCalledTimes(1);
 
