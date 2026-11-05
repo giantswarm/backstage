@@ -415,14 +415,18 @@ test.describe('agents per tenant', () => {
         }),
         'pointing at the organization points at the name link',
       ).toBe(agent.name);
-      /** Where a row's first fact starts: the same on every row. */
-      const firstFactX = async (name: string) =>
-        (await rosterRowOf(alice, name)
+      /**
+       * Where a row's facts end. The facts (tags, then the Harness and
+       * environment columns) close the row on the right, so their end is the
+       * same on every row whose facts share the name's line — whatever they
+       * hold, none at all included. The organization beside the name must not
+       * push them onto a line of their own.
+       */
+      const factsEnd = (name: string) =>
+        rosterRowOf(alice, name)
           .getByTestId('agent-facts')
-          .locator(':scope > *')
-          .first()
-          .boundingBox())!.x;
-      const organizationRowFactX = await firstFactX(agent.name);
+          .evaluate(element => element.getBoundingClientRect().right);
+      const organizationRowFactsEnd = await factsEnd(agent.name);
       // The platform's agent belongs to no organization, and its row says
       // nothing of one.
       await searchRoster(alice, labAgent.name);
@@ -430,9 +434,9 @@ test.describe('agents per tenant', () => {
         timeout: rosterWait,
       });
       expect(
-        await firstFactX(labAgent.name),
+        await factsEnd(labAgent.name),
         'the platform agent’s facts line up with the organization’s agent’s',
-      ).toBeCloseTo(organizationRowFactX, 0);
+      ).toBeCloseTo(organizationRowFactsEnd, 0);
       await expect(
         rosterRowOf(alice, labAgent.name).getByText(
           /^(None|Organization: .*)$/,

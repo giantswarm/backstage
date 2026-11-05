@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
 import {
   ToolTable,
@@ -7,6 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 import {
   CatalogNoMatch,
+  isSearchableList,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -28,7 +29,8 @@ import { ShowMore } from '../ShowMore';
 /**
  * Up to this many resolved tools the list opens itself: collapsing a handful
  * of rows would hide what already fits on the screen. Above it every section
- * starts shut, and the search — not a scroll — is how one tool is found.
+ * starts shut. The search does not follow this bound: it is there from
+ * `SEARCH_MIN` tools on (`isSearchableList`), open sections or not.
  */
 export const AUTO_EXPAND_MAX = 20;
 
@@ -216,8 +218,10 @@ export type ToolsetResolutionListProps = {
  * opens as its counts: every section collapsed behind a one-line inventory,
  * the same disclosure structure the Tools step's catalogue uses, and a search
  * that opens the sections its matches are in. A resolution small enough to fit
- * on the screen ({@link AUTO_EXPAND_MAX}) skips all of that and simply shows
- * itself.
+ * on the screen ({@link AUTO_EXPAND_MAX}) opens every section. The search and
+ * inventory line follow the list rule instead: from `SEARCH_MIN` tools on
+ * (`isSearchableList`), so a resolution of a few tools has them above sections
+ * that are already open, and kept while a query is typed.
  *
  * Renders the resolution's other outcomes — an unknown preset, an aggregator
  * that predates toolsets, a failed read — as the messages they deserve rather
@@ -239,20 +243,13 @@ export function ToolsetResolutionList({
     [resolution.status, resolution.tools],
   );
 
-  // Short enough to read at a glance: no search field, nothing collapsed.
+  // Short enough to read at a glance: nothing collapsed.
   const isShort = tools.length <= AUTO_EXPAND_MAX;
-  // The selection can shrink the resolution under the threshold while a query
-  // is still typed, and the field goes away with it. Two things follow, and
-  // both are needed: the query must stop filtering on the very render that
-  // hides the field (or the card flashes "No tools match" with nothing left
-  // to clear it), and it must not survive to be reapplied if the resolution
-  // grows back — the author would meet a pre-filtered list they never typed.
-  const activeQuery = isShort ? '' : trimmed;
-  useEffect(() => {
-    if (isShort) {
-      setQuery('');
-    }
-  }, [isShort]);
+  // The search, from SEARCH_MIN tools on (`isSearchableList`), and kept while
+  // a query is typed, so a selection that shrinks the resolution leaves the
+  // query that narrows it visible and clearable.
+  const hidesSearch = !isSearchableList(tools.length, trimmed !== '');
+  const activeQuery = trimmed;
 
   const groups: CatalogueGroup[] = useMemo(
     () =>
@@ -358,7 +355,7 @@ export function ToolsetResolutionList({
         <Text color="secondary">{emptyText}</Text>
       ) : (
         <>
-          {!isShort && (
+          {!hidesSearch && (
             <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
               <Flex grow basis="240px" direction="column">
                 <SearchField

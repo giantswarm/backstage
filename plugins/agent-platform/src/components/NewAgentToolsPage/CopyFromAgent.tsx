@@ -7,7 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   CatalogNoMatch,
-  INITIAL_ROWS,
+  isSearchableList,
   matchesQuery,
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -31,12 +31,6 @@ import {
  * cards, so the catalogue below stays within reach.
  */
 const INITIAL_SOURCES = 12;
-
-/**
- * How many source agents before the step offers a search: past a page or so,
- * the agent to copy from is found by name, not by scanning cards.
- */
-const SOURCES_SEARCH_MIN = INITIAL_ROWS;
 
 /** Whether a source is the agent a search names: its display name, name or namespace. */
 function matchesSource(query: string, source: AgentToolsetSource): boolean {
@@ -126,7 +120,7 @@ export function CopyFromAgent({
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
   // Kept while a search is in force, so it can still be cleared.
-  const isSearchable = sources.length > SOURCES_SEARCH_MIN || trimmed !== '';
+  const isSearchable = isSearchableList(sources.length, trimmed !== '');
   const matching = useMemo(
     () =>
       trimmed === ''

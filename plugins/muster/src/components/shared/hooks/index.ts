@@ -5,7 +5,12 @@ export type {
   StatusText,
   UseServerSignInStatusOptions,
 } from './useServerSignInStatus';
-export { useConnectorGroupPaths } from './useConnectorGroupPaths';
-export type { ConnectorGroupPaths } from './useConnectorGroupPaths';
+export { useConnectorListPaths } from './useConnectorListPaths';
+export {
+  toolArgumentsQuery,
+  useToolArgumentSupport,
+  useToolTakesArgument,
+} from './useToolTakesArgument';
+export type { ConnectorListPaths } from './useConnectorListPaths';
 export { useWorkflowPageLinks } from './useWorkflowPageLinks';
 export type { WorkflowPageLinks } from './useWorkflowPageLinks';

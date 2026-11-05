@@ -45,11 +45,11 @@ export {
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
 export {
-  useConnectorGroupPaths,
+  useConnectorListPaths,
   useServerSignInStatus,
   useWorkflowPageLinks,
 } from './hooks';
-export type { ConnectorGroupPaths, WorkflowPageLinks } from './hooks';
+export type { ConnectorListPaths, WorkflowPageLinks } from './hooks';
 export type {
   ExplainedStatusText,
   ServerSignInStatusState,

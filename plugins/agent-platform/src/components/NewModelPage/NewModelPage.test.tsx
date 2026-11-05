@@ -565,7 +565,7 @@ describe('NewModelPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
 
-  it('offers three environments without a search', async () => {
+  it('offers type-ahead over three environments', async () => {
     mockInstallationNames = ['golem', 'snail', 'wombat'];
     await renderPage();
 
@@ -573,7 +573,7 @@ describe('NewModelPage · the environment select at scale', () => {
     expect(
       await screen.findByRole('option', { name: 'wombat' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 environments', async () => {

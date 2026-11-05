@@ -29,6 +29,8 @@ function makeAgent(
     namespace?: string;
     displayName?: string;
     description?: string;
+    /** The `ui.giantswarm.io/tags` annotation as written. */
+    tags?: string;
     modelConfig?: string;
     /** The Harness `spec.harnessRef` names; `null` leaves the ref out. */
     harness?: string | null;
@@ -48,6 +50,7 @@ function makeAgent(
     namespace = 'team-a',
     displayName,
     description,
+    tags,
     modelConfig,
     harness = 'kagent',
     skills = 0,
@@ -66,9 +69,15 @@ function makeAgent(
       namespace,
       generation,
       creationTimestamp,
-      annotations: displayName
-        ? { 'ui.giantswarm.io/display-name': displayName }
-        : undefined,
+      annotations:
+        displayName || tags !== undefined
+          ? {
+              ...(displayName && {
+                'ui.giantswarm.io/display-name': displayName,
+              }),
+              ...(tags !== undefined && { 'ui.giantswarm.io/tags': tags }),
+            }
+          : undefined,
     },
     status: status ? { ...status, observedGeneration } : undefined,
     spec: {
@@ -203,6 +212,7 @@ describe('toAgentRow', () => {
       namespace: 'sre-team',
       displayName: 'Incident triager',
       description: 'Triages incidents',
+      tags: 'sre, incidents',
       modelConfig: 'sonnet-4-6',
       skills: 3,
     });
@@ -221,6 +231,7 @@ describe('toAgentRow', () => {
       name: 'Incident triager',
       technicalName: 'triager',
       description: 'Triages incidents',
+      tags: ['sre', 'incidents'],
       model: 'Claude Sonnet 4.6',
       // The display label and the model string are deliberately different
       // fields: only `modelName` matches what the gateway calls the model
