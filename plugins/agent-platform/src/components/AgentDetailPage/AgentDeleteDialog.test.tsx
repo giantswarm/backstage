@@ -198,14 +198,16 @@ describe('AgentDeleteDialog', () => {
         'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
       ),
     ).not.toBeVisible();
-    expect(
-      screen.getByRole('link', {
-        name: 'giantswarm/giantswarm-management-clusters',
-      }),
-    ).toHaveAttribute(
+    // The repository is on GitHub: it opens in a new tab, and says so.
+    const repository = screen.getByRole('link', {
+      name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
+    });
+    expect(repository).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/giantswarm-management-clusters',
     );
+    expect(repository).toHaveAttribute('target', '_blank');
+    expect(repository).toHaveAttribute('rel', 'noopener noreferrer');
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).not.toBeInTheDocument();

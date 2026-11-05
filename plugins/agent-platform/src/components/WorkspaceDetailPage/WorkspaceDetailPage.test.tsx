@@ -261,15 +261,18 @@ describe('WorkspaceDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links each repository at its provider’s host', async () => {
+  it('links each repository at its provider’s host, in a new tab', async () => {
     mockProviders = [
       { name: 'github', kind: 'github', connected: true, host: 'github.com' },
     ];
     await renderPage();
 
-    expect(
-      screen.getByRole('link', { name: 'example-org/api' }),
-    ).toHaveAttribute('href', 'https://github.com/example-org/api');
+    const link = screen.getByRole('link', {
+      name: 'example-org/api (opens in a new tab)',
+    });
+    expect(link).toHaveAttribute('href', 'https://github.com/example-org/api');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('lists the Sessions on the workspace with their cleanup dates, and filters to mine', async () => {

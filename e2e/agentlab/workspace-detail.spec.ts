@@ -118,6 +118,13 @@ async function expectWorkspaceTabs(page: Page, session: string): Promise<void> {
       .nth(1)
       .getByText(/^[0-9a-f]{7}$/),
   ).toBeVisible();
+  // A repository linked at its provider's host opens in a new tab, and its
+  // name says so.
+  for (const link of await main.locator('table a[href^="https://"]').all()) {
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(link).toHaveAccessibleName(/ \(opens in a new tab\)$/);
+  }
 
   // A Session's directory shows once a sync has measured it.
   await synchronize(page);

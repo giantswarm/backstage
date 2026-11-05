@@ -11,6 +11,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
+  ExternalLink,
   type Fact,
   FactList,
   LoadingIndicator,
@@ -97,18 +98,12 @@ const useStyles = makeStyles({
   },
 });
 
-/** A fact's link out to GitHub, at the size of the fact list it is in. */
+/**
+ * A fact's link out to GitHub, in a new tab, at the size of the fact list it
+ * is in (the list sets it on the value it holds).
+ */
 function FactLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      variant={useFactTextVariant()}
-    >
-      {children}
-    </Link>
-  );
+  return <ExternalLink href={href}>{children}</ExternalLink>;
 }
 
 /** A commit as a fact's value, at the fact list's size, the full SHA at hand. */

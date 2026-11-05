@@ -1195,12 +1195,14 @@ describe('EditAgentPage', () => {
         screen.getByText(
           /^This agent is defined in Git outside the directory the portal writes to\. Change it in the file that defines it in/,
         ),
-      ).toHaveTextContent('in giantswarm/giantswarm-management-clusters.');
+      ).toHaveTextContent(
+        'in giantswarm/giantswarm-management-clusters (opens in a new tab).',
+      );
       // Only what agent-manager reports is linked: the repository, never a
       // guess at where the release is defined.
       expect(
         screen.getByRole('link', {
-          name: 'giantswarm/giantswarm-management-clusters',
+          name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
         }),
       ).toHaveAttribute(
         'href',

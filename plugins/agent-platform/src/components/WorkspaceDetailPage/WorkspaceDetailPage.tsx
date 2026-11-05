@@ -31,6 +31,7 @@ import {
   type CatalogFacet,
   DateComponent,
   EmptyStateCard,
+  ExternalLink,
   type Fact,
   FactList,
   formatLocalDateFull,
@@ -668,21 +669,37 @@ function RepositoriesTab({
       isRowHeader: true,
       defaultWidth: '3fr',
       minWidth: 200,
-      cell: mirror => (
-        <CellText
-          title={mirror.repository}
-          href={
-            hosts.has(mirror.provider)
-              ? `https://${hosts.get(mirror.provider)}/${mirror.repository}`
-              : undefined
-          }
-          description={
-            mirror.droppedAt
-              ? 'left the selection, kept while a session uses it'
-              : undefined
-          }
-        />
-      ),
+      cell: mirror => {
+        const description = mirror.droppedAt
+          ? 'left the selection, kept while a session uses it'
+          : undefined;
+        if (!hosts.has(mirror.provider)) {
+          return (
+            <CellText title={mirror.repository} description={description} />
+          );
+        }
+        // The repository lives at its provider, outside the portal: it opens
+        // in a new tab and says so, the page staying where it is.
+        return (
+          <Cell>
+            <Flex direction="column" gap="0" style={{ minWidth: 0 }}>
+              <ExternalLink
+                href={`https://${hosts.get(mirror.provider)}/${mirror.repository}`}
+                display="flex"
+              >
+                <Text truncate title={mirror.repository}>
+                  {mirror.repository}
+                </Text>
+              </ExternalLink>
+              {description && (
+                <Text color="secondary" truncate title={description}>
+                  {description}
+                </Text>
+              )}
+            </Flex>
+          </Cell>
+        );
+      },
     },
     {
       id: 'branch',
