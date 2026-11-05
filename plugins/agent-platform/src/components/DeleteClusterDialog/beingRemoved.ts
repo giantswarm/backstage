@@ -81,36 +81,42 @@ export function removalStateOf(
   return unsuspendedIntoCluster ? 'needs-pass' : 'going';
 }
 
+/** What one read answered: the object's state, nothing to learn, or a failure of the proxy. */
+type ReadAnswer = RemovalState | 'unknown' | 'failed';
+
 async function readOne(
   kubernetesApi: Pick<KubernetesApi, 'proxy'>,
   installation: string,
   object: ObjectAction,
   timeoutMs: number,
-): Promise<RemovalState | undefined> {
+): Promise<ReadAnswer> {
   const path = objectPath(object);
   if (!path) {
-    return undefined;
+    return 'unknown';
   }
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<undefined>(resolve => {
+  const timeout = new Promise<ReadAnswer>(resolve => {
     timer = setTimeout(() => {
       controller.abort();
-      resolve(undefined);
+      resolve('failed');
     }, timeoutMs);
   });
-  const read = (async () => {
+  const read = (async (): Promise<ReadAnswer> => {
     try {
       const response = await kubernetesApi.proxy({
         clusterName: installation,
         path,
         init: { signal: controller.signal },
       });
-      return response.ok
-        ? removalStateOf(object, await response.json())
-        : undefined;
+      if (response.ok) {
+        return removalStateOf(object, await response.json());
+      }
+      // The proxy answers 500 when it cannot reach the installation (and
+      // logs it as an error); 403 and 404 are answers about the object.
+      return response.status >= 500 ? 'failed' : 'unknown';
     } catch {
-      return undefined;
+      return 'failed';
     }
   })();
   try {
@@ -120,6 +126,18 @@ async function readOne(
   }
 }
 
+/** A round of reads: the states read, and whether a read failed in the proxy. */
+export type RemovalRead = {
+  states: RemovalStates;
+  /**
+   * A read threw, timed out or got a 5xx: the proxy or the installation is
+   * not answering, and each further read would be one more proxy error in
+   * the backend's log (and Sentry). The dialog stops reading for the rest of
+   * the opening.
+   */
+  failed: boolean;
+};
+
 /**
  * Reads, as the person on the installation's API, the objects a dry run would
  * delete whose state is not known to be `going` already: a deletion once
@@ -127,7 +145,8 @@ async function readOne(
  * Answers the state of each object read, by its key ({@link objectKey}). An
  * object that cannot be read — not allowed, gone, of another kind, too slow —
  * is not in the answer: what was known of it stays, and an object never read
- * counts as a removal anew, as without the read.
+ * counts as a removal anew, as without the read. A read that fails in the
+ * proxy marks the round {@link RemovalRead.failed}.
  */
 export async function readRemovalStates(
   kubernetesApi: Pick<KubernetesApi, 'proxy'>,
@@ -135,25 +154,25 @@ export async function readRemovalStates(
   objects: readonly ObjectAction[],
   known: RemovalStates,
   timeoutMs: number = BEING_REMOVED_READ_TIMEOUT_MS,
-): Promise<RemovalStates> {
+): Promise<RemovalRead> {
   const toRead = objects.filter(
     object =>
       object.action === 'would-delete' &&
       known.get(objectKey(object)) !== 'going',
   );
-  const states = await Promise.all(
+  const answers = await Promise.all(
     toRead.map(object =>
       readOne(kubernetesApi, installation, object, timeoutMs),
     ),
   );
-  const read = new Map<string, RemovalState>();
+  const states = new Map<string, RemovalState>();
   toRead.forEach((object, index) => {
-    const state = states[index];
-    if (state) {
-      read.set(objectKey(object), state);
+    const answer = answers[index];
+    if (answer !== 'unknown' && answer !== 'failed') {
+      states.set(objectKey(object), answer);
     }
   });
-  return read;
+  return { states, failed: answers.includes('failed') };
 }
 
 /**

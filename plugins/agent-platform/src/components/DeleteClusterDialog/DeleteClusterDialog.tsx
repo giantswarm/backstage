@@ -137,6 +137,35 @@ export function DeleteClusterDialog({
   };
   /** The read after the opening dry run: a pass waits for it before writing. */
   const openingRead = useRef<Promise<void>>();
+  /**
+   * A round of reads failed in the Kubernetes proxy: no more reads until the
+   * dialog is closed, so a proxy that is down is not asked again every check
+   * (each failure is a proxy error in the backend's log). Objects not read
+   * count as removals anew, as without the reads.
+   */
+  const readsStopped = useRef(false);
+  /**
+   * Reads the states of the objects, unless reads stopped; a failed round
+   * stops them, if it still belongs to this opening (`isCurrent`).
+   */
+  const readStates = async (
+    objects: readonly ObjectAction[],
+    isCurrent: () => boolean,
+  ): Promise<RemovalStates> => {
+    if (readsStopped.current) {
+      return NO_STATES;
+    }
+    const { states: read, failed } = await readRemovalStates(
+      kubernetesApi,
+      installation,
+      objects,
+      statesRef.current,
+    );
+    if (failed && isCurrent()) {
+      readsStopped.current = true;
+    }
+    return read;
+  };
   const input: DeleteClusterInput = { organization, name };
   const startAnswer = useOpenGeneration(isOpen);
   // A Delete without the name typed says so on the field and focuses it, as
@@ -165,12 +194,7 @@ export function DeleteClusterDialog({
       // The preview shows already; a pass pressed before the read answers
       // waits for it (onPass).
       const { objects } = judged.apply.result;
-      const reading = readRemovalStates(
-        kubernetesApi,
-        installation,
-        objects,
-        statesRef.current,
-      ).then(read => {
+      const reading = readStates(objects, isCurrent).then(read => {
         if (isCurrent()) {
           updateStates(mergeRemovalStates(statesRef.current, objects, read));
         }
@@ -193,6 +217,7 @@ export function DeleteClusterDialog({
       setCommitted(undefined);
       updateStates(NO_STATES);
       openingRead.current = undefined;
+      readsStopped.current = false;
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -286,12 +311,7 @@ export function DeleteClusterDialog({
         });
         // Only what is not known to be going: a read that fails keeps what
         // an earlier one found.
-        const read = await readRemovalStates(
-          kubernetesApi,
-          installation,
-          result.objects,
-          statesRef.current,
-        );
+        const read = await readStates(result.objects, isCurrent);
         known = mergeRemovalStates(statesRef.current, result.objects, read);
         next = judgeNextPass(result, passes, known);
       } catch {

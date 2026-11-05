@@ -115,17 +115,19 @@ describe('readRemovalStates', () => {
       object('HelmRelease', 'demo1-x', undefined, 'would-update'),
     ];
 
-    const read = await readRemovalStates(
+    const { states, failed } = await readRemovalStates(
       { proxy },
       'inst-1',
       objects,
       new Map(),
     );
 
-    expect([...read]).toEqual([
+    expect([...states]).toEqual([
       [objectKey(objects[0]), 'going'],
       [objectKey(objects[1]), 'live'],
     ]);
+    // A 403 is an answer about the object, not a failure of the proxy.
+    expect(failed).toBe(false);
     expect(proxy).toHaveBeenCalledTimes(3);
     expect(proxy).toHaveBeenCalledWith({
       clusterName: 'inst-1',
@@ -151,6 +153,33 @@ describe('readRemovalStates', () => {
     );
   });
 
+  it('answers a failed round when the proxy cannot reach the installation', async () => {
+    const proxy = jest.fn(async () => response(500));
+
+    const { states, failed } = await readRemovalStates(
+      { proxy },
+      'inst-1',
+      [object('HelmRelease', 'demo1')],
+      new Map(),
+    );
+
+    expect(states.size).toBe(0);
+    expect(failed).toBe(true);
+  });
+
+  it('does not answer a failed round for an object that is gone', async () => {
+    const proxy = jest.fn(async () => response(404));
+
+    const { failed } = await readRemovalStates(
+      { proxy },
+      'inst-1',
+      [object('HelmRelease', 'demo1')],
+      new Map(),
+    );
+
+    expect(failed).toBe(false);
+  });
+
   it('leaves out an object whose read fails, and aborts one that takes too long', async () => {
     let signal: AbortSignal | undefined;
     const proxy = jest
@@ -161,7 +190,7 @@ describe('readRemovalStates', () => {
         return new Promise(() => {});
       });
 
-    const read = await readRemovalStates(
+    const { states, failed } = await readRemovalStates(
       { proxy },
       'inst-1',
       [object('HelmRelease', 'a'), object('HelmRelease', 'b')],
@@ -169,7 +198,8 @@ describe('readRemovalStates', () => {
       10,
     );
 
-    expect(read.size).toBe(0);
+    expect(states.size).toBe(0);
+    expect(failed).toBe(true);
     expect(signal?.aborted).toBe(true);
   });
 });

@@ -185,12 +185,17 @@ type Scenario = {
   unsuspended?: string[];
   /** The reads answer only once this settles: a slow Kubernetes proxy. */
   holdReads?: Promise<void>;
+  /** The Kubernetes proxy cannot reach the installation: every read answers 500. */
+  proxyDown?: boolean;
 };
 
 /** The installation's API as the person reads it: GET of one object. */
 function makeKubernetesApi(scenario: Scenario = {}) {
   const proxy = jest.fn(async ({ path }: { path: string }) => {
     await scenario.holdReads;
+    if (scenario.proxyDown) {
+      return { ok: false, status: 500, json: async () => ({}) } as Response;
+    }
     const name = path.split('/').filter(Boolean).at(-1)!;
     const terminating = scenario.beingRemoved?.includes(name);
     const unsuspended = scenario.unsuspended?.includes(name);
@@ -308,6 +313,11 @@ async function deleteCluster(user: ReturnType<typeof userEvent.setup>) {
 const writesOf = (callTool: jest.Mock) =>
   callTool.mock.calls.filter(
     call => !(call[1] as Record<string, unknown>).dryRun,
+  );
+
+const dryRunsOf = (callTool: jest.Mock) =>
+  callTool.mock.calls.filter(
+    call => (call[1] as Record<string, unknown>).dryRun,
   );
 
 describe('DeleteClusterDialog', () => {
@@ -633,6 +643,53 @@ describe('DeleteClusterDialog', () => {
           jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
         });
 
+        expect(proxy).toHaveBeenCalledTimes(1);
+        expect(
+          screen.queryByRole('button', { name: 'Finish removal' }),
+        ).not.toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('stops reading for the rest of the opening once a round of reads fails in the proxy', async () => {
+      jest.useFakeTimers();
+      try {
+        const user = userEvent.setup({ delay: null });
+        const { callTool, proxy } = await renderDialog(
+          {
+            opening: dryRun([
+              object('HelmRelease', 'demo1-observability', 'would-delete'),
+            ]),
+            // The pass deletes the release; the checks still list it while
+            // it goes, so each would read it again.
+            passes: [
+              pass([object('HelmRelease', 'demo1-observability', 'delete')]),
+            ],
+            checks: [
+              dryRun([
+                object('HelmRelease', 'demo1-observability', 'would-delete'),
+              ]),
+            ],
+            proxyDown: true,
+          },
+          false,
+        );
+        await deleteCluster(user);
+        expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
+        // The opening read failed: the pass went ahead without it.
+        expect(proxy).toHaveBeenCalledTimes(1);
+
+        const checksBefore = dryRunsOf(callTool).length;
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+
+        // The checks go on; the reads do not.
+        expect(dryRunsOf(callTool).length).toBe(checksBefore + 2);
         expect(proxy).toHaveBeenCalledTimes(1);
         expect(
           screen.queryByRole('button', { name: 'Finish removal' }),
