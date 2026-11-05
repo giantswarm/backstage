@@ -188,9 +188,11 @@ export function readPartText(part: A2aPartWire): string | undefined {
 /**
  * Whether a text part is the model's *reasoning* rather than its answer.
  *
- * Set by kagent's ADK bridge before 1.1, as `{adk,kagent}_thought` on the part.
- * From 1.1 a thinking block arrives as a plain text part with no marker, so this
- * is only ever true in history stored by an older controller.
+ * Marked `kagent.dev/a2a/thought` by kagent's public metadata contract, which
+ * the Go ADK runtime sets. History stored by controllers before 1.1 carries
+ * `{adk,kagent}_thought` instead. Runtimes that drop the marker (the Python ADK,
+ * the harnesses) send reasoning as a plain text part, which reads as the
+ * answer: see {@link readKagentMetadata}.
  */
 export function isThoughtPart(part: A2aPartWire): boolean {
   return isKagentMetadataFlagSet(part.metadata, 'thought');

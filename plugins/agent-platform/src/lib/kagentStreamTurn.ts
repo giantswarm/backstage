@@ -325,7 +325,9 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         'author',
       );
 
-      let text = '';
+      // The text read so far, as runs of one kind: an artifact can carry the
+      // model's reasoning and then its answer, and each is its own item.
+      let runs: { kind: 'agent-message' | 'reasoning'; text: string }[] = [];
       /**
        * Emit the complete message this event carries, at the position reached
        * so far.
@@ -347,20 +349,20 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
           flushLiveRun(next);
         }
         next.live = undefined;
-        if (!text) {
-          return;
+        for (const run of runs) {
+          // A run that is this same text knows the author when the artifact
+          // does not say.
+          const repeats =
+            live?.kind === run.kind && live.text.trim() === run.text.trim();
+          pushTextItem(
+            next,
+            run.kind,
+            run.text,
+            artifactId,
+            artifactAuthor ?? (repeats ? live?.author : undefined),
+          );
         }
-        // A run that is this same text knows the author when the artifact
-        // does not say.
-        const repeats = live?.text.trim() === text.trim();
-        pushTextItem(
-          next,
-          'agent-message',
-          text,
-          artifactId,
-          artifactAuthor ?? (repeats ? live?.author : undefined),
-        );
-        text = '';
+        runs = [];
       };
 
       for (const rawPart of parts) {
@@ -370,18 +372,18 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         }
         const partText = readPartText(part);
         if (partText !== undefined) {
-          text += partText;
+          const kind = isThoughtPart(part) ? 'reasoning' : 'agent-message';
+          const run = runs.at(-1);
+          if (run?.kind === kind) {
+            run.text += partText;
+          } else {
+            runs.push({ kind, text: partText });
+          }
           if (partial === true && !next.skipPartialArtifacts) {
             // Appended as the parts are read rather than after the loop: a
             // `function_call` later in this same event must not take its item
             // slot ahead of the text that came before it.
-            appendLiveText(
-              next,
-              'agent-message',
-              partText,
-              undefined,
-              artifactAuthor,
-            );
+            appendLiveText(next, kind, partText, undefined, artifactAuthor);
           }
           continue;
         }

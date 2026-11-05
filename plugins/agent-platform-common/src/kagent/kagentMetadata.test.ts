@@ -12,6 +12,7 @@ describe('readKagentMetadata', () => {
   it.each([
     ['type', 'kagent.dev/a2a/part-type', 'function_call'],
     ['usage_metadata', 'kagent.dev/a2a/usage', { promptTokenCount: 1 }],
+    ['thought', 'kagent.dev/a2a/thought', true],
   ])('reads %s under its canonical key %s', (key, canonical, value) => {
     expect(readKagentMetadata({ [canonical]: value }, key)).toEqual(value);
   });
@@ -119,6 +120,12 @@ describe('isKagentMetadataFlagSet', () => {
     expect(isKagentMetadataFlagSet({ adk_thought: true }, 'thought')).toBe(
       true,
     );
+  });
+
+  it('reads the canonical key', () => {
+    expect(
+      isKagentMetadataFlagSet({ 'kagent.dev/a2a/thought': true }, 'thought'),
+    ).toBe(true);
   });
 
   it.each(['true', 1, {}, false, undefined])('is false for %p', value => {

@@ -195,6 +195,57 @@ describe('applyStreamEvent on A2A v1 StreamResponse frames', () => {
     ]);
   });
 
+  it('streams the reasoning kagent’s Go ADK runtime marks apart from the answer', () => {
+    // The runtime copies ADK's thought flag to `kagent.dev/a2a/thought` and drops
+    // every adk_ key, so the canonical marker is the only one on the wire.
+    const thought = (text: string) => ({
+      text,
+      metadata: { 'kagent.dev/a2a/thought': true },
+    });
+    const artifact = (artifactId: string, parts: unknown[]) => ({
+      artifactUpdate: {
+        taskId,
+        contextId: 'c1',
+        artifact: { artifactId, parts },
+        lastChunk: true,
+      },
+    });
+    const turn = [
+      artifact('art-call', [
+        thought('One list call on namespaces answers it.'),
+        {
+          data: { id: 'call-1', name: 'kubectl_get', args: {} },
+          metadata: { 'kagent.dev/a2a/part-type': 'function_call' },
+        },
+      ]),
+      artifact('art-reply', [
+        thought('The list returned 12 items.'),
+        { text: 'There are 12 namespaces.' },
+      ]),
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'c1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+        },
+      },
+    ].reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+    expect(
+      turn.items.map(item =>
+        'text' in item ? [item.kind, item.text] : [item.kind],
+      ),
+    ).toEqual([
+      ['reasoning', 'One list call on namespaces answers it.'],
+      ['tool-call'],
+      ['reasoning', 'The list returned 12 items.'],
+      ['agent-message', 'There are 12 namespaces.'],
+    ]);
+  });
+
   it('keys what an artifact completes by its id, which is how the poll reads it back', () => {
     // As recorded on kagent: a call and the reply, each its own artifact, the
     // reply in chunks without a partial stamp and whole on its `lastChunk`.
@@ -686,6 +737,49 @@ describe('applyStreamEvent', () => {
 
       expect(turn.live?.text).toBe('Token by token.');
       expect(turn.items).toEqual([]);
+    });
+
+    it('streams marked reasoning as reasoning, then settles it once', () => {
+      const canonicalThought = (text: string) => ({
+        kind: 'text',
+        text,
+        metadata: { 'kagent.dev/a2a/thought': true },
+      });
+      const streaming = fold([
+        artifactUpdate([canonicalThought('Checking the ')], { partial: true }),
+        artifactUpdate([canonicalThought('ingress.')], { partial: true }),
+      ]);
+
+      expect(streaming.live).toEqual(
+        expect.objectContaining({
+          kind: 'reasoning',
+          text: 'Checking the ingress.',
+        }),
+      );
+
+      const turn = fold(
+        [
+          artifactUpdate([textPart('It is ')], { partial: true }),
+          artifactUpdate(
+            [
+              canonicalThought('Checking the ingress.'),
+              textPart('It is healthy.'),
+            ],
+            { partial: false },
+          ),
+        ],
+        streaming,
+      );
+
+      // The reasoning closed when the answer began, and the complete artifact
+      // repeats it: it shows once, ahead of the answer.
+      expect(turn.live).toBeUndefined();
+      expect(
+        turn.items.map(item => 'text' in item && [item.kind, item.text]),
+      ).toEqual([
+        ['reasoning', 'Checking the ingress.'],
+        ['agent-message', 'It is healthy.'],
+      ]);
     });
 
     it('emits the complete artifact as an item and closes the run', () => {

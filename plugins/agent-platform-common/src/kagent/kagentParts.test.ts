@@ -3,7 +3,9 @@ import {
   isAgentToolName,
   isFunctionCallPart,
   isInternalToolName,
+  isThoughtPart,
   MUSTER_PROXY_LABEL,
+  readMessageText,
   readUsageReport,
   readNestedTokenUsage,
   readTokenUsage,
@@ -311,5 +313,49 @@ describe('tool name predicates', () => {
         metadata: { adk_type: 'function_response' },
       }),
     ).toBe(false);
+  });
+});
+
+describe('isThoughtPart', () => {
+  const text = (metadata?: Record<string, unknown>) => ({
+    kind: 'text',
+    text: 'Checking the ingress first.',
+    ...(metadata ? { metadata } : {}),
+  });
+
+  it('reads the marker kagent’s Go ADK runtime writes', () => {
+    expect(isThoughtPart(text({ 'kagent.dev/a2a/thought': true }))).toBe(true);
+  });
+
+  it.each(['adk_thought', 'kagent_thought'])(
+    'still reads %s in history stored before kagent 1.1',
+    key => {
+      expect(isThoughtPart(text({ [key]: true }))).toBe(true);
+    },
+  );
+
+  it('takes a plain text part as the answer', () => {
+    // What the Python ADK runtime and the harnesses send, reasoning or not.
+    expect(isThoughtPart(text())).toBe(false);
+  });
+
+  it('lets the canonical marker decide over a legacy one', () => {
+    expect(
+      isThoughtPart(
+        text({ 'kagent.dev/a2a/thought': false, adk_thought: true }),
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps marked reasoning out of a message’s plain text', () => {
+    expect(
+      readMessageText({
+        role: 'agent',
+        parts: [
+          text({ 'kagent.dev/a2a/thought': true }),
+          { kind: 'text', text: 'The model hit its context limit.' },
+        ],
+      }),
+    ).toBe('The model hit its context limit.');
   });
 });
