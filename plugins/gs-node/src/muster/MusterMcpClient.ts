@@ -21,6 +21,12 @@ import {
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
 import { MusterUnreachableError } from './musterUnreachable';
+import {
+  FREQUENT_LOST_SESSIONS,
+  FREQUENT_LOST_SESSIONS_WINDOW_MS,
+  LostSessionTracker,
+  sharedLostSessionTracker,
+} from './lostSessions';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -57,14 +63,6 @@ const LIST_TOOLS_PAGE_SIZE = 1000;
  * looping.
  */
 const LIST_TOOLS_MAX_PAGES = 20;
-
-/**
- * How many recovered session losses on one installation, within
- * {@link FREQUENT_LOST_SESSIONS_WINDOW_MS}, are reported as a warning: far
- * more than an idle TTL or a roll causes.
- */
-const FREQUENT_LOST_SESSIONS = 10;
-const FREQUENT_LOST_SESSIONS_WINDOW_MS = 10 * 60_000;
 
 /** What the paging reads of a `list_tools` page; the rest passes through. */
 type ListToolsPage = Record<string, unknown> & {
@@ -405,9 +403,6 @@ async function connectProgressClient(
  */
 export class MusterMcpClient {
   private readonly cache: McpClientCache;
-  /** When the last {@link FREQUENT_LOST_SESSIONS} recovered losses happened. */
-  private readonly lostSessionTimes: number[] = [];
-  private lastFrequentLossWarning = -Infinity;
   private readonly signIns: PendingSignIns;
 
   constructor(
@@ -428,7 +423,8 @@ export class MusterMcpClient {
       headers: Record<string, string> | undefined,
     ) => Promise<ProgressCallClient> = headers =>
       connectProgressClient(installation.url, headers),
-    now: () => number = Date.now,
+    private readonly now: () => number = Date.now,
+    private readonly lostSessions: LostSessionTracker = sharedLostSessionTracker,
   ) {
     this.cache = new McpClientCache(logger);
     this.signIns = new PendingSignIns(now);
@@ -694,7 +690,7 @@ export class MusterMcpClient {
         'Muster MCP session was lost; re-initializing and retrying once',
         { installation: this.installation.name, cause: messageOf(error) },
       );
-      this.noteLostSession();
+      this.noteLostSession(first.client);
     }
 
     const second = await this.connectOrExplain(options);
@@ -709,34 +705,26 @@ export class MusterMcpClient {
   }
 
   /**
-   * Warn, at most once per {@link FREQUENT_LOST_SESSIONS_WINDOW_MS}, when this
-   * installation lost {@link FREQUENT_LOST_SESSIONS} sessions within that
-   * window. Each loss is recovered and logged at `info`, so a gateway that drops
-   * sessions on nearly every request (a TTL shorter than the request interval,
-   * a session-key rotation) would otherwise only show as slower requests, each
-   * paying for a second `initialize`.
+   * Warn when this installation lost {@link FREQUENT_LOST_SESSIONS} sessions
+   * within {@link FREQUENT_LOST_SESSIONS_WINDOW_MS}, at most once per window
+   * (see {@link LostSessionTracker}). Each loss is logged at `info`, so a
+   * gateway that drops sessions on nearly every request (a TTL shorter than the
+   * request interval, a session-key rotation) would otherwise only show as
+   * slower requests. A loss whose retry fails too is counted as well; that
+   * failure is reported on its own by {@link explain}.
    */
-  private noteLostSession(): void {
-    const now = Date.now();
-    this.lostSessionTimes.push(now);
-    if (this.lostSessionTimes.length > FREQUENT_LOST_SESSIONS) {
-      this.lostSessionTimes.shift();
+  private noteLostSession(client: MCPClient): void {
+    if (!this.lostSessions.note(this.installation.name, client, this.now())) {
+      return;
     }
-    if (
-      this.lostSessionTimes.length === FREQUENT_LOST_SESSIONS &&
-      now - this.lostSessionTimes[0] < FREQUENT_LOST_SESSIONS_WINDOW_MS &&
-      now - this.lastFrequentLossWarning >= FREQUENT_LOST_SESSIONS_WINDOW_MS
-    ) {
-      this.lastFrequentLossWarning = now;
-      this.logger.warn(
-        'Muster MCP sessions are lost often; requests re-initialize before they run',
-        {
-          installation: this.installation.name,
-          lostSessions: FREQUENT_LOST_SESSIONS,
-          windowMinutes: FREQUENT_LOST_SESSIONS_WINDOW_MS / 60_000,
-        },
-      );
-    }
+    this.logger.warn(
+      'Muster MCP sessions are lost often; requests re-initialize before they run',
+      {
+        installation: this.installation.name,
+        lostSessions: FREQUENT_LOST_SESSIONS,
+        windowMinutes: FREQUENT_LOST_SESSIONS_WINDOW_MS / 60_000,
+      },
+    );
   }
 
   private async connectOrExplain(options?: { authToken?: string }) {

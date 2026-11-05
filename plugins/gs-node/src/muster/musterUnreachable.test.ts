@@ -10,7 +10,12 @@ describe('musterUnreachableErrorHandler', () => {
     const status = jest.fn(() => ({ json }));
     return { res: { headersSent, status }, status, json };
   }
-  const req = { method: 'GET', url: '/tools?installation=gazelle' };
+  // Inside the plugin's router: `url` lost the mount path, `originalUrl` has it.
+  const req = {
+    method: 'GET',
+    url: '/tools?installation=gazelle',
+    originalUrl: '/api/muster/tools?installation=gazelle',
+  };
 
   it('answers an unreachable installation 503 with the error middleware body', () => {
     const { res, status, json } = response();
@@ -30,7 +35,7 @@ describe('musterUnreachableErrorHandler', () => {
         name: 'ServiceUnavailableError',
         message: 'gazelle did not answer: the connection was closed',
       },
-      request: { method: 'GET', url: '/tools?installation=gazelle' },
+      request: { method: 'GET', url: '/api/muster/tools?installation=gazelle' },
       response: { statusCode: 503 },
     });
   });

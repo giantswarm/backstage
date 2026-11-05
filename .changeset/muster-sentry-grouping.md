@@ -14,9 +14,12 @@ logs `Muster MCP request failed: <reason>` with the installation in the log
 metadata and throws the new `MusterUnreachableError` (a
 `ServiceUnavailableError`). Every backend router that calls muster answers it
 503 through `musterUnreachableErrorHandler()`, with the body the error
-middleware sends, so the middleware no longer reports the same failure again. A
-lost session that the client re-initializes and retries is logged at `info`
-instead of `warn`, and a warning says so when one installation loses ten
-sessions within ten minutes. The error text the person sees is unchanged, except
-that `list_tools` still being truncated after 20 pages no longer names the
+middleware sends, so the middleware no longer reports the same failure again;
+the plans, roadmap, platform-capabilities and repositories routers no longer
+read its text as one of GitHub's 403, 404 or 429 answers, and the GitHub token
+router logs it at `info`. A lost session that the client re-initializes and
+retries is logged at `info` instead of `warn`, and a warning says so when one
+installation, across all of the backend's muster clients, loses ten sessions
+within ten minutes. The error text the person sees is unchanged, except that
+`list_tools` still being truncated after 20 pages no longer names the
 installation.

@@ -8,6 +8,7 @@ import {
 import { InputError } from '@backstage/errors';
 import {
   MusterServerGateway,
+  MusterUnreachableError,
   musterUnreachableErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
@@ -132,10 +133,15 @@ export function createGithubTokenRouter(
     try {
       login = await github.login(subjectToken);
     } catch (error) {
-      logger.warn(
-        'GitHub token: the broker released no grant and muster could not be asked to connect',
-        { server: github.server, error: String(error) },
-      );
+      const message =
+        'GitHub token: the broker released no grant and muster could not be asked to connect';
+      const meta = { server: github.server, error: String(error) };
+      if (error instanceof MusterUnreachableError) {
+        // MusterMcpClient has warned about the unreachable muster already.
+        logger.info(message, meta);
+      } else {
+        logger.warn(message, meta);
+      }
       res.status(502).json({
         error: 'GitHub is not connected and muster is unreachable',
         reason: 'exchange_failed',
@@ -328,9 +334,6 @@ export function createGithubTokenRouter(
     res.json({ signedOut: true, message });
   });
 
-  // Last: muster's unreachable-installation 503s are answered here, after the
-  // handlers above had their turn, so the error middleware does not report
-  // them to Sentry a second time (MusterMcpClient has warned already).
   router.use(musterUnreachableErrorHandler());
 
   return router;

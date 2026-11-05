@@ -1682,8 +1682,10 @@ describe('createRouter', () => {
       });
       // The error middleware logs through a child logger: route it back here.
       logger.child.mockReturnValue(logger);
+      // Mounted under a path, as the backend mounts it, so that a URL relative
+      // to the router would show in the body.
       const loggedApp = expressApp();
-      loggedApp.use(router);
+      loggedApp.use('/api/muster', router);
       loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
       return { loggedApp, logger };
     }
@@ -1696,7 +1698,8 @@ describe('createRouter', () => {
           'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
         ),
       );
-      const answered = await request(loggedApp).get('/tools');
+      const answered = await request(loggedApp).get('/api/muster/tools');
+      expect(logger.error).not.toHaveBeenCalled();
 
       // The same failure as a plain ServiceUnavailableError goes through the
       // error middleware: the person gets the same answer either way.
@@ -1705,16 +1708,20 @@ describe('createRouter', () => {
           'gazelle did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
         ),
       );
-      const viaMiddleware = await request(app).get('/tools');
+      const viaMiddleware = await request(loggedApp).get('/api/muster/tools');
+      expect(logger.error).toHaveBeenCalledTimes(1);
 
       expect(answered.status).toBe(503);
       expect(answered.body).toEqual(viaMiddleware.body);
+      expect(answered.body.request).toEqual({
+        method: 'GET',
+        url: '/api/muster/tools',
+      });
       expect(answered.body.error).toEqual({
         name: 'ServiceUnavailableError',
         message:
           'gazelle did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
       });
-      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('leaves any other 503 to the error middleware', async () => {
@@ -1725,7 +1732,7 @@ describe('createRouter', () => {
         ),
       );
 
-      const response = await request(loggedApp).get('/tools');
+      const response = await request(loggedApp).get('/api/muster/tools');
 
       expect(response.status).toBe(503);
       expect(logger.error).toHaveBeenCalledWith(

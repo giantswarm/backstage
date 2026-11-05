@@ -1063,15 +1063,13 @@ export async function createRouter(
           reason: unauthorized.reason,
           ...(unauthorized.server ? { server: unauthorized.server } : {}),
         },
-        request: { method: req.method, url: req.url },
+        request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
     },
   );
 
-  // Last: muster's unreachable-installation 503s are answered here, after the
-  // handlers above had their turn, so the error middleware does not report
-  // them to Sentry a second time (MusterMcpClient has warned already).
+  // Last, so that the handlers above see the error first.
   router.use(musterUnreachableErrorHandler());
 
   return router;

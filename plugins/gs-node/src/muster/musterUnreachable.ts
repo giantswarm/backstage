@@ -7,7 +7,7 @@ import { serializeError, ServiceUnavailableError } from '@backstage/errors';
  * the muster plugin's `installationErrorLine` matches on its start, so it names
  * the installation.
  */
-export function musterUnreachableMessage(
+function musterUnreachableMessage(
   installation: string,
   reason: string,
 ): string {
@@ -32,6 +32,7 @@ export class MusterUnreachableError extends ServiceUnavailableError {
 interface ErrorHandlerRequest {
   method: string;
   url: string;
+  originalUrl?: string;
 }
 interface ErrorHandlerResponse {
   headersSent: boolean;
@@ -65,7 +66,9 @@ export function musterUnreachableErrorHandler() {
       error: serializeError(error, {
         includeStack: process.env.NODE_ENV === 'development',
       }),
-      request: { method: req.method, url: req.url },
+      // Inside a plugin's router `url` is relative to its mount path; the
+      // middleware runs at the root, where `url` is the full one again.
+      request: { method: req.method, url: req.originalUrl ?? req.url },
       response: { statusCode: 503 },
     });
   };
