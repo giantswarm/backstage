@@ -108,8 +108,7 @@ export function isUnauthorizedTransportError(error: unknown): boolean {
  * 401 with its reason (`toMusterUnauthorizedError`).
  *
  * The reasons are a small fixed set, which is what lets Sentry group a failure
- * by its kind. backend-common's `normalizeSentryEvent` recognises the muster
- * 503 by them: a new reason goes into its pattern and its test too.
+ * by its kind: `MusterMcpClient` logs them in a fixed message.
  */
 export function describeMcpFailure(error: unknown): string | undefined {
   if (!isTransportError(error)) {

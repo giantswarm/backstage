@@ -12,6 +12,7 @@ import {
   MUSTER_AUTH_HEADER,
   MusterServerGateway,
   MusterServerNotConnectedError,
+  musterUnreachableErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -616,6 +617,11 @@ export async function createRouter(
       next(error);
     },
   );
+
+  // Last: muster's unreachable-installation 503s are answered here, after the
+  // handlers above had their turn, so the error middleware does not report
+  // them to Sentry a second time (MusterMcpClient has warned already).
+  router.use(musterUnreachableErrorHandler());
 
   return router;
 }

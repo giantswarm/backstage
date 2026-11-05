@@ -6,7 +6,10 @@ import {
   RootConfigService,
 } from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
-import { MusterServerGateway } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  MusterServerGateway,
+  musterUnreachableErrorHandler,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 
 const TOKEN_EXCHANGE_GRANT_TYPE =
@@ -324,6 +327,11 @@ export function createGithubTokenRouter(
     });
     res.json({ signedOut: true, message });
   });
+
+  // Last: muster's unreachable-installation 503s are answered here, after the
+  // handlers above had their turn, so the error middleware does not report
+  // them to Sentry a second time (MusterMcpClient has warned already).
+  router.use(musterUnreachableErrorHandler());
 
   return router;
 }

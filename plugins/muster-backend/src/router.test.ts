@@ -1,3 +1,4 @@
+import { ServiceUnavailableError } from '@backstage/errors';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
@@ -9,6 +10,7 @@ import {
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   createRouter,
@@ -1665,6 +1667,71 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(500);
       expect(response.body.error.reason).toBeUndefined();
+    });
+  });
+
+  describe("an installation's muster that cannot be reached", () => {
+    async function buildLoggedApp() {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({ data: {} });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      // The error middleware logs through a child logger: route it back here.
+      logger.child.mockReturnValue(logger);
+      const loggedApp = expressApp();
+      loggedApp.use(router);
+      loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { loggedApp, logger };
+    }
+
+    it('answers 503 itself, with the body the error middleware sends, and does not log it again', async () => {
+      const { loggedApp, logger } = await buildLoggedApp();
+      listTools.mockRejectedValue(
+        new MusterUnreachableError(
+          'gazelle',
+          'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+        ),
+      );
+      const answered = await request(loggedApp).get('/tools');
+
+      // The same failure as a plain ServiceUnavailableError goes through the
+      // error middleware: the person gets the same answer either way.
+      listTools.mockRejectedValue(
+        new ServiceUnavailableError(
+          'gazelle did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+        ),
+      );
+      const viaMiddleware = await request(app).get('/tools');
+
+      expect(answered.status).toBe(503);
+      expect(answered.body).toEqual(viaMiddleware.body);
+      expect(answered.body.error).toEqual({
+        name: 'ServiceUnavailableError',
+        message:
+          'gazelle did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+      });
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('leaves any other 503 to the error middleware', async () => {
+      const { loggedApp, logger } = await buildLoggedApp();
+      listTools.mockRejectedValue(
+        new ServiceUnavailableError(
+          'Muster meta-tool list_tools has no executor',
+        ),
+      );
+
+      const response = await request(loggedApp).get('/tools');
+
+      expect(response.status).toBe(503);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Request failed with status 503',
+        expect.any(ServiceUnavailableError),
+      );
     });
   });
 });

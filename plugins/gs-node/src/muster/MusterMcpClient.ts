@@ -20,7 +20,7 @@ import {
   parseAuthLoginResult,
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
-import { musterUnreachableMessage } from './musterUnreachable';
+import { MusterUnreachableError } from './musterUnreachable';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -767,9 +767,7 @@ export class MusterMcpClient {
       installation: this.installation.name,
       cause: messageOf(error),
     });
-    return new ServiceUnavailableError(
-      musterUnreachableMessage(this.installation.name, reason),
-    );
+    return new MusterUnreachableError(this.installation.name, reason);
   }
 
   /**

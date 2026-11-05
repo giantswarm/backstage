@@ -1,7 +1,3 @@
-import {
-  describeMcpFailure,
-  musterUnreachableMessage,
-} from '@giantswarm/backstage-plugin-gs-node';
 import type { SentryEvent } from './normalizeSentryEvent';
 import { normalizeSentryEvent } from './normalizeSentryEvent';
 
@@ -36,90 +32,6 @@ describe('normalizeSentryEvent', () => {
       'Processing of an entity failed connect ECONNREFUSED <address>',
     );
     expect(first.fingerprint).toEqual(second.fingerprint);
-  });
-
-  describe("muster's 503 for an installation it cannot reach", () => {
-    /** One error per reason `describeMcpFailure` gives, as the SDK throws it. */
-    function transportError(status: number, body: string) {
-      const error = new Error(
-        `MCP HTTP Transport Error: POSTing to endpoint (HTTP ${status}): ${body}`,
-      ) as Error & { statusCode?: number };
-      error.name = 'MCPClientError';
-      error.statusCode = status;
-      return error;
-    }
-    const fetchFailed = Object.assign(new TypeError('fetch failed'), {
-      cause: { code: 'UND_ERR_CONNECT_TIMEOUT' },
-    });
-    const failures = [
-      transportError(404, 'mcp: session not found'),
-      new Error('Attempted to send a request from a closed client'),
-      transportError(502, 'upstream connect error'),
-      fetchFailed,
-      transportError(0, 'socket hang up'),
-    ];
-    const reasons = failures.map(failure => describeMcpFailure(failure)!);
-
-    /**
-     * The event of the error middleware's `Request failed with status 503`
-     * for the text gs-node's MusterMcpClient answers, built with gs-node's own
-     * code: rewording it there fails here.
-     */
-    function middleware503(installation: string, reason: string) {
-      return normalizeSentryEvent<SentryEvent>({
-        exception: {
-          values: [
-            {
-              value: `Request failed with status 503 ${musterUnreachableMessage(installation, reason)}`,
-            },
-          ],
-        },
-      });
-    }
-
-    it('gives every reason a distinct text', () => {
-      expect(new Set(reasons).size).toBe(failures.length);
-    });
-
-    it.each(reasons)('collapses "%s" across installations', reason => {
-      const first = middleware503('gazelle', reason);
-      const second = middleware503('golem', reason);
-
-      expect(first.exception!.values![0].value).toBe(
-        `Request failed with status 503 <installation> did not answer: ${reason}`,
-      );
-      expect(first.fingerprint).toEqual(second.fingerprint);
-      expect(second.extra).toEqual({
-        original_message: `Request failed with status 503 golem did not answer: ${reason}`,
-      });
-    });
-
-    it('keeps the reasons apart', () => {
-      const fingerprints = reasons.map(
-        reason => middleware503('gazelle', reason).fingerprint![0],
-      );
-      expect(new Set(fingerprints).size).toBe(reasons.length);
-    });
-
-    it('leaves another service\'s "did not answer" alone', () => {
-      const event = middleware503('Mimir', 'the query timed out');
-
-      expect(event.fingerprint).toBeUndefined();
-      expect(event.exception!.values![0].value).toBe(
-        'Request failed with status 503 Mimir did not answer: the query timed out',
-      );
-    });
-  });
-
-  it('leaves other 503s alone', () => {
-    const event = normalizeSentryEvent<SentryEvent>({
-      message: 'Request failed with status 503 Service Unavailable',
-    });
-
-    expect(event.message).toBe(
-      'Request failed with status 503 Service Unavailable',
-    );
-    expect(event.fingerprint).toBeUndefined();
   });
 
   it('collapses messages that differ only by URL', () => {

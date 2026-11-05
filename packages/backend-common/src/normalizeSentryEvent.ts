@@ -4,11 +4,6 @@
  * per value. Our own code keeps those values in structured metadata instead
  * (see the logging conventions in CLAUDE.md), but upstream Backstage log lines
  * we cannot change do not, so we collapse them here on the way out.
- *
- * That includes Backstage's error middleware, which logs every 5xx with the
- * error's message. Where that message is ours and names something because a
- * person reads it in the UI, and the UI relies on its wording, the rewrite
- * lives here too. Anything else is fixed where the message is written.
  */
 
 export type SentryEvent = {
@@ -19,10 +14,9 @@ export type SentryEvent = {
 };
 
 /**
- * Rewrites for known upstream log lines (see above for the error middleware's
- * 5xx with a UI text of ours), applied to the start of the message. The value
- * that fans the issue out is dropped; it stays available in the event's extra
- * data.
+ * Rewrites for known upstream messages, applied to the start of the message.
+ * The value that fans the issue out is dropped; it stays available in the
+ * event's extra data.
  */
 const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   // @backstage/backend-defaults DatabaseManager: one issue per plugin id, for
@@ -34,16 +28,6 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   // @backstage/plugin-catalog-backend DefaultCatalogProcessingEngine: one
   // issue per catalog entity.
   [/^Processing of \S+ failed/, 'Processing of an entity failed'],
-  // The error middleware logging the 503 that gs-node's MusterMcpClient
-  // answers when an installation's muster cannot be reached
-  // (`musterUnreachableMessage`): one issue per installation. The UI prints
-  // that text and the muster plugin matches on it, so it keeps the name. The
-  // lookahead lists `describeMcpFailure`'s reasons, so that another service's
-  // "<name> did not answer: ..." is not taken for muster's.
-  [
-    /^Request failed with status 503 \S+ did not answer: (?=the (?:MCP session was lost|connection was closed|muster endpoint answered HTTP|connection failed|MCP request failed))/,
-    'Request failed with status 503 <installation> did not answer: ',
-  ],
 ];
 
 /**

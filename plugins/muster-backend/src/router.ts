@@ -21,6 +21,7 @@ import {
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
+  musterUnreachableErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   MusterInstallationConfig,
@@ -1067,6 +1068,11 @@ export async function createRouter(
       });
     },
   );
+
+  // Last: muster's unreachable-installation 503s are answered here, after the
+  // handlers above had their turn, so the error middleware does not report
+  // them to Sentry a second time (MusterMcpClient has warned already).
+  router.use(musterUnreachableErrorHandler());
 
   return router;
 }
