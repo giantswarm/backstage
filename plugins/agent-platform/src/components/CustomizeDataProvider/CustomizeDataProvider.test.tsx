@@ -42,6 +42,7 @@ jest.mock('../ModelConfigsProvider', () => ({
               cluster: 'golem',
               getNamespace: () => 'support',
               getName: () => 'sonnet',
+              getAnnotations: () => undefined,
               getDisplayName: () => 'Sonnet',
               getProvider: () => 'Anthropic',
               getModel: () => 'claude-sonnet-4-5',

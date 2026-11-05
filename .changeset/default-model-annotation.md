@@ -1,0 +1,6 @@
+---
+'@giantswarm/backstage-plugin-agent-platform': minor
+'@giantswarm/backstage-plugin-analytics-react': minor
+---
+
+A namespace's default model is the ModelConfig annotated `agent-platform.giantswarm.io/is-default-model-config: "true"`; none or several annotated is no default. The New agent form preselects the default agent-manager reports (`list_model_configs` `default`) and otherwise asks the person to choose, badges it, and warns when the chosen model is not ready (`ResolvedRefs` not true). `default-model-config` no longer means anything to the portal, and an organization is offered only its own models. Customize → Models shows which model is the default; a model's page says so and offers **Set as default**, which moves the annotation as the signed-in person and refuses when another model was marked meanwhile or when the current default is managed by Helm (`kagent.modelConfigs[].default`) or another tool. Connect a model marks a new model as the default when its namespace has none, offers **Make this the default model** otherwise, and lets an organization's admins add a model to their organization: its key goes into the Secret `tenant-credential-<model>`, it takes no base URL (the LLM gateway routes it), and only Anthropic and OpenAI are offered. New portal event `AgentPlatform.defaultModelSet`.

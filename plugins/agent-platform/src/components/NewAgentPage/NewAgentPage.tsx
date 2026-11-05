@@ -228,7 +228,7 @@ function NewAgentPageContent() {
   }${state.slug && !edit ? `, technical name ${state.slug}` : ''}`;
 
   // The plain view's one line about the model picked for the person (the
-  // installation's default, see ModelConfigPicker), so it is never a surprise
+  // namespace default, see ModelConfigPicker), so it is never a surprise
   // on the review step.
   const { isLoading: isLoadingModels, modelConfigsFor } = useModelConfigs();
   // An edited agent starts with its ModelConfig's name only; its display name

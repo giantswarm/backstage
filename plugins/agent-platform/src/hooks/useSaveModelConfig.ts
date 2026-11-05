@@ -18,8 +18,15 @@ import {
   keySecretName,
   MODEL_CONFIG_NAMESPACE,
   ModelConfigFormValues,
+  modelConfigOwner,
   planKeySecret,
 } from '../lib/modelConfigs';
+import { markedIn, planDefaultMove } from '../lib/defaultModel';
+import {
+  invalidateModelReads,
+  readNamespaceModelConfigs,
+  unmarkPrevious,
+} from './defaultModelWrites';
 
 /**
  * Spelled out rather than `Secret.getGVK()`: the Secret class sets no `group`
@@ -39,6 +46,14 @@ export type SaveModelConfigInput = {
   values: ModelConfigFormValues;
   /** The CR being edited; absent for a create. */
   original?: ModelConfig;
+  /** Create only: where the model goes; the platform namespace when absent. */
+  namespace?: string;
+  /**
+   * Create only: make the new model the namespace default, taking the mark
+   * off `expectedMarks`, the models the form showed as marked.
+   */
+  makeDefault?: boolean;
+  expectedMarks?: readonly string[];
 };
 
 /**
@@ -54,6 +69,11 @@ export type SaveModelConfigInput = {
  * The Secret is written before the ModelConfig: the controller hashes the
  * referenced Secret into the ModelConfig's status, so the reference should
  * resolve on its first look.
+ *
+ * A create carries the namespace's default mark when no model there has it,
+ * read fresh, or when `makeDefault` asks for it; then the mark comes off the
+ * model that had it (`planDefaultMove`, which refuses a mark the form did not
+ * show). An edit leaves the mark as it is.
  */
 export function useSaveModelConfig() {
   const kubernetesApi = useApi(kubernetesApiRef);
@@ -70,13 +90,42 @@ export function useSaveModelConfig() {
       installation,
       values,
       original,
+      namespace: requestedNamespace,
+      makeDefault = false,
+      expectedMarks = [],
     }: SaveModelConfigInput) => {
       const isEdit = Boolean(original);
-      const namespace = original?.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
+      const namespace =
+        original?.getNamespace() ??
+        requestedNamespace ??
+        MODEL_CONFIG_NAMESPACE;
       const plan = planKeySecret(values, {
         isEdit,
         originalProvider: original?.getProvider(),
+        namespace,
       });
+
+      let markDefault = false;
+      let previousDefaults: ModelConfig[] = [];
+      if (!original) {
+        const items = await readNamespaceModelConfigs({
+          kubernetesApi,
+          installation,
+          namespace,
+        });
+        if (makeDefault) {
+          previousDefaults = planDefaultMove({
+            modelConfigs: items,
+            target: values.name.trim(),
+            expected: expectedMarks,
+            ownerOf: modelConfigOwner,
+          });
+          markDefault = true;
+        } else {
+          markDefault = markedIn(items, namespace).length === 0;
+        }
+      }
+      let createdSecret = false;
 
       if (plan.action === 'write') {
         // Create-or-replace, mirroring what `kubectl apply` would do. The
@@ -102,6 +151,7 @@ export function useSaveModelConfig() {
             namespace,
             manifest: buildKeySecretManifest(plan, namespace),
           });
+          createdSecret = true;
         }
       }
 
@@ -116,13 +166,44 @@ export function useSaveModelConfig() {
           patch: buildModelConfigPatch(values, plan, original),
         });
       } else {
-        await createResource({
-          kubernetesApi,
-          cluster: installation,
-          gvk: ModelConfig.getGVK(),
-          namespace,
-          manifest: buildModelConfigManifest(values, plan, namespace),
-        });
+        try {
+          await createResource({
+            kubernetesApi,
+            cluster: installation,
+            gvk: ModelConfig.getGVK(),
+            namespace,
+            manifest: buildModelConfigManifest(values, plan, namespace, {
+              markDefault,
+            }),
+          });
+        } catch (error) {
+          // A Secret this save created for a model admission refused would
+          // only be left behind. Best effort: the refusal is what to report.
+          if (createdSecret && plan.action === 'write') {
+            try {
+              await deleteResource({
+                kubernetesApi,
+                cluster: installation,
+                gvk: SECRET_GVK,
+                name: plan.name,
+                namespace,
+              });
+            } catch {
+              // Keep reporting the refusal.
+            }
+          }
+          throw error;
+        }
+        try {
+          await unmarkPrevious({
+            kubernetesApi,
+            installation,
+            target: values.name.trim(),
+            previous: previousDefaults,
+          });
+        } finally {
+          await invalidateModelReads(queryClient, installation, namespace);
+        }
       }
 
       // Best-effort cleanup after a switch to a keyless provider: our own
@@ -132,14 +213,14 @@ export function useSaveModelConfig() {
       // save has succeeded, and an orphaned placeholder Secret is inert.
       if (
         plan.action === 'none' &&
-        original?.getApiKeySecret() === keySecretName(values.name)
+        original?.getApiKeySecret() === keySecretName(values.name, namespace)
       ) {
         try {
           await deleteResource({
             kubernetesApi,
             cluster: installation,
             gvk: SECRET_GVK,
-            name: keySecretName(values.name),
+            name: keySecretName(values.name, namespace),
             namespace,
           });
         } catch {

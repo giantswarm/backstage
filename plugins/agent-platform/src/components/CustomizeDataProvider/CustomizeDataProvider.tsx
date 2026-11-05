@@ -5,6 +5,7 @@ import {
   type SkillCatalog,
 } from '../../hooks/useSkillCatalog';
 import { useScopedToolchainInstallations } from '../../hooks/useToolchainManager';
+import { defaultModelIds } from '../../lib/defaultModel';
 import { clientLookupOf } from '../../lib/serving';
 import { uniqueSkills } from '../../lib/customize';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -117,13 +118,14 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
-      modelInstallations.flatMap(installation =>
-        modelConfigsFor(installation).map(modelConfig => {
+      modelInstallations.flatMap(installation => {
+        const defaults = defaultModelIds(modelConfigsFor(installation));
+        return modelConfigsFor(installation).map(modelConfig => {
           const state = servingStateFor(
             installation,
             clientLookupOf(modelConfig),
           );
-          return toModelRow(
+          const row = toModelRow(
             modelConfig,
             state
               ? toModelServedBy(
@@ -133,8 +135,9 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
                 )
               : undefined,
           );
-        }),
-      ),
+          return defaults.has(row.id) ? { ...row, isDefault: true } : row;
+        });
+      }),
     [
       modelInstallations,
       modelConfigsFor,

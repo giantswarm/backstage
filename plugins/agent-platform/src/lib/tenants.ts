@@ -12,10 +12,8 @@
  * "Organization" instead (`tenantOf`).
  */
 
-import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
-
 /** The platform tenant's namespace: the installation's `kagent` namespace. */
-export const PLATFORM_TENANT_NAMESPACE = DEFAULT_MODEL_CONFIG_NAMESPACE;
+export const PLATFORM_TENANT_NAMESPACE = 'kagent';
 
 /** The start of an Organization's namespace name. */
 export const ORGANIZATION_PREFIX = 'org-';

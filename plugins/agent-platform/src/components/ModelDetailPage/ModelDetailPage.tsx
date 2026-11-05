@@ -7,8 +7,12 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
+import { Alert, Badge, Button, Flex, Link, Text } from '@backstage/ui';
 import {
   ErrorsProvider,
   ModelConfig,
@@ -40,6 +44,14 @@ import {
   lookUpContextWindow,
 } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
+import {
+  DEFAULT_MODEL_VALUES_KEY,
+  defaultIn,
+  listed,
+  markedIn,
+} from '../../lib/defaultModel';
+import { tenantInSentence } from '../../lib/tenants';
+import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
 import { modelProblem } from '../../lib/modelProblem';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
@@ -47,6 +59,7 @@ import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { InstallationChip } from '../InstallationChip';
+import { useModelConfigs } from '../ModelConfigsProvider';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
@@ -125,12 +138,56 @@ function ManagedByValue({ owner }: { owner: string }) {
   );
 }
 
+/** Whether the model is its namespace's default, and how it would become it. */
+export type ModelDefaultState = {
+  isDefault: boolean;
+  /** The other models marked as the default there. */
+  otherMarks: string[];
+  /** The owner inside a sentence (`tenantInSentence`). */
+  where: string;
+};
+
+/** The Default model fact's value: yes or no, and what that means here. */
+function DefaultModelValue({
+  state,
+  owner,
+}: {
+  state: ModelDefaultState;
+  owner?: string;
+}) {
+  let note: string;
+  if (state.isDefault) {
+    note = `New agents for ${state.where} start with this model.`;
+  } else if (owner === 'Helm') {
+    note = `Helm manages this model: make it the default in its values (${DEFAULT_MODEL_VALUES_KEY}).`;
+  } else if (owner) {
+    note = `${owner} manages this model: make it the default where ${owner} is configured.`;
+  } else if (state.otherMarks.length > 1) {
+    note = `${state.where.charAt(0).toUpperCase()}${state.where.slice(1)} has no default: ${listed(state.otherMarks)} are all marked as the default.`;
+  } else if (state.otherMarks.length === 1) {
+    note = `The default for ${state.where} is ${state.otherMarks[0]}.`;
+  } else {
+    note = `${state.where.charAt(0).toUpperCase()}${state.where.slice(1)} has no default model.`;
+  }
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant={useFactTextVariant()}>
+        {state.isDefault ? 'Yes' : 'No'}
+      </Text>
+      <Text variant="body-small" color="secondary">
+        {note}
+      </Text>
+    </Flex>
+  );
+}
+
 /** Overview's plain facts: what it calls, where, who owns it, and since when. */
 export function modelFacts({
   modelConfig,
   installation,
   contextWindow,
   owner,
+  defaultState,
 }: {
   modelConfig: ModelConfig;
   installation: string;
@@ -138,6 +195,8 @@ export function modelFacts({
   contextWindow: ContextWindowLookup | undefined;
   /** The tool that asserts the model (`modelConfigOwner`), if any. */
   owner?: string;
+  /** Whether it is the default, once the namespace's models are read. */
+  defaultState?: ModelDefaultState;
 }): Fact[] {
   const created = modelConfig.getCreatedTimestamp();
   const provider = modelConfig.getProvider();
@@ -156,6 +215,12 @@ export function modelFacts({
     });
   }
   facts.push({ label: 'Environment', value: installation });
+  if (defaultState) {
+    facts.push({
+      label: 'Default model',
+      value: <DefaultModelValue state={defaultState} owner={owner} />,
+    });
+  }
   if (owner) {
     facts.push({
       label: 'Managed by',
@@ -235,6 +300,61 @@ function ModelDetailPageContent() {
 
   const deletion = useDeleteModelConfig(modelConfig);
 
+  // The default as the annotation says it: this model as just read, the
+  // namespace's others as listed. Unknown until the list has answered.
+  const toastApi = useApi(toastApiRef);
+  const { modelConfigsFor, isLoading: isLoadingModels } = useModelConfigs();
+  const defaultState = useMemo<ModelDefaultState | undefined>(() => {
+    if (!modelConfig || isLoadingModels) {
+      return undefined;
+    }
+    const namespaceModels = [
+      ...modelConfigsFor(installation).filter(
+        mc => (mc.getNamespace() ?? '') === namespace && mc.getName() !== name,
+      ),
+      modelConfig,
+    ];
+    return {
+      isDefault: defaultIn(namespaceModels, namespace) === name,
+      otherMarks: markedIn(namespaceModels, namespace).filter(
+        mark => mark !== name,
+      ),
+      where: tenantInSentence(namespace),
+    };
+  }, [
+    modelConfig,
+    isLoadingModels,
+    modelConfigsFor,
+    installation,
+    namespace,
+    name,
+  ]);
+  const settingDefault = useSetDefaultModelConfig();
+  const { setDefault, isSetting, reset: resetSetDefault } = settingDefault;
+  const canSetDefault =
+    Boolean(defaultState) &&
+    !defaultState?.isDefault &&
+    mayUpdate &&
+    !isCheckingPermission;
+  const onSetDefault = useCallback(async () => {
+    if (!modelConfig || !defaultState) {
+      return;
+    }
+    resetSetDefault();
+    try {
+      await setDefault({ modelConfig, expected: defaultState.otherMarks });
+    } catch {
+      // Left on the page: the error renders in the alert above the tabs.
+      return;
+    }
+    toastApi.post({
+      title: `${modelConfig.getDisplayName()} is now the default model`,
+      description: `New agents for ${defaultState.where} start with it. Agents that already run on another model keep it.`,
+      status: 'success',
+      timeout: 6000,
+    });
+  }, [modelConfig, defaultState, resetSetDefault, setDefault, toastApi]);
+
   // Read here, above the tabs, so Used by and the Usage tab share one
   // result. Only for a model there is: the not-found and error frames
   // never show it.
@@ -280,6 +400,15 @@ function ModelDetailPageContent() {
   const actions = useMemo(
     () => (
       <Flex gap="2" align="center">
+        {canSetDefault && (
+          <Button
+            variant="secondary"
+            onPress={onSetDefault}
+            isDisabled={Boolean(owner) || isSetting}
+          >
+            {isSetting ? 'Setting as default…' : 'Set as default'}
+          </Button>
+        )}
         {isEditable && modelEditRoute && (
           <Button variant="secondary" onPress={openEdit}>
             Edit
@@ -290,7 +419,17 @@ function ModelDetailPageContent() {
         )}
       </Flex>
     ),
-    [isEditable, modelEditRoute, openEdit, modelConfig, deletion],
+    [
+      canSetDefault,
+      onSetDefault,
+      owner,
+      isSetting,
+      isEditable,
+      modelEditRoute,
+      openEdit,
+      modelConfig,
+      deletion,
+    ],
   );
   useProvidePageHeaderActions(actions);
 
@@ -357,6 +496,7 @@ function ModelDetailPageContent() {
     installation,
     contextWindow,
     owner,
+    defaultState,
   });
 
   return (
@@ -365,6 +505,7 @@ function ModelDetailPageContent() {
       badges={
         <>
           <StatusDot tone={status.tone} label={status.label} />
+          {defaultState?.isDefault && <Badge size="small">Default</Badge>}
           <InstallationChip installation={installation} />
         </>
       }
@@ -374,6 +515,13 @@ function ModelDetailPageContent() {
         isLoading: agentsLoading,
       })}
     >
+      {settingDefault.error && (
+        <Alert
+          status="danger"
+          title="Could not make this the default model"
+          description={settingDefault.error.message}
+        />
+      )}
       <Routes>
         <Route
           index
