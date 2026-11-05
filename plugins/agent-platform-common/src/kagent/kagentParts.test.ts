@@ -7,6 +7,7 @@ import {
   MUSTER_PROXY_LABEL,
   readMessageText,
   readUsageReport,
+  splitMessageParts,
   readNestedTokenUsage,
   readTokenUsage,
   unwrapProxiedCall,
@@ -357,5 +358,73 @@ describe('isThoughtPart', () => {
         ],
       }),
     ).toBe('The model hit its context limit.');
+  });
+});
+
+describe('splitMessageParts', () => {
+  const text = (value: string) => ({ kind: 'text', text: value });
+  const thought = (value: string) => ({
+    kind: 'text',
+    text: value,
+    metadata: { 'kagent.dev/a2a/thought': true },
+  });
+  const call = {
+    kind: 'data',
+    data: { id: 'c1', name: 'kubectl_get', args: {} },
+    metadata: { 'kagent.dev/a2a/part-type': 'function_call' },
+  };
+  const result = {
+    kind: 'data',
+    data: { id: 'c1', name: 'kubectl_get', response: {} },
+    metadata: { 'kagent.dev/a2a/part-type': 'function_response' },
+  };
+  const file = {
+    kind: 'file',
+    file: { bytes: 'aGk=', mimeType: 'text/plain', name: 'a.txt' },
+  };
+  const shape = (parts: unknown[]) =>
+    splitMessageParts(parts).map(segment =>
+      segment.kind === 'text'
+        ? [segment.isThought ? 'reasoning' : 'text', segment.text]
+        : ['part'],
+    );
+
+  it('merges consecutive text of one kind, untrimmed', () => {
+    expect(shape([text('Hel'), text('lo ')])).toEqual([['text', 'Hello ']]);
+  });
+
+  it('ends a run where reasoning gives way to the answer, and back', () => {
+    expect(
+      shape([thought('A'), thought('B'), text('C'), thought('D')]),
+    ).toEqual([
+      ['reasoning', 'AB'],
+      ['text', 'C'],
+      ['reasoning', 'D'],
+    ]);
+  });
+
+  it.each([
+    ['a tool call', call],
+    ['a tool result', result],
+    ['a file', file],
+  ])('ends a run at %s, which it passes on', (_name, part) => {
+    expect(shape([text('A'), part, text('B')])).toEqual([
+      ['text', 'A'],
+      ['part'],
+      ['text', 'B'],
+    ]);
+  });
+
+  it('leaves out a part nothing renders, without ending the run', () => {
+    // As buildTimeline always has: no item marks where it was.
+    const unknown = { kind: 'data', data: { anything: true } };
+    expect(shape([text('A'), unknown, 'not a part', text('B')])).toEqual([
+      ['text', 'AB'],
+    ]);
+  });
+
+  it('passes the part on as it arrived, too', () => {
+    const [segment] = splitMessageParts([file]);
+    expect(segment).toMatchObject({ kind: 'part', rawPart: file });
   });
 });

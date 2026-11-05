@@ -739,47 +739,133 @@ describe('applyStreamEvent', () => {
       expect(turn.items).toEqual([]);
     });
 
-    it('streams marked reasoning as reasoning, then settles it once', () => {
-      const canonicalThought = (text: string) => ({
+    describe('reasoning marked kagent.dev/a2a/thought', () => {
+      const thought = (text: string) => ({
         kind: 'text',
         text,
         metadata: { 'kagent.dev/a2a/thought': true },
       });
-      const streaming = fold([
-        artifactUpdate([canonicalThought('Checking the ')], { partial: true }),
-        artifactUpdate([canonicalThought('ingress.')], { partial: true }),
-      ]);
+      const settled = (turn: StreamTurn) =>
+        turn.items.map(item =>
+          'text' in item ? [item.kind, item.text, item.messageId] : [item.kind],
+        );
 
-      expect(streaming.live).toEqual(
-        expect.objectContaining({
-          kind: 'reasoning',
-          text: 'Checking the ingress.',
-        }),
-      );
+      it('streams as reasoning, then settles once under the artifact’s id', () => {
+        const streaming = fold([
+          artifactUpdate([thought('Checking the ')], { partial: true }),
+          artifactUpdate([thought('ingress.')], { partial: true }),
+        ]);
 
-      const turn = fold(
-        [
-          artifactUpdate([textPart('It is ')], { partial: true }),
+        expect(streaming.live).toEqual(
+          expect.objectContaining({
+            kind: 'reasoning',
+            text: 'Checking the ingress.',
+          }),
+        );
+
+        const turn = fold(
+          [
+            artifactUpdate([textPart('It is ')], { partial: true }),
+            artifactUpdate(
+              [thought('Checking the ingress.'), textPart('It is healthy.')],
+              { partial: false },
+            ),
+          ],
+          streaming,
+        );
+
+        // The reasoning was flushed with no id when the answer began. The
+        // complete artifact replaces it, so it carries the id the poll pairs.
+        expect(turn.live).toBeUndefined();
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'Checking the ingress.', 'a-1'],
+          ['agent-message', 'It is healthy.', 'a-1'],
+        ]);
+      });
+
+      it('shows chunks that alternate reasoning and answer once each', () => {
+        // Interleaved thinking: a thought block between text blocks.
+        const turn = fold([
+          artifactUpdate([thought('A.')], { partial: true }),
+          artifactUpdate([textPart('B.')], { partial: true }),
+          artifactUpdate([thought('C.')], { partial: true }),
+          artifactUpdate([textPart('D.')], { partial: true }),
           artifactUpdate(
-            [
-              canonicalThought('Checking the ingress.'),
-              textPart('It is healthy.'),
-            ],
+            [thought('A.'), textPart('B.'), thought('C.'), textPart('D.')],
             { partial: false },
           ),
-        ],
-        streaming,
-      );
+        ]);
 
-      // The reasoning closed when the answer began, and the complete artifact
-      // repeats it: it shows once, ahead of the answer.
-      expect(turn.live).toBeUndefined();
-      expect(
-        turn.items.map(item => 'text' in item && [item.kind, item.text]),
-      ).toEqual([
-        ['reasoning', 'Checking the ingress.'],
-        ['agent-message', 'It is healthy.'],
-      ]);
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'A.', 'a-1'],
+          ['agent-message', 'B.', 'a-1'],
+          ['reasoning', 'C.', 'a-1'],
+          ['agent-message', 'D.', 'a-1'],
+        ]);
+      });
+
+      it('does not show reasoning and answer again when the terminal status update repeats them', () => {
+        const turn = fold([
+          artifactUpdate([thought('Checking.'), textPart('It is healthy.')], {
+            partial: false,
+          }),
+          statusUpdate(
+            agentMessage([thought('Checking.'), textPart('It is healthy.')]),
+            { final: true, state: 'completed' },
+          ),
+        ]);
+
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'Checking.', 'a-1'],
+          ['agent-message', 'It is healthy.', 'a-1'],
+        ]);
+      });
+
+      it('does not show a message’s reasoning and answer again when an artifact repeats them', () => {
+        // The Python flow: the message arrives on a status update, and the
+        // artifact after it repeats it under its own id.
+        const turn = fold([
+          statusUpdate(
+            agentMessage([thought('Checking.'), textPart('It is healthy.')]),
+          ),
+          artifactUpdate([thought('Checking.'), textPart('It is healthy.')], {
+            lastChunk: true,
+          }),
+        ]);
+
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'Checking.', 'reply-1'],
+          ['agent-message', 'It is healthy.', 'reply-1'],
+        ]);
+      });
+
+      it('keeps a call between the chunks answerable once their items are replaced', () => {
+        const turn = fold([
+          artifactUpdate([thought('Look it up.')], { partial: true }),
+          statusUpdate(agentMessage([callPart('call-1', 'kubectl_get')])),
+          artifactUpdate([textPart('Found.')], { partial: true }),
+          artifactUpdate([thought('Look it up.'), textPart('Found.')], {
+            partial: false,
+          }),
+          statusUpdate(
+            agentMessage(
+              [responsePart('call-1', 'kubectl_get', { output: 'ok' })],
+              'reply-2',
+            ),
+          ),
+        ]);
+
+        const calls = turn.items.filter(item => item.kind === 'tool-call');
+        expect(calls).toEqual([
+          expect.objectContaining({
+            isPending: false,
+            result: { output: 'ok' },
+          }),
+        ]);
+        expect(
+          turn.items.filter(item => 'text' in item).map(item => item.messageId),
+        ).toEqual(['a-1', 'a-1']);
+      });
     });
 
     it('emits the complete artifact as an item and closes the run', () => {

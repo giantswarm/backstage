@@ -10,6 +10,7 @@ import {
   readKagentMetadataString,
   readKagentSubagentUsage,
 } from './kagentMetadata';
+import { readAttachment } from './kagentAttachments';
 import { asRecord } from './record';
 import { asNonEmptyString } from './values';
 
@@ -390,6 +391,68 @@ function asFiniteNonNegative(value: unknown): number | undefined {
 
 function asNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * One piece of a message as the timeline reads it: a run of text, or a part
+ * that stands between runs.
+ */
+export type MessageSegment =
+  | {
+      kind: 'text';
+      /** The run is the model's reasoning ({@link isThoughtPart}). */
+      isThought: boolean;
+      /** The run's text parts joined as sent, untrimmed. */
+      text: string;
+    }
+  | {
+      kind: 'part';
+      part: A2aPartWire;
+      /** The part as it arrived, before {@link parsePart}. */
+      rawPart: unknown;
+    };
+
+/**
+ * A message's parts, with consecutive text of one kind merged into a run.
+ *
+ * Reasoning giving way to prose, or prose to reasoning, ends a run, and so
+ * does a part the timeline renders between them: a tool call, a tool result
+ * or a file. Any other part is left out and does not end a run, since nothing
+ * shows where it was. A part that does not parse is left out too.
+ *
+ * The polled timeline and the live stream both split a message here.
+ * Streamed items are matched to their polled copies by their position within
+ * a message, so the two must split it the same way.
+ */
+export function splitMessageParts(
+  parts: readonly unknown[] | null | undefined,
+): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  for (const rawPart of Array.isArray(parts) ? parts : []) {
+    const part = parsePart(rawPart);
+    if (!part) {
+      continue;
+    }
+    const text = readPartText(part);
+    if (text !== undefined) {
+      const isThought = isThoughtPart(part);
+      const last = segments.at(-1);
+      if (last?.kind === 'text' && last.isThought === isThought) {
+        last.text += text;
+      } else {
+        segments.push({ kind: 'text', isThought, text });
+      }
+      continue;
+    }
+    if (
+      isFunctionCallPart(part) ||
+      isFunctionResponsePart(part) ||
+      readAttachment(part)
+    ) {
+      segments.push({ kind: 'part', part, rawPart });
+    }
+  }
+  return segments;
 }
 
 /**
