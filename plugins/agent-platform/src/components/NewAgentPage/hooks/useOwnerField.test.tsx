@@ -11,6 +11,15 @@ import {
 } from '../../NewAgentFormProvider';
 import { type OwnerFieldOptions, useOwnerField } from './useOwnerField';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 /**
  * The field in a region named by where it puts the pair: `main`, or `line`
  * (wherever the other field goes), with the form taking agent-manager's

@@ -303,6 +303,27 @@ describe('getTelemetryPageViewPayload', () => {
     ['/profile', { page: 'Profile' }, '/profile'],
     ['/profile/', { page: 'Profile' }, '/profile'],
     ['/profile/whatever', { page: 'Profile' }, '/profile/*'],
+    ['/organizations', { page: 'Organizations' }, '/organizations'],
+    [
+      '/organizations/acme-prod/org-acme/payments',
+      { page: 'Organization detail' },
+      '/organizations/:installation/:parent/:name',
+    ],
+    [
+      '/organizations/acme-prod/org-acme/payments/models',
+      { page: 'Organization detail', view: 'models' },
+      '/organizations/:installation/:parent/:name/models',
+    ],
+    [
+      '/organizations/acme-prod/org-acme/payments/whatever',
+      { page: 'Organization detail', view: 'redirect' },
+      '/organizations/:installation/:parent/:name/*',
+    ],
+    [
+      '/organizations/acme-prod',
+      { page: 'Organizations redirect' },
+      '/organizations/*',
+    ],
     ['/sessions/', { page: 'Sessions index' }, '/sessions'],
     ['/usage/', { page: 'Usage', view: 'overview' }, '/usage'],
     [
@@ -892,6 +913,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/usage/your-sessions',
       '/usage/connectors',
       '/profile',
+      '/organizations',
+      '/organizations/acme-prod/org-acme/payments/egress',
       // The old tree, redirect-only until the end of 2026.
       '/agent-platform',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',

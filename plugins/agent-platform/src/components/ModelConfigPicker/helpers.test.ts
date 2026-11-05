@@ -62,32 +62,18 @@ describe('tenantModelConfigs', () => {
     choices.map(mc => `${mc.getNamespace()}/${mc.getName()}`);
   const platformDefault = model('default-model-config', 'kagent');
 
-  it('offers a tenant without its copy yet the platform default, in the tenant', () => {
-    const choices = tenantModelConfigs(
-      [platformDefault, model('own-key', 'org-acme'), model('x', 'org-b')],
-      'org-acme',
-    );
-
-    expect(where(choices)).toEqual([
-      'org-acme/default-model-config',
-      'org-acme/own-key',
-    ]);
-    expect(choices[0].getDisplayName()).toBe(platformDefault.getDisplayName());
-  });
-
-  it('offers a tenant its own copy once it exists, and nothing twice', () => {
+  it('offers a tenant its own models only: no model is copied into it', () => {
     expect(
       where(
         tenantModelConfigs(
-          [platformDefault, model('default-model-config', 'org-acme')],
+          [platformDefault, model('own-key', 'org-acme'), model('x', 'org-b')],
           'org-acme',
         ),
       ),
-    ).toEqual(['org-acme/default-model-config']);
+    ).toEqual(['org-acme/own-key']);
   });
 
-  it('offers no stand-in in a namespace that is not an Organization’s', () => {
-    // agent-manager accepts a model before its copy exists in a tenant only.
+  it('offers another namespace its own models only', () => {
     expect(
       where(
         tenantModelConfigs([platformDefault, model('x', 'team-a')], 'team-a'),

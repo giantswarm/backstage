@@ -60,12 +60,8 @@ export type ModelChoice = NamedModelConfig & {
 
 /**
  * The models a new agent in `tenant` may run on: the ModelConfigs of that
- * namespace. An Organization's tenant (`org-<name>`) gets its copy of the
- * platform's default model with its first agent (agent-manager's tenant
- * reconciler), and agent-manager accepts a create naming it there before the
- * copy exists, so until then the platform's default is offered under the
- * tenant's namespace. Any other namespace offers only its own models. Every
- * model when no tenant is known.
+ * namespace, every model when no tenant is known. No model is copied into a
+ * tenant: an organization brings its own.
  */
 export function tenantModelConfigs<T extends ModelChoice>(
   modelConfigs: readonly T[],
@@ -74,26 +70,29 @@ export function tenantModelConfigs<T extends ModelChoice>(
   if (!tenant) {
     return [...modelConfigs];
   }
-  const inTenant: ModelChoice[] = modelConfigs.filter(
-    mc => (mc.getNamespace() ?? '') === tenant,
-  );
-  if (!tenant.startsWith('org-') || inTenant.some(isDefaultModelConfig)) {
-    return inTenant;
-  }
-  const platformDefault = modelConfigs.find(
-    mc =>
-      isDefaultModelConfig(mc) &&
-      mc.getNamespace() === DEFAULT_MODEL_CONFIG_NAMESPACE,
-  );
-  if (!platformDefault) {
-    return inTenant;
-  }
-  const copy: ModelChoice = {
-    getName: () => platformDefault.getName(),
-    getNamespace: () => tenant,
-    getDisplayName: () => platformDefault.getDisplayName(),
-    getModel: () => platformDefault.getModel(),
-    getProvider: () => platformDefault.getProvider(),
+  return modelConfigs.filter(mc => (mc.getNamespace() ?? '') === tenant);
+}
+
+/**
+ * agent-manager's reading of an organization's model as a choice of the
+ * picker (`list_model_configs`), with the organization's default mark it
+ * resolved.
+ */
+export type OrganizationModelChoice = ModelChoice & { isDefault: boolean };
+
+export function organizationModelChoice(modelConfig: {
+  name: string;
+  namespace: string;
+  provider?: string;
+  model?: string;
+  default?: boolean;
+}): OrganizationModelChoice {
+  return {
+    getName: () => modelConfig.name,
+    getNamespace: () => modelConfig.namespace,
+    getDisplayName: () => modelConfig.name,
+    getModel: () => modelConfig.model,
+    getProvider: () => modelConfig.provider,
+    isDefault: modelConfig.default === true,
   };
-  return [copy, ...inTenant];
 }

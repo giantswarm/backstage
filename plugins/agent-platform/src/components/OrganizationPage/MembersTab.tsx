@@ -1,0 +1,255 @@
+import { useState } from 'react';
+import {
+  Alert,
+  Button,
+  Cell,
+  CellText,
+  type ColumnConfig,
+  Flex,
+  Radio,
+  RadioGroup,
+  Select,
+  Table,
+  Text,
+  TextField,
+} from '@backstage/ui';
+import { PageSection } from '@giantswarm/backstage-plugin-ui-react';
+
+import {
+  useOrganizationMembers,
+  useOrganizationMemberWrites,
+} from '../../hooks/useOrganization';
+import {
+  FIRST_ADMINS_BINDING,
+  MEMBER_ROLE_DESCRIPTIONS,
+  MEMBER_ROLES,
+  memberKindLabel,
+  type MemberRequest,
+  type MemberRole,
+  type OrganizationMember,
+} from '../../lib/organizations';
+
+/** A group comes first: membership then changes in the identity provider. */
+type MemberKind = 'group' | 'person';
+
+type MemberRow = OrganizationMember & { id: string };
+
+function memberRequest(
+  namespace: string,
+  kind: MemberKind,
+  name: string,
+  role?: MemberRole,
+): MemberRequest {
+  return kind === 'group'
+    ? { namespace, group: name, ...(role ? { role } : {}) }
+    : { namespace, user: name, ...(role ? { role } : {}) };
+}
+
+/** The form that binds a group (first) or a person to a role. */
+function AddMember({
+  installation,
+  namespace,
+}: {
+  installation: string;
+  namespace: string;
+}) {
+  const { add } = useOrganizationMemberWrites(installation, namespace);
+  const [kind, setKind] = useState<MemberKind>('group');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<MemberRole>('user');
+  const trimmed = name.trim();
+  const noun = kind === 'group' ? 'group' : 'person';
+
+  return (
+    <Flex direction="column" gap="3">
+      <RadioGroup
+        label="Add"
+        orientation="horizontal"
+        value={kind}
+        onChange={value => {
+          setKind(value as MemberKind);
+          add.reset();
+        }}
+      >
+        <Radio value="group">A group</Radio>
+        <Radio value="person">A person, when no group fits</Radio>
+      </RadioGroup>
+      <Flex direction="column" gap="3" align="start">
+        <TextField
+          label={kind === 'group' ? 'Group' : 'Person'}
+          description={
+            kind === 'group'
+              ? 'An identity provider group, as the cluster sees it. Its members change in the identity provider.'
+              : 'Their user name, as the cluster sees it.'
+          }
+          value={name}
+          onChange={setName}
+        />
+        <Select
+          label="Role"
+          selectedKey={role}
+          options={MEMBER_ROLES.map(id => ({
+            id,
+            label: `${id}: ${MEMBER_ROLE_DESCRIPTIONS[id]}`,
+          }))}
+          onSelectionChange={key => {
+            if (key) {
+              setRole(key as MemberRole);
+            }
+          }}
+        />
+        <Button
+          variant="primary"
+          isDisabled={!trimmed || add.isPending}
+          onPress={() =>
+            add.mutate(memberRequest(namespace, kind, trimmed, role), {
+              onSuccess: () => setName(''),
+            })
+          }
+        >
+          {add.isPending ? 'Adding…' : `Add ${noun}`}
+        </Button>
+      </Flex>
+      {add.error && (
+        <Alert
+          status="danger"
+          title={`Could not add the ${noun}`}
+          description={add.error.message}
+        />
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * An organization's members: the groups and people bound to its roles, as
+ * agent-manager reads its RoleBindings (`list_organization_members`), groups
+ * first. Adding offers a group first and a person second; a removal agent-
+ * manager refuses, such as the last admin of `organization-admins`, which
+ * admission keeps, is shown with its reason.
+ */
+export function MembersTab({
+  installation,
+  namespace,
+}: {
+  installation: string;
+  namespace: string;
+}) {
+  const members = useOrganizationMembers(installation, namespace);
+  const { remove } = useOrganizationMemberWrites(installation, namespace);
+  const [removing, setRemoving] = useState<MemberRow>();
+
+  const columns: ColumnConfig<MemberRow>[] = [
+    {
+      id: 'kind',
+      label: 'Kind',
+      defaultWidth: '1fr',
+      cell: row => <CellText title={memberKindLabel(row.kind)} />,
+    },
+    {
+      id: 'name',
+      label: 'Name',
+      isRowHeader: true,
+      defaultWidth: '3fr',
+      cell: row => <CellText title={row.name} />,
+    },
+    {
+      id: 'role',
+      label: 'Role',
+      defaultWidth: '1fr',
+      cell: row => <CellText title={row.role} />,
+    },
+    {
+      id: 'binding',
+      label: 'Binding',
+      defaultWidth: '2fr',
+      cell: row => (
+        <CellText
+          title={row.binding}
+          description={
+            row.binding === FIRST_ADMINS_BINDING
+              ? 'the first admins; its last admin stays'
+              : undefined
+          }
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      label: '',
+      defaultWidth: '1fr',
+      cell: row => (
+        <Cell>
+          <Button
+            size="small"
+            variant="secondary"
+            aria-label={`Remove ${row.name} as ${row.role}`}
+            isDisabled={remove.isPending}
+            onPress={() => {
+              setRemoving(row);
+              remove.mutate(
+                memberRequest(
+                  namespace,
+                  row.kind === 'Group' ? 'group' : 'person',
+                  row.name,
+                  row.role,
+                ),
+              );
+            }}
+          >
+            Remove
+          </Button>
+        </Cell>
+      ),
+    },
+  ];
+
+  let body;
+  if (members.isLoading) {
+    body = <Text color="secondary">Reading the members…</Text>;
+  } else if (members.failure) {
+    body = (
+      <Alert
+        status="warning"
+        title="Could not read the members"
+        description={members.failure.message}
+      />
+    );
+  } else if ((members.data ?? []).length === 0) {
+    body = <Text color="secondary">No group or person is bound yet.</Text>;
+  } else {
+    body = (
+      <Table<MemberRow>
+        columnConfig={columns}
+        data={(members.data ?? []).map(member => ({
+          ...member,
+          id: `${member.binding}/${member.kind}/${member.name}`,
+        }))}
+        pagination={{ type: 'none' }}
+      />
+    );
+  }
+
+  return (
+    <Flex direction="column" gap="5">
+      <PageSection
+        title="Members"
+        description="Admins manage members, models and credentials; editors create agents; users use them."
+      >
+        <Flex direction="column" gap="3">
+          {remove.error && removing && (
+            <Alert
+              status="danger"
+              title={`${removing.name} was not removed`}
+              description={remove.error.message}
+            />
+          )}
+          {body}
+        </Flex>
+      </PageSection>
+      <PageSection title="Add a member">
+        <AddMember installation={installation} namespace={namespace} />
+      </PageSection>
+    </Flex>
+  );
+}

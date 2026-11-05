@@ -11,6 +11,15 @@ import {
 import { useOwnerField } from '../NewAgentPage/hooks/useOwnerField';
 import { ModelConfigPicker } from './ModelConfigPicker';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 type FakeModelConfig = {
   getName: () => string;
   getNamespace: () => string;
@@ -114,38 +123,6 @@ describe('ModelConfigPicker', () => {
     expect(
       screen.queryByText('Choose who the agent belongs to first'),
     ).toBeNull();
-  });
-
-  it("preselects the tenant's model when the tenant is known in the same render as the models", async () => {
-    mockModelConfigs = [modelConfig('default-model-config', 'Claude Sonnet')];
-
-    function WithTenant() {
-      const { state, setInstallation } = useNewAgentForm();
-      useEffect(() => {
-        if (!state.installation) {
-          setInstallation('gazelle');
-        }
-      }, [state.installation, setInstallation]);
-      return state.installation ? (
-        <>
-          <OwnerFieldHarness />
-          <ModelConfigPicker />
-        </>
-      ) : null;
-    }
-    await renderInTestApp(
-      <NewAgentFormProvider>
-        <WithTenant />
-      </NewAgentFormProvider>,
-    );
-
-    // The tenant's copy of the platform's default model, not the platform's
-    // own, which would create the agent in the platform tenant.
-    expect(
-      await screen.findByRole('radio', {
-        name: 'Select model Claude Sonnet, environment default',
-      }),
-    ).toHaveAttribute('aria-checked', 'true');
   });
 
   it("preselects the installation's default model and says so", async () => {

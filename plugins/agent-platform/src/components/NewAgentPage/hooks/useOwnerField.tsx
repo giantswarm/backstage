@@ -14,6 +14,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
+import { ORGANIZATIONS_CAPABILITY } from '../../../lib/organizations';
 import {
   ACCESS_GRANT_HINT,
   OWNER_LABEL,
@@ -25,8 +26,21 @@ import {
 } from '../../../lib/tenants';
 import { useNewAgentForm } from '../../NewAgentFormProvider';
 import { LabelledField } from '../../LabelledField';
+import { useOrganizationDirectory } from '../../OrganizationDirectoryProvider';
 
 const DESCRIPTION = 'Who can use the agent, and whose editors can change it.';
+
+/** The field where the choices are the person's organizations. */
+const ORGANIZATION_LABEL = 'Organization';
+const ORGANIZATION_DESCRIPTION =
+  'Only the organizations you belong to. Its members use the agent, and its editors can change it.';
+
+/**
+ * Who can add a person to an organization, when agent-manager's answer does
+ * not say it (`list_my_organizations`' `none`).
+ */
+const NO_ORGANIZATION_HINT =
+  'An admin of an organization adds you, or someone with the agent-platform:organizations-admin role creates one with you as its first admin.';
 
 /** What each kind means, after its label on the radio. */
 const KIND_EXPLANATIONS: Record<TenantKind, string> = {
@@ -91,7 +105,17 @@ export function useOwnerField({
   const installation = edit ? undefined : state.installation;
   // For Check again only: the form takes the answer itself
   // (`useTenantChoicesSync`, mounted by every step).
-  const { canRead, refetch } = useAgentManagerInfo(installation);
+  const { info, canRead, refetch } = useAgentManagerInfo(installation);
+  const { directory, organizationsOf } = useOrganizationDirectory();
+  // Where agent-manager serves the organization tools, the choices are the
+  // organizations the person belongs to (`useTenantChoicesSync`), and the
+  // field is named for them.
+  const byOrganization =
+    info?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
+  const mine =
+    byOrganization && installation ? organizationsOf(installation) : undefined;
+  const label = byOrganization ? ORGANIZATION_LABEL : OWNER_LABEL;
+  const description = byOrganization ? ORGANIZATION_DESCRIPTION : DESCRIPTION;
   // The places as the form holds them, so the field never shows a pick the
   // form does not hold.
   const managed = state.tenantChoices;
@@ -113,7 +137,7 @@ export function useOwnerField({
   // its message to a screen reader then.
   const blockGroup = (children: ReactNode, focusable: boolean) => (
     <div
-      aria-label={OWNER_LABEL}
+      aria-label={label}
       {...blockError.groupProps}
       // Only while it is in error and holds no control: the invalid field a
       // blocked Continue must focus has nothing else to take it, and
@@ -141,7 +165,7 @@ export function useOwnerField({
     return {
       inMain: true,
       field: (
-        <LabelledField label={OWNER_LABEL} description={DESCRIPTION}>
+        <LabelledField label={label} description={description}>
           {blockGroup(
             <>
               {blockError.message}
@@ -166,14 +190,22 @@ export function useOwnerField({
     return {
       inMain: true,
       field: (
-        <LabelledField label={OWNER_LABEL} description={DESCRIPTION}>
+        <LabelledField label={label} description={description}>
           {blockGroup(
             <Flex direction="column" gap="2">
-              <Alert
-                status="warning"
-                title="You may not create agents here"
-                description={`On ${installation}, you may create agents neither for the platform nor for an organization. ${ACCESS_GRANT_HINT}`}
-              />
+              {byOrganization ? (
+                <Alert
+                  status="warning"
+                  title={`You belong to no organization on ${installation}`}
+                  description={capitalize(mine?.none ?? NO_ORGANIZATION_HINT)}
+                />
+              ) : (
+                <Alert
+                  status="warning"
+                  title="You may not create agents here"
+                  description={`On ${installation}, you may create agents neither for the platform nor for an organization. ${ACCESS_GRANT_HINT}`}
+                />
+              )}
               {blockError.message}
             </Flex>,
             true,
@@ -190,17 +222,21 @@ export function useOwnerField({
       sole: managed[0],
       field: (
         <Text as="p" variant="body-small" color="secondary">
-          {OWNER_LABEL}: <strong>{ownerOf(managed[0])}</strong>, the only one
-          you may create agents for on {installation}.
+          {label}: <strong>{ownerOf(managed[0], directory)}</strong>,{' '}
+          {byOrganization
+            ? `the only organization you belong to on ${installation}.`
+            : `the only one you may create agents for on ${installation}.`}
         </Text>
       ),
     };
   }
 
-  const { kinds, byKind } = tenantGroups(managed);
+  const { kinds, byKind } = tenantGroups(managed, directory);
   const offersKind = kinds.length > 1;
   // One is always picked once there are choices (`setTenantChoices`).
-  const pickedKind = state.tenant ? tenantKindOf(state.tenant) : kinds[0];
+  const pickedKind = state.tenant
+    ? tenantKindOf(state.tenant, directory)
+    : kinds[0];
   // The kind whose dropdown shows: the one chosen, or the only one.
   const dropdownKind = offersKind ? pickedKind : kinds[0];
   const dropdownChoices = byKind[dropdownKind];
@@ -212,13 +248,16 @@ export function useOwnerField({
         // the field.
         {...(offersKind
           ? { 'aria-label': TENANT_KIND_LABELS[dropdownKind] }
-          : { label: OWNER_LABEL, description: DESCRIPTION })}
+          : { label, description })}
         isRequired
         searchable={searchableIf(dropdownChoices)}
         options={dropdownChoices.map(namespace => ({
           id: namespace,
           // Under Other namespace, the namespace's own name.
-          label: dropdownKind === 'namespace' ? namespace : ownerOf(namespace),
+          label:
+            dropdownKind === 'namespace'
+              ? namespace
+              : ownerOf(namespace, directory),
         }))}
         selectedKey={
           state.tenant && dropdownChoices.includes(state.tenant)
@@ -242,8 +281,8 @@ export function useOwnerField({
     field: (
       <Flex direction="column" gap="2">
         <RadioGroup
-          label={OWNER_LABEL}
-          description={DESCRIPTION}
+          label={label}
+          description={description}
           isRequired
           value={pickedKind}
           onChange={value => selectTenantKind(value as TenantKind)}
@@ -258,4 +297,9 @@ export function useOwnerField({
       </Flex>
     ),
   };
+}
+
+/** `text` with its first letter capitalized, as a sentence starts. */
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
