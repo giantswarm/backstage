@@ -21,7 +21,11 @@ import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
  * This one surfaces as a 500, so the frontend reports it *and* it reaches Sentry —
  * both correct here. A deployed-but-degraded kagent is rare and genuinely
  * actionable, and its sessions silently vanishing from the fleet-merged list would
- * be the worse failure.
+ * be the worse failure. It reaches Sentry **once**: the client attaches the call
+ * ({@link withKagentFailure}), and the router answers the 500 itself with one
+ * warning per call and cause, rather than throwing it for
+ * `MiddlewareFactory.error()` to report a second time, once per route and
+ * installation (see `kagentErrorHandler.ts`).
  */
 export function upstreamError(
   message: string,
@@ -142,8 +146,52 @@ export function isSocketFailure(error: ConnectError): boolean {
   );
 }
 
+/**
+ * What the logs need to know about the kagent call behind an upstream error.
+ * The browser gets none of it beyond the error's own message and reason.
+ */
+export interface KagentFailure {
+  installation: string;
+  /** The RPC, as `Service/Method`: `SessionService/ListSessions`. */
+  call: string;
+  /** The Connect code kagent (or the transport) answered: `DeadlineExceeded`. */
+  code: string;
+  /** The controller's message, bounded. */
+  error: string;
+  /** The `x-request-id` the call was sent with, when it had one. */
+  requestId?: string;
+}
+
+const KAGENT_FAILURE = Symbol.for('kagent.failure');
+
+/**
+ * Attach the call behind an upstream error, for the router to log it once
+ * (see `kagentErrorHandler.ts`). Non-enumerable, so Backstage's error
+ * serializer leaves it out of the body the browser gets.
+ */
+export function withKagentFailure(error: Error, failure: KagentFailure): Error {
+  Object.defineProperty(error, KAGENT_FAILURE, {
+    value: failure,
+    enumerable: false,
+  });
+  return error;
+}
+
+/** The call behind an upstream error, when the kagent client attached it. */
+export function kagentFailureOf(error: unknown): KagentFailure | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined;
+  }
+  return (error as Record<symbol, KagentFailure | undefined>)[KAGENT_FAILURE];
+}
+
 /** How one RPC's failures read to the user. */
 export interface ErrorContext {
+  /**
+   * The RPC, as `Service/Method`, for the logs: what Sentry groups a failure
+   * by, so it never carries an installation or an id.
+   */
+  call: string;
   /** What `NotFound` means when **kagent** answered it: the resource is gone. */
   missingResource: string;
   /** Short name of the RPC, used when kagent does not implement it. */

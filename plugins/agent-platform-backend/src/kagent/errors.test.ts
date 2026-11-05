@@ -3,7 +3,11 @@ import { Code, ConnectError } from '@connectrpc/connect';
 import { mapConnectError } from './errors';
 
 const logger = mockServices.logger.mock();
-const context = { missingResource: 'gone', endpoint: 'ListSessions' };
+const context = {
+  call: 'SessionService/ListSessions',
+  missingResource: 'gone',
+  endpoint: 'ListSessions',
+};
 
 function map(error: ConnectError): Error {
   return mapConnectError(error, context, 'gazelle', logger, 1000);

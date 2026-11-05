@@ -8,6 +8,7 @@ import {
   readKagentInstallationsFromConfig,
   TURN_PENDING_ERROR_NAME,
 } from './KagentClient';
+import { kagentFailureOf } from './kagent/errors';
 import { A2A_EXTENSIONS_HEADER, HITL_EXTENSION_URI } from './kagent/hitl';
 import {
   createFakeController,
@@ -1409,7 +1410,9 @@ describe('KagentClient against a fake controller', () => {
 
       expect(sent).toEqual(['req-42']);
       expect(failing.warn).toHaveBeenCalledWith(
-        "kagent SessionService/ListSessions failed for installation 'gazelle' with status 401",
+        // The installation is in the metadata, never in the message: Sentry
+        // groups the warnings by the message.
+        'kagent SessionService/ListSessions failed with status 401',
         {
           installation: 'gazelle',
           call: 'SessionService/ListSessions',
@@ -1419,6 +1422,128 @@ describe('KagentClient against a fake controller', () => {
           error: 'authentication failure: token uses the unknown key',
         },
       );
+    });
+
+    describe('an upstream failure carries its call for the router to log once', () => {
+      const { SessionService } =
+        require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb');
+      const { A2AService } =
+        require('./kagent/gen/a2a_pb') as typeof import('./kagent/gen/a2a_pb');
+
+      /** A controller whose every read answers `code`. */
+      function failingWith(code: Code, message: string) {
+        const log = mockServices.logger.mock();
+        const fail = () => {
+          throw new ConnectError(message, code);
+        };
+        const client = new KagentClient(
+          installation,
+          log,
+          createRouterTransport(router => {
+            router.service(SessionService, {
+              listSessions: fail,
+              getSession: fail,
+            });
+          }),
+          500,
+          500,
+        );
+        return { client, log };
+      }
+
+      it.each([
+        [
+          'the session list',
+          'SessionService/ListSessions',
+          (client: KagentClient) =>
+            client.listSessions({ ...USER, requestId: 'req-44' }),
+          { requestId: 'req-44' },
+        ],
+        [
+          'a session',
+          'SessionService/GetSession',
+          (client: KagentClient) => client.getSession('s1', USER),
+          {},
+        ],
+        [
+          // The session's Agent is looked up first, and that call failed.
+          "a session's tasks",
+          'SessionService/GetSession',
+          (client: KagentClient) => client.listSessionTasks('s1', USER),
+          {},
+        ],
+      ])(
+        'a timed-out read of %s names %s',
+        async (_what, call, read, extra) => {
+          const { client, log } = failingWith(
+            Code.DeadlineExceeded,
+            'context deadline exceeded',
+          );
+          const error = (await read(client).catch((e: unknown) => e)) as Error;
+
+          // What the browser gets is unchanged, the installation included.
+          expect(error).toMatchObject({
+            name: 'UpstreamError',
+            reason: 'timeout',
+            message:
+              "The kagent API for installation 'gazelle' did not respond in time.",
+          });
+          expect(kagentFailureOf(error)).toEqual({
+            installation: 'gazelle',
+            call,
+            code: 'DeadlineExceeded',
+            error: 'context deadline exceeded',
+            ...extra,
+          });
+          // Not logged here: the router answers it and logs it once.
+          expect(log.warn).not.toHaveBeenCalled();
+          expect(log.error).not.toHaveBeenCalled();
+        },
+      );
+
+      it('names the task list when the session lookup succeeded', async () => {
+        const log = mockServices.logger.mock();
+        const client = new KagentClient(
+          installation,
+          log,
+          createRouterTransport(router => {
+            router.service(SessionService, {
+              getSession: request => ({
+                session: { id: request.sessionId, agent: AGENT },
+              }),
+            });
+            router.service(A2AService, {
+              listTasks() {
+                throw new ConnectError('database down', Code.Internal);
+              },
+            });
+          }),
+          500,
+          500,
+        );
+
+        const error = (await client
+          .listSessionTasks('s1', USER)
+          .catch((e: unknown) => e)) as Error;
+
+        expect(error.name).toBe('UpstreamError');
+        expect(kagentFailureOf(error)).toEqual({
+          installation: 'gazelle',
+          call: 'A2AService/ListTasks',
+          code: 'Internal',
+          error: 'database down',
+        });
+        expect(log.warn).not.toHaveBeenCalled();
+      });
+
+      it('attaches nothing to an answer that is not a 5xx', async () => {
+        const { client } = failingWith(Code.NotFound, 'no such session');
+        const error = (await client
+          .getSession('s1', USER)
+          .catch((e: unknown) => e)) as Error;
+        expect(error.name).toBe('NotFoundError');
+        expect(kagentFailureOf(error)).toBeUndefined();
+      });
     });
 
     it('keeps an absent kagent off the warn log', async () => {

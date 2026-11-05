@@ -17,6 +17,13 @@ values (installation name, entity id, raw response bodies) out of the _message_
 of a `warn`/`error`: Sentry fingerprints on the message, so one root cause fans
 out into one issue per value. Put those in structured metadata instead.
 
+Backstage's error middleware (`MiddlewareFactory.error()`) logs every 5xx a
+route throws at `error`, with the error's message. A failure your code has
+already logged, or whose message names an installation because a person reads
+it, is answered by the router instead of thrown: `avatarRouter.ts` in
+`agent-platform-backend`, and `kagentErrorHandler.ts` there for a kagent call
+that failed, which logs it once as `kagent <call> <cause>`.
+
 Frontend equivalent: `SentryErrorReporter`
 (`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
 reach Sentry.

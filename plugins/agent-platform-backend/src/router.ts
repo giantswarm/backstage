@@ -44,6 +44,7 @@ import { SessionUsageReader } from './sessionUsage';
 import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
+import { kagentErrorHandler } from './kagentErrorHandler';
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -1305,6 +1306,11 @@ export async function createRouter(
   // served same-origin (avatarRouter.ts), so the page's Content-Security-Policy
   // names no installation. Cookie-authenticated: see plugin.ts.
   router.use(createAvatarRouter({ config, logger }));
+
+  // Last, so that every kagent route above hands it its failures: a degraded
+  // kagent is answered here and logged once, not reported again by
+  // `MiddlewareFactory.error()` (kagentErrorHandler.ts).
+  router.use(kagentErrorHandler(logger));
 
   return router;
 }
