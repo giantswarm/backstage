@@ -60,7 +60,21 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
  * events spread over the values and can be searched and alerted on by them.
  * Sentry does not index extra data.
  */
-const TAGGED_EXTRA = ['cluster', 'installation'];
+const TAGGED_EXTRA = ['cluster', 'installation', 'tool', 'server'];
+
+/**
+ * gs-node's `MusterToolError`, a tool error muster answered. Its extra data
+ * names the `tool`, the MCP `server` and the `installation`, and the `kind` of
+ * failure where it is a known one (a timeout, a missing tool, ...).
+ */
+const MUSTER_TOOL_ERROR = 'MusterToolError';
+
+/**
+ * Quoted values in a tool's message: names of workflows, agents, Secrets. One
+ * fault, such as muster refusing a label value, names a different one each
+ * time.
+ */
+const QUOTED_VALUE: [RegExp, string] = [/"[^"]*"/g, '"<value>"'];
 
 /**
  * Tokens that differ per occurrence but not per fault. Order matters: URLs are
@@ -114,11 +128,33 @@ function writeEventMessage(event: SentryEvent, message: string): void {
   }
 }
 
+function isMusterToolError(event: SentryEvent): boolean {
+  return event.extra?.name === MUSTER_TOOL_ERROR;
+}
+
+/**
+ * One issue per kind of failure and tool, whatever route the call came
+ * through: `['MusterToolError', <kind>, <tool>]`. Without a known `kind`, the
+ * message stands in for it, with its quoted values replaced.
+ */
+function musterToolErrorFingerprint(
+  event: SentryEvent,
+  normalizedMessage: string,
+): string[] {
+  const { kind, tool } = event.extra ?? {};
+  return [
+    MUSTER_TOOL_ERROR,
+    typeof kind === 'string' ? kind : normalizedMessage,
+    typeof tool === 'string' ? tool : '',
+  ];
+}
+
 /**
  * Collapses high-cardinality Sentry messages onto a stable fingerprint.
  *
  * Events whose message needs no rewriting keep their message and grouping;
- * they only gain the tags from `TAGGED_EXTRA`.
+ * they only gain the tags from `TAGGED_EXTRA`. A muster tool error is grouped
+ * by its kind and tool ({@link musterToolErrorFingerprint}).
  */
 export function normalizeSentryEvent<T extends SentryEvent>(event: T): T {
   for (const key of TAGGED_EXTRA) {
@@ -133,13 +169,19 @@ export function normalizeSentryEvent<T extends SentryEvent>(event: T): T {
     return event;
   }
 
-  const normalized = normalizeMessage(original);
-  if (normalized === original) {
-    return event;
+  const musterToolError = isMusterToolError(event);
+  let normalized = normalizeMessage(original);
+  if (musterToolError) {
+    normalized = normalized.replace(...QUOTED_VALUE);
   }
 
-  writeEventMessage(event, normalized);
-  event.fingerprint = [normalized];
-  event.extra = { ...event.extra, original_message: original };
+  if (normalized !== original) {
+    writeEventMessage(event, normalized);
+    event.fingerprint = [normalized];
+    event.extra = { ...event.extra, original_message: original };
+  }
+  if (musterToolError) {
+    event.fingerprint = musterToolErrorFingerprint(event, normalized);
+  }
   return event;
 }

@@ -11,12 +11,16 @@ import { isMusterAuthFailure } from '../apis/musterUnauthorized';
  * the call again with a refreshed token; a gone portal session would re-run
  * the single main re-login, a popup, for one probe), a missing object, a
  * refusal or an unavailable dependency. None of them is transient from a
- * query's point of view. Shared with every plugin that reads through muster
+ * query's point of view, but for a call a rollout of muster interrupted
+ * (`kind: interrupted`, a 503). Shared with every plugin that reads through muster
  * (agent-platform's query client builds on it), so the rules cannot drift
  * apart.
  */
 export function shouldRetryMusterQuery(failureCount: number, error: unknown) {
   const name = (error as Error | null)?.name;
+  if ((error as { kind?: unknown } | null)?.kind === 'interrupted') {
+    return failureCount <= 2;
+  }
   if (
     isMusterAuthFailure(error) ||
     name === 'NotFoundError' ||

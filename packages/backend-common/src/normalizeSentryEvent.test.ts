@@ -159,7 +159,7 @@ describe('normalizeSentryEvent', () => {
     });
   });
 
-  it.each(['cluster', 'installation'])(
+  it.each(['cluster', 'installation', 'tool', 'server'])(
     'sets %s from the extra data as a tag',
     key => {
       const event = normalizeSentryEvent<SentryEvent>({
@@ -206,6 +206,113 @@ describe('normalizeSentryEvent', () => {
 
     expect(event.message).toEqual({
       formatted: 'Database keepalive failed, Error: nope',
+    });
+  });
+
+  describe('muster tool errors', () => {
+    /**
+     * The error middleware's log line of a MusterToolError, as the Sentry
+     * transport makes an event of it: the error's own properties are extra.
+     */
+    function toolErrorEvent(
+      message: string,
+      extra: Record<string, unknown>,
+    ): SentryEvent {
+      return {
+        exception: {
+          values: [{ value: `Request failed with status 500 ${message}` }],
+        },
+        extra: {
+          name: 'MusterToolError',
+          details: [],
+          installation: 'gazelle',
+          plugin: 'muster',
+          ...extra,
+        },
+      };
+    }
+
+    it('groups by kind and tool, whatever the message and installation', () => {
+      const [first, second] = [
+        ['gazelle', 30],
+        ['golem', 60],
+      ].map(([installation, seconds]) =>
+        normalizeSentryEvent(
+          toolErrorEvent(
+            `Tool execution failed: no answer within the server's timeout of ${seconds}s: context deadline exceeded`,
+            {
+              installation,
+              kind: 'timeout',
+              tool: 'x_prometheus_execute_query',
+              server: 'prometheus',
+            },
+          ),
+        ),
+      );
+
+      expect(first.fingerprint).toEqual([
+        'MusterToolError',
+        'timeout',
+        'x_prometheus_execute_query',
+      ]);
+      expect(second.fingerprint).toEqual(first.fingerprint);
+      expect(first.tags).toEqual({
+        installation: 'gazelle',
+        tool: 'x_prometheus_execute_query',
+        server: 'prometheus',
+      });
+    });
+
+    it('keeps the same kind of another tool apart', () => {
+      const [prometheus, kubernetes] = [
+        'x_prometheus_execute_query',
+        'x_kubernetes_list',
+      ].map(
+        tool =>
+          normalizeSentryEvent(
+            toolErrorEvent('Tool execution failed: client not connected', {
+              kind: 'client_not_connected',
+              tool,
+            }),
+          ).fingerprint,
+      );
+
+      expect(prometheus).not.toEqual(kubernetes);
+    });
+
+    // giantswarm/giantswarm#39001: one fault, a different workflow name each time.
+    it('groups an unknown kind by its message, quoted values replaced', () => {
+      const [first, second] = ['deploy app', 'rotate keys'].map(workflow =>
+        normalizeSentryEvent(
+          toolErrorEvent(
+            `Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "${workflow}"`,
+            { tool: 'core_workflow_execution_list' },
+          ),
+        ),
+      );
+
+      const normalized =
+        'Request failed with status 500 Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "<value>"';
+      expect(first.fingerprint).toEqual([
+        'MusterToolError',
+        normalized,
+        'core_workflow_execution_list',
+      ]);
+      expect(second.fingerprint).toEqual(first.fingerprint);
+      expect(first.exception!.values![0].value).toBe(normalized);
+      expect(first.extra).toMatchObject({
+        original_message:
+          'Request failed with status 500 Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "deploy app"',
+      });
+    });
+
+    it('leaves quoted values in other events alone', () => {
+      const event = normalizeSentryEvent<SentryEvent>({
+        message: 'no team file for "bumblebee"',
+      });
+
+      expect(event.message).toBe('no team file for "bumblebee"');
+      expect(event.fingerprint).toBeUndefined();
     });
   });
 });

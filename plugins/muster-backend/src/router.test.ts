@@ -6,6 +6,7 @@ import express from 'express';
 import request from 'supertest';
 import {
   EndpointProbeResult,
+  markReported,
   MusterAuthRequiredError,
   MusterMcpClient,
   ReachabilityCache,
@@ -1251,6 +1252,18 @@ describe('createRouter', () => {
 
   describe("/call of muster's connector tools", () => {
     const SECRET = 'hubspot-s3cret';
+    // The client names the called tool on its error, as MusterMcpClient does,
+    // which gives a connector write's refusal its 422.
+    const toolError = (
+      message: string,
+      details: string[] = [],
+      tool = 'core_mcpserver_create',
+    ) =>
+      new MusterToolError(message, details, { tool, installation: 'gazelle' });
+    const rejectWith = (message: string, details: string[] = []) =>
+      callTool.mockImplementation(async (tool: string) => {
+        throw toolError(message, details, tool);
+      });
     const refusal =
       'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
     const create = async () =>
@@ -1271,9 +1284,7 @@ describe('createRouter', () => {
     // A refusal is the person's answer, not the portal's fault: below the
     // 500 at which the error middleware logs to Sentry.
     it("answers muster's refusal as a 422 with its message, never the arguments", async () => {
-      callTool.mockRejectedValue(
-        new MusterToolError(refusal, ['{"missing":"create secrets"}']),
-      );
+      rejectWith(refusal, ['{"missing":"create secrets"}']);
 
       const response = await create();
 
@@ -1289,10 +1300,20 @@ describe('createRouter', () => {
     // MiddlewareFactory.error() logs at error level, which the root logger
     // ships to Sentry, only from 500 on: a refusal stays out, an outage not.
     it.each([
-      [new MusterToolError(refusal), 422, false],
+      [toolError(refusal), 422, false],
+      [toolError('forbidden: you may not update agents'), 403, false],
+      // The client logs a rollout's interruption at info and marks it.
+      [markReported(toolError('interrupted: muster is rolling')), 503, false],
+      [
+        toolError(
+          "Tool execution failed: no answer within the server's timeout of 30s",
+        ),
+        504,
+        true,
+      ],
       [new Error('fetch failed'), 500, true],
     ])(
-      'logs %s at error level only for a 5xx',
+      'logs %s at error level only for a 5xx not already logged',
       async (error, status, loggedAsError) => {
         const logger = mockServices.logger.mock();
         jest.mocked(logger.child).mockReturnValue(logger);
@@ -1372,7 +1393,7 @@ describe('createRouter', () => {
       'Cannot store the client credentials of MCP server \'jira\', so it was not created: Secret "jira-oauth-client-ab12c" already exists in namespace "muster"; retry to generate another name',
       "Failed to create MCP server: mcpservers.muster.giantswarm.io \"jira\" is forbidden: ValidatingAdmissionPolicy 'muster-mcpserver-secret-references' with binding 'muster-mcpserver-secret-references' denied request: the writer of an MCPServer may name only Secrets they may get",
     ])('answers the refusal %j as a 422', async message => {
-      callTool.mockRejectedValue(new MusterToolError(message));
+      rejectWith(message);
 
       const response = await create();
 
@@ -1391,7 +1412,7 @@ describe('createRouter', () => {
       'Cannot store the client credentials of MCP server \'jira\': Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster". Removing the server failed too, so it is left behind without its client: delete MCP server \'jira\' (connection refused)',
       'unknown args: [clientCredentials]. Allowed args: [name url]',
     ])("leaves muster's failure %j a 500", async message => {
-      callTool.mockRejectedValue(new MusterToolError(message));
+      rejectWith(message);
 
       const response = await create();
 
@@ -1399,20 +1420,20 @@ describe('createRouter', () => {
     });
 
     it('keeps the stack of the tool error it answers 422', async () => {
-      const error = new MusterToolError(refusal);
+      const error = toolError(refusal);
       callTool.mockRejectedValue(error);
 
       const response = await create();
 
-      // The 422 is set on muster's own error, not on a copy without its stack.
+      // The 422 is muster's own error's, not a copy's without its stack.
       expect(response.status).toBe(422);
-      expect((error as { statusCode?: number }).statusCode).toBe(422);
+      expect(error.status).toBe(422);
     });
 
     it.each(['core_mcpserver_update', 'core_mcpserver_validate'])(
       "answers %s's refusal as a 422 too",
       async name => {
-        callTool.mockRejectedValue(new MusterToolError(refusal));
+        rejectWith(refusal);
 
         const response = await request(await personApp())
           .post('/call')
@@ -1430,7 +1451,7 @@ describe('createRouter', () => {
       'core_mcpserver_detect',
       'core_mcpserver_delete',
     ])("leaves %s's tool error a 500", async name => {
-      callTool.mockRejectedValue(new MusterToolError('not found'));
+      rejectWith('not found');
 
       const response = await request(await personApp())
         .post('/call')

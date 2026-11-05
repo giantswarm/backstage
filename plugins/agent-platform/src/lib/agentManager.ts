@@ -11,6 +11,10 @@
  * — the portal composes nothing of its own.
  */
 
+import {
+  AGENT_MANAGER_REFUSAL_CODES,
+  type AgentManagerRefusalCode,
+} from '@giantswarm/backstage-plugin-gs-common';
 import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
 
 /** The MCPServer name muster registers agent-manager under. */
@@ -384,34 +388,22 @@ export function hasReachedWrittenRevision(
 
 /**
  * agent-manager's error codes, as its MCP tools prefix them
- * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
- * (a viewer's Deploy), `conflict` an existing name or a suspended release,
- * `gitops_owned` a live write to a release applied from git,
- * `auth_required` a write in mode `commit` without the person's GitHub
- * authorization, `invalid_request` a schema violation or an unpinnable skill,
- * `unsupported` an operation this installation does not offer.
+ * (`<code>: <message>`): its refusals (`AGENT_MANAGER_REFUSAL_CODES`, which
+ * the backend answers with a 4xx), and `auth_required` a write in mode
+ * `commit` without the person's GitHub authorization, `unauthenticated` and
+ * `backend_error`.
  */
 export type AgentManagerErrorCode =
-  | 'not_found'
-  | 'invalid_request'
-  | 'conflict'
-  | 'gitops_owned'
+  | AgentManagerRefusalCode
   | 'auth_required'
-  | 'forbidden'
   | 'unauthenticated'
-  | 'unsupported'
   | 'backend_error'
   | 'unknown';
 
 const ERROR_CODES: readonly AgentManagerErrorCode[] = [
-  'not_found',
-  'invalid_request',
-  'conflict',
-  'gitops_owned',
+  ...AGENT_MANAGER_REFUSAL_CODES,
   'auth_required',
-  'forbidden',
   'unauthenticated',
-  'unsupported',
   'backend_error',
 ];
 

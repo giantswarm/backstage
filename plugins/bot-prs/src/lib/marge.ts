@@ -612,7 +612,11 @@ const NETWORK_FAILURE_PATTERNS = [
 /**
  * What the portal's edge answers when the backend's answer does not reach it:
  * a closed upstream connection, no healthy backend, a timeout. The muster
- * client keeps the status on the error it throws.
+ * client keeps the status on the error it throws. muster-backend answers
+ * these itself for a tool muster did not answer: a timeout (504), a rollout
+ * that interrupted the call (503), and with muster's text for a server it
+ * holds no connection to (503, 502), which {@link classifyMargeError} reads
+ * as not connected first.
  */
 const EDGE_FAILURE_STATUSES = [502, 503, 504];
 
@@ -656,11 +660,16 @@ export function classifyMargeError(error: unknown): Error {
   if (rateLimit) {
     return rateLimit;
   }
-  if (isAnswerCut(error) || looksAnswerLost(error)) {
+  if (isAnswerCut(error)) {
     return new MargeAnswerLostError(message, { cause: error });
   }
+  // Before the status: muster-backend answers muster's `tool not found` 502
+  // and `client not connected` 503, which a sign-in to marge fixes.
   if (looksNotConnected(message)) {
     return new MargeNotConnectedError(message);
+  }
+  if (looksAnswerLost(error)) {
+    return new MargeAnswerLostError(message, { cause: error });
   }
   return error instanceof Error ? error : new Error(message);
 }

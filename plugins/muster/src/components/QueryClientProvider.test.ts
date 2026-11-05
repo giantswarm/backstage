@@ -35,6 +35,21 @@ describe('shouldRetryMusterQuery', () => {
     ).toBe(true);
   });
 
+  it('retries a call a rollout of muster interrupted, but not another 503', () => {
+    const unavailable = (kind?: string) =>
+      Object.assign(new Error('x'), {
+        name: 'ServiceUnavailableError',
+        status: 503,
+        kind,
+      });
+    expect(shouldRetryMusterQuery(0, unavailable('interrupted'))).toBe(true);
+    expect(shouldRetryMusterQuery(3, unavailable('interrupted'))).toBe(false);
+    expect(shouldRetryMusterQuery(0, unavailable('client_not_connected'))).toBe(
+      false,
+    );
+    expect(shouldRetryMusterQuery(0, unavailable())).toBe(false);
+  });
+
   it('retries any other failure up to three times', () => {
     expect(shouldRetryMusterQuery(2, new Error('connection reset'))).toBe(true);
     expect(shouldRetryMusterQuery(3, new Error('connection reset'))).toBe(

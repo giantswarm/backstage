@@ -137,6 +137,26 @@ describe('MusterApiClient response status', () => {
     );
     expect((error as Error & { status?: number }).status).toBe(504);
   });
+
+  it("keeps a refused tool's message, with its status and kind", async () => {
+    const { client, fetchMock } = setup();
+    const message = 'forbidden: you may not update agents';
+    fetchMock.mockResolvedValue(
+      errorResponse(403, {
+        error: {
+          name: 'MusterToolError',
+          message,
+          kind: 'forbidden',
+          tool: 'x_agent-manager_update_agent',
+        },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('x_agent-manager_update_agent', {}, 'open')
+      .catch(e => e);
+    expect(error).toMatchObject({ message, status: 403, kind: 'forbidden' });
+  });
 });
 
 /** A streamed answer whose body yields `chunks` as they would arrive. */

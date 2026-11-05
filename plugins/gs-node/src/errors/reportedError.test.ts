@@ -1,5 +1,7 @@
 import { NotFoundError, ServiceUnavailableError } from '@backstage/errors';
 import {
+  isReported,
+  markReported,
   ReportedServiceUnavailableError,
   reportedErrorHandler,
 } from './reportedError';
@@ -54,6 +56,35 @@ describe('reportedErrorHandler', () => {
       message: 'down',
       reason: 'some_reason',
     });
+  });
+
+  it('answers an error marked reported with its own status', () => {
+    const { res, status, json } = response();
+    const error = markReported(
+      Object.assign(new Error('interrupted: rollout'), {
+        name: 'MusterToolError',
+        status: 503,
+        kind: 'interrupted',
+      }),
+    );
+
+    reportedErrorHandler()(error, req, res, jest.fn());
+
+    expect(status).toHaveBeenCalledWith(503);
+    // The mark stays out of the body.
+    expect(json.mock.calls[0][0].error).toEqual({
+      name: 'MusterToolError',
+      message: 'interrupted: rollout',
+      status: 503,
+      kind: 'interrupted',
+    });
+  });
+
+  it('marks only the error it is given', () => {
+    expect(isReported(new ReportedServiceUnavailableError('x'))).toBe(true);
+    expect(isReported(markReported(new Error('x')))).toBe(true);
+    expect(isReported(new Error('x'))).toBe(false);
+    expect(isReported('x')).toBe(false);
   });
 
   it('passes any other error on, a plain 503 included', () => {
