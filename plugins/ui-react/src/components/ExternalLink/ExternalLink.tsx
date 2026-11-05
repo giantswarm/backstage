@@ -1,22 +1,18 @@
-import { VisuallyHidden } from '@backstage/ui';
-import { Box, Link, styled } from '@material-ui/core';
-import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
-
-const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
-  marginLeft: theme.spacing(0.5),
-  fontSize: 'inherit',
-}));
+import { Box, Link } from '@material-ui/core';
+import { NewTabHint } from './NewTabHint';
 
 type ExternalLinkProps = {
   href: string;
   children: React.ReactNode;
   /**
-   * CSS display value for the inner flex container.
+   * CSS display value for the inner container.
    * Use 'flex' (block-level) when the link needs to participate in a width
    * constraint chain (e.g. inside a flex/grid item for text truncation).
+   * Use 'inline' for a link in running text, so a long link text wraps with
+   * the sentence and the icon follows its last word.
    * @default 'inline-flex'
    */
-  display?: 'flex' | 'inline-flex';
+  display?: 'flex' | 'inline-flex' | 'inline';
 };
 
 /**
@@ -36,13 +32,13 @@ export const ExternalLink = ({
           takes its link's own (the agent shell's solid one, MUI's on
           hover). */}
       <Box
+        component={display === 'inline' ? 'span' : 'div'}
         display={display}
-        alignItems="center"
+        alignItems={display === 'inline' ? undefined : 'center'}
         style={{ textDecoration: 'inherit' }}
       >
         {children}
-        <StyledLaunchOutlinedIcon aria-hidden />
-        <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+        <NewTabHint />
       </Box>
     </Link>
   );

@@ -140,7 +140,9 @@ function Described({
     {
       label: 'Source',
       value: sourceURL ? (
-        <ExternalLink href={sourceURL}>{toolchain.repository}</ExternalLink>
+        <ExternalLink href={sourceURL} display="inline">
+          {toolchain.repository}
+        </ExternalLink>
       ) : (
         toolchain.repository
       ),

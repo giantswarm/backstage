@@ -259,13 +259,20 @@ describe('SkillDetailPage', () => {
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     }
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
-    // Labels and values read at the shell's body size; a link takes its
-    // value's.
+    // Labels and values read at the shell's body size. A link sets no size
+    // of its own: it takes its value's, which the list sets.
     for (const text of ['Branch', 'main']) {
       expect(within(facts).getByText(text)).toHaveAttribute(
         'data-variant',
         'body-medium',
       );
+    }
+    for (const link of [commit, source]) {
+      expect(link).not.toHaveAttribute('data-variant');
+      expect(link.className).not.toMatch(/MuiTypography-(body|caption|h\d)/);
+      expect(link.closest('dd')).toHaveStyle({
+        fontSize: 'var(--bui-font-size-3)',
+      });
     }
     // The full commit on hover.
     expect(within(facts).getByText('a1b2c3d')).toHaveAttribute(

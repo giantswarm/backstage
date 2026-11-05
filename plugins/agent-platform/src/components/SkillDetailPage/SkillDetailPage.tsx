@@ -98,14 +98,6 @@ const useStyles = makeStyles({
   },
 });
 
-/**
- * A fact's link out to GitHub, in a new tab, at the size of the fact list it
- * is in (the list sets it on the value it holds).
- */
-function FactLink({ href, children }: { href: string; children: ReactNode }) {
-  return <ExternalLink href={href}>{children}</ExternalLink>;
-}
-
 /** A commit as a fact's value, at the fact list's size, the full SHA at hand. */
 function FactCommit({ commit }: { commit: string }) {
   return (
@@ -441,7 +433,10 @@ function SkillPage({
     {
       label: 'Source',
       value: (
-        <FactLink href={canonicalRepoUrl(skill.repoUrl)}>{source}</FactLink>
+        // At the fact list's size: the list sets it on the value it holds.
+        <ExternalLink href={canonicalRepoUrl(skill.repoUrl)} display="inline">
+          {source}
+        </ExternalLink>
       ),
     },
     {
@@ -454,9 +449,9 @@ function SkillPage({
       // (UX review M19). It opens the skill's folder at that commit.
       label: 'Latest commit',
       value: sourceUrl ? (
-        <FactLink href={sourceUrl}>
+        <ExternalLink href={sourceUrl} display="inline">
           <CommitSha value={skill.commit} copy={false} />
-        </FactLink>
+        </ExternalLink>
       ) : (
         <FactCommit commit={skill.commit} />
       ),

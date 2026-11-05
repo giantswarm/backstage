@@ -30,6 +30,7 @@ export * from './DisabledAction';
 export * from './DraftRestoredAlert';
 export * from './EmptyStateCard';
 export * from './ErrorStatus';
+export * from './ExternalCellText';
 export * from './ExternalLink';
 export * from './SelectableCard';
 export * from './Gate';

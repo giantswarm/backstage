@@ -102,9 +102,13 @@ export function MissingReleaseFileAlert({
   const copy = COPY[action];
   const tint = variant === 'alert' ? classes.inherit : undefined;
 
-  // At the size of the sentence it sits in: the empty state's is larger.
+  // Inline, it takes the size of the sentence it sits in (the empty state's
+  // is larger) and wraps with it.
   const repository = (
-    <ExternalLink href={`https://github.com/${missing.repository}`}>
+    <ExternalLink
+      href={`https://github.com/${missing.repository}`}
+      display="inline"
+    >
       <span className={classes.code}>{missing.repository}</span>
     </ExternalLink>
   );
