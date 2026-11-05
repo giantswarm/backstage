@@ -304,13 +304,22 @@ export const GatewayApiHttprouteStatusParentResolvedRefs = {
 } as const satisfies PrometheusMetric;
 
 /**
- * Envoy Gateway policy metrics. `info` exists on every observability-bundle
- * and only reads the deprecated `spec.targetRef`; `target_info` (from
- * `spec.targetRefs`) and `status_ancestor_accepted` were added after 3.5.0
- * (giantswarm/observability-bundle#467). Envoy Gateway writes no ancestor
- * status when a policy's target doesn't exist, isn't managed by it, or before
- * reconciling.
+ * Envoy Gateway policy metrics. `created` has one series per policy on every
+ * observability-bundle. `info` only reads the deprecated `spec.targetRef`, and
+ * a policy without it has no `info` series. `target_info` (from
+ * `spec.targetRefs`) and `status_ancestor_accepted` were added in 3.6.0
+ * (giantswarm/observability-bundle#467); `spec.targetSelectors` is not
+ * exported. Envoy Gateway writes no ancestor status when a policy's target
+ * doesn't exist, isn't managed by it, or before reconciling.
  */
+
+export const EnvoyGatewaySecurityPolicyCreated = {
+  name: 'envoygateway_securitypolicy_created',
+  description:
+    'Creation timestamp of a SecurityPolicy, one series per policy. `name`/`namespace` identify the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
 
 export const EnvoyGatewaySecurityPolicyInfo = {
   name: 'envoygateway_securitypolicy_info',
@@ -332,6 +341,14 @@ export const EnvoyGatewaySecurityPolicyStatusAncestorAccepted = {
   name: 'envoygateway_securitypolicy_status_ancestor_accepted',
   description:
     'Accepted condition of a SecurityPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyCreated = {
+  name: 'envoygateway_backendtrafficpolicy_created',
+  description:
+    'Creation timestamp of a BackendTrafficPolicy, one series per policy. `name`/`namespace` identify the policy.',
   type: 'gauge',
   source: 'kube-state-metrics',
 } as const satisfies PrometheusMetric;
@@ -360,6 +377,14 @@ export const EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted = {
   source: 'kube-state-metrics',
 } as const satisfies PrometheusMetric;
 
+export const EnvoyGatewayClientTrafficPolicyCreated = {
+  name: 'envoygateway_clienttrafficpolicy_created',
+  description:
+    'Creation timestamp of a ClientTrafficPolicy, one series per policy. `name`/`namespace` identify the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
 export const EnvoyGatewayClientTrafficPolicyInfo = {
   name: 'envoygateway_clienttrafficpolicy_info',
   description:
@@ -380,6 +405,14 @@ export const EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted = {
   name: 'envoygateway_clienttrafficpolicy_status_ancestor_accepted',
   description:
     'Accepted condition of a ClientTrafficPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyCreated = {
+  name: 'envoygateway_envoyextensionpolicy_created',
+  description:
+    'Creation timestamp of a EnvoyExtensionPolicy, one series per policy. `name`/`namespace` identify the policy.',
   type: 'gauge',
   source: 'kube-state-metrics',
 } as const satisfies PrometheusMetric;
@@ -564,15 +597,19 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentAccepted,
   GatewayApiHttprouteStatusParentResolvedRefs,
+  EnvoyGatewaySecurityPolicyCreated,
   EnvoyGatewaySecurityPolicyInfo,
   EnvoyGatewaySecurityPolicyTargetInfo,
   EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
+  EnvoyGatewayBackendTrafficPolicyCreated,
   EnvoyGatewayBackendTrafficPolicyInfo,
   EnvoyGatewayBackendTrafficPolicyTargetInfo,
   EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted,
+  EnvoyGatewayClientTrafficPolicyCreated,
   EnvoyGatewayClientTrafficPolicyInfo,
   EnvoyGatewayClientTrafficPolicyTargetInfo,
   EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted,
+  EnvoyGatewayEnvoyExtensionPolicyCreated,
   EnvoyGatewayEnvoyExtensionPolicyInfo,
   EnvoyGatewayEnvoyExtensionPolicyTargetInfo,
   EnvoyGatewayEnvoyExtensionPolicyStatusAncestorAccepted,

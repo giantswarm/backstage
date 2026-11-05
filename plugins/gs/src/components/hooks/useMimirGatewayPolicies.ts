@@ -15,6 +15,7 @@ function selectorFor(names: string[], clusterName: string): string {
   )}"}`;
 }
 
+const createdNames = policyMetrics.map(m => m.created);
 const infoNames = policyMetrics.map(m => m.info);
 const targetInfoNames = policyMetrics.map(m => m.targetInfo);
 const ancestorAcceptedNames = policyMetrics.map(m => m.ancestorAccepted);
@@ -23,8 +24,8 @@ const ancestorAcceptedNames = policyMetrics.map(m => m.ancestorAccepted);
  * Fetches the Envoy Gateway policies of one cluster from Mimir, with their
  * targets and the Accepted condition per ancestor.
  *
- * The policy list is required; a failure there is the hook's `error`. Targets
- * and status only enrich it: if their queries fail, status is reported as not
+ * The policy list (`created`, one series per policy) is required; a failure
+ * there is the hook's `error`. Targets and status only enrich it: if their queries fail, status is reported as not
  * available instead of blocking the view.
  */
 export function useMimirGatewayPolicies(options: {
@@ -36,6 +37,10 @@ export function useMimirGatewayPolicies(options: {
   const enabled = Boolean(clusterName);
   const common = { installationName, enabled, refetchInterval };
 
+  const created = useMimirQuery({
+    ...common,
+    query: selectorFor(createdNames, clusterName ?? ''),
+  });
   const info = useMimirQuery({
     ...common,
     query: selectorFor(infoNames, clusterName ?? ''),
@@ -50,12 +55,16 @@ export function useMimirGatewayPolicies(options: {
   });
 
   const isLoading =
-    info.isLoading || targetInfo.isLoading || ancestorAccepted.isLoading;
+    created.isLoading ||
+    info.isLoading ||
+    targetInfo.isLoading ||
+    ancestorAccepted.isLoading;
 
   const policies = useMemo(
     () =>
       buildGatewayPolicies({
-        info: samplesOf(info.data),
+        created: samplesOf(created.data),
+        info: optionalSamplesOf(info.data, info.error),
         targetInfo: optionalSamplesOf(targetInfo.data, targetInfo.error),
         ancestorAccepted: optionalSamplesOf(
           ancestorAccepted.data,
@@ -63,7 +72,9 @@ export function useMimirGatewayPolicies(options: {
         ),
       }),
     [
+      created.data,
       info.data,
+      info.error,
       targetInfo.data,
       targetInfo.error,
       ancestorAccepted.data,
@@ -71,5 +82,5 @@ export function useMimirGatewayPolicies(options: {
     ],
   );
 
-  return { policies, isLoading, error: blockingError(info) };
+  return { policies, isLoading, error: blockingError(created) };
 }

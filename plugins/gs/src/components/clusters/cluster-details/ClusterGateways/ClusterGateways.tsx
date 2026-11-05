@@ -15,6 +15,7 @@ import {
   HttpRoute,
   gatewayRank,
   routeRank,
+  unavailableCauseOf,
 } from '../../../hooks/gatewayTopology';
 import {
   ListenerRow,
@@ -62,18 +63,11 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
 function unavailableCause(
   routes: HttpRoute[],
 ): 'load-failed' | 'not-exported' | undefined {
-  const causes = new Set(
+  return unavailableCauseOf(
     routes.flatMap(route =>
-      route.parents.flatMap(parent =>
-        [parent.accepted, parent.resolvedRefs].flatMap(c =>
-          c.status === 'not-available' ? [c.cause ?? 'load-failed'] : [],
-        ),
-      ),
+      route.parents.flatMap(parent => [parent.accepted, parent.resolvedRefs]),
     ),
   );
-  if (causes.has('load-failed')) return 'load-failed';
-  if (causes.has('not-exported')) return 'not-exported';
-  return undefined;
 }
 
 const unavailableNotice = {

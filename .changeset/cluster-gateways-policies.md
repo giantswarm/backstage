@@ -1,13 +1,16 @@
 ---
 '@giantswarm/backstage-plugin-gs': minor
+'@giantswarm/backstage-plugin-gs-common': minor
 ---
 
 Show Envoy Gateway policies in the cluster "Gateways" tab.
 
 - `SecurityPolicy`, `BackendTrafficPolicy`, `ClientTrafficPolicy` and
   `EnvoyExtensionPolicy` with their targets (`spec.targetRefs`, and the
-  deprecated `spec.targetRef`) and the `Accepted` condition per Gateway or
-  ListenerSet they attach to. Rejected policies are listed first.
+  deprecated `spec.targetRef`; policies using `spec.targetSelectors` show
+  "Selected by labels") and the `Accepted` condition per Gateway or
+  ListenerSet they attach to. Rejected policies are listed first; a condition
+  still pending is shown as not reported, not as rejected.
 - A policy without any status on a cluster that exports policy status is
   flagged as "No status reported": Envoy Gateway writes none when the target
   doesn't exist, isn't managed by it, or before reconciling.
@@ -15,3 +18,6 @@ Show Envoy Gateway policies in the cluster "Gateways" tab.
   3.6.0 (giantswarm/observability-bundle#467). On clusters with an older bundle,
   or when they fail to load, they are shown as "Not available", with a notice
   saying which of the two it is.
+- `@giantswarm/backstage-plugin-gs-common` exports the Envoy Gateway policy
+  metrics (`EnvoyGateway*PolicyCreated`, `*Info`, `*TargetInfo`,
+  `*StatusAncestorAccepted`).

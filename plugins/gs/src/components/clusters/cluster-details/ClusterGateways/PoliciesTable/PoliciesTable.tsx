@@ -9,52 +9,57 @@ import {
   Table,
   Text,
 } from '@backstage/ui';
+import { MetricsUnavailableAlert } from '@giantswarm/backstage-plugin-ui-react';
 import {
   GatewayPolicy,
+  PolicyAncestor,
   isPolicyBroken,
   isPolicyUnattached,
 } from '../../../../hooks/gatewayPolicies';
+import {
+  ConditionState,
+  unavailableCauseOf,
+} from '../../../../hooks/gatewayTopology';
 import { ConditionStatus } from '../ConditionStatus';
 
-type PolicyRow = GatewayPolicy;
-
-function statusUnavailable(policy: GatewayPolicy): boolean {
+function statusUnavailable(policy: GatewayPolicy): policy is GatewayPolicy & {
+  status: Extract<ConditionState, { status: 'not-available' }>;
+} {
   return (
     policy.ancestors.length === 0 && policy.status.status === 'not-available'
   );
 }
 
-/**
- * Why targets or status can't be shown, if any can't. As for routes, a failed
- * load wins: it fixes itself on the next refetch, and the bundle notice would
- * be wrong for it.
- */
-function unavailableCause(
-  policies: GatewayPolicy[],
-): 'load-failed' | 'not-exported' | undefined {
-  let notExported = false;
-  for (const policy of policies) {
-    if (!policy.targetsLoaded) return 'load-failed';
-    if (statusUnavailable(policy) && policy.status.status === 'not-available') {
-      if (policy.status.cause === 'not-exported') notExported = true;
-      else return 'load-failed';
-    }
-  }
-  return notExported ? 'not-exported' : undefined;
+/** Why targets or status can't be shown, if any can't. */
+function unavailableCause(policies: GatewayPolicy[]) {
+  return unavailableCauseOf(
+    policies.flatMap((policy): ConditionState[] => [
+      ...(policy.targetsLoaded
+        ? []
+        : [
+            { status: 'not-available' as const, cause: 'load-failed' as const },
+          ]),
+      ...(statusUnavailable(policy) ? [policy.status] : []),
+    ]),
+  );
 }
 
 const unavailableNotice = {
   'load-failed':
     'Some policy targets or status could not be loaded. They are retried automatically.',
+  // A cluster on 3.6.0 whose policies all use targetRef or targetSelectors and
+  // resolved no ancestor looks the same, so the notice names both.
   'not-exported':
-    'Policy targets and status need observability-bundle 3.6.0 or newer on this cluster. Policies using the deprecated targetRef still show their target.',
+    'No policy targets or status found on this cluster. They need observability-bundle 3.6.0 or newer. On a newer bundle, Envoy Gateway has reported no status for these policies yet.',
 };
 
 function targetsLabel(policy: GatewayPolicy): string {
   if (policy.targets.length === 0) {
+    // Without targetRef and targetRefs a policy must use targetSelectors,
+    // which aren't exported.
     return !policy.targetsLoaded || statusUnavailable(policy)
       ? 'Not available'
-      : '—';
+      : 'Selected by labels';
   }
   return policy.targets
     .map(
@@ -63,22 +68,30 @@ function targetsLabel(policy: GatewayPolicy): string {
     .join(', ');
 }
 
+/** `envoy-gateway-system/public · https · port 443`; the kind unless Gateway. */
+function ancestorLabel(ancestor: PolicyAncestor): string {
+  const kind =
+    ancestor.kind && ancestor.kind !== 'Gateway' ? `${ancestor.kind} ` : '';
+  const name = ancestor.namespace
+    ? `${ancestor.namespace}/${ancestor.name}`
+    : ancestor.name;
+  return [
+    `${kind}${name}`,
+    ancestor.sectionName,
+    ancestor.port ? `port ${ancestor.port}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function StatusCell({ policy }: { policy: GatewayPolicy }) {
   if (policy.ancestors.length > 0) {
     return (
       <Flex direction="column" gap="1">
         {policy.ancestors.map(ancestor => (
-          <Flex
-            key={`${ancestor.kind}/${ancestor.namespace}/${ancestor.name}/${ancestor.sectionName}`}
-            align="center"
-            gap="2"
-          >
+          <Flex key={ancestor.id} align="center" gap="2">
             <Text variant="body-medium" color="secondary">
-              {ancestor.kind && ancestor.kind !== 'Gateway'
-                ? `${ancestor.kind}/`
-                : ''}
-              {ancestor.name}
-              {ancestor.sectionName ? ` · ${ancestor.sectionName}` : ''}
+              {ancestorLabel(ancestor)}
             </Text>
             <ConditionStatus condition={ancestor.accepted} />
           </Flex>
@@ -102,7 +115,7 @@ function StatusCell({ policy }: { policy: GatewayPolicy }) {
   return <ConditionStatus condition={policy.status} />;
 }
 
-const columns: ColumnConfig<PolicyRow>[] = [
+const columns: ColumnConfig<GatewayPolicy>[] = [
   {
     id: 'policy',
     label: 'Policy',
@@ -157,9 +170,8 @@ export const PoliciesTable = ({
 
   if (error) {
     return (
-      <Alert
-        status="warning"
-        icon
+      <MetricsUnavailableAlert
+        error={error}
         title="Envoy Gateway policies could not be loaded."
         description={error instanceof Error ? error.message : undefined}
       />
@@ -173,7 +185,7 @@ export const PoliciesTable = ({
       {unavailable ? (
         <Alert status="info" icon title={unavailableNotice[unavailable]} />
       ) : null}
-      <Table<PolicyRow>
+      <Table<GatewayPolicy>
         columnConfig={columns}
         data={isLoading ? undefined : rows}
         isPending={isLoading}

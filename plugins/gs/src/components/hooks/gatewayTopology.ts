@@ -145,7 +145,28 @@ export function toCondition(
   const value = finiteValue(sample);
   if (value === undefined) return undefined;
   const reason = sample.metric.reason || undefined;
-  return value === 1 ? { status: 'true', reason } : { status: 'false', reason };
+  if (value === 1) return { status: 'true', reason };
+  // The gauge is 0 for False and for Unknown alike. Gateway API reports an
+  // Unknown condition that is still being reconciled with reason Pending.
+  if (reason === 'Pending') return { status: 'not-reported' };
+  return { status: 'false', reason };
+}
+
+/**
+ * Why some conditions can't be shown, if any can't. A failed load wins over an
+ * older bundle: it fixes itself on the next refetch, and the bundle notice
+ * would be wrong for it.
+ */
+export function unavailableCauseOf(
+  conditions: Iterable<ConditionState>,
+): 'load-failed' | 'not-exported' | undefined {
+  let olderBundle = false;
+  for (const c of conditions) {
+    if (c.status !== 'not-available') continue;
+    if (c.cause === 'not-exported') olderBundle = true;
+    else return 'load-failed';
+  }
+  return olderBundle ? 'not-exported' : undefined;
 }
 
 /**
