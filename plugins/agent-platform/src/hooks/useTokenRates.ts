@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from '@giantswarm/backstage-plugin-gs';
+import { pickMimirError } from '@giantswarm/backstage-plugin-ui-react';
 import type { MimirMetricSample } from '@giantswarm/backstage-plugin-gs';
 import { deriveTokenRates, type TokenRates } from '../lib/costEstimate';
 import { RATE_WINDOW_DAYS, tokenRateQueries } from '../lib/llmUsageQueries';
@@ -49,6 +50,8 @@ export type TokenRatesView = {
   isLoading: boolean;
   /** `false` when the installation is opted out of Mimir (`mimirEnabled: false`). */
   isAvailable: boolean | undefined;
+  /** Why `tier` is `error`: the first failed query's error. */
+  error: Error | null;
   /**
    * The days the rate was averaged over, for the copy that discloses it
    * (`lastDaysNoun`), never the PromQL duration the queries use.
@@ -126,7 +129,8 @@ export function useTokenRates(
 
   const isLoading = cost.isLoading || tokens.isLoading;
   const isAvailable = cost.isAvailable;
-  const hasError = Boolean(cost.error || tokens.error);
+  const error = pickMimirError(cost.error, tokens.error);
+  const hasError = Boolean(error);
 
   return useMemo(() => {
     const costSamples = cost.data?.data?.result;
@@ -180,6 +184,7 @@ export function useTokenRates(
       model,
       isLoading,
       isAvailable,
+      error,
       windowDays: RATE_WINDOW_DAYS,
     };
   }, [
@@ -187,6 +192,7 @@ export function useTokenRates(
     tokens.data,
     isAvailable,
     hasError,
+    error,
     isLoading,
     namespace,
     name,

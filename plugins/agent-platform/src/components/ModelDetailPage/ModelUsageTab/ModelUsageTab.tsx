@@ -1,6 +1,7 @@
 import { Flex, Text } from '@backstage/ui';
 import {
   LoadingIndicator,
+  MetricsUnavailableAlert,
   Stat,
   StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -30,7 +31,7 @@ export type ModelUsageTabProps = {
 export function ModelUsageTab({
   installation,
   model,
-  usage: { slice, state },
+  usage: { slice, state, error },
 }: ModelUsageTabProps) {
   const currency = useCurrency(installation);
 
@@ -55,9 +56,14 @@ export function ModelUsageTab({
   }
   if (state === 'error' || !slice) {
     return (
-      <Text as="p" variant="body-medium" color="secondary">
-        Cost and token figures could not be read right now.
-      </Text>
+      <MetricsUnavailableAlert
+        error={error}
+        fallback={
+          <Text as="p" variant="body-medium" color="secondary">
+            Cost and token figures could not be read right now.
+          </Text>
+        }
+      />
     );
   }
 

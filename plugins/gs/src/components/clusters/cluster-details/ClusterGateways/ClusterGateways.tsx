@@ -1,14 +1,21 @@
 import { useMemo } from 'react';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  MetricsUnavailableAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Alert, Flex, Table, Text } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import { useMimirAvailable } from '../../../hooks/useMimirAvailable';
 import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology';
+import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
+import { GatewayPolicy } from '../../../hooks/gatewayPolicies';
+import { PoliciesTable } from './PoliciesTable';
 import {
   Gateway,
   HttpRoute,
   gatewayRank,
   routeRank,
+  unavailableCauseOf,
 } from '../../../hooks/gatewayTopology';
 import {
   ListenerRow,
@@ -56,18 +63,11 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
 function unavailableCause(
   routes: HttpRoute[],
 ): 'load-failed' | 'not-exported' | undefined {
-  const causes = new Set(
+  return unavailableCauseOf(
     routes.flatMap(route =>
-      route.parents.flatMap(parent =>
-        [parent.accepted, parent.resolvedRefs].flatMap(c =>
-          c.status === 'not-available' ? [c.cause ?? 'load-failed'] : [],
-        ),
-      ),
+      route.parents.flatMap(parent => [parent.accepted, parent.resolvedRefs]),
     ),
   );
-  if (causes.has('load-failed')) return 'load-failed';
-  if (causes.has('not-exported')) return 'not-exported';
-  return undefined;
 }
 
 const unavailableNotice = {
@@ -85,6 +85,9 @@ export type ClusterGatewaysContentProps = {
   error?: unknown;
   /** `false` when the installation has no Mimir; `undefined` while unknown. */
   mimirAvailable: boolean | undefined;
+  policies: GatewayPolicy[];
+  policiesLoading: boolean;
+  policiesError?: unknown;
 };
 
 /** Renders a cluster's Gateway API topology. Data loading lives in `ClusterGateways`. */
@@ -95,6 +98,9 @@ export const ClusterGatewaysContent = ({
   isLoading,
   error,
   mimirAvailable,
+  policies,
+  policiesLoading,
+  policiesError,
 }: ClusterGatewaysContentProps) => {
   const listenerRows = useMemo(() => toListenerRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
@@ -112,9 +118,8 @@ export const ClusterGatewaysContent = ({
 
   if (error) {
     return (
-      <Alert
-        status="warning"
-        icon
+      <MetricsUnavailableAlert
+        error={error}
         title="Gateway API metrics could not be loaded."
         description={error instanceof Error ? error.message : undefined}
       />
@@ -156,6 +161,14 @@ export const ClusterGatewaysContent = ({
           }
         />
       </InfoCard>
+      <InfoCard title="Envoy Gateway policies">
+        <PoliciesTable
+          clusterName={clusterName}
+          policies={policies}
+          isLoading={policiesLoading}
+          error={policiesError}
+        />
+      </InfoCard>
     </Flex>
   );
 };
@@ -165,6 +178,15 @@ export const ClusterGateways = () => {
   const clusterName = cluster.getName();
 
   const { gateways, routes, isLoading, error } = useMimirGatewayTopology({
+    installationName,
+    clusterName,
+    refetchInterval: 30_000,
+  });
+  const {
+    policies,
+    isLoading: policiesLoading,
+    error: policiesError,
+  } = useMimirGatewayPolicies({
     installationName,
     clusterName,
     refetchInterval: 30_000,
@@ -179,6 +201,9 @@ export const ClusterGateways = () => {
       isLoading={isLoading}
       error={error}
       mimirAvailable={mimirAvailable}
+      policies={policies}
+      policiesLoading={policiesLoading}
+      policiesError={policiesError}
     />
   );
 };

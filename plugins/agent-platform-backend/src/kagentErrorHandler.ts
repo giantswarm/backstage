@@ -1,5 +1,5 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
-import { serializeError } from '@backstage/errors';
+import { errorResponseBody } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import {
   httpStatusOf,
@@ -29,9 +29,10 @@ function describeCause(error: Error, failure: KagentFailure): string {
 /**
  * An Express error handler, mounted last on the agent-platform router: it
  * answers a kagent call's upstream failure with the 500 and the body
- * Backstage's `MiddlewareFactory.error()` would send, and logs it once, at
- * `warn`, as `kagent <call> <cause>`: `kagent SessionService/ListSessions
- * timed out`. Anything else passes on to the middleware.
+ * Backstage's `MiddlewareFactory.error()` would send (`errorResponseBody()`
+ * from gs-node), and logs it once, at `warn`, as `kagent <call> <cause>`:
+ * `kagent SessionService/ListSessions timed out`. Anything else passes on to
+ * the middleware.
  *
  * Answered rather than thrown because the middleware logs every 5xx at
  * `error`, and so reports it to Sentry, with the error's message, which names
@@ -57,14 +58,6 @@ export function kagentErrorHandler(
       status: statusCode,
       reason: upstreamReasonOf(error),
     });
-    res.status(statusCode).json({
-      error: serializeError(error, {
-        includeStack: process.env.NODE_ENV === 'development',
-      }),
-      // Inside the plugin's router `url` is relative to its mount path; the
-      // middleware runs at the root, where `url` is the full one again.
-      request: { method: req.method, url: req.originalUrl },
-      response: { statusCode },
-    });
+    res.status(statusCode).json(errorResponseBody(error, req, statusCode));
   };
 }

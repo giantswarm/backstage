@@ -5,27 +5,10 @@ import {
   LunrSearchEngine,
   TestPipeline,
 } from '@backstage/plugin-search-backend-node';
-import { getSentryTransportConfig } from './rootLogger';
+import { isIgnored } from './sentryTestUtils';
 
 // Runs the upstream search engines with an empty TechDocs collator, so a
 // rewording of their warning fails here instead of reaching Sentry.
-
-const options = getSentryTransportConfig(
-  new ConfigReader({
-    backend: {
-      errorReporter: {
-        sentry: {
-          dsn: 'https://key@sentry.example.com/1',
-          environment: 'test',
-          tracesSampleRate: 0,
-        },
-      },
-    },
-  }),
-)!;
-
-const isIgnored = (message: string) =>
-  options.ignoreErrors.some(pattern => pattern.test(message));
 
 function mockLogger() {
   const logger = {

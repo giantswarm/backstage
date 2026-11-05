@@ -54,6 +54,7 @@ import {
 import {
   containerRegistryServiceRef,
   mimirServiceRef,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { readSignedInConfig } from './signedInConfig';
 import {
@@ -1030,6 +1031,13 @@ export async function createRouter({
       throw error;
     }
   });
+
+  // Last, so that every route above reaches it. A Mimir that could not answer
+  // `/mimir/query` or `/mimir/query_range` is a `MimirUnavailableError`,
+  // which `MimirService` has already logged once: this answers its 503, with
+  // the `reason` the frontend picks its words from, without the error
+  // middleware reporting it again.
+  router.use(reportedErrorHandler());
 
   return router;
 }

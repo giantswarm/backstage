@@ -1,3 +1,4 @@
+import { describeMimirFailure } from '@giantswarm/backstage-plugin-ui-react';
 import type { TokenRateTier } from '../hooks/useTokenRates';
 import { pricedTokenCount } from './costEstimate';
 import { formatTokens } from './formatNumbers';
@@ -21,6 +22,8 @@ export type CostBasis = {
    * zero, when there are none or the total is not known.
    */
   unpricedTokens?: number;
+  /** Why `tier` is `error`, when the rate queries failed. */
+  error?: unknown;
 };
 
 /**
@@ -98,8 +101,12 @@ export function describeCostBasis(basis: CostBasis): string {
       // model" would describe a measurement that never happened.
       return `No estimate: ${installation} has no observability stack this portal can query, so there are no gateway metrics to derive a rate from.`;
 
-    case 'error':
-      return `No estimate: ${installation}\u2019s gateway metrics could not be read just now, so there is no rate to apply.`;
+    case 'error': {
+      const known = describeMimirFailure(basis.error);
+      return known
+        ? `No estimate. ${known.sentence}`
+        : `No estimate: ${installation}\u2019s gateway metrics could not be read just now, so there is no rate to apply.`;
+    }
 
     case 'none':
     default:

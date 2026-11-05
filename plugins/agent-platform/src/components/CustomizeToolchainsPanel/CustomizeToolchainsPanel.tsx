@@ -12,6 +12,7 @@ import {
 import {
   CatalogNoMatch,
   EmptyStateCard,
+  ExternalCellText,
   getRelativeDate,
   INITIAL_ROWS,
   LoadingIndicator,
@@ -193,7 +194,7 @@ function SourcesSection({ installation }: { installation: string }) {
       isRowHeader: true,
       defaultWidth: '2fr',
       cell: row => (
-        <CellText
+        <ExternalCellText
           title={row.repository}
           href={safeWebURL(row.url)}
           description={row.registry}

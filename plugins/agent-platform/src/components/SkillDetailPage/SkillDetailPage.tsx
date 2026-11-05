@@ -11,6 +11,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
+  ExternalLink,
   type Fact,
   FactList,
   LoadingIndicator,
@@ -96,20 +97,6 @@ const useStyles = makeStyles({
     gap: 'var(--bui-space-6)',
   },
 });
-
-/** A fact's link out to GitHub, at the size of the fact list it is in. */
-function FactLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      variant={useFactTextVariant()}
-    >
-      {children}
-    </Link>
-  );
-}
 
 /** A commit as a fact's value, at the fact list's size, the full SHA at hand. */
 function FactCommit({ commit }: { commit: string }) {
@@ -446,7 +433,10 @@ function SkillPage({
     {
       label: 'Source',
       value: (
-        <FactLink href={canonicalRepoUrl(skill.repoUrl)}>{source}</FactLink>
+        // At the fact list's size: the list sets it on the value it holds.
+        <ExternalLink href={canonicalRepoUrl(skill.repoUrl)} display="inline">
+          {source}
+        </ExternalLink>
       ),
     },
     {
@@ -459,9 +449,9 @@ function SkillPage({
       // (UX review M19). It opens the skill's folder at that commit.
       label: 'Latest commit',
       value: sourceUrl ? (
-        <FactLink href={sourceUrl}>
+        <ExternalLink href={sourceUrl} display="inline">
           <CommitSha value={skill.commit} copy={false} />
-        </FactLink>
+        </ExternalLink>
       ) : (
         <FactCommit commit={skill.commit} />
       ),
