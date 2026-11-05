@@ -1534,7 +1534,6 @@ describe('KagentClient against a fake controller', () => {
           installation: 'gazelle',
           call: 'A2AService/ListTasks',
           code: 'Internal',
-          error: 'database down',
         });
         expect(log.warn).not.toHaveBeenCalled();
       });

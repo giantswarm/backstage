@@ -181,10 +181,26 @@ export interface KagentFailure {
   call: string;
   /** The Connect code kagent (or the transport) answered: `DeadlineExceeded`. */
   code: string;
-  /** The controller's message, bounded. */
-  error: string;
+  /**
+   * The message, bounded, for `Unavailable` and `DeadlineExceeded` only: the
+   * transport's or the gateway's words ("PING timed out", "upstream connect
+   * error"). Left out for every other code, whose message is kagent's own and
+   * may name a user, a session or a task (see {@link messageIsTransports}).
+   */
+  error?: string;
   /** The `x-request-id` the call was sent with, when it had one. */
   requestId?: string;
+}
+
+/**
+ * Whether a Connect code's message is the transport's or the gateway's, and so
+ * safe to log at `warn`, which lands in Sentry. The other codes reaching
+ * {@link KagentFailure} (`Internal`, `Unknown`, `InvalidArgument`,
+ * `ResourceExhausted`, …) carry kagent's own message, which can quote a
+ * user's id, a session id or a prompt: the browser shows it, Sentry does not.
+ */
+export function messageIsTransports(code: Code): boolean {
+  return code === Code.Unavailable || code === Code.DeadlineExceeded;
 }
 
 const KAGENT_FAILURE = Symbol.for('kagent.failure');
@@ -285,7 +301,9 @@ export function mapConnectError(
       installation: installationName,
       call: context.call,
       code: Code[connectError.code],
-      error: boundedMessage(reason),
+      ...(messageIsTransports(connectError.code) && {
+        error: boundedMessage(reason),
+      }),
       ...(context.requestId && { requestId: context.requestId }),
     });
 

@@ -343,9 +343,9 @@ describe('createRouter', () => {
 
   describe('the request timeout and the keepalive', () => {
     it.each([
+      [8000, true],
       [7000, true],
-      [5000, true],
-      [7001, false],
+      [8001, false],
       [undefined, false],
     ])('timeoutMs %s warns: %s', async (timeoutMs, warns) => {
       const logger = mockServices.logger.mock();
@@ -365,7 +365,7 @@ describe('createRouter', () => {
         String(message).includes('too short for the kagent keepalive'),
       );
       expect(warned.map(([, meta]) => meta)).toEqual(
-        warns ? [{ timeoutMs, keepaliveMs: 7000 }] : [],
+        warns ? [{ timeoutMs, keepaliveMs: 8000 }] : [],
       );
     });
   });

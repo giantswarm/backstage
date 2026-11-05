@@ -62,14 +62,24 @@ export function isAbsoluteHttpUrl(url: string): boolean {
  * unless a response arrived in the meantime. Also the age past which an idle
  * connection is pinged before a request is sent on it.
  */
-export const KAGENT_PING_INTERVAL_MS = 5_000;
+export const KAGENT_PING_INTERVAL_MS = 3_000;
 
 /**
  * How long a ping may go unanswered before the connection is taken for dead:
  * destroyed, its streams failed as `Unavailable`, and a new one opened for the
- * next call. Generous for a round trip to any installation.
+ * next call.
+ *
+ * Sized for this process, not for the network: a round trip to any
+ * installation takes milliseconds, but the answer is only read once the event
+ * loop gets to it, and connect-node counts the time until then (it also
+ * destroys a session whose ping came back later than this). The transport is
+ * shared by every call to the installation, turn streams included, so a stall
+ * longer than this (a burst of work at startup, a long GC under a CPU quota)
+ * would end every turn in flight on a healthy connection. 5 s is past any
+ * stall this backend should see; `nodejs_eventloop_delay_max` says how close
+ * it comes.
  */
-export const KAGENT_PING_TIMEOUT_MS = 2_000;
+export const KAGENT_PING_TIMEOUT_MS = 5_000;
 
 /**
  * The keepalive of a transport's HTTP/2 connection.
@@ -82,14 +92,16 @@ export const KAGENT_PING_TIMEOUT_MS = 2_000;
  * time out for as long as people keep reading it (giantswarm/giantswarm#39003,
  * where kagent and the gateways answered in milliseconds throughout).
  *
- * With it, a dead connection is found within interval + timeout, 7 s, which is
+ * With it, a dead connection is found within interval + timeout, 8 s, which is
  * under the 10 s `DEFAULT_KAGENT_TIMEOUT_MS` of the call waiting on it: that
  * call fails as `Unavailable`, and the next one opens a new connection rather
- * than timing out on the same one. An idle connection is pinged too, which
- * finds it dead before a person's request does and keeps a flow alive through
- * whatever drops idle ones. A ping every 5 s on a handful of connections is
- * nothing to the peer; a peer that refused it (`too_many_pings`) would have
- * connect-node double the interval.
+ * than timing out on the same one. The timeout takes 5 of those 8 s, to ride
+ * out a stalled event loop (see {@link KAGENT_PING_TIMEOUT_MS}), which leaves
+ * 3 s for the interval. An idle connection is pinged too, which finds it dead
+ * before a person's request does and keeps a flow alive through whatever drops
+ * idle ones. A ping every 3 s on a handful of connections is nothing to the
+ * peer; a peer that refused it (`too_many_pings`) would have connect-node
+ * double the interval.
  */
 const KEEPALIVE = {
   pingIntervalMs: KAGENT_PING_INTERVAL_MS,

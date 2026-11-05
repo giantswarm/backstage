@@ -17,6 +17,12 @@ values (installation name, entity id, raw response bodies) out of the _message_
 of a `warn`/`error`: Sentry fingerprints on the message, so one root cause fans
 out into one issue per value. Put those in structured metadata instead.
 
+Metadata lands in Sentry too, as the event's extra data. An upstream's own error
+message can quote a user, a session or a prompt, so it does not go into the
+metadata of a `warn`/`error` unless the transport or a gateway wrote it: the
+kagent handler below keeps the message of an `Unavailable` or
+`DeadlineExceeded` call and leaves out every other code's.
+
 Backstage's error middleware (`MiddlewareFactory.error()`) logs every 5xx a
 route throws at `error`, with the error's message. A failure your code has
 already logged, or whose message names an installation because a person reads

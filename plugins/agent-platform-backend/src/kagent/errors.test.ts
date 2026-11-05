@@ -106,6 +106,34 @@ describe('the failure an upstream error carries', () => {
     });
   });
 
+  it.each([
+    [Code.Unavailable, 'upstream connect error or disconnect/reset'],
+    [Code.DeadlineExceeded, 'PING timed out'],
+  ])("keeps the transport's message of %s", (code, message) => {
+    const error = map(new ConnectError(message, code));
+    expect(kagentFailureOf(error)?.error).toBe(message);
+  });
+
+  it.each([Code.Internal, Code.Unknown, Code.ResourceExhausted])(
+    "leaves out kagent's own message of %s, which may name a user or a session",
+    code => {
+      const error = map(
+        new ConnectError(
+          'failed to get session 0f9c2e for user jane@example.com',
+          code,
+        ),
+      );
+      const failure = kagentFailureOf(error);
+      expect(failure).toEqual({
+        installation: 'gazelle',
+        call: 'SessionService/ListSessions',
+        code: Code[code],
+      });
+      // The person who asked still reads it in the browser.
+      expect(error.message).toContain('jane@example.com');
+    },
+  );
+
   it('is left out of what the browser gets', () => {
     const error = map(new ConnectError('boom', Code.Internal));
     expect(kagentFailureOf(error)).toBeDefined();

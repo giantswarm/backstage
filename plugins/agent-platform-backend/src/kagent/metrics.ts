@@ -31,12 +31,12 @@ export type KagentCallHistogram = MetricsServiceHistogram<KagentCallAttributes>;
 
 /**
  * Bucket bounds, in seconds: fine below a second, where a healthy call lands
- * (15 ms through the gateway), and around the 7 s at which the keepalive
+ * (15 ms through the gateway), and around the 8 s by which the keepalive
  * gives a dead connection up and the 10 s request timeout. The last two cover
  * `SendMessage`, which waits out a turn (30 s by default).
  */
 const BUCKETS = [
-  0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 7.5, 10, 15, 30, 60,
+  0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 8, 10, 15, 30, 60,
 ];
 
 export function createKagentCallHistogram(

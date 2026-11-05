@@ -122,7 +122,7 @@ describe('createKagentTransport', () => {
     // The ping found the connection dead: not the call's own deadline.
     expect(error.code).toBe(Code.Unavailable);
     expect(elapsed).toBeLessThan(DEFAULT_KAGENT_TIMEOUT_MS);
-    expect(elapsed).toBeGreaterThanOrEqual(KAGENT_PING_INTERVAL_MS);
+    expect(elapsed).toBeGreaterThanOrEqual(KAGENT_PING_TIMEOUT_MS);
     // Reported as an unavailable kagent (a 500 the router logs once), not
     // silenced as one that is not deployed.
     expect(isSocketFailure(error)).toBe(false);
@@ -130,6 +130,66 @@ describe('createKagentTransport', () => {
     // The next call opens a new connection instead of waiting on the dead one.
     await expect(call()).resolves.toMatchObject({ kagentVersion: 'v1' });
     expect(proxy.connections()).toBe(2);
+  }, 20_000);
+
+  it('keeps a healthy connection through an event-loop stall shorter than the ping timeout', async () => {
+    // Longer than the 2 s ping timeout this keepalive first had, which ended
+    // the connection, and every turn streaming on it, on a stall like this.
+    const stallMs = KAGENT_PING_TIMEOUT_MS - 1_500;
+    expect(stallMs).toBeGreaterThan(2_000);
+
+    // Stall the event loop right after the first ping goes out: its answer
+    // is only read once the loop is free again, and that is the duration
+    // connect-node measures.
+    const probe = http2.connect(`http://127.0.0.1:${proxy.port}`);
+    let owner: object = probe;
+    while (!Object.prototype.hasOwnProperty.call(owner, 'ping')) {
+      owner = Object.getPrototypeOf(owner);
+    }
+    probe.destroy();
+    const ping = (owner as http2.Http2Session).ping;
+    let stalls = 0;
+    const spy = jest
+      .spyOn(owner as http2.Http2Session, 'ping')
+      .mockImplementation(function stall(
+        this: http2.Http2Session,
+        ...args: Parameters<http2.Http2Session['ping']>
+      ) {
+        const sent = (ping as Function).apply(this, args);
+        if (stalls++ === 0) {
+          const until = Date.now() + stallMs;
+          while (Date.now() < until) {
+            // Busy: nothing else runs, as in a long GC or a burst of work.
+          }
+        }
+        return sent;
+      } as http2.Http2Session['ping']);
+
+    try {
+      const system = createClient(
+        SystemService,
+        createKagentTransport({
+          name: 'gazelle',
+          apiBaseUrl: `http://127.0.0.1:${proxy.port}`,
+        }),
+      );
+      await expect(system.getVersion({})).resolves.toBeDefined();
+      const connections = proxy.connections();
+
+      // The idle connection's first ping, and the stall after it.
+      await new Promise(resolve =>
+        setTimeout(resolve, KAGENT_PING_INTERVAL_MS + 500),
+      );
+      expect(stalls).toBeGreaterThan(0);
+      // Let the ping's answer be read.
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      await expect(system.getVersion({})).resolves.toBeDefined();
+      // The same connection: the stall did not take it for dead.
+      expect(proxy.connections()).toBe(connections);
+    } finally {
+      spy.mockRestore();
+    }
   }, 20_000);
 
   describe('with a call duration histogram', () => {
