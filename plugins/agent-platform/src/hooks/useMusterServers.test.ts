@@ -171,6 +171,17 @@ describe('connectorsForTenant', () => {
     ]);
   });
 
+  it("offers an organization's agent the shared connectors only, while muster serves no organization namespace", () => {
+    // An organization namespace is `agents-<name>-<random>`; muster keys none
+    // of its servers today, and a Giant Swarm Organization's `org-acme` is
+    // not the organization's.
+    expect(
+      connectorsForTenant(servers, tools, 'agents-payments-x7k2q').servers.map(
+        server => server.name,
+      ),
+    ).toEqual(['github']);
+  });
+
   it('offers every connector while the agent has no namespace yet', () => {
     expect(connectorsForTenant(servers, tools, undefined).servers).toHaveLength(
       3,

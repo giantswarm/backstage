@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -13,7 +13,11 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { PageSection } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  PageSection,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useOrganizationMembers,
@@ -59,9 +63,14 @@ function AddMember({
   const [role, setRole] = useState<MemberRole>('user');
   const trimmed = name.trim();
   const noun = kind === 'group' ? 'group' : 'person';
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
+  const nameError = trimmed
+    ? undefined
+    : `Enter the ${noun === 'group' ? "group's name" : "person's user name"}.`;
 
   return (
-    <Flex direction="column" gap="3">
+    <Flex direction="column" gap="3" ref={scope}>
       <RadioGroup
         label="Add"
         orientation="horizontal"
@@ -82,8 +91,10 @@ function AddMember({
               ? 'An identity provider group, as the cluster sees it. Its members change in the identity provider.'
               : 'Their user name, as the cluster sees it.'
           }
+          isRequired
           value={name}
           onChange={setName}
+          {...validation.textFieldProps('name', nameError)}
         />
         <Select
           label="Role"
@@ -100,12 +111,16 @@ function AddMember({
         />
         <Button
           variant="primary"
-          isDisabled={!trimmed || add.isPending}
-          onPress={() =>
+          isDisabled={add.isPending}
+          onPress={() => {
+            if (nameError) {
+              validation.reveal();
+              return;
+            }
             add.mutate(memberRequest(namespace, kind, trimmed, role), {
               onSuccess: () => setName(''),
-            })
-          }
+            });
+          }}
         >
           {add.isPending ? 'Adding…' : `Add ${noun}`}
         </Button>
@@ -178,29 +193,26 @@ export function MembersTab({
       id: 'actions',
       label: '',
       defaultWidth: '1fr',
-      cell: row => (
-        <Cell>
-          <Button
-            size="small"
-            variant="secondary"
-            aria-label={`Remove ${row.name} as ${row.role}`}
-            isDisabled={remove.isPending}
-            onPress={() => {
-              setRemoving(row);
-              remove.mutate(
-                memberRequest(
-                  namespace,
-                  row.kind === 'Group' ? 'group' : 'person',
-                  row.name,
-                  row.role,
-                ),
-              );
-            }}
-          >
-            Remove
-          </Button>
-        </Cell>
-      ),
+      // Only a group or a person is added or removed here; another
+      // subject (a ServiceAccount) is changed where it was bound.
+      cell: row =>
+        row.kind === 'Group' || row.kind === 'User' ? (
+          <Cell>
+            <Button
+              size="small"
+              variant="secondary"
+              aria-label={`Remove ${row.name} as ${row.role}`}
+              onPress={() => {
+                remove.reset();
+                setRemoving(row);
+              }}
+            >
+              Remove
+            </Button>
+          </Cell>
+        ) : (
+          <CellText title="" />
+        ),
     },
   ];
 
@@ -236,17 +248,53 @@ export function MembersTab({
         title="Members"
         description="Admins manage members, models and credentials; editors create agents; users use them."
       >
-        <Flex direction="column" gap="3">
-          {remove.error && removing && (
-            <Alert
-              status="danger"
-              title={`${removing.name} was not removed`}
-              description={remove.error.message}
-            />
-          )}
-          {body}
-        </Flex>
+        {body}
       </PageSection>
+      <ConfirmDialog
+        isOpen={removing !== undefined}
+        onOpenChange={open => {
+          if (!open) {
+            setRemoving(undefined);
+          }
+        }}
+        title={
+          removing
+            ? `Remove ${memberKindLabel(removing.kind).toLowerCase()} "${removing.name}"?`
+            : ''
+        }
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        destructive
+        isBusy={remove.isPending}
+        error={
+          remove.error && removing ? (
+            <>
+              <strong>{removing.name} was not removed.</strong>{' '}
+              {remove.error.message}
+            </>
+          ) : undefined
+        }
+        onConfirm={() => {
+          if (!removing) {
+            return;
+          }
+          remove.mutate(
+            memberRequest(
+              namespace,
+              removing.kind === 'Group' ? 'group' : 'person',
+              removing.name,
+              removing.role,
+            ),
+            { onSuccess: () => setRemoving(undefined) },
+          );
+        }}
+      >
+        {removing && (
+          <Text>
+            {removing.name} loses the {removing.role} role in this organization.
+          </Text>
+        )}
+      </ConfirmDialog>
       <PageSection title="Add a member">
         <AddMember installation={installation} namespace={namespace} />
       </PageSection>

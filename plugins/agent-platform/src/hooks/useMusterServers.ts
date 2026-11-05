@@ -57,7 +57,9 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
  * The connectors an agent in `tenant` may be given, and their tools: muster's
  * own servers, for everyone, and the servers of the agent's own namespace;
  * another namespace's servers are its agents' only. Every server and tool
- * when no tenant is known.
+ * when no tenant is known. An organization's own RemoteMCPServers
+ * (`list_organization_connectors`) are not muster servers: an agent's
+ * toolset selects muster's, so they are not offered here.
  */
 export function connectorsForTenant(
   servers: readonly ServerInfo[],

@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Flex, Link } from '@backstage/ui';
+import { Button, Flex, Link } from '@backstage/ui';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
@@ -86,6 +86,24 @@ export function OrganizationPage({
           title="Organizations are not available here"
           description={blocker}
           actions={backLink}
+        />
+      </ShellPage>
+    );
+  }
+  if (mine.supported === undefined && mine.infoError) {
+    return (
+      <ShellPage title={name} {...frame}>
+        <EmptyStateCard
+          title={`Could not read agent-manager on ${installation}`}
+          description={mine.infoError.message}
+          actions={
+            <Flex gap="3" align="center">
+              <Button variant="secondary" onPress={() => mine.recheck()}>
+                Check again
+              </Button>
+              {backLink}
+            </Flex>
+          }
         />
       </ShellPage>
     );

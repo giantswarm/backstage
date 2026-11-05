@@ -65,10 +65,14 @@ export function OrganizationDirectoryProvider({
 }: {
   children: ReactNode;
 }) {
+  // One reader: a provider inside another (a router inside the plugin's
+  // providers) passes the outer one's answer on.
+  const outer = useContext(OrganizationDirectoryContext);
   // Without a query client (a page rendered outside the plugin's own, as
   // in a component's test) nothing is read and no namespace is an
   // organization.
-  if (!useContext(QueryClientContext)) {
+  const queryClient = useContext(QueryClientContext);
+  if (outer !== EMPTY || !queryClient) {
     return <>{children}</>;
   }
   return <ReadOrganizationDirectory>{children}</ReadOrganizationDirectory>;

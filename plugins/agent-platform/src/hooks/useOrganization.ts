@@ -51,16 +51,22 @@ function readOf<T>(
  * (`get_info`'s `organizations` capability). `undefined` until it answered.
  */
 export function useOrganizationsSupported(installation: string | undefined): {
+  /** `undefined` while unknown: not answered yet, or `get_info` failed. */
   supported: boolean | undefined;
   isLoading: boolean;
+  /** Why `get_info` could not be read, if it could not. */
+  infoError: Error | null;
+  /** Reads `get_info` again. */
+  recheck: () => Promise<unknown>;
 } {
-  const { info, isLoading, error } = useAgentManagerInfo(installation);
-  if (!info) {
-    return { supported: error ? false : undefined, isLoading };
-  }
+  const { info, isLoading, error, refetch } = useAgentManagerInfo(installation);
   return {
-    supported: info.capabilities?.[ORGANIZATIONS_CAPABILITY] === true,
-    isLoading: false,
+    supported: info
+      ? info.capabilities?.[ORGANIZATIONS_CAPABILITY] === true
+      : undefined,
+    isLoading: !info && isLoading,
+    infoError: info ? null : error,
+    recheck: refetch,
   };
 }
 
@@ -71,9 +77,11 @@ export function useOrganizationsSupported(installation: string | undefined): {
  */
 export function useMyOrganizations(
   installation: string | undefined,
-): OrganizationRead<MyOrganizations> & { supported: boolean | undefined } {
+): OrganizationRead<MyOrganizations> &
+  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> {
   const client = useAgentManagerClient(installation);
-  const { supported } = useOrganizationsSupported(installation);
+  const { supported, infoError, recheck } =
+    useOrganizationsSupported(installation);
   const enabled = Boolean(client) && supported === true;
   const query = useQuery({
     queryKey: musterMyOrganizationsQueryKey(installation ?? ''),
@@ -82,7 +90,7 @@ export function useMyOrganizations(
     staleTime: 60_000,
     retry: false,
   });
-  return { ...readOf(enabled, query), supported };
+  return { ...readOf(enabled, query), supported, infoError, recheck };
 }
 
 /**

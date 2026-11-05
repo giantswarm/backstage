@@ -178,6 +178,36 @@ describe('OrganizationPage', () => {
     );
   });
 
+  it('asks for a name rather than adding nothing', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('', SCENARIO);
+
+    await user.click(await screen.findByRole('button', { name: 'Add group' }));
+
+    expect(
+      await screen.findByText("Enter the group's name."),
+    ).toBeInTheDocument();
+    expect(toolCalls(callTool, 'add_organization_member')).toEqual([]);
+  });
+
+  it('offers no removal of a subject other than a group or a person', async () => {
+    await renderPage('', {
+      ...SCENARIO,
+      members: [
+        {
+          kind: 'ServiceAccount',
+          name: 'robot',
+          namespace: 'agents-payments-x7k2q',
+          role: 'user',
+          binding: 'organization-users',
+        },
+      ],
+    });
+
+    expect(await screen.findByText('robot')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove robot/ })).toBeNull();
+  });
+
   it('adds a person as the second choice', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderPage('', SCENARIO);
@@ -209,6 +239,12 @@ describe('OrganizationPage', () => {
         name: 'Remove jane@example.com as user',
       }),
     );
+    // Asked first: nothing is removed before the person confirms.
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Remove person "jane@example.com"?',
+    });
+    expect(toolCalls(callTool, 'remove_organization_member')).toEqual([]);
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
     await waitFor(() =>
       expect(toolCalls(callTool, 'remove_organization_member')).toEqual([
@@ -240,11 +276,17 @@ describe('OrganizationPage', () => {
         name: 'Remove payments-leads as admin',
       }),
     );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Remove group "payments-leads"?',
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
     expect(
-      await screen.findByText('payments-leads was not removed'),
+      await within(dialog).findByText('payments-leads was not removed.'),
     ).toBeInTheDocument();
-    expect(screen.getByText(/add another admin first/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/add another admin first/),
+    ).toBeInTheDocument();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
