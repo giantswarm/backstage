@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
@@ -77,6 +77,8 @@ const sessions: AgentSessionsView = {
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
+  retry: () => {},
+  isRetrying: false,
 };
 
 describe('AgentSessionsCard', () => {
@@ -127,6 +129,55 @@ describe('AgentSessionsCard', () => {
     // Every row is this agent's: no Agent column.
     expect(
       screen.queryByRole('columnheader', { name: 'Agent' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says why the sessions could not be read and offers to read them again', async () => {
+    const retry = jest.fn();
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        sessions={{
+          ...sessions,
+          rows: [],
+          isUnavailable: true,
+          failure: { reason: 'temporarily unavailable', requestId: 'req-3' },
+          retry,
+        }}
+        onStartSession={() => {}}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Could not read your sessions');
+    expect(alert).toHaveTextContent(
+      'The sessions could not be read on gazelle (temporarily unavailable, request id req-3).',
+    );
+    // Not the empty state: no claim of no sessions, no invitation to start one.
+    expect(
+      screen.queryByText('You have no sessions with this agent.'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a quiet line, without a retry, when kagent is not deployed there', async () => {
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        sessions={{ ...sessions, rows: [], isUnavailable: true }}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    expect(
+      screen.getByText('Sessions could not be read from this environment.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Try again' }),
     ).not.toBeInTheDocument();
   });
 });

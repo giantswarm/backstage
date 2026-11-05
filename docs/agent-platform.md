@@ -1185,9 +1185,18 @@ a session"). Renaming and deleting are described below.
 Neither Sessions nor Agents renders an empty table. Sessions shows
 `ShellSessionsEmpty` only when the empty answer is final:
 
-- **Nothing could be read** is not an empty history: the "couldn't read"
-  warning stays. This is why the branch tests `unreachableInstallations`, not
-  only `rows.length`.
+- **Nothing could be read** is not an empty history. When no installation
+  answered (`useSessions().nothingRead`), the failure is the page's answer: a
+  danger card "Could not read your sessions" that names each environment's
+  reason, offers Try again and cannot be closed. The shell rail then says
+  "Could not read your sessions." with Try again in place of "No sessions
+  yet". When another installation answered, even with no sessions, it is the
+  closable warning with the same Try again. Try again (`useSessions().retry`)
+  reads each reported failure once, without the client's automatic retries,
+  and never an installation without kagent. An agent's Sessions tab shows the
+  danger card for a failure kagent answered, and a quiet line when kagent is
+  not deployed there. This is why the branch tests `unreachableInstallations`,
+  not only `rows.length`.
 - **Something must have been queried.** At least one scoped installation must
   be outside `notReachableInstallations`. Every installation need not be
   reachable, since a local portal almost always has unreachable ones.
@@ -1295,6 +1304,17 @@ Failures are classified as **absent** or **unwell**:
 - **Reported** in `UnreachableInstallationsAlert` — everything else: kagent
   `5xx` or `429`, timeouts, unreadable bodies. Otherwise a degraded
   installation's sessions would vanish silently.
+
+kagent down for a moment (its gateway answers gRPC `Unavailable`, as while the
+controller restarts) reaches the browser as a `500` with
+`reason: "unavailable"`. It stays a `5xx`, because the frontend reads a `503` as
+"no kagent here" and stays silent. The reason reads "temporarily unavailable" in
+the read-failure card, and a write or a send that meets it says "The Agent
+Platform is temporarily unavailable. Try again in a moment."
+(`isKagentUnavailable` in `lib/readFailure.ts`); the backend's own message,
+with the installation and the gateway's words, stays on the error as its
+`cause`. A message that could not be sent goes back into the composer, to be
+sent again with one press.
 
 An in-band `{error: true}` on a `200`, or a `data` that is not an array, also
 throws. A partial read keeps the readable rows and logs a console warning.
@@ -2848,6 +2868,23 @@ runtime's or a failed resume's "Continue in a new session", the meta-agent
 hand-offs ("<verb> with <agent>", `useMetaAgentHandoff`) and
 `CreateAgentAssist`. The composer grows with its content and never shrinks back.
 Enter starts.
+
+The home screen's composer keeps its unsent prompt and the chosen agent as a
+draft (`StartNewSession`'s `draftName`, through `useSessionDraft`):
+`sessionStorage` under `gs-draft:agent-platform-new-session:<userEntityRef>`,
+so each tab keeps its own and a reload, a sign-in that leaves the page or a
+link followed in the tab gives them back. `StartNewSession` holds the prompt
+and the composer shows it (`prompt`), so a restore sets it without remounting
+the composer. The draft is read a moment after the page renders (the person's
+identity first): what the person typed or picked meanwhile stays, the rest is
+restored. The agent kept is the one the person picked, else the restored one,
+else the composer's preselection, which never replaces a restored agent that is
+not read yet. A `?agent=` link goes ahead of the restored agent, which goes
+ahead of the last agent used. The images, the workspace and the toolchains are
+not kept. The draft is removed once the session is created; a failed start
+keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
+never leaves the page: it opens the provider in a new tab
+(`useServerSignIn`).
 
 #### Create, navigate, then send — in that order
 
