@@ -242,6 +242,17 @@ describe('classifyMargeError', () => {
   );
 
   it.each([
+    ['Tool execution failed: tool not found: x_marge_list', 502],
+    ['Tool execution failed: client not connected', 503],
+  ])(
+    "reads muster-backend's %j, answered %i, as not connected",
+    (message, status) => {
+      const error = Object.assign(new Error(message), { status });
+      expect(classifyMargeError(error)).toBeInstanceOf(MargeNotConnectedError);
+    },
+  );
+
+  it.each([
     Object.assign(new Error('marge: GitHub answered 500'), { status: 500 }),
     new Error('network error talking to api.github.com'),
     new TypeError("Cannot read properties of undefined (reading 'teams')"),

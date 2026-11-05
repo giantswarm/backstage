@@ -159,7 +159,7 @@ describe('normalizeSentryEvent', () => {
     });
   });
 
-  it.each(['cluster', 'installation'])(
+  it.each(['cluster', 'installation', 'tool', 'server'])(
     'sets %s from the extra data as a tag',
     key => {
       const event = normalizeSentryEvent<SentryEvent>({
@@ -206,6 +206,145 @@ describe('normalizeSentryEvent', () => {
 
     expect(event.message).toEqual({
       formatted: 'Database keepalive failed, Error: nope',
+    });
+  });
+
+  describe('muster tool errors', () => {
+    /**
+     * The error middleware's log line of a MusterToolError, as the Sentry
+     * transport makes an event of it: the error's own properties are extra.
+     */
+    function toolErrorEvent(
+      message: string,
+      extra: Record<string, unknown>,
+    ): SentryEvent {
+      return {
+        exception: {
+          values: [{ value: `Request failed with status 500 ${message}` }],
+        },
+        extra: {
+          name: 'MusterToolError',
+          details: [],
+          installation: 'gazelle',
+          plugin: 'muster',
+          ...extra,
+        },
+      };
+    }
+
+    it.each(['timeout', 'client_not_connected', 'tool_not_found'])(
+      'groups %s by server, whatever the tool, message and installation',
+      kind => {
+        const [first, second] = [
+          ['gazelle', 'x_kubernetes_gazelle_get', 30],
+          ['golem', 'x_kubernetes_golem_list', 60],
+        ].map(([installation, tool, seconds]) =>
+          normalizeSentryEvent(
+            toolErrorEvent(`Tool execution failed after ${seconds}s`, {
+              installation,
+              kind,
+              tool,
+              server: 'kubernetes',
+            }),
+          ),
+        );
+
+        expect(first.fingerprint).toEqual([
+          'MusterToolError',
+          kind,
+          'kubernetes',
+        ]);
+        expect(second.fingerprint).toEqual(first.fingerprint);
+        expect(first.tags).toEqual({
+          installation: 'gazelle',
+          tool: 'x_kubernetes_gazelle_get',
+          server: 'kubernetes',
+        });
+      },
+    );
+
+    it('keeps the same kind of another server apart', () => {
+      const [prometheus, kubernetes] = ['prometheus', 'kubernetes'].map(
+        server =>
+          normalizeSentryEvent(
+            toolErrorEvent('Tool execution failed: client not connected', {
+              kind: 'client_not_connected',
+              tool: `x_${server}_list`,
+              server,
+            }),
+          ).fingerprint,
+      );
+
+      expect(prometheus).not.toEqual(kubernetes);
+    });
+
+    it("groups another kind by tool, without an Organization's or a workflow's name", () => {
+      const fingerprintOf = (tool: string) =>
+        normalizeSentryEvent(toolErrorEvent('boom', { kind: 'conflict', tool }))
+          .fingerprint;
+
+      expect(fingerprintOf('x_org-acme_github_search_issues')).toEqual([
+        'MusterToolError',
+        'conflict',
+        'x_<org>_github_search_issues',
+      ]);
+      expect(fingerprintOf('x_org-acme_github_search_issues')).toEqual(
+        fingerprintOf('x_org-other_github_search_issues'),
+      );
+      expect(fingerprintOf('workflow_deploy-app')).toEqual(
+        fingerprintOf('workflow_rotate_keys'),
+      );
+      expect(fingerprintOf('x_github_search_issues')).not.toEqual(
+        fingerprintOf('x_github_get_issue'),
+      );
+    });
+
+    it('replaces single-quoted values, not an apostrophe', () => {
+      const event = normalizeSentryEvent(
+        toolErrorEvent(
+          "Failed to start MCP server 'jira': the server's process exited",
+          { tool: 'core_mcpserver_start' },
+        ),
+      );
+
+      expect(event.fingerprint![1]).toBe(
+        "Request failed with status 500 Failed to start MCP server '<value>': the server's process exited",
+      );
+    });
+
+    // giantswarm/giantswarm#39001: one fault, a different workflow name each time.
+    it('groups an unknown kind by its message, quoted values replaced', () => {
+      const [first, second] = ['deploy app', 'rotate keys'].map(workflow =>
+        normalizeSentryEvent(
+          toolErrorEvent(
+            `Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "${workflow}"`,
+            { tool: 'core_workflow_execution_list' },
+          ),
+        ),
+      );
+
+      const normalized =
+        'Request failed with status 500 Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "<value>"';
+      expect(first.fingerprint).toEqual([
+        'MusterToolError',
+        normalized,
+        'core_workflow_execution_list',
+      ]);
+      expect(second.fingerprint).toEqual(first.fingerprint);
+      expect(first.exception!.values![0].value).toBe(normalized);
+      expect(first.extra).toMatchObject({
+        original_message:
+          'Request failed with status 500 Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "deploy app"',
+      });
+    });
+
+    it('leaves quoted values in other events alone', () => {
+      const event = normalizeSentryEvent<SentryEvent>({
+        message: 'no team file for "bumblebee"',
+      });
+
+      expect(event.message).toBe('no team file for "bumblebee"');
+      expect(event.fingerprint).toBeUndefined();
     });
   });
 });

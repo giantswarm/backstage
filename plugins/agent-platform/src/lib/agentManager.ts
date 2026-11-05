@@ -11,10 +11,16 @@
  * — the portal composes nothing of its own.
  */
 
+import {
+  AGENT_MANAGER_REFUSAL_CODES,
+  type AgentManagerRefusalCode,
+  parseToolErrorCode,
+  AGENT_MANAGER_SERVER,
+} from '@giantswarm/backstage-plugin-gs-common';
 import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
 
 /** The MCPServer name muster registers agent-manager under. */
-export const AGENT_MANAGER_SERVER = 'agent-manager';
+export { AGENT_MANAGER_SERVER };
 
 /**
  * Why agent-manager cannot be used on an installation, in one sentence, from
@@ -384,34 +390,22 @@ export function hasReachedWrittenRevision(
 
 /**
  * agent-manager's error codes, as its MCP tools prefix them
- * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
- * (a viewer's Deploy), `conflict` an existing name or a suspended release,
- * `gitops_owned` a live write to a release applied from git,
- * `auth_required` a write in mode `commit` without the person's GitHub
- * authorization, `invalid_request` a schema violation or an unpinnable skill,
- * `unsupported` an operation this installation does not offer.
+ * (`<code>: <message>`): its refusals (`AGENT_MANAGER_REFUSAL_CODES`, which
+ * the backend answers with a 4xx), and `auth_required` a write in mode
+ * `commit` without the person's GitHub authorization, `unauthenticated` and
+ * `backend_error`.
  */
 export type AgentManagerErrorCode =
-  | 'not_found'
-  | 'invalid_request'
-  | 'conflict'
-  | 'gitops_owned'
+  | AgentManagerRefusalCode
   | 'auth_required'
-  | 'forbidden'
   | 'unauthenticated'
-  | 'unsupported'
   | 'backend_error'
   | 'unknown';
 
 const ERROR_CODES: readonly AgentManagerErrorCode[] = [
-  'not_found',
-  'invalid_request',
-  'conflict',
-  'gitops_owned',
+  ...AGENT_MANAGER_REFUSAL_CODES,
   'auth_required',
-  'forbidden',
   'unauthenticated',
-  'unsupported',
   'backend_error',
 ];
 
@@ -572,11 +566,12 @@ export function classifyAgentManagerError(error: unknown): Error {
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
-  const match = message.match(/^([a-z_]+):\s*([\s\S]*)$/);
-  if (match && (ERROR_CODES as readonly string[]).includes(match[1])) {
+  // The parser gs-node's MusterMcpClient reads a refusal's code with.
+  const parsed = parseToolErrorCode(message);
+  if (parsed && (ERROR_CODES as readonly string[]).includes(parsed.code)) {
     return new AgentManagerError(
-      match[1] as AgentManagerErrorCode,
-      match[2] || message,
+      parsed.code as AgentManagerErrorCode,
+      parsed.text || message,
       { cause: error },
     );
   }

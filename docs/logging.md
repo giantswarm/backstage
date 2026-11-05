@@ -33,11 +33,28 @@ the router. Throw a subclass of the error after logging the failure once, as a
 warning with a fixed message; the handler answers it with the body the
 middleware would send. `MusterUnreachableError` (an installation's muster
 cannot be reached) and `MimirUnavailableError` (an installation's Mimir could
-not answer a query) are two. A router that answers some other error itself
-builds the body with `errorResponseBody()` from `gs-node`, so the frontend
-reads it as it reads the middleware's: `kagentErrorHandler.ts` in
-`agent-platform-backend` does, for a kagent call that failed with a 500, which
-it logs once as `kagent <call> <cause>`.
+not answer a query) are two. An error that belongs to another class is marked
+with `markReported()` after it is logged, and the handler answers it with its
+own `status`. A router that answers some other error itself builds the body
+with `errorResponseBody()` from `gs-node`, so the frontend reads it as it reads
+the middleware's: `kagentErrorHandler.ts` in `agent-platform-backend` does, for
+a kagent call that failed with a 500, which it logs once as
+`kagent <call> <cause>`.
+
+A muster tool error (`MusterToolError` in `gs-node`) names the `tool`, its MCP
+`server` and the `installation`, never the arguments, and carries the `kind`
+of a failure the portal knows, with its status (`MUSTER_TOOL_ERROR_STATUS`,
+next to the auth_required case in `MusterMcpClient`). The refusals of the
+Agent Platform's MCP servers (`mcpToolRefusalOf` in `gs-common`) and muster's
+refusals of a connector write answer 4xx and stay out of Sentry. A muster
+rollout's `interrupted` is logged at `info` and answered 503 by
+`reportedErrorHandler()`. A timeout (504), a server muster holds no connection
+to (503) and a missing tool (502) are reported. `normalizeSentryEvent` groups
+the events as `['MusterToolError', <kind>, <server>]` for those three, which
+belong to a whole server, and as `['MusterToolError', <kind>, <tool>]`
+otherwise, the tool without an Organization's or a workflow's name, or by the
+message with its quoted values replaced where the kind is unknown. It tags
+`tool` and `server`.
 
 Frontend equivalent: `SentryErrorReporter`
 (`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
