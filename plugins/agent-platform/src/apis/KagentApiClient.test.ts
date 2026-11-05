@@ -280,6 +280,70 @@ describe('KagentApiClient', () => {
         /status 500/,
       );
     });
+
+    describe('kagent temporarily unavailable', () => {
+      const unavailable = () =>
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message:
+                "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+              reason: 'unavailable',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-9' },
+        );
+      const expected = {
+        message:
+          'The Agent Platform is temporarily unavailable. Try again in a moment.',
+        status: 500,
+        reason: 'unavailable',
+        requestId: 'req-9',
+      };
+
+      it('says so on a read, keeping the fields the page reads', async () => {
+        fetchMock.mockResolvedValue(unavailable());
+
+        const error = await buildClient()
+          .listSessions('gazelle')
+          .catch((e: unknown) => e);
+
+        expect(error).toMatchObject(expected);
+        // A failed read, not kagent being absent: it is surfaced and retried.
+        expect(error).not.toMatchObject({ name: 'NotFoundError' });
+        expect(error).not.toMatchObject({ name: 'ServiceUnavailableError' });
+      });
+
+      it('says so on a write', async () => {
+        fetchMock.mockResolvedValue(unavailable());
+
+        await expect(
+          buildClient().renameSession('gazelle', 'abc123', 'New name'),
+        ).rejects.toMatchObject(expected);
+      });
+
+      it('keeps the backend’s message for another server error', async () => {
+        fetchMock.mockResolvedValue(
+          jsonResponse(
+            {
+              error: {
+                name: 'UpstreamError',
+                message:
+                  "The kagent API for installation 'gazelle' failed: boom",
+                reason: 'server-error',
+              },
+            },
+            500,
+          ),
+        );
+
+        await expect(buildClient().listSessions('gazelle')).rejects.toThrow(
+          "The kagent API for installation 'gazelle' failed: boom",
+        );
+      });
+    });
   });
 
   describe('listInstallations', () => {
@@ -1428,6 +1492,39 @@ describe('KagentApiClient', () => {
         status: 500,
         reason: 'timeout',
         requestId: 'req-7',
+      });
+    });
+
+    it('says the Agent Platform is temporarily unavailable when kagent answered gRPC Unavailable', async () => {
+      // The gateway could not reach the controller (a restart, a preempted
+      // pod): the backend answers its 500 with `reason: "unavailable"`. Still
+      // a failure to verify, now in words the composer can show.
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message:
+                "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+              reason: 'unavailable',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-8' },
+        ),
+      );
+
+      const error = (await buildClient()
+        .streamMessage('gazelle', 'abc123', agent, message, () => {})
+        .catch((e: unknown) => e)) as Error;
+
+      expect(error).toMatchObject({
+        name: 'StreamTransportError',
+        message:
+          'The Agent Platform is temporarily unavailable. Try again in a moment.',
+        status: 500,
+        reason: 'unavailable',
+        requestId: 'req-8',
       });
     });
   });

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
@@ -6,6 +6,7 @@ import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-c
 import { kagentApiRef } from '../apis';
 import { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey } from '../lib/queryKeys';
+import { describeReadFailure, type ReadFailure } from '../lib/readFailure';
 import {
   buildAgentIndex,
   SessionRow,
@@ -36,6 +37,12 @@ export type AgentSessionsView = {
    * out which failure it was — the sessions list already reports those in detail.
    */
   isUnavailable: boolean;
+  /** Why the read failed, when {@link isUnavailable}. */
+  failure?: ReadFailure;
+  /** Read the sessions again, after a failure. */
+  retry: () => void;
+  /** A {@link retry} is under way. */
+  isRetrying: boolean;
 };
 
 /**
@@ -61,9 +68,11 @@ export function useAgentSessions(
 
   const {
     data: sessions,
+    error,
     isError,
     isPending,
     fetchStatus,
+    refetch,
   } = useQuery({
     // Same key as SessionsDataProvider, deliberately — see the note above.
     queryKey: sessionsQueryKey(installation),
@@ -99,16 +108,24 @@ export function useAgentSessions(
     );
   }, [sessions, agentId, agentIndex]);
 
+  // Only unavailable when there is genuinely nothing to show. react-query keeps
+  // `data` and sets `error` on a failed *refetch*, and this query is shared with
+  // the Sessions tab — so arriving from that tab after its entry went stale
+  // triggers a background refetch whose failure would otherwise hide sessions
+  // that were already read and are still correct.
+  const isUnavailable = isError && !sessions;
+  const retry = useCallback(() => {
+    refetch().catch(() => {});
+  }, [refetch]);
+
   return {
     rows,
     installation,
     isLoading,
     isNotUserScoped: capabilities.isUserScoped === false,
-    // Only unavailable when there is genuinely nothing to show. react-query keeps
-    // `data` and sets `error` on a failed *refetch*, and this query is shared with
-    // the Sessions tab — so arriving from that tab after its entry went stale
-    // triggers a background refetch whose failure would otherwise hide sessions
-    // that were already read and are still correct.
-    isUnavailable: isError && !sessions,
+    isUnavailable,
+    failure: isUnavailable ? describeReadFailure(error) : undefined,
+    retry,
+    isRetrying: isUnavailable && fetchStatus === 'fetching',
   };
 }

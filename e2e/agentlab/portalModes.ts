@@ -38,6 +38,7 @@ export const SHELL_SPECS = [
   'harness-no-limits.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',
+  'kagent-unavailable.spec.ts',
   'legacy-addresses.spec.ts',
   'markdown-footnotes.spec.ts',
   'mcp-server-auth-modes.spec.ts',

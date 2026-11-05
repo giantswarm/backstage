@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
@@ -86,6 +86,36 @@ describe('useAgentSessions', () => {
     await waitFor(() => expect(result.current.isUnavailable).toBe(true));
 
     expect(result.current.rows).toEqual([]);
+  });
+
+  it('says why the read failed and reads again on retry', async () => {
+    const listSessions = jest
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('kagent is down'), {
+          status: 500,
+          reason: 'unavailable',
+          requestId: 'req-5',
+        }),
+      )
+      .mockResolvedValue([session('a')]);
+
+    const { result } = renderAgentSessions(listSessions);
+
+    await waitFor(() => expect(result.current.isUnavailable).toBe(true));
+    expect(result.current.failure).toEqual({
+      reason: 'temporarily unavailable',
+      requestId: 'req-5',
+    });
+
+    act(() => result.current.retry());
+
+    await waitFor(() =>
+      expect(result.current.rows.map(row => row.sessionId)).toEqual(['a']),
+    );
+    expect(result.current.isUnavailable).toBe(false);
+    expect(result.current.failure).toBeUndefined();
+    expect(listSessions).toHaveBeenCalledTimes(2);
   });
 
   // react-query keeps `data` and sets `error` on a failed *refetch*. Since this

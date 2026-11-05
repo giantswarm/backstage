@@ -94,6 +94,8 @@ function SessionsIndexPageContent() {
     hasInstallations,
     unreachableInstallations,
     readFailures,
+    retry,
+    isRetrying,
     notUserScopedInstallations,
     notReachableInstallations,
   } = useSessions();
@@ -215,6 +217,13 @@ function SessionsIndexPageContent() {
           resourceName="sessions"
           failures={readFailures}
           isLoading={isLoading}
+          // With no rows, the failure is the page's answer: an error the
+          // person cannot close, never the empty state. kagent down for a
+          // moment is the usual cause, so either card offers a retry.
+          isEverything={isEmpty}
+          title="Could not read your sessions"
+          onRetry={retry}
+          isRetrying={isRetrying}
         />
 
         {/* Installations that run kagent but whose endpoint the portal cannot

@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react';
-import { Alert, ButtonIcon, Flex, Text } from '@backstage/ui';
+import { Alert, Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
 import {
@@ -57,6 +57,22 @@ export type UnreachableInstallationsAlertProps = {
    * description: in a form, "They are not offered for this agent."
    */
   consequence?: string;
+  /**
+   * Read the failed environments again: a "Try again" button beside the text.
+   * For a list whose failure a retry can fix, as when kagent was down for a
+   * moment.
+   */
+  onRetry?: () => void;
+  /** The retry is under way: the button shows it and takes no second press. */
+  isRetrying?: boolean;
+  /**
+   * The failure is the whole list's answer, nothing else having been read: a
+   * danger card under `title`, which the person cannot close, since closing it
+   * would leave a page that looks empty. A warning card otherwise.
+   */
+  isEverything?: boolean;
+  /** The danger card's title, used with `isEverything`: "Could not read your sessions". */
+  title?: string;
 };
 
 /**
@@ -77,7 +93,9 @@ export type UnreachableInstallationsAlertProps = {
  * It sits on most of the shell's pages, so the person can close it (the
  * corner "X" of the dismissible banners, in bui Alert's actions slot). It
  * stays closed for this set of installations while the page is mounted; a
- * different set (a new failure) or the next visit shows it again.
+ * different set (a new failure) or the next visit shows it again. A failure
+ * that is the list's whole answer (`isEverything`) is a danger card instead,
+ * which stays; with `onRetry` either card offers "Try again".
  */
 export function UnreachableInstallationsAlert({
   installations,
@@ -85,26 +103,43 @@ export function UnreachableInstallationsAlert({
   failures,
   isLoading = false,
   consequence,
+  onRetry,
+  isRetrying = false,
+  isEverything = false,
+  title: everythingTitle,
 }: UnreachableInstallationsAlertProps) {
   // Above every early return: hiding the card while the list loads, or while
   // nothing failed, must not forget that it was closed.
   const [closedKey, setClosedKey] = useState<string | null>(null);
   const key = installations.join('\n');
 
-  if (isLoading || installations.length === 0 || closedKey === key) {
+  // A closed warning does not hide the danger card: that one cannot be closed.
+  if (
+    isLoading ||
+    installations.length === 0 ||
+    (closedKey === key && !isEverything)
+  ) {
     return null;
   }
   const onClose = () => setClosedKey(key);
 
   const count = installations.length;
-  const title = `Could not read ${countNoun(count, 'environment')}`;
+  const title =
+    isEverything && everythingTitle
+      ? everythingTitle
+      : `Could not read ${countNoun(count, 'environment')}`;
   const after = consequence ? ` ${consequence}` : '';
+  const card = {
+    title,
+    onClose: isEverything ? undefined : onClose,
+    status: isEverything ? ('danger' as const) : ('warning' as const),
+    retry: onRetry ? { onRetry, isRetrying } : undefined,
+  };
 
   if (count <= NAMED_IN_SENTENCE) {
     return (
-      <ClosableWarning
-        title={title}
-        onClose={onClose}
+      <ReadFailureCard
+        {...card}
         description={`${describeFew(
           installations,
           resourceName,
@@ -129,9 +164,8 @@ export function UnreachableInstallationsAlert({
       )} could not be read. ${MAY_BE_UNREACHABLE.several}`;
 
   return (
-    <ClosableWarning
-      title={title}
-      onClose={onClose}
+    <ReadFailureCard
+      {...card}
       description={
         <Flex direction="column" gap="2">
           <span>
@@ -194,15 +228,23 @@ function describeFew(
     .join('; ')}.`;
 }
 
-/** The warning card with its close button, announced as an alert. */
-function ClosableWarning({
+/**
+ * The card, announced as an alert: a warning with its close button, or a
+ * danger card without one; either with a "Try again" button when the list can
+ * be read again.
+ */
+function ReadFailureCard({
   title,
   description,
+  status,
   onClose,
+  retry,
 }: {
   title: string;
   description: ReactNode;
-  onClose: () => void;
+  status: 'warning' | 'danger';
+  onClose?: () => void;
+  retry?: { onRetry: () => void; isRetrying: boolean };
 }) {
   const classes = useStyles();
 
@@ -210,17 +252,33 @@ function ClosableWarning({
     <Alert
       role="alert"
       className={classes.alert}
-      status="warning"
+      status={status}
       title={title}
       description={description}
       customActions={
-        <ButtonIcon
-          variant="tertiary"
-          size="small"
-          icon={<CloseIcon fontSize="small" />}
-          aria-label="Close"
-          onPress={onClose}
-        />
+        retry || onClose ? (
+          <Flex align="center" gap="1">
+            {retry && (
+              <Button
+                variant="secondary"
+                size="small"
+                isPending={retry.isRetrying}
+                onPress={retry.onRetry}
+              >
+                Try again
+              </Button>
+            )}
+            {onClose && (
+              <ButtonIcon
+                variant="tertiary"
+                size="small"
+                icon={<CloseIcon fontSize="small" />}
+                aria-label="Close"
+                onPress={onClose}
+              />
+            )}
+          </Flex>
+        ) : undefined
       }
     />
   );

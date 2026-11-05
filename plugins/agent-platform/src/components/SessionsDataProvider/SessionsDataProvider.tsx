@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -63,6 +64,13 @@ export type SessionsContextValue = {
    * id the backend sent its call with, so the page can name the cause.
    */
   readFailures: Record<string, ReadFailure>;
+  /**
+   * Read the sessions of `unreachableInstallations` again: the page's "Try
+   * again" after a failed read, as when kagent was down for a moment.
+   */
+  retry: () => void;
+  /** A {@link retry} is under way: a failed read is being read again. */
+  isRetrying: boolean;
   /**
    * Installations that reported a session list which is **not** scoped to the
    * signed-in user, because their kagent runs in `unsecure` mode. Rows are still
@@ -226,14 +234,32 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       const query = sessionQueries[index];
       // `errorUpdatedAt` too: a later failure with another reason or request
       // id keeps the error's name.
-      return `${installation}:${query?.status}:${query?.dataUpdatedAt}:${
-        query?.errorUpdatedAt
-      }:${(query?.error as Error | null)?.name ?? ''}`;
+      return `${installation}:${query?.status}:${query?.fetchStatus}:${
+        query?.dataUpdatedAt
+      }:${query?.errorUpdatedAt}:${(query?.error as Error | null)?.name ?? ''}`;
     })
     .join('|');
 
+  // Every installation whose read failed, read again; the ones that answered
+  // keep their rows. Exact keys: the sessions key is no other query's prefix
+  // today, and a retry must not become a fleet-wide refetch if one becomes so.
+  const failedKey = targets
+    .filter((_, index) => sessionQueries[index]?.status === 'error')
+    .join(',');
+  const retry = useCallback(() => {
+    for (const installation of failedKey ? failedKey.split(',') : []) {
+      queryClient
+        .refetchQueries({
+          queryKey: sessionsQueryKey(installation),
+          exact: true,
+        })
+        .catch(() => {});
+    }
+  }, [queryClient, failedKey]);
+
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
+    let isRetrying = false;
     const unreachable: string[] = [];
     const readFailures: Record<string, ReadFailure> = {};
 
@@ -279,6 +305,8 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       if (!notDeployed) {
         unreachable.push(installation);
         readFailures[installation] = describeReadFailure(query.error);
+        // A failed query read again keeps its error until it answers.
+        isRetrying ||= query.fetchStatus === 'fetching';
       }
     });
 
@@ -325,6 +353,8 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       hasInstallations,
       unreachableInstallations: unreachable,
       readFailures,
+      retry,
+      isRetrying,
       notUserScopedInstallations,
       notReachableInstallations,
     };
@@ -341,6 +371,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     kagentKey,
     allInstallations.length,
     notReachableInstallations,
+    retry,
   ]);
 
   // The person's notification record keeps entries per session (its origin,

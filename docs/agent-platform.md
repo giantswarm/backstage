@@ -1185,9 +1185,14 @@ a session"). Renaming and deleting are described below.
 Neither Sessions nor Agents renders an empty table. Sessions shows
 `ShellSessionsEmpty` only when the empty answer is final:
 
-- **Nothing could be read** is not an empty history: the "couldn't read"
-  warning stays. This is why the branch tests `unreachableInstallations`, not
-  only `rows.length`.
+- **Nothing could be read** is not an empty history: with no rows, the
+  failure is the page's answer, a danger card "Could not read your sessions"
+  that names each environment's reason and offers Try again
+  (`useSessions().retry`), and that cannot be closed. With rows on screen it is
+  the closable warning, with the same Try again. The shell rail says "Could not
+  read your sessions." with Try again in place of "No sessions yet", and an
+  agent's Sessions tab shows the danger card. This is why the branch tests
+  `unreachableInstallations`, not only `rows.length`.
 - **Something must have been queried.** At least one scoped installation must
   be outside `notReachableInstallations`. Every installation need not be
   reachable, since a local portal almost always has unreachable ones.
@@ -1295,6 +1300,15 @@ Failures are classified as **absent** or **unwell**:
 - **Reported** in `UnreachableInstallationsAlert` — everything else: kagent
   `5xx` or `429`, timeouts, unreadable bodies. Otherwise a degraded
   installation's sessions would vanish silently.
+
+kagent down for a moment (its gateway answers gRPC `Unavailable`, as while the
+controller restarts) reaches the browser as a `500` with
+`reason: "unavailable"`. It stays a `5xx`, because the frontend reads a `503` as
+"no kagent here" and stays silent. The reason reads "temporarily unavailable" in
+the read-failure card, and a write or a send that meets it says "The Agent
+Platform is temporarily unavailable. Try again in a moment."
+(`isKagentUnavailable` in `lib/readFailure.ts`). A message that could not be
+sent goes back into the composer, to be sent again with one press.
 
 An in-band `{error: true}` on a `200`, or a `data` that is not an array, also
 throws. A partial read keeps the readable rows and logs a console warning.

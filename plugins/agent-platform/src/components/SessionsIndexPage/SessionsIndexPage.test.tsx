@@ -90,6 +90,8 @@ const loadedSessions: SessionsContextValue = {
   hasInstallations: true,
   unreachableInstallations: [],
   readFailures: {},
+  retry: () => {},
+  isRetrying: false,
   notUserScopedInstallations: [],
   notReachableInstallations: [],
 };
@@ -184,7 +186,7 @@ describe('SessionsIndexPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Could not read 1 environment',
+      'Could not read your sessions',
     );
   });
 
@@ -246,10 +248,15 @@ describe('SessionsIndexPage', () => {
 
     it('does not claim an empty history when the sessions could not be read', async () => {
       // An empty list because every read failed is not an empty history. The
-      // warning is the answer.
+      // error is the answer, and it offers to read again.
+      const retry = jest.fn();
       mockUseSessions.mockReturnValue({
         ...loadedSessions,
         unreachableInstallations: ['gazelle'],
+        readFailures: {
+          gazelle: { reason: 'temporarily unavailable', requestId: 'req-9' },
+        },
+        retry,
       });
 
       await render();
@@ -257,9 +264,33 @@ describe('SessionsIndexPage', () => {
       expect(
         screen.queryByRole('heading', { name: 'No sessions yet' }),
       ).not.toBeInTheDocument();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Could not read your sessions');
+      expect(alert).toHaveTextContent(
+        'The sessions could not be read on gazelle (temporarily unavailable, request id req-9).',
+      );
+      // The page's whole answer: it stays until the read succeeds.
       expect(
-        screen.getByText(/Could not read 1 environment/),
-      ).toBeInTheDocument();
+        screen.queryByRole('button', { name: 'Close' }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a retry under way', async () => {
+      mockUseSessions.mockReturnValue({
+        ...loadedSessions,
+        unreachableInstallations: ['gazelle'],
+        isRetrying: true,
+      });
+
+      await render();
+
+      expect(screen.getByRole('button', { name: /Try again/ })).toHaveAttribute(
+        'data-pending',
+        'true',
+      );
     });
 
     it('does not claim an empty history when no installation was ever queried', async () => {
@@ -307,11 +338,33 @@ describe('SessionsIndexPage', () => {
     await render();
 
     expect(
-      screen.getByText('Could not read 1 environment'),
+      screen.getByText('Could not read your sessions'),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/gazelle \(authentication failed, request id req-7\)/),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the list and offers a retry when one installation of several could not be read', async () => {
+    const retry = jest.fn();
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      installations: ['gazelle', 'golem'],
+      rows: [session],
+      unreachableInstallations: ['golem'],
+      retry,
+    });
+
+    await render();
+
+    expect(screen.getByTestId('sessions-table')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+    // A partial failure is a warning the person may close.
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it('names installations the portal cannot reach in a quiet note, not a warning', async () => {

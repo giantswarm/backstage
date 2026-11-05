@@ -4,6 +4,7 @@ import { Button, Flex, Text } from '@backstage/ui';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
+import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { markEarlierRevisions } from '../SessionsDataProvider/helpers';
 
 /**
@@ -42,8 +43,16 @@ export function AgentSessionsCard({
    */
   currentRevision?: string;
 }) {
-  const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
-    sessions;
+  const {
+    rows,
+    installation,
+    isLoading,
+    isNotUserScoped,
+    isUnavailable,
+    failure,
+    retry,
+    isRetrying,
+  } = sessions;
   // The same summary the Sessions tab reads, under the same query key: opening
   // this card after that tab costs nothing, and this page's read warms it back.
   const sessionStates = useFleetSessionStates(
@@ -55,10 +64,18 @@ export function AgentSessionsCard({
   );
 
   if (isUnavailable) {
+    // The tab's whole answer: an error with why and a retry, the Sessions
+    // page's own card, never the "no sessions" line below.
     return (
-      <Text variant="body-medium" color="secondary">
-        Sessions could not be read from this environment.
-      </Text>
+      <UnreachableInstallationsAlert
+        installations={[installation]}
+        resourceName="sessions"
+        failures={failure ? { [installation]: failure } : undefined}
+        isEverything
+        title="Could not read your sessions"
+        onRetry={retry}
+        isRetrying={isRetrying}
+      />
     );
   }
 

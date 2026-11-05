@@ -257,4 +257,65 @@ describe('UnreachableInstallationsAlert', () => {
       );
     });
   });
+
+  describe('a failure a retry can fix', () => {
+    it('offers Try again beside the close button', async () => {
+      const onRetry = jest.fn();
+      await renderInTestApp(
+        <UnreachableInstallationsAlert
+          installations={['gremlin']}
+          resourceName="sessions"
+          failures={{ gremlin: { reason: 'temporarily unavailable' } }}
+          onRetry={onRetry}
+        />,
+      );
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The sessions could not be read on gremlin (temporarily unavailable).',
+      );
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it('is a danger card under its own title, which cannot be closed, when it is the whole answer', async () => {
+      await renderInTestApp(
+        <UnreachableInstallationsAlert
+          installations={['gremlin']}
+          resourceName="sessions"
+          isEverything
+          title="Could not read your sessions"
+          onRetry={() => {}}
+        />,
+      );
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not read your sessions',
+      );
+      expect(screen.queryByText('Could not read 1 environment')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Try again' }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the danger card even after the warning for the same environments was closed', async () => {
+      const { rerender } = await renderInTestApp(
+        <UnreachableInstallationsAlert installations={['gremlin']} />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      rerender(
+        <UnreachableInstallationsAlert
+          installations={['gremlin']}
+          isEverything
+          title="Could not read your sessions"
+        />,
+      );
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not read your sessions',
+      );
+    });
+  });
 });

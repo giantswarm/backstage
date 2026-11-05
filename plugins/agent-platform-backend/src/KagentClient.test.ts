@@ -1538,6 +1538,82 @@ describe('KagentClient against a fake controller', () => {
         expect(log.warn).not.toHaveBeenCalled();
       });
 
+      describe('kagent unavailable behind its gateway (giantswarm/giantswarm#39044)', () => {
+        // agentgateway's words while the controller was down: the gateway
+        // answered, so there is no socket error on our side, and this is not
+        // "kagent is not deployed here".
+        const GATEWAY_MESSAGE =
+          'upstream call failed: Connect: Connection refused (os error 111)';
+
+        it('reports a unary call as unavailable, not as kagent absent', async () => {
+          const { client, log } = failingWith(
+            Code.Unavailable,
+            GATEWAY_MESSAGE,
+          );
+
+          const error = (await client
+            .listSessions({ ...USER, requestId: 'req-46' })
+            .catch((e: unknown) => e)) as Error;
+
+          expect(error).toMatchObject({
+            name: 'UpstreamError',
+            reason: 'unavailable',
+          });
+          expect(isTransportFailure(error)).toBe(false);
+          expect(kagentFailureOf(error)).toEqual({
+            installation: 'gazelle',
+            call: 'SessionService/ListSessions',
+            code: 'Unavailable',
+            error: GATEWAY_MESSAGE,
+            requestId: 'req-46',
+          });
+          expect(log.warn).not.toHaveBeenCalled();
+        });
+
+        it('reports a streaming send that could not open as unavailable', async () => {
+          const log = mockServices.logger.mock();
+          const client = new KagentClient(
+            installation,
+            log,
+            createRouterTransport(router => {
+              router.service(A2AService, {
+                // eslint-disable-next-line require-yield
+                async *sendStreamingMessage() {
+                  throw new ConnectError(GATEWAY_MESSAGE, Code.Unavailable);
+                },
+              });
+            }),
+            500,
+            500,
+          );
+
+          const error = (await client
+            .streamMessage(
+              's1',
+              AGENT,
+              { messageId: 'm1', text: 'why is the ingress failing?' },
+              { ...USER, requestId: 'req-47' },
+              new AbortController().signal,
+            )
+            .catch((e: unknown) => e)) as Error;
+
+          // Not a pending turn, not kagent absent: the router answers it as a
+          // 500 with this reason, which the page names.
+          expect(error).toMatchObject({
+            name: 'UpstreamError',
+            reason: 'unavailable',
+          });
+          expect(isTransportFailure(error)).toBe(false);
+          expect(kagentFailureOf(error)).toEqual({
+            installation: 'gazelle',
+            call: 'A2AService/SendStreamingMessage',
+            code: 'Unavailable',
+            error: GATEWAY_MESSAGE,
+            requestId: 'req-47',
+          });
+        });
+      });
+
       it('attaches nothing to an answer that is not a 5xx', async () => {
         const { client } = failingWith(Code.NotFound, 'no such session');
         const error = (await client
