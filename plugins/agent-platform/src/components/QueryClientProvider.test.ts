@@ -264,7 +264,7 @@ describe('markRestoredListsStale', () => {
       defaultOptions: { queries: { staleTime: 60_000 } },
     });
     queryClient.setQueryData(agentsKey, []);
-    queryClient.setQueryData(modelsKey, [{ name: 'default-model-config' }]);
+    queryClient.setQueryData(modelsKey, [{ name: 'anthropic-main' }]);
     queryClient.setQueryData(inventoryKey, { kagent: true });
     return queryClient;
   }
@@ -305,7 +305,7 @@ describe('markRestoredListsStale', () => {
     await markRestoredListsStale(queryClient);
 
     expect(queryClient.getQueryData(modelsKey)).toEqual([
-      { name: 'default-model-config' },
+      { name: 'anthropic-main' },
     ]);
     expect(queryClient.getQueryState(modelsKey)?.isInvalidated).toBe(true);
   });

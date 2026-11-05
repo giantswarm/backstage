@@ -76,6 +76,25 @@ jest.mock('../../hooks/useDeleteModelConfig', () => ({
   }),
 }));
 
+let mockListedModels: ModelConfig[] = [];
+jest.mock('../ModelConfigsProvider', () => ({
+  useModelConfigs: () => ({
+    modelConfigsFor: () => mockListedModels,
+    isLoading: false,
+  }),
+}));
+
+const mockSetDefault = jest.fn();
+let mockSetDefaultError: Error | null = null;
+jest.mock('../../hooks/useSetDefaultModelConfig', () => ({
+  useSetDefaultModelConfig: () => ({
+    setDefault: mockSetDefault,
+    isSetting: false,
+    error: mockSetDefaultError,
+    reset: jest.fn(),
+  }),
+}));
+
 // The gateway's figures, as the Usage screen's hook reduces them.
 let mockLlmUsage: LlmUsageView;
 let mockLlmUsageInstallations: Array<string | undefined> = [];
@@ -249,8 +268,32 @@ function rejectedSonnet() {
 const USAGE = '/customize/models/inst-1/kagent/sonnet/usage';
 const USED_BY = '/customize/models/inst-1/kagent/sonnet/used-by';
 
+const DEFAULT_MARK = {
+  'agent-platform.giantswarm.io/is-default-model-config': 'true',
+};
+
+function namedModel(name: string, marked: boolean) {
+  return new ModelConfig(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'ModelConfig',
+      metadata: {
+        name,
+        namespace: 'kagent',
+        ...(marked ? { annotations: DEFAULT_MARK } : {}),
+      },
+      spec: { provider: 'Anthropic', model: name },
+    } as ModelConfigInterface,
+    'inst-1',
+  );
+}
+
 describe('ModelDetailPage', () => {
   beforeEach(() => {
+    mockListedModels = [];
+    mockSetDefault.mockReset();
+    mockSetDefault.mockResolvedValue(undefined);
+    mockSetDefaultError = null;
     mockLlmUsageInstallations = [];
     mockMayUpdate = true;
     mockContextWindows = undefined;
@@ -953,5 +996,109 @@ describe('ModelDetailPage', () => {
     } finally {
       layout.restore();
     }
+  });
+
+  describe('the default model', () => {
+    it('badges the default and says what it means', async () => {
+      mockUseResource.mockReturnValue({
+        resource: sonnet({
+          annotations: {
+            'ui.giantswarm.io/display-name': 'Sonnet 4.5',
+            ...DEFAULT_MARK,
+          },
+        }),
+        isLoading: false,
+        errors: [],
+      });
+      mockListedModels = [namedModel('haiku', false)];
+      await renderPage();
+
+      expect(screen.getByText('Default')).toBeInTheDocument();
+      const facts = screen.getByRole('region', { name: 'Model details' });
+      expect(within(facts).getByText('Default model')).toBeInTheDocument();
+      expect(
+        within(facts).getByText(
+          'New agents for the platform start with this model.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Set as default' }),
+      ).toBeNull();
+    });
+
+    it('moves the default here, naming the mark it saw', async () => {
+      mockListedModels = [namedModel('haiku', true)];
+      await renderPage();
+
+      const facts = screen.getByRole('region', { name: 'Model details' });
+      expect(
+        within(facts).getByText('The default for the platform is haiku.'),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Set as default' }),
+      );
+
+      expect(mockSetDefault).toHaveBeenCalledWith({
+        modelConfig: expect.objectContaining({ cluster: 'inst-1' }),
+        expected: ['haiku'],
+      });
+      expect(
+        await screen.findByText('Sonnet 4.5 is now the default model'),
+      ).toBeInTheDocument();
+    });
+
+    it('says why there is no default when several models are marked', async () => {
+      mockListedModels = [namedModel('haiku', true), namedModel('opus', true)];
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          'The platform has no default: haiku and opus are all marked as the default.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('disables Set as default on a Helm-managed model and names the values key', async () => {
+      mockUseResource.mockReturnValue({
+        resource: sonnet({
+          labels: { 'app.kubernetes.io/managed-by': 'Helm' },
+        }),
+        isLoading: false,
+        errors: [],
+      });
+      await renderPage();
+
+      expect(
+        screen.getByRole('button', { name: 'Set as default' }),
+      ).toBeDisabled();
+      expect(
+        screen.getByText(
+          'Helm manages this model: make it the default in its values (kagent.modelConfigs[].default).',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('offers no Set as default without permission to change the model', async () => {
+      mockMayUpdate = false;
+      await renderPage();
+
+      expect(
+        screen.queryByRole('button', { name: 'Set as default' }),
+      ).toBeNull();
+    });
+
+    it('says why a move failed', async () => {
+      mockSetDefaultError = new Error(
+        'opus became the default while this page was open, so nothing was changed. Reload the page and try again.',
+      );
+      await renderPage();
+
+      expect(
+        screen.getByText('Could not make this the default model'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/opus became the default while this page was open/),
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -88,7 +88,7 @@ jest.mock('../ModelConfigsProvider', () => ({
     isLoading: false,
     unreachableInstallations: [],
     modelConfigsFor: () => [
-      modelConfig('default-model-config', 'kagent', 'Claude Sonnet'),
+      modelConfig('anthropic-main', 'kagent', 'Claude Sonnet'),
       modelConfig('opus-4-7', 'kagent', 'Claude Opus'),
       modelConfig('elsewhere', 'other-team', 'Elsewhere'),
     ],

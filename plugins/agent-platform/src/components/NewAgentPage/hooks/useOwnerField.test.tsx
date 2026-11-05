@@ -72,7 +72,7 @@ function FormProbe() {
   useEffect(() => {
     if (state.installation && !picked.current) {
       picked.current = true;
-      selectModelConfig('default-model-config', 'kagent');
+      selectModelConfig('anthropic-main', 'kagent');
     }
   }, [state.installation, selectModelConfig]);
   return (
@@ -199,7 +199,7 @@ describe('useOwnerField', () => {
     // The platform by default; no organization dropdown with it.
     expect(radio(/^Platform/)).toBeChecked();
     expect(form()).toHaveTextContent(
-      'tenant=kagent model=kagent/default-model-config error=',
+      'tenant=kagent model=kagent/anthropic-main error=',
     );
     expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
 

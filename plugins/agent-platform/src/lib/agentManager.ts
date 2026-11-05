@@ -664,8 +664,17 @@ export type AgentManagerModelConfig = {
   provider?: string;
   model?: string;
   accepted: boolean | null;
+  /** The ResolvedRefs condition (its key Secret found, say); null while unreported. */
+  resolvedRefs?: boolean | null;
+  /** The Accepted condition's message. */
   message?: string;
   managedBy?: string;
+  /**
+   * The namespace default a create without `modelConfig` writes: the one
+   * ModelConfig annotated as the default. None or several annotated is no
+   * default.
+   */
+  default?: boolean;
 };
 
 /**
