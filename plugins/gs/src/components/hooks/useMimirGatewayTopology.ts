@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
-import { sanitizePromQLValue } from './promql';
+import { clusterMetricsSelector } from './promql';
 import { MimirMetricSample } from '../../apis/mimir/types';
 import {
   GatewayApiGatewayInfo,
@@ -34,6 +34,9 @@ const metricByInput: Record<keyof GatewayTopologyInputs, string> = {
 
 const inputKeys = Object.keys(metricByInput) as (keyof GatewayTopologyInputs)[];
 const metricNames = Object.values(metricByInput);
+const keyByMetric = new Map(
+  inputKeys.map(key => [metricByInput[key], key] as const),
+);
 
 /** Splits the samples of the combined query into the join's inputs. */
 export function toTopologyInputs(
@@ -42,9 +45,6 @@ export function toTopologyInputs(
   const inputs = Object.fromEntries(
     inputKeys.map(key => [key, [] as MimirMetricSample[]]),
   ) as Record<keyof GatewayTopologyInputs, MimirMetricSample[]>;
-  const keyByMetric = new Map(
-    inputKeys.map(key => [metricByInput[key], key] as const),
-  );
   for (const sample of samples) {
     const key = keyByMetric.get(sample.metric.__name__ ?? '');
     if (key) inputs[key].push(sample);
@@ -72,9 +72,7 @@ export function useMimirGatewayTopology(options: {
     installationName,
     enabled: Boolean(clusterName),
     refetchInterval,
-    query: `{__name__=~"${metricNames.join('|')}",cluster_id="${sanitizePromQLValue(
-      clusterName ?? '',
-    )}"}`,
+    query: clusterMetricsSelector(metricNames, clusterName ?? ''),
   });
 
   const topology = useMemo(

@@ -1,19 +1,8 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
-import { sanitizePromQLValue } from './promql';
+import { clusterMetricsSelector } from './promql';
 import { buildGatewayPolicies, policyMetrics } from '../utils/gatewayPolicies';
 import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
-
-/**
- * One selector for a metric across all policy kinds. The names come from the
- * metrics registry; a regex on `__name__` keeps it to one query per metric
- * instead of one per kind.
- */
-function selectorFor(names: string[], clusterName: string): string {
-  return `{__name__=~"${names.join('|')}",cluster_id="${sanitizePromQLValue(
-    clusterName,
-  )}"}`;
-}
 
 const infoNames = policyMetrics.map(m => m.info);
 const targetInfoNames = policyMetrics.map(m => m.targetInfo);
@@ -38,15 +27,15 @@ export function useMimirGatewayPolicies(options: {
 
   const info = useMimirQuery({
     ...common,
-    query: selectorFor(infoNames, clusterName ?? ''),
+    query: clusterMetricsSelector(infoNames, clusterName ?? ''),
   });
   const targetInfo = useMimirQuery({
     ...common,
-    query: selectorFor(targetInfoNames, clusterName ?? ''),
+    query: clusterMetricsSelector(targetInfoNames, clusterName ?? ''),
   });
   const ancestorAccepted = useMimirQuery({
     ...common,
-    query: selectorFor(ancestorAcceptedNames, clusterName ?? ''),
+    query: clusterMetricsSelector(ancestorAcceptedNames, clusterName ?? ''),
   });
 
   const isLoading =

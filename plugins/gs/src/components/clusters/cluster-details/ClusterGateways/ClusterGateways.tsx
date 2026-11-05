@@ -184,7 +184,8 @@ export const ClusterGatewaysContent = ({
           isPending={isLoading}
           emptyState={
             <Text variant="body-medium" color="secondary">
-              {search.value ? (
+              {/* Not search.value: the rows filter on the debounced value. */}
+              {routeRows.length ? (
                 'No HTTPRoutes match the search.'
               ) : (
                 <>

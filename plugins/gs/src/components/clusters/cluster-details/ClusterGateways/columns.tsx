@@ -1,4 +1,4 @@
-import { Cell, CellText, ColumnConfig, Flex, Link, Text } from '@backstage/ui';
+import { Cell, CellText, ColumnConfig, Flex, Text } from '@backstage/ui';
 import {
   ConditionState,
   Gateway,
@@ -7,6 +7,7 @@ import {
   HttpRouteParent,
 } from '../../../utils/gatewayTopology';
 import { ConditionStatus } from './ConditionStatus';
+import { HostnameList } from './HostnameList';
 
 export type GatewayRow = Gateway;
 
@@ -79,32 +80,6 @@ export const gatewayColumns: ColumnConfig<GatewayRow>[] = [
     ),
   },
 ];
-
-/** A wildcard has no single address to open, so only concrete names link. */
-function HostnameList({ hostnames }: { hostnames: string[] | undefined }) {
-  if (hostnames === undefined) return <>—</>;
-  if (hostnames.length === 0) return <>any</>;
-  return (
-    <Flex direction="column" gap="1">
-      {hostnames.map(hostname =>
-        hostname.includes('*') ? (
-          <Text key={hostname} variant="body-medium">
-            {hostname}
-          </Text>
-        ) : (
-          <Link
-            key={hostname}
-            href={`https://${hostname}/`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {hostname}
-          </Link>
-        ),
-      )}
-    </Flex>
-  );
-}
 
 export const routeColumns: ColumnConfig<RouteParentRow>[] = [
   {
