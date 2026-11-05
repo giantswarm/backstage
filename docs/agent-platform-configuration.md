@@ -64,12 +64,13 @@ A lab works without these; production needs them:
 - **The avatar service.** Avatars come from the chart's DiceBear service
   (`dicebear`, on by default) at `avatars.<baseDomain>`, through
   `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it, or when
-  the backend cannot connect to that host (no route to it, a refused
-  connection, no connection within 3 s), the UI shows initials and the backend
-  logs the finding once at info, then answers from it for a minute (no
-  service) or five minutes (no connection). A service that is reached but
-  answers slowly, with an error or with something other than an image logs a
-  warning per image.
+  the backend cannot connect to that host directly (no route to it, no
+  connection within 3 s of resolving its name), the UI shows initials and the
+  backend logs the finding once at info, then answers from it for a minute
+  (no service) or five minutes (no connection). A service that is reached but
+  answers slowly, with an error or with something other than an image, a
+  refused connection (a gateway that is down) and an egress proxy that cannot
+  be connected to log a warning per image.
 
 ## Portals: `app.portals`
 
