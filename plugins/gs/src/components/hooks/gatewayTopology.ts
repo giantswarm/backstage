@@ -139,7 +139,9 @@ function parentKey(
   ].join('/');
 }
 
-function toCondition(sample: MimirMetricSample): ConditionState | undefined {
+export function toCondition(
+  sample: MimirMetricSample,
+): ConditionState | undefined {
   const value = finiteValue(sample);
   if (value === undefined) return undefined;
   const reason = sample.metric.reason || undefined;
@@ -147,11 +149,28 @@ function toCondition(sample: MimirMetricSample): ConditionState | undefined {
 }
 
 /**
+ * Why some conditions can't be shown, if any can't. A failed load wins over an
+ * older bundle: it fixes itself on the next refetch, and the bundle notice
+ * would be wrong for it.
+ */
+export function unavailableCauseOf(
+  conditions: Iterable<ConditionState>,
+): 'load-failed' | 'not-exported' | undefined {
+  let olderBundle = false;
+  for (const c of conditions) {
+    if (c.status !== 'not-available') continue;
+    if (c.cause === 'not-exported') olderBundle = true;
+    else return 'load-failed';
+  }
+  return olderBundle ? 'not-exported' : undefined;
+}
+
+/**
  * Several series can share a key, for example when two controllers report
  * status for the same parent. Keep the worst, so a `false` is never hidden by
  * a `true` that happens to come first in the response.
  */
-function setWorst(
+export function setWorst(
   map: Map<string, ConditionState>,
   key: string,
   condition: ConditionState,

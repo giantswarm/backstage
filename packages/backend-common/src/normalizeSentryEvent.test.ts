@@ -34,6 +34,91 @@ describe('normalizeSentryEvent', () => {
     expect(first.fingerprint).toEqual(second.fingerprint);
   });
 
+  it('collapses Kubernetes proxy errors across clusters', () => {
+    const first = normalizeSentryEvent<SentryEvent>({
+      message:
+        "Kubernetes proxy error Cluster 'mc-one' request error; caused by Error: connect ETIMEDOUT 10.0.1.2:443",
+      extra: { cluster: 'mc-one' },
+    });
+    const second = normalizeSentryEvent<SentryEvent>({
+      message:
+        "Kubernetes proxy error Cluster 'mc-two' request error; caused by Error: connect ETIMEDOUT 10.0.3.4:443",
+      extra: { cluster: 'mc-two' },
+    });
+
+    expect(first.message).toBe(
+      'Kubernetes proxy error: cluster request error; caused by Error: connect ETIMEDOUT <host>',
+    );
+    expect(first.fingerprint).toEqual(second.fingerprint);
+    expect(first.extra).toMatchObject({ cluster: 'mc-one' });
+    expect(first.tags).toEqual({ cluster: 'mc-one' });
+  });
+
+  it.each([
+    [
+      'an unresolvable API host',
+      'Error: getaddrinfo ENOTFOUND api.mc-one.example.com',
+      'Error: getaddrinfo ENOTFOUND api.mc-two.example.com',
+      'Error: getaddrinfo ENOTFOUND <host>',
+    ],
+    [
+      'a local address after the host',
+      'Error: connect ECONNREFUSED ::1:443 - Local (::1:45678)',
+      'Error: connect ECONNREFUSED ::2:443 - Local (::2:45679)',
+      'Error: connect ECONNREFUSED <host>',
+    ],
+    [
+      'any text after an unresolvable host',
+      'Error: getaddrinfo EAI_AGAIN api.mc-one.example.com (retrying)',
+      'Error: getaddrinfo EAI_AGAIN api.mc-two.example.com (retrying)',
+      'Error: getaddrinfo EAI_AGAIN <host>',
+    ],
+    [
+      'an IPv6 address',
+      'Error: connect ECONNREFUSED 2001:db8::1:443',
+      'Error: connect ECONNREFUSED 2001:db8::2:443',
+      'Error: connect ECONNREFUSED <host>',
+    ],
+    [
+      'a certificate for another host',
+      "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: api.mc-one.example.com. is not in the cert's altnames: DNS:api.mc-one.example.org",
+      "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: api.mc-two.example.com. is not in the cert's altnames: DNS:api.mc-two.example.org",
+      "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames",
+    ],
+  ])(
+    'collapses Kubernetes proxy errors whose cause names the cluster: %s',
+    (_, firstCause, secondCause, normalizedCause) => {
+      const [first, second] = [
+        ['mc-one', firstCause],
+        ['mc-two', secondCause],
+      ].map(([cluster, cause]) =>
+        normalizeSentryEvent<SentryEvent>({
+          message: `Kubernetes proxy error Cluster '${cluster}' request error; caused by ${cause}`,
+        }),
+      );
+
+      expect(first.message).toBe(
+        `Kubernetes proxy error: cluster request error; caused by ${normalizedCause}`,
+      );
+      expect(first.fingerprint).toEqual(second.fingerprint);
+    },
+  );
+
+  it('keeps Kubernetes proxy errors with different causes apart', () => {
+    const [refused, timedOut, aggregate] = [
+      'Error: connect ECONNREFUSED 10.0.1.2:443',
+      'Error: connect ETIMEDOUT 10.0.1.2:443',
+      'AggregateError',
+    ].map(
+      cause =>
+        normalizeSentryEvent<SentryEvent>({
+          message: `Kubernetes proxy error Cluster 'mc-one' request error; caused by ${cause}`,
+        }).fingerprint,
+    );
+
+    expect(new Set([refused, timedOut, aggregate].map(String)).size).toBe(3);
+  });
+
   it('collapses messages that differ only by URL', () => {
     const first = normalizeSentryEvent<SentryEvent>({
       message:
@@ -74,7 +159,19 @@ describe('normalizeSentryEvent', () => {
     });
   });
 
-  it('leaves events that need no rewriting untouched', () => {
+  it.each(['cluster', 'installation'])(
+    'sets %s from the extra data as a tag',
+    key => {
+      const event = normalizeSentryEvent<SentryEvent>({
+        message: 'Something went wrong',
+        extra: { [key]: 'example', other: 'value' },
+      });
+
+      expect(event.tags).toEqual({ [key]: 'example' });
+    },
+  );
+
+  it('leaves the message of events that need no rewriting untouched', () => {
     const event = normalizeSentryEvent<SentryEvent>({
       message: 'Something went wrong',
       extra: { plugin: 'catalog' },
