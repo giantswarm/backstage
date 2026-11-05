@@ -1,6 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
-import { GatewayPolicy } from '../../../../hooks/gatewayPolicies';
+import { GatewayPolicy } from '../../../../utils/gatewayPolicies';
 import { PoliciesTable } from './PoliciesTable';
 
 const accepted: GatewayPolicy = {

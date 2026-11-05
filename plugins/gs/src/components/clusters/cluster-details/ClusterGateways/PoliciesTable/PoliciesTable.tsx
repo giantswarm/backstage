@@ -15,11 +15,11 @@ import {
   PolicyAncestor,
   isPolicyBroken,
   isPolicyUnattached,
-} from '../../../../hooks/gatewayPolicies';
+} from '../../../../utils/gatewayPolicies';
 import {
   ConditionState,
   unavailableCauseOf,
-} from '../../../../hooks/gatewayTopology';
+} from '../../../../utils/gatewayTopology';
 import { ConditionStatus } from '../ConditionStatus';
 
 function statusUnavailable(policy: GatewayPolicy): policy is GatewayPolicy & {

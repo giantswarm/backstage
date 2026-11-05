@@ -7,7 +7,11 @@ import {
 } from '@ai-sdk/mcp';
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { readJwtClaims } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  type McpToolRefusal,
+  mcpToolRefusalOf,
+  readJwtClaims,
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   describeMcpFailure,
   isRecoverableSessionError,
@@ -21,6 +25,7 @@ import {
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
 import { MusterUnreachableError } from './musterUnreachable';
+import { markReported } from '../errors';
 import {
   FREQUENT_LOST_SESSIONS,
   FREQUENT_LOST_SESSIONS_WINDOW_MS,
@@ -276,6 +281,28 @@ function subjectOf(token: string | undefined): string | undefined {
     : undefined;
 }
 
+/** muster's structured mark of a call a replica stop interrupted. */
+const INTERRUPTED_META = 'giantswarm.io/interrupted';
+
+/**
+ * Whether muster marked an errored result interrupted: `_meta` carries
+ * `"giantswarm.io/interrupted": {"reason", "retryable"}`
+ * (docs/explanation/mcp-aggregation.md of giantswarm/muster), on the result
+ * or on the wrapped result in its text.
+ */
+function interruptedOf(meta: unknown, text: string | undefined): boolean {
+  const inner =
+    text === undefined
+      ? undefined
+      : (innerResultOf(text) as { _meta?: unknown } | undefined)?._meta;
+  return [meta, inner].some(
+    candidate =>
+      candidate !== null &&
+      typeof candidate === 'object' &&
+      (candidate as Record<string, unknown>)[INTERRUPTED_META] !== undefined,
+  );
+}
+
 /**
  * The server an errored result is muster's auth_required answer for, and the
  * sign-in link it carries: `structuredContent: {status: "auth_required",
@@ -306,6 +333,183 @@ function authRequiredOf(
 }
 
 /**
+ * What kind of failure a muster tool error is, where it is one the portal
+ * knows: its status ({@link MUSTER_TOOL_ERROR_STATUS}) and its Sentry
+ * grouping follow from it.
+ *
+ * - the refusals of the Agent Platform's MCP servers (agent-manager,
+ *   model-manager, workspace-manager), as `mcpToolRefusalOf` in gs-common
+ *   names them;
+ * - `connector_refused` -- muster refused a connector write
+ *   ({@link CONNECTOR_REFUSALS});
+ * - `interrupted` -- the muster replica serving the call shut down (a
+ *   rollout); the caller may send it again;
+ * - `timeout` -- the MCP server gave no answer within muster's timeout for it;
+ * - `client_not_connected` -- muster held no connection to the MCP server;
+ * - `tool_not_found` -- this muster has no such tool.
+ */
+export type MusterToolErrorKind =
+  | McpToolRefusal
+  | 'connector_refused'
+  | 'interrupted'
+  | 'timeout'
+  | 'client_not_connected'
+  | 'tool_not_found';
+
+/**
+ * The status each kind of tool error is answered with; any other tool error
+ * has none, which the error middleware answers 500. Refusals are answers to
+ * the person's request, below the 500 at which `MiddlewareFactory.error()`
+ * logs an error and the root logger ships it to Sentry. The rest are faults
+ * on the platform's side and stay reported, but for `interrupted`: the client
+ * logs that at info and marks it reported (see {@link MusterMcpClient}), so
+ * `reportedErrorHandler()` answers its 503 without a Sentry issue.
+ *
+ * `client_not_connected` and `tool_not_found` stay reported although a
+ * session that has not signed in to a server yet answers them too: the
+ * routes that expect that state (`asConnected` in `serverGateway.ts`, behind
+ * plans, roadmap, repositories and platform-capabilities) catch them and
+ * reconnect or answer a 401 before the middleware sees them. What reaches the
+ * middleware comes from a page calling a tool directly, where they mean a
+ * server muster lost or a tool this muster does not have, as well as a
+ * missing sign-in. They are grouped per server and kind in Sentry
+ * (`normalizeSentryEvent` in backend-common), not per tool.
+ *
+ * Muster's own auth_required answer is {@link MusterAuthRequiredError}'s 401.
+ */
+export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
+  not_found: 404,
+  invalid_request: 400,
+  invalid: 400,
+  conflict: 409,
+  gitops_owned: 409,
+  already_exists: 409,
+  forbidden: 403,
+  not_member: 403,
+  unsupported: 400,
+  does_not_fit: 422,
+  connector_refused: 422,
+  interrupted: 503,
+  timeout: 504,
+  client_not_connected: 503,
+  tool_not_found: 502,
+};
+
+/**
+ * muster's connector writes and their dry run, whose refusals are
+ * `connector_refused` ({@link CONNECTOR_REFUSALS}). Reads (`get`, `list`,
+ * `detect`) and `delete` keep the 500 of an unknown tool error.
+ */
+const CONNECTOR_WRITE_TOOLS = new Set([
+  'core_mcpserver_create',
+  'core_mcpserver_update',
+  'core_mcpserver_validate',
+]);
+
+/**
+ * The texts muster answers a refusal of a connector write with: a tool error
+ * carries no structured reason, and muster reports its own failures as tool
+ * errors too (a Kubernetes API error, a webhook that could not be called, a
+ * Secret it could not write), which must stay 500 and reach Sentry. So only
+ * these count, from muster's `internal/mcpserver` and `internal/callerwrite`:
+ *
+ * - the API server or the caller's RBAC refused the write (`Permission
+ *   denied: your user may not …`), also as the cause of a client Secret that
+ *   was not stored;
+ * - the definition is invalid (`Invalid MCP server definition: …`, and the
+ *   dry run's `Validation failed: …`);
+ * - the name is taken (`MCP server 'x' already exists`, or the generated
+ *   Secret name: `Secret "x" already exists …; retry …`);
+ * - muster's own rules (`Cannot create|update MCP server 'x': …`: another
+ *   server describes the issuer differently, the stored client belongs to
+ *   another authorization server, a server outside muster's namespace);
+ * - an admission policy denied the MCPServer (`ValidatingAdmissionPolicy …
+ *   denied request: …`, e.g. a Secret its writer may not get).
+ *
+ * A failure in the same breath as a refusal stays a failure: a server left
+ * behind because removing it failed too.
+ */
+const CONNECTOR_REFUSALS = [
+  /^Permission denied: your user may not /,
+  /^Invalid MCP server definition: /,
+  /^Validation failed: /,
+  /^MCP server '[^']*' already exists$/,
+  /^Cannot (create|update) MCP server '[^']*': /,
+  /^Cannot store the client credentials of MCP server '[^']*'(, so it was not (created|updated))?: (Permission denied: your user may not |Secret "[^"]*" already exists in namespace )/,
+  /ValidatingAdmissionPolicy '[^']*' with binding '[^']*' denied request: /,
+];
+const CONNECTOR_FAILURES = [/Removing the server failed too/];
+
+/**
+ * muster's own texts for its failures of a call, as its aggregator words them
+ * (wrapped in `Tool execution failed: …`, or on their own).
+ */
+const MUSTER_FAILURES: Array<[RegExp, MusterToolErrorKind]> = [
+  [/^interrupted: /, 'interrupted'],
+  [/no answer within the server's timeout/, 'timeout'],
+  [/\bclient not connected\b/, 'client_not_connected'],
+  [/\btool not found\b/, 'tool_not_found'],
+];
+
+/**
+ * The kind of a tool's error, from its message; undefined when unknown.
+ * `interrupted` is muster's structured mark of a rollout's interruption
+ * (`_meta["giantswarm.io/interrupted"]`), which the text match only backs up.
+ */
+export function musterToolErrorKindOf(
+  message: string,
+  tool: string,
+  options: { interrupted?: boolean } = {},
+): MusterToolErrorKind | undefined {
+  if (options.interrupted) {
+    return 'interrupted';
+  }
+  const serverRefusal = mcpToolRefusalOf(musterServerOfTool(tool), message);
+  if (serverRefusal) {
+    return serverRefusal;
+  }
+  if (
+    CONNECTOR_WRITE_TOOLS.has(tool) &&
+    CONNECTOR_REFUSALS.some(refusal => refusal.test(message)) &&
+    !CONNECTOR_FAILURES.some(failure => failure.test(message))
+  ) {
+    return 'connector_refused';
+  }
+  return MUSTER_FAILURES.find(([pattern]) => pattern.test(message))?.[1];
+}
+
+/** The start of an Organization's namespace, whose servers' tools it prefixes. */
+const ORGANIZATION_PREFIX = 'org-';
+
+/**
+ * The MCP server an aggregated tool belongs to: muster names it
+ * `x_<server>_<tool>`, so the first `_`-delimited segment after `x_`. A prefix
+ * that itself contains `_` reads as its first segment, the server's family.
+ * A server in an Organization's namespace prefixes its tools with the
+ * namespace first (`x_org-<name>_<server>_<tool>`), which is skipped: the
+ * server, not the customer, is what a failure belongs to. Undefined for
+ * muster's own tools (`core_*`, `workflow_*`, the meta-tools).
+ */
+export function musterServerOfTool(tool: string): string | undefined {
+  if (!tool.startsWith('x_')) {
+    return undefined;
+  }
+  const [first, second] = tool.slice('x_'.length).split('_');
+  const server = first?.startsWith(ORGANIZATION_PREFIX) ? second : first;
+  return server || undefined;
+}
+
+/** The call a tool error belongs to; never its arguments, which may carry secrets. */
+export interface MusterToolCall {
+  /** The tool called: an aggregated tool, or the meta-tool for a direct call. */
+  tool: string;
+  /** The muster installation that answered. */
+  installation: string;
+  /** muster marked the result interrupted (`_meta`), whatever its text. */
+  interrupted?: boolean;
+}
+
+/**
  * A tool-level error (`isError`) of a muster call: the message is the tool's
  * first text block, as before; `details` are its further text blocks,
  * verbatim, where the tool answered more than one — cluster-manager's
@@ -313,14 +517,37 @@ function authRequiredOf(
  * hint}}`) in a second block next to the text. Backstage's error middleware
  * serializes an error's own properties, so `details` reaches the frontend
  * with the message.
+ *
+ * So do the `tool`, the MCP `server` it belongs to, the `installation`, and
+ * the `kind` of failure with its `status` where it is a known one; the log
+ * line and its Sentry event carry them as extra data, which groups the event
+ * by kind and tool (`normalizeSentryEvent` in backend-common). Never the
+ * call's arguments, which may carry secrets.
  */
 export class MusterToolError extends Error {
   readonly name: string = 'MusterToolError';
   readonly details: string[];
+  declare readonly tool?: string;
+  declare readonly server?: string;
+  declare readonly installation?: string;
+  declare readonly kind?: MusterToolErrorKind;
+  declare readonly status?: number;
 
-  constructor(message: string, details: string[] = []) {
+  constructor(message: string, details: string[] = [], call?: MusterToolCall) {
     super(message);
     this.details = details;
+    if (call) {
+      const server = musterServerOfTool(call.tool);
+      const kind = musterToolErrorKindOf(message, call.tool, {
+        interrupted: call.interrupted,
+      });
+      Object.assign(this, {
+        tool: call.tool,
+        ...(server ? { server } : {}),
+        installation: call.installation,
+        ...(kind ? { kind, status: MUSTER_TOOL_ERROR_STATUS[kind] } : {}),
+      });
+    }
   }
 }
 
@@ -333,10 +560,10 @@ export class MusterToolError extends Error {
  */
 export class MusterAuthRequiredError extends MusterToolError {
   override readonly name = 'MusterAuthRequiredError';
-  readonly status = 401;
+  override readonly status = 401;
 
   constructor(
-    readonly server: string,
+    override readonly server: string,
     readonly authUrl: string | undefined,
     [message, ...details]: string[],
   ) {
@@ -795,13 +1022,15 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<unknown> {
-    return this.gated(toolName, options, () =>
-      this.invokeMetaTool(
+    return this.gated(toolName, options, async () => {
+      const result = await this.executeMetaTool(
         CALL_TOOL,
         { name: toolName, arguments: args },
         options,
-      ),
-    );
+      );
+      // The tool's own name, not `call_tool`'s: a tool error names it.
+      return this.parseResult(result, toolName);
+    });
   }
 
   /**
@@ -1005,10 +1234,11 @@ export class MusterMcpClient {
     result: unknown,
     toolName: string,
   ): string | undefined {
-    const { content, isError, structuredContent } = (result ?? {}) as {
+    const { content, isError, structuredContent, _meta } = (result ?? {}) as {
       content?: ContentItem[];
       isError?: boolean;
       structuredContent?: unknown;
+      _meta?: unknown;
     };
 
     const text = content?.find(item => item.type === 'text')?.text;
@@ -1024,13 +1254,45 @@ export class MusterMcpClient {
         );
       }
       const [message, ...details] = texts;
-      throw new MusterToolError(
+      throw this.toolError(
         message ?? `Muster tool ${toolName} failed without an error message`,
         details,
+        toolName,
+        interruptedOf(_meta, text),
       );
     }
 
     return text;
+  }
+
+  /**
+   * The {@link MusterToolError} of a call of `toolName` on this installation.
+   * A rollout's interruption is an expected outcome the caller may retry: it
+   * is logged here at info, with the call in the metadata, and marked
+   * reported, so `reportedErrorHandler()` answers its 503 without the error
+   * middleware sending it to Sentry.
+   */
+  private toolError(
+    message: string,
+    details: string[],
+    toolName: string,
+    interrupted: boolean,
+  ): MusterToolError {
+    const error = new MusterToolError(message, details, {
+      tool: toolName,
+      installation: this.installation.name,
+      interrupted,
+    });
+    if (error.kind === 'interrupted') {
+      this.logger.info('Muster tool call was interrupted by a muster rollout', {
+        tool: error.tool,
+        server: error.server,
+        installation: error.installation,
+        cause: message,
+      });
+      markReported(error);
+    }
+    return error;
   }
 
   /**

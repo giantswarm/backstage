@@ -16,8 +16,6 @@ import {
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
   isTokenExpired,
-  MusterAuthRequiredError,
-  MusterToolError,
   musterTokenExpiredError,
   musterTokenMissingError,
   toMusterUnauthorizedError,
@@ -34,69 +32,6 @@ import {
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
-
-/**
- * muster's connector writes and their dry run, whose refusals answer 422
- * ({@link isConnectorRefusal}). Reads (`get`, `list`, `detect`) and `delete`
- * keep the 500 every other tool answers.
- */
-const CONNECTOR_WRITE_TOOLS = new Set([
-  'core_mcpserver_create',
-  'core_mcpserver_update',
-  'core_mcpserver_validate',
-]);
-
-/**
- * The status `/call` answers a connector write's refusal with: the person's
- * request was refused, the portal did not fail. Below the `>= 500` at which
- * `MiddlewareFactory.error()` logs the error and the root logger ships it to
- * Sentry, where a refusal is noise and its message names the person's
- * Secret. Every other tool's error keeps its 500: those tools are many, and
- * their callers classify the status (agent-platform's read failures).
- */
-const CONNECTOR_REFUSAL_STATUS = 422;
-
-/**
- * The texts muster answers a refusal of a connector write with: a tool error
- * carries no structured reason, and muster reports its own failures as tool
- * errors too (a Kubernetes API error, a webhook that could not be called, a
- * Secret it could not write), which must stay 500 and reach Sentry. So only
- * these count, from muster's `internal/mcpserver` and `internal/callerwrite`:
- *
- * - the API server or the caller's RBAC refused the write (`Permission
- *   denied: your user may not …`), also as the cause of a client Secret that
- *   was not stored;
- * - the definition is invalid (`Invalid MCP server definition: …`, and the
- *   dry run's `Validation failed: …`);
- * - the name is taken (`MCP server 'x' already exists`, or the generated
- *   Secret name: `Secret "x" already exists …; retry …`);
- * - muster's own rules (`Cannot create|update MCP server 'x': …`: another
- *   server describes the issuer differently, the stored client belongs to
- *   another authorization server, a server outside muster's namespace);
- * - an admission policy denied the MCPServer (`ValidatingAdmissionPolicy …
- *   denied request: …`, e.g. a Secret its writer may not get).
- *
- * A failure in the same breath as a refusal stays a failure: a server left
- * behind because removing it failed too.
- */
-const CONNECTOR_REFUSALS = [
-  /^Permission denied: your user may not /,
-  /^Invalid MCP server definition: /,
-  /^Validation failed: /,
-  /^MCP server '[^']*' already exists$/,
-  /^Cannot (create|update) MCP server '[^']*': /,
-  /^Cannot store the client credentials of MCP server '[^']*'(, so it was not (created|updated))?: (Permission denied: your user may not |Secret "[^"]*" already exists in namespace )/,
-  /ValidatingAdmissionPolicy '[^']*' with binding '[^']*' denied request: /,
-];
-const CONNECTOR_FAILURES = [/Removing the server failed too/];
-
-/** Whether a connector write's tool error is muster refusing the request. */
-function isConnectorRefusal(message: string): boolean {
-  return (
-    CONNECTOR_REFUSALS.some(refusal => refusal.test(message)) &&
-    !CONNECTOR_FAILURES.some(failure => failure.test(message))
-  );
-}
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -644,28 +579,16 @@ export async function createRouter(
     }
     assertRunsAsPerson(name, installation);
 
-    let result: unknown;
-    try {
-      result = await client.callTool(
-        name,
-        (toolArgs as Record<string, unknown>) ?? {},
-        readCallOptions(req, installation),
-      );
-    } catch (error) {
-      // A sign-in muster asks for stays a MusterAuthRequiredError, and an
-      // expired token's text keeps its 401 below: both are not refusals.
-      if (
-        CONNECTOR_WRITE_TOOLS.has(name) &&
-        error instanceof MusterToolError &&
-        !(error instanceof MusterAuthRequiredError) &&
-        isConnectorRefusal(error.message)
-      ) {
-        // The tool error holds muster's message and text blocks only, never
-        // the request's arguments (which may carry a client secret).
-        throw Object.assign(error, { statusCode: CONNECTOR_REFUSAL_STATUS });
-      }
-      throw error;
-    }
+    // A tool error carries its status from the client: a refusal (agent-
+    // manager's, or muster's of a connector write) answers 4xx, below the
+    // 500 at which the error middleware sends it to Sentry. The error holds
+    // muster's message and text blocks only, never the request's arguments
+    // (which may carry a client secret).
+    const result = await client.callTool(
+      name,
+      (toolArgs as Record<string, unknown>) ?? {},
+      readCallOptions(req, installation),
+    );
     res.json(result);
   });
 

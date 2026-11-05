@@ -2,6 +2,33 @@ import { ServiceUnavailableError } from '@backstage/errors';
 import { errorResponseBody, ErrorResponseRequest } from './errorResponseBody';
 
 /**
+ * The mark of an error whose failure the code that throws it has already
+ * logged. A symbol, so it stays out of the answer's body and of the log
+ * line's metadata; `Symbol.for`, so that two copies of this package agree.
+ */
+const REPORTED = Symbol.for('@giantswarm/backstage-plugin-gs-node:reported');
+
+/**
+ * Marks `error` as logged already by the code that throws it, at the level its
+ * outcome deserves, so that {@link reportedErrorHandler} answers it with its
+ * own status and Backstage's error middleware does not log it a second time.
+ * For an error that cannot be a {@link ReportedServiceUnavailableError}
+ * because it belongs to another class, such as a muster tool error.
+ */
+export function markReported<T extends Error>(error: T): T {
+  Object.defineProperty(error, REPORTED, { value: true, enumerable: false });
+  return error;
+}
+
+/** Whether {@link markReported} marked `error`. */
+export function isReported(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error as unknown as Record<symbol, unknown>)[REPORTED] === true
+  );
+}
+
+/**
  * A 503 whose failure the code that throws it has already logged, as a
  * warning with a fixed message and the high-cardinality details (the
  * installation, the upstream's own text) in the metadata.
@@ -13,7 +40,12 @@ import { errorResponseBody, ErrorResponseRequest } from './errorResponseBody';
  * installation. Fields a subclass adds (a `reason`, say) travel in the
  * answer's `error` beside `name` and `message`.
  */
-export class ReportedServiceUnavailableError extends ServiceUnavailableError {}
+export class ReportedServiceUnavailableError extends ServiceUnavailableError {
+  constructor(message?: string, cause?: Error | unknown) {
+    super(message, cause);
+    markReported(this);
+  }
+}
 
 /** The parts of an Express response the handler uses. */
 interface ErrorHandlerResponse {
@@ -22,16 +54,34 @@ interface ErrorHandlerResponse {
 }
 
 /**
- * An Express error handler, mounted last on a backend router: it answers a
- * {@link ReportedServiceUnavailableError} with the 503 and body that
- * Backstage's `MiddlewareFactory.error()` would send, and passes anything else
- * on.
+ * The status a reported error is answered with: its own `statusCode` or
+ * `status`, as the error middleware reads them, 503 otherwise.
+ */
+function statusOf(error: Error): number {
+  for (const field of ['statusCode', 'status']) {
+    const value = (error as unknown as Record<string, unknown>)[field];
+    if (
+      Number.isInteger(value) &&
+      Number(value) >= 100 &&
+      Number(value) <= 599
+    ) {
+      return Number(value);
+    }
+  }
+  return 503;
+}
+
+/**
+ * An Express error handler, mounted last on a backend router: it answers an
+ * error marked as reported ({@link ReportedServiceUnavailableError}, or
+ * {@link markReported}) with the status and body that Backstage's
+ * `MiddlewareFactory.error()` would send, and passes anything else on.
  *
  * Answered rather than thrown because the middleware logs every 5xx at `error`
  * and so reports it to Sentry. The code that threw the error has already
- * warned about the failure with a fixed message, so the middleware's report
- * would be the same failure twice, and one Sentry issue per installation when
- * the text names it.
+ * logged the failure with a fixed message, so the middleware's report would be
+ * the same failure twice, and one Sentry issue per installation when the text
+ * names it.
  */
 export function reportedErrorHandler() {
   return (
@@ -40,13 +90,11 @@ export function reportedErrorHandler() {
     res: ErrorHandlerResponse,
     next: (error: unknown) => void,
   ): void => {
-    if (
-      !(error instanceof ReportedServiceUnavailableError) ||
-      res.headersSent
-    ) {
+    if (!isReported(error) || res.headersSent) {
       next(error);
       return;
     }
-    res.status(503).json(errorResponseBody(error, req, 503));
+    const status = statusOf(error);
+    res.status(status).json(errorResponseBody(error, req, status));
   };
 }
