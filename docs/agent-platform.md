@@ -2866,6 +2866,15 @@ keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
 never leaves the page: it opens the provider in a new tab
 (`useServerSignIn`).
 
+A start that muster refuses for want of the person's sign-in to agent-manager
+shows `ConnectAgentManagerAlert` above the box. The refusal is the error of
+`useCreateSession`'s mutation, which the caller keeps until the next start, so
+the composer clears it itself: once the sign-in lands (`ServerSignIn`'s
+`onSignedIn`: muster's status moves to connected, also when the sign-in
+finished in another tab and this one is focused again, or a click on Sign in
+finds agent-manager connected already), the alert goes and the start goes
+again with the prompt in the box, as after a workspace's provider sign-in.
+
 #### Create, navigate, then send — in that order
 
 1. **agent-manager's `start_session`**, through muster as the person
