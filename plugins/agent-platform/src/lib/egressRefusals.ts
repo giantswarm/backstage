@@ -100,19 +100,25 @@ export function readEgressRefusals(
 }
 
 /**
+ * Whether a refused destination's scheme is one an egress origin can name:
+ * kagent's egress declares HTTP and HTTPS origins only, so raw TCP, and any
+ * other scheme the gateway labels, is allowed by none.
+ */
+export function isOriginScheme(scheme: string): boolean {
+  return scheme === 'https' || scheme === 'http';
+}
+
+/**
  * The origin an agent's `spec.egress` would need for a refused destination, or
- * undefined when no origin can allow it: a tcp destination (the field takes
- * http(s) origins only) or one the gateway did not name.
+ * undefined when no origin can allow it: a destination of another scheme than
+ * http(s) (`isOriginScheme`) or one the gateway did not name.
  */
 export function egressOriginFor(refusal: {
   scheme: string;
   host?: string;
   port?: number;
 }): string | undefined {
-  if (
-    !refusal.host ||
-    (refusal.scheme !== 'https' && refusal.scheme !== 'http')
-  ) {
+  if (!refusal.host || !isOriginScheme(refusal.scheme)) {
     return undefined;
   }
   const defaultPort = refusal.scheme === 'https' ? 443 : 80;

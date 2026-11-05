@@ -104,7 +104,7 @@ const INFO: AgentManagerInfo = {
     schemaSource: 'registry',
   },
   namespaces: { default: 'kagent', managed: ['kagent'] },
-  capabilities: { create: true, validate: true, commit: false },
+  capabilities: { create: true, validate: true, commit: false, tags: true },
   identity: 'caller',
   apiVersions: {
     agent: 'api.kagent.dev/v1alpha3',
@@ -266,6 +266,7 @@ function Seed({
   const {
     setName,
     setDescription,
+    addTags,
     setSystemMessage,
     setEgressText,
     setInstallation,
@@ -278,6 +279,7 @@ function Seed({
   useEffect(() => {
     setName('Go service reviewer');
     setDescription('Reviews pull requests.');
+    addTags(['review', 'go']);
     setSystemMessage('You review pull requests.');
     if (egressText) {
       setEgressText(egressText);
@@ -391,6 +393,9 @@ describe('NewAgentReviewPage', () => {
     expect(plainRow("What it's for")).toHaveTextContent(
       'Reviews pull requests.',
     );
+    // Once agent-manager says it takes tags.
+    await screen.findByText('Tags', { selector: 'dt' });
+    expect(plainRow('Tags')).toHaveTextContent('review, go');
     // No display name was handed over, so the ModelConfig's name stands in.
     expect(plainRow('Model')).toHaveTextContent('opus-4-7');
     // The runtime field's mark; its title too, once the Harness is read.
@@ -409,6 +414,28 @@ describe('NewAgentReviewPage', () => {
     await waitFor(() => expect(deployButton()).toBeEnabled());
     // Nothing read about the ModelConfig: no underlying-model line.
     expect(within(technical).queryByText('Underlying model')).toBeNull();
+  });
+
+  it('sends no tags where agent-manager takes none', async () => {
+    const { callTool } = await renderReview({
+      info: { capabilities: { ...INFO.capabilities, tags: false } },
+    });
+
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_validate_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent'),
+    ).not.toHaveProperty('tags');
+    expect(
+      within(screen.getByLabelText('Summary')).queryByText('Tags', {
+        selector: 'dt',
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps the ModelConfig name and names the model it runs under Technical details', async () => {
@@ -521,6 +548,7 @@ describe('NewAgentReviewPage', () => {
       name: 'go-service-reviewer',
       displayName: 'Go service reviewer',
       description: 'Reviews pull requests.',
+      tags: ['review', 'go'],
       systemMessage: 'You review pull requests.',
       modelConfig: 'opus-4-7',
       iconUrl: 'https://avatars.gazelle.example/v1/go-service-reviewer.png',

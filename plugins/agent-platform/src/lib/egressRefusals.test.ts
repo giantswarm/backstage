@@ -2,6 +2,7 @@ import type { TimelineItem } from './kagentTimeline';
 import {
   egressOriginFor,
   egressRefusalsQuery,
+  isOriginScheme,
   readEgressRefusals,
   sessionActor,
   withEgressRefusals,
@@ -98,7 +99,21 @@ describe('egressOriginFor', () => {
     expect(
       egressOriginFor({ scheme: 'tcp', host: '10.0.0.1', port: 22 }),
     ).toBeUndefined();
+    expect(
+      egressOriginFor({ scheme: 'tls', host: 'db.example', port: 5432 }),
+    ).toBeUndefined();
     expect(egressOriginFor({ scheme: 'https', port: 443 })).toBeUndefined();
+  });
+});
+
+describe('isOriginScheme', () => {
+  it('is HTTP and HTTPS only, the schemes an egress origin names', () => {
+    expect(isOriginScheme('https')).toBe(true);
+    expect(isOriginScheme('http')).toBe(true);
+    expect(isOriginScheme('tcp')).toBe(false);
+    expect(isOriginScheme('TCP')).toBe(false);
+    expect(isOriginScheme('tls')).toBe(false);
+    expect(isOriginScheme('')).toBe(false);
   });
 });
 

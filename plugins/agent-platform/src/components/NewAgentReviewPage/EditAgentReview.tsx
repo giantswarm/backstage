@@ -12,6 +12,7 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { supportsTags } from '../../lib/agentManager';
 import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
@@ -124,7 +125,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
   const { hasRepositories } = useSkillCatalog();
   const { agent, installation, writeMode, detailHref } = edit;
-  const { info } = useAgentManagerInfo(installation);
+  const { info, isLoading: isInfoLoading } = useAgentManagerInfo(installation);
   // The platform Harness the runtime field shows, for its summary row.
   const { platformChoice } = useRuntimeChoices();
   // The Harness a refusal names, by the title the runtime field shows.
@@ -146,9 +147,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   if (hasSignInTool !== hadSignInTool) {
     signInChange = hasSignInTool ? 'added' : 'removed';
   }
+  const tagsSupported = supportsTags(info);
   const editState = useMemo(
-    () => editStateOfForm(agent, { ...state, toolset }),
-    [agent, state, toolset],
+    () =>
+      editStateOfForm(agent, { ...state, toolset }, { tags: tagsSupported }),
+    [agent, state, toolset, tagsSupported],
   );
   const changed = useMemo(
     () => changedFields(agent, editState),
@@ -163,8 +166,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   // requested while nothing changed.
   const dryRun = useValidateAgentUpdate(
     installation,
-    // Not before the sign-in tool is decided: the update would lack it.
-    isReady && dirty && !signIn.isLoading ? update : undefined,
+    // Not before the sign-in tool is decided, nor before agent-manager says
+    // whether it takes tags: the update would differ from what Save sends.
+    isReady && dirty && !signIn.isLoading && !isInfoLoading
+      ? update
+      : undefined,
     writeMode,
   );
   const violations = dryRun.result?.errors ?? [];
@@ -312,6 +318,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Name">{state.name}</PlainRow>
           {state.description.trim() && (
             <PlainRow label="What it's for">{state.description}</PlainRow>
+          )}
+          {(editState.tags.length > 0 || changed.includes('tags')) && (
+            <PlainRow label="Tags">
+              {editState.tags.length === 0 ? 'None' : editState.tags.join(', ')}
+            </PlainRow>
           )}
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}

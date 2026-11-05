@@ -27,7 +27,7 @@ function server(name: string, family?: string) {
 }
 
 describe('useMusterCustomizeCounts', () => {
-  it('counts a family once, muster itself, each sub-tab, and the workflows', () => {
+  it('counts a family once, muster itself, and the workflows', () => {
     mockInstance = makeTestMusterInstance({
       mcpServers: [
         server('a-kubernetes', 'kubernetes'),
@@ -49,7 +49,6 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 3,
-      connectorGroups: { yours: 2, infrastructure: 0, internal: 1 },
       workflows: 1,
     });
   });
@@ -63,7 +62,6 @@ describe('useMusterCustomizeCounts', () => {
     // github, and muster itself among the internal ones.
     expect(result.current).toEqual({
       connectors: 2,
-      connectorGroups: { yours: 1, infrastructure: 0, internal: 1 },
       workflows: 'loading',
     });
   });
@@ -76,7 +74,6 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 0,
-      connectorGroups: { yours: 0, infrastructure: 0, internal: 0 },
       workflows: 0,
     });
   });
@@ -86,11 +83,6 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 'loading',
-      connectorGroups: {
-        yours: 'loading',
-        infrastructure: 'loading',
-        internal: 'loading',
-      },
       workflows: 'loading',
     });
   });

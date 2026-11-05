@@ -7,6 +7,7 @@ import {
 import {
   ExternalLink,
   ManifestDialog,
+  TAGS_ANNOTATION,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer, MusterWorkflow } from '../../../lib/k8s';
 import {
@@ -173,10 +174,12 @@ function GitOpsEditDialogContent({
           .
         </li>
         <li>
-          To edit, change its <code>spec</code> (the current manifest is below).
-          To remove, delete that document; if the file is then empty, delete it
-          too, along with its entry under <code>resources:</code> in the{' '}
-          <code>kustomization.yaml</code> next to it, if there is one.
+          To edit, change its <code>spec</code> (the current manifest is below);
+          its tags are the comma-separated <code>{TAGS_ANNOTATION}</code>{' '}
+          annotation. To remove, delete that document; if the file is then
+          empty, delete it too, along with its entry under{' '}
+          <code>resources:</code> in the <code>kustomization.yaml</code> next to
+          it, if there is one.
         </li>
         <li>
           Open a {changeRequest}. Once merged, Flux applies it when

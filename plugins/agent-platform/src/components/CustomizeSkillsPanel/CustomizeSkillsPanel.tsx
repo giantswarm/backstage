@@ -7,6 +7,8 @@ import {
   countNoun,
   EmptyStateCard,
   LoadingIndicator,
+  ROW_TAGS_MAX,
+  TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
@@ -23,6 +25,7 @@ import {
   canonicalSkillId,
   canProposeSkillTo,
   repoSlug,
+  skillTags,
 } from '../../lib/skills';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
@@ -98,6 +101,7 @@ type Row = {
   name: string;
   description?: string;
   source: string;
+  tags: string[];
   usedBy?: string;
   /** The skill's detail page (read-only for a skill outside github.com). */
   href?: string;
@@ -153,7 +157,8 @@ function UnreadRepositoriesAlert({
 
 /**
  * One skill as the prototype's catalog card: its name, what it does in its
- * own words, where it comes from and how many agents use it — the whole card
+ * own words, its tags, where it comes from and how many agents use it — the
+ * whole card
  * opening the skill's page when it has one (with the route unbound, or a
  * repository URL that is not http(s), it has none and stays a plain card).
  */
@@ -180,6 +185,7 @@ function SkillCard({ card }: { card: Row }) {
           {card.description}
         </Text>
       )}
+      <TagList tags={card.tags} max={ROW_TAGS_MAX} />
       <div className={classes.footer}>
         <Text variant="body-x-small" color="secondary">
           {card.source}
@@ -282,6 +288,7 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
           name: skill.name,
           ...(skill.description ? { description: skill.description } : {}),
           source: skillSource(skill),
+          tags: skillTags(skill),
           ...(agentsLoading ? {} : { usedBy: usedByLabel(usage.get(id) ?? 0) }),
           ...(href ? { href } : {}),
         };
