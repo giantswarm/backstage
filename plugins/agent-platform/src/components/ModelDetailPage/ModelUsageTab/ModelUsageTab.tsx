@@ -1,6 +1,5 @@
 import { Flex, Text } from '@backstage/ui';
 import {
-  describeMimirFailure,
   LoadingIndicator,
   MetricsUnavailableAlert,
   Stat,
@@ -55,14 +54,16 @@ export function ModelUsageTab({
       </Text>
     );
   }
-  if (state === 'error' && describeMimirFailure(error)) {
-    return <MetricsUnavailableAlert error={error} />;
-  }
   if (state === 'error' || !slice) {
     return (
-      <Text as="p" variant="body-medium" color="secondary">
-        Cost and token figures could not be read right now.
-      </Text>
+      <MetricsUnavailableAlert
+        error={error}
+        fallback={
+          <Text as="p" variant="body-medium" color="secondary">
+            Cost and token figures could not be read right now.
+          </Text>
+        }
+      />
     );
   }
 

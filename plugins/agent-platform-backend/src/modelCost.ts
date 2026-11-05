@@ -148,6 +148,9 @@ export async function readModelCost(options: {
       oidcToken: userToken,
       // The query names the person; keep it out of the debug log.
       redactQuery: true,
+      // Handled below, at `info`: a Mimir outage on the cost read is the page
+      // falling back to the estimate, not a warning per query.
+      logFailures: false,
     });
 
   let byAgent: MimirQueryResponse;
@@ -167,7 +170,7 @@ export async function readModelCost(options: {
       return unavailable('no-mimir');
     }
     handled('Could not read the model cost from Mimir', error);
-    // `MimirService` has already warned about it; the page says which it was.
+    // The page says which it was.
     return unavailable(
       error instanceof MimirUnavailableError &&
         error.reason === 'older_data_unavailable'

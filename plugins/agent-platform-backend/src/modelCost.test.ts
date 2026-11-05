@@ -241,6 +241,15 @@ describe('readModelCost', () => {
     }
   });
 
+  it('asks Mimir not to warn about a failure, which the page handles', async () => {
+    const mimir = fakeMimir({ attributed: '1' });
+    await read({ mimir });
+
+    for (const [args] of mimir.query.mock.calls) {
+      expect(args.logFailures).toBe(false);
+    }
+  });
+
   it('answers unreadable for a Mimir that is down, and logs it below warn', async () => {
     const logger = mockServices.logger.mock();
     const mimir = {
@@ -267,7 +276,7 @@ describe('readModelCost', () => {
       status: 'unavailable',
       reason: 'older-data-unavailable',
     });
-    // `MimirService` has warned already; this one is handled.
+    // Handled: the page falls back to the estimate and says why.
     expect(logger.warn).not.toHaveBeenCalled();
   });
 

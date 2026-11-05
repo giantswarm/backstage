@@ -73,6 +73,9 @@ export class MimirClient implements MimirApi {
         status: response.status,
         reason: (errorData as any)?.error?.reason,
       });
+      // Mimir refused the query itself (bad PromQL, a range over its limits):
+      // the message carries its words, and asking again gets the same answer.
+      if (response.status === 400) error.name = 'InputError';
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';

@@ -11,13 +11,17 @@ import { ReportedServiceUnavailableError } from '../errors';
  * metadata, so `reportedErrorHandler()` answers it without the error
  * middleware reporting it again. Its message is for the person and names the
  * installation; Mimir's text (a block ID, a pod address) stays out of it and
- * travels in `mimirError`.
+ * of the answer, in `mimirError`.
  */
 export class MimirUnavailableError extends ReportedServiceUnavailableError {
   /** Why, when the frontend has words for it; see `MIMIR_UNAVAILABLE_REASONS`. */
   readonly reason?: MimirUnavailableReason;
-  /** Mimir's own error text, or the connection's, for whoever debugs it. */
-  readonly mimirError?: string;
+  /**
+   * Mimir's own error text, or the connection's, for whoever debugs it.
+   * Not enumerable, so the 503 body (`serializeError`) leaves it out: a block
+   * ID or a pod address is no use in the browser. The warning carries it.
+   */
+  declare readonly mimirError?: string;
 
   constructor(
     message: string,
@@ -28,7 +32,10 @@ export class MimirUnavailableError extends ReportedServiceUnavailableError {
       this.reason = options.reason;
     }
     if (options.mimirError) {
-      this.mimirError = options.mimirError;
+      Object.defineProperty(this, 'mimirError', {
+        value: options.mimirError,
+        enumerable: false,
+      });
     }
   }
 }
@@ -47,7 +54,8 @@ export class MimirUnavailableError extends ReportedServiceUnavailableError {
  *   the querier gave up on blocks no store-gateway returned.
  */
 const STORE_GATEWAY_FAILURES = [
-  /store-gateway/i,
+  /failed to get store-gateway replication set/i,
+  /no store-gateway instance left/i,
   /consistency check failed because some blocks were not queried/i,
 ];
 

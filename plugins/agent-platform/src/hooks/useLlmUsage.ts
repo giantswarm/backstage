@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { pickMimirError } from '@giantswarm/backstage-plugin-ui-react';
 import {
   useMimirQuery,
   useMimirRangeQuery,
@@ -422,8 +423,14 @@ export function useLlmUsage(
   // The daily-calls query is *not* among them: it feeds one card, which says
   // so itself when the query failed (`callsPerDay: null`), and the rest of
   // the Overview is still true without it.
-  const error =
-    cost.error ?? tokens.error ?? costPerDay.error ?? tokensPerDay.error;
+  // The failure Mimir said the reason for, wherever it is, so the wording
+  // does not depend on which query failed first.
+  const error = pickMimirError(
+    cost.error,
+    tokens.error,
+    costPerDay.error,
+    tokensPerDay.error,
+  );
   const isError = Boolean(error);
   const isAvailable = cost.isAvailable;
 

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from '@giantswarm/backstage-plugin-gs';
+import { pickMimirError } from '@giantswarm/backstage-plugin-ui-react';
 import type { MimirMetricSample } from '@giantswarm/backstage-plugin-gs';
 import { deriveTokenRates, type TokenRates } from '../lib/costEstimate';
 import { RATE_WINDOW_DAYS, tokenRateQueries } from '../lib/llmUsageQueries';
@@ -128,7 +129,7 @@ export function useTokenRates(
 
   const isLoading = cost.isLoading || tokens.isLoading;
   const isAvailable = cost.isAvailable;
-  const error = cost.error ?? tokens.error ?? null;
+  const error = pickMimirError(cost.error, tokens.error);
   const hasError = Boolean(error);
 
   return useMemo(() => {

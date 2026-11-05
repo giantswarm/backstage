@@ -104,7 +104,7 @@ export function describeCostBasis(basis: CostBasis): string {
     case 'error': {
       const known = describeMimirFailure(basis.error);
       return known
-        ? `No estimate. ${known.title}. ${known.description}`
+        ? `No estimate. ${known.sentence}`
         : `No estimate: ${installation}\u2019s gateway metrics could not be read just now, so there is no rate to apply.`;
     }
 

@@ -4,7 +4,9 @@ import {
 } from '@backstage/backend-plugin-api';
 import {
   AuthenticationError,
+  InputError,
   NotFoundError,
+  serializeError,
   ServiceUnavailableError,
 } from '@backstage/errors';
 import { ReportedServiceUnavailableError } from '../errors';
@@ -181,7 +183,12 @@ describe('MimirService.query', () => {
     ).rejects.toThrow(AuthenticationError);
   });
 
-  it('throws MimirUnavailableError on 400 with JSON (bad PromQL)', async () => {
+  it("throws InputError with Mimir's text on 400 with JSON (bad PromQL), without a warning", async () => {
+    const logger = makeLogger();
+    const s = MimirService.create({
+      config: makeConfig('alba.example.io'),
+      logger,
+    });
     const jsonBody = JSON.stringify({
       status: 'error',
       errorType: 'bad_data',
@@ -191,13 +198,17 @@ describe('MimirService.query', () => {
       makeResponse(400, jsonBody, 'application/json'),
     );
 
-    const error = await service
+    const error = await s
       .query({ installationName: 'alba', query: 'invalid{{', oidcToken: 'tok' })
       .catch(e => e);
 
-    expect(error).toBeInstanceOf(MimirUnavailableError);
-    expect(error.mimirError).toBe('invalid query');
-    expect(error.reason).toBeUndefined();
+    // A refused query is the request's fault, not an outage: a 400, which the
+    // error middleware does not report, and Mimir's text for the person.
+    expect(error).toBeInstanceOf(InputError);
+    expect(error.message).toBe(
+      'Mimir refused the query for installation "alba" (HTTP 400): invalid query',
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   describe('a Mimir 5xx', () => {
@@ -233,6 +244,15 @@ describe('MimirService.query', () => {
         'Mimir could not answer the query for installation "alba" (HTTP 500)',
       );
       expect(error.mimirError).toBe(storeGatewayError);
+    });
+
+    it("leaves Mimir's text out of the answer the browser gets", async () => {
+      const { error } = await fail(storeGatewayBody);
+
+      const serialized = serializeError(error);
+      expect(serialized).not.toHaveProperty('mimirError');
+      expect(JSON.stringify(serialized)).not.toContain('100.64.117.138');
+      expect(serialized).toMatchObject({ reason: 'older_data_unavailable' });
     });
 
     it("logs it once as a warning, with the installation, status and Mimir's error in metadata", async () => {
@@ -277,6 +297,24 @@ describe('MimirService.query', () => {
         'Mimir could not read older data: no healthy store-gateway',
       );
     });
+
+    it.each([
+      'rpc error: code = Canceled desc = context canceled while querying store-gateway 10.0.0.1:9095',
+      'the query exceeded the limit of chunks fetched from store-gateways',
+    ])(
+      'gives no reason for another failure that mentions a store-gateway: %s',
+      async mimirError => {
+        const { error } = await fail(
+          JSON.stringify({
+            status: 'error',
+            errorType: 'internal',
+            error: mimirError,
+          }),
+        );
+
+        expect(error.reason).toBeUndefined();
+      },
+    );
 
     it('gives no reason for any other failure', async () => {
       const { error, logger } = await fail(
@@ -325,6 +363,64 @@ describe('MimirService.query', () => {
       endpoint: 'query',
       mimirError: 'ECONNREFUSED',
     });
+  });
+
+  it('keeps the query, which can name a person, out of a connection error', async () => {
+    const logger = makeLogger();
+    const s = MimirService.create({
+      config: makeConfig('alba.example.io'),
+      logger,
+    });
+    // node-fetch's FetchError names the whole URL, query string and all.
+    mockFetch.mockImplementation(async (url: string) => {
+      throw new Error(
+        `request to ${url} failed, reason: getaddrinfo ENOTFOUND`,
+      );
+    });
+
+    const error = await s
+      .query({
+        installationName: 'alba',
+        query: 'cost{user="me@example.com"}',
+        oidcToken: 'tok',
+        redactQuery: true,
+      })
+      .catch(e => e);
+
+    const expected =
+      'request to https://observability.alba.example.io/prometheus/api/v1/query failed, reason: getaddrinfo ENOTFOUND';
+    expect(error.mimirError).toBe(expected);
+    expect(logger.warn.mock.calls[0][1]).toMatchObject({
+      mimirError: expected,
+    });
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(
+      'example.com"',
+    );
+  });
+
+  it('logs a failure at debug, not warn, for a caller that handles it', async () => {
+    const logger = makeLogger();
+    const s = MimirService.create({
+      config: makeConfig('alba.example.io'),
+      logger,
+    });
+    mockFetch.mockResolvedValue(
+      makeResponse(500, JSON.stringify({ status: 'error', error: 'boom' })),
+    );
+
+    await expect(
+      s.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'tok',
+        logFailures: false,
+      }),
+    ).rejects.toThrow(MimirUnavailableError);
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Mimir answered a query with HTTP 500',
+      expect.objectContaining({ installation: 'alba', status: 500 }),
+    );
   });
 
   it('does not warn about a refused token', async () => {
@@ -406,7 +502,7 @@ describe('MimirService.queryRange', () => {
     });
   });
 
-  it('throws MimirUnavailableError when the range exceeds Mimir point limit', async () => {
+  it("throws InputError with Mimir's text when the range exceeds Mimir point limit", async () => {
     mockFetch.mockResolvedValue(
       makeResponse(
         422,
@@ -423,6 +519,10 @@ describe('MimirService.queryRange', () => {
         step: '1s',
         oidcToken: 'tok',
       }),
-    ).rejects.toThrow(MimirUnavailableError);
+    ).rejects.toThrow(
+      new InputError(
+        'Mimir refused the query for installation "alba" (HTTP 422): exceeded maximum resolution',
+      ),
+    );
   });
 });

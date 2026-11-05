@@ -25,8 +25,6 @@ async function failMimirLikeAMissingStoreGateway(page: Page): Promise<void> {
           message:
             'Mimir could not answer the query for installation "lab" (HTTP 500)',
           reason: 'older_data_unavailable',
-          mimirError:
-            'failed to get store-gateway replication set owning the block 01AAAAAAAAAAAAAAAAAAAAAAAA: at least 1 healthy replica required, could only find 0',
         },
         request: {
           method: 'GET',

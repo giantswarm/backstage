@@ -164,7 +164,7 @@ export const WorkloadStatusSummary = ({
   } else if (workloadsError) {
     const known = describeMimirFailure(workloadsError);
     diagnosticContent = known
-      ? `${known.title}. ${known.description}`
+      ? known.sentence
       : `Failed to query metrics: ${workloadsError.message}`;
   } else if (!hasData && !workloadsLoading) {
     diagnosticContent = workloadsLabelSelector ? (

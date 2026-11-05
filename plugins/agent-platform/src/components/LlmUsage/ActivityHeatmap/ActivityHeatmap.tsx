@@ -425,7 +425,7 @@ export function ActivityHeatmapUnavailable({
     <UsageCard title={title}>
       <Text variant="body-medium" color="secondary">
         {known
-          ? `${known.title}. ${known.description} The totals above are unaffected.`
+          ? `${known.sentence} The totals above are unaffected.`
           : 'The day-by-day figures could not be loaded from the metrics store. The totals above are unaffected.'}
       </Text>
     </UsageCard>

@@ -59,4 +59,19 @@ describe('MimirClient', () => {
     expect(error.name).toBe('UnauthorizedError');
     expect(error.message).toBe('Mimir query failed with status 401');
   });
+
+  it("names a query Mimir refused, with Mimir's words, so it is not retried", async () => {
+    const { client } = clientAnswering(400, {
+      error: {
+        name: 'InputError',
+        message:
+          'Mimir refused the query for installation "alba" (HTTP 422): exceeded maximum resolution',
+      },
+    });
+
+    const error = await client.query(query).catch(e => e);
+
+    expect(error.name).toBe('InputError');
+    expect(error.message).toMatch(/exceeded maximum resolution$/);
+  });
 });

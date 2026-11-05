@@ -9,7 +9,7 @@ import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorName } from '../../lib/toolset';
 import { useTokenRates } from '../../hooks/useTokenRates';
-import { useModelCost, type ModelCostView } from '../../hooks/useModelCost';
+import { useModelCost } from '../../hooks/useModelCost';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { describeCostBasis } from '../../lib/costBasis';
 import { isConvertedCurrency, useCurrency } from '../../lib/formatNumbers';
@@ -17,6 +17,7 @@ import {
   describeActualCost,
   describeActualCostByAgent,
   describeModelCostFallback,
+  withFallbackReason,
 } from '../../lib/modelCostCopy';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
@@ -89,23 +90,6 @@ const SHARED_COPY = {
   unreadable: (installation: string) =>
     `No sessions on ${installation} could be read.`,
 };
-
-/**
- * The estimate's basis line, led by why there is no actual cost when the
- * fallback has a reason of its own to give.
- */
-function withFallbackReason(
-  cost: ModelCostView,
-  installation: string,
-  days: number,
-  basis: string,
-): string {
-  const reason =
-    cost.state === 'fallback'
-      ? describeModelCostFallback(cost.reason, installation, days)
-      : undefined;
-  return reason ? `${reason} ${basis}` : basis;
-}
 
 /**
  * The "Your sessions" view of the Usage tab, and every state it can be in.
@@ -384,11 +368,12 @@ export function AgentUsageSection() {
               : undefined
           }
           isActualCostLoading={stripCost.state === 'loading'}
-          costBasis={withFallbackReason(
-            stripCost,
-            installation ?? '',
-            appliedDays,
-            describeCostBasis({
+          costBasis={withFallbackReason({
+            cost: stripCost,
+            installation: installation ?? '',
+            days: appliedDays,
+            rateFailure: rateTier === 'error' ? rateError : undefined,
+            basis: describeCostBasis({
               tier: rateTier,
               error: rateError,
               model: undefined,
@@ -404,7 +389,7 @@ export function AgentUsageSection() {
                   stripTotals.inputTokens -
                   stripTotals.outputTokens,
             }),
-          )}
+          })}
         />
         <div className={classes.row}>
           <TokensPerDayCard

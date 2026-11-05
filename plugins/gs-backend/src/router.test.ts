@@ -349,8 +349,9 @@ describe('a Mimir that could not answer', () => {
         message:
           'Mimir could not answer the query for installation "golem" (HTTP 500)',
         reason: 'older_data_unavailable',
-        mimirError: 'failed to get store-gateway replication set',
       });
+      // Mimir's own text stays in the warning, out of the browser.
+      expect(JSON.stringify(response.body)).not.toContain('store-gateway');
       expect(response.body.response).toEqual({ statusCode: 503 });
     },
   );
