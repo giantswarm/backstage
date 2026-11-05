@@ -2134,6 +2134,34 @@ describe('createRouter', () => {
       expect(response.body.error.message).toContain('no such agent');
     });
 
+    it('answers kagent unavailable as a 500 whose body names the reason', async () => {
+      // The outage of giantswarm/giantswarm#39044: the gateway could not reach
+      // the controller. The page keys "temporarily unavailable" off the reason;
+      // the status stays a 5xx, because the page reads a 503 as "kagent is not
+      // deployed here" and stays silent.
+      streamMessage.mockRejectedValue(
+        withKagentFailure(
+          upstreamError(
+            "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+            'unavailable',
+          ),
+          {
+            installation: 'gazelle',
+            call: 'A2AService/SendStreamingMessage',
+            code: 'Unavailable',
+          },
+        ),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toMatchObject({
+        name: 'UpstreamError',
+        reason: 'unavailable',
+      });
+    });
+
     it('keeps a new turn silent past the first-event wait an error, never a 202', async () => {
       // Unlike a resumed one, a new turn is answered with a task snapshot at
       // once; silence is a failure the frontend checks against the history
