@@ -543,6 +543,230 @@ describe('useServerSignIn', () => {
   });
 });
 
+/**
+ * The tab a Sign in click opens, before muster's answer says what to show in
+ * it. jsdom has no real windows, so this stands in for one.
+ */
+interface FakeTab {
+  closed: boolean;
+  opener: unknown;
+  close: jest.Mock;
+  location: { href: string };
+  document: { title: string; body: { textContent: string } };
+}
+
+function makeTab(): FakeTab {
+  const tab: FakeTab = {
+    closed: false,
+    opener: window,
+    close: jest.fn(() => {
+      tab.closed = true;
+    }),
+    location: { href: 'about:blank' },
+    document: { title: '', body: { textContent: '' } },
+  };
+  return tab;
+}
+
+/** A sign-in answer muster has not given yet. */
+function deferredAnswer(api: jest.Mocked<Api>) {
+  let resolve: ((result: ServerSignInResult) => void) | undefined;
+  let reject: ((error: Error) => void) | undefined;
+  api.signInServer.mockImplementationOnce(
+    () =>
+      new Promise<ServerSignInResult>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      }),
+  );
+  // The request goes out a few ticks after the click.
+  const asked = () => waitFor(() => expect(resolve).toBeDefined());
+  return {
+    resolve: async (result: ServerSignInResult) => {
+      await asked();
+      await act(async () => resolve!(result));
+    },
+    reject: async (error: Error) => {
+      await asked();
+      await act(async () => reject!(error));
+    },
+  };
+}
+
+/**
+ * muster's `core_auth_login` can take a while to answer. Meanwhile the tab
+ * the click opened has nothing to show, and a blank tab reads as a broken
+ * sign-in: people close it, or go back to the portal. Either way the answer
+ * that finally arrives finds no tab to navigate, and the portal offered no
+ * way in until then, only the Sign in button's spinner.
+ */
+describe('useServerSignIn, while muster has not answered yet', () => {
+  let windowOpen: jest.SpyInstance;
+  let tab: FakeTab;
+
+  beforeEach(() => {
+    tab = makeTab();
+    windowOpen = jest
+      .spyOn(window, 'open')
+      .mockReturnValue(tab as unknown as Window);
+  });
+
+  afterEach(() => {
+    windowOpen.mockRestore();
+  });
+
+  async function renderSignIn(
+    api: jest.Mocked<Api>,
+    options: { tabWaitMs?: number } = {},
+  ) {
+    const rendered = renderHook(
+      () => useServerSignIn('pro', 'gazelle', options),
+      { wrapper: wrapper(api, newQueryClient()) },
+    );
+    await waitFor(() => expect(rendered.result.current.needsLogin).toBe(true));
+    return rendered;
+  }
+
+  it('navigates the tab its click opened once the answer arrives in time', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api);
+
+    act(() => result.current.signIn());
+    expect(windowOpen).toHaveBeenCalledWith('', '_blank');
+    expect(tab.opener).toBeNull();
+    // Not a bare about:blank while it waits.
+    expect(tab.document.body.textContent).toBe('Opening the sign-in page…');
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(tab.location.href).toBe(AUTH_URL));
+    expect(tab.close).not.toHaveBeenCalled();
+    expect(result.current.signInTabOpened).toBe(true);
+  });
+
+  it('closes the blank tab when the answer outlasts the wait, and offers the page as a link', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+
+    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+    // The sign-in is offered in the portal at once, not behind a spinner
+    // that lasts until muster answers.
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+    expect(result.current.signInTabOpened).toBe(false);
+    expect(result.current.isPending).toBe(true);
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+    expect(result.current.signInTabOpened).toBe(false);
+    expect(result.current.isPending).toBe(false);
+    // The closed tab is not navigated: the link is the way in.
+    expect(tab.location.href).toBe('about:blank');
+  });
+
+  it('offers the sign-in in the portal as soon as the person closes the blank tab', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api);
+
+    act(() => result.current.signIn());
+    expect(result.current.isWaiting).toBe(false);
+
+    tab.closed = true;
+
+    await waitFor(() => expect(result.current.isWaiting).toBe(true), {
+      timeout: 3_000,
+    });
+    expect(result.current.signInTabOpened).toBe(false);
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+    expect(tab.location.href).toBe('about:blank');
+  });
+
+  it('navigates only the tab of its own click when an earlier answer arrives late', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const late = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    // The fallback's button asks again, with a tab of its own.
+    const secondTab = makeTab();
+    windowOpen.mockReturnValue(secondTab as unknown as Window);
+    api.signInServer.mockResolvedValueOnce({
+      ...CHALLENGE,
+      authUrl: FRESH_AUTH_URL,
+    });
+    act(() => result.current.signIn());
+    await waitFor(() => expect(secondTab.location.href).toBe(FRESH_AUTH_URL));
+
+    await late.resolve(CHALLENGE);
+
+    // The late answer finds its own tab closed and leaves the second alone.
+    expect(secondTab.location.href).toBe(FRESH_AUTH_URL);
+    expect(tab.location.href).toBe('about:blank');
+  });
+
+  it('returns to Sign in when the request fails after the tab was given up', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    await answer.reject(new Error('Failed to fetch'));
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Sign-in request failed: Failed to fetch',
+      ),
+    );
+    // No flow was ever started, so there is nothing to wait for.
+    expect(result.current.isWaiting).toBe(false);
+  });
+
+  it('returns to Sign in when muster refuses after the tab was given up', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    await answer.resolve({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Rate limit exceeded. Too many authentication attempts.',
+      ),
+    );
+    expect(result.current.isWaiting).toBe(false);
+  });
+});
+
 describe('connectingPollInterval', () => {
   it('re-reads within seconds while muster still connects a server', () => {
     expect(
