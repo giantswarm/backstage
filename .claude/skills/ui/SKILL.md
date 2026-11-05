@@ -193,6 +193,13 @@ core-components' `CopyTextButton` — that button renders an oversized,
 primary-colored `ButtonIcon` that needs margin hacks to sit right. Source:
 `plugins/ui-react/src/components/CodeBlock/CodeBlock.tsx`.
 
+`CodeBlock` is for a command, a snippet or a log; pass `maxHeight` when the
+text has no bound (a build log), so it scrolls inside the block. A file a
+person reviews or copies whole (a manifest, a values file, a Dockerfile) is
+`FileView` instead: a header with the file name, an optional path and a copy
+button, and YAML in a read-only `YamlEditor`. Source:
+`plugins/ui-react/src/components/FileView/FileView.tsx`.
+
 ### Commits and Kubernetes names: `CommitSha`, `namespacedNameFacts`
 
 A git SHA is shown in 7 characters everywhere in the portal, classic pages

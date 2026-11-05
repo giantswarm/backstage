@@ -1,4 +1,10 @@
-import { expect, openReadyAgent, startSessionButton, test } from './fixtures';
+import {
+  expect,
+  openReadyAgent,
+  startSessionButton,
+  test,
+  type LabAgent,
+} from './fixtures';
 import { lab } from './lab';
 import type { Page } from '@playwright/test';
 
@@ -24,12 +30,31 @@ function sessionIdOf(page: Page): string {
   return new URL(page.url()).pathname.split('/').pop() ?? '';
 }
 
+type Destination = { scheme: string; host: string; port: string };
+
+const PROXY: Destination = {
+  scheme: 'https',
+  host: 'proxy.golang.org',
+  port: '443',
+};
+/** `ssh -T git@github.com`: raw TCP, which no egress setting can allow. */
+const GITHUB_SSH: Destination = {
+  scheme: 'tcp',
+  host: 'github.com',
+  port: '22',
+};
+
 /**
- * Answers this Session's refusal query with one refusal of
- * `proxy.golang.org:443` a few seconds after the turn began, and records
- * every refusal query the page sends.
+ * Answers this Session's refusal query with refusals of `destination` a few
+ * seconds after the turn began (two, or `count`), and records every refusal
+ * query the page sends.
  */
-async function answerRefusals(page: Page, queries: string[]): Promise<void> {
+async function answerRefusals(
+  page: Page,
+  queries: string[],
+  destination: Destination = PROXY,
+  count = 2,
+): Promise<void> {
   await page.route('**/api/gs/mimir/query_range?*', async route => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get('query') ?? '';
@@ -53,14 +78,10 @@ async function answerRefusals(page: Page, queries: string[]): Promise<void> {
           resultType: 'matrix',
           result: [
             {
-              metric: {
-                scheme: 'https',
-                host: 'proxy.golang.org',
-                port: '443',
-              },
+              metric: destination,
               values: [
-                [at, '2'],
-                [at + 30, '2'],
+                [at, String(count)],
+                [at + 30, String(count)],
               ],
             },
           ],
@@ -68,6 +89,36 @@ async function answerRefusals(page: Page, queries: string[]): Promise<void> {
       },
     });
   });
+}
+
+/** Starts a Session with the lab agent and answers its page's path. */
+async function startSession(page: Page, agent: LabAgent): Promise<string> {
+  await openReadyAgent(page, agent);
+  await startSessionButton(page).click();
+  const promptBox = page.getByRole('textbox', { name: 'Prompt' });
+  await expect(promptBox).toBeVisible();
+  await promptBox.fill('Say hello in one word.');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/sessions/${lab.installation}/[^/]+$`),
+    { timeout: 60_000 },
+  );
+  return new URL(page.url()).pathname;
+}
+
+/**
+ * Reloads the Session's page and answers whether the installation has
+ * metrics. A lab without `platform.observability` configures the installation
+ * with `mimirEnabled: false`: the page then sends no refusal query and shows
+ * the Session without refusals, which is what a run can prove there.
+ */
+async function reloadForMetrics(page: Page): Promise<boolean> {
+  const signedInConfig = page.waitForResponse(response =>
+    response.url().endsWith('/api/gs/config'),
+  );
+  await page.reload();
+  const config = await (await signedInConfig).json();
+  return config?.gs?.installations?.[lab.installation]?.mimirEnabled !== false;
 }
 
 test('a session shows its egress refusals on the turn, and another person sees neither', async ({
@@ -79,29 +130,9 @@ test('a session shows its egress refusals on the turn, and another person sees n
   const queries: string[] = [];
   await answerRefusals(admin, queries);
 
-  await openReadyAgent(admin, labAgent);
-  await startSessionButton(admin).click();
-  const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
-  await expect(promptBox).toBeVisible();
-  await promptBox.fill('Say hello in one word.');
-  await admin.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(admin).toHaveURL(
-    new RegExp(`/sessions/${lab.installation}/[^/]+$`),
-    { timeout: 60_000 },
-  );
-  const sessionPath = new URL(admin.url()).pathname;
+  const sessionPath = await startSession(admin, labAgent);
   const actor = `session-${sessionIdOf(admin).toLowerCase()}`;
-
-  // A lab without `platform.observability` configures the installation with
-  // `mimirEnabled: false`: the page then sends no refusal query and shows the
-  // Session without refusals, which is what this run can prove there.
-  const signedInConfig = admin.waitForResponse(response =>
-    response.url().endsWith('/api/gs/config'),
-  );
-  await admin.reload();
-  const config = await (await signedInConfig).json();
-  const hasMetrics =
-    config?.gs?.installations?.[lab.installation]?.mimirEnabled !== false;
+  const hasMetrics = await reloadForMetrics(admin);
 
   const entry = admin.getByTestId('timeline-egress-refused');
   if (!hasMetrics) {
@@ -151,4 +182,50 @@ test('a session shows its egress refusals on the turn, and another person sees n
   });
   await expect(dev.getByTestId('timeline-egress-refused')).toHaveCount(0);
   expect(devQueries).toEqual([]);
+});
+
+test('a raw TCP refusal says no egress setting can allow it, with no link, and reads nothing of the agent', async ({
+  admin,
+  labAgent,
+}) => {
+  test.setTimeout(8 * 60_000);
+  const queries: string[] = [];
+  await answerRefusals(admin, queries, GITHUB_SSH, 1);
+  // The remedy for raw TCP needs nothing of the agent, so the page asks
+  // agent-manager nothing for it (giantswarm/giantswarm#38814).
+  const agentReads: string[] = [];
+  await admin.route('**/api/muster/call**', async route => {
+    const call = route.request().postDataJSON() as { name?: string };
+    if (call?.name === 'x_agent-manager_get_agent') {
+      agentReads.push(call.name);
+    }
+    await route.fallback();
+  });
+
+  await startSession(admin, labAgent);
+  const hasMetrics = await reloadForMetrics(admin);
+  test.skip(
+    !hasMetrics,
+    `${lab.installation} has no metrics (mimirEnabled: false): no refusal to show`,
+  );
+  const entry = admin.getByTestId('timeline-egress-refused');
+  await expect(entry).toBeVisible({ timeout: 120_000 });
+  await expect(entry).toContainText(
+    'Outgoing connection to github.com blocked',
+  );
+  await expect(entry).toContainText(
+    'Raw TCP connections are not available to agents',
+  );
+  await expect(entry).toContainText('1 attempt');
+  await expect(entry).toContainText(
+    `No egress setting can allow it. If github.com offers HTTPS, have ${labAgent.name} use that instead.`,
+  );
+  // The lab agent is the admin's to edit on the platform Harness, which for
+  // an HTTPS refusal offers its edit page: raw TCP offers none, nor any link.
+  await expect(entry).not.toContainText('Extra egress origins');
+  await expect(entry).not.toContainText('platform team');
+  await expect(entry.getByRole('link')).toHaveCount(0);
+  await entry.getByRole('button', { name: 'Technical details' }).click();
+  await expect(entry).toContainText('github.com:22 (tcp)');
+  expect(agentReads).toEqual([]);
 });

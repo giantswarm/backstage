@@ -257,7 +257,9 @@ them and never invent a palette.
   format — "420 ms", "1.2 s", "3 s", "18 s", "2 min 30 s", "1 h 5 min";
   milliseconds go through `formatMilliseconds`. Never print raw milliseconds or floor to
   minutes by hand.
-- Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
+- Copy affordances: `CopyButton`. Manifests: `ManifestDialog`. A file
+  shown inline (a manifest, a values file, a Dockerfile): `FileView`; a
+  command or a log, which is not a file: `CodeBlock` (`ui-react` both).
 - Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,
   Run button, run note and result that a tool's page and a workflow's Run it
   tab share. Do not build a second run form or result viewer. A connector's

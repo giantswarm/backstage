@@ -162,9 +162,10 @@ jest.mock('../../hooks/useUnderlyingModel', () => ({
     namespace: string | undefined,
   ) => (name && namespace ? `${name}-model · Anthropic` : undefined),
 }));
-jest.mock('../FileView', () => ({
-  FileView: ({ content, filename }: { content: string; filename?: string }) => (
-    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
 
