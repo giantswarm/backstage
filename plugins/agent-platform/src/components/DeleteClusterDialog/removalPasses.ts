@@ -25,11 +25,30 @@ export const REMOVAL_CHECK_WINDOW_MS = 30 * 60_000;
 export const REMOVAL_CHECK_LIMIT =
   REMOVAL_CHECK_WINDOW_MS / REMOVAL_CHECK_INTERVAL_MS;
 
+/**
+ * What another pass would do to an object a dry run would delete, as the
+ * person reads it (`beingRemoved.ts`): `live` — its deletion was not requested,
+ * a delete is a removal anew; `going` — it was, a delete again changes
+ * nothing; `needs-pass` — it was, but a pass would still suspend it so that
+ * helm-controller lets it go (giantswarm/cluster-manager#210).
+ */
+export type RemovalState = 'live' | 'going' | 'needs-pass';
+
+/** The states known of the objects, by their key ({@link objectKey}); an object not in it was never read. */
+export type RemovalStates = ReadonlyMap<string, RemovalState>;
+
 /** One `delete_cluster` call in mode apply, and the button that made it. */
 export type RemovalPass = {
   label: string;
   result: ClusterWriteResult;
   at: Date;
+  /**
+   * What was read of the objects before the pass started: a delete of one
+   * `going` is not a removal anew — after the dialog was reopened, too, when
+   * no earlier pass of this opening deleted it — and the delete of one that
+   * `needs-pass` is, though an earlier pass deleted it.
+   */
+  states: RemovalStates;
 };
 
 /** What one pass did, against the passes before it in the dialog. */
@@ -64,12 +83,14 @@ const UNCHANGED = 'unchanged';
 const WOULD = 'would-';
 const WOULD_DELETE = `${WOULD}delete`;
 
+/** An object's API group: empty for the core group (`v1`). */
+export function groupOf(object: Pick<ObjectAction, 'apiVersion'>): string {
+  return object.apiVersion.includes('/') ? object.apiVersion.split('/')[0] : '';
+}
+
 /** An object's identity: its API group (not its version), kind, namespace and name. */
-function keyOf(object: ObjectAction): string {
-  const group = object.apiVersion.includes('/')
-    ? object.apiVersion.split('/')[0]
-    : '';
-  return `${group}/${object.kind}/${object.namespace}/${object.name}`;
+export function objectKey(object: ObjectAction): string {
+  return `${groupOf(object)}/${object.kind}/${object.namespace}/${object.name}`;
 }
 
 /** `HelmRelease org-acme/demo1`. */
@@ -94,26 +115,45 @@ export function objectsAre(objects: readonly unknown[]): string {
 /** The objects the passes deleted, by kind, namespace and name. */
 function removedKeys(passes: readonly RemovalPass[]): Set<string> {
   return new Set(
-    passes.flatMap(pass => pass.result.objects.filter(isDelete).map(keyOf)),
+    passes.flatMap(pass => pass.result.objects.filter(isDelete).map(objectKey)),
   );
 }
 
 /**
- * What the pass at `index` removed: an object an earlier pass deleted already
- * is still going (cluster-manager deletes a terminating object again and
- * answers `delete`), not removed anew.
+ * Whether a delete of the object is one again, of an object still terminating:
+ * read as `going`, or deleted by a pass already — unless it was read as
+ * needing the pass.
+ */
+function deletedAgain(
+  object: ObjectAction,
+  removed: ReadonlySet<string>,
+  states: RemovalStates,
+): boolean {
+  const state = states.get(objectKey(object));
+  if (state === 'needs-pass') {
+    return false;
+  }
+  return state === 'going' || removed.has(objectKey(object));
+}
+
+/**
+ * What the pass at `index` removed: an object an earlier pass deleted already,
+ * or one read as being removed before the pass, is still going
+ * (cluster-manager deletes a terminating object again and answers `delete`),
+ * not removed anew — unless it was read as needing the pass.
  */
 export function summarizePass(
   passes: readonly RemovalPass[],
   index: number,
 ): PassSummary {
   const before = removedKeys(passes.slice(0, index));
-  const { objects } = passes[index].result;
-  const deleted = objects.filter(isDelete);
-  const others = objects.filter(object => !isDelete(object));
+  const { result, states } = passes[index];
+  const going = (object: ObjectAction) => deletedAgain(object, before, states);
+  const deleted = result.objects.filter(isDelete);
+  const others = result.objects.filter(object => !isDelete(object));
   return {
-    removed: deleted.filter(object => !before.has(keyOf(object))),
-    stillGoing: deleted.filter(object => before.has(keyOf(object))),
+    removed: deleted.filter(object => !going(object)),
+    stillGoing: deleted.filter(going),
     others,
     changed: others.filter(
       object => object.action !== UNCHANGED && object.action !== PENDING_ACTION,
@@ -122,19 +162,21 @@ export function summarizePass(
 }
 
 /**
- * Judges the dry run of the next pass against the passes made: it is worth
- * running when it would change anything but delete again an object a pass
- * deleted already (which is still terminating). Otherwise
- * the reason to wait is cluster-manager's next step — the dry run's, or the
- * last pass's while the objects it deleted are still going.
+ * Judges the dry run of the next pass against the passes made and the states
+ * read of its objects: it is worth running when it would change anything but
+ * delete again an object a pass deleted already or one read as `going`
+ * (which is still terminating) — one read as needing the pass is worth it.
+ * Otherwise the reason to wait is cluster-manager's next step — the dry
+ * run's, or the last pass's while the objects it deleted are still going.
  */
 export function judgeNextPass(
   check: ClusterWriteResult,
   passes: readonly RemovalPass[],
+  states: RemovalStates = new Map(),
 ): NextPass {
   const removed = removedKeys(passes);
   const again = (object: ObjectAction) =>
-    object.action === WOULD_DELETE && removed.has(keyOf(object));
+    object.action === WOULD_DELETE && deletedAgain(object, removed, states);
   const fresh = check.objects.filter(
     object => object.action.startsWith(WOULD) && !again(object),
   );
@@ -142,9 +184,16 @@ export function judgeNextPass(
     return { state: 'ready', objects: fresh };
   }
   const going = check.objects.filter(again);
+  // The last pass's next step speaks of what it deleted; an object it did not
+  // delete (being removed since before this opening) is named instead.
+  const last = passes.at(-1);
+  const lastDeleted = removedKeys(last ? [last] : []);
+  const lastSpeaksOfThem =
+    going.length > 0 &&
+    going.every(object => lastDeleted.has(objectKey(object)));
   const reason =
     check.nextStep ??
-    (going.length > 0 ? passes.at(-1)?.result.nextStep : undefined) ??
+    (lastSpeaksOfThem ? last?.result.nextStep : undefined) ??
     (going.length > 0
       ? `${objectsAre(going)} still being removed: ${describeObjects(going)}.`
       : undefined);
