@@ -1,7 +1,12 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { ConflictError, InputError, NotFoundError } from '@backstage/errors';
-import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
+import {
+  create,
+  toJson,
+  type DescMethod,
+  type JsonObject,
+} from '@bufbuild/protobuf';
 import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { MessageImagePart } from './messageImages';
 import {
@@ -47,8 +52,9 @@ import {
   isUnsupportedOperation,
   isUpstreamError,
   mapConnectError,
+  boundedMessage,
+  rpcName,
   turnPendingError,
-  withKagentFailure,
 } from './kagent/errors';
 import {
   A2A_EXTENSIONS_HEADER,
@@ -242,9 +248,6 @@ const SUBSCRIBE_DECISION_CODES = new Set<Code>([
   Code.Unimplemented,
   Code.FailedPrecondition,
 ]);
-
-/** Longest upstream message carried into a failed-read log line. */
-const MAX_LOGGED_ERROR = 300;
 
 /**
  * How long a session delete waits, between attempts, for the session's last
@@ -512,7 +515,7 @@ export class KagentClient {
     filter: { agent?: { namespace: string; name: string } } = {},
   ): Promise<unknown> {
     const context: ErrorContext = {
-      call: 'SessionService/ListSessions',
+      call: rpcName(SessionService.method.listSessions),
       endpoint: 'session list',
       missingResource: `The kagent API for installation '${this.installation.name}' has no Sessions for this agent.`,
     };
@@ -532,7 +535,8 @@ export class KagentClient {
             this.callOptions(options),
           ),
         context,
-        { requestId: options.requestId },
+        options,
+        true,
       );
       sessions.push(...response.sessions);
       for (const session of response.sessions) {
@@ -569,7 +573,7 @@ export class KagentClient {
           this.callOptions(options),
         ),
       {
-        call: 'SessionService/GetSession',
+        call: rpcName(SessionService.method.getSession),
         endpoint: 'session detail',
         // The id is left out on purpose: it is opaque and high-cardinality, and
         // the user already has it in the URL they followed.
@@ -577,6 +581,7 @@ export class KagentClient {
         invalidArgument: () =>
           new InputError('The session id is not a Session id.'),
       },
+      options,
     );
     this.remember(response.session);
     return toJson(GetSessionResponseSchema, response);
@@ -662,10 +667,11 @@ export class KagentClient {
           },
         ),
       {
-        call: 'A2AService/GetTask',
+        call: rpcName(A2AService.method.getTask),
         endpoint: 'task detail',
         missingResource: `That turn does not exist on installation '${this.installation.name}'.`,
       },
+      options,
     );
     return toJson(TaskSchema, task);
   }
@@ -802,7 +808,11 @@ export class KagentClient {
         // anyone — rethrown for the router to swallow as a closed connection.
         throw error;
       }
-      throw this.mapError(error, this.sendContext(true));
+      throw this.mapError(
+        error,
+        this.sendContext(A2AService.method.sendStreamingMessage, true),
+        options,
+      );
     }
 
     return this.relayAsSse(opened, signal);
@@ -863,20 +873,24 @@ export class KagentClient {
           isUnsupportedOperation(connectError.rawMessage)) &&
         !isSocketFailure(connectError);
       if (isDecision) {
-        throw this.mapError(error, {
-          call: 'A2AService/SubscribeToTask',
-          endpoint: 'task subscription',
-          missingResource,
-          invalidArgument: reason =>
-            new InputError(
-              `kagent on installation '${this.installation.name}' did not accept the subscription: ${reason}`,
-            ),
-          // A task already over: there is nothing left to follow.
-          unsupportedOperation: reason =>
-            new ConflictError(
-              `That turn on installation '${this.installation.name}' cannot be followed any more: ${reason}`,
-            ),
-        });
+        throw this.mapError(
+          error,
+          {
+            call: rpcName(A2AService.method.subscribeToTask),
+            endpoint: 'task subscription',
+            missingResource,
+            invalidArgument: reason =>
+              new InputError(
+                `kagent on installation '${this.installation.name}' did not accept the subscription: ${reason}`,
+              ),
+            // A task already over: there is nothing left to follow.
+            unsupportedOperation: reason =>
+              new ConflictError(
+                `That turn on installation '${this.installation.name}' cannot be followed any more: ${reason}`,
+              ),
+          },
+          options,
+        );
       }
       // `info`, not `warn`: the page retries and then follows the poll.
       this.logger.info(
@@ -1037,10 +1051,11 @@ export class KagentClient {
           },
         ),
       {
-        call: 'A2AService/GetTask',
+        call: rpcName(A2AService.method.getTask),
         endpoint: 'task detail',
         missingResource: `The turn this answer belongs to does not exist on installation '${this.installation.name}'.`,
       },
+      options,
     );
     const request = readHitlRequest(task);
     if (!request) {
@@ -1096,7 +1111,7 @@ export class KagentClient {
           },
         ),
       {
-        call: 'A2AService/CancelTask',
+        call: rpcName(A2AService.method.cancelTask),
         endpoint: 'task cancel',
         missingResource: `That turn does not exist on installation '${this.installation.name}'.`,
         invalidArgument: reason =>
@@ -1104,6 +1119,7 @@ export class KagentClient {
             `kagent on installation '${this.installation.name}' did not accept the cancel: ${reason}`,
           ),
       },
+      options,
     );
     return toJson(TaskSchema, task);
   }
@@ -1146,7 +1162,7 @@ export class KagentClient {
         }
       },
       {
-        call: 'SessionService/DeleteSession',
+        call: rpcName(SessionService.method.deleteSession),
         endpoint: 'session delete',
         missingResource: `That session does not exist on installation '${this.installation.name}'.`,
         invalidArgument: () =>
@@ -1158,6 +1174,7 @@ export class KagentClient {
               : `The kagent API for installation '${this.installation.name}' reported a conflict: ${reason}`,
           ),
       },
+      options,
     );
     return toJson(DeleteSessionResponseSchema, response);
   }
@@ -1181,7 +1198,7 @@ export class KagentClient {
           this.callOptions(options),
         ),
       {
-        call: 'SessionService/UpdateSessionName',
+        call: rpcName(SessionService.method.updateSessionName),
         endpoint: 'session rename',
         missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
         invalidArgument: reason =>
@@ -1189,6 +1206,7 @@ export class KagentClient {
             `kagent on installation '${this.installation.name}' rejected the session name: ${reason}`,
           ),
       },
+      options,
     );
     return toJson(UpdateSessionNameResponseSchema, response);
   }
@@ -1231,7 +1249,7 @@ export class KagentClient {
           this.callOptions(options),
         ),
       {
-        call: 'SessionService/CreateSessionShare',
+        call: rpcName(SessionService.method.createSessionShare),
         endpoint: 'session share create',
         missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
         invalidArgument: reason =>
@@ -1239,6 +1257,7 @@ export class KagentClient {
             `kagent on installation '${this.installation.name}' did not accept the share: ${reason}`,
           ),
       },
+      options,
     );
     return toJson(CreateSessionShareResponseSchema, response);
   }
@@ -1255,7 +1274,7 @@ export class KagentClient {
     options: KagentRequestOptions,
   ): Promise<unknown> {
     const context: ErrorContext = {
-      call: 'SessionService/ListSessionShares',
+      call: rpcName(SessionService.method.listSessionShares),
       endpoint: 'session share list',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
       invalidArgument: () =>
@@ -1274,6 +1293,7 @@ export class KagentClient {
             this.callOptions(options),
           ),
         context,
+        options,
       );
       shares.push(...response.shares);
       pageToken = response.page?.nextPageToken ?? '';
@@ -1303,12 +1323,13 @@ export class KagentClient {
           this.callOptions(options),
         ),
       {
-        call: 'SessionService/RevokeSessionShare',
+        call: rpcName(SessionService.method.revokeSessionShare),
         endpoint: 'session share revoke',
         missingResource: `That share does not exist on installation '${this.installation.name}'. It may already have been revoked.`,
         invalidArgument: () =>
           new InputError('The share id is not a share id.'),
       },
+      options,
     );
     return toJson(RevokeSessionShareResponseSchema, response);
   }
@@ -1334,13 +1355,13 @@ export class KagentClient {
           this.callOptions(options),
         ),
       // Untraced: a refusal or a controller without the RPC is an answer the
-      // roster expects and reads past, not a fault to report (a traced call
-      // logs it at `warn`, which reaches Sentry).
+      // roster expects and reads past; a traced call would log it at `info`.
       {
-        call: 'AgentService/ListAgents',
+        call: rpcName(AgentService.method.listAgents),
         endpoint: 'agent list',
         missingResource: `The kagent API for installation '${this.installation.name}' has no agent list.`,
       },
+      options,
     );
     const namespaces = new Set<string>();
     for (const agent of response.agents) {
@@ -1363,10 +1384,11 @@ export class KagentClient {
     const response = await this.call(
       () => this.systemService.getCurrentUser({}, this.callOptions(options)),
       {
-        call: 'SystemService/GetCurrentUser',
+        call: rpcName(SystemService.method.getCurrentUser),
         endpoint: 'current user',
         missingResource: 'current user',
       },
+      options,
     );
     return response.claims ?? {};
   }
@@ -1393,7 +1415,8 @@ export class KagentClient {
             headers: this.turnHeaders(options),
             timeoutMs: this.turnTimeoutMs,
           }),
-        this.sendContext(false),
+        this.sendContext(A2AService.method.sendMessage, false),
+        options,
       );
     } catch (error) {
       // A lost connection is not a failed message. The gateway in front of the
@@ -1446,15 +1469,20 @@ export class KagentClient {
     });
   }
 
-  /** How a send's failures read: the session is gone, or busy, or refused it. */
-  private sendContext(pending: boolean): ErrorContext {
+  /**
+   * How a send's failures read: the session is gone, or busy, or refused it.
+   * `timeoutIsPending` for a send whose turn runs on after we stop waiting
+   * (the stream); the unary send verifies a lost connection itself.
+   */
+  private sendContext(
+    rpc: DescMethod,
+    timeoutIsPending: boolean,
+  ): ErrorContext {
     return {
-      call: pending
-        ? 'A2AService/SendStreamingMessage'
-        : 'A2AService/SendMessage',
+      call: rpcName(rpc),
       endpoint: 'agent messaging',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-      timeoutIsPending: pending || undefined,
+      timeoutIsPending: timeoutIsPending || undefined,
       invalidArgument: reason =>
         new InputError(
           `The agent on installation '${this.installation.name}' did not accept the message: ${reason}`,
@@ -1504,7 +1532,7 @@ export class KagentClient {
     extra: ListSessionTasksOptions,
   ): Promise<{ tasks: Task[]; totalSize: number; nextPageToken: string }> {
     const context: ErrorContext = {
-      call: 'A2AService/ListTasks',
+      call: rpcName(A2AService.method.listTasks),
       endpoint: 'task list',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
     };
@@ -1530,6 +1558,7 @@ export class KagentClient {
       const read = await this.call(
         () => this.listTasksPage(target, options, extra, token, size),
         context,
+        options,
       );
       requests += read.requests;
       if (read.pageSize < pageSize) {
@@ -1670,12 +1699,13 @@ export class KagentClient {
           this.callOptions(options),
         ),
       {
-        call: 'SessionService/GetSession',
+        call: rpcName(SessionService.method.getSession),
         endpoint: 'session detail',
         missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
         invalidArgument: () =>
           new InputError('The session id is not a Session id.'),
       },
+      options,
     );
     const agent = this.remember(response.session);
     if (!agent) {
@@ -1718,20 +1748,21 @@ export class KagentClient {
 
   /**
    * Run one RPC and translate its failure into the error the caller should
-   * see. A traced call (`trace` given) also logs its failures that the router
-   * does not: see {@link logFailedCall}.
+   * see. A traced call also logs the failures the browser gets as a 4xx: see
+   * {@link logFailedCall}.
    */
   private async call<T>(
     rpc: () => Promise<T>,
     context: ErrorContext,
-    trace?: { requestId?: string },
+    options: KagentRequestOptions,
+    traced = false,
   ): Promise<T> {
     try {
       return await rpc();
     } catch (error) {
-      const mapped = this.mapError(error, context, trace?.requestId);
-      if (trace) {
-        this.logFailedCall(context.call, trace.requestId, error, mapped);
+      const mapped = this.mapError(error, context, options);
+      if (traced) {
+        this.logFailedCall(context.call, options.requestId, error, mapped);
       }
       throw mapped;
     }
@@ -1740,17 +1771,14 @@ export class KagentClient {
   /**
    * One line per failed traced call that the browser gets as a 4xx: the call,
    * the status, the controller's code and message, and the request id it was
-   * sent with.
+   * sent with, so a failure the page names can be found afterwards.
    *
    * A 404 is kagent absent or the resource gone, the expected answer on most
    * installations, so it stays at `debug`; another 4xx (a refused token, a
-   * conflict) is a read the page reports as failed and is logged at `warn`,
-   * where it can be attributed afterwards. A 5xx is not logged here: the
-   * router answers it and logs it once, as `kagentErrorHandler` does for every
-   * call, traced or not.
-   *
-   * The message names the call and the status, never the installation, which
-   * goes into the metadata: Sentry groups the warnings by the message.
+   * conflict) is a decision the page reports, logged at `info`, which keeps it
+   * out of Sentry (`docs/logging.md`). A 5xx is not logged here: the router
+   * answers it and logs it once, as `kagentErrorHandler` does for every call,
+   * traced or not.
    */
   private logFailedCall(
     call: string,
@@ -1769,43 +1797,32 @@ export class KagentClient {
       status,
       code: Code[connectError.code],
       requestId,
-      error: boundedMessage(connectError),
+      error: boundedMessage(connectError.rawMessage || connectError.message),
     };
     const line = `kagent ${call} failed with status ${status}`;
     if (status === 404) {
       this.logger.debug(line, fields);
     } else {
-      this.logger.warn(line, fields);
+      this.logger.info(line, fields);
     }
   }
 
   /**
-   * The error the caller should see. An upstream failure (a 500) carries the
-   * call behind it for the router's one log line ({@link withKagentFailure}).
+   * The error the caller should see; an upstream failure carries the call and
+   * the request id for the router's one log line (see `mapConnectError`).
    */
   private mapError(
     error: unknown,
     context: ErrorContext,
-    requestId?: string,
+    options: KagentRequestOptions,
   ): Error {
-    const mapped = mapConnectError(
+    return mapConnectError(
       error,
-      context,
+      { ...context, requestId: options.requestId },
       this.installation.name,
       this.logger,
       this.turnTimeoutMs,
     );
-    if (!isUpstreamError(mapped)) {
-      return mapped;
-    }
-    const connectError = ConnectError.from(error);
-    return withKagentFailure(mapped, {
-      installation: this.installation.name,
-      call: context.call,
-      code: Code[connectError.code],
-      error: boundedMessage(connectError),
-      ...(requestId && { requestId }),
-    });
   }
 
   private withTimeout<T>(
@@ -1838,14 +1855,6 @@ export class KagentClient {
       );
     });
   }
-}
-
-/** The controller's message of a failed call, bounded for a log line. */
-function boundedMessage(error: ConnectError): string {
-  const message = error.rawMessage || error.message;
-  return message.length > MAX_LOGGED_ERROR
-    ? `${message.slice(0, MAX_LOGGED_ERROR)}…`
-    : message;
 }
 
 /**

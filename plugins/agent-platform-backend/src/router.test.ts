@@ -341,6 +341,35 @@ describe('createRouter', () => {
     });
   });
 
+  describe('the request timeout and the keepalive', () => {
+    it.each([
+      [7000, true],
+      [5000, true],
+      [7001, false],
+      [undefined, false],
+    ])('timeoutMs %s warns: %s', async (timeoutMs, warns) => {
+      const logger = mockServices.logger.mock();
+      await createRouter({
+        logger,
+        config: mockServices.rootConfig({
+          data: {
+            ...twoInstallations,
+            ...(timeoutMs && { agentPlatform: { kagent: { timeoutMs } } }),
+          },
+        }),
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+
+      const warned = logger.warn.mock.calls.filter(([message]) =>
+        String(message).includes('too short for the kagent keepalive'),
+      );
+      expect(warned.map(([, meta]) => meta)).toEqual(
+        warns ? [{ timeoutMs, keepaliveMs: 7000 }] : [],
+      );
+    });
+  });
+
   describe('kagent call metrics', () => {
     it('creates one call duration histogram for every installation', async () => {
       const histogram = { record: jest.fn() };

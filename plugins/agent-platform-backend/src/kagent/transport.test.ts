@@ -67,6 +67,12 @@ describe('createKagentTransport', () => {
           router.service(SystemService, {
             getVersion: () => ({ kagentVersion: 'v1' }),
             getCurrentUser: async (_request, context) => {
+              if (context.requestHeader.get('x-fail') === 'deadline') {
+                throw new ConnectError(
+                  'context deadline exceeded',
+                  Code.DeadlineExceeded,
+                );
+              }
               if (context.requestHeader.get('x-fail') === 'slow') {
                 await new Promise(resolve => setTimeout(resolve, 500));
               }
@@ -177,6 +183,18 @@ describe('createKagentTransport', () => {
       const [seconds, attributes] = histogram.record.mock.calls[0];
       expect(attributes.outcome).toBe('timeout');
       expect(seconds).toBeGreaterThanOrEqual(0.09);
+    });
+
+    it('records a deadline the controller ran out of by its code, not as our timeout', async () => {
+      const { histogram, system } = recorded();
+      await expect(
+        system.getCurrentUser({}, { headers: { 'x-fail': 'deadline' } }),
+      ).rejects.toMatchObject({ code: Code.DeadlineExceeded });
+
+      expect(histogram.record).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.objectContaining({ outcome: 'deadline_exceeded' }),
+      );
     });
 
     it('records a controller nobody answers for as unreachable', async () => {

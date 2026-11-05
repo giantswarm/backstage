@@ -6,7 +6,7 @@ import {
   isUpstreamError,
   KagentFailure,
   kagentFailureOf,
-  UpstreamReason,
+  upstreamReasonOf,
 } from './kagent/errors';
 
 /**
@@ -16,7 +16,7 @@ import {
  * timeout nor an unavailable kagent.
  */
 function describeCause(error: Error, failure: KagentFailure): string {
-  switch ((error as Error & { reason?: UpstreamReason }).reason) {
+  switch (upstreamReasonOf(error)) {
     case 'timeout':
       return 'timed out';
     case 'unavailable':
@@ -55,7 +55,7 @@ export function kagentErrorHandler(
     logger.warn(`kagent ${failure.call} ${describeCause(error, failure)}`, {
       ...failure,
       status: statusCode,
-      reason: (error as Error & { reason?: UpstreamReason }).reason,
+      reason: upstreamReasonOf(error),
     });
     res.status(statusCode).json({
       error: serializeError(error, {

@@ -28,7 +28,8 @@ export interface Config {
        * resolve (i.e. kagent simply is not deployed there) can hold a request
        * open. Defaults to 10000. Keep it above 7000: a dead connection is found
        * by its keepalive ping within 7 s, and the request waiting on it should
-       * fail as unavailable rather than time out first.
+       * fail as unavailable rather than time out first. The backend warns at
+       * startup when it is not.
        */
       timeoutMs?: number;
 

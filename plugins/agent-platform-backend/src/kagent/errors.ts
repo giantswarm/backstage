@@ -6,6 +6,7 @@ import {
   NotAllowedError,
   NotFoundError,
 } from '@backstage/errors';
+import type { DescMethod } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
 
@@ -21,8 +22,8 @@ import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
  * This one surfaces as a 500, so the frontend reports it *and* it reaches Sentry —
  * both correct here. A deployed-but-degraded kagent is rare and genuinely
  * actionable, and its sessions silently vanishing from the fleet-merged list would
- * be the worse failure. It reaches Sentry **once**: the client attaches the call
- * ({@link withKagentFailure}), and the router answers the 500 itself with one
+ * be the worse failure. It reaches Sentry **once**: {@link mapConnectError}
+ * attaches the call ({@link withKagentFailure}), and the router answers the 500 itself with one
  * warning per call and cause, rather than throwing it for
  * `MiddlewareFactory.error()` to report a second time, once per route and
  * installation (see `kagentErrorHandler.ts`).
@@ -37,6 +38,30 @@ export function upstreamError(
   // the browser beside the name: a timeout and a 5xx share the status.
   (error as Error & { reason: UpstreamReason }).reason = reason;
   return error;
+}
+
+/** The {@link UpstreamReason} of an upstream error, when it has one. */
+export function upstreamReasonOf(error: unknown): UpstreamReason | undefined {
+  return (error as { reason?: UpstreamReason } | undefined)?.reason;
+}
+
+/**
+ * An RPC's name as `Service/Method`, read off its descriptor:
+ * `SessionService/ListSessions`. The one spelling of a call in the logs and
+ * the metrics, so the two cannot drift apart.
+ */
+export function rpcName(method: DescMethod): string {
+  return `${method.parent.name}/${method.name}`;
+}
+
+/** Longest upstream message carried into a log line. */
+const MAX_LOGGED_ERROR = 300;
+
+/** An upstream message, bounded for a log line. */
+export function boundedMessage(message: string): string {
+  return message.length > MAX_LOGGED_ERROR
+    ? `${message.slice(0, MAX_LOGGED_ERROR)}…`
+    : message;
 }
 
 /**
@@ -188,10 +213,15 @@ export function kagentFailureOf(error: unknown): KagentFailure | undefined {
 /** How one RPC's failures read to the user. */
 export interface ErrorContext {
   /**
-   * The RPC, as `Service/Method`, for the logs: what Sentry groups a failure
-   * by, so it never carries an installation or an id.
+   * The RPC, as `Service/Method` ({@link rpcName}), for the logs: what Sentry
+   * groups a failure by, so it never carries an installation or an id.
    */
   call: string;
+  /**
+   * The `x-request-id` the call was sent with, for the logs. `KagentClient`
+   * fills it from the request's options for every call.
+   */
+  requestId?: string;
   /** What `NotFound` means when **kagent** answered it: the resource is gone. */
   missingResource: string;
   /** Short name of the RPC, used when kagent does not implement it. */
@@ -248,6 +278,16 @@ export function mapConnectError(
   }
   const connectError = ConnectError.from(error);
   const reason = connectError.rawMessage || connectError.message;
+  // Every upstream error carries the call behind it, for the router to log
+  // it once (`kagentErrorHandler.ts`).
+  const upstream = (message: string, upstreamReason?: UpstreamReason) =>
+    withKagentFailure(upstreamError(message, upstreamReason), {
+      installation: installationName,
+      call: context.call,
+      code: Code[connectError.code],
+      error: boundedMessage(reason),
+      ...(context.requestId && { requestId: context.requestId }),
+    });
 
   // Checked before the code: connect-node reports a socket-level failure as
   // `Unavailable` in the normal case but as `Internal` where the Node error
@@ -291,7 +331,7 @@ export function mapConnectError(
     case Code.InvalidArgument:
       return context.invalidArgument
         ? context.invalidArgument(reason)
-        : upstreamError(
+        : upstream(
             `The kagent API for installation '${installationName}' rejected the request: ${reason}`,
           );
     case Code.FailedPrecondition:
@@ -317,7 +357,7 @@ export function mapConnectError(
           `The agent on installation '${installationName}' has not finished within ${turnTimeoutMs}ms; the turn is still running.`,
         );
       }
-      return upstreamError(
+      return upstream(
         `The kagent API for installation '${installationName}' did not respond in time.`,
         'timeout',
       );
@@ -327,7 +367,7 @@ export function mapConnectError(
         `kagent API unavailable for installation '${installationName}'`,
         { error: reason },
       );
-      return upstreamError(
+      return upstream(
         `The kagent API for installation '${installationName}' is unavailable: ${reason}`,
         'unavailable',
       );
@@ -339,7 +379,7 @@ export function mapConnectError(
         `kagent API returned an error for installation '${installationName}'`,
         { code: Code[connectError.code], error: reason },
       );
-      return upstreamError(
+      return upstream(
         `The kagent API for installation '${installationName}' failed: ${reason}`,
       );
   }

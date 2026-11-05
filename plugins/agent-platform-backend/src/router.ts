@@ -47,7 +47,11 @@ import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
 import { kagentErrorHandler } from './kagentErrorHandler';
 import { createKagentCallHistogram } from './kagent/metrics';
-import { createKagentTransport } from './kagent/transport';
+import {
+  createKagentTransport,
+  KAGENT_PING_INTERVAL_MS,
+  KAGENT_PING_TIMEOUT_MS,
+} from './kagent/transport';
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -485,6 +489,16 @@ export async function createRouter(
   const turnTimeoutMs =
     config.getOptionalNumber('agentPlatform.kagent.turnTimeoutMs') ??
     DEFAULT_KAGENT_TURN_TIMEOUT_MS;
+  // The keepalive gives a dead connection up within ping interval + timeout;
+  // a request timeout at or below that runs out first, and the call that met
+  // the dead connection times out as it did before the keepalive.
+  const keepaliveMs = KAGENT_PING_INTERVAL_MS + KAGENT_PING_TIMEOUT_MS;
+  if (timeoutMs <= keepaliveMs) {
+    logger.warn(
+      'agentPlatform.kagent.timeoutMs is too short for the kagent keepalive to replace a dead connection before a call on it times out',
+      { timeoutMs, keepaliveMs },
+    );
+  }
 
   // One histogram for every installation's calls, the installation an
   // attribute: an instrument is created once per name.

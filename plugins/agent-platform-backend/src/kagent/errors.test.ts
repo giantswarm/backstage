@@ -1,6 +1,8 @@
 import { mockServices } from '@backstage/backend-test-utils';
+import { serializeError } from '@backstage/errors';
 import { Code, ConnectError } from '@connectrpc/connect';
-import { mapConnectError } from './errors';
+import { kagentFailureOf, mapConnectError, rpcName } from './errors';
+import { SessionService } from './gen/kagent/api/v1alpha1/sessions_pb';
 
 const logger = mockServices.logger.mock();
 const context = {
@@ -82,5 +84,49 @@ describe('the reason an upstream failure carries', () => {
       name: 'UpstreamError',
       reason,
     });
+  });
+});
+
+describe('the failure an upstream error carries', () => {
+  it('names the call, the code, the message and the request id', () => {
+    const error = mapConnectError(
+      new ConnectError('context deadline exceeded', Code.DeadlineExceeded),
+      { ...context, requestId: 'req-7' },
+      'gazelle',
+      logger,
+      1000,
+    );
+    expect(error.name).toBe('UpstreamError');
+    expect(kagentFailureOf(error)).toEqual({
+      installation: 'gazelle',
+      call: 'SessionService/ListSessions',
+      code: 'DeadlineExceeded',
+      error: 'context deadline exceeded',
+      requestId: 'req-7',
+    });
+  });
+
+  it('is left out of what the browser gets', () => {
+    const error = map(new ConnectError('boom', Code.Internal));
+    expect(kagentFailureOf(error)).toBeDefined();
+    // What Backstage's error serializer sends: the code and the call stay out.
+    const sent = JSON.stringify(serializeError(error));
+    expect(sent).toContain('"reason":"server-error"');
+    expect(sent).not.toContain('Internal');
+    expect(sent).not.toContain('SessionService');
+  });
+
+  it('is not attached to a decision', () => {
+    const error = map(new ConnectError('gone', Code.NotFound));
+    expect(error.name).toBe('NotFoundError');
+    expect(kagentFailureOf(error)).toBeUndefined();
+  });
+});
+
+describe('rpcName', () => {
+  it('reads Service/Method off the descriptor', () => {
+    expect(rpcName(SessionService.method.listSessions)).toBe(
+      'SessionService/ListSessions',
+    );
   });
 });

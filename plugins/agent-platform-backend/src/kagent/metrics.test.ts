@@ -3,7 +3,7 @@ import { kagentCallOutcome } from './metrics';
 
 describe('kagentCallOutcome', () => {
   it.each([
-    [new ConnectError('deadline', Code.DeadlineExceeded), 'timeout'],
+    [new ConnectError('deadline', Code.DeadlineExceeded), 'deadline_exceeded'],
     [new ConnectError('503', Code.Unavailable), 'unavailable'],
     [new ConnectError('PING timed out', Code.Unavailable), 'unavailable'],
     [new ConnectError('denied', Code.PermissionDenied), 'permission_denied'],
@@ -13,6 +13,12 @@ describe('kagentCallOutcome', () => {
     [new Error('not a Connect error'), 'unknown'],
   ])('%s is %s', (error, outcome) => {
     expect(kagentCallOutcome(error)).toBe(outcome);
+  });
+
+  it('names only our own deadline a timeout', () => {
+    const deadline = new ConnectError('deadline', Code.DeadlineExceeded);
+    expect(kagentCallOutcome(deadline, true)).toBe('timeout');
+    expect(kagentCallOutcome(deadline, false)).toBe('deadline_exceeded');
   });
 
   it('names a socket-level failure unreachable, whatever its code', () => {

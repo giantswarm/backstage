@@ -1378,7 +1378,7 @@ describe('KagentClient against a fake controller', () => {
   });
 
   describe('failure mapping', () => {
-    it('logs a failed session list with its call, status and request id', async () => {
+    it('logs a session list refused with a 4xx with its call, status and request id', async () => {
       const failing = mockServices.logger.mock();
       const sent: Array<string | null> = [];
       const client = new KagentClient(
@@ -1409,9 +1409,10 @@ describe('KagentClient against a fake controller', () => {
       ).rejects.toMatchObject({ name: 'AuthenticationError' });
 
       expect(sent).toEqual(['req-42']);
-      expect(failing.warn).toHaveBeenCalledWith(
-        // The installation is in the metadata, never in the message: Sentry
-        // groups the warnings by the message.
+      // A refused token is a decision the page reports, not a fault: `info`,
+      // which keeps it out of Sentry, with the installation in the metadata.
+      expect(failing.warn).not.toHaveBeenCalled();
+      expect(failing.info).toHaveBeenCalledWith(
         'kagent SessionService/ListSessions failed with status 401',
         {
           installation: 'gazelle',
@@ -1462,8 +1463,10 @@ describe('KagentClient against a fake controller', () => {
         [
           'a session',
           'SessionService/GetSession',
-          (client: KagentClient) => client.getSession('s1', USER),
-          {},
+          // An untraced call carries its request id too.
+          (client: KagentClient) =>
+            client.getSession('s1', { ...USER, requestId: 'req-45' }),
+          { requestId: 'req-45' },
         ],
         [
           // The session's Agent is looked up first, and that call failed.

@@ -3,7 +3,7 @@ import type {
   MetricsServiceHistogram,
 } from '@backstage/backend-plugin-api/alpha';
 import { Code, ConnectError, type Interceptor } from '@connectrpc/connect';
-import { isSocketFailure } from './errors';
+import { isSocketFailure, rpcName } from './errors';
 
 /**
  * The duration of the portal's unary calls to a kagent controller, in seconds,
@@ -54,20 +54,22 @@ export function createKagentCallHistogram(
 }
 
 /**
- * How a call ended, in one word: `ok`; `timeout` for our own deadline
- * (`DeadlineExceeded`); `unreachable` when nothing answered at the socket
- * level (no such host, connection refused, a TLS refusal: kagent not deployed
- * there); otherwise the Connect code in snake case: `unavailable` (a gateway's
- * 5xx, or a connection the keepalive found dead), `unauthenticated`,
- * `not_found`, `internal`, `canceled`, …
+ * How a call ended, in one word: `ok`; `unreachable` when nothing answered at
+ * the socket level (no such host, connection refused, a TLS refusal: kagent
+ * not deployed there), whatever the code; `timeout` when the portal's own
+ * deadline ran out (`ownDeadline`); otherwise the Connect code in snake case:
+ * `deadline_exceeded` (a deadline the controller or the gateway ran out of),
+ * `unavailable` (a gateway's 5xx, or a connection the keepalive found dead),
+ * `unauthenticated`, `not_found`, `internal`, `canceled`, … The order follows
+ * `mapConnectError`, which also reads a socket-level cause first.
  */
-export function kagentCallOutcome(error: unknown): string {
+export function kagentCallOutcome(error: unknown, ownDeadline = false): string {
   const connectError = ConnectError.from(error);
-  if (connectError.code === Code.DeadlineExceeded) {
-    return 'timeout';
-  }
   if (isSocketFailure(connectError)) {
     return 'unreachable';
+  }
+  if (connectError.code === Code.DeadlineExceeded && ownDeadline) {
+    return 'timeout';
   }
   return Code[connectError.code]
     .replace(/([a-z])([A-Z])/g, '$1_$2')
@@ -88,7 +90,7 @@ export function kagentCallDurationInterceptor(
     if (request.stream) {
       return next(request);
     }
-    const method = `${request.service.name}/${request.method.name}`;
+    const method = rpcName(request.method);
     const started = performance.now();
     const record = (outcome: string) =>
       histogram.record((performance.now() - started) / 1000, {
@@ -101,7 +103,10 @@ export function kagentCallDurationInterceptor(
       record('ok');
       return response;
     } catch (error) {
-      record(kagentCallOutcome(error));
+      // The request's signal carries the call's deadline: aborted when ours
+      // ran out (or the caller hung up), not when the controller answered
+      // `DeadlineExceeded` itself.
+      record(kagentCallOutcome(error, request.signal.aborted));
       throw error;
     }
   };

@@ -1,5 +1,5 @@
 ---
-'@giantswarm/backstage-plugin-agent-platform-backend': patch
+'@giantswarm/backstage-plugin-agent-platform-backend': minor
 ---
 
 Report a failed kagent call to Sentry once, as one issue per call and cause
@@ -10,10 +10,12 @@ agent-platform router with the same 500 and body as before, and logged once at
 `kagent SessionService/ListSessions timed out`, with the installation, the
 Connect code, the controller's message and the request id in the log metadata.
 Backstage's error middleware no longer reports it a second time. This covers
-every kagent call, not only the session list. A session list refused with
-another 4xx is still logged at `warn`, now as
+every kagent call, not only the session list, and carries the request id of
+every call that sent one. A session list refused with another 4xx (an expired
+token, a conflict) is now logged at `info` instead of `warn`, as
 `kagent SessionService/ListSessions failed with status <status>`, without the
-installation in the message. The error text the person sees is unchanged.
+installation in the message, so it no longer reaches Sentry. The error text the
+person sees is unchanged.
 
 The kagent transport now pings its HTTP/2 connection every 5 s, open or idle,
 and takes it for dead when a ping goes unanswered for 2 s. A connection that
@@ -24,4 +26,5 @@ error listener when a dead session is replaced.
 
 A new histogram, `kagent_client_call_duration` (seconds), records every unary
 kagent call with the attributes `installation`, `method` and `outcome`; see
-`docs/logging.md`, "Backend metrics".
+`docs/logging.md`, "Backend metrics". The backend warns at startup when
+`agentPlatform.kagent.timeoutMs` is not above the keepalive's 7 s.

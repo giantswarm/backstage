@@ -55,12 +55,13 @@ instruments record nothing.
 
 `kagent_client_call_duration` is scraped as `_bucket`, `_sum` and `_count`.
 `method` is the RPC as `Service/Method`, for example
-`SessionService/ListSessions`. `outcome` is `ok`; `timeout` for the portal's own
-deadline (10 s by default); `unreachable` when nothing answered at the socket
-level (kagent not deployed there); otherwise the Connect code in snake case:
-`unavailable` (a gateway's 5xx, or a connection whose keepalive ping went
-unanswered), `unauthenticated`, `permission_denied`, `not_found`, `internal`,
-`canceled` and so on. Each call on the wire is one observation, a retry
+`SessionService/ListSessions`. `outcome` is `ok`; `unreachable` when nothing
+answered at the socket level (kagent not deployed there); `timeout` when the
+portal's own deadline ran out (10 s by default); otherwise the Connect code in
+snake case: `deadline_exceeded` (a deadline the controller or the gateway ran
+out of), `unavailable` (a gateway's 5xx, or a connection whose keepalive ping
+went unanswered), `unauthenticated`, `permission_denied`, `not_found`,
+`internal`, `canceled` and so on. Each call on the wire is one observation, a retry
 included; streams (a turn's events, a task subscription) are not recorded. For
 example, the share of an installation's session lists that timed out:
 
