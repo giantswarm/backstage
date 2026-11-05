@@ -366,9 +366,89 @@ describe('MusterMcpClient', () => {
       servers_requiring_auth: [],
     });
     expect(execute).toHaveBeenCalledWith(
-      {},
+      expect.anything(),
       expect.objectContaining({ toolCallId: 'muster-backend-list_tools' }),
     );
+  });
+
+  /**
+   * muster's list_tools over a catalogue of `count` tools: one page per call,
+   * by the call's limit and offset (50 without a limit), `truncated` while
+   * more follow.
+   */
+  function pagedListTools(count: number) {
+    const catalogue = Array.from({ length: count }, (_, i) => ({
+      name: `x_srv_t${i}`,
+    }));
+    return jest.fn(async (args: { limit?: number; offset?: number }) => {
+      const limit = args.limit ?? 50;
+      const offset = args.offset ?? 0;
+      const tools = catalogue.slice(offset, offset + limit);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              total: count,
+              filtered_count: tools.length,
+              truncated: offset + tools.length < count,
+              tools,
+              servers_requiring_auth: [{ name: 'pro' }],
+            }),
+          },
+        ],
+        isError: false,
+      };
+    });
+  }
+
+  it('lists every tool of a catalogue larger than one page', async () => {
+    const { client } = buildClient(pagedListTools(2500));
+
+    const result = (await client.listTools()) as {
+      tools: { name: string }[];
+      truncated: boolean;
+      servers_requiring_auth: unknown[];
+    };
+
+    expect(result.tools).toHaveLength(2500);
+    expect(new Set(result.tools.map(t => t.name)).size).toBe(2500);
+    expect(result.truncated).toBe(false);
+    expect(result.servers_requiring_auth).toEqual([{ name: 'pro' }]);
+  });
+
+  it('fails the listing when a later page fails', async () => {
+    const paged = pagedListTools(2500);
+    const execute = jest.fn(async (args: { offset?: number }) =>
+      args.offset
+        ? {
+            content: [{ type: 'text', text: 'muster restarting' }],
+            isError: true,
+          }
+        : paged(args),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(client.listTools()).rejects.toThrow('muster restarting');
+  });
+
+  it('stops with an error when muster never stops answering truncated', async () => {
+    const execute = jest.fn(async (args: { offset?: number }) => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            truncated: true,
+            tools: [{ name: `x_srv_t${args.offset ?? 0}` }],
+          }),
+        },
+      ],
+      isError: false,
+    }));
+    const { client } = buildClient(execute);
+
+    await expect(client.listTools()).rejects.toThrow('still truncated');
+    expect(execute.mock.calls.length).toBeLessThanOrEqual(20);
   });
 
   it('passes describe_tool the tool name', async () => {

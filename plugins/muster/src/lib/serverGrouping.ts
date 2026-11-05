@@ -1,15 +1,4 @@
-import {
-  DEACTIVATED_LABEL,
-  MCPServer,
-  MCPServerSeverity,
-  TOOL_GROUP_ORDER,
-  ToolGroupKey,
-  mcpServerStateSeverity,
-  worstSeverity,
-} from './k8s';
-
-/** Placeholder for a missing family / management-cluster label. */
-export const UNLABELED = '—';
+import { MCPServer, TOOL_GROUP_ORDER, ToolGroupKey } from './k8s';
 
 /**
  * A server family: the MCPServer CRs sharing one `spec.family.name`, i.e. the
@@ -183,75 +172,6 @@ export function selectRepresentative(
   return { server: servers[0], qualified: false };
 }
 
-export type McPresence = {
-  mc: string;
-  severity: MCPServerSeverity;
-  state: string;
-  server: MCPServer;
-};
-
-/**
- * Collapse a family's federated instances into one health entry per management
- * cluster: the worst severity in that cluster and the worst-state server as the
- * representative for its diagnostics. A deactivated representative reads
- * `Deactivated` rather than the `Disconnected` its status carries, so the pill
- * names the reason and not just the symptom. Alphabetical by cluster; callers
- * that want the clusters needing a look first apply
- * {@link orderPresenceDegradedFirst}.
- */
-export function presenceByMc(servers: MCPServer[]): McPresence[] {
-  const byMc = new Map<string, MCPServer[]>();
-  for (const s of servers) {
-    const mc = s.getManagementCluster() ?? UNLABELED;
-    byMc.set(mc, [...(byMc.get(mc) ?? []), s]);
-  }
-  return [...byMc.entries()]
-    .map(([mc, group]) => {
-      const severity = group.reduce<MCPServerSeverity>(
-        (acc, s) => worstSeverity(acc, mcpServerStateSeverity(s.getState())),
-        'ok',
-      );
-      const worst = group.reduce((acc, s) =>
-        mcpServerStateSeverity(s.getState()) === severity ? s : acc,
-      );
-      return {
-        mc,
-        severity,
-        state: worst.getSuspended()
-          ? DEACTIVATED_LABEL
-          : (worst.getState() ?? 'unknown'),
-        server: worst,
-      };
-    })
-    .sort((a, b) => a.mc.localeCompare(b.mc));
-}
-
-// Severity bands for display order. Failed before merely disconnected before
-// unknown, and the healthy majority last -- the clusters that need a look are
-// the reason to read the row at all.
-const DEGRADED_FIRST: Record<MCPServerSeverity, number> = {
-  error: 0,
-  warning: 1,
-  unknown: 2,
-  ok: 3,
-};
-
-/**
- * The per-cluster entries with the degraded clusters first (most severe
- * first), alphabetical within a band. Drives both the collapsed family row and
- * the full cluster list shown when it is expanded, so a failing cluster is
- * never buried behind twenty healthy pills.
- */
-export function orderPresenceDegradedFirst(
-  presence: McPresence[],
-): McPresence[] {
-  return [...presence].sort(
-    (a, b) =>
-      DEGRADED_FIRST[a.severity] - DEGRADED_FIRST[b.severity] ||
-      a.mc.localeCompare(b.mc),
-  );
-}
-
 /**
  * Every management cluster any standard family is federated across, sorted:
  * the fleet a family's coverage is measured against. Servers without the
@@ -268,40 +188,6 @@ export function fleetManagementClusters(standard: StandardGroup[]): string[] {
     }
   }
   return [...clusters].sort((a, b) => a.localeCompare(b));
-}
-
-export type FamilyCoverage = {
-  family: string;
-  /** Clusters the family is deployed on, one entry each, degraded first. */
-  present: McPresence[];
-  /** Fleet clusters the family is not deployed on, sorted. */
-  missing: string[];
-  /** The present clusters whose instance is not healthy. */
-  degraded: McPresence[];
-  /** Size of the fleet the coverage is measured against. */
-  fleetSize: number;
-};
-
-/**
- * How far one family reaches across the fleet: where it is deployed, where it
- * is deployed but not connected, and where it is not deployed at all. The
- * last is what distinguishes a family still being rolled out (present on 10
- * of 24 clusters) from one that is failing -- both used to read as a shorter
- * row of pills.
- */
-export function familyCoverage(
-  group: StandardGroup,
-  fleet: string[],
-): FamilyCoverage {
-  const present = orderPresenceDegradedFirst(presenceByMc(group.servers));
-  const covered = new Set(present.map(p => p.mc));
-  return {
-    family: group.family,
-    present,
-    missing: fleet.filter(mc => !covered.has(mc)),
-    degraded: present.filter(p => p.severity !== 'ok'),
-    fleetSize: fleet.length,
-  };
 }
 
 /**
@@ -331,6 +217,128 @@ export function serverRowKey(row: ServerPageRow): string {
 }
 
 /**
+ * What the connector naming rule needs to know of one MCPServer CR. Kept
+ * structural, so the agent platform's own view of a server fits it too.
+ */
+export interface ConnectorNameSource {
+  /** The CR name. */
+  name: string;
+  /** `spec.family.name`, for a family member. */
+  family?: string;
+  /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
+  displayName?: string;
+}
+
+/** {@link ConnectorNameSource} of an MCPServer. */
+export function connectorNameSource(server: MCPServer): ConnectorNameSource {
+  const family = server.getFamily();
+  const displayName = server.getDisplayNameAnnotation();
+  return {
+    name: server.getName(),
+    ...(family ? { family } : {}),
+    ...(displayName ? { displayName } : {}),
+  };
+}
+
+const sameLabel = (label: string) => label.trim().toLowerCase();
+
+/**
+ * What people call each connector, keyed by the name its page, links,
+ * `server:` selectors and muster use (the family name for a family, else the
+ * CR name). One rule for every surface:
+ *
+ * - A connector is called by its `ui.giantswarm.io/display-name`. A family
+ *   takes the one its annotated members agree on (one chart stamps them all;
+ *   while a rollout is in flight the annotated ones decide), and members that
+ *   disagree name nothing.
+ * - Without one, it is called by its own name.
+ * - Connectors that would read the same (two annotated alike, or one
+ *   annotated like another's name; case aside) are called by their own names
+ *   instead, so no two read alike.
+ *
+ * A singular CR named like a family is left out: the family's page is the one
+ * its name opens.
+ */
+export function connectorDisplayNames(
+  servers: readonly ConnectorNameSource[],
+): Map<string, string> {
+  const families = new Set(
+    servers.map(server => server.family).filter(Boolean),
+  );
+  const annotations = new Map<string, Set<string>>();
+  for (const server of servers) {
+    if (!server.family && families.has(server.name)) {
+      continue;
+    }
+    const surface = server.family ?? server.name;
+    const names = annotations.get(surface) ?? new Set<string>();
+    if (server.displayName) {
+      names.add(server.displayName);
+    }
+    annotations.set(surface, names);
+  }
+  const labels = new Map(
+    [...annotations].map(([surface, names]) => [
+      surface,
+      names.size === 1 ? [...names][0] : surface,
+    ]),
+  );
+  // Falling back to a name can collide with another's display name in turn;
+  // every round turns at least one display name back into a (unique) name.
+  for (;;) {
+    const count = new Map<string, number>();
+    for (const label of labels.values()) {
+      count.set(sameLabel(label), (count.get(sameLabel(label)) ?? 0) + 1);
+    }
+    const colliding = [...labels].filter(
+      ([surface, label]) =>
+        label !== surface && count.get(sameLabel(label))! > 1,
+    );
+    if (colliding.length === 0) {
+      return labels;
+    }
+    for (const [surface] of colliding) {
+      labels.set(surface, surface);
+    }
+  }
+}
+
+/** {@link connectorDisplayNames} of the MCPServer CRs of one installation. */
+export function mcpServerDisplayNames(
+  servers: readonly MCPServer[],
+): Map<string, string> {
+  return connectorDisplayNames(servers.map(connectorNameSource));
+}
+
+/**
+ * What people call the connector `name` names on `installation`, by
+ * {@link connectorDisplayNames} over that installation's servers; `name`
+ * itself when there is no such connector.
+ */
+export function connectorDisplayNameOn(
+  servers: readonly MCPServer[],
+  installation: string | undefined,
+  name: string,
+): string {
+  const names = mcpServerDisplayNames(
+    servers.filter(server => server.cluster === installation),
+  );
+  return names.get(name) ?? name;
+}
+
+/**
+ * What a row is called for people, by {@link connectorDisplayNames}: its
+ * display name where it has a distinct one, else {@link serverRowKey}.
+ */
+export function serverRowDisplayName(
+  row: ServerPageRow,
+  names: ReadonlyMap<string, string>,
+): string {
+  const key = serverRowKey(row);
+  return row.kind === 'core' ? key : (names.get(key) ?? key);
+}
+
+/**
  * The row a server page's `:server` segment names on this installation, or
  * undefined when the installation has no such server. A family wins over a
  * singular CR of the same name: the family's page is the one every family link
@@ -355,4 +363,28 @@ export function findServerRow(
   }
   const server = servers.find(s => !s.getFamily() && s.getName() === key);
   return server ? { kind: 'server', server } : undefined;
+}
+
+/**
+ * The `:server` segment of the page that shows each MCPServer's usage on one
+ * installation, by CR name: the family's for a family member (instances have
+ * no page of their own; the family's Usage tab lists each one), else its own.
+ * A server is left out where no page shows it: one named like a family, or
+ * muster's own page, which takes that name. A name not in the map (muster's
+ * own tools, a server since removed) has no page either.
+ */
+export function connectorPageKeys(
+  servers: readonly MCPServer[],
+): Map<string, string> {
+  const families = new Set(servers.map(server => server.getFamily()));
+  const keys = new Map<string, string>();
+  for (const server of servers) {
+    const key = server.getFamily() ?? server.getName();
+    const shadowed =
+      key === MUSTER_SERVER_KEY || (!server.getFamily() && families.has(key));
+    if (!shadowed) {
+      keys.set(server.getName(), key);
+    }
+  }
+  return keys;
 }

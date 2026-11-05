@@ -32,12 +32,6 @@ const MIB = 2 ** 20;
 export const TOOLS_CAPABILITY = 'tools';
 
 /**
- * Model features not worth a chip: every model completes text, so saying so
- * is noise next to the ones that distinguish it (tools, vision, thinking).
- */
-const IMPLIED_MODEL_CAPABILITIES = new Set(['completion']);
-
-/**
  * The backends the seam knows. model-manager may grow others; an installation
  * reporting one the portal has no vocabulary for is skipped (with a console
  * warning) rather than mislabelled.
@@ -306,9 +300,9 @@ export function toServedModelFromManager(
     }
   } else if (model.loaded) {
     readiness = 'ready';
-    if (running?.expiresAt) {
-      readinessMessage = `Loaded in memory until ${formatTime(running.expiresAt)}.`;
-    } else if (running?.device) {
+    // When it goes (`expiresAt`, kept as `loadedUntil`) is told at render,
+    // relative to the moment it is shown: `servedReadinessMessage`.
+    if (running?.device) {
       readinessMessage = `Loaded on the ${running.device.toUpperCase()}${
         running.pinned ? ', pinned against eviction' : ''
       }.`;
@@ -558,13 +552,6 @@ export function lacksToolCalling(
   );
 }
 
-/** The features worth showing, in the backend's order. */
-export function notableCapabilities(capabilities: string[]): string[] {
-  return capabilities.filter(
-    capability => !IMPLIED_MODEL_CAPABILITIES.has(capability),
-  );
-}
-
 /**
  * The share of a loaded model's footprint that sits on an accelerator, the way
  * `ollama ps` puts it under PROCESSOR: `100 % GPU` when all of it does, `CPU`
@@ -630,17 +617,6 @@ export function describeServedModel(
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-/** ISO time → a short local clock time, else the input as-is. */
-export function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 }
 
 /**

@@ -55,7 +55,7 @@ function resolved(tools: ToolSummary[]): ToolsetResolution {
 async function renderList(resolution: ToolsetResolution) {
   return renderInTestApp(
     <ToolsetResolutionList resolution={resolution} servers={SERVERS} />,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 
@@ -86,7 +86,7 @@ describe('ToolsetResolutionList', () => {
 
     expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
     expect(screen.getByText('workflow_incident-triage')).toBeInTheDocument();
-    expect(screen.getByText('read-only')).toBeInTheDocument();
+    expect(screen.getByText('Reads')).toBeInTheDocument();
     expect(
       screen.queryByRole('searchbox', { name: 'Search the resolved tools' }),
     ).not.toBeInTheDocument();
@@ -220,11 +220,11 @@ describe('ToolsetResolutionList', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('drops a query when the resolution shrinks under the threshold and takes the field away', async () => {
+  it('keeps a typed query and its field when the resolution shrinks under the threshold', async () => {
     // The Tools step keeps this component mounted while the selection changes,
     // so a query typed against a large resolution outlives the switch to a
-    // short one. Without the field there is nothing left to clear it, so the
-    // query must stop filtering when it stops being editable.
+    // short one. Like every list (`isSearchableList`), the field stays while
+    // the query narrows, so it can still be read and cleared.
     function Harness() {
       const [big, setBig] = useState(true);
       return (
@@ -240,23 +240,30 @@ describe('ToolsetResolutionList', () => {
       );
     }
     await renderInTestApp(<Harness />, {
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: { '/customize/agents': agentsRouteRef },
     });
     const user = userEvent.setup();
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
-      'op_07',
-    );
+    const search = screen.getByRole('searchbox', {
+      name: 'Search the resolved tools',
+    });
+    await user.type(search, 'op_07');
     expect(await screen.findByText('x_kubernetes_op_07')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'shrink' }));
 
-    // The field is gone, so the query is too — the short list shows itself.
+    expect(
+      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
+    ).toHaveValue('op_07');
+    expect(screen.getByText(/No tools match/)).toBeInTheDocument();
+
+    // Cleared, the short list is read, not searched.
+    await user.clear(
+      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
+    );
     expect(
       screen.queryByRole('searchbox', { name: 'Search the resolved tools' }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/No tools match/)).not.toBeInTheDocument();
     expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
   });
 
@@ -311,49 +318,6 @@ describe('ToolsetResolutionList', () => {
     expect(
       screen.queryByRole('button', { name: /^Show \d+ more/ }),
     ).not.toBeInTheDocument();
-  });
-
-  it('forgets the query rather than reapplying it when the resolution grows back', async () => {
-    // Masking the query while the field is hidden is not enough: if it
-    // survives, growing back over the threshold hands the author a filtered
-    // list they never asked for, pre-filled with text they typed minutes ago.
-    function Harness() {
-      const [big, setBig] = useState(true);
-      return (
-        <>
-          <button type="button" onClick={() => setBig(value => !value)}>
-            toggle
-          </button>
-          <ToolsetResolutionList
-            resolution={resolved(big ? BIG : SHORT)}
-            servers={SERVERS}
-          />
-        </>
-      );
-    }
-    await renderInTestApp(<Harness />, {
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
-    });
-    const user = userEvent.setup();
-
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
-      'op_07',
-    );
-    expect(await screen.findByText('x_kubernetes_op_07')).toBeInTheDocument();
-
-    // Shrink under the threshold, then grow back.
-    await user.click(screen.getByRole('button', { name: 'toggle' }));
-    await user.click(screen.getByRole('button', { name: 'toggle' }));
-
-    const search = await screen.findByRole('searchbox', {
-      name: 'Search the resolved tools',
-    });
-    expect(search).toHaveValue('');
-    expect(
-      screen.getByText('2 connectors · 55 tools · 20 workflows'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/match$/)).not.toBeInTheDocument();
   });
 
   it('names its accordion group, so it is distinguishable from the catalogue', async () => {

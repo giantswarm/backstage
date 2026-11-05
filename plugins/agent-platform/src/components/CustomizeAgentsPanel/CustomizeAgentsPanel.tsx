@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useMemo } from 'react';
+import { ReactNode, useCallback, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
 import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
@@ -6,11 +6,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
-  ALL_INSTALLATIONS,
-  classifyInventoryFailure,
-  installationsWithoutComponent,
   InventoryFailureGate,
-  selectInventoryFailure,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -22,16 +18,21 @@ import {
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
+  tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
+  ROW_TAGS_MAX,
+  TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
+import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
+import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
+import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
-  agentParts,
   agentStatus,
   harnessLabel,
   searchAgents,
@@ -39,7 +40,11 @@ import {
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
-import { type AgentRow, useAgents } from '../AgentsDataProvider';
+import {
+  type AgentRow,
+  describeKagentSwitchedOff,
+  useAgents,
+} from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
@@ -91,9 +96,11 @@ const useStyles = makeStyles({
     background: 'var(--bui-bg-neutral-1)',
     overflow: 'hidden',
   },
-  // The row is the link plus the star beside it: a button can't live inside
-  // a link, so the star sits after it and the hover tints both.
+  // The row opens the agent: its name is the link, whose hit area stretches
+  // over the whole row (as `StackedRowList`'s does), so the star sits above
+  // that area rather than inside a link. The hover tints the row.
   item: {
+    position: 'relative',
     display: 'flex',
     alignItems: 'center',
     paddingRight: 'var(--bui-space-2)',
@@ -114,11 +121,18 @@ const useStyles = makeStyles({
     padding:
       'var(--bui-space-3) var(--bui-space-2) var(--bui-space-3) var(--bui-space-4)',
     color: 'var(--bui-fg-primary)',
+  },
+  // Stretched over the row by `useStretchedLinkStyles`, which also draws the
+  // focus ring round the row, as the hover does.
+  nameLink: {
+    color: 'inherit',
     textDecoration: 'none',
     '&:hover': {
       textDecoration: 'none',
     },
   },
+  // Lifted above the name link's stretched hit area: a press on it is its
+  // own.
   star: {
     flex: 'none',
     // A thumb's target at phone width (T22 §2.5), not the mouse's 32px.
@@ -142,7 +156,10 @@ const useStyles = makeStyles({
     marginBottom: 'var(--bui-space-3)',
   },
   // Name and description, then the facts: side by side where there is room,
-  // the facts wrapping under the name at phone width.
+  // the facts on a line of their own under the name where there is not. Every
+  // row of a list has the same facts in the same fixed columns, and the name
+  // the same least width, so all rows of a list wrap at the same width and
+  // their columns line up either way.
   body: {
     flex: '1 1 auto',
     minWidth: 0,
@@ -159,17 +176,47 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
+  // Where the rows name organizations: room for one beside the name, or the
+  // facts move under the name rather than squeeze them. A list without them
+  // keeps its rows on one line down to the narrower 220px.
+  mainWithOrganization: {
+    flexBasis: 320,
+  },
+  // The name, its organization and its state on one baseline, as the facts.
   nameLine: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--bui-space-2)',
+    alignItems: 'baseline',
+    columnGap: 'var(--bui-space-2)',
+    rowGap: 2,
     minWidth: 0,
+    // A phone's name takes two lines: its organization goes under it.
+    [PHONE_MEDIA]: {
+      flexWrap: 'wrap',
+    },
   },
+  // Whose agent it is, beside its name: never more than half the line, so a
+  // long name and a long organization each keep some of it, and never
+  // squeezed out by the name.
+  // On a phone it shrinks to its line and wraps there instead.
+  organization: {
+    flex: 'none',
+    maxWidth: '50%',
+    [PHONE_MEDIA]: {
+      flex: '0 1 auto',
+      minWidth: 0,
+      maxWidth: 'none',
+      overflowWrap: 'anywhere',
+    },
+  },
+  // On the name's baseline by its label; the dot stays centred on the label.
   status: {
     flex: 'none',
     display: 'inline-flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: 'var(--bui-space-1)',
+    '& > [data-tone]': {
+      alignSelf: 'center',
+    },
   },
   facts: {
     flex: '0 1 auto',
@@ -178,9 +225,16 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     columnGap: 'var(--bui-space-4)',
     rowGap: 2,
+    alignItems: 'baseline',
     [PHONE_MEDIA]: {
       flexBasis: '100%',
     },
+  },
+  // Tags sit under the name link's stretched hit area, so a press on one
+  // opens the agent like the rest of the row.
+  tags: {
+    flex: '0 1 auto',
+    minWidth: 0,
   },
   // Fixed-width fact columns line the rows up, as the prototype's do.
   fact: {
@@ -202,33 +256,45 @@ export type CustomizeAgentsPanelProps = {
 };
 
 /**
- * The Agents tab's facets (T49): the model an agent runs on, its Harness, and
- * the person's favorites. The environment is not one of them: the page's
- * Environment select already scopes the tab to one installation, and shows
- * only where there is more than one — a second control for the same thing
- * would be two answers to one question.
+ * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
+ * runs on, its Harness, who created it, the person's favorites and its tags,
+ * last as on every catalog tab. The environment is not one of them: the
+ * page's Environment select already scopes the tab to one installation, and
+ * shows only where there is more than one — a second control for the same
+ * thing would be two answers to one question.
  *
- * @param harnesses the fleet's Harnesses ({@link agentHarnesses}); the
- *   Harness facet is offered only when there are two or more.
+ * The bar draws a facet only when it can narrow the list (one organization,
+ * model or Harness among the agents that have one is no choice:
+ * `catalogFilterDimensions`); an agent without a Harness is one not read yet,
+ * not a second choice.
+ *
+ * @param harnesses the fleet's Harnesses ({@link agentHarnesses}), for how
+ *   each option reads.
+ * @param isMine whether the person created the row's agent: the "Created by"
+ *   facet, which the bar shows only when some row is theirs.
  */
 export function agentFacets(
   isFavorite: (id: string) => boolean,
   harnesses: ReadonlyMap<string, string | undefined>,
+  { isMine }: { isMine?: (row: AgentRow) => boolean } = {},
 ): CatalogFacet<AgentRow>[] {
   return [
+    { id: 'tenant', label: 'Organization', value: row => row.tenant },
     { id: 'model', label: 'Model', value: row => row.model || undefined },
-    // Sanctioned exception to the bar's dropdown-of-one (T64): main's
-    // `singleHarness` rule (#2858) — most fleets run every agent on one
-    // Harness, so the Harness filter, like its per-agent fact, appears only
-    // from two Harnesses on.
-    ...(harnesses.size > 1
+    {
+      id: 'harness',
+      label: 'Harness',
+      value: row => row.harness,
+      optionLabel: name => harnessLabel(name, harnesses.get(name)),
+    },
+    ...(isMine
       ? [
           {
-            id: 'harness',
-            label: 'Harness',
-            value: (row: AgentRow) => row.harness,
-            optionLabel: (name: string) =>
-              harnessLabel(name, harnesses.get(name)),
+            id: 'createdBy',
+            label: 'Created by',
+            value: (row: AgentRow) => (isMine(row) ? 'me' : undefined),
+            optionLabel: () => 'Me',
+            missingIsChoice: true,
           },
         ]
       : []),
@@ -237,21 +303,56 @@ export function agentFacets(
       label: 'Favorites',
       value: row => (isFavorite(row.id) ? 'starred' : undefined),
       optionLabel: () => 'Starred',
+      missingIsChoice: true,
     },
+    // After the agent's own facets, as on every catalog tab.
+    tagsFacet((row: AgentRow) => row.tags),
   ];
 }
 
+/** One of a row's facts, as text with its label in the tooltip. */
+type AgentFact = {
+  key: string;
+  text: string;
+  label: string;
+  /** The tooltip's fuller wording of `text`; `text` itself by default. */
+  detail?: string;
+};
+
 /**
- * One agent as the prototype's list row: avatar, name — with its state inline
- * only when it is not Ready — and what it is for, then its model, its Harness
- * and the environment when there is more than one of each, and its skills
- * and connectors.
+ * A row's organization, beside its name, where the list's agents belong to
+ * more than one tenant, in the words of the Organization filter's options
+ * (`tenantOf`). A row has no labels, so an organization reads
+ * "Organization: acme", as the agent's page has it, and is not taken for the
+ * environment among the facts.
+ * An agent of the platform belongs to no organization and has no text there:
+ * a "None" without its label says nothing (its page says "None", and what
+ * that means). Another namespace already says what it is
+ * (`namespace sre-team`).
+ */
+function organizationText(namespace: string): string {
+  const kind = tenantKindOf(namespace);
+  if (kind === 'platform') {
+    return '';
+  }
+  return kind === 'organization'
+    ? `Organization: ${tenantOf(namespace)}`
+    : tenantOf(namespace);
+}
+
+/**
+ * One agent as the prototype's list row: avatar, name — with its organization
+ * and, only when it is not Ready, its state — and what it is for, then its
+ * tags, its Harness and its environment, the organization, Harness and
+ * environment when the list has more than one of each. The model, skills and
+ * connectors are technical detail, on the agent's own page.
  */
 function AgentListItem({
   row,
   href,
   avatarUrl,
   showHarness,
+  showTenant,
   showInstallation,
   isFavorite,
   onToggleFavorite,
@@ -261,6 +362,8 @@ function AgentListItem({
   href?: string;
   avatarUrl?: string;
   showHarness: boolean;
+  /** More than one tenant in the list: each row names its own. */
+  showTenant: boolean;
   showInstallation: boolean;
   /** The phone layout: texts wrap rather than truncate behind a `title`. */
   isPhone: boolean;
@@ -268,19 +371,33 @@ function AgentListItem({
   onToggleFavorite: () => void;
 }) {
   const classes = useStyles();
+  const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
-  const parts = agentParts(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const facts: {
-    key: string;
-    text: string;
-    label: string;
-    /** The tooltip's fuller wording of `text`; `text` itself by default. */
-    detail?: string;
-  }[] = [
-    { key: 'model', text: row.model ?? '', label: 'Model' },
+  const organization = showTenant ? organizationText(row.namespace) : '';
+  const organizationId = useId();
+  const tagsId = useId();
+  // The name's tooltip, with the organization beside it on a line of its own:
+  // the name link's hit area covers the row, so the row shows this tooltip
+  // wherever it is pointed at, the organization's text included, and either
+  // can be read in full however it is cut. A phone has no hover.
+  const nameTitle = isPhone
+    ? undefined
+    : [
+        row.name,
+        organization,
+        row.tags.length > 0 ? `Tags: ${row.tags.join(', ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+  // The link names the agent; its organization and tags describe it.
+  const describedBy =
+    [organization && organizationId, row.tags.length > 0 && tagsId]
+      .filter(Boolean)
+      .join(' ') || undefined;
+  const facts: AgentFact[] = [
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
     ...(showHarness
@@ -293,7 +410,6 @@ function AgentListItem({
           },
         ]
       : []),
-    { key: 'parts', text: parts, label: 'Skills and connectors' },
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
       : []),
@@ -308,23 +424,68 @@ function AgentListItem({
         src={avatarUrl ?? ''}
       />
       <div className={classes.body}>
-        <div className={classes.main}>
+        <div
+          className={
+            showTenant
+              ? `${classes.main} ${classes.mainWithOrganization}`
+              : classes.main
+          }
+        >
           <div className={classes.nameLine}>
-            <Text
-              as="span"
-              variant="body-medium"
-              weight="bold"
-              truncate={truncate}
-              className={isPhone ? classes.twoLines : undefined}
-            >
-              {row.name}
-            </Text>
+            {/* The link is the name itself, so a long name truncates with
+                its ellipsis, as the text does without one. */}
+            {href ? (
+              <Link
+                standalone
+                href={href}
+                variant="body-medium"
+                weight="bold"
+                truncate={truncate}
+                title={nameTitle}
+                aria-describedby={describedBy}
+                className={[
+                  classes.nameLink,
+                  stretched.link,
+                  isPhone ? classes.twoLines : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {row.name}
+              </Link>
+            ) : (
+              <Text
+                as="span"
+                variant="body-medium"
+                weight="bold"
+                truncate={truncate}
+                title={nameTitle}
+                className={isPhone ? classes.twoLines : undefined}
+              >
+                {row.name}
+              </Text>
+            )}
+            {/* Whose agent it is, with the name rather than among the facts:
+                every row keeps the same fact columns, and a platform agent's
+                row has nothing here. Its tooltip is the name's (above): a
+                title of its own would sit under the link's hit area. */}
+            {organization && (
+              <Text
+                as="span"
+                id={organizationId}
+                variant="body-small"
+                color="secondary"
+                truncate={truncate}
+                className={classes.organization}
+              >
+                {organization}
+              </Text>
+            )}
             {/* The state shows only when it needs a look, as in the
                 prototype; a Ready agent's state is on its own page. The
                 state keeps to its few words (T104): the reason is its
                 tooltip, and the agent's page says it in full, which is where
-                a phone reads it (the row is one link, so no hint button can
-                sit in it). */}
+                a phone reads it. */}
             {status.tone !== 'success' && (
               <span className={classes.status} title={row.readinessMessage}>
                 <StatusDot tone={status.tone} />
@@ -347,7 +508,14 @@ function AgentListItem({
             </Text>
           )}
         </div>
-        <div className={classes.facts}>
+        {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
+        <div className={classes.facts} data-testid="agent-facts">
+          <TagList
+            id={tagsId}
+            tags={row.tags}
+            max={ROW_TAGS_MAX}
+            className={classes.tags}
+          />
           {facts.map(fact => (
             <Text
               key={fact.key}
@@ -372,15 +540,9 @@ function AgentListItem({
 
   return (
     <li className={classes.item}>
-      {href ? (
-        <Link href={href} className={classes.row}>
-          {content}
-        </Link>
-      ) : (
-        <div className={classes.row}>{content}</div>
-      )}
+      <div className={classes.row}>{content}</div>
       <ButtonIcon
-        className={classes.star}
+        className={`${classes.star} ${stretched.above}`}
         variant="tertiary"
         size="small"
         icon={
@@ -455,21 +617,25 @@ function AgentGroup({
  * agent (when configured), the person's "Last used by you" cards, then the
  * rounded list of the agents in scope — the person's favorites (starred, per
  * person) in a group of their own on top — an avatar row each with what it is
- * for, its model and its parts, each row opening the agent's page. Global,
- * with no organization grouping or filter (D4): the Kubernetes namespace an
- * agent lives in is a technical detail of its own page. Must be mounted inside
- * a `CustomizeDataProvider`.
+ * for and its tags, each row opening the agent’s page. One list,
+ * not grouped by tenant (D4); where the agents belong to more than one tenant,
+ * each row names its tenant and the bar filters by it (giantswarm#36698, D6).
+ * Must be mounted inside a `CustomizeDataProvider`.
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
   const {
     rows,
-    scope,
     installations,
     isLoading,
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
+    noAccessInstallations,
+    kagentMissing,
+    kagentSwitchedOff,
+    unknownPin,
+    inventoryFailure,
   } = useAgents();
   const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -480,23 +646,26 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
 
   const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
   const harnesses = useMemo(() => agentHarnesses(rows), [rows]);
-  // Main's `singleHarness` rule (#2858): one Harness for every agent shows
-  // neither the Harness fact nor its filter.
+  // Main's `singleHarness` rule (#2858): one Harness for every agent shows no
+  // Harness fact; the filter follows the shared rule, which agrees.
   const showHarness = harnesses.size > 1;
+  const tenantCount = new Set(rows.map(row => row.tenant)).size;
+  // "Created by me": the creator agent-manager recorded against the person as
+  // agent-manager names them (their email) on the agent's installation.
+  const capabilitiesFor = useKagentCapabilitiesMap(installations);
+  // Emails, compared as the IdP may write them in either case.
+  const isMine = useCallback(
+    (row: AgentRow) =>
+      row.createdBy !== undefined &&
+      row.createdBy.toLowerCase() ===
+        capabilitiesFor(row.installation).caller?.toLowerCase(),
+    [capabilitiesFor],
+  );
   const facets = useMemo(
-    () => agentFacets(isFavorite, harnesses),
-    [isFavorite, harnesses],
+    () => agentFacets(isFavorite, harnesses, { isMine }),
+    [isFavorite, harnesses, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
-  // A Harness pick outlives its dropdown when the fleet settles on one
-  // Harness; it would filter nothing yet still count as a filter in force.
-  const { selection, select } = filters;
-  const harnessPicked = (selection.harness?.length ?? 0) > 0;
-  useEffect(() => {
-    if (!showHarness && harnessPicked) {
-      select('harness', []);
-    }
-  }, [showHarness, harnessPicked, select]);
   const visible = filters.filtered;
   const favorites = useMemo(
     () => visible.filter(row => isFavorite(row.id)),
@@ -524,6 +693,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         size: ROW_AVATAR_SIZE,
       })}
       showHarness={showHarness}
+      showTenant={tenantCount > 1}
       showInstallation={showInstallation}
       isPhone={isPhone}
       isFavorite={isFavorite(row.id)}
@@ -535,65 +705,21 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     />
   );
 
-  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
-  // A pin the portal does not know (a stale `?installation=` deep link): no
-  // inventory to ask, and nothing else on the panel can say why it is empty.
-  const unknownPin =
-    pinned !== null &&
-    !inventory.isLoading &&
-    inventory.entries.length > 0 &&
-    !inventory.entries.some(entry => entry.installation === pinned);
-  // The environments in scope, when each answered without kagent: nothing
-  // can be listed or created there, whatever else is still loading.
-  const kagentMissing = installationsWithoutComponent(
-    inventory.entries,
-    scope,
-    'kagent',
-  );
-  const isEmpty = !isLoading && rows.length === 0;
-  // The environment this tab reads could not be asked whether it runs kagent:
-  // the pinned one, or the home one under "All environments" -- or, when
-  // the list is empty with nowhere to read agents from, any environment in
-  // scope, since that failure is then the only explanation there is.
-  const inventoryFailure = unknownPin
-    ? undefined
-    : (selectInventoryFailure(inventory, pinned) ??
-      (isEmpty && installations.length === 0 && pinned === null
-        ? inventory.entries
-            .filter(entry => !entry.muted)
-            .map(classifyInventoryFailure)
-            .find(failure => failure !== undefined)
-        : undefined));
-  // Under "All environments", environments switched off in the sidebar's
-  // Cluster access that run kagent: the way to their agents.
-  const switchedOff =
-    pinned === null
-      ? inventory.entries
-          .filter(
-            entry =>
-              entry.muted &&
-              entry.probe === 'answered' &&
-              entry.components.kagent,
-          )
-          .map(entry => entry.installation)
-      : [];
-
   let body;
   if (rows.length === 0 && unknownPin) {
+    // A pin the portal does not know (a stale `?installation=` deep link): no
+    // inventory to ask, and nothing else on the panel can say why it is empty.
     body = (
       <EmptyStateCard
         title="Unknown environment"
-        description={`This portal knows no environment named “${pinned}”. Choose another environment.`}
+        description={`This portal knows no environment named “${unknownPin}”. Choose another environment.`}
       />
     );
-  } else if (rows.length === 0 && kagentMissing) {
+  } else if (kagentMissing) {
     body = (
-      <KagentMissingCard
-        installations={kagentMissing}
-        canChooseAnother={inventory
-          .installationsWith('kagent')
-          .some(installation => !kagentMissing.includes(installation))}
-      />
+      // Every environment in scope answered without kagent: nothing can be
+      // listed or created there, whatever else is still loading.
+      <KagentMissingCard {...kagentMissing} />
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading your agents…" />;
@@ -618,19 +744,35 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       // it runs kagent, which is not nothing there: the read warning or the
       // inventory gate is the whole answer.
       body = null;
+    } else if (
+      noAccessInstallations.length > 0 &&
+      installations.every(name => noAccessInstallations.includes(name))
+    ) {
+      // Every namespace of every environment refused the person: no tenant
+      // binds them anywhere, so there is nothing to create a first agent in
+      // either.
+      body = (
+        <EmptyStateCard
+          title="No agents for you yet"
+          description={`You have access to no agents on ${joinNames(
+            noAccessInstallations,
+          )}. ${ACCESS_GRANT_HINT}`}
+        />
+      );
     } else if (installations.length > 0) {
-      body = <FirstAgentCard />;
-    } else if (switchedOff.length > 0) {
+      // The card asks agent-manager where the person may create.
+      body = (
+        <FirstAgentCard
+          installations={installations.filter(
+            name => !noAccessInstallations.includes(name),
+          )}
+        />
+      );
+    } else if (kagentSwitchedOff.length > 0) {
       body = (
         <EmptyStateCard
           title="No agents to list"
-          description={
-            switchedOff.length === 1
-              ? `${switchedOff[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
-              : `${joinNames(
-                  switchedOff,
-                )} run kagent but are switched off in Cluster access, so their agents are not read.`
-          }
+          description={describeKagentSwitchedOff(kagentSwitchedOff)}
         />
       );
     } else {

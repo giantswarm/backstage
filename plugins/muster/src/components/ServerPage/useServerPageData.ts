@@ -4,6 +4,7 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../apis';
 import { useToolCatalogue } from '../shared';
 import { MCPServer } from '../../lib/k8s';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { mcpServersRouteRef } from '../../routes';
 import { ServerPageRow, selectRepresentative } from '../../lib/serverGrouping';
 import {
@@ -94,7 +95,7 @@ export function useServersListHref(installation: string | undefined) {
   if (!serversRoute) {
     return undefined;
   }
-  return installation
-    ? `${serversRoute()}?installation=${encodeURIComponent(installation)}`
-    : serversRoute();
+  return (
+    withInstallationQuery(serversRoute(), installation ?? '') ?? serversRoute()
+  );
 }

@@ -111,6 +111,54 @@ export function describeInstallationScopeOption(
   return undefined;
 }
 
+/** Whether the inventory answered that the installation runs `component`. */
+function runsComponent(
+  entry: InstallationInventoryEntry,
+  component: PlatformComponent,
+): boolean {
+  return entry.probe === 'answered' && entry.components[component];
+}
+
+/**
+ * The installations a tab reads `component` from, in inventory order (home
+ * first): not switched off in the sidebar Cluster access widget, answered
+ * that they run it, and reachable. What the inventory's `installationsWith`
+ * answers.
+ */
+export function installationsWithComponent(
+  entries: InstallationInventoryEntry[],
+  component: PlatformComponent,
+): string[] {
+  return entries
+    .filter(
+      entry =>
+        !entry.muted &&
+        runsComponent(entry, component) &&
+        entry.accessState === 'healthy',
+    )
+    .map(entry => entry.installation);
+}
+
+/**
+ * Under "All installations", the installations switched off in the sidebar
+ * Cluster access widget that run `component`: switching one back on is the
+ * way to what it holds. Empty under a pinned scope. The counterpart of
+ * {@link installationsWithoutComponent}, which says nothing while this lists
+ * any.
+ */
+export function installationsSwitchedOffWithComponent(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+  component: PlatformComponent,
+): string[] {
+  if (scope !== ALL_INSTALLATIONS) {
+    return [];
+  }
+  return entries
+    .filter(entry => entry.muted && runsComponent(entry, component))
+    .map(entry => entry.installation);
+}
+
 /**
  * The installations in scope when every one of them answered its inventory
  * probe without `component`: the pinned one, or under "All installations"
@@ -130,10 +178,13 @@ export function installationsWithoutComponent(
   component: PlatformComponent,
 ): string[] | undefined {
   const runsIt = (entry: InstallationInventoryEntry) =>
-    entry.probe === 'answered' && entry.components[component];
+    runsComponent(entry, component);
   let inScope: InstallationInventoryEntry[];
   if (scope === ALL_INSTALLATIONS) {
-    if (entries.some(entry => entry.muted && runsIt(entry))) {
+    if (
+      installationsSwitchedOffWithComponent(entries, scope, component).length >
+      0
+    ) {
       return undefined;
     }
     inScope = entries.filter(entry => !entry.muted);

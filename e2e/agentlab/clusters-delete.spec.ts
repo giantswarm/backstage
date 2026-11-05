@@ -8,10 +8,11 @@ const run = promisify(execFile);
 
 /**
  * Delete cluster to the end, through the lab's real cluster-manager over
- * muster as the signed-in person (giantswarm/backstage#2752): **Finish
- * removal** answered with cluster-manager's `notFound.nothingLeft` reads as
- * the removal complete, and the dialog opened again reads the cluster as
- * already removed.
+ * muster as the signed-in person (giantswarm/backstage#2752): while the
+ * uninstall runs a pass removes nothing, so the dialog says so and does not
+ * offer **Finish removal**; its check answered with cluster-manager's
+ * `notFound.nothingLeft` once the Cluster is gone reads as the removal
+ * complete, and the dialog opened again reads the cluster as already removed.
  *
  * The lab has no Cluster API, so the spec serves the `Cluster` and `App`
  * kinds with minimal CRDs (the cluster page reads both) and makes one Cluster
@@ -161,7 +162,7 @@ test.describe('clusters: Delete cluster to the end', () => {
     }
   });
 
-  test('Finish removal ends in nothing left, and the dialog then reads it as removed', async ({
+  test('a pass that removes nothing waits for the uninstall, and the dialog then reads it as removed', async ({
     page,
   }) => {
     await signIn(page, lab.users.admin);
@@ -177,10 +178,32 @@ test.describe('clusters: Delete cluster to the end', () => {
     await expect(dialog.getByTestId('what-goes')).toBeVisible({
       timeout: 60_000,
     });
-    await dialog.getByLabel(`Type ${NAME} to confirm`).fill(NAME);
+    // Pressed before the name is typed, Delete says so on the field and
+    // focuses it, as the other typed confirmations do; nothing is deleted.
+    const confirmField = dialog.getByLabel(`Type ${NAME} to confirm`);
     await dialog.getByRole('button', { name: 'Delete cluster' }).click();
+    await expect(confirmField).toHaveAttribute('aria-invalid', 'true');
+    await expect(confirmField).toBeFocused();
+    await confirmField.fill(NAME);
+    await expect(confirmField).not.toHaveAttribute('aria-invalid', 'true');
+    await dialog.getByRole('button', { name: 'Delete cluster' }).click();
+    // The pass removed nothing, and the dialog's check finds nothing new to
+    // remove: it says so and does not offer Finish removal.
+    await expect(dialog.getByTestId('delete-pass')).toContainText(
+      'Nothing could be removed yet',
+      { timeout: 60_000 },
+    );
+    await expect(dialog.getByText(/^Checked at /)).toBeVisible({
+      timeout: 60_000,
+    });
+    // What it waits for is cluster-manager's next step (the dry run carries
+    // it too), not someone else's object.
+    await expect(dialog.getByText(/is being removed since/)).toBeVisible();
+    await expect(
+      dialog.getByText("What is left is not cluster-manager's to remove."),
+    ).toHaveCount(0);
     const finish = dialog.getByRole('button', { name: 'Finish removal' });
-    await expect(finish).toBeVisible({ timeout: 60_000 });
+    await expect(finish).toHaveCount(0);
 
     // helm-controller's uninstall finishes: the Cluster goes.
     await releaseCluster();
@@ -193,7 +216,7 @@ test.describe('clusters: Delete cluster to the end', () => {
       '--timeout=60s',
     ]);
 
-    await finish.click();
+    // The dialog's next check, at most 15 seconds on, finds nothing left.
     await expect(dialog.getByTestId('delete-complete')).toContainText(
       `${NAME} is removed: nothing of it is left`,
       { timeout: 60_000 },

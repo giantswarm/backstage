@@ -3,6 +3,7 @@ import {
   usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
+  usageSelector,
 } from './mcpUsage';
 import {
   MusterInstallationConfig,
@@ -93,6 +94,42 @@ describe('quantileFromBuckets', () => {
         ]),
       ),
     ).toBeNull();
+  });
+});
+
+describe('usageSelector', () => {
+  it('is empty without servers', () => {
+    expect(usageSelector()).toBe('');
+    expect(usageSelector([])).toBe('');
+  });
+
+  it('matches one server exactly', () => {
+    expect(usageSelector(['kagi'])).toBe('{mcpserver_name="kagi"}');
+  });
+
+  it('matches several as one alternation, each name literally', () => {
+    expect(usageSelector(['graveler.mcp', 'gazelle-mcp', 'graveler.mcp'])).toBe(
+      '{mcpserver_name=~"gazelle-mcp|graveler\\\\.mcp"}',
+    );
+  });
+
+  it('escapes what would end the string or the expression', () => {
+    expect(usageSelector(['a"b'])).toBe('{mcpserver_name="a\\"b"}');
+    expect(usageSelector(['a|b', 'c'])).toBe('{mcpserver_name=~"a\\\\|b|c"}');
+  });
+
+  it('narrows to one tool, alone or beside the servers', () => {
+    expect(usageSelector([], 'x_kagi_search')).toBe('{tool="x_kagi_search"}');
+    expect(usageSelector(['kagi'], 'x_kagi_search')).toBe(
+      '{mcpserver_name="kagi",tool="x_kagi_search"}',
+    );
+    expect(usageSelector(['b', 'a'], 'x_k_list')).toBe(
+      '{mcpserver_name=~"a|b",tool="x_k_list"}',
+    );
+  });
+
+  it("escapes what would end the tool's string", () => {
+    expect(usageSelector([], 'a"}b\\')).toBe('{tool="a\\"}b\\\\"}');
   });
 });
 
@@ -259,107 +296,269 @@ describe('getMcpUsage', () => {
     ]);
 
     expect(usage.servers).toEqual([
-      { server: 'gazelle-mcp-kubernetes', calls: 26, errors: 1 },
-      { server: 'gazelle-mcp-prometheus', calls: 5, errors: 0 },
+      {
+        server: 'gazelle-mcp-kubernetes',
+        calls: 26,
+        errors: 1,
+        p95_seconds: null,
+      },
+      {
+        server: 'gazelle-mcp-prometheus',
+        calls: 5,
+        errors: 0,
+        p95_seconds: null,
+      },
     ]);
   });
 
-  describe('the month so far', () => {
+  describe('narrowed to some connectors', () => {
     afterEach(() => {
       jest.useRealTimers();
     });
 
-    // A daily sample for every evaluation the range query asks for, and one
-    // the day before the first, the last day of the month before.
-    function dailyClient(seen: Array<Record<string, unknown>>) {
+    /** Twenty tools, each called `index + 1` times on the window's last day. */
+    const TOOLS = Array.from(
+      { length: 20 },
+      (_, index) => `x_kubernetes_tool_${String(index).padStart(2, '0')}`,
+    );
+
+    function narrowedClient(seen: Array<Record<string, unknown>>) {
       return fakeClient((tool, args) => {
         if (tool === 'core_mcpserver_list') {
           return SERVER_LIST;
         }
         seen.push(args);
-        const start = Date.parse(String(args.start)) / 1000;
         const end = Date.parse(String(args.end)) / 1000;
-        const lines = [
-          'Result Type: matrix',
-          'Result: {outcome="ok", mcpserver_name="jira"} =>',
-          `100 @[${start - 86400}]`,
-        ];
-        for (let ts = start; ts <= end; ts += 86400) {
-          lines.push(`1 @[${ts}]`);
+        const query = String(args.query);
+        if (query.startsWith('sum by (outcome)') && !query.includes('{')) {
+          // The installation's records: a first sample three days before
+          // the window ends, nothing in the week before the window.
+          return [
+            'Result Type: matrix',
+            'Result: {outcome="ok"} =>',
+            `500 @[${end - 2 * 86400}]`,
+            `700 @[${end}]`,
+          ].join('\n');
         }
-        return lines.join('\n');
+        if (query.startsWith('sum by (outcome)')) {
+          return [
+            'Result Type: matrix',
+            'Result: {outcome="ok"} =>',
+            `4 @[${end}]`,
+            '{outcome="error_result"} =>',
+            `1 @[${end}]`,
+          ].join('\n');
+        }
+        if (query.startsWith('sum by (tool, outcome)')) {
+          return [
+            'Result Type: matrix',
+            'Result:',
+            ...TOOLS.flatMap((name, index) => [
+              `{outcome="ok", tool="${name}"} =>`,
+              `${index + 1} @[${end}]`,
+            ]),
+          ].join('\n');
+        }
+        if (query.startsWith('sum by (mcpserver_name, outcome)')) {
+          return [
+            'Result Type: matrix',
+            'Result: {mcpserver_name="gazelle-mcp-kubernetes", outcome="ok"} =>',
+            `3 @[${end}]`,
+            '{mcpserver_name="graveler-mcp-kubernetes", outcome="ok"} =>',
+            `2 @[${end}]`,
+          ].join('\n');
+        }
+        if (query.startsWith('sum by (mcpserver_name, le)')) {
+          return [
+            'Result Type: matrix',
+            'Result: {le="1", mcpserver_name="gazelle-mcp-kubernetes"} =>',
+            `50 @[${end}]`,
+            '{le="5", mcpserver_name="gazelle-mcp-kubernetes"} =>',
+            `100 @[${end}]`,
+            '{le="+Inf", mcpserver_name="gazelle-mcp-kubernetes"} =>',
+            `100 @[${end}]`,
+          ].join('\n');
+        }
+        return 'Result Type: matrix\nResult:';
       });
     }
 
-    it.each([
-      ['at midnight on the 1st', '2026-10-01T00:00:00Z', 1],
-      ['during the 1st', '2026-10-01T10:30:00Z', 1],
-      ['at midnight on the 2nd', '2026-10-02T00:00:00Z', 2],
-      ['at the end of the 2nd', '2026-10-02T23:59:59Z', 2],
-      ['on the 31st', '2026-10-31T12:00:00Z', 31],
-    ])(
-      'covers the days of the month and none before %s',
-      async (_, now, day) => {
-        jest.useFakeTimers({ now: new Date(now) });
-        const seen: Array<Record<string, unknown>> = [];
+    it('narrows every figure to the connectors, but not where the records start', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
+      const seen: Array<Record<string, unknown>> = [];
 
-        const usage = await getMcpUsage(
-          dailyClient(seen),
-          INSTALLATION,
-          {},
-          'month',
-        );
+      const usage = await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['graveler-mcp-kubernetes', 'gazelle-mcp-kubernetes'],
+      );
 
-        // The outcome query also reads the week before the window, for
-        // `data_start`; every other query reads the window alone.
-        const outcome = seen.find(args =>
-          String(args.query).startsWith('sum by (outcome)'),
-        );
-        expect(outcome?.start).toBe('2026-09-25T00:00:00.000Z');
-        const others = seen.filter(args => args !== outcome);
-        expect(others.length).toBeGreaterThan(0);
-        for (const args of others) {
-          expect(args.start).toBe('2026-10-02T00:00:00.000Z');
-          expect(args.end).toBe(
-            new Date(Date.UTC(2026, 9, day + 1)).toISOString(),
-          );
-        }
-        expect(usage.range_hours).toBe(24 * day);
-        expect(usage.step_hours).toBe(24);
-        expect(usage.buckets.map(bucket => bucket.start)).toEqual(
-          Array.from({ length: day }, (__, index) =>
-            new Date(Date.UTC(2026, 9, index + 1)).toISOString(),
-          ),
-        );
-        expect(usage.totals.calls).toBe(day);
-        // The week before the window holds samples, so the records reach
-        // back past it and there is no start to name.
-        expect(usage).not.toHaveProperty('data_start');
-        expect(usage.servers).toEqual([
-          { server: 'jira', calls: day, errors: 0 },
-        ]);
-      },
-    );
+      const selector =
+        '{mcpserver_name=~"gazelle-mcp-kubernetes|graveler-mcp-kubernetes"}';
+      const queries = seen.map(args => String(args.query));
+      // The installation's records, read from a week before the window.
+      const coverage = seen.find(
+        args =>
+          String(args.query) ===
+          'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
+      );
+      // Its first evaluation is a step after the week before the window starts.
+      expect(coverage?.start).toBe('2026-09-09T00:00:00.000Z');
+      // Every other query, narrowed and over the window alone.
+      const narrowed = seen.filter(args => args !== coverage);
+      expect(narrowed).toHaveLength(6);
+      for (const args of narrowed) {
+        expect(String(args.query)).toContain(selector);
+        expect(args.start).toBe('2026-09-16T00:00:00.000Z');
+      }
+      expect(queries).toContain(
+        `sum by (mcpserver_name, le) (increase(muster_downstream_tool_call_duration_seconds_bucket${selector}[24h]))`,
+      );
 
-    it('leaves out a sample from before the window that the server sends anyway', async () => {
-      jest.useFakeTimers({ now: new Date('2026-10-01T10:30:00Z') });
-      const client = fakeClient((tool, args) => {
-        if (tool === 'core_mcpserver_list') {
-          return SERVER_LIST;
-        }
-        const end = Date.parse(String(args.end)) / 1000;
-        return [
-          'Result Type: matrix',
-          'Result: {outcome="ok", mcpserver_name="jira"} =>',
-          `100 @[${end - 86400}]`,
-          `3 @[${end}]`,
-        ].join('\n');
+      expect(usage.totals).toMatchObject({ calls: 5, errors: 1 });
+      // The records start on the 12th, whatever the connectors' own first
+      // call was.
+      expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
+    });
+
+    it('narrows every figure to one tool of the connectors, its row the totals', async () => {
+      const seen: Array<Record<string, unknown>> = [];
+
+      const usage = await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['graveler-mcp-kubernetes', 'gazelle-mcp-kubernetes'],
+        'x_kubernetes_list',
+      );
+
+      const selector =
+        '{mcpserver_name=~"gazelle-mcp-kubernetes|graveler-mcp-kubernetes",tool="x_kubernetes_list"}';
+      const coverage = seen.filter(
+        args =>
+          String(args.query) ===
+          'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
+      );
+      expect(coverage).toHaveLength(1);
+      // The outcomes, the latency and the per-instance rollups; no per-tool
+      // ones, which would only repeat the totals.
+      const narrowed = seen.filter(args => !coverage.includes(args));
+      expect(narrowed).toHaveLength(4);
+      for (const args of narrowed) {
+        expect(String(args.query)).toContain(selector);
+        expect(String(args.query)).not.toMatch(/^sum by \(tool,/);
+      }
+      expect(usage.top_tools).toEqual([
+        {
+          tool: 'x_kubernetes_list',
+          calls: usage.totals.calls,
+          errors: usage.totals.errors,
+          p95_seconds: usage.totals.p95_seconds,
+        },
+      ]);
+      expect(usage.totals.distinct_tools).toBe(1);
+    });
+
+    it('lists every tool the connectors were called with, busiest first', async () => {
+      const usage = await getMcpUsage(
+        narrowedClient([]),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['gazelle-mcp-kubernetes'],
+      );
+
+      expect(usage.top_tools).toHaveLength(20);
+      expect(usage.top_tools[0]).toMatchObject({
+        tool: 'x_kubernetes_tool_19',
+        calls: 20,
       });
+      expect(usage.totals.distinct_tools).toBe(20);
+    });
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 'month');
+    it('reads one connector without the per-server queries, its row the totals', async () => {
+      const seen: Array<Record<string, unknown>> = [];
+      const usage = await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['gazelle-mcp-kubernetes'],
+      );
 
-      expect(usage.totals.calls).toBe(3);
-      expect(usage.servers).toEqual([{ server: 'jira', calls: 3, errors: 0 }]);
+      expect(
+        seen.filter(args => String(args.query).includes('mcpserver_name,')),
+      ).toEqual([]);
+      expect(usage.servers).toEqual([
+        {
+          server: 'gazelle-mcp-kubernetes',
+          calls: usage.totals.calls,
+          errors: usage.totals.errors,
+          p95_seconds: usage.totals.p95_seconds,
+        },
+      ]);
+    });
+
+    it('reads no per-server latency without a filter, which nothing shows', async () => {
+      const seen: Array<Record<string, unknown>> = [];
+      const usage = await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+      );
+
+      const queries = seen.map(args => String(args.query));
+      expect(
+        queries.some(query => query.startsWith('sum by (mcpserver_name, le)')),
+      ).toBe(false);
+      expect(
+        queries.some(query =>
+          query.startsWith('sum by (mcpserver_name, outcome)'),
+        ),
+      ).toBe(true);
+      expect(usage.servers.every(row => row.p95_seconds === null)).toBe(true);
+    });
+
+    it('keeps the busiest fifteen tools without a filter', async () => {
+      const usage = await getMcpUsage(
+        narrowedClient([]),
+        INSTALLATION,
+        {},
+        24 * 30,
+      );
+
+      expect(usage.top_tools).toHaveLength(15);
+      expect(usage.totals.distinct_tools).toBe(20);
+    });
+
+    it('gives each connector its p95 latency', async () => {
+      const usage = await getMcpUsage(
+        narrowedClient([]),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['gazelle-mcp-kubernetes', 'graveler-mcp-kubernetes'],
+      );
+
+      expect(usage.servers).toEqual([
+        {
+          server: 'gazelle-mcp-kubernetes',
+          calls: 3,
+          errors: 0,
+          // le1=50, le5=100 → rank 95 → 1 + 4 * (45/50).
+          p95_seconds: 4.6,
+        },
+        {
+          server: 'graveler-mcp-kubernetes',
+          calls: 2,
+          errors: 0,
+          p95_seconds: null,
+        },
+      ]);
     });
   });
 

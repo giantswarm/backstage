@@ -122,7 +122,7 @@ async function renderPanel(row: GpuNodePoolRow, serve?: PoolServeState) {
       serve={serve}
       onClose={() => {}}
     />,
-    { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
+    { mountedRoutes: { '/customize/models': modelsRouteRef } },
   );
   return within(screen.getByTestId('pool-lifecycle'));
 }
@@ -134,11 +134,11 @@ const stepOf = (panel: ReturnType<typeof within>, id: string) =>
 
 describe('serveFirstModelHref', () => {
   it('names installation, cluster and pool, and the preset where the pool carries an intent', () => {
-    expect(serveFirstModelHref('/serving/serve', OPENED)).toBe(
-      '/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4',
+    expect(serveFirstModelHref('/hosting/serve', OPENED)).toBe(
+      '/hosting/serve?installation=inst-1&cluster=wc1&pool=gpu-l4',
     );
-    expect(serveFirstModelHref('/serving/serve', OPENED, 'qwen3-8b-fp8')).toBe(
-      '/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
+    expect(serveFirstModelHref('/hosting/serve', OPENED, 'qwen3-8b-fp8')).toBe(
+      '/hosting/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
     );
   });
 });
@@ -205,7 +205,7 @@ describe('PoolLifecyclePanel with a serve intent', () => {
     const link = within(serve).getByRole('link', {
       name: 'Serve another model',
     });
-    expect(link.getAttribute('href')).toContain('/serving/serve?');
+    expect(link.getAttribute('href')).toContain('/models/hosting/serve?');
     expect(link.getAttribute('href')).toContain('pool=gpu-l4');
     expect(link.getAttribute('href')).not.toContain('model=');
     expect(
@@ -273,7 +273,7 @@ describe('PoolLifecyclePanel with a serve intent', () => {
         row={READY_ROW}
         onClose={() => {}}
       />,
-      { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
+      { mountedRoutes: { '/customize/models': modelsRouteRef } },
     );
     const panel = within(screen.getByTestId('pool-lifecycle'));
     expect(panel.getByTestId('applied-zones')).toHaveTextContent(

@@ -14,7 +14,7 @@ import {
 import {
   KubeDeploymentSpecReplicas,
   KubeDeploymentStatusReplicasReady,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { buildWorkloadQuery, useMimirWorkloads } from './useMimirWorkloads';
 
 const INSTALLATION = 'golem';

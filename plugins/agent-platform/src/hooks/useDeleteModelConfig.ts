@@ -87,8 +87,10 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   };
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason: 'Model configuration is not a tracked portal action yet.',
+    // Only a deletion this call made: a model already gone was deleted by
+    // someone else, or by an earlier attempt that reported it already.
+    event: ({ deleted }) =>
+      deleted ? { name: 'AgentPlatform.modelDeleted', attributes: {} } : null,
     mutationFn: async () => {
       if (!modelConfig || !name) {
         throw new Error(
@@ -134,6 +136,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       }
 
       const gvk = modelConfig.getResolvedGVK();
+      let deleted = true;
       try {
         await deleteResource({
           kubernetesApi,
@@ -148,6 +151,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
         if ((error as Error).name !== 'NotFoundError') {
           throw error;
         }
+        deleted = false;
       }
 
       const invalidated = [gvk];
@@ -173,6 +177,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       }
 
       await invalidateReads(invalidated);
+      return { deleted };
     },
   });
 

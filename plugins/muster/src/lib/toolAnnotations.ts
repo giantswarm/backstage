@@ -39,8 +39,8 @@ export type ToolEffect = 'reads' | 'changes';
 
 /**
  * A tool's effect in words: the one vocabulary of the effect badge, the
- * "What it does" filter and the approval card. A workflow's derived effect
- * words it as a guarantee instead (`WORKFLOW_EFFECT_LABELS`).
+ * "What it does" filter and the approval card, for a workflow's derived
+ * effect too.
  */
 export const TOOL_EFFECT_LABELS: Record<ToolEffect, string> = {
   reads: 'Reads',

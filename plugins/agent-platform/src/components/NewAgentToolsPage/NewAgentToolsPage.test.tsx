@@ -21,6 +21,7 @@ import {
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
+  mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
@@ -362,6 +363,7 @@ const BASE_STATE: NewAgentFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
@@ -370,8 +372,12 @@ const BASE_STATE: NewAgentFormState = {
   droppedHarness: undefined,
   systemMessage: '',
   egressText: '',
+  egressPolicyRefs: [],
+  defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
+  selectedPlugins: [],
+  keptPlugins: [],
   toolset: [],
 };
 
@@ -420,12 +426,18 @@ async function renderStep(
     /** The wizard's state when it opens, for the edit-mode round trip. */
     toolset?: string[];
     chatOnly?: boolean;
+    /** The installation's MCPServer CRs, when not {@link SERVER_CRS}. */
+    servers?: MCPServer[];
   } = {},
 ) {
   mockUseResources.mockImplementation(
     (_clusters: string[], ResourceClass: unknown) => {
       if (ResourceClass === MCPServer) {
-        return { resources: SERVER_CRS, isLoading: false, errors: [] };
+        return {
+          resources: options.servers ?? SERVER_CRS,
+          isLoading: false,
+          errors: [],
+        };
       }
       if (ResourceClass === Agent) {
         return {
@@ -475,11 +487,29 @@ async function renderStep(
     ) : (
       tree
     ),
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
+
+/**
+ * Continue stays pressable over a toolset problem: pressed, it moves the focus
+ * to the problem instead of leaving the step.
+ */
+async function expectContinueBlocked(user: ReturnType<typeof userEvent.setup>) {
+  expect(continueButton()).toBeEnabled();
+  await user.click(continueButton());
+  // The toolset's problem where the Toolset section shows it, else the line
+  // by Continue that says the step is blocked.
+  expect(document.activeElement).toHaveTextContent(
+    /selectors|Fix the toolset to continue/,
+  );
+  // Still on the step.
+  expect(
+    screen.getByRole('heading', { name: 'What may it do?' }),
+  ).toBeInTheDocument();
+}
 const toolsetOutput = () => screen.getByTestId('toolset').textContent;
 /** The narrow-layout *Selected so far* bar (jsdom has no two-column viewport). */
 const summaryBar = () =>
@@ -871,7 +901,7 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('tool:x_kubernetes_get_pods');
     });
 
-    it('lists three connectors plainly, without a search or paging', async () => {
+    it('lists three connectors with a search, without paging (SEARCH_MIN)', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -882,9 +912,7 @@ describe('NewAgentToolsPage', () => {
       expect(
         screen.getAllByRole('group', { name: /^Connector / }),
       ).toHaveLength(3);
-      expect(
-        screen.queryByLabelText('Search connectors'),
-      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Search connectors')).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /more connectors/ }),
       ).not.toBeInTheDocument();
@@ -996,7 +1024,7 @@ describe('NewAgentToolsPage', () => {
       // it is 41 selectors, one per connector plus the workflow.
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
           'This toolset needs 41 selectors but may list at most 32, so choose fewer connectors or tools.',
@@ -1057,7 +1085,7 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).not.toContain('preset:read-only');
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
 
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
@@ -1093,7 +1121,7 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(access('alpha', 'Read-only'));
       await user.click(access('beta', 'Read-only'));
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
           'This toolset needs 40 selectors but may list at most 32; most come from alpha (20) and beta (20), so choose All or fewer tools there.',
@@ -1190,11 +1218,27 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('');
     });
 
-    it('has no search or filter over a three-entry catalogue', async () => {
+    it('counts a connector awaiting sign-in among the searchable entries', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
-        baseTools: [TOOLS[0], TOOLS[2], TOOLS[4]],
+        baseTools: [TOOLS[0], TOOLS[4]],
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+
+      // A tool, a workflow and `pro`, which lists no tools until signed in to.
+      expect(screen.getByLabelText('Search tools')).toBeInTheDocument();
+    });
+
+    it('has no search or filter over a two-entry catalogue', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        baseTools: [TOOLS[0]],
       });
       await renderStep({ api });
       const user = userEvent.setup();
@@ -1364,7 +1408,7 @@ describe('NewAgentToolsPage', () => {
         ),
       ).toBeInTheDocument();
       expect(screen.getByText('Fix the toolset to continue.')).toBeVisible();
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
       // Muster's own refusal, which dumps every selector, is not shown beside it.
       await waitFor(() =>
         expect(filterTools).toHaveBeenCalledWith(
@@ -1425,14 +1469,24 @@ describe('NewAgentToolsPage', () => {
         ),
       ).toBeInTheDocument();
 
-      await user.type(screen.getByLabelText('Selector'), 'toolset:shared');
+      const selector = screen.getByLabelText('Selector');
+      await user.type(selector, 'toolset:shared');
+      // Not while it is typed; on leaving the field, on the field itself.
+      expect(selector).not.toHaveAttribute('aria-invalid');
       await user.click(screen.getByRole('button', { name: 'Add selector' }));
-      expect(
-        screen.getByText(/reserved for shared toolsets/),
-      ).toBeInTheDocument();
+      expect(selector).toHaveAttribute('aria-invalid', 'true');
+      expect(selector).toHaveAccessibleDescription(
+        expect.stringMatching(/reserved for shared toolsets/),
+      );
+      expect(selector).toHaveFocus();
+      expect(toolsetOutput()).toBe('preset:read-only | preset:foo');
+
+      await user.clear(selector);
+      await user.type(selector, 'server:pro');
+      expect(selector).not.toHaveAttribute('aria-invalid');
     });
 
-    it('resolves the selection in the Toolset list, with the destructive marker', async () => {
+    it('resolves the selection in the Toolset list, saying it changes things', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -1464,7 +1518,7 @@ describe('NewAgentToolsPage', () => {
         ).toBeInTheDocument(),
       );
       expect(
-        within(toolsetCard()).getByText('destructive'),
+        within(toolsetCard()).getByText('Changes things'),
       ).toBeInTheDocument();
       expect(
         await within(summaryBar()).findByText('Resolves to 3 tools for you'),
@@ -1552,6 +1606,190 @@ describe('NewAgentToolsPage', () => {
       expect(
         screen.getByRole('heading', { name: 'Toolset' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the sign-in tool', () => {
+    /** The rail's and the bar's entry for the sign-in tool the step added. */
+    const addedForSignIn = () =>
+      within(summaryBar()).queryByRole('group', { name: 'Added for sign-in' });
+    const resolvedWith = (filterTools: jest.Mock, toolset: string[]) =>
+      waitFor(() =>
+        expect(filterTools).toHaveBeenCalledWith(
+          expect.objectContaining({ toolset }),
+        ),
+      );
+
+    it('adds core_auth_login with a connector that needs a sign-in, and drops it with the last one', async () => {
+      const { api, filterTools } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+
+      await user.click(access('pro', 'All'));
+      // The person's selection stays theirs; the step adds the tool.
+      expect(toolsetOutput()).toBe('server:pro');
+      await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+      expect(addedForSignIn()).toHaveTextContent('core_auth_login');
+      expect(addedForSignIn()).toHaveTextContent(
+        'Lets the agent start the sign-in to pro.',
+      );
+      await resolvedWith(filterTools, ['server:pro', 'tool:core_auth_login']);
+
+      // A connector without a sign-in of its own needs nothing more.
+      await user.click(access('kubernetes', 'All'));
+      expect(addedForSignIn()).toBeInTheDocument();
+
+      await user.click(access('pro', 'All'));
+      expect(toolsetOutput()).toBe('server:kubernetes');
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      await resolvedWith(filterTools, ['server:kubernetes']);
+    });
+
+    it('warns once it is removed while a connector still needs it, and puts it back', async () => {
+      const { api, filterTools } = makeMusterApi({
+        signedIn: true,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api, toolset: ['tool:x_pro_list_boards'] });
+      const user = userEvent.setup();
+      await connectorsListed();
+
+      // A tool of the connector needs it as much as the whole connector.
+      await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+      await user.click(
+        within(addedForSignIn()!).getByRole('button', {
+          name: 'Remove core_auth_login',
+        }),
+      );
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      expect(summaryBar()).toHaveTextContent(
+        "Without core_auth_login the agent won't be able to sign in to pro.",
+      );
+      await resolvedWith(filterTools, ['tool:x_pro_list_boards']);
+
+      await user.click(
+        within(summaryBar()).getByRole('button', {
+          name: 'Add core_auth_login back',
+        }),
+      );
+      expect(addedForSignIn()).toBeInTheDocument();
+      expect(summaryBar()).not.toHaveTextContent("won't be able to sign in");
+    });
+
+    it('adds nothing where a preset carries it already or the selection names it', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      const first = await renderStep({
+        api,
+        toolset: ['preset:read-only', 'server:pro'],
+      });
+      await connectorsListed();
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      first.unmount();
+
+      await renderStep({
+        api,
+        toolset: ['server:pro', 'tool:core_auth_login'],
+      });
+      await connectorsListed();
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      expect(
+        within(summaryBar()).getByTitle('tool:core_auth_login'),
+      ).toBeInTheDocument();
+    });
+
+    it('declines it only when the person takes it out, not when the selection is replaced', async () => {
+      const { api } = makeMusterApi({
+        signedIn: true,
+        evaluatesToolsets: true,
+      });
+      // The person added it by name; then copies a toolset without it.
+      await renderStep({
+        api,
+        toolset: ['server:pro', 'tool:core_auth_login'],
+        agents: [agentWithToolset('existing-agent', 'server:pro')],
+      });
+      const user = userEvent.setup();
+      await connectorsListed();
+      // A muster tool in the selection opens the individual tools by itself.
+      await user.click(await screen.findByText("Copy another agent's toolset"));
+      await user.click(
+        await screen.findByRole('radio', {
+          name: 'Copy the toolset of Existing agent',
+        }),
+      );
+
+      expect(toolsetOutput()).toBe('server:pro');
+      await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+      expect(summaryBar()).not.toHaveTextContent("won't be able to sign in");
+
+      // Taking out the selector itself is a removal.
+      await user.click(
+        within(addedForSignIn()!).getByRole('button', {
+          name: 'Remove core_auth_login',
+        }),
+      );
+      expect(summaryBar()).toHaveTextContent(
+        "Without core_auth_login the agent won't be able to sign in to pro.",
+      );
+    });
+
+    it('shows the added tool in the bar at phone width, opened', async () => {
+      const layout = mockPhoneLayout();
+      try {
+        const { api } = makeMusterApi({
+          signedIn: false,
+          evaluatesToolsets: true,
+        });
+        await renderStep({ api, toolset: ['server:pro'] });
+        const user = userEvent.setup();
+        await connectorsListed();
+
+        await user.click(
+          within(summaryBar()).getByRole('button', { name: /1 selected/ }),
+        );
+        await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+        expect(addedForSignIn()).toHaveTextContent(
+          'Lets the agent start the sign-in to pro.',
+        );
+      } finally {
+        layout.restore();
+      }
+    });
+
+    it('adds nothing for a connector muster signs in to with the caller’s own token', async () => {
+      const { api, filterTools } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({
+        api,
+        toolset: ['server:pro', 'server:sso'],
+        servers: [
+          ...SERVER_CRS.filter(server => server.getName() !== 'pro'),
+          mcpServer('pro', { auth: { type: 'oauth', forwardToken: true } }),
+          mcpServer('sso', {
+            auth: {
+              type: 'oauth',
+              tokenExchange: {
+                enabled: true,
+                dexTokenEndpoint: 'https://dex.example.com/token',
+                connectorId: 'example',
+              },
+            },
+          }),
+        ],
+      });
+      await connectorsListed();
+      await resolvedWith(filterTools, ['server:pro', 'server:sso']);
+      expect(addedForSignIn()).not.toBeInTheDocument();
     });
   });
 

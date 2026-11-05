@@ -1,12 +1,27 @@
+import { sameTags, tagProblem } from '@giantswarm/backstage-plugin-ui-react';
 import type {
   AgentManagerAgent,
+  AgentPluginEntry,
   AgentSkillEntry,
   AgentUpdate,
 } from './agentManager';
+import { SIGN_IN_TOOL_SELECTOR, withoutSignInTool } from './signInTool';
 import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
 import { skillEntryOf } from './agentSpec';
+import {
+  defaultWorkspaceName,
+  qualifiedDefaultWorkspace,
+} from './defaultWorkspace';
 import { canonicalSkillId, type DiscoveredSkill } from './skills';
+import {
+  pluginEntryKey,
+  pluginEntryOf,
+  pluginEntryPlace,
+  pluginId,
+  type DiscoveredPlugin,
+  type SelectedPlugin,
+} from './plugins';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -18,6 +33,7 @@ import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 export type AgentEditState = {
   displayName: string;
   description: string;
+  tags: string[];
   systemMessage: string;
   /** Name of a ModelConfig in the agent's namespace. */
   modelConfig: string;
@@ -29,8 +45,14 @@ export type AgentEditState = {
   toolset: string[];
   /** The skills as pinned; adding one pins it to the commit chosen at selection. */
   skills: AgentSkillEntry[];
+  /** The plugins as pinned, each with its skill selection. */
+  plugins: AgentPluginEntry[];
   /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
   egressText: string;
+  /** The EgressPolicies of its namespace it picks, in order. */
+  egressPolicyRefs: string[];
+  /** The default workspace's name; `''` for none. */
+  defaultWorkspace: string;
   /**
    * The Tools step's *Nothing outside the chat* was picked: an empty `toolset`
    * then declares `preset:none` even for an agent that declares no toolset
@@ -43,11 +65,15 @@ export type AgentEditState = {
 export const AGENT_EDIT_FIELDS = [
   'displayName',
   'description',
+  'tags',
   'systemMessage',
   'modelConfig',
   'toolset',
   'skills',
+  'plugins',
   'egress',
+  'egressPolicyRefs',
+  'defaultWorkspace',
 ] as const;
 
 export type AgentEditField = (typeof AGENT_EDIT_FIELDS)[number];
@@ -57,11 +83,16 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
   return {
     displayName: agent.displayName ?? '',
     description: agent.description ?? '',
+    // A tag the chart refuses is never sent back with an edit.
+    tags: (agent.tags ?? []).filter(tag => tagProblem(tag) === undefined),
     systemMessage: agent.systemMessage ?? '',
     modelConfig: agent.modelConfig ?? '',
     toolset: normalizeSelection(agent.toolset ?? []),
     skills: [...(agent.skills ?? [])],
+    plugins: [...(agent.plugins ?? [])],
     egressText: egressTextOf(agent.egress),
+    egressPolicyRefs: [...(agent.egressPolicyRefs ?? [])],
+    defaultWorkspace: defaultWorkspaceName(agent.defaultWorkspace),
   };
 }
 
@@ -81,8 +112,28 @@ function sameSkills(a: AgentSkillEntry[], b: AgentSkillEntry[]): boolean {
   );
 }
 
+function samePlugins(a: AgentPluginEntry[], b: AgentPluginEntry[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (plugin, index) => pluginEntryKey(plugin) === pluginEntryKey(b[index]),
+    )
+  );
+}
+
 function sameList(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((item, index) => item === b[index]);
+}
+
+/**
+ * Two selections alike, the sign-in tool wherever it stands: the wizard
+ * appends it (`lib/signInTool`), while a saved agent may carry it anywhere.
+ */
+function sameSelection(a: string[], b: string[]): boolean {
+  return (
+    sameList(withoutSignInTool(a), withoutSignInTool(b)) &&
+    a.includes(SIGN_IN_TOOL_SELECTOR) === b.includes(SIGN_IN_TOOL_SELECTOR)
+  );
 }
 
 /**
@@ -114,6 +165,9 @@ export function changedFields(
       changed.push(field);
     }
   }
+  if (!sameTags(edit.tags, baseline.tags)) {
+    changed.push('tags');
+  }
   if (edit.modelConfig && edit.modelConfig !== baseline.modelConfig) {
     changed.push('modelConfig');
   }
@@ -124,7 +178,7 @@ export function changedFields(
   const selection = normalizeSelection(edit.toolset);
   if (
     declared
-      ? !sameList(selection, declared)
+      ? !sameSelection(selection, declared)
       : selection.length > 0 || Boolean(edit.chatOnly)
   ) {
     changed.push('toolset');
@@ -132,8 +186,23 @@ export function changedFields(
   if (!sameSkills(edit.skills, baseline.skills)) {
     changed.push('skills');
   }
+  if (!samePlugins(edit.plugins, baseline.plugins)) {
+    changed.push('plugins');
+  }
   if (!sameEgress(parseEgressText(edit.egressText), agent.egress ?? [])) {
     changed.push('egress');
+  }
+  // The set matters, not the order picked.
+  if (
+    !sameList(
+      [...edit.egressPolicyRefs].sort(),
+      [...baseline.egressPolicyRefs].sort(),
+    )
+  ) {
+    changed.push('egressPolicyRefs');
+  }
+  if (edit.defaultWorkspace !== baseline.defaultWorkspace) {
+    changed.push('defaultWorkspace');
   }
   return changed;
 }
@@ -143,8 +212,10 @@ export function changedFields(
  *
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
- * `toolset`, `skills` and `egress` replace their whole list (an empty
- * `egress` clears it); the empty selection is sent
+ * `tags`, `toolset`, `skills`, `egress` and `egressPolicyRefs` replace their
+ * whole list (an empty `tags`, `egress` or `egressPolicyRefs` clears it); an
+ * emptied default workspace is sent as `""`, which removes it; the empty
+ * selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
  * Nothing else is ever sent — no `force`, no runtime.
  */
@@ -160,6 +231,9 @@ export function updateOf(
       case 'systemMessage':
         update[field] = edit[field].trim() === '' ? '' : edit[field];
         break;
+      case 'tags':
+        update.tags = edit.tags;
+        break;
       case 'modelConfig':
         update.modelConfig = edit.modelConfig;
         break;
@@ -169,8 +243,20 @@ export function updateOf(
       case 'skills':
         update.skills = edit.skills;
         break;
+      case 'plugins':
+        update.plugins = edit.plugins;
+        break;
       case 'egress':
         update.egress = parseEgressText(edit.egressText);
+        break;
+      case 'egressPolicyRefs':
+        update.egressPolicyRefs = edit.egressPolicyRefs;
+        break;
+      case 'defaultWorkspace':
+        update.defaultWorkspace = qualifiedDefaultWorkspace(
+          agent.namespace,
+          edit.defaultWorkspace,
+        );
         break;
       default:
         break;
@@ -188,11 +274,15 @@ export function hasChanges(update: AgentUpdate): boolean {
 export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   displayName: 'Name',
   description: "What it's for",
+  tags: 'Tags',
   systemMessage: 'Instructions',
   modelConfig: 'Model',
   toolset: 'Tools',
   skills: 'Skills',
+  plugins: 'Plugins',
   egress: 'Extra egress origins',
+  egressPolicyRefs: 'EgressPolicies',
+  defaultWorkspace: 'Default workspace',
 };
 
 /** Where a git skill entry lives, in the catalog's canonical shape. */
@@ -222,6 +312,8 @@ export function formStateOfAgent(
     installation: string;
     /** The configured repositories' skills, each at its head commit. */
     catalog: DiscoveredSkill[];
+    /** The plugins found in the same repositories, at the same commits. */
+    pluginCatalog?: DiscoveredPlugin[];
     /** agent-manager's platform Harness (`get_info`), when known. */
     platformHarness?: string;
   },
@@ -241,6 +333,23 @@ export function formStateOfAgent(
       keptSkills.push(entry);
     }
   }
+  const listedPlugins = new Map(
+    (options.pluginCatalog ?? []).map(plugin => [pluginId(plugin), plugin]),
+  );
+  const selectedPlugins: SelectedPlugin[] = [];
+  const keptPlugins: AgentPluginEntry[] = [];
+  for (const entry of agent.plugins ?? []) {
+    const place = pluginEntryPlace(entry);
+    const plugin = place ? listedPlugins.get(place) : undefined;
+    if (plugin && entry.git?.commit) {
+      selectedPlugins.push({
+        plugin: { ...plugin, commit: entry.git.commit },
+        skills: [...(entry.skills ?? [])],
+      });
+    } else {
+      keptPlugins.push(entry);
+    }
+  }
   const harness =
     agent.harness && agent.harness !== options.platformHarness
       ? { name: agent.harness }
@@ -249,6 +358,7 @@ export function formStateOfAgent(
     name: baseline.displayName || agent.name,
     slug: agent.name,
     description: baseline.description,
+    tags: baseline.tags,
     installation: options.installation,
     modelConfigName: baseline.modelConfig || undefined,
     modelConfigNamespace: agent.namespace,
@@ -257,9 +367,15 @@ export function formStateOfAgent(
     droppedHarness: undefined,
     systemMessage: baseline.systemMessage,
     egressText: baseline.egressText,
+    egressPolicyRefs: baseline.egressPolicyRefs,
+    defaultWorkspace: baseline.defaultWorkspace,
     selectedSkills,
     keptSkills,
-    toolset: baseline.toolset,
+    selectedPlugins,
+    keptPlugins,
+    // Without the sign-in tool: the Tools step adds it again while a connector
+    // needs it, and not once none does.
+    toolset: withoutSignInTool(baseline.toolset),
     // An agent declaring no tools is *Nothing outside the chat* on the Tools
     // step; one declaring no toolset at all (implicit full access) is not.
     toolsChatOnly: agent.toolset !== undefined && baseline.toolset.length === 0,
@@ -300,21 +416,72 @@ function skillEntriesOfForm(
   return entries;
 }
 
-/** The edit the wizard's state amounts to, for {@link updateOf}. */
+/**
+ * The plugins an edit writes, as {@link skillEntriesOfForm} does for skills:
+ * the agent's entries still picked or kept, in the agent's order — exactly as
+ * pinned unless the selection changed —, then the newly picked ones.
+ */
+function pluginEntriesOfForm(
+  agent: AgentManagerAgent,
+  form: Pick<NewAgentFormState, 'selectedPlugins' | 'keptPlugins'>,
+): AgentPluginEntry[] {
+  const selected = new Map(
+    form.selectedPlugins.map(picked => [pluginId(picked.plugin), picked]),
+  );
+  const kept = new Set(form.keptPlugins.map(pluginEntryKey));
+  const written = new Set<string>();
+  const entries: AgentPluginEntry[] = [];
+  for (const entry of agent.plugins ?? []) {
+    const place = pluginEntryPlace(entry);
+    const picked = place ? selected.get(place) : undefined;
+    if (kept.has(pluginEntryKey(entry))) {
+      entries.push(entry);
+    } else if (place && picked && !written.has(place)) {
+      const { skills: pinnedSkills = [], ...source } = entry;
+      const skills = picked.skills;
+      if (skills.join(',') === pinnedSkills.join(',')) {
+        entries.push(entry);
+      } else {
+        entries.push(skills.length > 0 ? { ...source, skills } : source);
+      }
+      written.add(place);
+    }
+  }
+  for (const [place, picked] of selected) {
+    if (!written.has(place)) {
+      entries.push(pluginEntryOf(picked));
+      written.add(place);
+    }
+  }
+  return entries;
+}
+
+/**
+ * The edit the wizard's state amounts to, for {@link updateOf}.
+ *
+ * @param options.tags whether the installation's agent-manager takes tags
+ *   (`get_info`'s `tags`); without it the agent's own tags stand, so no
+ *   update carries `tags`
+ */
 export function editStateOfForm(
   agent: AgentManagerAgent,
   form: NewAgentFormState,
+  options: { tags?: boolean } = {},
 ): AgentEditState {
   const untouchedTechnicalName =
     !agent.displayName && form.name.trim() === agent.name;
   return {
     displayName: untouchedTechnicalName ? '' : form.name,
     description: form.description,
+    tags: options.tags === false ? editStateOf(agent).tags : form.tags,
     systemMessage: form.systemMessage,
     modelConfig: form.modelConfigName ?? '',
     toolset: form.toolset,
     skills: skillEntriesOfForm(agent, form),
+    plugins: pluginEntriesOfForm(agent, form),
     egressText: form.egressText,
+    egressPolicyRefs: form.egressPolicyRefs,
+    defaultWorkspace: form.defaultWorkspace,
     chatOnly: Boolean(form.toolsChatOnly),
   };
 }

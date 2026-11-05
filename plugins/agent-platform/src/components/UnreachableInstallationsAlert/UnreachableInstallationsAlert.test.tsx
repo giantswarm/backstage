@@ -30,6 +30,22 @@ describe('UnreachableInstallationsAlert', () => {
     ).toBeInTheDocument();
   });
 
+  it('says what the failure means where it shows', async () => {
+    await renderInTestApp(
+      <UnreachableInstallationsAlert
+        installations={['gremlin', 'gauss']}
+        resourceName="model configs"
+        consequence="They are not offered for this agent."
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /could not be read\. .* lack permission there\. They are not offered for this agent\.$/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('reads as one for a single installation, as under a pinned scope', async () => {
     await renderInTestApp(
       <UnreachableInstallationsAlert

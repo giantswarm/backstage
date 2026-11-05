@@ -6,6 +6,7 @@ import {
   ResourceSetInputProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  CommitSha,
   DateComponent,
   ExternalLink,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -98,7 +99,7 @@ function getFluxInstanceStatus(fluxInstance: FluxInstance): Metadata {
 
   const revision = fluxInstance.getLastAppliedRevision();
   if (revision) {
-    metadata.Revision = revision;
+    metadata.Revision = <CommitSha value={revision} />;
   }
 
   return Object.assign(metadata, getOperatorStatus(fluxInstance));
@@ -138,7 +139,7 @@ function getResourceSetStatus(resourceSet: ResourceSet): Metadata {
 
   const revision = resourceSet.getLastAppliedRevision();
   if (revision) {
-    metadata.Revision = revision;
+    metadata.Revision = <CommitSha value={revision} />;
   }
 
   const inventory = resourceSet.getInventory();
@@ -218,7 +219,7 @@ function getResourceSetInputProviderStatus(
 
   const revision = provider.getLastExportedRevision();
   if (revision) {
-    metadata.Revision = revision;
+    metadata.Revision = <CommitSha value={revision} />;
   }
 
   const nextSchedule = provider.getNextSchedule();

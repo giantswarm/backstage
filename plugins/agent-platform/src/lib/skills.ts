@@ -6,6 +6,11 @@ export interface DiscoveredSkill {
   name: string;
   /** Frontmatter `description` (may be empty). */
   description: string;
+  /**
+   * Frontmatter `metadata.tags`, valid tags only. Absent from older backends;
+   * read it through {@link skillTags}.
+   */
+  tags?: string[];
   /** Repository URL the skill lives in. */
   repoUrl: string;
   /** Subdirectory within the repo that is the skill root; '' at repo root. */
@@ -82,6 +87,11 @@ export function isSkillContentReadable(
   return skill.contentReadable !== false;
 }
 
+/** A skill's tags; none from a backend that predates them. */
+export function skillTags(skill: Pick<DiscoveredSkill, 'tags'>): string[] {
+  return skill.tags ?? [];
+}
+
 /** Stable identity for a discovered/selected skill (repo + path). */
 export function skillId(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path'>,
@@ -134,11 +144,6 @@ export function canonicalSkillId(
 /** `owner/repo` for display, derived from the canonical repo URL. */
 export function repoSlug(repoUrl: string): string {
   return repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
-}
-
-/** The abbreviated commit id, as git prints it. */
-export function shortCommit(commit: string): string {
-  return commit.slice(0, 7);
 }
 
 /** Whether two commit ids name the same commit, either possibly abbreviated. */
@@ -315,13 +320,14 @@ export function resolveSkillDetailPath<
 
 /**
  * The skill's source in the repository at the commit it is pinned to: the
- * SKILL.md's directory (or the repository root). Undefined outside github.com.
+ * SKILL.md's directory (or the repository root). Undefined outside github.com,
+ * and without a commit to read it at.
  */
 export function skillSourceUrl(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
 ): string | undefined {
   const parts = githubRepoParts(skill.repoUrl);
-  if (!parts) {
+  if (!parts || !skill.commit) {
     return undefined;
   }
   const dir = cleanSkillPath(skill.path);
@@ -352,14 +358,4 @@ export function skillFileUrl(
   return `https://github.com/${parts.owner}/${parts.repo}/blob/${
     skill.commit
   }/${segments.map(encodeURIComponent).join('/')}`;
-}
-
-/** The pinned commit on github.com, for the facts column. */
-export function skillCommitUrl(
-  skill: Pick<DiscoveredSkill, 'repoUrl' | 'commit'>,
-): string | undefined {
-  const parts = githubRepoParts(skill.repoUrl);
-  return parts
-    ? `https://github.com/${parts.owner}/${parts.repo}/commit/${skill.commit}`
-    : undefined;
 }

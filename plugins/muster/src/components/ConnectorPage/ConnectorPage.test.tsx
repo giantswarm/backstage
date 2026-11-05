@@ -4,7 +4,13 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+  getRelativeDate,
+  PageHeaderActionsProvider,
+  ShellScopeProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
   type MockedLayout,
@@ -15,7 +21,11 @@ import {
   MCPServer,
   TOOL_GROUP_LABEL,
 } from '../../lib/k8s';
-import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  mcpServersRouteRef,
+  usageConnectorsExternalRouteRef,
+} from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
 
@@ -67,6 +77,9 @@ function makeServer(opts: {
   state?: string;
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
+  displayName?: string;
+  tags?: string;
+  lastConnected?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -75,6 +88,12 @@ function makeServer(opts: {
       metadata: {
         name: opts.name,
         namespace: 'muster',
+        annotations: {
+          ...(opts.displayName
+            ? { 'ui.giantswarm.io/display-name': opts.displayName }
+            : {}),
+          ...(opts.tags ? { 'ui.giantswarm.io/tags': opts.tags } : {}),
+        },
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -92,11 +111,17 @@ function makeServer(opts: {
           : {}),
         ...opts.spec,
       },
-      status: { state: opts.state ?? 'Connected' },
+      status: {
+        state: opts.state ?? 'Connected',
+        ...(opts.lastConnected ? { lastConnected: opts.lastConnected } : {}),
+      },
     } as never,
     'gazelle',
   );
 }
+
+/** When the failed kubernetes instance last connected. */
+const LAST_CONNECTED = '2026-10-16T14:05:12Z';
 
 const makeServers = () => [
   makeServer({
@@ -111,11 +136,19 @@ const makeServers = () => [
     mc: 'gazelle',
     state: 'Failed',
     labels: INFRASTRUCTURE,
+    lastConnected: LAST_CONNECTED,
   }),
   makeServer({
     name: 'jira',
     spec: {
-      auth: { type: 'oauth' },
+      // One sign-in for all of the person's sessions, so it reads Connected.
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://auth.jira.example.test',
+          grantScope: 'subject',
+        },
+      },
       description: 'Search, read and update tickets',
     },
   }),
@@ -155,18 +188,32 @@ function makeApi() {
     ),
     getMcpUsage: jest.fn(async () => ({
       available: true,
-      range_hours: 216,
+      range_hours: 720,
       step_hours: 24,
-      buckets: [],
+      buckets: [
+        {
+          start: '2026-10-18T00:00:00.000Z',
+          ok: 3404,
+          error: 4,
+          error_result: 10,
+        },
+      ],
       totals: {
         calls: 3418,
         errors: 14,
         error_ratio: 0.004,
-        p95_seconds: null,
-        distinct_tools: 2,
+        p95_seconds: 0.42,
+        distinct_tools: 1,
       },
-      top_tools: [],
-      servers: [{ server: 'jira', calls: 3418, errors: 14 }],
+      top_tools: [
+        {
+          tool: 'x_jira_search_issues',
+          calls: 3418,
+          errors: 14,
+          p95_seconds: 0.42,
+        },
+      ],
+      servers: [{ server: 'jira', calls: 3418, errors: 14, p95_seconds: 0.42 }],
     })),
   };
 }
@@ -217,26 +264,33 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <QueryClientProvider client={queryClient}>
-      <PageHeaderActionsProvider>
-        <Routes>
-          {/* The connector wizard, where Edit leads. */}
-          <Route
-            path="/agent-platform/connectors/new"
-            element={<LocationProbe />}
-          />
-          <Route
-            path="/agent-platform/connectors/:server/*"
-            element={<ConnectorPage usedBy={usedBy} />}
-          />
-        </Routes>
-      </PageHeaderActionsProvider>
-    </QueryClientProvider>,
+    // The shell mounts the scope and its clock around its pages, as the app
+    // does.
+    <DateTimeZoneProvider timeZone="local">
+      <ShellScopeProvider>
+        <QueryClientProvider client={queryClient}>
+          <PageHeaderActionsProvider>
+            <Routes>
+              {/* The connector wizard, where Edit leads. */}
+              <Route
+                path="/customize/connectors/:installation/:server/edit"
+                element={<LocationProbe />}
+              />
+              <Route
+                path="/customize/connectors/:installation/:server/*"
+                element={<ConnectorPage usedBy={usedBy} />}
+              />
+            </Routes>
+          </PageHeaderActionsProvider>
+        </QueryClientProvider>
+      </ShellScopeProvider>
+    </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
+        '/usage/connectors': usageConnectorsExternalRouteRef,
         ...(customizeBound && { '/customize': customizeExternalRouteRef }),
       },
     },
@@ -244,7 +298,7 @@ async function renderAt(
   return api;
 }
 
-const BASE = '/agent-platform/connectors';
+const BASE = '/customize/connectors/gazelle';
 
 beforeEach(() => {
   mockServers = makeServers();
@@ -274,40 +328,36 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('leads its Connectors crumb back to the sub-tab that lists it', async () => {
-    await renderAt(`${BASE}/kubernetes`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/infrastructure',
-    );
-  });
-
-  it('points the Connectors crumb at the sub-tab while loading, once it is known', async () => {
+  it('leads its Connectors crumb back to the list, while loading too', async () => {
     mockLoading = true;
-    // Read before (the persisted cache): the row is known while loading.
     await renderAt(`${BASE}/kubernetes`);
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/infrastructure',
+      '/customize/connectors',
     );
-    cleanup();
-
-    await renderAt(`${BASE}/muster`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/internal',
-    );
-    cleanup();
-
-    // Not read yet: no link rather than one to a sub-tab that may not list it.
-    mockServers = [];
-    await renderAt(`${BASE}/jira`);
-    expect(
-      screen.queryByRole('link', { name: 'Connectors' }),
-    ).not.toBeInTheDocument();
   });
 
-  it("shows muster's own page with its endpoint to copy, under Internal", async () => {
+  it('says an infrastructure family has an instance per management cluster', async () => {
+    await renderAt(`${BASE}/kubernetes`);
+    expect(
+      screen.getByText(/It has an instance per management cluster/),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the tag a family’s tool-group label reads as, linking to the list', async () => {
+    await renderAt(`${BASE}/kubernetes/details`);
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(facts).getByRole('link', { name: 'infrastructure' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=infrastructure',
+    );
+  });
+
+  it("shows muster's own page with its endpoint to copy, and that it is fixed", async () => {
     await renderAt(`${BASE}/muster`);
 
     expect(
@@ -315,7 +365,7 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/internal',
+      '/customize/connectors',
     );
     expect(
       screen.getByText(/It comes with the Agent Platform/),
@@ -350,12 +400,54 @@ describe('ConnectorPage', () => {
     await waitFor(() => expect(document.title).toBe('jira · Connectors'));
   });
 
-  it('names its place under Customize without links where Customize is not bound', async () => {
+  it('heads the page, its crumb and the document title with the display name', async () => {
+    mockServers = [
+      makeServer({ name: 'mcp-jira', displayName: 'Acme Jira' }),
+      ...makeServers(),
+    ];
+    await renderAt(`${BASE}/mcp-jira`);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Acme Jira' }),
+    ).toBeInTheDocument();
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Acme Jira')).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('Acme Jira · Connectors'));
+  });
+
+  it('names Customize without a link where Customize is not bound', async () => {
     await renderAt(`${BASE}/jira`, { customizeBound: false });
 
+    // The Connectors list is the tab's own route, so it still links.
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(breadcrumb).getByText('Customize')).toBeInTheDocument();
-    expect(within(breadcrumb).queryByRole('link')).not.toBeInTheDocument();
+    expect(
+      within(breadcrumb)
+        .getAllByRole('link')
+        // The back arrow has no text, only its label.
+        .map(link => link.textContent || link.getAttribute('aria-label')),
+    ).toEqual(['Back to Connectors', 'Connectors']);
+  });
+
+  it('lists a connector’s tags on the Details tab', async () => {
+    mockServers = [makeServer({ name: 'jira', tags: 'ticketing,support' })];
+    await renderAt(`${BASE}/jira`);
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(within(facts).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['ticketing', 'support']);
+    // Each opens the connector's Customize list with that tag picked.
+    expect(
+      within(facts).getByRole('link', { name: 'support' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=support',
+    );
   });
 
   it('lists the facts on the Details tab, not beside the content', async () => {
@@ -374,35 +466,46 @@ describe('ConnectorPage', () => {
     expect(
       within(facts).getByText('1 of 1 instance healthy'),
     ).toBeInTheDocument();
+    // The Usage tab's 30 days, read for this connector alone.
+    expect(within(facts).getByText('Calls, last 30 days')).toBeInTheDocument();
     expect(
       await within(facts).findByText('3,418 · 0.4% errors'),
     ).toBeInTheDocument();
     expect(api.getMcpUsage).toHaveBeenCalledWith({
       installation: 'gazelle',
-      window: 'month',
+      hours: 720,
+      servers: ['jira'],
     });
-    expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
+    // Added: how long ago, the local date and time on hover.
+    const added = within(facts).getByText(
+      getRelativeDate('2026-08-04T10:00:00Z', new Date()),
+    );
+    expect(added).toHaveTextContent(/ ago$/);
+    expect(added).toHaveAttribute(
+      'title',
+      formatLocalDateFull('2026-08-04T10:00:00Z'),
+    );
     // The address is technical: in the fold-out's configuration.
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
   });
 
   it('keeps the tools search across a visit to another tab', async () => {
-    await renderAt(`${BASE}/jira?installation=gazelle&q=search`);
+    await renderAt(`${BASE}/jira?q=search`);
 
     const searchbox = () =>
       screen.getByRole('searchbox', { name: 'Search tools' });
     expect(
-      await screen.findByRole('button', { name: /search_issues/ }),
+      await screen.findByRole('link', { name: /search_issues/ }),
     ).toBeInTheDocument();
     expect(searchbox()).toHaveValue('search');
-    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /add_comment/ })).toBeNull();
 
     // The address's search, back from Details.
     await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
     await screen.findByRole('region', { name: 'Connector details' });
     await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
     expect(searchbox()).toHaveValue('search');
-    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /add_comment/ })).toBeNull();
 
     // And one typed on the tab, which the address does not carry.
     await userEvent.clear(searchbox());
@@ -411,19 +514,56 @@ describe('ConnectorPage', () => {
     await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
     expect(searchbox()).toHaveValue('comment');
     expect(
-      screen.getByRole('button', { name: /add_comment/ }),
+      screen.getByRole('link', { name: /add_comment/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /search_issues/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /search_issues/ })).toBeNull();
   });
 
-  it('lists a few tools without search or filter and tries one inline', async () => {
-    const api = await renderAt(`${BASE}/jira`);
+  it('holds the Tools count’s place in the frame drawn while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira`);
 
     expect(
-      await screen.findByRole('button', { name: /search_issues/ }),
-    ).toBeInTheDocument();
+      screen
+        .getByRole('tab', { name: 'Tools' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
+  });
+
+  it('holds the logo’s place with a skeleton, not the letter, while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira`);
+
+    expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(screen.queryByText('j')).toBeNull();
+  });
+
+  it('holds the Tools count’s place while the tools load', async () => {
+    const api = makeApi();
+    let answer: (value: unknown) => void = () => {};
+    api.filterTools.mockImplementationOnce(
+      () => new Promise(resolve => (answer = resolve)) as never,
+    );
+    await renderAt(`${BASE}/jira`, { api });
+
+    const tools = screen.getByRole('tab', { name: 'Tools' });
+    expect(tools.querySelector('[data-count="loading"]')).not.toBeNull();
+
+    answer({ total: 2, filtered_count: 2, truncated: false, tools: TOOLS });
+    expect(await screen.findByRole('tab', { name: /^Tools \(\d+\)$/ })).toBe(
+      tools,
+    );
+    expect(tools.querySelector('[data-count="loading"]')).toBeNull();
+  });
+
+  it('lists a few tools without search or filter, each a link to its page', async () => {
+    await renderAt(`${BASE}/jira`);
+
     expect(
-      screen.getByRole('button', { name: /add_comment/ }),
+      await screen.findByRole('link', { name: /search_issues/ }),
+    ).toHaveAttribute('href', `${BASE}/jira/tools/x_jira_search_issues`);
+    expect(
+      screen.getByRole('link', { name: /add_comment/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/get_pods/)).not.toBeInTheDocument();
     // Two tools are read, not searched (the filter is covered at scale in
@@ -432,32 +572,8 @@ describe('ConnectorPage', () => {
       screen.queryByRole('searchbox', { name: 'Search tools' }),
     ).toBeNull();
     expect(screen.queryByRole('radio', { name: /Reads/ })).toBeNull();
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /search_issues/ }),
-    );
-    expect(await screen.findByText('Try it')).toBeInTheDocument();
-    expect(
-      await screen.findByText('Runs as you. Nothing is changed.'),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-    await waitFor(() =>
-      expect(api.callTool).toHaveBeenCalledWith(
-        'x_jira_search_issues',
-        {},
-        'gazelle',
-      ),
-    );
-  });
-
-  it('does not promise that a tool which changes things changes nothing', async () => {
-    await renderAt(`${BASE}/jira`);
-
-    await userEvent.click(
-      await screen.findByRole('button', { name: /add_comment/ }),
-    );
-    expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
-    expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
+    // Trying a tool is its page's: nothing runs from the list.
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
   });
 
   it('shows the attached Used by tab with the connector as its target', async () => {
@@ -489,15 +605,7 @@ describe('ConnectorPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     expect(
-      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
-    ).toBeInTheDocument();
-  });
-
-  it('has no Settings tab, and sends its old address to the edit', async () => {
-    await renderAt(`${BASE}/jira/settings`);
-
-    expect(
-      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
+      await screen.findByText('at /customize/connectors/gazelle/jira/edit'),
     ).toBeInTheDocument();
   });
 
@@ -534,22 +642,27 @@ describe('ConnectorPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('sends the old settings address of a connector managed in Git to its tools', async () => {
-    await renderAt(`${BASE}/grafana/settings`);
-
-    expect(
-      await screen.findByRole('tab', { name: /Tools/, selected: true }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^at /)).not.toBeInTheDocument();
-  });
-
-  it("puts a family's instances on their own tab, where its old settings address leads", async () => {
-    await renderAt(`${BASE}/kubernetes/settings`);
+  it("puts a family's instances on their own tab", async () => {
+    await renderAt(`${BASE}/kubernetes/instances`);
 
     expect(
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
+    // Last connected: how long ago, the local date and time on hover, as
+    // the expanded row's Health says it; a dash for one that never has.
+    const lastConnected = screen.getByText(
+      getRelativeDate(LAST_CONNECTED, new Date()),
+    );
+    expect(lastConnected).toHaveAttribute(
+      'title',
+      formatLocalDateFull(LAST_CONNECTED),
+    );
+    expect(
+      within(
+        screen.getByRole('row', { name: /walrus-mcp-kubernetes/ }),
+      ).getByTitle('—'),
+    ).toBeInTheDocument();
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
@@ -627,26 +740,174 @@ describe('ConnectorPage', () => {
     expect(headerButtons()).toEqual(signedOutHeader);
   });
 
-  it('says in full why muster could not connect an SSO connector (T104)', async () => {
-    // The Customize list keeps this to "Could not sign in" and a hint.
-    const api = makeApi();
-    api.getAuthStatus.mockResolvedValue({
-      servers: [
-        {
-          name: 'grafana',
-          status: 'connected',
-          token_forwarding_enabled: true,
-          sso_attempt_failed: true,
-        },
-      ],
-    } as never);
-    await renderAt(`${BASE}/grafana`, { api });
+  describe('a connector whose sign-in serves one session', () => {
+    beforeEach(() => {
+      mockServers = [
+        ...makeServers(),
+        makeServer({
+          name: 'grafana-cloud',
+          spec: { auth: { type: 'oauth' } },
+        }),
+      ];
+    });
 
-    expect(
-      await screen.findByText(
-        "grafana authenticates through SSO from muster's own session, so there is nothing to sign in to here. muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator.",
-      ),
-    ).toBeInTheDocument();
+    function signedIn(status: Record<string, unknown> = {}) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana-cloud',
+            status: 'connected',
+            kind: 'grant',
+            ...status,
+          },
+        ],
+      } as never);
+      return api;
+    }
+
+    it('says the sign-in covers the portal only, not plain Connected', async () => {
+      const user = userEvent.setup();
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'session' }),
+      });
+
+      expect(await screen.findByText('Portal only')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).toBeNull();
+      // react-aria opens a tooltip on hover only once it has seen a pointer
+      // move, and a hover's own move lands after its enter.
+      await user.hover(document.body);
+      await user.hover(
+        screen.getByRole('button', {
+          name: 'About the state of grafana-cloud',
+        }),
+      );
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+      );
+    });
+
+    it('keeps muster’s state until muster reports this session signed in', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
+      await renderAt(`${BASE}/grafana-cloud`, { api });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+
+    it('reads Connected where muster reports the grant as the person’s', async () => {
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'subject' }),
+      });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+  });
+
+  describe('an SSO connector', () => {
+    const REFUSAL =
+      "ID token forwarding failed: authentication required: server returned 401 Unauthorized (forwarded token iss=https://dex.example.test, aud=[portal]; the backend must trust this issuer's JWKS and one of these audiences to accept forwarded tokens)";
+
+    function ssoApi(status: Record<string, unknown>) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          { name: 'grafana', token_forwarding_enabled: true, ...status },
+        ],
+      } as never);
+      api.filterTools.mockResolvedValue({
+        total: 0,
+        filtered_count: 0,
+        truncated: false,
+        tools: [],
+      });
+      return api;
+    }
+
+    it('that refused the sign-in says it cannot connect, with muster’s reason under Details', async () => {
+      const api = ssoApi({
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+        error: REFUSAL,
+      });
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(
+        await screen.findByText('grafana cannot connect for you'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "grafana uses your portal sign-in, so there is nothing to sign in to. It did not accept that sign-in, so you and your agents cannot use its tools yet. An administrator needs to add the portal sign-in's audience to the connector's trusted audiences.",
+        ),
+      ).toBeInTheDocument();
+      // Not a sign-in: there is nothing to sign in to.
+      expect(
+        screen.queryByText('Sign in to this connector to see its tools.'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Sign in' }),
+      ).not.toBeInTheDocument();
+
+      // muster's own words, folded until asked for.
+      expect(screen.queryByText(REFUSAL)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Details' }));
+      expect(screen.getByText(REFUSAL)).toBeInTheDocument();
+    });
+
+    it('that refused the sign-in without a reason offers no Details', async () => {
+      const api = ssoApi({
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+      });
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(
+        await screen.findByText('grafana cannot connect for you'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Details' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('connected in this session ignores a failure muster kept from another session', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana',
+            status: 'connected',
+            token_forwarding_enabled: true,
+            sso_attempt_failed: true,
+          },
+        ],
+      } as never);
+      api.filterTools.mockResolvedValue({
+        total: 1,
+        filtered_count: 1,
+        truncated: false,
+        tools: [{ name: 'x_grafana_query', summary: 'Query a dashboard' }],
+      } as never);
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(
+        await screen.findByRole('link', { name: /query/ }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/cannot connect/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
+    });
+
+    it('not connected yet asks for no sign-in', async () => {
+      const api = ssoApi({ status: 'auth_required' });
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(await screen.findByText(/^No tools exposed/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Sign in to this connector to see its tools.'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/cannot connect/)).not.toBeInTheDocument();
+    });
   });
 
   it('offers reconnect, turn off and remove, and confirms a removal', async () => {
@@ -673,6 +934,120 @@ describe('ConnectorPage', () => {
     expect(
       screen.getByText('No connector “nope” on gazelle'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorPage Usage tab', () => {
+  it("sits before Used by and shows the connector's figures", async () => {
+    await renderAt(`${BASE}/jira/usage`, { usedBy: <TargetProbe /> });
+
+    const tabs = screen.getAllByRole('tab').map(tab => tab.textContent);
+    expect(tabs.indexOf('Usage')).toBe(tabs.indexOf('Used by') - 1);
+    expect(
+      screen.getByRole('tab', { name: 'Usage', selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Every caller's tool calls to this connector over the last 30 days on gazelle.",
+      ),
+    ).toBeInTheDocument();
+    // One of the two tools it offers was called.
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open in Usage' })).toHaveAttribute(
+      'href',
+      '/usage/connectors?installation=gazelle',
+    );
+  });
+
+  it('covers the window Usage → Connectors linked with; Details keeps 30 days', async () => {
+    const api = await renderAt(`${BASE}/jira/usage?window=90d`);
+
+    expect(
+      await screen.findByText(
+        "Every caller's tool calls to this connector over the last 90 days on gazelle.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 2160,
+      servers: ['jira'],
+    });
+    // The way back opens Usage → Connectors on the same window, and each
+    // tool's Usage tab covers it too.
+    expect(screen.getByRole('link', { name: 'Open in Usage' })).toHaveAttribute(
+      'href',
+      '/usage/connectors?installation=gazelle&window=90d',
+    );
+    const toolLinks = screen
+      .getAllByRole('link')
+      .map(link => link.getAttribute('href') ?? '')
+      .filter(href => href.includes('/tools/'));
+    expect(toolLinks.length).toBeGreaterThan(0);
+    for (const href of toolLinks) {
+      expect(href).toMatch(/\/usage\?window=90d$/);
+    }
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByText('Calls, last 30 days');
+    await waitFor(() =>
+      expect(api.getMcpUsage).toHaveBeenLastCalledWith({
+        installation: 'gazelle',
+        hours: 720,
+        servers: ['jira'],
+      }),
+    );
+  });
+
+  it('reads the usage once for the tab and the Details facts', async () => {
+    const api = await renderAt(`${BASE}/jira/usage`);
+    await screen.findByText('1 of 2');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByText('3,418 · 0.4% errors');
+
+    expect(api.getMcpUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a family's usage for all its instances", async () => {
+    const api = await renderAt(`${BASE}/kubernetes/usage`);
+
+    await screen.findByRole('tab', { name: 'Usage', selected: true });
+    await waitFor(() =>
+      expect(api.getMcpUsage).toHaveBeenCalledWith({
+        installation: 'gazelle',
+        hours: 720,
+        servers: ['gazelle-mcp-kubernetes', 'walrus-mcp-kubernetes'],
+      }),
+    );
+  });
+
+  it('reads no usage on Tools, where a connector opens and shows none', async () => {
+    const api = await renderAt(`${BASE}/jira`);
+
+    expect(
+      await screen.findByRole('link', { name: /search_issues/ }),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+
+  it('asks for a muster session instead of reading the usage', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/jira/usage`);
+
+    expect(
+      screen.getByText(/Usage figures need a muster session/),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+
+  it("is not on muster's own page, whose own tools no connector counts", async () => {
+    const api = await renderAt(`${BASE}/muster/usage`);
+
+    expect(
+      await screen.findByRole('tab', { name: /Tools/, selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Usage' })).toBeNull();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 });
 
@@ -712,15 +1087,23 @@ describe('ConnectorPage at phone width', () => {
 describe('ConnectorPage Details tab', () => {
   const foldOut = () =>
     screen.getByRole('button', { name: 'Technical details' });
+  /** A fact of the fold-out's Resource card, by its label. */
+  const resourceFact = (label: string) =>
+    within(
+      screen.getByRole('heading', { name: 'Resource' }).closest('article')!,
+    )
+      .getByText(label)
+      .closest('dt')?.nextElementSibling;
 
   it('folds the connector resource under the facts', async () => {
     await renderAt(`${BASE}/jira/details`);
 
     expect(foldOut()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('muster/jira')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Resource' })).toBeNull();
 
     await userEvent.click(foldOut());
-    expect(screen.getByText('muster/jira')).toBeInTheDocument();
+    expect(resourceFact('Namespace')).toHaveTextContent(/^muster$/);
+    expect(resourceFact('Name')).toHaveTextContent(/^jira$/);
     expect(
       screen.getByRole('heading', { name: 'Authentication' }),
     ).toBeInTheDocument();
@@ -733,16 +1116,17 @@ describe('ConnectorPage Details tab', () => {
     await renderAt(`${BASE}/jira/details`);
     await userEvent.click(foldOut());
 
-    // bui's body-small (12px) is lifted to body-medium's size on this tab.
-    for (const text of [
-      '1 of 1 instance healthy',
-      'muster/jira',
-      'Auto start',
-    ]) {
-      expect(getComputedStyle(screen.getByText(text)).fontSize).toBe(
-        'var(--bui-font-size-3)',
+    // FactList sets its labels and values, Mono among them, in bui's
+    // body-medium (14px) inside the shell.
+    for (const text of ['1 of 1 instance healthy', 'Auto start']) {
+      expect(screen.getByText(text)).toHaveAttribute(
+        'data-variant',
+        'body-medium',
       );
     }
+    expect(
+      within(resourceFact('Name') as HTMLElement).getByText('jira'),
+    ).toHaveAttribute('data-variant', 'body-medium');
   });
 
   it("lists a family's facts and one instance's technical details", async () => {
@@ -762,6 +1146,17 @@ describe('ConnectorPage Details tab', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps the resource name of a connector with a display name in its technical details', async () => {
+    mockServers = [
+      makeServer({ name: 'mcp-jira', displayName: 'Acme Jira' }),
+      ...makeServers(),
+    ];
+    await renderAt(`${BASE}/mcp-jira/details`);
+    await userEvent.click(foldOut());
+
+    expect(resourceFact('Name')).toHaveTextContent(/^mcp-jira$/);
+  });
+
   it('opens the fold-out on arrival while muster reports the connector failed', async () => {
     mockServers = [
       ...makeServers(),
@@ -770,7 +1165,7 @@ describe('ConnectorPage Details tab', () => {
     await renderAt(`${BASE}/linear/details`);
 
     expect(foldOut()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('muster/linear')).toBeInTheDocument();
+    expect(resourceFact('Name')).toHaveTextContent(/^linear$/);
   });
 
   it("is not on muster's own page, whose address leads to its tools", async () => {

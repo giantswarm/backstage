@@ -1,10 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
+import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
  * Serve model's Nodes field (a page of its own,
- * `/agent-platform/models/serving/serve`) against the lab's KServe backend
+ * `/customize/models/hosting/serve`) against the lab's KServe backend
  * (`platform.serving`: the CPU preset `qwen2-5-0-5b-cpu`), as the admin:
  *
  * - no node ticked, and the verdict then names the nodes the model may land
@@ -135,7 +136,7 @@ async function openServePage(page: Page) {
     .filter({ has: page.getByRole('heading', { name: /^KServe/ }) })
     .count();
   await page.getByRole('button', { name: 'Serve model' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/serve/);
   await expect(
     page.getByRole('heading', { level: 1, name: 'Serve model' }),
   ).toBeVisible();
@@ -162,9 +163,12 @@ async function openServePage(page: Page) {
 test.describe.serial('Serve on the ticked nodes', () => {
   test.setTimeout(10 * 60_000);
 
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test.beforeEach(async ({ admin }) => {
     await addNodesToInventory(admin);
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
     await expect(admin.getByRole('article').first()).toBeVisible();
   });
 
@@ -187,7 +191,7 @@ test.describe.serial('Serve on the ticked nodes', () => {
         .click();
       await expect(row).toHaveCount(0, { timeout: 60_000 });
       // A fresh page: Serve model judges "serves already" from the served list.
-      await open(admin, '/agent-platform/models/serving');
+      await open(admin, '/customize/models/hosting');
       await expect(admin.getByRole('article').first()).toBeVisible();
     }
 
@@ -245,7 +249,7 @@ test.describe.serial('Serve on the ticked nodes', () => {
     await expect(serve).toBeEnabled();
     await serve.click();
     // Accepted: back on Running models, the toast naming the chosen node.
-    await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/?$/, {
+    await expect(admin).toHaveURL(/\/customize\/models\/hosting\/?$/, {
       timeout: 60_000,
     });
     await expect(

@@ -12,11 +12,20 @@ import { countNoun } from '../../utils/countNoun';
 export const INITIAL_ROWS = 20;
 
 /**
- * A list shows a search field or a filter bar only when it holds more than
- * this many entries: three entries are read, not searched, and a filter over
- * them is volume framing. Lists that sit behind disclosures use a higher bar.
+ * A list of entities shows its search field and filter bar from this many
+ * entries on: one or two are read, not searched. See {@link isSearchableList}.
  */
-export const SEARCH_MIN = 8;
+export const SEARCH_MIN = 3;
+
+/**
+ * Whether a list of `count` entities shows its search and filters: from
+ * {@link SEARCH_MIN} on, and always while a search or filter is in force, so
+ * whatever narrowed the list can still be undone. Every list passes
+ * `narrowed`; a dropdown's type-ahead is `searchableIf`.
+ */
+export function isSearchableList(count: number, narrowed = false): boolean {
+  return narrowed || count >= SEARCH_MIN;
+}
 
 /**
  * How many agents a "Used by" excerpt shows before *Show all N agents* — the
@@ -38,6 +47,12 @@ export type ShowMoreProps<T> = {
   items: T[];
   /** How many to render before asking for a click, and how many each click adds. */
   initial?: number;
+  /**
+   * How many to render at first, when that is more than `initial`: enough to
+   * show again the row a person left the list from. Clicks still add
+   * `initial`, and *Show fewer* goes back to `initial`.
+   */
+  initialShown?: number;
   /** What the items are called in the button: `Show 20 more tools`. */
   noun: string;
   plural?: string;
@@ -64,12 +79,15 @@ export type ShowMoreProps<T> = {
 export function ShowMore<T>({
   items,
   initial = INITIAL_ROWS,
+  initialShown,
   noun,
   plural,
   revealAll = false,
   children,
 }: ShowMoreProps<T>) {
-  const [shown, setShown] = useState(initial);
+  const [shown, setShown] = useState(() =>
+    Math.max(initial, initialShown ?? 0),
+  );
   const slack = showMoreSlack(initial);
   // How many a page of `count` actually renders: all of them once no more
   // than the slack would stay hidden.

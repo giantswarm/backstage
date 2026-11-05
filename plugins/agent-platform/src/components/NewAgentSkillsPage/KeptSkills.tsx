@@ -1,11 +1,10 @@
 import { Button, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, CommitSha } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentSkillEntry } from '../../lib/agentManager';
 import { skillEntryKey } from '../../lib/agentEdit';
 import { repoSlug } from '../../lib/skills';
-import { shortPin } from '../AgentDetailPage/helpers';
 import {
   SelectableCardGrid,
   StaticCard,
@@ -76,9 +75,11 @@ export function KeptSkills({
             </Text>
             <Text variant="body-x-small" color="secondary">
               pinned at{' '}
-              <span className={classes.code}>
-                {shortPin('git' in skill ? skill.git.commit : skill.oci)}
-              </span>
+              <CommitSha
+                value={'git' in skill ? skill.git.commit : skill.oci}
+                copy={false}
+                className={classes.code}
+              />
             </Text>
             <div className={styles.actions}>
               <Button

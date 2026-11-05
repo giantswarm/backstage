@@ -11,8 +11,36 @@
  * — the portal composes nothing of its own.
  */
 
+import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
+
 /** The MCPServer name muster registers agent-manager under. */
 export const AGENT_MANAGER_SERVER = 'agent-manager';
+
+/**
+ * Why agent-manager cannot be used on an installation, in one sentence, from
+ * its presence (`useAgentManagerAvailability`): muster lists no agent-manager,
+ * or muster has no per-user sign-in in this portal, so muster-backend refuses
+ * agent-manager's tools rather than run them under muster's shared identity.
+ * `undefined` for any other presence: available, or not known yet.
+ */
+export function agentManagerBlocker(
+  presence: MusterServerPresence,
+  installation: string,
+): string | undefined {
+  switch (presence) {
+    case 'missing':
+      return `Muster on ${installation} lists no agent-manager.`;
+    case 'sharedIdentity':
+      return `Muster on ${installation} has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity instead of as you. A platform admin can give the installation's muster entry an authProvider.`;
+    case 'available':
+    case 'unknown':
+      return undefined;
+    default: {
+      const unhandled: never = presence;
+      return unhandled;
+    }
+  }
+}
 
 /** The tools this plugin calls, by their agent-manager name. */
 export const AGENT_MANAGER_TOOLS = {
@@ -24,6 +52,7 @@ export const AGENT_MANAGER_TOOLS = {
   updateAgent: 'update_agent',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
+  listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
 } as const;
 
@@ -52,6 +81,20 @@ export type AgentSkillEntry =
   | { name: string; oci: string };
 
 /**
+ * One `plugins[]` entry of the create contract (and of the chart values): a
+ * plugin directory at exactly one immutable source and, for an Agent Plugins
+ * package, the names of the skills it enables. A Claude Code plugin loads
+ * whole and carries no selection. The portal writes git plugins pinned to the
+ * commit the skills step showed; agent-manager reports OCI ones by digest.
+ */
+export type AgentPluginEntry = {
+  path?: string;
+  git?: { url: string; ref?: string; commit?: string };
+  oci?: string;
+  skills?: string[];
+};
+
+/**
  * What the portal sends to `validate_agent` and `create_agent` — the form
  * model. Everything but `name`, `modelConfig` and `toolset` is optional and an
  * omitted field keeps the chart's default. There is no per-skill credential.
@@ -63,6 +106,8 @@ export type AgentSpec = {
   name: string;
   displayName: string;
   description?: string;
+  /** Keywords to find the agent by (the `ui.giantswarm.io/tags` annotation). */
+  tags?: string[];
   systemMessage?: string;
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
@@ -75,6 +120,7 @@ export type AgentSpec = {
   /** Avatar URL (chart `agent.iconUrl`, rendered as an annotation). */
   iconUrl?: string;
   skills?: AgentSkillEntry[];
+  plugins?: AgentPluginEntry[];
   /** The toolset selectors exactly as the Tools step composed them. */
   toolset: string[];
   /**
@@ -82,6 +128,17 @@ export type AgentSpec = {
    * (`Agent.spec.egress`), such as `https://github.com:443`.
    */
   egress?: string[];
+  /**
+   * Names of EgressPolicies in `namespace` whose origins the agent may reach
+   * too (`Agent.spec.egressPolicyRefs`). Never on a coding Harness.
+   */
+  egressPolicyRefs?: string[];
+  /**
+   * The workspace, `<namespace>/<name>` in the agent's namespace, its
+   * Sessions start in unless the person picks another or none
+   * (`agent-platform.giantswarm.io/default-workspace`). Omitted, no default.
+   */
+  defaultWorkspace?: string;
 };
 
 export type AgentManagerChart = {
@@ -206,7 +263,9 @@ export type CreateAgentResult = {
  * idempotency key of the submission. Without `message` agent-manager only
  * creates the session, and the caller sends the first message itself; with
  * one, agent-manager sends it as the first turn. `workspaceGrant` starts the
- * session in a workspace; absent, it is the plain session.
+ * session in a workspace; absent, it is the plain session, which the client
+ * says with `noWorkspace`: agent-manager would otherwise start a call that
+ * names no workspace in the agent's default one.
  */
 export type StartSessionRequest = {
   namespace: string;
@@ -215,6 +274,11 @@ export type StartSessionRequest = {
   requestId: string;
   sessionName?: string;
   workspaceGrant?: string;
+  /**
+   * The toolchains the session mounts, `name[@version]` each; an empty list
+   * mounts none. Absent, the agent's default toolchains.
+   */
+  toolchains?: string[];
 };
 
 /**
@@ -357,8 +421,9 @@ export class AgentManagerError extends Error {
   constructor(
     readonly code: AgentManagerErrorCode,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -410,6 +475,62 @@ export function missingReleaseFile(
   };
 }
 
+// agent-manager's `auth_required` for a commit whose call carries no GitHub
+// authorization at all (`gitHubToken` in agent-manager's
+// internal/agents/commit.go). Its other `auth_required`, "GitHub refused your
+// token on …", also covers an App not installed on the repository or no push
+// access, which no sign-in fixes. The test pins the exact wording.
+const MISSING_GITHUB_AUTHORIZATION =
+  /with your GitHub authorization, and this call carries none/;
+
+/**
+ * Whether a refusal is agent-manager's `auth_required` for a call that carried
+ * no GitHub authorization: the one form of it that signing in to
+ * agent-manager in muster fixes.
+ */
+export function missingGitHubAuthorization(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): boolean {
+  return (
+    failure?.code === 'auth_required' &&
+    MISSING_GITHUB_AUTHORIZATION.test(failure.message)
+  );
+}
+
+/**
+ * agent-manager's refusal of an extra egress origin on a coding Harness: such
+ * an agent reaches its Harness's platform list only (`guardCoding` in
+ * agent-manager's internal/agents/harness_guard.go), and `validate_agent`
+ * names each other origin requested.
+ */
+export type CodingEgressRefusal = {
+  /** The origin refused, as requested. */
+  origin: string;
+  /** The Harness's name. */
+  harness: string;
+};
+
+// `validate_agent` reports violations in prose only (structured codes are
+// giantswarm/agent-manager#144), so the message is parsed; the test pins
+// agent-manager's exact wording. A rewording there turns this back into the
+// generic refusal, nothing worse.
+const CODING_EGRESS_REFUSAL =
+  /egress origin "([^"]+)" is not one of Harness (\S+?)'s origins \(.*\): a coding agent reaches its Harness's origins only/;
+
+/**
+ * Whether a `validate_agent` violation is the refusal of an egress origin on
+ * a coding Harness, and if so which. `undefined` for any other violation.
+ */
+export function codingEgressRefusal(
+  violation: string,
+): CodingEgressRefusal | undefined {
+  const match = violation.match(CODING_EGRESS_REFUSAL);
+  if (!match) {
+    return undefined;
+  }
+  return { origin: match[1], harness: match[2] };
+}
+
 /**
  * The person's muster session holds no connection to agent-manager yet: the
  * tool is not in the session's tool set, or muster refuses to open the
@@ -456,10 +577,11 @@ export function classifyAgentManagerError(error: unknown): Error {
     return new AgentManagerError(
       match[1] as AgentManagerErrorCode,
       match[2] || message,
+      { cause: error },
     );
   }
   if (looksNotConnected(message)) {
-    return new AgentManagerNotConnectedError(message);
+    return new AgentManagerNotConnectedError(message, { cause: error });
   }
   return error instanceof Error ? error : new Error(message);
 }
@@ -513,10 +635,13 @@ export type AgentManagerAgent = {
   exists: boolean;
   displayName?: string;
   description?: string;
+  tags?: string[];
   modelConfig?: string;
   iconUrl?: string;
   systemMessage?: string;
   skills?: AgentSkillEntry[];
+  /** The plugins as pinned (a git commit or an OCI digest). */
+  plugins?: AgentPluginEntry[];
   /** The declared toolset; absent for an agent without one. */
   toolset?: string[];
   /** No toolset declared, muster bound: sees every tool the gateway exposes. */
@@ -526,6 +651,10 @@ export type AgentManagerAgent = {
   harness?: string;
   /** The extra HTTP(S) origins the agent may reach (`spec.egress`). */
   egress?: string[];
+  /** The EgressPolicies of its namespace it picks (`spec.egressPolicyRefs`). */
+  egressPolicyRefs?: string[];
+  /** The agent's default workspace, `<namespace>/<name>`; absent, none. */
+  defaultWorkspace?: string;
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
   helmRelease?: AgentHelmReleaseRef;
@@ -545,25 +674,73 @@ export type AgentManagerModelConfig = {
 };
 
 /**
+ * `get_info`'s capability for `tags` on create and update: where the agent
+ * form offers tags.
+ */
+export const TAGS_CAPABILITY = 'tags';
+
+/** Whether an installation's agent-manager takes tags. */
+export function supportsTags(
+  info: Pick<AgentManagerInfo, 'capabilities'> | undefined,
+): boolean {
+  return info?.capabilities?.[TAGS_CAPABILITY] === true;
+}
+
+/** `get_info`'s capability for `egressPolicyRefs` and `list_egress_policies`. */
+export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
+
+/**
+ * One origin of an EgressPolicy. `credentialHeader` names the request header
+ * the egress gateway fills from the policy's credential; the Secret behind it
+ * is never reported.
+ */
+export type EgressDestination = {
+  origin: string;
+  credentialHeader?: string;
+};
+
+/** `list_egress_policies`: an EgressPolicy an agent of its namespace may pick. */
+export type AgentManagerEgressPolicy = {
+  name: string;
+  namespace: string;
+  destinations: EgressDestination[];
+  managedBy?: string;
+};
+
+/**
  * `update_agent` (and `validate_agent` with `update: true`): a partial change.
  * Only the fields present change; an empty string clears a field back to the
- * chart's default; `skills` and `toolset` replace their whole list;
- * `refreshSkills` re-pins every git skill to its repository's default-branch
- * head and changes nothing else. The portal never sends `force`.
+ * chart's default; `skills`, `plugins` and `toolset` replace their whole list;
+ * `refreshSkills` re-pins every git skill and plugin to its repository's
+ * default-branch head and changes nothing else. The portal never sends `force`.
  */
 export type AgentUpdate = {
   namespace: string;
   name: string;
   displayName?: string;
   description?: string;
+  /** Replaces the whole list; an empty list clears it. */
+  tags?: string[];
   systemMessage?: string;
   modelConfig?: string;
   iconUrl?: string;
   skills?: AgentSkillEntry[];
+  /** Replaces the whole list; an empty list clears it. */
+  plugins?: AgentPluginEntry[];
   toolset?: string[];
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];
+  /** Replaces the whole list; an empty list clears it. */
+  egressPolicyRefs?: string[];
+  /** `<namespace>/<name>`; `""` removes the default. */
+  defaultWorkspace?: string;
   refreshSkills?: boolean;
+  /**
+   * Moves the agent to another Harness of its namespace after the checks a
+   * create on it runs; `""` selects the platform Harness. Sessions keep the
+   * revision they started on.
+   */
+  harness?: string;
 };
 
 /**

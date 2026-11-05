@@ -1,6 +1,7 @@
 export {
   MCPServer,
   DEACTIVATED_LABEL,
+  DISPLAY_NAME_ANNOTATION,
   MANAGEMENT_CLUSTER_LABEL,
   TOOL_GROUP_LABEL,
   TOOL_GROUPS,
@@ -28,6 +29,7 @@ export type {
   WorkflowStep,
   WorkflowSubStep,
   WorkflowForEach,
+  WorkflowPaginate,
   WorkflowCondition,
   WorkflowConditionExpectation,
 } from './MusterWorkflow';

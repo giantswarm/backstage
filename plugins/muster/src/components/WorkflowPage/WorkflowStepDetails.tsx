@@ -1,25 +1,26 @@
 import { Fragment, ReactNode } from 'react';
 import { Box, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { countNoun, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
-import { formatDuration } from '../../lib/formatDuration';
+import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   conditionSummary,
   formatArgValue,
+  type StepNumbers,
   toolDisplay,
-  WORKFLOW_EFFECT_LABELS,
 } from '../../lib/workflowDisplay';
 import {
+  definedMaxPages,
   FlowStepContext,
   forEachSummary,
+  iterationsSentence,
+  loopParallelism,
   StepRunOverlay,
 } from '../../lib/workflowGraph';
-import { workflowDetailRouteRef } from '../../routes';
-import { DisclosureAccordion } from '../shared';
+import { DisclosureAccordion, useWorkflowPageLinks } from '../shared';
 
 const useStyles = makeStyles({
   panel: {
@@ -73,6 +74,25 @@ const useStyles = makeStyles({
     fontSize: 12,
     color: 'var(--bui-fg-secondary)',
   },
+  // A jq program as written: its line breaks kept, and a long line scrolls
+  // inside the block rather than widening the details past a phone screen.
+  program: {
+    minWidth: 0,
+  },
+  code: {
+    margin: '4px 0 0',
+    padding: '8px 10px',
+    boxSizing: 'border-box',
+    maxWidth: '100%',
+    overflowX: 'auto',
+    whiteSpace: 'pre',
+    fontFamily: 'monospace',
+    fontSize: 12.5,
+    lineHeight: 1.5,
+    background: 'var(--bui-bg-neutral-2)',
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 8,
+  },
   // Inside the step's own box on the canvas: the box is the panel, its title
   // the heading, and the step's button folds it — so no frame, heading or
   // Close of its own, and one column at the box's narrow width. Last, so the
@@ -89,13 +109,6 @@ const useStyles = makeStyles({
   },
 });
 
-/** `?installation=<inst>`, or nothing without one. */
-function installationSearch(installation?: string): string {
-  return installation
-    ? `?installation=${encodeURIComponent(installation)}`
-    : '';
-}
-
 /** What a step calls, in plain words — a link for a called workflow. */
 function PlainTool({
   tool,
@@ -104,22 +117,19 @@ function PlainTool({
 }: {
   tool: string;
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
 }) {
   const classes = useStyles();
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const display = toolDisplay(tool, prefixes);
   switch (display.kind) {
     case 'workflow': {
-      const base = detailRoute?.({ name: display.workflow });
+      const href = workflowLinks.workflow(display.workflow, installation);
       return (
         <>
           Runs the workflow{' '}
-          {base ? (
-            <Link
-              href={`${base}${installationSearch(installation)}`}
-              variant="body-medium"
-            >
+          {href ? (
+            <Link href={href} variant="body-medium">
               {display.workflow}
             </Link>
           ) : (
@@ -156,7 +166,7 @@ export function lastRunSentence(overlay: StepRunOverlay): string {
   const times = overlay.runs > 1 ? ` (${overlay.runs} times)` : '';
   const took =
     overlay.durationMs !== undefined
-      ? ` in ${formatDuration(overlay.durationMs)}`
+      ? ` in ${formatMilliseconds(overlay.durationMs)}`
       : '';
   switch (overlay.status) {
     case 'completed':
@@ -222,7 +232,7 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
   if (isHead && group?.kind === 'forEach') {
     rows.push([
       'Items',
-      <code className={classes.mono}>{group.forEach.items}</code>,
+      <code className={classes.mono}>{String(group.forEach.items ?? '')}</code>,
     ]);
     if (group.forEach.as) {
       rows.push([
@@ -230,6 +240,35 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
         <code className={classes.mono}>{group.forEach.as}</code>,
       ]);
     }
+    const parallelism = loopParallelism(group.forEach);
+    rows.push([
+      'Parallelism',
+      parallelism === undefined ? (
+        'not set (one after another)'
+      ) : (
+        <code className={classes.mono}>{parallelism}</code>
+      ),
+    ]);
+  }
+  if (node.paginate) {
+    const paginate = definition.paginate ?? {};
+    const set = (['itemsField', 'tokenField', 'tokenArg'] as const).filter(
+      field => typeof paginate[field] === 'string',
+    );
+    rows.push([
+      'Pagination',
+      <>
+        <div className={classes.mono}>
+          maxPages: {node.paginate.maxPages}
+          {definedMaxPages(paginate) === undefined ? ' (default)' : ''}
+        </div>
+        {set.map(field => (
+          <div key={field} className={classes.mono}>
+            {field}: {paginate[field]}
+          </div>
+        ))}
+      </>,
+    ]);
   }
   if (node.condition) {
     rows.push([
@@ -276,6 +315,16 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
           </div>
         </Box>
       )}
+      {node.jq && (
+        <div className={classes.program}>
+          <Text as="p" variant="body-small" className={classes.caption}>
+            jq program
+          </Text>
+          <pre className={classes.code} data-testid="step-jq-program">
+            <code>{node.jq}</code>
+          </pre>
+        </div>
+      )}
     </Flex>
   );
 }
@@ -284,10 +333,10 @@ export interface WorkflowStepDetailsProps {
   /** The panel's id, for the control that opens it (`aria-controls`). */
   id?: string;
   context: FlowStepContext;
-  /** Top-level step ids, to name a `fromStep` reference by number. */
-  stepIds: string[];
+  /** Every step's number by its id, to name a step a condition or loop reads. */
+  stepNumbers: StepNumbers;
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** The latest run's outcome for this step, when a run is known. */
   overlay?: StepRunOverlay;
   /** What the step's tool does, from the tool catalogue, when known. */
@@ -313,7 +362,7 @@ export interface WorkflowStepDetailsProps {
 export function WorkflowStepDetails({
   id,
   context,
-  stepIds,
+  stepNumbers,
   prefixes,
   installation,
   overlay,
@@ -322,9 +371,8 @@ export function WorkflowStepDetails({
   onClose,
 }: WorkflowStepDetailsProps) {
   const classes = useStyles();
-  const { node, group } = context;
+  const { node, group, container: parent } = context;
   const isHead = group?.node.key === node.key;
-  const parent = !isHead ? group : undefined;
   const heading =
     node.lane === 'cleanup'
       ? `Cleanup step · ${node.title}`
@@ -343,10 +391,20 @@ export function WorkflowStepDetails({
   if (isHead && group?.kind === 'forEach') {
     const count = group.children.length;
     facts.push(
-      `${forEachSummary(group.forEach, stepIds)}, it runs its ${count} step${
-        count === 1 ? '' : 's'
-      } in order.`,
+      `${forEachSummary(group.forEach, stepNumbers)}, it runs its ${countNoun(
+        count,
+        'step',
+      )} in order.`,
     );
+    const iterations = iterationsSentence(group.forEach);
+    // A nested loop's limit holds within one item of the loop around it.
+    const within =
+      parent?.kind === 'forEach'
+        ? `, within each ${parent.forEach.as || 'item'} of step ${
+            parent.node.number
+          }`
+        : '';
+    facts.push(`${iterations}${within}.`);
   }
   if (isHead && group?.kind === 'parallel') {
     const count = group.children.length;
@@ -357,7 +415,7 @@ export function WorkflowStepDetails({
       parent.kind === 'forEach'
         ? `It belongs to step ${parent.node.number} (${parent.node.title}) and runs ${forEachSummary(
             parent.forEach,
-            stepIds,
+            stepNumbers,
           ).replace(/^F/, 'f')}.`
         : `It belongs to step ${parent.node.number} (${parent.node.title}) and runs at the same time as its siblings.`,
     );
@@ -371,19 +429,30 @@ export function WorkflowStepDetails({
     facts.push(
       `${conditionSummary(
         node.condition,
-        stepIds,
+        stepNumbers,
       )} — otherwise this step is skipped.`,
+    );
+  }
+  if (node.paginate) {
+    facts.push(
+      `Follows the tool's pages, up to ${countNoun(
+        node.paginate.maxPages,
+        'page',
+      )}, and keeps every page's items as one list.`,
+    );
+  }
+  if (node.jq) {
+    facts.push(
+      isHead && group?.kind === 'forEach'
+        ? 'A jq program turns the records of its iterations into its result.'
+        : 'A jq program reshapes its result before later steps use it.',
     );
   }
   if (node.allowFailure) {
     facts.push('May fail without stopping the workflow.');
   }
   if (effect) {
-    facts.push(
-      effect === 'reads'
-        ? `Its tool ${WORKFLOW_EFFECT_LABELS.reads.toLowerCase()}.`
-        : 'Its tool can change things.',
-    );
+    facts.push(`Its tool ${TOOL_EFFECT_LABELS[effect].toLowerCase()}.`);
   }
   if (overlay) {
     facts.push(lastRunSentence(overlay));

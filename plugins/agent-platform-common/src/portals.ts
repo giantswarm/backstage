@@ -5,7 +5,8 @@
  * - **Platform Portal** — the classic portal (clusters, catalog, deployments,
  *   …) in its classic chrome.
  * - **Agent Platform** — the agent shell on the agent area's routes (`/`,
- *   `/agent-platform/**`, `/customize/**`).
+ *   `/sessions/**`, `/usage/**`, `/profile`, `/customize/**`, and the old
+ *   `/agent-platform/**`, which only redirects).
  *
  * Both on: each in its own chrome, chosen by URL, with a cross-link to the
  * other (opening a new tab). One on: it is the whole navigation and no

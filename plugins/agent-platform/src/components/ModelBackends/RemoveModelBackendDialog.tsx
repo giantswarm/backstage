@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -11,8 +10,7 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  dialogDismissLock,
-  fieldErrorProps,
+  BusyDialog,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -66,13 +64,12 @@ export function RemoveModelBackendDialog({
   const startAnswer = useOpenGeneration(isOpen);
   const label = BACKEND_KIND_LABEL[kind];
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
 
   useEffect(() => {
     if (!isOpen) {
       setTyped('');
       setPlan(undefined);
-      validation.reset();
       write.reset();
       return;
     }
@@ -115,96 +112,102 @@ export function RemoveModelBackendDialog({
   const unwired = plan?.modelConfigs ?? [];
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      {...dialogDismissLock(write.isWriting, onOpenChange)}
+      onOpenChange={onOpenChange}
+      isBusy={write.isWriting}
     >
-      <form
-        noValidate
-        onSubmit={event => {
-          event.preventDefault();
-          if (canConfirm) {
-            onConfirm();
-          }
-        }}
-        style={DIALOG_FORM_STYLE}
-      >
-        <DialogHeader>
-          Remove {label} backend from {installation}?
-        </DialogHeader>
-        <DialogBody>
-          <Flex direction="column" gap="3" ref={scope}>
-            <Text variant="body-small" color="secondary">
-              model-manager unwires its model configs, deletes its backend
-              document and stops listing it. The backend and its models keep
-              running.
-            </Text>
-            {plan && (
-              <Flex direction="column" gap="1" data-testid="remove-plan">
-                <Text variant="body-small">
-                  ConfigMap {plan.configMap.namespace}/{plan.configMap.name}
+      {close => (
+        <>
+          <form
+            noValidate
+            onSubmit={event => {
+              event.preventDefault();
+              if (canConfirm) {
+                onConfirm();
+              }
+            }}
+            style={DIALOG_FORM_STYLE}
+          >
+            <DialogHeader>
+              Remove {label} backend from {installation}?
+            </DialogHeader>
+            <DialogBody>
+              <Flex direction="column" gap="3" ref={scope}>
+                <Text variant="body-small" color="secondary">
+                  model-manager unwires its model configs, deletes its backend
+                  document and stops listing it. The backend and its models keep
+                  running.
                 </Text>
-                <Text variant="body-small">
-                  {unwired.length === 0
-                    ? 'No model configs are wired for it.'
-                    : `Model configs unwired: ${unwired.join(', ')}`}
-                </Text>
-                {servedModels.length > 0 && (
-                  <Text variant="body-small">
-                    Served models leaving this page: {servedModels.join(', ')}
+                {plan && (
+                  <Flex direction="column" gap="1" data-testid="remove-plan">
+                    <Text variant="body-small">
+                      ConfigMap {plan.configMap.namespace}/{plan.configMap.name}
+                    </Text>
+                    <Text variant="body-small">
+                      {unwired.length === 0
+                        ? 'No model configs are wired for it.'
+                        : `Model configs unwired: ${unwired.join(', ')}`}
+                    </Text>
+                    {servedModels.length > 0 && (
+                      <Text variant="body-small">
+                        Served models leaving this page:{' '}
+                        {servedModels.join(', ')}
+                      </Text>
+                    )}
+                  </Flex>
+                )}
+                {!plan && !write.failure && (
+                  <Text variant="body-small" color="secondary">
+                    Asking model-manager what would go…
                   </Text>
                 )}
+                {write.failure && !notConnected && (
+                  <Alert
+                    status="danger"
+                    title="model-manager refused"
+                    description={write.failure.message}
+                  />
+                )}
+                {notConnected && (
+                  <ConnectAgentManagerAlert
+                    installation={installation}
+                    message={write.failure!.message}
+                    action="Model backends are removed"
+                    server={MODEL_MANAGER_SERVER}
+                  />
+                )}
+                {plan && (
+                  <TextField
+                    label={`Type ${kind} to confirm`}
+                    value={typed}
+                    onChange={setTyped}
+                    isDisabled={isBusy}
+                    {...validation.textFieldProps('typed', typedError)}
+                  />
+                )}
               </Flex>
-            )}
-            {!plan && !write.failure && (
-              <Text variant="body-small" color="secondary">
-                Asking model-manager what would go…
-              </Text>
-            )}
-            {write.failure && !notConnected && (
-              <Alert
-                status="danger"
-                title="model-manager refused"
-                description={write.failure.message}
-              />
-            )}
-            {notConnected && (
-              <ConnectAgentManagerAlert
-                installation={installation}
-                message={write.failure!.message}
-                action="Model backends are removed"
-                server={MODEL_MANAGER_SERVER}
-              />
-            )}
-            {plan && (
-              <TextField
-                label={`Type ${kind} to confirm`}
-                value={typed}
-                onChange={setTyped}
-                isDisabled={isBusy}
-                {...fieldErrorProps(validation.errorFor(typedError))}
-              />
-            )}
-          </Flex>
-        </DialogBody>
-        <DialogFooter>
-          <Button
-            variant="secondary"
-            onPress={() => onOpenChange(false)}
-            isDisabled={write.isWriting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            destructive
-            isDisabled={!canConfirm}
-          >
-            {isBusy && plan ? 'Removing…' : 'Remove backend'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </Dialog>
+            </DialogBody>
+            <DialogFooter>
+              <Button
+                variant="secondary"
+                onPress={close}
+                isDisabled={write.isWriting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                destructive
+                isDisabled={!canConfirm}
+              >
+                {isBusy && plan ? 'Removing…' : 'Remove backend'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </BusyDialog>
   );
 }

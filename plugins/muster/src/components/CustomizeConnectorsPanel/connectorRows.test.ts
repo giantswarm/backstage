@@ -30,13 +30,111 @@ function single(s: MCPServer, toolCount?: number): ServerListEntry {
   return {
     key: `server:${s.getName()}`,
     id: s.getName(),
+    displayName: s.getName(),
     row: { kind: 'server', server: s },
+    tags: [],
     shadowed: false,
     toolCount,
   };
 }
 
+function oauthServer(
+  name: string,
+  grantScope?: 'session' | 'subject',
+  suspended = false,
+): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name },
+      spec: {
+        type: 'streamable-http',
+        url: 'https://x.test',
+        suspended,
+        auth: grantScope
+          ? {
+              type: 'oauth',
+              authorizationServer: {
+                issuer: 'https://auth.example.com',
+                grantScope,
+              },
+            }
+          : { type: 'oauth' },
+      },
+      status: { state: 'Auth Required' },
+    } as never,
+    'gazelle',
+  );
+}
+
 describe('connectorStatus', () => {
+  it('says a session-scoped sign-in covers the portal only, not plain Connected', () => {
+    const portalOnly = {
+      label: 'Portal only',
+      tone: 'warning',
+      explanation:
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+    };
+    const entry = single(oauthServer('grafana-cloud'));
+    expect(
+      connectorStatus(entry, {
+        name: 'grafana-cloud',
+        status: 'connected',
+        kind: 'grant',
+        grant_scope: 'session',
+      }),
+    ).toEqual(portalOnly);
+    // From the spec, where muster says nothing of the grant's scope.
+    expect(
+      connectorStatus(entry, { name: 'grafana-cloud', status: 'connected' }),
+    ).toEqual(portalOnly);
+    // Only on muster's word that this session is connected: without a report
+    // (loading, no muster session) nobody signed in, and a failed connection
+    // is no working sign-in.
+    const connected = { label: 'Connected', tone: 'success' };
+    expect(connectorStatus(entry)).toEqual(connected);
+    for (const status of [
+      'disconnected',
+      'unreachable',
+      'failed',
+      'error',
+    ] as const) {
+      expect(
+        connectorStatus(entry, { name: 'grafana-cloud', status }),
+      ).not.toHaveProperty('label', 'Portal only');
+    }
+    // A sign-in muster still asks for comes first.
+    expect(
+      connectorStatus(entry, {
+        name: 'grafana-cloud',
+        status: 'auth_required',
+      }),
+    ).toEqual({ label: 'Sign in needed', tone: 'warning' });
+    // Deactivated stays deactivated.
+    const off = oauthServer('grafana-cloud', undefined, true);
+    expect(connectorStatus(single(off))).toEqual({
+      label: 'Deactivated',
+      tone: 'neutral',
+    });
+  });
+
+  it('reads Connected where one sign-in serves all of the person’s sessions', () => {
+    const entry = single(oauthServer('github', 'subject'));
+    expect(
+      connectorStatus(entry, { name: 'github', status: 'connected' }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+    // muster's report wins over a spec that would say session.
+    expect(
+      connectorStatus(single(oauthServer('miro')), {
+        name: 'miro',
+        status: 'connected',
+        kind: 'grant',
+        grant_scope: 'subject',
+      }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+  });
+
   it('puts this person’s sign-in before the server’s state', () => {
     const entry = single(server('github', 'Auth Required'));
     expect(
@@ -49,6 +147,47 @@ describe('connectorStatus', () => {
       label: 'Connected',
       tone: 'success',
     });
+  });
+
+  it('never asks a sign-in of an SSO server, and says when one refused it', () => {
+    const entry = single(server('grafana'));
+    const sso = { name: 'grafana', token_forwarding_enabled: true };
+    expect(
+      connectorStatus(entry, {
+        ...sso,
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+      }),
+    ).toEqual({ label: 'Cannot connect', tone: 'danger' });
+    // Not connected yet: the server's own state.
+    expect(connectorStatus(entry, { ...sso, status: 'auth_required' })).toEqual(
+      { label: 'Connected', tone: 'success' },
+    );
+    expect(
+      connectorStatus(entry, {
+        name: 'grafana',
+        kind: 'sso',
+        status: 'auth_required',
+      }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+    // A failure muster kept from another session.
+    expect(
+      connectorStatus(entry, {
+        ...sso,
+        status: 'connected',
+        sso_attempt_failed: true,
+      }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+  });
+
+  it('says a connect with the portal sign-in is under way, not a sign-in', () => {
+    const entry = single(server('mcp-kubernetes', 'Awaiting Session'));
+    expect(
+      connectorStatus(entry, { name: 'mcp-kubernetes', status: 'sso_pending' }),
+    ).toEqual({ label: 'Connecting', tone: 'neutral' });
+    expect(
+      connectorReach(entry, { name: 'mcp-kubernetes', status: 'sso_pending' }),
+    ).toBe('not-connected');
   });
 
   it('names a failing or deactivated server', () => {
@@ -66,11 +205,13 @@ describe('connectorStatus', () => {
     const entry: ServerListEntry = {
       key: 'family:kubernetes',
       id: 'kubernetes',
+      displayName: 'kubernetes',
       row: {
         kind: 'family',
         family: 'kubernetes',
         servers: [server('a'), server('b', 'Failed')],
       } as never,
+      tags: [],
       shadowed: false,
     };
     expect(connectorStatus(entry)).toEqual({
@@ -94,7 +235,9 @@ describe('connectorReach', () => {
   const family = (...servers: MCPServer[]): ServerListEntry => ({
     key: 'family:kubernetes',
     id: 'kubernetes',
+    displayName: 'kubernetes',
     row: { kind: 'family', family: 'kubernetes', servers } as never,
+    tags: [],
     shadowed: false,
   });
 
@@ -116,6 +259,34 @@ describe('connectorReach', () => {
         status: 'reauth_required',
       }),
     ).toBe('sign-in');
+  });
+
+  it('files a sign-in serving this session only under its own bucket', () => {
+    const entry = single(oauthServer('grafana-cloud'));
+    expect(
+      connectorReach(entry, { name: 'grafana-cloud', status: 'connected' }),
+    ).toBe('portal-only');
+    expect(connectorReach(entry)).toBe('connected');
+    expect(
+      connectorReach(single(oauthServer('github', 'subject')), {
+        name: 'github',
+        status: 'connected',
+      }),
+    ).toBe('connected');
+  });
+
+  it('files an SSO server that refused the sign-in under not connected, never sign-in', () => {
+    const sso = { name: 'a', token_exchange_enabled: true };
+    expect(
+      connectorReach(single(server('a')), {
+        ...sso,
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+      }),
+    ).toBe('not-connected');
+    expect(
+      connectorReach(single(server('a')), { ...sso, status: 'auth_required' }),
+    ).toBe('connected');
   });
 
   it('says whether all, some or none of a family answer', () => {
@@ -225,7 +396,9 @@ describe('unsearchedToolsNotes', () => {
       entry: {
         key: 'core',
         id: 'muster',
+        displayName: 'muster',
         row: { kind: 'core' as const },
+        tags: [],
         shadowed: false,
         toolCount: 0,
       },

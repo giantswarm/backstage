@@ -92,18 +92,21 @@ describe('scanSkillsTree', () => {
         path: '',
         name: 'root',
         description: 'At root.',
+        tags: [],
         content: '---\nname: root\ndescription: At root.\n---\n',
       },
       {
         path: 'group/deep',
         name: undefined,
         description: undefined,
+        tags: [],
         content: 'No frontmatter at all.',
       },
       {
         path: 'notes',
         name: 'notes',
         description: undefined,
+        tags: [],
         content: '---\nname: notes\n---\nBody.',
       },
     ]);
@@ -121,6 +124,39 @@ describe('scanSkillsTree', () => {
 });
 
 describe('discoverAgentSkillsFromGit', () => {
+  it('lists the plugins of the checkout at the same commit', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/skills.git',
+      gitClient: fakeCloneFiles({
+        'ops/plugin.json': '{}',
+        'ops/skills/runbook/SKILL.md':
+          '---\nname: runbook\ndescription: Runs books.\n---\n',
+        'commits/.claude-plugin/plugin.json': '{}',
+      }),
+    });
+
+    expect(result.plugins).toEqual([
+      {
+        name: 'commits',
+        repoUrl: 'http://gitserver.lab.local/skills.git',
+        path: 'commits',
+        ref: 'main',
+        commit: HEAD,
+        format: 'claude-code',
+        skills: [],
+      },
+      {
+        name: 'ops',
+        repoUrl: 'http://gitserver.lab.local/skills.git',
+        path: 'ops',
+        ref: 'main',
+        commit: HEAD,
+        format: 'agent-plugins',
+        skills: [{ name: 'runbook', description: 'Runs books.' }],
+      },
+    ]);
+  });
+
   it('discovers skills from a checkout, pins each to the head commit and keeps every SKILL.md', async () => {
     const result = await discoverAgentSkillsFromGit({
       repoUrl: 'http://gitserver.lab.local/skills.git/',
@@ -133,12 +169,14 @@ describe('discoverAgentSkillsFromGit', () => {
     expect(result).toEqual({
       ref: 'main',
       commit: HEAD,
+      plugins: [],
       truncated: false,
       skills: [
         {
           // Directory basename when the frontmatter has no name.
           name: 'a-skill',
           description: '',
+          tags: [],
           repoUrl: 'http://gitserver.lab.local/skills.git',
           path: 'a-skill',
           ref: 'main',
@@ -149,6 +187,7 @@ describe('discoverAgentSkillsFromGit', () => {
         {
           name: 'beta',
           description: 'Second.',
+          tags: [],
           repoUrl: 'http://gitserver.lab.local/skills.git',
           path: 'b-skill',
           ref: 'main',

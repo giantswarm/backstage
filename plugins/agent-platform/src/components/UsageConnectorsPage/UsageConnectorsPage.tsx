@@ -1,6 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import { Flex } from '@backstage/ui';
-import { UsageColumn } from '../UsageColumn';
+import { ContentColumn } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The Usage screen's Connectors view: how the connectors behind this
@@ -13,7 +13,7 @@ import { UsageColumn } from '../UsageColumn';
  * (`usage-metrics-ia.md`).
  *
  * The content is the muster plugin's, contributed through the `sections`
- * extension input of `sub-page:agent-platform/usage` (see `mcpUsageSection`
+ * extension input of `page:agent-platform/usage` (see `mcpUsageSection`
  * in the muster plugin), so this view knows nothing of its layout. The router
  * offers the view only when something was contributed.
  *
@@ -22,13 +22,13 @@ import { UsageColumn } from '../UsageColumn';
  */
 export function UsageConnectorsPage({ sections }: { sections: ReactNode[] }) {
   return (
-    <UsageColumn>
+    <ContentColumn>
       <Flex direction="column" gap="6">
         {/* Contributed elements carry no key of their own. */}
         {sections.map((section, index) => (
           <Fragment key={index}>{section}</Fragment>
         ))}
       </Flex>
-    </UsageColumn>
+    </ContentColumn>
   );
 }

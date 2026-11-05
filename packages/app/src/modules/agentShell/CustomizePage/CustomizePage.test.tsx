@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
+import { useSharedTags } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type MockedLayout,
   mockDesktopLayout,
@@ -8,8 +9,14 @@ import {
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { type ReactNode, useState } from 'react';
+import {
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import { customizeRouteRef } from '../routes';
 import { CUSTOMIZE_TAB_IDS } from '../customizeTabIds';
 import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
@@ -17,14 +24,43 @@ import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
 let mockCustomizeData: Record<string, unknown>;
 let mockMusterCounts: Record<string, unknown>;
 let mockCanAddSkill = false;
+/** Each mount of the view tracking, with the muster counts it was handed. */
+const mockViewTracking = jest.fn();
 
 function mockPanel(name: string) {
-  return (props: { search: string }) => (
-    <p>{`${name} panel, search “${props.search}”${
-      // Anything beyond the search would be a filter the page hands down.
-      Object.keys(props).length > 1 ? ', with more props' : ''
-    }`}</p>
-  );
+  return function MockPanel(props: { search: string }) {
+    // What a panel's Tags facet starts from, and a way to change it.
+    const shared = useSharedTags();
+    // What a real panel's filters seed from once, on mount.
+    const [seeded] = useState(() => shared?.tags.join(',') || 'no tags');
+    const navigate = useNavigate();
+    return (
+      <>
+        <p>{`${name} filters seeded with ${seeded}`}</p>
+        <button type="button" onClick={() => shared?.setTags([])}>
+          Clear tags
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/customize/agents?tags=util')}
+        >
+          Open the util tag link
+        </button>
+        <p>{`${name} panel, search “${props.search}”${
+          // Anything beyond the search would be a filter the page hands down.
+          Object.keys(props).length > 1 ? ', with more props' : ''
+        }`}</p>
+        {shared && shared.tags.length > 0 && (
+          <>
+            <p>{`${name} panel, tags ${shared.tags.join(',')}`}</p>
+            <button type="button" onClick={() => shared.setTags(['ops'])}>
+              Pick ops
+            </button>
+          </>
+        )}
+      </>
+    );
+  };
 }
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
@@ -34,6 +70,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const agents = createRouteRef();
   const skills = createRouteRef();
   const models = createRouteRef();
+  const toolchains = createRouteRef();
   return {
     agentPlatformPlugin: {
       routes: {
@@ -43,19 +80,27 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         newSkill: createSubRouteRef({ path: '/new', parent: skills }),
         models,
         newModel: createSubRouteRef({ path: '/new', parent: models }),
+        toolchains,
+        newToolchain: createSubRouteRef({ path: '/new', parent: toolchains }),
       },
     },
     CustomizeDataProvider: ({ children }: { children: ReactNode }) => children,
     useCustomizeData: () => mockCustomizeData,
     useCanAddSkill: () => mockCanAddSkill,
+    useTrackCustomizeView: (muster: unknown) => {
+      const { useEffect } = jest.requireActual('react');
+      useEffect(() => {
+        mockViewTracking(muster);
+      }, [muster]);
+    },
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
-    CustomizeModelPage: () => {
-      const { useParams } = jest.requireActual('react-router-dom');
-      const { installation, namespace, name } = useParams();
-      return <p>{`Model ${installation}/${namespace}/${name}`}</p>;
-    },
+    CustomizeWorkspacesPanel: mockPanel('Workspaces'),
+    CustomizeToolchainsPanel: mockPanel('Toolchains'),
+    WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
+    CreateWorkspaceButton: () => <a href="/new-workspace">New workspace</a>,
+    CustomizeWorkspacesIntro: () => <h2>Workspaces of acme</h2>,
     WorkflowCreateAssist: ({ installation }: { installation?: string }) => (
       <p>{`Create a workflow with the agent on ${installation}`}</p>
     ),
@@ -81,29 +126,27 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
     CustomizeMusterProvider: ({ children }: { children: ReactNode }) =>
       children,
     useMusterCustomizeCounts: () => mockMusterCounts,
-    CONNECTOR_GROUPS: [
-      { id: 'yours', path: '', title: 'Your connectors' },
-      { id: 'infrastructure', path: 'infrastructure', title: 'Infrastructure' },
-      { id: 'internal', path: 'internal', title: 'Internal' },
-    ],
-    connectorGroupInfo: (group: string) =>
-      ({
-        yours: { id: 'yours', path: '', title: 'Your connectors' },
-        infrastructure: {
-          id: 'infrastructure',
-          path: 'infrastructure',
-          title: 'Infrastructure',
-        },
-        internal: { id: 'internal', path: 'internal', title: 'Internal' },
-      })[group],
-    connectorGroupOfPath: (segment: string) =>
-      ({ '': 'yours', infrastructure: 'infrastructure', internal: 'internal' })[
-        segment
-      ],
-    LEGACY_CONNECTOR_GROUP_PATHS: { families: 'infrastructure' },
-    CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
-      <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
-    ),
+    RETIRED_CONNECTOR_GROUP_TAGS: {
+      infrastructure: 'infrastructure',
+      families: 'infrastructure',
+      internal: 'agent-platform',
+    },
+    CustomizeConnectorsPanel: function MockConnectorsPanel(props: {
+      search: string;
+    }) {
+      const shared = useSharedTags();
+      return (
+        <>
+          <p>{`Connectors panel, search “${props.search}”`}</p>
+          {shared && shared.tags.length > 0 && (
+            <p>{`Connectors panel, tags ${shared.tags.join(',')}`}</p>
+          )}
+          <button type="button" onClick={() => shared?.setTags(['ops'])}>
+            Pick ops on connectors
+          </button>
+        </>
+      );
+    },
     CustomizeWorkflowsPanel: ({
       createAssist,
       ...props
@@ -121,16 +164,29 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
 
 const allRoutes = {
   '/customize': customizeRouteRef,
-  '/agent-platform/agents': agentPlatformPlugin.routes.agents,
-  '/agent-platform/skills': agentPlatformPlugin.routes.skills,
-  '/agent-platform/models': agentPlatformPlugin.routes.models,
-  '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
+  '/customize/agents': agentPlatformPlugin.routes.agents,
+  '/customize/skills': agentPlatformPlugin.routes.skills,
+  '/customize/models': agentPlatformPlugin.routes.models,
+  '/customize/toolchains': agentPlatformPlugin.routes.toolchains,
+  '/customize/connectors': musterPlugin.routes.mcpServers,
 };
 
 function LocationProbe() {
   const { pathname, search } = useLocation();
   return <p data-testid="location">{`${pathname}${search}`}</p>;
 }
+
+/** A plugin's router below its tab, as the page's `pages` input hands it. */
+function SubPage({ name }: { name: string }) {
+  const rest = useParams()['*'];
+  return <p>{`${name} sub-page at ${rest}`}</p>;
+}
+
+const pages = [
+  { path: 'agents', element: <SubPage name="Agents" /> },
+  { path: 'models', element: <SubPage name="Models" /> },
+  { path: 'connectors', element: <SubPage name="Connectors" /> },
+];
 
 function renderCustomize(
   path: string,
@@ -142,7 +198,7 @@ function renderCustomize(
   return renderInTestApp(
     <>
       <Routes>
-        <Route path="/customize/*" element={<CustomizePage />} />
+        <Route path="/customize/*" element={<CustomizePage pages={pages} />} />
         <Route path="*" element={<p>Elsewhere</p>} />
       </Routes>
       <LocationProbe />
@@ -170,10 +226,10 @@ describe('CustomizePage', () => {
     };
     mockMusterCounts = {
       connectors: 7,
-      connectorGroups: { yours: 3, infrastructure: 2, internal: 2 },
       workflows: 2,
     };
     mockCanAddSkill = false;
+    mockViewTracking.mockClear();
   });
 
   it('draws a tab per area with its count', async () => {
@@ -194,17 +250,45 @@ describe('CustomizePage', () => {
     );
   });
 
-  it("routes one model's page beside the Models tab, without the tab strip", async () => {
-    await renderCustomize('/customize/models/gazelle/kagent/default-model');
+  it.each([
+    [
+      '/customize/models/gazelle/kagent/default-model',
+      'Models',
+      'gazelle/kagent/default-model',
+    ],
+    ['/customize/agents/new/skills', 'Agents', 'new/skills'],
+    [
+      '/customize/connectors/gazelle/jira/edit',
+      'Connectors',
+      'gazelle/jira/edit',
+    ],
+    // An installation named like a retired sub-tab: deeper, so a connector's
+    // page.
+    ['/customize/connectors/internal/jira', 'Connectors', 'internal/jira'],
+  ])(
+    "routes %s below the tab's list to the plugin's sub-page, without the tab strip",
+    async (path, name, rest) => {
+      await renderCustomize(path);
 
-    expect(
-      screen.getByText('Model gazelle/kagent/default-model'),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('tab')).toBeNull();
-    expect(screen.queryByText(/^Models panel/)).toBeNull();
+      expect(
+        screen.getByText(`${name} sub-page at ${rest}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tab')).toBeNull();
+      expect(screen.queryByText(/ panel, /)).toBeNull();
+    },
+  );
+
+  it('sends an address below a tab no plugin attached to that tab', async () => {
+    await renderCustomize('/customize/workspaces/a/b?installation=golem');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        /^\/customize\/workspaces\?installation=golem$/,
+      ),
+    );
   });
 
-  it('leaves a count out until it is known', async () => {
+  it('leaves out a count that could not be read', async () => {
     mockCustomizeData = { ...mockCustomizeData, counts: { skills: 71 } };
     mockMusterCounts = {};
     await renderCustomize('/customize/agents');
@@ -216,24 +300,44 @@ describe('CustomizePage', () => {
       'Models',
       'Workflows',
     ]);
+    expect(document.querySelector('[data-count="loading"]')).toBeNull();
+  });
+
+  // The strip has its final width before the counts arrive, so no tab
+  // moves under the pointer when they do.
+  it('holds the place of each count still loading', async () => {
+    mockCustomizeData = {
+      ...mockCustomizeData,
+      counts: {
+        agents: 'loading',
+        skills: 71,
+        models: 'loading',
+      },
+    };
+    mockMusterCounts = {
+      connectors: 'loading',
+      workflows: 'loading',
+    };
+    await renderCustomize('/customize/connectors');
+
+    const loading = screen
+      .getAllByRole('tab')
+      .filter(tab => tab.querySelector('[data-count="loading"]'))
+      .map(tab => tab.textContent?.trim());
+    expect(loading).toEqual(['Agents', 'Connectors', 'Models', 'Workflows']);
+    expect(screen.getByRole('tab', { name: 'Skills (71)' })).toBeVisible();
   });
 
   it.each([
-    ['agents', 'Agents', 'kagent', 'New agent', '/agent-platform/agents/new'],
+    ['agents', 'Agents', 'kagent', 'New agent', '/customize/agents/new'],
     [
       'connectors',
       'Connectors',
       'muster',
       'Add connector',
-      '/agent-platform/mcp-servers/new',
+      '/customize/connectors/new',
     ],
-    [
-      'models',
-      'Models',
-      'kagent',
-      'Connect a model',
-      '/agent-platform/models/new',
-    ],
+    ['models', 'Models', 'kagent', 'Connect a model', '/customize/models/new'],
   ])(
     'shows the %s panel with its environment and create action',
     async (tab, panel, component, action, href) => {
@@ -258,7 +362,7 @@ describe('CustomizePage', () => {
 
     expect(screen.getByRole('link', { name: 'Add skill' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/new',
+      '/customize/skills/new',
     );
   });
 
@@ -309,7 +413,7 @@ describe('CustomizePage', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Connect a model' }),
-      ).toHaveAttribute('href', '/agent-platform/models/new');
+      ).toHaveAttribute('href', '/customize/models/new');
     });
 
     it('offers the search over a short tab without a create action', async () => {
@@ -477,6 +581,60 @@ describe('CustomizePage', () => {
     });
   });
 
+  describe('the Tags pick', () => {
+    it('opens the tab with the tags of ?tags= picked', async () => {
+      await renderCustomize('/customize/skills?tags=util');
+
+      expect(screen.getByText('Skills panel, tags util')).toBeInTheDocument();
+    });
+
+    it('goes with a switch to another tab, as it was last picked', async () => {
+      await renderCustomize('/customize/agents?tags=util');
+      await userEvent.click(screen.getByRole('button', { name: 'Pick ops' }));
+
+      expect(screen.getByRole('tab', { name: /^Skills/ })).toHaveAttribute(
+        'href',
+        '/customize/skills?tags=ops',
+      );
+      await userEvent.click(screen.getByRole('tab', { name: /^Skills/ }));
+
+      expect(screen.getByText('Skills panel, tags ops')).toBeInTheDocument();
+    });
+
+    it('seeds the tab a tag link opens, after the pick was cleared', async () => {
+      await renderCustomize('/customize/agents?tags=util');
+      await userEvent.click(screen.getByRole('button', { name: 'Clear tags' }));
+      await userEvent.click(screen.getByRole('tab', { name: /^Skills/ }));
+      expect(
+        screen.getByText('Skills filters seeded with no tags'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Open the util tag link' }),
+      );
+
+      expect(
+        screen.getByText('Agents filters seeded with util'),
+      ).toBeInTheDocument();
+    });
+
+    it('reads ?tags= as tags are stored: lowercased, invalid ones left out', async () => {
+      await renderCustomize('/customize/skills?tags=Util,not%20a%20tag');
+
+      expect(screen.getByText('Skills panel, tags util')).toBeInTheDocument();
+    });
+
+    it('is nothing without ?tags=', async () => {
+      await renderCustomize('/customize/agents');
+
+      expect(screen.queryByText(/panel, tags/)).toBeNull();
+      expect(screen.getByRole('tab', { name: /^Skills/ })).toHaveAttribute(
+        'href',
+        '/customize/skills',
+      );
+    });
+  });
+
   it('opens the Agents tab at /customize, keeping the query string', async () => {
     await renderCustomize('/customize?installation=golem');
 
@@ -509,6 +667,99 @@ describe('CustomizePage', () => {
     expect(tabs().map(([title]) => title)).not.toContain('Skills (71)');
   });
 
+  describe('the Workspaces tab', () => {
+    it('sits last, after Workflows, where an installation in scope has the workspace-manager', async () => {
+      mockCustomizeData = {
+        ...mockCustomizeData,
+        counts: { ...(mockCustomizeData.counts as object), workspaces: 2 },
+        hasWorkspaces: true,
+      };
+      await renderCustomize('/customize/workspaces');
+
+      expect(tabs().map(([title]) => title)).toEqual([
+        'Agents (5)',
+        'Skills (71)',
+        'Connectors (7)',
+        'Models (3)',
+        'Workflows (2)',
+        'Workspaces (2)',
+      ]);
+      expect(screen.getByText(/^Workspaces panel/)).toBeInTheDocument();
+      // The Organization scope beside the Environment control.
+      expect(screen.getByText('Organization scope')).toBeInTheDocument();
+      expect(screen.getByText('Environment for muster')).toBeInTheDocument();
+      // Its own create action, carrying the Organization and installation.
+      expect(
+        screen.getByRole('link', { name: 'New workspace' }),
+      ).toBeInTheDocument();
+    });
+
+    it('is absent from the strip where no installation has the workspace-manager', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: false };
+      await renderCustomize('/customize/agents');
+
+      expect(tabs().some(([title]) => title?.startsWith('Workspaces'))).toBe(
+        false,
+      );
+    });
+
+    it('renders at its address whatever is known, its panel saying what there is', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: false };
+      await renderCustomize('/customize/workspaces');
+
+      expect(screen.getByText(/^Workspaces panel/)).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/customize/workspaces',
+      );
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Workspaces',
+      );
+    });
+
+    it('stays out of the strip while it is not known yet, its address loading', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: undefined };
+      await renderCustomize('/customize/agents');
+
+      expect(tabs().some(([title]) => title?.startsWith('Workspaces'))).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('the Toolchains tab', () => {
+    it('sits after Workspaces, with New toolchain, where an installation in scope has the toolchain-manager', async () => {
+      mockCustomizeData = {
+        ...mockCustomizeData,
+        hasWorkspaces: true,
+        hasToolchains: true,
+      };
+      await renderCustomize('/customize/toolchains');
+
+      expect(tabs().map(([title]) => title?.split(' (')[0])).toEqual([
+        'Agents',
+        'Skills',
+        'Connectors',
+        'Models',
+        'Workflows',
+        'Workspaces',
+        'Toolchains',
+      ]);
+      expect(screen.getByText(/^Toolchains panel/)).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'New toolchain' }),
+      ).toBeInTheDocument();
+    });
+
+    it('is absent from the strip where no installation has the toolchain-manager', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasToolchains: false };
+      await renderCustomize('/customize/agents');
+
+      expect(tabs().some(([title]) => title?.startsWith('Toolchains'))).toBe(
+        false,
+      );
+    });
+  });
+
   it('names itself and its tab in the document title, and follows the tab', async () => {
     // Live round 2 (R5): every tab carried the bare "Customize", so the title
     // never said which one was open. QA round 1: the app title must not be
@@ -524,121 +775,72 @@ describe('CustomizePage', () => {
     await waitFor(() => expect(document.title).toBe('Workflows · Customize'));
   });
 
-  describe('the Connectors tab’s sub-tabs', () => {
-    const subTabs = () =>
-      screen
-        .getAllByRole('tab')
-        .filter(tab =>
-          /^(Your connectors|Infrastructure|Internal)/.test(
-            tab.textContent ?? '',
-          ),
-        )
-        .map(tab => [tab.textContent, tab.getAttribute('href')]);
+  it('tracks its opening once, with muster’s counts, not once per tab', async () => {
+    await renderCustomize('/customize/agents');
 
-    it('opens on the customer’s own connectors, at the tab’s own address', async () => {
+    await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
+    await userEvent.click(screen.getByRole('tab', { name: /^Connectors/ }));
+
+    expect(mockViewTracking).toHaveBeenCalledTimes(1);
+    expect(mockViewTracking).toHaveBeenCalledWith(mockMusterCounts);
+  });
+
+  describe('the Connectors tab', () => {
+    it('is one list at the tab’s own address, without sub-tabs', async () => {
       await renderCustomize('/customize/connectors?installation=golem');
 
-      expect(subTabs()).toEqual([
-        ['Your connectors (3)', '/customize/connectors?installation=golem'],
-        [
-          'Infrastructure (2)',
-          '/customize/connectors/infrastructure?installation=golem',
-        ],
-        ['Internal (2)', '/customize/connectors/internal?installation=golem'],
-      ]);
       expect(
-        screen.getByText('Connectors panel, search “”, yours'),
+        screen.getByText('Connectors panel, search “”'),
       ).toBeInTheDocument();
-      expect(screen.getByTestId('location')).toHaveTextContent(
-        '/customize/connectors?installation=golem',
-      );
-    });
-
-    it.each([
-      ['infrastructure', 'Infrastructure'],
-      ['internal', 'Internal'],
-    ])(
-      'shows the %s sub-tab at its own path, named in the document title',
-      async (path, title) => {
-        await renderCustomize(`/customize/connectors/${path}`);
-
-        expect(
-          screen.getByText(`Connectors panel, search “”, ${path}`),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByRole('tab', { name: /^Connectors/ }),
-        ).toHaveAttribute('aria-selected', 'true');
-        await waitFor(() =>
-          expect(
-            screen.getByRole('tab', { name: new RegExp(`^${title}`) }),
-          ).toHaveAttribute('aria-selected', 'true'),
-        );
-        await waitFor(() =>
-          expect(document.title).toBe(`${title} · Connectors · Customize`),
-        );
-        // Add connector stays: what it adds lands on Your connectors.
-        expect(
-          screen.getByRole('link', { name: 'Add connector' }),
-        ).toBeInTheDocument();
-      },
-    );
-
-    it('keeps the search when switching sub-tabs', async () => {
-      await renderCustomize('/customize/connectors');
-      await userEvent.type(
-        screen.getByRole('searchbox', { name: 'Search connectors and tools' }),
-        'kube',
-      );
-      await userEvent.click(
-        screen.getByRole('tab', { name: /^Infrastructure/ }),
-      );
-
       expect(
-        await screen.findByText(
-          'Connectors panel, search “kube”, infrastructure',
-        ),
-      ).toBeInTheDocument();
-    });
-
-    it('sends an unknown path under Connectors to the default sub-tab', async () => {
-      await renderCustomize(
-        '/customize/connectors/nonsense?installation=golem',
-      );
-
+        screen.queryByRole('tab', {
+          name: /^(Your connectors|Infrastructure|Internal)/,
+        }),
+      ).not.toBeInTheDocument();
       await waitFor(() =>
-        expect(screen.getByTestId('location')).toHaveTextContent(
-          /^\/customize\/connectors\?installation=golem$/,
-        ),
+        expect(document.title).toBe('Connectors · Customize'),
       );
     });
 
     it.each([
       [
-        '/customize/connectors/infrastructure/anything?installation=golem',
-        '/customize/connectors?installation=golem',
+        '/customize/connectors/infrastructure?installation=golem',
+        '/customize/connectors?installation=golem&tags=infrastructure',
       ],
-      // Infrastructure was "Families": an old link lands on it.
+      [
+        '/customize/connectors/internal?installation=golem',
+        '/customize/connectors?installation=golem&tags=agent-platform',
+      ],
+      // Infrastructure was "Families" before.
       [
         '/customize/connectors/families?installation=golem',
-        '/customize/connectors/infrastructure?installation=golem',
+        '/customize/connectors?installation=golem&tags=infrastructure',
       ],
       [
-        '/customize/connectors/families/',
-        '/customize/connectors/infrastructure',
+        '/customize/connectors/internal/',
+        '/customize/connectors?tags=agent-platform',
       ],
-      ['/customize/connectors/', '/customize/connectors'],
-      ['/customize/connectors/internal/', '/customize/connectors/internal'],
-    ])('sends %s to %s', async (from, to) => {
+    ])('sends the retired sub-tab %s to %s', async (from, to) => {
       await renderCustomize(from);
 
       await waitFor(() =>
         expect(screen.getByTestId('location').textContent).toBe(to),
       );
+      expect(
+        await screen.findByText(
+          `Connectors panel, tags ${to.split('tags=')[1]}`,
+        ),
+      ).toBeInTheDocument();
     });
 
-    it('draws no sub-tabs on the other tabs', async () => {
-      await renderCustomize('/customize/models');
-      expect(subTabs()).toEqual([]);
+    it("hands a path deeper than a retired sub-tab to muster's sub-page", async () => {
+      await renderCustomize(
+        '/customize/connectors/infrastructure/anything?installation=golem',
+      );
+
+      expect(
+        screen.getByText('Connectors sub-page at infrastructure/anything'),
+      ).toBeInTheDocument();
     });
   });
 });

@@ -10,6 +10,7 @@ const mockStart = jest.fn();
 const mockNavigate = jest.fn();
 let mockFormState: Record<string, string> = { name: 'my-app' };
 let mockTemplateName = 'app';
+let mockDescription: string | undefined;
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => {
   const react = jest.requireActual('react');
@@ -71,7 +72,7 @@ jest.mock('@backstage/plugin-scaffolder-react/alpha', () => {
     ...jest.requireActual('@backstage/plugin-scaffolder-react/alpha'),
     useTemplateParameterSchema: () => ({
       loading: false,
-      manifest: { title: 'App', steps: [] },
+      manifest: { title: 'App', description: mockDescription, steps: [] },
     }),
     useFilteredSchemaProperties: (manifest: object) => manifest,
     // Upstream passes only `disableButtons: isValidating` to a custom review
@@ -152,6 +153,27 @@ describe('GSTemplateWizardPageContent', () => {
     mockNavigate.mockReset();
     mockFormState = { name: 'my-app' };
     mockTemplateName = 'app';
+    mockDescription = undefined;
+  });
+
+  it("links the description's footnote reference to its note, in the page", async () => {
+    mockDescription =
+      'See [the docs](/docs/default/component/backstage)[^1].\n\n[^1]: The source.';
+    const { container } = await renderInTestApp(<WizardWithTemplateLink />);
+
+    const reference = screen.getByRole('link', { name: '1' });
+    const note = screen.getByText('The source.').closest('li');
+    expect(note).toHaveAttribute('id', 'user-content-fn-1');
+    expect(reference.getAttribute('href')?.split('#')[1]).toBe(note!.id);
+    expect(reference).not.toHaveAttribute('target');
+    expect(
+      container.querySelector('[id^="user-content-user-content-"]'),
+    ).toBeNull();
+    // A link out of the description still opens in a new tab.
+    expect(screen.getByRole('link', { name: 'the docs' })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
   });
 
   it('starts the task with the entries and opens it', async () => {

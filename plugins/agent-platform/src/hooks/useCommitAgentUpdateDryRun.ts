@@ -23,6 +23,7 @@ export type CommitAgentUpdateDryRun = {
 export function useCommitAgentUpdateDryRun(
   installation: string | undefined,
   update: AgentUpdate | undefined,
+  options: { freshOnMount?: boolean } = {},
 ): AgentManagerDryRunState<CommitAgentUpdateDryRun> {
   const signature = update ? JSON.stringify(update) : '';
   return useAgentManagerDryRun(
@@ -36,5 +37,6 @@ export function useCommitAgentUpdateDryRun(
           };
         }
       : undefined,
+    options,
   );
 }

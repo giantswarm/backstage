@@ -1,19 +1,17 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { expect, test } from './fixtures';
 import { lab } from './lab';
+import {
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+  PLATFORM_NAMESPACE,
+} from './kubectl';
 
-const run = promisify(execFile);
+// This spec also needs `kubectl`, because the portal has no create flow for a
+// plain HelmRelease — the deploy template that would make one lives outside
+// this repo and is not installed in the lab.
 
-/**
- * The lab's admin kubeconfig, its `state/kubeconfig` (agentlab merges nothing
- * into `~/.kube/config`). The suite's other specs reach the platform only
- * through the portal; this one also needs `kubectl`, because the portal has no
- * create flow for a plain HelmRelease — the deploy template that would make one
- * lives outside this repo and is not installed in the lab.
- */
-const KUBECONFIG = process.env.AGENTLAB_KUBECONFIG;
-const NAMESPACE = 'agent-platform';
+const NAMESPACE = PLATFORM_NAMESPACE;
 const NAME = 'uninstall-test';
 
 /**
@@ -50,16 +48,6 @@ spec:
     namespace: ${NAMESPACE}
 `;
 
-async function kubectl(args: string[], input?: string) {
-  const child = run('kubectl', ['--kubeconfig', KUBECONFIG!, ...args], {
-    encoding: 'utf8',
-  });
-  if (input !== undefined) {
-    child.child.stdin?.end(input);
-  }
-  return child;
-}
-
 async function exists(plural: string, name: string): Promise<boolean> {
   try {
     await kubectl(['-n', NAMESPACE, 'get', plural, name]);
@@ -74,10 +62,7 @@ function deploymentPath(namespace: string, name: string) {
 }
 
 test.describe('uninstalling an app deployment', () => {
-  test.skip(
-    !KUBECONFIG,
-    "needs kubectl access to the lab; set AGENTLAB_KUBECONFIG to the lab's state/kubeconfig",
-  );
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
 
   test.beforeEach(async () => {
     await kubectl(['apply', '-f', '-'], FIXTURE);

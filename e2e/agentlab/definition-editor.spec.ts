@@ -5,16 +5,16 @@ import { lab } from './lab';
 /**
  * The muster plugin's definition-editor dialog as the shell offers it: an
  * ad-hoc connector's **Edit as JSON…** (its page's More actions) — Validate as
- * a live muster call, a parse error shown in place of the last success, and
- * the dialog that cannot be closed while a call is in flight. (Workflows are
- * read-only in the shell, so its YAML twin for workflows is offered nowhere
- * there; `workflows.spec.ts` pins that.)
+ * a live muster call, a parse error shown on the editor in place of the last
+ * success and cleared as soon as the text parses, and the dialog that cannot
+ * be closed while a call is in flight. (Workflows are read-only in the shell,
+ * so its YAML twin for workflows is offered nowhere there; `workflows.spec.ts`
+ * pins that.)
  *
  * The server is the lab's `lab-oauth-fixture`, which other proofs sign in
  * to, so it is only validated, never saved.
  */
 
-const scope = `?installation=${lab.installation}`;
 const MUSTER_CALL = /\/api\/muster\/call(\?|$)/;
 
 /**
@@ -52,7 +52,7 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
 }) => {
   test.setTimeout(120_000);
   const server = 'lab-oauth-fixture';
-  await open(admin, `/agent-platform/connectors/${server}${scope}`);
+  await open(admin, `/customize/connectors/${lab.installation}/${server}`);
   const moreActions = admin.getByRole('button', { name: 'More actions' });
   await connectToMuster(admin, moreActions);
   const editAsJson = async () => {
@@ -101,10 +101,18 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
   await expect(dialog.getByText(/^Invalid JSON: /)).toBeVisible();
   await expect(dialog.getByText('Definition is valid.')).toBeHidden();
   await expect(editor).toHaveAttribute('aria-invalid', 'true');
+  await expect(editor, 'the blocked call focuses the editor').toBeFocused();
+  // Fixed, the error goes at once, without another Validate.
+  await editor.fill(`{ "name": "${server}" }`);
+  await expect(editor).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(dialog.getByText(/^Invalid JSON: /)).toBeHidden();
 
-  // Not busy: Escape closes it, and it opens again on the server's definition.
+  // Not busy: Escape closes it — after "Discard changes", since the text
+  // differs from the server's — and it opens again on the server's definition.
   await admin.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  const discard = admin.getByRole('dialog', { name: 'Discard your changes?' });
+  await discard.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(dialog).toHaveCount(0);
   await editAsJson();
   await expect(editor).toHaveValue(new RegExp(`"name": "${server}"`));
   await expect(dialog.getByText(/^Invalid JSON: /)).toBeHidden();

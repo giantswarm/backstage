@@ -49,7 +49,7 @@ function render(targets: PullTarget[] = [{ name: 'lab', canWire: true }]) {
     <Wrapper>
       <PullModelPage
         targets={targets}
-        closeHref="/agent-platform/models/serving"
+        closeHref="/customize/models/hosting"
         onPulled={onPulled}
       />
     </Wrapper>,
@@ -197,7 +197,7 @@ describe('PullModelPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
 
     expect(onPulled).not.toHaveBeenCalled();
@@ -288,14 +288,14 @@ describe('PullModelPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
 
-  it('offers three environments without a search', async () => {
+  it('offers type-ahead over three environments', async () => {
     await render(['lab', 'gpu', 'edge'].map(name => ({ name, canWire: true })));
 
     await openEnvironments();
     expect(
       await screen.findByRole('option', { name: 'edge' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 environments', async () => {

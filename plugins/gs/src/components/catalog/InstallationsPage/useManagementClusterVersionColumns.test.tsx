@@ -7,7 +7,7 @@ import { discoveryApiRef, fetchApiRef } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, screen, waitFor } from '@testing-library/react';
+import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import { gsAuthProvidersApiRef } from '../../../apis/auth';
 import {
   __resetInstallationsConfigForTests,
@@ -86,7 +86,10 @@ let queryClient: QueryClient;
 
 function wrapper(
   fetch: jest.Mock,
-  options: { proxy?: jest.Mock; getIdToken?: () => Promise<string> } = {},
+  options: {
+    proxy?: jest.Mock;
+    getIdToken?: (options?: { optional?: boolean }) => Promise<string>;
+  } = {},
 ) {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -338,5 +341,94 @@ describe('useManagementClusterVersionColumns', () => {
         .filter(r => release.customFilterAndSearch!('34.', r, release))
         .map(r => r.entity.metadata.name),
     ).toEqual(['c']);
+  });
+});
+
+describe('useManagementClusterVersions after the portal session expired', () => {
+  /** Sets the tab's user activation, as the browser reports it. */
+  function gesture(isActive: boolean) {
+    Object.defineProperty(navigator, 'userActivation', {
+      configurable: true,
+      value: { isActive, hasBeenActive: true },
+    });
+  }
+
+  /**
+   * The main login: signed in until `expire()`. After that its optional path
+   * answers no token, and its interactive path opens the sign-in (recorded in
+   * `prompts`) and stays open.
+   */
+  function mainLogin() {
+    let signedIn = true;
+    const prompts: string[] = [];
+    const getIdToken = jest.fn(
+      async (options?: { optional?: boolean }): Promise<string> => {
+        if (signedIn) {
+          return 'main-id-token';
+        }
+        if (options?.optional) {
+          return '';
+        }
+        prompts.push('Login Required');
+        return new Promise<string>(() => {});
+      },
+    );
+    return {
+      getIdToken,
+      prompts,
+      expire: () => {
+        signedIn = false;
+      },
+    };
+  }
+
+  beforeEach(() => __resetInstallationsConfigForTests());
+  afterEach(() => {
+    delete (navigator as { userActivation?: unknown }).userActivation;
+  });
+
+  it('a background refetch opens no sign-in and shows the installations as not signed in', async () => {
+    gesture(false);
+    const login = mainLogin();
+    const fetch = await renderProbe(
+      ['alpha'],
+      { alpha: known('v1.35.8', '35.1.1') },
+      undefined,
+      { getIdToken: login.getIdToken },
+    );
+    expect(
+      await screen.findByTestId('version-kubernetes-alpha'),
+    ).toHaveTextContent('1.35.8');
+
+    login.expire();
+    await act(() => queryClient.refetchQueries());
+
+    await waitFor(() =>
+      expect(screen.getByTestId('version-kubernetes-alpha')).toHaveTextContent(
+        'Not signed in',
+      ),
+    );
+    expect(screen.getByTestId('version-release-alpha')).toHaveTextContent(
+      'Not signed in',
+    );
+    expect(login.prompts).toEqual([]);
+    expect(login.getIdToken).toHaveBeenLastCalledWith({ optional: true });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a read the person starts still asks for the sign-in', async () => {
+    gesture(true);
+    const login = mainLogin();
+    login.expire();
+    const fetch = await renderProbe(
+      ['alpha'],
+      { alpha: known('v1.35.8') },
+      undefined,
+      { getIdToken: login.getIdToken },
+    );
+
+    await waitFor(() => expect(login.prompts).toEqual(['Login Required']));
+    expect(login.getIdToken).toHaveBeenCalledWith({ optional: false });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,10 @@ import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
 import {
+  MODEL_COST_MAX_DAYS,
+  STREAM_MAX_DURATION_MS,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
   ReachabilityCache,
   reachabilityFields,
 } from '@giantswarm/backstage-plugin-gs-node';
@@ -30,8 +34,14 @@ import {
   type SessionSharePermissionInput,
 } from './KagentClient';
 import { probeKagentGrpc } from './kagent/reachability';
+import {
+  assertSessionImageBudget,
+  MessageImagePart,
+  readMessageImages,
+} from './messageImages';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
+import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
 
@@ -55,6 +65,13 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /**
+   * The installations' Mimir, queried with the person's token, for their own
+   * model cost. The plugin always passes the shared `mimirServiceRef`; tests
+   * of other routes leave it out, and the cost route then answers `no-mimir`
+   * as for an installation without one.
+   */
+  mimir?: MimirQuerier;
 }
 
 /**
@@ -78,6 +95,33 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
   }
   return value;
 }
+
+/**
+ * The cost route's `?days=`: a whole number of days up to the Usage screen's
+ * widest window. Required, so the window is always the one the page names.
+ */
+function readCostWindowDays(req: express.Request): number {
+  const raw = singleQueryValue(req.query.days, 'days');
+  const days = Number(raw);
+  if (
+    !raw ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > MODEL_COST_MAX_DAYS
+  ) {
+    throw new InputError(
+      `days must be a whole number from 1 to ${MODEL_COST_MAX_DAYS}`,
+    );
+  }
+  return days;
+}
+
+/**
+ * The body limit of the message routes: the text's ~96 kB worst case plus
+ * `MESSAGE_IMAGES_MAX_TOTAL_BYTES` of images in base64, with headroom, so the
+ * limits a caller meets are the ones `readMessageBody` names.
+ */
+const MESSAGE_BODY_LIMIT = '5mb';
 
 /**
  * A required, non-empty string field from a JSON body.
@@ -162,6 +206,7 @@ function readMessageBody(req: express.Request): {
   agentName: string;
   messageId: string;
   text: string;
+  images: MessageImagePart[];
 } {
   const body = (req.body ?? {}) as Record<string, unknown>;
 
@@ -187,7 +232,34 @@ function readMessageBody(req: express.Request): {
     );
   }
 
-  return { agentNamespace, agentName, messageId, text };
+  return {
+    agentNamespace,
+    agentName,
+    messageId,
+    text,
+    images: readMessageImages(body.images),
+  };
+}
+
+/**
+ * Hold a message with images to what the session can still carry. Costs one
+ * read of the session's tasks, so only a message that carries images pays
+ * it; a text message cannot take the session past its image budget.
+ */
+async function checkSessionImageBudget(
+  client: KagentClient,
+  sessionId: string,
+  agent: { namespace: string; name: string },
+  userToken: string | undefined,
+  images: readonly MessageImagePart[],
+): Promise<void> {
+  if (images.length === 0) {
+    return;
+  }
+  assertSessionImageBudget(
+    await client.readSessionImageUsage(sessionId, agent, { userToken }),
+    images,
+  );
 }
 
 /**
@@ -204,6 +276,7 @@ function readAnswerBody(req: express.Request): {
     answers?: string[][];
     rejectionReason?: string;
     text?: string;
+    askedIn?: string;
   };
 } {
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -268,26 +341,16 @@ function readAnswerBody(req: express.Request): {
       answers,
       rejectionReason: readOptionalBounded('rejectionReason'),
       text: readOptionalBounded('text'),
+      askedIn: readOptionalBounded('askedIn'),
     },
   };
 }
 
 /**
- * Upper bound on how long the streaming routes hold their relay open.
- *
- * Not a turn timeout — cutting the stream does not stop the turn, and the
- * frontend reconciles through the poll exactly as if a gateway had cut it. This
- * exists only so an agent that never writes a terminal state cannot pin a socket
- * (and its upstream connection) open for as long as a tab stays on the page.
- * Generous on purpose: a legitimate turn with many tool calls runs many minutes,
- * and every gateway we know of gives up long before this does.
- */
-const STREAM_MAX_DURATION_MS = 30 * 60_000;
-
-/**
  * Relay one upstream event stream to the browser as SSE.
  *
- * Shared by the streaming routes (a message, an answer): `open` opens the
+ * Shared by the streaming routes (a message, an answer, a resubscription to a
+ * running turn): `open` opens the
  * upstream stream under the relay's abort signal, and everything after the
  * headers is the same for both. Failure semantics split at the headers, which
  * is inherent to streaming:
@@ -301,8 +364,15 @@ const STREAM_MAX_DURATION_MS = 30 * 60_000;
  *   or stop. A relay that ends without a terminal event — kagent cut off by a
  *   gateway, this response cut off by the browser's own door, the duration
  *   bound — is not reported as anything, because the turn survives it: the
- *   frontend treats an unterminated stream as "still running" and follows the
- *   poll, the same contract as the unary routes' 202.
+ *   frontend treats an unterminated stream as "still running", resubscribes
+ *   to the turn, and follows the poll when that fails too — the same contract
+ *   as the unary routes' 202.
+ *
+ * The duration bound (`STREAM_MAX_DURATION_MS`, shared with the page) keeps an
+ * agent that never writes a terminal state from pinning a socket open. Each
+ * relay holds it, and the page holds it across a turn's resubscriptions: it
+ * stops resubscribing once it has followed the turn that long, so a chain of
+ * fresh relays cannot get around it.
  *
  * The relay is flush-wrapped because Backstage's root router applies
  * `compression()` globally, which buffers `res.write()` until `res.end()` —
@@ -544,6 +614,16 @@ export async function createRouter(
   // (CJK) — 32,000 of them is ~96 kB, which clears the default by only a few kB
   // once the rest of the body is counted. Too close to rely on: a message the
   // proxy considers valid would be refused with a 413 that explains nothing.
+  //
+  // Everything under a session's `messages` takes more — today the messages
+  // route and its streaming sibling, since `use` matches a path prefix —
+  // because a message may carry images (`MESSAGE_IMAGES_MAX_TOTAL_BYTES`,
+  // base64 in the JSON, so a third more). This parser runs first, and the
+  // general one skips a body already read.
+  router.use(
+    '/kagent/sessions/:sessionId/messages',
+    express.json({ limit: MESSAGE_BODY_LIMIT }),
+  );
   router.use(express.json({ limit: '256kb' }));
 
   router.get('/health', (_, res) => {
@@ -723,6 +803,39 @@ export async function createRouter(
     );
     // A per-user breakdown of what someone ran and which tools they reached
     // for; never store it anywhere shared.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  /**
+   * The caller's own model cost on one installation over the last `days`
+   * days, as the gateway priced it — what "Your sessions" shows in place of
+   * an estimate.
+   *
+   * **Whose cost is never a parameter.** The person is whoever kagent's
+   * `SystemService/GetCurrentUser` says the forwarded token belongs to, and
+   * the PromQL is built here from that identity, so no query string or header
+   * can point it at someone else. The generic `/api/gs/mimir/query` proxy
+   * takes PromQL from the browser and so cannot make this promise; that is
+   * why this is its own route.
+   *
+   * Every fallback the page acts on is a 200 with `status: 'unavailable'` and
+   * a reason (see `readModelCost`), "no Mimir here" included; only a token
+   * kagent or Mimir refused (401) is an error.
+   */
+  router.get('/usage/model-cost', async (req, res) => {
+    const { config: installationConfig, client } = resolveInstallation(req);
+    const days = readCostWindowDays(req);
+    const userToken = readUserToken(req, { required: true })!;
+    const result = await readModelCost({
+      identity: client,
+      mimir: options.mimir,
+      installation: installationConfig.name,
+      userToken,
+      days,
+      logger,
+    });
+    // One person's spend; never store it anywhere shared.
     res.setHeader('Cache-Control', 'no-store');
     res.json(result);
   });
@@ -958,14 +1071,19 @@ export async function createRouter(
   router.post('/kagent/sessions/:sessionId/messages', async (req, res) => {
     const { client } = resolveInstallation(req);
 
-    const { agentNamespace, agentName, messageId, text } = readMessageBody(req);
+    const { agentNamespace, agentName, messageId, text, images } =
+      readMessageBody(req);
+    const sessionId = readSessionId(req);
+    const agent = { namespace: agentNamespace, name: agentName };
+    const userToken = readUserToken(req, { required: true });
+    await checkSessionImageBudget(client, sessionId, agent, userToken, images);
 
     try {
       const result = await client.sendMessage(
-        readSessionId(req),
-        { namespace: agentNamespace, name: agentName },
-        { messageId, text },
-        { userToken: readUserToken(req, { required: true }) },
+        sessionId,
+        agent,
+        { messageId, text, images },
+        { userToken },
       );
       res.json(result);
     } catch (error) {
@@ -997,18 +1115,60 @@ export async function createRouter(
     async (req, res) => {
       const { client } = resolveInstallation(req);
 
-      const { agentNamespace, agentName, messageId, text } =
+      const { agentNamespace, agentName, messageId, text, images } =
         readMessageBody(req);
+      const sessionId = readSessionId(req);
+      const agent = { namespace: agentNamespace, name: agentName };
       const userToken = readUserToken(req, { required: true });
+      await checkSessionImageBudget(
+        client,
+        sessionId,
+        agent,
+        userToken,
+        images,
+      );
 
       await relayEventStream(res, logger, signal =>
         client.streamMessage(
-          readSessionId(req),
-          { namespace: agentNamespace, name: agentName },
-          { messageId, text },
+          sessionId,
+          agent,
+          { messageId, text, images },
           { userToken },
           signal,
         ),
+      );
+    },
+  );
+
+  /**
+   * Follow a running turn again, streaming its events from now on: the page's
+   * way back into a turn whose stream ended before the turn did (a controller
+   * rollout cuts every stream in flight; the turns run on).
+   *
+   * `A2AService/SubscribeToTask` as the person — their token, required, and
+   * the controller decides as it does for the stream itself — addressed to the
+   * Agent the body names, like the send routes. Relayed by
+   * {@link relayEventStream}; a subscription that could not open for a reason
+   * a retry may fix answers 200 with one `{error}` frame rather than a 5xx (see
+   * `KagentClient.subscribeToTask`), while a decision — not the person's, no
+   * such task, a task already over — is its 4xx.
+   */
+  router.post(
+    '/kagent/sessions/:sessionId/tasks/:taskId/subscribe',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const agent = {
+        namespace: readRequiredString(body, 'agentNamespace'),
+        name: readRequiredString(body, 'agentName'),
+      };
+      const sessionId = readSessionId(req);
+      const rawTaskId = req.params.taskId;
+      const taskId = typeof rawTaskId === 'string' ? rawTaskId : '';
+      const userToken = readUserToken(req, { required: true });
+
+      await relayEventStream(res, logger, signal =>
+        client.subscribeToTask(sessionId, agent, taskId, { userToken }, signal),
       );
     },
   );
@@ -1017,6 +1177,24 @@ export async function createRouter(
   // and the reachability probe calls it, but nothing in the frontend gates on a
   // version string: tolerance lives in the permissive parsing in
   // agent-platform-common, and a feature that needs gating probes by behaviour.
+
+  /**
+   * The namespaces of the Agents the caller may list on one installation
+   * (`AgentService/ListAgents` with no namespace, as the person): where the
+   * roster reads Agents namespace by namespace when the person may not list
+   * them cluster-wide. Only the namespaces are answered; the Agents are read
+   * through the Kubernetes API as the person.
+   */
+  router.get('/kagent/agent-namespaces', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
+    const { client } = resolveInstallation(req);
+    const result = await client.listAgentNamespaces({
+      userToken: readUserToken(req, { required: true }),
+      requestId,
+    });
+    res.json(result);
+  });
 
   /**
    * Identity probe: the claims the controller resolved for the call

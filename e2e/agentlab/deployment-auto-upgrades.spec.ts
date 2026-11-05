@@ -1,17 +1,16 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { expect, test } from './fixtures';
 import { lab } from './lab';
+import {
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+  PLATFORM_NAMESPACE,
+} from './kubectl';
 
-const run = promisify(execFile);
+// The portal has no flow that writes an OCIRepository's `semverFilter`, so
+// the fixtures are applied with `kubectl`.
 
-/**
- * The lab's admin kubeconfig, its `state/kubeconfig`: the portal has no flow
- * that writes an OCIRepository's `semverFilter`, so the fixtures are applied
- * with `kubectl`.
- */
-const KUBECONFIG = process.env.AGENTLAB_KUBECONFIG;
-const NAMESPACE = 'agent-platform';
+const NAMESPACE = PLATFORM_NAMESPACE;
 
 type Scenario = {
   name: string;
@@ -126,21 +125,8 @@ spec:
 `;
 }
 
-async function kubectl(args: string[], input?: string) {
-  const child = run('kubectl', ['--kubeconfig', KUBECONFIG!, ...args], {
-    encoding: 'utf8',
-  });
-  if (input !== undefined) {
-    child.child.stdin?.end(input);
-  }
-  return child;
-}
-
 test.describe("a deployment's automatic upgrades", () => {
-  test.skip(
-    !KUBECONFIG,
-    "needs kubectl access to the lab; set AGENTLAB_KUBECONFIG to the lab's state/kubeconfig",
-  );
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
 
   test.beforeAll(async () => {
     await kubectl(['apply', '-f', '-'], SCENARIOS.map(fixture).join('\n---\n'));

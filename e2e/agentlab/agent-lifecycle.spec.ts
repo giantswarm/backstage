@@ -35,7 +35,7 @@ const prompt = 'Reply with exactly the single word PONG and nothing else.';
 test('agent lifecycle: instructions past the limit stay on Details', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/agents/new');
+  await open(admin, '/customize/agents/new');
   await expectWizardStep(admin, 'Details');
   const field = admin.getByRole('textbox', { name: 'Instructions' });
   await field.fill('a'.repeat(20001));

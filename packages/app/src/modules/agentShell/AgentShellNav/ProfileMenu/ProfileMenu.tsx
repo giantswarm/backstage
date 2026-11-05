@@ -3,6 +3,7 @@ import {
   identityApiRef,
   routeResolutionApiRef,
   useApi,
+  useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import {
   Avatar,
@@ -21,9 +22,16 @@ import {
   MenuSection as AriaMenuSection,
 } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
+import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
+import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import type { AgentShellNavItem } from '../../navItems';
+import {
+  UnreadBadge,
+  useNotificationInbox,
+  withUnreadCount,
+} from '../../NotificationInbox';
 import { type RailLayout, useBarItemStyles } from '../railLayout';
 import { useProfile } from './useProfile';
 
@@ -71,6 +79,11 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     minWidth: 0,
   },
+  // The phone bar's avatar, which carries the inbox's unread badge.
+  barAvatar: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
   identity: {
     display: 'flex',
     flexDirection: 'column',
@@ -79,9 +92,6 @@ const useStyles = makeStyles({
     minWidth: 0,
   },
 });
-
-/** The profile page the menu's first item opens. */
-const PROFILE_PATH = '/agent-platform/profile';
 
 type MenuDestination = {
   item: AgentShellNavItem;
@@ -133,9 +143,13 @@ export function ProfileMenu({
   const identityApi = useApi(identityApiRef);
   const { pathname } = useLocation();
   const destinations = useMenuDestinations(menuItems);
+  // The profile page the menu's first item opens; left out while unbound.
+  const profileRoute = useRouteRef(agentPlatformPlugin.routes.profile);
+  const profileHref = profileRoute?.();
   const inShell = destinations.filter(({ item: entry }) => !entry.newTab);
   const leaving = destinations.filter(({ item: entry }) => entry.newTab);
   const profile = useProfile();
+  const inbox = useNotificationInbox();
   const displayName = profile?.displayName?.trim() || undefined;
   const email = profile?.email?.trim() || undefined;
   const name = displayName ?? email ?? '';
@@ -154,13 +168,17 @@ export function ProfileMenu({
     // The shell's own minimal profile page, same tab — not the classic
     // `/settings`, whose chrome the shell exists to stay out of. That page
     // keeps an explicit "All portal settings" escape hatch to the classic one.
-    <MenuItem
-      key="settings"
-      href={PROFILE_PATH}
-      iconStart={<Icon fontSize="small" />}
-    >
-      {item.title}
-    </MenuItem>,
+    ...(profileHref
+      ? [
+          <MenuItem
+            key="settings"
+            href={profileHref}
+            iconStart={<Icon fontSize="small" />}
+          >
+            {item.title}
+          </MenuItem>,
+        ]
+      : []),
     ...inShell.map(({ item: entry, href }) => {
       const EntryIcon = entry.icon;
       return (
@@ -177,19 +195,25 @@ export function ProfileMenu({
 
   // The phone bar's Profile item is the current one while the person is on a
   // page only its menu leads to: the bar has no other item to mark.
-  const isCurrent = [PROFILE_PATH, ...inShell.map(({ href }) => href)].some(
-    href => isUnder(pathname, href),
-  );
+  const isCurrent = [
+    ...(profileHref ? [profileHref] : []),
+    ...inShell.map(({ href }) => href),
+  ].some(href => isUnder(pathname, href));
 
   let trigger;
   if (layout === 'bar') {
+    // The bar keeps its five items: the inbox's unread count rides on the
+    // Profile item, and its menu opens the inbox.
     trigger = (
       <AriaButton
         className={barClasses.item}
-        aria-label={item.title}
+        aria-label={withUnreadCount(item.title, inbox?.unreadCount ?? 0)}
         data-current={isCurrent ? 'true' : undefined}
       >
-        {avatar}
+        <span className={classes.barAvatar}>
+          {avatar}
+          <UnreadBadge count={inbox?.unreadCount ?? 0} />
+        </span>
         <span className={barClasses.label}>{item.barTitle ?? item.title}</span>
       </AriaButton>
     );
@@ -224,6 +248,17 @@ export function ProfileMenu({
     <MenuTrigger>
       {trigger}
       <Menu placement={layout === 'bar' ? 'top end' : 'top start'}>
+        {layout === 'bar' && inbox && (
+          <MenuItem
+            iconStart={<NotificationsNoneIcon fontSize="small" />}
+            onAction={() => inbox.setOpen(true)}
+          >
+            {inbox.unreadCount > 0
+              ? `Notifications (${inbox.unreadCount})`
+              : 'Notifications'}
+          </MenuItem>
+        )}
+        {layout === 'bar' && inbox && <MenuSeparator />}
         {name ? (
           // Who is signed in heads the group rather than being an item: it is
           // not something to choose.

@@ -80,7 +80,7 @@ const render = (element: React.ReactElement) => {
     </TestApiProvider>
   );
   return renderInTestApp(<Wrapper>{element}</Wrapper>, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: { '/customize/models': modelsRouteRef },
   });
 };
 
@@ -130,7 +130,7 @@ describe('ModelServingStatus', () => {
     );
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

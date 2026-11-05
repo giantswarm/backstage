@@ -390,7 +390,20 @@ export function sniffImageType(
   return undefined;
 }
 
-type ImageSize = { width: number; height: number };
+/** An image's width and height in pixels. */
+export type ImageSize = { width: number; height: number };
+
+/**
+ * The dimensions an image's own header declares, read from its standard,
+ * padded base64 ({@link normalizeBase64}) without decoding the rest; undefined
+ * when the bytes are not one of {@link PREVIEWABLE_IMAGE_TYPES} or the header
+ * cannot be read.
+ */
+export function readImageDimensions(base64: string): ImageSize | undefined {
+  const head = decodeRange(base64, 0, SNIFF_BYTES);
+  const type = head && sniffImageType(head);
+  return head && type ? readImageSize(base64, type, head) : undefined;
+}
 
 /**
  * The dimensions the image's own header declares, or undefined when the header

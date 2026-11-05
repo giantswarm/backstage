@@ -77,6 +77,73 @@ you see it:
   want them to fail — worth doing on a package you are actively migrating,
   unusable repo-wide until the backlog is gone.
 
+## Commits and resource names
+
+A git commit SHA is shown in 7 characters, as `git log --oneline` prints it,
+wherever the portal shows one: skill pins, agent and skill revisions,
+workspace heads, Flux revisions (`main@sha1:<sha>`), versions that carry a
+commit (`1.2.3-<sha>`), the release footer. A digest (`sha256:`, `sha384:`,
+`sha512:`, `blake3:`, or a bare 64-hex value, which may be a checksum as well
+as a SHA-256 commit) keeps its prefix and 12 characters. One helper does it,
+for the frontend and the backend's messages alike:
+
+- `shortSha(value)` in `@giantswarm/backstage-plugin-gs-common`, re-exported
+  by `ui-react`. It finds a full 40- or 64-hex hash inside the value and
+  leaves anything else as it is: a tag, a semver, an abbreviated SHA (Flux's
+  `1.2.3+<12 hex>` included), since its shape cannot tell a commit from any
+  other hex token.
+- `CommitSha` in `ui-react` renders the short form with the full value at
+  hand: its `title` on a pointer, a copy button beside it on a touch screen.
+  Inside a link, a row or a selectable card, where a button cannot go, pass
+  `copy={false}`: the `title` alone carries the full value there.
+
+A Kubernetes resource in a `FactList` shows its namespace and name as two
+facts, Namespace and Name, through `namespacedNameFacts` (a `ui-react` util); a
+second resource in the same list passes its `kind` to prefix the labels.
+
+## Links
+
+A link is underlined and in the link colour. Leave either out only where the
+click target is larger than the link's text, so the shape of the control shows
+it can be clicked: a table or list row, a card, a nav or rail item, a
+breadcrumb, a tab, a button. A link inside a table cell is a text link and
+stays underlined. Any other exception needs a reason in the code review.
+
+## Links in the Agent Platform shell
+
+Every text link in the Agent Platform shell looks the same: the shell's link
+colour and a solid underline, on every surface — white or tinted, a card, a
+nested card or a banner — whatever its `color` prop. One rule in
+`packages/app/src/modules/agentShell/agent-shell.css` styles bui's `Link`
+(`.bui-Link`), core-components' and MUI's `Link` (`.MuiLink-root`) and a
+toast's links alike, so a component never colours, underlines or
+un-underlines a link of its own. A bui `Text` inside a text link takes the
+link's colour from the same rule. Hover takes the text colour and thickens
+the line.
+
+The underline is what marks a link. The link colour (#00609c) holds 4.5:1
+against every surface a link sits on, but only 2.3:1 against the body text,
+short of the 3:1 at which colour alone may mark a link (WCAG 1.4.1).
+
+The shell renders light, but a toast inverts the theme the person picked, so
+its links sit on bui's dark surfaces whenever they picked the light theme.
+There the link colour is #bcdcff, which holds 4.5:1 against bui's dark app
+background, its neutral-1 to neutral-3 surfaces and its banners. `theme.test.ts`
+checks the contrast in both modes, against the shell's palette and the
+installed bui's own tokens.
+
+Controls rendered as links keep their own look. bui's `ButtonLink`,
+core-components' `LinkButton`, and a bui `Tab`, `MenuItem` or `Tag` with an
+`href` carry no link class, so the rule never reaches them. It leaves out a
+`Card` with an `href`, anything MUI builds on its `ButtonBase` (a button, tab
+or menu item rendered through core-components' `Link`), and any bui `Link`
+with `standalone`. `standalone` is how a bui `Link` says it is a control rather
+than text — the rail's items and the logo, breadcrumbs, a wizard's steps,
+Close and Cancel, a title that a row or a card stretches over its whole area,
+a link filling a tag, an icon-only link. Pass it rather than adding an
+exclusion to the rule. A standalone link keeps the link colour, darker on
+hover, unless its component sets its own.
+
 ## Toasts
 
 A toast (`toastApiRef` from `@backstage/frontend-plugin-api`) is an

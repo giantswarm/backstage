@@ -16,6 +16,8 @@ import {
   ModelConfigFormValues,
   PLACEHOLDER_API_KEY,
   planKeySecret,
+  serviceAccountKeyError,
+  serviceAccountKeySummary,
   validateModelConfigForm,
 } from './modelConfigs';
 
@@ -64,7 +66,7 @@ describe('validateModelConfigForm', () => {
 
   it('requires a DNS-label name', () => {
     expect(validateModelConfigForm(values({ name: '' }))).toContainEqual(
-      expect.stringContaining('Technical name is required'),
+      expect.stringContaining('Enter a technical name.'),
     );
     expect(validateModelConfigForm(values({ name: 'Qwen_3' }))).toContainEqual(
       expect.stringContaining('lowercase'),
@@ -73,14 +75,14 @@ describe('validateModelConfigForm', () => {
 
   it('requires the model id', () => {
     expect(validateModelConfigForm(values({ model: ' ' }))).toContainEqual(
-      expect.stringContaining('Model is required'),
+      expect.stringContaining('Enter the model id.'),
     );
   });
 
   it('requires a host for Ollama and accepts it keyless without a key', () => {
     const ollama = values({ provider: 'Ollama', apiKey: '', endpoint: '' });
     expect(validateModelConfigForm(ollama)).toEqual([
-      'Host is required for Ollama',
+      'Enter the Ollama host, e.g. http://ollama.ollama:11434.',
     ]);
     expect(
       validateModelConfigForm(
@@ -113,7 +115,7 @@ describe('validateModelConfigForm', () => {
     // made with kubectl may have none and stays saveable as it is.
     expect(
       modelConfigFieldErrors(values({ displayName: ' ' })).displayName,
-    ).toBe('Name is required');
+    ).toBe('Enter a name for the model.');
     expect(
       modelConfigFieldErrors(values({ displayName: '' }), { isEdit: true }),
     ).toEqual({});
@@ -203,6 +205,8 @@ describe('planKeySecret', () => {
     expect(keyFor('OpenAI')).toBe('OPENAI_API_KEY');
     expect(keyFor('Anthropic')).toBe('ANTHROPIC_API_KEY');
     expect(keyFor('Gemini')).toBe('GOOGLE_API_KEY');
+    expect(keyFor('AnthropicVertexAI')).toBe('GOOGLE_APPLICATION_CREDENTIALS');
+    expect(keyFor('GeminiVertexAI')).toBe('GOOGLE_APPLICATION_CREDENTIALS');
   });
 });
 
@@ -347,6 +351,8 @@ describe('buildModelConfigPatch', () => {
         openAI: { baseUrl: 'https://new.example.test/v1' },
         anthropic: null,
         ollama: null,
+        anthropicVertexAI: null,
+        geminiVertexAI: null,
         tls: { disableVerify: null },
       },
     });
@@ -430,6 +436,8 @@ describe('modelConfigFormValues', () => {
       provider: 'OpenAI',
       model: 'qwen3-8-27b',
       endpoint: 'https://vllm.example.test/v1',
+      projectID: '',
+      location: '',
       insecureSkipTlsVerify: true,
       apiKey: '',
     });
@@ -514,5 +522,309 @@ describe('modelConfigOwner', () => {
 describe('keySecretName', () => {
   it('follows the agentlab convention', () => {
     expect(keySecretName('qwen3')).toBe('kagent-qwen3');
+  });
+});
+
+describe('Vertex AI', () => {
+  function serviceAccountKey(overrides: Record<string, unknown> = {}) {
+    return JSON.stringify({
+      type: 'service_account',
+      project_id: 'my-project-123',
+      private_key_id: 'abc',
+      private_key: 'not-a-key',
+      client_email: 'kagent@my-project-123.iam.gserviceaccount.com',
+      token_uri: 'https://oauth2.googleapis.com/token',
+      ...overrides,
+    });
+  }
+
+  function vertex(
+    overrides: Partial<ModelConfigFormValues> = {},
+  ): ModelConfigFormValues {
+    return values({
+      provider: 'AnthropicVertexAI',
+      name: 'sonnet-vertex',
+      model: 'claude-sonnet-4-5@20250929',
+      projectID: 'my-project-123',
+      location: 'europe-west4',
+      apiKey: serviceAccountKey(),
+      ...overrides,
+    });
+  }
+
+  describe('serviceAccountKeyError', () => {
+    it('accepts a service account key of the project', () => {
+      expect(
+        serviceAccountKeyError(serviceAccountKey(), 'my-project-123'),
+      ).toBeUndefined();
+    });
+
+    it('accepts a key without token_uri, as kagent does', () => {
+      expect(
+        serviceAccountKeyError(
+          serviceAccountKey({ token_uri: undefined }),
+          'my-project-123',
+        ),
+      ).toBeUndefined();
+    });
+
+    it.each([
+      ['not JSON', 'sk-ant-123', 'This file is not a JSON key'],
+      ['a JSON array', '[]', 'This file is not a JSON key'],
+      [
+        'another kind of credential',
+        serviceAccountKey({ type: 'authorized_user' }),
+        'This file is not a service account key',
+      ],
+      [
+        'a key of another project',
+        serviceAccountKey({ project_id: 'other-project' }),
+        'This key belongs to project other-project, not my-project-123',
+      ],
+      [
+        'a key naming no project',
+        serviceAccountKey({ project_id: undefined }),
+        'This key names no project',
+      ],
+      [
+        'a token endpoint other than Google’s',
+        serviceAccountKey({ token_uri: 'https://evil.example.com/token' }),
+        'https://oauth2.googleapis.com',
+      ],
+      [
+        'Google’s token endpoint over plain HTTP',
+        serviceAccountKey({ token_uri: 'http://oauth2.googleapis.com/token' }),
+        'https://oauth2.googleapis.com',
+      ],
+    ])('rejects %s', (_, raw, message) => {
+      expect(serviceAccountKeyError(raw, 'my-project-123')).toContain(message);
+    });
+
+    it('skips the project check while the project is unknown', () => {
+      expect(
+        serviceAccountKeyError(
+          serviceAccountKey({ project_id: 'other-project' }),
+          '',
+        ),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('serviceAccountKeySummary', () => {
+    it('names the project and the account, nothing secret', () => {
+      expect(serviceAccountKeySummary(serviceAccountKey())).toEqual({
+        projectID: 'my-project-123',
+        clientEmail: 'kagent@my-project-123.iam.gserviceaccount.com',
+      });
+    });
+
+    it.each(['sk-ant-123', '[]', 'null'])('reads nothing from %s', raw => {
+      expect(serviceAccountKeySummary(raw)).toBeUndefined();
+    });
+  });
+
+  describe('modelConfigFieldErrors', () => {
+    it('accepts a complete form', () => {
+      expect(modelConfigFieldErrors(vertex())).toEqual({});
+    });
+
+    it('requires the location and the key on create', () => {
+      expect(
+        modelConfigFieldErrors(
+          vertex({ projectID: '', location: '', apiKey: '' }),
+        ),
+      ).toEqual({
+        location: 'Enter the location, e.g. global or europe-west4.',
+        apiKey: 'Choose the service account key file.',
+      });
+    });
+
+    it.each(['global', 'us', 'eu', 'europe-west4', 'us-central1'])(
+      'accepts the location %s',
+      location => {
+        expect(modelConfigFieldErrors(vertex({ location })).location).toBe(
+          undefined,
+        );
+      },
+    );
+
+    it.each(['Europe', 'europe-west4-a', 'europe west4'])(
+      'rejects the location %s',
+      location => {
+        expect(modelConfigFieldErrors(vertex({ location })).location).toMatch(
+          /^Enter global, us, eu or a region/,
+        );
+      },
+    );
+
+    it('shows a key problem on the key field', () => {
+      expect(
+        modelConfigFieldErrors(vertex({ projectID: 'other-project' })).apiKey,
+      ).toContain('This key belongs to project my-project-123');
+    });
+
+    it('keeps the stored key on an edit of the same project', () => {
+      const original = vertex({ apiKey: '' });
+      expect(
+        modelConfigFieldErrors(
+          vertex({
+            apiKey: '',
+            location: 'global',
+            provider: 'GeminiVertexAI',
+          }),
+          { isEdit: true, original },
+        ),
+      ).toEqual({});
+    });
+
+    it('requires a new key when the project changes on edit', () => {
+      const original = vertex({ apiKey: '' });
+      expect(
+        modelConfigFieldErrors(
+          vertex({ apiKey: '', projectID: 'new-project' }),
+          {
+            isEdit: true,
+            original,
+          },
+        ).apiKey,
+      ).toBe('Choose the service account key file.');
+    });
+
+    it('requires a key when an edit switches to Vertex AI', () => {
+      const original = values({ provider: 'Anthropic', apiKey: '' });
+      expect(
+        modelConfigFieldErrors(vertex({ apiKey: '' }), {
+          isEdit: true,
+          original,
+        }).apiKey,
+      ).toBe('Choose the service account key file.');
+    });
+  });
+
+  describe('planKeySecret', () => {
+    it('writes the key as entered, trimmed', () => {
+      const key = serviceAccountKey();
+      expect(planKeySecret(vertex({ apiKey: `${key}\n` }))).toEqual({
+        action: 'write',
+        name: 'kagent-sonnet-vertex',
+        key: 'GOOGLE_APPLICATION_CREDENTIALS',
+        value: key,
+      });
+    });
+
+    it('keeps the stored key across the two Vertex AI providers', () => {
+      expect(
+        planKeySecret(vertex({ provider: 'GeminiVertexAI', apiKey: '' }), {
+          isEdit: true,
+          originalProvider: 'AnthropicVertexAI',
+        }),
+      ).toEqual({ action: 'keep' });
+    });
+  });
+
+  it('composes the provider block with project and location, and no TLS', () => {
+    const plan = planKeySecret(vertex());
+    expect(
+      buildModelConfigManifest(
+        vertex({ insecureSkipTlsVerify: true, endpoint: 'https://ignored' }),
+        plan,
+        'kagent',
+      ).spec,
+    ).toEqual({
+      provider: 'AnthropicVertexAI',
+      model: 'claude-sonnet-4-5@20250929',
+      apiKeySecret: 'kagent-sonnet-vertex',
+      apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+      anthropicVertexAI: {
+        projectID: 'my-project-123',
+        location: 'europe-west4',
+      },
+    });
+    expect(
+      buildModelConfigManifest(
+        vertex({ provider: 'GeminiVertexAI', model: 'gemini-2.5-pro' }),
+        plan,
+        'kagent',
+      ).spec,
+    ).toMatchObject({
+      provider: 'GeminiVertexAI',
+      geminiVertexAI: { projectID: 'my-project-123', location: 'europe-west4' },
+    });
+  });
+
+  it('patches only project and location in its block and drops the others', () => {
+    const original = makeModelConfig({
+      spec: {
+        provider: 'AnthropicVertexAI',
+        model: 'claude-sonnet-4-5@20250929',
+        apiKeySecret: 'kagent-sonnet-vertex',
+        apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+        anthropicVertexAI: {
+          projectID: 'my-project-123',
+          location: 'europe-west4',
+          maxTokens: 4096,
+        },
+      },
+    });
+    const next = vertex({ provider: 'GeminiVertexAI', apiKey: '' });
+    const plan = planKeySecret(next, {
+      isEdit: true,
+      originalProvider: 'AnthropicVertexAI',
+    });
+    const patch = buildModelConfigPatch(next, plan, original) as {
+      spec: Record<string, unknown>;
+    };
+    expect(patch.spec).toMatchObject({
+      provider: 'GeminiVertexAI',
+      apiKeySecret: 'kagent-sonnet-vertex',
+      apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+      openAI: null,
+      anthropic: null,
+      ollama: null,
+      anthropicVertexAI: null,
+      geminiVertexAI: { projectID: 'my-project-123', location: 'europe-west4' },
+      tls: { disableVerify: null },
+    });
+
+    const sameProvider = buildModelConfigPatch(
+      vertex({ apiKey: '', location: 'global' }),
+      { action: 'keep' },
+      original,
+    ) as { spec: Record<string, unknown> };
+    // A merge patch: maxTokens, which the form does not manage, survives.
+    expect(sameProvider.spec.anthropicVertexAI).toEqual({
+      projectID: 'my-project-123',
+      location: 'global',
+    });
+  });
+
+  it('prefills the form from the CR, and offers no edit for unsupported ones', () => {
+    const modelConfig = makeModelConfig({
+      spec: {
+        provider: 'GeminiVertexAI',
+        model: 'gemini-2.5-pro',
+        apiKeySecret: 'kagent-qwen3',
+        apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+        geminiVertexAI: { projectID: 'my-project-123', location: 'us' },
+      },
+    });
+    expect(modelConfigFormValues(modelConfig)).toMatchObject({
+      provider: 'GeminiVertexAI',
+      projectID: 'my-project-123',
+      location: 'us',
+      endpoint: '',
+      apiKey: '',
+    });
+  });
+
+  it('counts a project or location edit as a change', () => {
+    const initial = vertex({ apiKey: '' });
+    expect(modelConfigFormChanged(initial, initial)).toBe(false);
+    expect(
+      modelConfigFormChanged({ ...initial, location: 'global' }, initial),
+    ).toBe(true);
+    expect(
+      modelConfigFormChanged({ ...initial, projectID: 'new-project' }, initial),
+    ).toBe(true);
   });
 });

@@ -1,45 +1,78 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  formatUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import { withQuery } from '../../lib/installationLink';
+import type { ConnectorPageTabPath } from '../ConnectorPage/connectorTabs';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 
 /**
- * A server page's tabs, by their path segment. Tools is the index, so a link
- * to it names no tab.
+ * A server page's tabs, by their path segment: the connector page's own list.
+ * Tools is the index, so a link to it names no tab.
  */
-export type ServerPageTab = 'instances' | 'resources' | 'prompts' | 'details';
+export type ServerPageTab = ConnectorPageTabPath;
 
-function withQuery(path: string, query: Record<string, string | undefined>) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-  const search = params.toString();
-  return search ? `${path}?${search}` : path;
+/**
+ * A tool page's tabs below its own address, by their path segment. Overview
+ * is the index, so a link to it names no tab.
+ */
+export type ToolPageTab = 'run' | 'usage';
+
+/**
+ * The Tools tab's search and "What it does" filter, as an address carries
+ * them: `?q=` and `?effect=reads,changes`.
+ */
+export interface ToolsListView {
+  q?: string;
+  effect?: readonly string[];
 }
 
 export interface ServerPageLinks {
-  /** A server page -- its Tools, or another tab; `q` pre-fills the Tools filter. */
+  /**
+   * A server page -- its Tools, or another tab; `q` pre-fills the Tools
+   * search and `effect` its "What it does" filter, and `usageWindow` the
+   * window its Usage tab covers (the default 30 days names none).
+   */
   server: (
     server: string,
-    installation: string | undefined,
-    options?: { tab?: ServerPageTab; q?: string },
+    installation: string,
+    options?: {
+      tab?: ServerPageTab;
+      usageWindow?: UsageWindowDays;
+    } & ToolsListView,
   ) => string | undefined;
-  /** A tool's page beneath its server. */
+  /**
+   * A tool's page beneath its server -- its Overview, or another tab; `q`
+   * and `effect` are the Tools search and filter it was opened from, which
+   * the page's way back keeps, and `usageWindow` the window its Usage tab
+   * covers.
+   */
   tool: (
     server: string,
     tool: string,
-    installation: string | undefined,
+    installation: string,
+    options?: {
+      tab?: ToolPageTab;
+      usageWindow?: UsageWindowDays;
+    } & ToolsListView,
   ) => string | undefined;
 }
 
 /**
- * Links to server and tool pages. Every one carries `?installation=`: the
- * section's scope reads it before the stored choice, so a shared link shows the
- * server on the installation it was copied from. Undefined while the routes are
- * unbound.
+ * Links to server and tool pages, on the installation that runs them: it is
+ * part of the path (`<installation>/<server>`), so a shared link shows the
+ * server where it was copied from, whatever the reader's scope. Undefined
+ * while the routes are unbound, and without an installation — never a link
+ * the reader's scope would silently resolve.
  */
+/** A Usage tab's `?window=`: none for the default 30 days, or none given. */
+function windowParam(days: UsageWindowDays | undefined): string | undefined {
+  return days ? formatUsageWindowParam(days) : undefined;
+}
+
 export function useServerPageLinks(): ServerPageLinks {
   const serverRoute = useRouteRef(mcpServerRouteRef);
   const toolRoute = useRouteRef(mcpServerToolRouteRef);
@@ -47,19 +80,27 @@ export function useServerPageLinks(): ServerPageLinks {
   return useMemo(
     () => ({
       server: (server, installation, options = {}) => {
-        if (!serverRoute) {
+        if (!serverRoute || !installation) {
           return undefined;
         }
-        const base = serverRoute({ server });
+        const base = serverRoute({ installation, server });
         return withQuery(options.tab ? `${base}/${options.tab}` : base, {
-          installation,
           q: options.q,
+          effect: options.effect?.join(','),
+          [USAGE_WINDOW_PARAM]: windowParam(options.usageWindow),
         });
       },
-      tool: (server, tool, installation) =>
-        toolRoute
-          ? withQuery(toolRoute({ server, tool }), { installation })
-          : undefined,
+      tool: (server, tool, installation, options = {}) => {
+        if (!toolRoute || !installation) {
+          return undefined;
+        }
+        const base = toolRoute({ installation, server, tool });
+        return withQuery(options.tab ? `${base}/${options.tab}` : base, {
+          q: options.q,
+          effect: options.effect?.join(','),
+          [USAGE_WINDOW_PARAM]: windowParam(options.usageWindow),
+        });
+      },
     }),
     [serverRoute, toolRoute],
   );

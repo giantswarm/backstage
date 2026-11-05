@@ -49,10 +49,11 @@ gate's logic is a pure, unit-tested function in `src/storybook/storyCoverage.ts`
 
 ### Visual components (all storied)
 
-`AsyncValue`, `Autocomplete`, `CodeBlock`, `ContentRow`, `DateComponent`,
-`DetailsPane`, `ErrorStatus`, `ExternalLink`, `GSMarkdownContent`, `InfoCard`,
-`JsonHighlight`, `MultiplePicker`, `MultipleSelect`, `NotAvailable`,
-`PageHeaderActions`, `SingleSelect`, `StackedBarChart`, `StructuredMetadataList`,
+`AsyncValue`, `Autocomplete`, `CodeBlock`, `ContentColumn`, `ContentRow`,
+`DateComponent`, `DetailsPane`, `DraftRestoredAlert`, `ErrorStatus`,
+`ExternalLink`, `FileView`, `GSMarkdownContent`, `InfoCard`, `JsonHighlight`,
+`MultiplePicker`, `MultipleSelect`, `NotAvailable`, `PageHeaderActions`,
+`PinIcon`, `SingleSelect`, `StackedBarChart`, `StructuredMetadataList`,
 `YamlEditor`, `YamlEditorFormField`, `display/ConditionMessage`,
 `display/FiltersLayout`.
 
@@ -63,6 +64,9 @@ gate's logic is a pure, unit-tested function in `src/storybook/storyCoverage.ts`
 - `useDetailsPane` — URL-query-param state for a deep-linkable details drawer
   (pairs with the `DetailsPane` component).
 - `useFilters` — filter state with optional URL persistence.
+- `useSessionDraft` — keep a form's draft in the tab's `sessionStorage`, per
+  person, and restore it when the form mounts again (pairs with
+  `DraftRestoredAlert`, and `WizardFrame`'s `onDiscard`).
 - `useSplatBasePath` — the base path of a component mounted at a splat (`/*`) route.
 - `useTableColumns` — persist table column visibility to local storage.
 

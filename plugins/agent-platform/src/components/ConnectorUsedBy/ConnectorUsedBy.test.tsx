@@ -2,6 +2,10 @@ import type { ReactNode } from 'react';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { ConnectorPageTarget } from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow } from '../AgentsDataProvider';
 import { agentsRouteRef } from '../../routes';
@@ -54,6 +58,7 @@ function row(
     name,
     technicalName: name.toLowerCase().replace(/\s+/g, '-'),
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'Ready' as AgentRow['readiness'],
     toolset,
@@ -91,7 +96,7 @@ beforeEach(() => {
 async function render() {
   await renderInTestApp(<ConnectorUsedBy />, {
     mountedRoutes: {
-      '/agent-platform/agents': agentsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -121,13 +126,13 @@ describe('ConnectorUsedBy', () => {
 
     expect(screen.getByRole('link', { name: 'Ops' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/team/ops',
+      '/customize/agents/gazelle/team/ops',
     );
     expect(
       screen.getByRole('link', { name: 'Escalation Helper' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/team/escalation-helper',
+      '/customize/agents/gazelle/team/escalation-helper',
     );
   });
 
@@ -137,7 +142,7 @@ describe('ConnectorUsedBy', () => {
     await userEvent.click(screen.getByText('All tools'));
 
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/agents/gazelle/team/ops',
+      '/customize/agents/gazelle/team/ops',
       undefined,
     );
   });
@@ -163,5 +168,23 @@ describe('ConnectorUsedBy', () => {
     await render();
 
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+  });
+});
+
+describe('ConnectorUsedBy at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('writes what an agent can do under its name, not beside it', async () => {
+    await render();
+
+    const ops = screen.getByRole('row', { name: /Ops/ });
+    expect(within(ops).getByText('All tools')).toHaveAttribute(
+      'slot',
+      'description',
+    );
   });
 });

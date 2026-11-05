@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
@@ -259,6 +259,8 @@ export type ToolsetSummaryBarProps = {
   problems: string[];
   /** Scrolls to the full resolved list. */
   onShowDetails: () => void;
+  /** The sign-in tool the wizard adds, or the warning once it was removed. */
+  signInNote?: ReactNode;
 };
 
 /**
@@ -274,6 +276,7 @@ export function ToolsetSummaryBar({
   unsigned,
   problems,
   onShowDetails,
+  signInNote,
 }: ToolsetSummaryBarProps) {
   const classes = useStyles();
   const effect = toolsetEffect({ selectors, resolution, unsigned, problems });
@@ -376,6 +379,7 @@ export function ToolsetSummaryBar({
           {isExpanded && (
             <>
               {chips}
+              {signInNote}
               {effect.hint && (
                 <Text variant="body-x-small" color="secondary">
                   {effect.hint}
@@ -402,6 +406,7 @@ export function ToolsetSummaryBar({
             Selected so far
           </Text>
           {chips}
+          {signInNote}
         </Flex>
         <Flex direction="column" align="end" gap="1" className={classes.effect}>
           <Text variant="body-small" weight="bold" color={effect.tone}>

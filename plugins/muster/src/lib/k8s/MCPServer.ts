@@ -2,6 +2,10 @@ import {
   KubeObject,
   KubeObjectInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Label muster sets on every aggregated MCPServer CR identifying the target
@@ -20,6 +24,12 @@ export const MANAGEMENT_CLUSTER_LABEL =
  * the tier from names, provenance or topology.
  */
 export const TOOL_GROUP_LABEL = 'agent-platform.giantswarm.io/tool-group';
+
+/**
+ * Annotation naming a connector for people, as on agents, models and
+ * harnesses. The CR name stays what URLs, tool names and muster use.
+ */
+export const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
 
 /** The two tool groups a chart can declare on an MCPServer CR. */
 export type ToolGroup = 'agent-platform' | 'infrastructure';
@@ -198,6 +208,8 @@ export interface MCPServerAuthorizationServer {
   authorizationEndpoint?: string;
   tokenEndpoint?: string;
   expectedIssuer?: string;
+  /** RFC 7009 token revocation endpoint; muster discovers it when unset. */
+  revocationEndpoint?: string;
   clientCredentialsSecretRef?: MCPServerClientCredentialsSecretRef;
   grantScope?: 'session' | 'subject';
 }
@@ -242,6 +254,12 @@ interface MCPServerInterface extends KubeObjectInterface {
     consecutiveFailures?: number;
     nextRetryAfter?: string;
     conditions?: MCPServerCondition[];
+    /**
+     * The connector's icon as muster writes it: the server's own MCP `icons`,
+     * else muster's mark for a known service. A base64 `data:` URI (SVG, PNG,
+     * JPEG or WebP); muster caps the whole URI at 64 KiB.
+     */
+    icon?: string;
   };
 }
 
@@ -253,6 +271,39 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getState() {
     return this.jsonData.status?.state;
+  }
+
+  /**
+   * The {@link DISPLAY_NAME_ANNOTATION}, or `undefined` when it is missing or
+   * blank.
+   */
+  getDisplayNameAnnotation(): string | undefined {
+    const value = this.getAnnotations()?.[DISPLAY_NAME_ANNOTATION]?.trim();
+    return value ? value : undefined;
+  }
+
+  /**
+   * The connector's icon as muster wrote it (`.status.icon`), unchecked:
+   * `connectorIconOf` decides whether it is shown.
+   */
+  getStatusIcon(): string | undefined {
+    return this.jsonData.status?.icon;
+  }
+
+  /**
+   * Friendly name for people. Prefers the {@link DISPLAY_NAME_ANNOTATION},
+   * otherwise the resource name. Mirrors `ModelConfig.getDisplayName()`.
+   */
+  getDisplayName(): string {
+    return this.getDisplayNameAnnotation() ?? this.getName();
+  }
+
+  /**
+   * The connector's tags (`ui.giantswarm.io/tags`), as on agents. None when
+   * the annotation is missing; a value that is not a valid tag is left out.
+   */
+  getTags(): string[] {
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
   }
 
   /**

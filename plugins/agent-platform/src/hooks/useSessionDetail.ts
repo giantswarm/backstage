@@ -8,6 +8,7 @@ import {
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
+  A2aTaskWire,
   KagentSessionDetail,
   RuntimeLoss,
   SessionState,
@@ -81,6 +82,12 @@ export type SessionDetailView = {
    * `readRuntimeLoss`.
    */
   runtimeLoss?: RuntimeLoss;
+  /**
+   * The conversation's tasks as last read, oldest first; undefined until
+   * read. For what the page reads with what only it knows: the sends that
+   * kept timing out (`readSendTimeoutRuntimeLoss`).
+   */
+  tasks?: A2aTaskWire[];
   /** Number of A2A tasks — the session's turn count. */
   taskCount: number;
   /**
@@ -92,6 +99,13 @@ export type SessionDetailView = {
    * "no activity", `Turns 0` and "no messages yet" over a session that has plenty.
    */
   hasConversation: boolean;
+  /**
+   * Whether the conversation in hand was read within the client's
+   * `staleTime`: false for one served from an older cache (an earlier visit,
+   * the persisted cache) until the read the page makes on opening lands.
+   * What a report of the session's turns, sent once, waits for.
+   */
+  isConversationCurrent: boolean;
   isLoading: boolean;
   /**
    * True when the session is not readable: it does not exist, was deleted, or
@@ -389,8 +403,10 @@ export function useSessionDetail(
     turnProgress,
     pendingConfirmation,
     runtimeLoss,
+    tasks,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,
+    isConversationCurrent: tasks !== undefined && !tasksQuery.isStale,
     // `isNotFound` short-circuits loading, because it is decided by the session
     // read alone and the page checks `isLoading` first. Without this, a session
     // that 404s immediately — `NotFoundError` is not retried, so that read settles

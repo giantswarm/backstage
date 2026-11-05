@@ -14,7 +14,9 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
   CatalogNoMatch,
+  isSearchableList,
   LoadingIndicator,
+  useFieldValidation,
   useProvidePageHeaderActions,
   useWizardFrameRail,
   WizardStepHeading,
@@ -23,10 +25,12 @@ import {
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { filterCatalogue } from '../../lib/filterCatalogue';
+import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
 import {
   buildCatalogue,
   catalogueInventory,
@@ -43,10 +47,7 @@ import {
 } from '../../lib/toolset';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import {
-  AUTO_EXPAND_MAX,
-  ToolsetResolutionList,
-} from '../ToolsetResolutionList';
+import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { AccessLevelCards } from './AccessLevelCards';
 import {
   EFFECT_FILTER_ID,
@@ -75,6 +76,7 @@ import {
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
+import { SignInToolNote } from './SignInToolNote';
 import { ToolCatalogue } from './ToolCatalogue';
 import { ToolsetSummaryBar } from './ToolsetSummaryBar';
 
@@ -182,6 +184,7 @@ function NarrowSelection({
       unsigned={props.unsigned}
       problems={props.problems}
       onShowDetails={props.onShowDetails ?? (() => {})}
+      signInNote={props.signInNote}
     />
   );
 }
@@ -212,6 +215,7 @@ export function NewAgentToolsPage() {
     setToolset,
     setToolsChatOnly,
     setToolsetBase: setKeptBase,
+    setSignInToolDeclined,
     isComplete,
     isToolsetValid,
     toolsetProblems,
@@ -225,7 +229,39 @@ export function NewAgentToolsPage() {
   const catalogue = useMusterToolCatalogue(installation);
   const { servers, isLoading: isLoadingServers } =
     useMusterServers(installation);
-  const resolution = useToolsetResolution(installation, state.toolset);
+  // A connector muster signs in to per session or per person needs muster's
+  // sign-in tool in the toolset, or the agent cannot start that sign-in
+  // (giantswarm/giantswarm#38774): the step adds it, and what is resolved
+  // and saved is the selection with it.
+  const signIn = useSignInTool(
+    installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const resolution = useToolsetResolution(installation, signIn.toolset);
+  // A removal stands while a connector needs the tool; once none does, the
+  // next one that does gets it again.
+  const signInNeeded = signIn.isLoading || signIn.connectors.length > 0;
+  useEffect(() => {
+    if (!signInNeeded && state.signInToolDeclined) {
+      setSignInToolDeclined(false);
+    }
+  }, [signInNeeded, state.signInToolDeclined, setSignInToolDeclined]);
+  const isSignInToolAdded = signIn.status === 'added';
+  // Taking the sign-in tool out by hand — the step's own entry, or the
+  // selector the person added themselves — is what declines it; any other
+  // rewrite of the selection is not.
+  const declineSignInTool = useCallback(
+    (removed: readonly string[]) => {
+      if (
+        removed.includes(SIGN_IN_TOOL_SELECTOR) &&
+        signIn.connectors.length > 0
+      ) {
+        setSignInToolDeclined(true);
+      }
+    },
+    [signIn.connectors.length, setSignInToolDeclined],
+  );
 
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
@@ -313,7 +349,11 @@ export function NewAgentToolsPage() {
   // What every change below starts from: the selection as it shows, or as it
   // is when there is no preset to write out.
   const base = expanded ?? state.toolset;
-  const selected = useMemo(() => new Set(base), [base]);
+  // The added sign-in tool shows as picked in the catalogue too.
+  const selected = useMemo(
+    () => new Set(isSignInToolAdded ? [...base, SIGN_IN_TOOL_SELECTOR] : base),
+    [base, isSignInToolAdded],
+  );
   // Every change is stored as compactly as selectors allow (B1): the preset
   // plus what was added while everything it covers is still chosen — against
   // the kept base, so restoring what a change took away collapses back to it.
@@ -408,27 +448,28 @@ export function NewAgentToolsPage() {
   const individualOpen = showIndividual && !selectionOff;
 
   // The catalogue's search and its All / Reads / Changes things filter, both
-  // only over a catalogue too long to read whole (AUTO_EXPAND_MAX).
+  // from SEARCH_MIN entries on (`isSearchableList`): its tools and workflows,
+  // and the connectors awaiting sign-in, which are found by their name. Kept
+  // while either narrows, so a re-read that shrinks the catalogue (a
+  // sign-out) leaves what narrowed it visible and clearable.
   const [query, setQuery] = useState('');
+  const [effect, setEffect] = useState<EffectFilter>('all');
+  const activeQuery = query.trim();
+  const isNarrowed = activeQuery !== '' || effect !== 'all';
+  const awaitingSignIn = groups.reduce(
+    (count, group) =>
+      count + group.servers.filter(bucket => bucket.needsSignIn).length,
+    0,
+  );
   const isShortCatalogue =
     !isCatalogueLoading &&
-    inventory.servers +
-      inventory.tools +
-      inventory.platformAdministration +
-      inventory.workflows <=
-      AUTO_EXPAND_MAX;
-  // Dropped when the catalogue shrinks under the bar (a re-read after a
-  // sign-out), so neither is reapplied if it grows back.
-  const activeQuery = isShortCatalogue ? '' : query.trim();
-  const [effectPick, setEffect] = useState<EffectFilter>('all');
-  const effect: EffectFilter = isShortCatalogue ? 'all' : effectPick;
-  useEffect(() => {
-    if (isShortCatalogue) {
-      setQuery('');
-      setEffect('all');
-    }
-  }, [isShortCatalogue]);
-  const isNarrowed = activeQuery !== '' || effect !== 'all';
+    !isSearchableList(
+      awaitingSignIn +
+        inventory.tools +
+        inventory.platformAdministration +
+        inventory.workflows,
+      isNarrowed,
+    );
 
   const searchedGroups = useMemo(
     () => filterCatalogue(groups, activeQuery),
@@ -452,22 +493,33 @@ export function NewAgentToolsPage() {
 
   // A selector typed by hand: `server:x` on a portal without the muster
   // plugin, a tool known by name, or a second preset. Validated against the
-  // grammar the chart and agent-manager enforce.
+  // grammar the chart and agent-manager enforce, on the field: when the person
+  // leaves it, and on Add selector (the `forms` skill).
   const [manualSelector, setManualSelector] = useState('');
-  const [manualProblem, setManualProblem] = useState<string | undefined>();
+  const manualProblem = selectorProblem(manualSelector);
+  const selectorScope = useRef<HTMLDivElement>(null);
+  const selectorValidation = useFieldValidation(selectorScope);
+  const { reveal: revealSelector, reset: resetSelector } = selectorValidation;
   const addManualSelector = useCallback(() => {
-    const value = manualSelector.trim();
-    const problem = selectorProblem(value);
-    if (problem) {
-      setManualProblem(problem);
+    if (manualProblem) {
+      revealSelector();
       return;
     }
-    setManualProblem(undefined);
+    const value = manualSelector.trim();
     setManualSelector('');
+    resetSelector();
     if (!base.includes(value) && !state.toolset.includes(value)) {
       commit(toggleSelector(base, value));
     }
-  }, [manualSelector, base, state.toolset, commit]);
+  }, [
+    manualProblem,
+    manualSelector,
+    base,
+    state.toolset,
+    commit,
+    revealSelector,
+    resetSelector,
+  ]);
 
   // A preset replaces the selection; *Only the tools I choose below* keeps
   // what a preset showed, written out (Full gateway's everything is not a
@@ -510,8 +562,17 @@ export function NewAgentToolsPage() {
     [commit, base],
   );
   const toggleSelected = useCallback(
-    (selector: string) => commit(toggleSelector(base, selector)),
-    [commit, base],
+    (selector: string) => {
+      if (selector === SIGN_IN_TOOL_SELECTOR && isSignInToolAdded) {
+        setSignInToolDeclined(true);
+        return;
+      }
+      if (base.includes(selector)) {
+        declineSignInTool([selector]);
+      }
+      commit(toggleSelector(base, selector));
+    },
+    [commit, base, isSignInToolAdded, setSignInToolDeclined, declineSignInTool],
   );
   // The rail and the bar list the toolset's own selectors (the preset among
   // them) beside the preset's part: removing one of its own takes just that
@@ -519,6 +580,7 @@ export function NewAgentToolsPage() {
   // the grid's.
   const removeSelectors = useCallback(
     (selectors: string[]) => {
+      declineSignInTool(selectors);
       if (!selectors.every(entry => state.toolset.includes(entry))) {
         commit(base.filter(entry => !selectors.includes(entry)));
         return;
@@ -528,7 +590,15 @@ export function NewAgentToolsPage() {
       }
       setToolset(state.toolset.filter(entry => !selectors.includes(entry)));
     },
-    [setToolset, setKeptBase, commit, state.toolset, base, presetBase],
+    [
+      setToolset,
+      setKeptBase,
+      commit,
+      state.toolset,
+      base,
+      presetBase,
+      declineSignInTool,
+    ],
   );
   // A copied toolset replaces the selection, and with it the base.
   const copyToolset = useCallback(
@@ -557,18 +627,31 @@ export function NewAgentToolsPage() {
 
   const backLink = hasRepositories ? skillsLink : newAgentLink;
 
+  // A blocked Continue moves the focus to what says why: the toolset's
+  // problem, else the line by the button. The problems themselves follow
+  // each pick, since a pick is complete when made (the `forms` skill).
+  const blockedNote = useRef<HTMLDivElement>(null);
+  const problemsAlert = useRef<HTMLDivElement>(null);
+  const onContinue = useCallback(() => {
+    if (!isToolsetValid) {
+      const target = problemsAlert.current ?? blockedNote.current;
+      target?.scrollIntoView?.({ block: 'center' });
+      target?.focus();
+      return;
+    }
+    if (reviewLink) {
+      navigate(reviewLink());
+    }
+  }, [isToolsetValid, reviewLink, navigate]);
+
   // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
     () => (
-      <Button
-        variant="primary"
-        isDisabled={!isToolsetValid}
-        onPress={() => reviewLink && navigate(reviewLink())}
-      >
+      <Button variant="primary" onPress={onContinue}>
         Continue
       </Button>
     ),
-    [reviewLink, navigate, isToolsetValid],
+    [onContinue],
   );
 
   const onBack = useCallback(() => {
@@ -591,6 +674,13 @@ export function NewAgentToolsPage() {
     problems,
     onRemove: removeSelectors,
     onShowDetails: selectionOff ? undefined : showResolvedList,
+    signInNote: (
+      <SignInToolNote
+        signIn={signIn}
+        onRemove={() => setSignInToolDeclined(true)}
+        onAddBack={() => setSignInToolDeclined(false)}
+      />
+    ),
   };
 
   const inventoryLine = !isNarrowed
@@ -795,7 +885,7 @@ export function NewAgentToolsPage() {
                   <summary className={classes.summaryLine}>
                     Add a selector by name
                   </summary>
-                  <div className={classes.detailsBody}>
+                  <div className={classes.detailsBody} ref={selectorScope}>
                     <Text variant="body-small" color="secondary">
                       Enter <span className={classes.code}>preset:</span>,{' '}
                       <span className={classes.code}>server:</span>,{' '}
@@ -808,24 +898,18 @@ export function NewAgentToolsPage() {
                         <TextField
                           label="Selector"
                           value={manualSelector}
-                          onChange={value => {
-                            setManualSelector(value);
-                            setManualProblem(undefined);
-                          }}
+                          onChange={setManualSelector}
                           placeholder="server:pro"
+                          {...selectorValidation.textFieldProps(
+                            'selector',
+                            manualProblem,
+                          )}
                         />
                       </Flex>
                       <Button variant="secondary" onPress={addManualSelector}>
                         Add selector
                       </Button>
                     </Flex>
-                    {manualProblem && (
-                      <Alert
-                        status="danger"
-                        title="Not a selector"
-                        description={manualProblem}
-                      />
-                    )}
                   </div>
                 </details>
 
@@ -833,15 +917,17 @@ export function NewAgentToolsPage() {
                   <SectionTitle title="Toolset" />
                   <Flex direction="column" gap="3">
                     {problems.length > 0 && (
-                      <Alert
-                        status="danger"
-                        title={
-                          overCap
-                            ? 'Too many selectors'
-                            : 'The toolset cannot be applied as it is'
-                        }
-                        description={problems.join(' ')}
-                      />
+                      <div ref={problemsAlert} tabIndex={-1}>
+                        <Alert
+                          status="danger"
+                          title={
+                            overCap
+                              ? 'Too many selectors'
+                              : 'The toolset cannot be applied as it is'
+                          }
+                          description={problems.join(' ')}
+                        />
+                      </div>
                     )}
                     {unsigned.length > 0 && (
                       <Alert
@@ -867,9 +953,11 @@ export function NewAgentToolsPage() {
 
         {/* The rail says why too; this sits by Continue, where it is blocked. */}
         {!isToolsetValid && (
-          <Text as="p" color="danger">
-            Fix the toolset to continue.
-          </Text>
+          <div ref={blockedNote} tabIndex={-1}>
+            <Text as="p" color="danger">
+              Fix the toolset to continue.
+            </Text>
+          </div>
         )}
       </Flex>
     </AgentWizardFrame>

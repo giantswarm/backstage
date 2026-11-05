@@ -113,6 +113,41 @@ describe('Agent', () => {
     });
   });
 
+  describe('getTags', () => {
+    const tagged = (tags: string) =>
+      makeAgent({
+        metadata: {
+          name: 'my-agent',
+          namespace: 'team-a',
+          annotations: { 'ui.giantswarm.io/tags': tags },
+        },
+      });
+
+    it('splits the annotation, trimmed, without empties or repeats', () => {
+      expect(tagged('util, marketing,,util , ').getTags()).toEqual([
+        'util',
+        'marketing',
+      ]);
+    });
+
+    it('lowercases, so differently written repeats are one tag', () => {
+      expect(tagged('Util,util, UTIL,Ops').getTags()).toEqual(['util', 'ops']);
+    });
+
+    it('leaves out what agent-manager would refuse', () => {
+      expect(
+        tagged(
+          `ok,on call,a--b,-x,y_z,ä,${'a'.repeat(64)},${'b'.repeat(63)}`,
+        ).getTags(),
+      ).toEqual(['ok', 'b'.repeat(63)]);
+    });
+
+    it('is empty without the annotation or with a blank one', () => {
+      expect(makeAgent().getTags()).toEqual([]);
+      expect(tagged(' ').getTags()).toEqual([]);
+    });
+  });
+
   describe('template and Harness references', () => {
     it('reads the extra egress origins, empty when none are declared', () => {
       expect(withTemplate({}).getEgress()).toEqual([]);
@@ -128,6 +163,19 @@ describe('Agent', () => {
         'https://github.com:443',
         'https://*.githubusercontent.com',
       ]);
+    });
+
+    it('reads the picked EgressPolicies, empty when none are picked', () => {
+      expect(withTemplate({}).getEgressPolicyRefs()).toEqual([]);
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a' },
+        spec: {
+          template: {},
+          harnessRef: { name: 'kagent' },
+          egressPolicyRefs: [{ name: 'github' }, { name: 'go-modules' }],
+        },
+      } as Partial<AgentInterface>);
+      expect(agent.getEgressPolicyRefs()).toEqual(['github', 'go-modules']);
     });
 
     it('reads the Harness the agent names', () => {
@@ -168,6 +216,11 @@ describe('Agent', () => {
       } as Partial<AgentInterface>);
 
       expect(agent.getHarnessName()).toBeUndefined();
+      expect(agent.getInlineHarnessRuntime()).toBe('claude');
+    });
+
+    it('reads no inline runtime from an agent that names its Harness', () => {
+      expect(withTemplate({}).getInlineHarnessRuntime()).toBeUndefined();
     });
   });
 

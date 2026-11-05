@@ -335,9 +335,10 @@ function logDenial(
 }
 
 /**
- * Whether an A2A failure message is the gateway's "one active task per
- * instance" refusal, which a2a-go reports as an *unsupported operation*.
+ * Whether an A2A failure message is an *unsupported operation*, as a2a-go
+ * reports it: the gateway's "one active task per instance" refusal of a send,
+ * or a subscription to a task already over.
  */
-function isUnsupportedOperation(reason: string): boolean {
+export function isUnsupportedOperation(reason: string): boolean {
   return /already has an active task|unsupported operation/i.test(reason);
 }

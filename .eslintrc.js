@@ -80,6 +80,26 @@ const trackedMutationMessage =
   'it reports the write as a portal action, or takes `event: null` with an ' +
   '`untrackedReason`. docs/telemetry.md, "For developers".';
 
+const shellPathMessage =
+  'Do not write an Agent Platform shell path by hand: link through a route ' +
+  'ref, an external route ref the app binds, or a helper built on one ' +
+  '(useCustomizePaths, useSkillPaths, useServerPageLinks…). ' +
+  'See the urls skill (.claude/skills/urls/SKILL.md).';
+
+// A string, or the first part of a template, that starts with one of the
+// shell's URL roots (`/sessions`, `/usage`, `/profile`, `/customize`, and the
+// old `/agent-platform`, written only in the redirect mapping), followed by a
+// path, a query, a fragment or nothing. A later template part follows an
+// expression, such as a route ref's base, so it is not a path written by
+// hand. `\x2F` is a `/`: esquery ends a regular expression at the first `/`,
+// even an escaped one.
+const shellPathPattern =
+  '/^\\x2F(agent-platform|customize|sessions|usage|profile)(\\x2F|\\?|#|$)/';
+
+const tooltipClassNameMessage =
+  "bui's Tooltip drops a className: it applies to no element. Style an " +
+  'element inside the tooltip, or pass `style`.';
+
 module.exports = {
   root: true,
   plugins: ['giantswarm'],
@@ -100,6 +120,63 @@ module.exports = {
                 message: trackedMutationMessage,
               },
             ],
+          },
+        ],
+      },
+    },
+    {
+      // Shell paths resolve through route refs, so the cut-over that moves
+      // them changes route definitions only. A route definition itself, and
+      // the shell's own list of its roots, carry a disable comment with the
+      // reason. A bare `'/'` (the shell's home) can't be told apart from
+      // other uses, so it is not checked.
+      files: [
+        'plugins/*/src/**/*.ts?(x)',
+        'packages/app/src/modules/**/*.ts?(x)',
+      ],
+      excludedFiles: [
+        // Backend routes (muster-backend's `/usage`), and the API clients
+        // that call them, are API paths, not shell links.
+        'plugins/*-backend/**',
+        'plugins/*-backend-module-*/**',
+        'plugins/*-node/**',
+        'plugins/*/src/apis/**',
+        '**/*.test.ts?(x)',
+        '**/*.stories.tsx',
+        '**/setupTests.ts',
+        '**/__fixtures__/**',
+        '**/fixtures/**',
+        '**/testUtils/**',
+        '**/testing/**',
+        '**/*Fixtures.ts',
+      ],
+      rules: {
+        'giantswarm/no-restricted-syntax': [
+          'error',
+          {
+            selector: `Literal[value=${shellPathPattern}]`,
+            message: shellPathMessage,
+          },
+          {
+            selector: `TemplateLiteral > TemplateElement:first-child[value.raw=${shellPathPattern}]`,
+            message: shellPathMessage,
+          },
+        ],
+      },
+    },
+    {
+      // bui's `Tooltip` declares `className` but attaches it to no element
+      // (`useDefinition`'s default target, `root`, is not one of its class
+      // keys), so a class on it type-checks and does nothing. An error: the
+      // tree has none, and a copy only spreads the dead class.
+      files: ['**/*.tsx'],
+      rules: {
+        'giantswarm/no-restricted-bui-syntax': [
+          'error',
+          {
+            selector:
+              "JSXOpeningElement[name.name='Tooltip'] > JSXAttribute[name.name='className']",
+            message: tooltipClassNameMessage,
           },
         ],
       },

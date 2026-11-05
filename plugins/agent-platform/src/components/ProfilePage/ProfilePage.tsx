@@ -9,6 +9,7 @@ import { Avatar, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import { ProviderAppConnections } from '@giantswarm/backstage-plugin-muster';
 import {
   PageHeaderActionsProvider,
   GSReleaseInfo,
@@ -59,7 +60,7 @@ function useProfileInfo(): ProfileInfo | undefined {
 
 /**
  * The shell's minimal "Profile and settings" page
- * (`/agent-platform/profile`): who is signed in, the installations this
+ * (`/profile`): who is signed in, the installations this
  * portal talks to, and Sign out — so the rail's profile menu stays in the
  * shell instead of jumping into the classic Settings chrome. The page's
  * footer names the running release (`app.releaseVersion`), the same line as
@@ -152,6 +153,19 @@ export function ProfilePage() {
             )}
           </section>
         )}
+        {/* The person's home installation, whose muster keeps them. */}
+        <ProviderAppConnections>
+          {list => (
+            <section aria-label="Connections" className={classes.section}>
+              <SectionHeader
+                variant="title-x-small"
+                title="Connections"
+                description="Accounts of your own that your agents use, such as your ChatGPT subscription."
+              />
+              {list}
+            </section>
+          )}
+        </ProviderAppConnections>
         <section aria-label="Session" className={classes.section}>
           <Button
             variant="secondary"

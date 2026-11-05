@@ -1,33 +1,46 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  fieldErrorProps,
   InfoHint,
   MoreOptions,
   useFieldValidation,
+  TagsField,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
+import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from '../ModelConfigPicker';
-import { HarnessPicker } from '../HarnessPicker';
+import { HarnessPicker, useRuntimeChoices } from '../HarnessPicker';
+import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
+import { EgressPolicyPicker } from '../EgressPolicyPicker';
+import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { egressProblem, parseEgressText } from '../../lib/egress';
-import { harnessTitle } from '../../lib/harnesses';
 import {
-  MAX_SYSTEM_MESSAGE_LENGTH,
-  systemMessageProblem,
-} from '../../lib/systemMessage';
+  harnessTitle,
+  PLATFORM_DEFAULT_LABEL,
+  platformEgressOf,
+  runtimeLabel,
+} from '../../lib/harnesses';
+import { MAX_SYSTEM_MESSAGE_LENGTH } from '../../lib/systemMessage';
 
 const useStyles = makeStyles({
   // The info button sits in the line of text, on its baseline.
@@ -66,24 +79,45 @@ function NewAgentPageContent() {
     setName,
     setSlug,
     setDescription,
+    addTags,
+    removeTag,
+    setTagDraft,
+    commitTagDraft,
     setSystemMessage,
     setEgressText,
+    setEgressSetByPlatform,
     validationErrors,
     fieldErrors,
+    tagsOffered,
+    storedTags,
   } = useNewAgentForm();
+  // The platform Harness the runtime field shows, for the summary below.
+  const { platformChoice } = useRuntimeChoices();
+  // The runtime decides whether extra egress origins are offered at all.
+  const egressRuntime = useFormHarnessRuntime();
+  const codingRuntime =
+    egressRuntime.harness.title ?? runtimeLabel(egressRuntime.runtime);
+  const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  // The form stops checking (and, creating, drops) extra egress once the
+  // runtime is known to be a coding one, however it became known.
+  const isCoding = egressRuntime.isCoding === true;
+  useEffect(() => {
+    setEgressSetByPlatform(isCoding);
+  }, [isCoding, setEgressSetByPlatform]);
 
-  // Each field shows its own problem once the person has tried to proceed —
-  // not before, so the form doesn't shout about empty fields up front — and a
-  // blocked Continue moves the focus to the first one.
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or tries to proceed — not while they first type, so the form does
+  // not shout about half-typed values — and a blocked Continue moves the focus
+  // to the first one (the `forms` skill).
   const validation = useFieldValidation();
-  // "More options" holds the technical knobs (model, runtime, technical name,
-  // extra egress), collapsed: their defaults fit most agents. The shared
+  const { errorFor, fieldProps, textFieldProps } = validation;
+  // "More options" holds the technical knobs (model, runtime, default
+  // workspace, technical name, EgressPolicies and extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
   // model picker's preselection of the installation's default model runs
   // without the person ever opening it.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
-  const egressIssue = egressProblem(parseEgressText(state.egressText));
   // A problem with a field behind the disclosure opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
   const hasHiddenProblem = Boolean(
@@ -107,10 +141,23 @@ function NewAgentPageContent() {
       reveal();
       return;
     }
+    // A typed tag not yet added goes with the agent, however step 1 is left.
+    // Where the field is not offered, its text stays out of the agent.
+    if (tagsOffered) {
+      commitTagDraft();
+    }
     if (nextLink) {
       navigate(nextLink());
     }
-  }, [errorCount, hasHiddenProblem, nextLink, navigate, reveal]);
+  }, [
+    errorCount,
+    hasHiddenProblem,
+    nextLink,
+    navigate,
+    reveal,
+    tagsOffered,
+    commitTagDraft,
+  ]);
 
   // Memoized so the frame's footer slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -127,10 +174,12 @@ function NewAgentPageContent() {
   useProvidePageHeaderActions(actions);
 
   // The disclosure's one-line summary of what it holds: the runtime (the
-  // platform's standard one unless another is picked) and, while creating,
-  // the technical name it can override. An edited agent's Harness is known by
-  // its name until the picker reads it.
-  let runtimeName = 'Standard';
+  // platform Harness, by the runtime field's title for it, unless another is
+  // picked) and, while creating, the technical name it can override. An
+  // edited agent's Harness is known by its name until the picker reads it.
+  let runtimeName = platformChoice
+    ? harnessTitle(platformChoice)
+    : PLATFORM_DEFAULT_LABEL;
   if (state.harness) {
     runtimeName =
       state.harness.displayName || state.harness.runtime
@@ -138,8 +187,14 @@ function NewAgentPageContent() {
         : state.harness.name;
   }
   const defaultsSummary = `${runtimeName} runtime${
-    state.slug && !edit ? `, technical name ${state.slug}` : ''
-  }`;
+    state.defaultWorkspace
+      ? `, default workspace ${state.defaultWorkspace}`
+      : ''
+  }${
+    state.egressPolicyRefs.length > 0
+      ? `, EgressPolicies ${state.egressPolicyRefs.join(', ')}`
+      : ''
+  }${state.slug && !edit ? `, technical name ${state.slug}` : ''}`;
 
   // The plain view's one line about the model picked for the person (the
   // installation's default, see ModelConfigPicker), so it is never a surprise
@@ -217,7 +272,7 @@ function NewAgentPageContent() {
               value={state.name}
               onChange={setName}
               placeholder="e.g. Support triage"
-              {...fieldErrorProps(validation.errorFor(fieldErrors.name))}
+              {...textFieldProps('name', fieldErrors.name)}
             />
             {/* The one irreversible choice on this step (M7), next to the
                 name it comes from rather than behind More options, where
@@ -247,6 +302,17 @@ function NewAgentPageContent() {
           placeholder="e.g. Sorts, summarises and routes support tickets"
           description="Shown to people when they pick an agent."
         />
+        {tagsOffered && (
+          <TagsField
+            tags={state.tags}
+            draft={state.tagDraft ?? ''}
+            error={errorFor('tags', fieldErrors.tags)}
+            stored={storedTags}
+            onDraftChange={setTagDraft}
+            onAdd={addTags}
+            onRemove={removeTag}
+          />
+        )}
         <TextAreaField
           label="Instructions"
           secondaryLabel="optional"
@@ -256,7 +322,8 @@ function NewAgentPageContent() {
           placeholder="Tell the agent how to work. For example: Always group tickets by topic. Write in short, friendly sentences. Never close a ticket yourself."
           description="Leave empty for the standard instructions. Put long reference material in a skill."
           maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
-          error={systemMessageProblem(state.systemMessage)}
+          // The counter's live check: past the limit, it says so at once.
+          error={fieldErrors.systemMessage}
         />
 
         {/* Where the agent runs: renders nothing on a single-installation
@@ -264,9 +331,12 @@ function NewAgentPageContent() {
             agent stays where it is. */}
         {!edit && (
           <InstallationSelect
-            error={validation.errorFor(fieldErrors.installation)}
+            error={errorFor('installation', fieldErrors.installation)}
           />
         )}
+        {/* Which tenant the agent belongs to, among those the person may
+            create in there. An existing agent stays in its own. */}
+        {!edit && <TenantPicker errorFor={errorFor} />}
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">
             {modelSummary}
@@ -281,8 +351,9 @@ function NewAgentPageContent() {
           <Text variant="body-small" color="secondary">
             The defaults work for most agents.
           </Text>
-          <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
+          <ModelConfigPicker error={errorFor('model', fieldErrors.model)} />
           <HarnessPicker />
+          <DefaultWorkspacePicker />
           {/* Creating only: an existing agent's technical name is shown,
               locked, under its name. */}
           {!edit && (
@@ -294,21 +365,40 @@ function NewAgentPageContent() {
               onChange={setSlug}
               placeholder="support-triage"
               description="Used in links and resource names."
-              {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
+              {...textFieldProps('slug', fieldErrors.slug)}
             />
           )}
-          <TextAreaField
-            label="Extra egress origins"
-            secondaryLabel="optional"
-            value={state.egressText}
-            onChange={setEgressText}
-            rows={3}
-            mono
-            placeholder={
-              'https://github.com:443\nhttps://*.githubusercontent.com'
-            }
-            description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
-            error={egressIssue}
+          <EgressPolicyPicker />
+          {/* A coding Harness reaches the platform's list for it only, and
+              agent-manager refuses any other origin: the field is not offered
+              there, and the line in its place says who sets it. While the
+              runtime is unknown the field stays, and is checked and sent. */}
+          {egressRuntime.isCoding ? (
+            <PlatformEgressNote
+              runtime={codingRuntime}
+              origins={platformEgressOf(
+                agentManagerInfo,
+                egressRuntime.harness.name,
+              )}
+            />
+          ) : (
+            <TextAreaField
+              label="Extra egress origins"
+              secondaryLabel="optional"
+              value={state.egressText}
+              onChange={setEgressText}
+              rows={3}
+              mono
+              placeholder={
+                'https://github.com:443\nhttps://*.githubusercontent.com\ntls://db.example.com:5432'
+              }
+              description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. One per line: an http(s) origin, or tls://host:port for another service that speaks TLS, such as a database; a leading * matches one host label."
+              {...fieldProps('egress', fieldErrors.egress)}
+            />
+          )}
+          <DroppedEgressNotice
+            runtime={egressRuntime.isCoding ? codingRuntime : undefined}
+            dropped={state.droppedEgress}
           />
         </MoreOptions>
       </Flex>

@@ -41,7 +41,11 @@ function UnstableAction() {
 }
 
 function renderFrame(
-  props: { onBack?: () => void; confirmDiscard?: boolean } = {},
+  props: {
+    onBack?: () => void;
+    confirmDiscard?: boolean;
+    onDiscard?: () => void;
+  } = {},
 ) {
   return render(
     <MemoryRouter initialEntries={['/agents/new/tools']}>
@@ -150,6 +154,21 @@ describe('WizardFrame', () => {
     );
   });
 
+  it('marks its links as controls, so the agent shell does not style them as text links', () => {
+    renderFrame();
+
+    // agent-shell.css underlines every bui link that is not `standalone`.
+    for (const link of [
+      screen.getByRole('link', { name: 'Close' }),
+      screen.getByRole('link', { name: 'Cancel' }),
+      within(screen.getByRole('list', { name: 'Steps' })).getByRole('link', {
+        name: 'Basics',
+      }),
+    ]) {
+      expect(link).toHaveAttribute('data-standalone');
+    }
+  });
+
   it.each(['Close', 'Cancel'])(
     'asks before %s discards a dirty flow, and stays on Keep editing',
     async name => {
@@ -170,8 +189,9 @@ describe('WizardFrame', () => {
     },
   );
 
-  it('leaves to the close href on Discard changes', async () => {
-    renderFrame({ confirmDiscard: true });
+  it('leaves to the close href on Discard changes, dropping the draft', async () => {
+    const onDiscard = jest.fn();
+    renderFrame({ confirmDiscard: true, onDiscard });
 
     await userEvent.click(screen.getByRole('link', { name: 'Cancel' }));
     await userEvent.click(
@@ -181,6 +201,21 @@ describe('WizardFrame', () => {
     );
 
     expect(await screen.findByText('Customize page')).toBeInTheDocument();
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the draft on Keep editing', async () => {
+    const onDiscard = jest.fn();
+    renderFrame({ confirmDiscard: true, onDiscard });
+
+    await userEvent.click(screen.getByRole('link', { name: 'Close' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Keep editing',
+      }),
+    );
+
+    expect(onDiscard).not.toHaveBeenCalled();
   });
 
   /** A `beforeunload` as the browser fires it; prevented means it asks. */
@@ -257,13 +292,48 @@ describe('WizardFrame', () => {
   it('keeps the scroll clearance in step with the footer’s measured height', () => {
     renderFrame();
 
-    // Until measured, the clearance assumes the one-row footer's 64px.
+    // Until measured, the clearance assumes the one-row footer's 64px; a
+    // shell toast above the footer adds its height.
     const styles = Array.from(document.querySelectorAll('style'))
       .map(style => style.textContent)
       .join('\n');
     expect(styles).toContain(
-      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))',
+      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + var(--agent-shell-toast-height, 0px))',
     );
+  });
+
+  it('leaves room at the step’s end for a shell toast above the footer', () => {
+    renderFrame();
+
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+    expect(styles).toContain(
+      'padding-bottom: calc(24px + var(--agent-shell-toast-height, 0px))',
+    );
+    expect(styles).toContain(
+      'padding-bottom: calc(40px + var(--agent-shell-toast-height, 0px))',
+    );
+    // The room eases in and out as the toast comes and goes.
+    expect(styles).toContain('transition: padding-bottom 200ms ease-out');
+  });
+
+  it('publishes the footer’s height on the document while it is mounted, for the shell’s toasts', () => {
+    const rect = jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 1200, height: 65 } as DOMRect);
+    const root = document.documentElement;
+    try {
+      const { unmount } = renderFrame();
+      expect(root.style.getPropertyValue('--wizard-footer-height')).toBe(
+        '65px',
+      );
+
+      unmount();
+      expect(root.style.getPropertyValue('--wizard-footer-height')).toBe('');
+    } finally {
+      rect.mockRestore();
+    }
   });
 
   it('widens its padding at the two-column tier, not at a breakpoint of its own', () => {

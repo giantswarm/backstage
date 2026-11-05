@@ -2,6 +2,7 @@ import type { StatusDotProps } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type AuthActionParts,
   authActionParts,
+  SSO_REFUSED_STATUS,
   WAITING_FOR_SIGN_IN,
 } from '../ServerSignIn';
 import {
@@ -15,9 +16,17 @@ export type StatusText = Required<Pick<StatusDotProps, 'tone'>> & {
   label: string;
 };
 
+/** A state with the sentence a hint beside it says, where it has one. */
+export type ExplainedStatusText = StatusText & { explanation?: string };
+
 export interface UseServerSignInStatusOptions {
   /** The muster server name, as reported by `auth://status`. */
   serverName: string;
+  /**
+   * What the copy calls the server for people (its display name); the
+   * server name by default.
+   */
+  displayName?: string;
   installation?: string;
   /** The row's own state, shown while no sign-in from this tab overrides it. */
   status: StatusText;
@@ -51,9 +60,9 @@ export interface ServerSignInStatusState {
  *   sign-in itself may well still be going, so it is not called failed.
  * - "Signing in…": a sign-in page is open; in the warning tone when the
  *   authorization server may reject muster as an unregistered client.
- * - "Could not sign in" (danger) for an SSO server muster failed to connect
- *   for this person: whatever muster's sign-in status reads, there is nothing
- *   to sign in to, so "Sign in needed" would send them looking for a button.
+ * - "Cannot connect" (danger) for an SSO server that refused the person's
+ *   sign-in and is not connected in this session: there is nothing to sign in
+ *   to, so "Sign in needed" would send them looking for a button.
  * - Else the row's own state.
  */
 function shownStatus(
@@ -72,8 +81,8 @@ function shownStatus(
   if (state.statusUnreadable) {
     return { label: 'Status unavailable', tone: 'warning' };
   }
-  if (parts.kind === 'sso' && state.status?.sso_attempt_failed) {
-    return { label: 'Could not sign in', tone: 'danger' };
+  if (parts.kind === 'sso' && state.isSsoRefused) {
+    return SSO_REFUSED_STATUS;
   }
   if (parts.kind === 'sign-in' && parts.wait) {
     return {
@@ -124,13 +133,17 @@ function statusDetails(
  */
 export function useServerSignInStatus({
   serverName,
+  displayName,
   installation,
   status,
   signInGate,
   noun = 'server',
 }: UseServerSignInStatusOptions): ServerSignInStatusState {
   const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(serverName, state, { noun, signInGate });
+  const parts = authActionParts(displayName ?? serverName, state, {
+    noun,
+    signInGate,
+  });
   return {
     shown: shownStatus(status, parts, state),
     details: statusDetails(parts, state),

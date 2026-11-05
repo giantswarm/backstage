@@ -1,3 +1,8 @@
+/**
+ * @jest-environment-options {"url": "https://portal.example.com/"}
+ *
+ * Not localhost, where the connector always files signals as test data.
+ */
 import { ConfigApi, IdentityApi } from '@backstage/core-plugin-api';
 import {
   analyticsApiRef,
@@ -5,6 +10,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  COUNT,
   portalEvents,
   type PortalEventSpec,
 } from '@giantswarm/backstage-plugin-analytics-react';
@@ -62,9 +68,24 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
   }
 
+  /** app.telemetrydeck, as the connector reads it. */
+  function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
+    jest.mocked(configApi.getOptionalConfig).mockReturnValue({
+      getOptional: (key: string) => telemetrydeck[key],
+      getString: (key: string) => {
+        const value = telemetrydeck[key];
+        if (typeof value !== 'string' || !value) {
+          throw new Error(`Missing required config value at '${key}'`);
+        }
+        return value;
+      },
+    } as unknown as ReturnType<ConfigApi['getOptionalConfig']>);
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(configApi.getOptionalString).mockReturnValue(undefined);
+    withTelemetryConfig({ appID: 'APP-ID', salt: 'salt' });
   });
 
   it('reports untracked page views for paths that matched a registered route', () => {
@@ -98,8 +119,23 @@ describe('TelemetryDeckAnalyticsApi', () => {
 
     expect(mockSignal).toHaveBeenCalledWith('pageview', {
       page: 'Unknown page',
-      path: '/wp-login.php',
+      path: 'unknown',
     });
+  });
+
+  it('sends the route template, never the path, query string or hash', async () => {
+    navigateInTestApp(
+      '/sessions/acme-prod/0c4b2f5e-9a3d?prompt=acme+payments#turn-3',
+    );
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledTimes(1);
+    const [, payload] = mockSignal.mock.calls[0];
+    expect(payload).toEqual({
+      page: 'Session detail',
+      path: '/sessions/:installation/:sessionId',
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/acme|0c4b2f5e|prompt|turn/);
   });
 
   it('sends a pageview signal for tracked pages', async () => {
@@ -129,20 +165,24 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
   });
 
-  describe('initialisation', () => {
-    function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
-      jest.mocked(configApi.getOptionalConfig).mockReturnValue({
-        getOptional: (key: string) => telemetrydeck[key],
-        getString: (key: string) => {
-          const value = telemetrydeck[key];
-          if (typeof value !== 'string' || !value) {
-            throw new Error(`Missing required config value at '${key}'`);
-          }
-          return value;
-        },
-      } as unknown as ReturnType<ConfigApi['getOptionalConfig']>);
-    }
+  it('adds the deployment ID to the pageview signal when configured', async () => {
+    withTelemetryConfig({
+      appID: 'APP-ID',
+      salt: 'salt',
+      deploymentID: 'DEPLOYMENT-ID',
+    });
 
+    navigateInTestApp('/clusters', { registerRoute: true });
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledWith('pageview', {
+      page: 'Clusters index',
+      path: '/clusters',
+      deploymentID: 'DEPLOYMENT-ID',
+    });
+  });
+
+  describe('initialisation', () => {
     function navigateTwice() {
       const api = createApi();
       for (const path of ['/clusters', '/catalog']) {
@@ -163,7 +203,6 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
 
     afterEach(() => {
-      jest.mocked(configApi.getOptionalConfig).mockReturnValue(undefined);
       warn.mockRestore();
       error.mockRestore();
     });
@@ -204,6 +243,60 @@ describe('TelemetryDeckAnalyticsApi', () => {
       expect(error).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['missing', undefined],
+      ['null', null],
+    ])(
+      'sends nothing and says nothing when app.telemetrydeck is %s',
+      async () => {
+        // The config reader answers undefined for both.
+        jest.mocked(configApi.getOptionalConfig).mockReturnValue(undefined);
+
+        navigateTwice();
+        await flushPromises();
+
+        expect(TelemetryDeck).not.toHaveBeenCalled();
+        expect(mockSignal).not.toHaveBeenCalled();
+        expect(warn).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['an empty string', ''],
+      ['a number', 12345],
+    ])('sends no deployment ID for %s', async (_, deploymentID) => {
+      withTelemetryConfig({ appID: 'APP-ID', salt: 'salt', deploymentID });
+
+      navigateTwice();
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledTimes(2);
+      expect(mockSignal).toHaveBeenCalledWith(
+        'pageview',
+        expect.not.objectContaining({ deploymentID: expect.anything() }),
+      );
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['set', true, true],
+      ['unset', undefined, false],
+      ['not a boolean', 'enabled', false],
+    ])(
+      'files the signals as test data when testMode is %s',
+      async (_, testMode, expected) => {
+        withTelemetryConfig({ appID: 'APP-ID', salt: 'salt', testMode });
+
+        navigateTwice();
+        await flushPromises();
+
+        expect(TelemetryDeck).toHaveBeenCalledWith(
+          expect.objectContaining({ testMode: expected }),
+        );
+      },
+    );
+
     it('logs an initialisation failure once and sends nothing', async () => {
       withTelemetryConfig({ appID: 'APP-ID' });
 
@@ -239,14 +332,18 @@ describe('TelemetryDeckAnalyticsApi', () => {
       });
     }
 
+    /** Every allowed value of an attribute; a count at a few whole numbers. */
+    const valuesOf = (allowed: PortalEventSpec['attributes'][string]) =>
+      allowed === COUNT ? [0, 1, 1234] : allowed;
+
     it.each(
       Object.entries(portalEvents as Record<string, PortalEventSpec>).flatMap(
         ([name, { attributes }]) =>
-          Object.entries(attributes).flatMap(([key, values]) =>
-            values.map(value => {
+          Object.entries(attributes).flatMap(([key, allowed]) =>
+            valuesOf(allowed).map(value => {
               // Every other attribute at its first value, this one at each.
               const all = Object.fromEntries(
-                Object.entries(attributes).map(([k, v]) => [k, v[0]]),
+                Object.entries(attributes).map(([k, v]) => [k, valuesOf(v)[0]]),
               );
               return [name, { ...all, [key]: value }] as const;
             }),
@@ -257,6 +354,16 @@ describe('TelemetryDeckAnalyticsApi', () => {
       await flushPromises();
 
       expect(mockSignal).toHaveBeenCalledWith(name, attributes);
+      expect(errorReporterApi.notify).not.toHaveBeenCalled();
+    });
+
+    it('forwards an event with a count left out without it', async () => {
+      captureAction('AgentPlatform.agentViewed', { skills: 2 });
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentViewed', {
+        skills: 2,
+      });
       expect(errorReporterApi.notify).not.toHaveBeenCalled();
     });
 
@@ -276,6 +383,22 @@ describe('TelemetryDeckAnalyticsApi', () => {
       });
     });
 
+    it('adds the deployment ID to an action signal when configured', async () => {
+      withTelemetryConfig({
+        appID: 'APP-ID',
+        salt: 'salt',
+        deploymentID: 'DEPLOYMENT-ID',
+      });
+
+      captureAction('AgentPlatform.agentCreated', { mode: 'deploy' });
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentCreated', {
+        mode: 'deploy',
+        deploymentID: 'DEPLOYMENT-ID',
+      });
+    });
+
     it.each([
       ['an action not on the list', 'AgentPlatform.agentDeleted', {}],
       [
@@ -283,6 +406,9 @@ describe('TelemetryDeckAnalyticsApi', () => {
         'Muster.mcpServerAdded',
         { authMode: 'https://mcp.example.com' },
       ],
+      ['a negative count', 'AgentPlatform.sessionViewed', { turns: -1 }],
+      ['a fractional count', 'AgentPlatform.sessionViewed', { turns: 1.5 }],
+      ['a count as text', 'AgentPlatform.sessionViewed', { turns: 'abc' }],
     ])('drops %s and reports it to Sentry', async (_, action, attributes) => {
       captureAction(action, attributes);
       await flushPromises();

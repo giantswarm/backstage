@@ -3,6 +3,7 @@ import { expect, open, test } from './fixtures';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
   stubModelManagerTools,
 } from './model-manager.fixture';
 
@@ -105,6 +106,9 @@ const models = {
   ],
 };
 
+// Model hosting is drawn only where model-manager answers.
+skipWithoutModelManager();
+
 test('a served model whose predictor pod waits reads Pending · Unschedulable, the scheduler’s text in its hint', async ({
   admin,
 }) => {
@@ -116,7 +120,7 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable, t
 
   try {
     await dropPersistedQueriesOnNextLoad(admin);
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
 
     const row = admin.getByRole('row', { name: /qwen3-4b-instruct/ });
     await expect(
@@ -147,6 +151,6 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable, t
     await staged.unroute();
     // Leave the page on the lab's real serving layer, the staged answer gone.
     await dropPersistedQueriesOnNextLoad(admin);
-    await admin.goto('/agent-platform/models/serving');
+    await admin.goto('/customize/models/hosting');
   }
 });

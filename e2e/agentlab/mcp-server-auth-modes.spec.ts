@@ -12,10 +12,7 @@ import { lab } from './lab';
 test('Connectors: the table and the connector page name the fixture’s sign-in mode', async ({
   admin,
 }) => {
-  await open(
-    admin,
-    `/agent-platform/connectors?installation=${lab.installation}`,
-  );
+  await open(admin, `/customize/connectors?installation=${lab.installation}`);
   await connectToMuster(admin, admin.getByRole('grid'));
 
   const row = admin.getByRole('row', { name: /^lab-oauth-fixture/ });

@@ -5,13 +5,14 @@ import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import {
-  mockDesktopLayout,
-  mockPhoneLayout,
-  type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { usageRouteRef } from '../../routes';
+import {
+  previousUsageMonth,
+  usageMonthLabel,
+  usageMonthOf,
+} from '../../lib/usageWindow';
 import { UsageRouter } from './UsageRouter';
+import { USAGE_WINDOW_SELECT_CLASS_NAME } from './UsageWindowSelect';
 
 // The views are irrelevant here — this is about the tab's routing, which
 // second-level tabs it offers and the scope controls above them — and stubbing
@@ -69,6 +70,20 @@ jest.mock('../EnvironmentSelect', () => ({
   ),
 }));
 
+// The organizations on offer come from one Mimir query and the agents
+// roster, each tested with its hook; here they are a list, and what matters
+// is when the control shows and what it writes to the URL.
+const organizationsState: {
+  namespaces: string[];
+  lastInstallation: string | undefined;
+} = { namespaces: [], lastInstallation: undefined };
+jest.mock('../../hooks/useUsageOrganizations', () => ({
+  useUsageOrganizations: (installation: string | undefined) => {
+    organizationsState.lastInstallation = installation;
+    return { namespaces: organizationsState.namespaces, isLoading: false };
+  },
+}));
+
 // Pass-throughs: the providers' own reads are not what this file is about.
 jest.mock('../QueryClientProvider', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => (
@@ -95,7 +110,7 @@ function renderTab(path: string, sections?: ReactNode[]) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/agent-platform/usage/*"
+        path="/usage/*"
         element={
           <>
             <UsageRouter sections={sections} />
@@ -106,12 +121,30 @@ function renderTab(path: string, sections?: ReactNode[]) {
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/usage': usageRouteRef },
+      mountedRoutes: { '/usage': usageRouteRef },
     },
   );
 }
 
+/** The time range select's trigger, named by its label. */
+function timeRange() {
+  return screen.getByRole('button', { name: /Time range/ });
+}
+
+async function chooseWindow(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  await user.click(timeRange());
+  await user.click(screen.getByRole('option', { name }));
+}
+
 const MCP_SECTION = [<div key="mcp">contributed section</div>];
+
+/** The Organization select's trigger, named by its label. */
+function organization() {
+  return screen.queryByRole('button', { name: /Organization/ });
+}
 
 describe('UsageRouter', () => {
   beforeEach(() => {
@@ -119,17 +152,20 @@ describe('UsageRouter', () => {
     scopeState.isLoading = false;
     usageInstallationState.installation = 'alpha';
     sessionUsageState.usage = { windowDays: 30 };
+    organizationsState.namespaces = [];
+    organizationsState.lastInstallation = undefined;
   });
 
-  it('redirects the tab index to the Overview view, keeping the query string', async () => {
-    renderTab('/agent-platform/usage?installation=alpha');
+  it('renders Overview at the bare path, without a redirect', async () => {
+    renderTab('/usage?installation=alpha');
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/overview?installation=alpha',
-      );
-    });
+    expect(screen.getByTestId('path')).toHaveTextContent(
+      /^\/usage\?installation=alpha$/,
+    );
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Overview',
+    );
   });
 
   it('links the second-level tabs to absolute view paths, carrying the scope', async () => {
@@ -137,29 +173,29 @@ describe('UsageRouter', () => {
     // resolves against the whole current pathname, so it would append the
     // active segment (`/usage/overview/cost`) instead of replacing it. The
     // search travels too, so the window and installation survive the switch.
-    renderTab('/agent-platform/usage/overview?window=7d');
+    renderTab('/usage?window=7d');
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
       'href',
-      '/agent-platform/usage/overview?window=7d',
+      '/usage?window=7d',
     );
     expect(screen.getByRole('tab', { name: 'Cost' })).toHaveAttribute(
       'href',
-      '/agent-platform/usage/cost?window=7d',
+      '/usage/cost?window=7d',
     );
     expect(screen.getByRole('tab', { name: 'Your sessions' })).toHaveAttribute(
       'href',
-      '/agent-platform/usage/conversations?window=7d',
+      '/usage/your-sessions?window=7d',
     );
   });
 
   it.each([
-    ['overview', 'overview-view'],
-    ['cost', 'cost-view'],
-    ['conversations', 'conversations-view'],
-  ])('routes the %s view', async (path, marker) => {
-    renderTab(`/agent-platform/usage/${path}`);
+    ['', 'overview-view'],
+    ['/cost', 'cost-view'],
+    ['/your-sessions', 'conversations-view'],
+  ])('routes the view at "/usage%s"', async (path, marker) => {
+    renderTab(`/usage${path}`);
 
     expect(await screen.findByText(marker)).toBeInTheDocument();
   });
@@ -169,7 +205,7 @@ describe('UsageRouter', () => {
     // answers (design-context/implementation/usage-metrics-ia.md), so the view
     // was dropped rather than left empty. Without muster there is no
     // Connectors content, so no Connectors tab over an empty page either.
-    renderTab('/agent-platform/usage/overview');
+    renderTab('/usage');
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
@@ -181,7 +217,7 @@ describe('UsageRouter', () => {
 
   it('offers a Connectors view, last, when a section is contributed', async () => {
     // T52: the connector tool calls moved off Overview into their own view.
-    renderTab('/agent-platform/usage/overview?window=7d', MCP_SECTION);
+    renderTab('/usage?window=7d', MCP_SECTION);
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
@@ -192,12 +228,12 @@ describe('UsageRouter', () => {
     ]);
     expect(screen.getByRole('tab', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/agent-platform/usage/connectors?window=7d',
+      '/usage/connectors?window=7d',
     );
   });
 
   it('hands the contributed sections to the Connectors view, not the Overview', async () => {
-    renderTab('/agent-platform/usage/connectors', MCP_SECTION);
+    renderTab('/usage/connectors', MCP_SECTION);
 
     expect(
       await screen.findByText('connectors-sections:1'),
@@ -206,110 +242,170 @@ describe('UsageRouter', () => {
   });
 
   it('sends the Connectors address to Overview when nothing was contributed', async () => {
-    renderTab('/agent-platform/usage/connectors?installation=alpha');
+    renderTab('/usage/connectors?installation=alpha');
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/overview?installation=alpha',
-      );
-    });
-  });
-
-  it('redirects the retired mcp path to Connectors, keeping the query string', async () => {
-    renderTab('/agent-platform/usage/mcp?installation=alpha', MCP_SECTION);
-
-    expect(
-      await screen.findByText('connectors-sections:1'),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/connectors?installation=alpha',
+        /^\/usage\?installation=alpha$/,
       );
     });
   });
 
   it.each([
-    ['mcp', 'without a contributed section', undefined],
-    ['technical', 'whose figures live there', MCP_SECTION],
-  ])(
-    'redirects the retired %s path to Overview (%s), keeping the query string',
-    async (retired, _why, sections) => {
-      renderTab(
-        `/agent-platform/usage/${retired}?installation=alpha`,
-        sections,
-      );
-
-      expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      await waitFor(() => {
-        expect(screen.getByTestId('path')).toHaveTextContent(
-          '/agent-platform/usage/overview?installation=alpha',
-        );
-      });
-    },
-  );
-
-  it.each([
-    '/agent-platform/usage/sessions',
-    '/agent-platform/usage/typo',
-    '/agent-platform/usage/cost/deeper',
+    '/usage/sessions',
+    '/usage/typo',
+    '/usage/overview',
+    '/usage/conversations',
+    '/usage/cost/deeper',
   ])('sends an unknown sub-path to Overview: %s', async path => {
     // Without a catch-all these rendered the tab strip over an empty page with
-    // no tab active. `/usage/sessions` is the likely guess, since the tab
-    // reads "Your sessions" while the path is `conversations`.
+    // no tab active. `/usage/sessions` is the likely guess for "Your
+    // sessions", and `conversations` was the view's path before it took its
+    // label (never released).
     renderTab(path);
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/overview',
-      );
+      expect(screen.getByTestId('path')).toHaveTextContent(/^\/usage$/);
     });
   });
 
   it('keeps the query string through the catch-all', async () => {
-    renderTab('/agent-platform/usage/sessions?installation=alpha');
+    renderTab('/usage/sessions?installation=alpha');
 
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/overview?installation=alpha',
+        /^\/usage\?installation=alpha$/,
       );
     });
   });
 
   describe('scope controls', () => {
     it('offers the Environment control when more than one installation is configured', async () => {
-      renderTab('/agent-platform/usage/overview');
+      renderTab('/usage');
 
       expect(await screen.findByTestId('environment-select')).toHaveTextContent(
         'environment:kagent',
       );
     });
 
-    it('offers the time window on the gateway views and sets it in the URL', async () => {
+    it('offers the Organization control on the gateway views from two organizations on, and sets it in the URL', async () => {
+      organizationsState.namespaces = ['kagent', 'org-acme'];
       const user = userEvent.setup();
-      renderTab('/agent-platform/usage/overview');
+      renderTab('/usage/cost?window=7d');
 
-      expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      await user.click(screen.getByRole('radio', { name: '7 days' }));
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      expect(organization()).toHaveTextContent('All organizations');
+      expect(organizationsState.lastInstallation).toBe('alpha');
+
+      await user.click(organization()!);
+      await user.click(screen.getByRole('option', { name: 'acme' }));
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
-          '/agent-platform/usage/overview?window=7d',
+          '/usage/cost?window=7d&organization=org-acme',
+        );
+      });
+      expect(organization()).toHaveTextContent('acme');
+
+      // Every organization again: the parameter goes, the window stays.
+      await user.click(organization()!);
+      await user.click(
+        screen.getByRole('option', { name: 'All organizations' }),
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          /^\/usage\/cost\?window=7d$/,
         );
       });
     });
 
-    it('drops the window parameter for the default window', async () => {
-      const user = userEvent.setup();
-      renderTab('/agent-platform/usage/overview?window=7d');
+    it('offers no Organization control with one organization: nothing to choose', async () => {
+      organizationsState.namespaces = ['kagent'];
+      renderTab('/usage');
 
-      await user.click(screen.getByRole('radio', { name: '30 days' }));
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
+      expect(organization()).toBeNull();
+    });
+
+    it('keeps a deep-linked organization as the selection even with nothing else to offer', async () => {
+      renderTab('/usage/cost?organization=org-deep');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      expect(organization()).toHaveTextContent('deep');
+    });
+
+    it('offers no Organization control on Your sessions, and starts no query for it there', async () => {
+      // The reader's own slice has no organization to narrow by, and the
+      // Connectors view is muster's: only the gateway views ask.
+      organizationsState.namespaces = ['kagent', 'org-acme'];
+      renderTab('/usage/your-sessions');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      expect(organization()).toBeNull();
+      expect(organizationsState.lastInstallation).toBeUndefined();
+    });
+
+    it('offers the calendar months after the days, and sets one in the URL', async () => {
+      const month = previousUsageMonth(usageMonthOf(Date.now()));
+      const user = userEvent.setup();
+      renderTab('/usage/cost');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      await chooseWindow(user, usageMonthLabel(month));
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
-          /\/agent-platform\/usage\/overview$/,
+          `/usage/cost?window=${month}`,
         );
+      });
+      expect(timeRange()).toHaveTextContent(usageMonthLabel(month));
+    });
+
+    it('disables the months on Your sessions and Connectors, saying why, and reads a deep-linked month there as the default', async () => {
+      const month = previousUsageMonth(usageMonthOf(Date.now()));
+      const user = userEvent.setup();
+      renderTab(`/usage/your-sessions?window=${month}`);
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      // The view reads days only, so the control shows the default, not the
+      // month the link named.
+      expect(timeRange()).toHaveTextContent('Last 30 days');
+      await user.click(timeRange());
+      const option = screen.getByRole('option', {
+        name: usageMonthLabel(month),
+      });
+      expect(option).toHaveAttribute('aria-disabled', 'true');
+      expect(option).toHaveAccessibleDescription(
+        'kagent reports session usage over days back from today only',
+      );
+    });
+
+    it('offers the time window on the gateway views and sets it in the URL', async () => {
+      const user = userEvent.setup();
+      renderTab('/usage');
+
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
+      expect(timeRange()).toHaveTextContent('Last 30 days');
+      await chooseWindow(user, 'Last 7 days');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          '/usage?window=7d',
+        );
+      });
+      expect(timeRange()).toHaveTextContent('Last 7 days');
+    });
+
+    it('drops the window parameter for the default window', async () => {
+      const user = userEvent.setup();
+      renderTab('/usage?window=7d');
+
+      await chooseWindow(user, 'Last 30 days');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(/^\/usage$/);
       });
     });
 
@@ -318,14 +414,14 @@ describe('UsageRouter', () => {
       // (AgentUsageSection owns the honest labelling), so the control applies
       // on every view rather than vanishing on one tab.
       const user = userEvent.setup();
-      renderTab('/agent-platform/usage/conversations');
+      renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      await user.click(screen.getByRole('radio', { name: '7 days' }));
+      await chooseWindow(user, 'Last 7 days');
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
-          '/agent-platform/usage/conversations?window=7d',
+          '/usage/your-sessions?window=7d',
         );
       });
       // The Environment control still applies: the fan-out is per installation.
@@ -335,54 +431,89 @@ describe('UsageRouter', () => {
     it('disables windows beyond the backend window on Your sessions, saying why', async () => {
       // kagent computes session usage over a fixed window (30 days here), so
       // a wider selection could only re-show the same figures under a bigger
-      // number. The reason rides on the greyed button itself — a native title
-      // is the one affordance a disabled control still offers.
-      renderTab('/agent-platform/usage/conversations');
+      // number. The reason is the disabled option's own description: shown
+      // under its name on every device and read with it by screen readers.
+      const user = userEvent.setup();
+      renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      const ninety = screen.getByRole('radio', { name: '90 days' });
-      expect(ninety).toBeDisabled();
-      expect(ninety).toHaveAttribute(
-        'title',
+      await user.click(timeRange());
+      const ninety = screen.getByRole('option', { name: 'Last 90 days' });
+      expect(ninety).toHaveAttribute('aria-disabled', 'true');
+      expect(ninety).toHaveAccessibleDescription(
         'kagent keeps 30 days of session usage',
       );
-      expect(screen.getByRole('radio', { name: '7 days' })).toBeEnabled();
-      expect(screen.getByRole('radio', { name: '30 days' })).toBeEnabled();
+      for (const name of ['Last 7 days', 'Last 30 days']) {
+        expect(screen.getByRole('option', { name })).not.toHaveAttribute(
+          'aria-disabled',
+        );
+      }
     });
 
     it('keeps every window enabled on the gateway views', async () => {
       // The gateway views query any window directly — only the kagent fan-out
       // has a fixed window, so the limit must not leak across tabs even while
       // its cached response is at hand.
-      renderTab('/agent-platform/usage/overview');
+      const user = userEvent.setup();
+      renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
+      await user.click(timeRange());
+      expect(
+        screen.getByRole('option', { name: 'Last 90 days' }),
+      ).not.toHaveAttribute('aria-disabled');
     });
 
     it('keeps every window enabled while the backend window is still loading', async () => {
       // No locked control over a guess: until a response names its window,
       // nothing is greyed out.
       sessionUsageState.usage = undefined;
-      renderTab('/agent-platform/usage/conversations');
+      const user = userEvent.setup();
+      renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
+      await user.click(timeRange());
+      expect(
+        screen.getByRole('option', { name: 'Last 90 days' }),
+      ).not.toHaveAttribute('aria-disabled');
     });
 
     it('leaves a deep-linked selection beyond the window selected, not clamped', async () => {
       // A shared link saying ?window=90d still lands where it pointed:
       // AgentUsageSection's note explains that the figures cover the backend's
       // own window — the control greys the option but never rewrites the URL.
-      renderTab('/agent-platform/usage/conversations?window=90d');
+      const user = userEvent.setup();
+      renderTab('/usage/your-sessions?window=90d');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      const ninety = screen.getByRole('radio', { name: '90 days' });
-      expect(ninety).toBeDisabled();
-      expect(ninety).toBeChecked();
+      expect(timeRange()).toHaveTextContent('Last 90 days');
+      await user.click(timeRange());
+      const ninety = screen.getByRole('option', { name: 'Last 90 days' });
+      expect(ninety).toHaveAttribute('aria-disabled', 'true');
+      expect(ninety).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/conversations?window=90d',
+        '/usage/your-sessions?window=90d',
       );
+    });
+
+    it('puts the time range and the Environment control straight into the header actions row', async () => {
+      // ShellPage's actions row spaces and aligns its items (bottom edges where
+      // it holds a labelled field, so the two selects' boxes line up); layout
+      // itself is not measured in jsdom, so this pins that the controls are
+      // that row's own items rather than a row of their own.
+      renderTab('/usage/your-sessions');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      // The select, by the root class it owns.
+      const select = timeRange().closest<HTMLElement>(
+        `.${USAGE_WINDOW_SELECT_CLASS_NAME}`,
+      )!;
+      expect(select).toHaveTextContent(/^Time range/);
+      const row = select.parentElement!;
+      expect(row.parentElement).toContainElement(
+        screen.getByRole('heading', { level: 1 }),
+      );
+      expect(screen.getByTestId('environment-select').parentElement).toBe(row);
     });
   });
 
@@ -390,7 +521,7 @@ describe('UsageRouter', () => {
     it('heads the screen with the platform-standard frame, once', async () => {
       // The ShellPage idiom every platform page uses: "Usage" as the one h1
       // at the standard scale with its description, no per-view heading.
-      renderTab('/agent-platform/usage/overview');
+      renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
       expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
@@ -405,7 +536,7 @@ describe('UsageRouter', () => {
     });
 
     it('draws the views as the page tabs, carrying the scope', async () => {
-      renderTab('/agent-platform/usage/cost?installation=alpha');
+      renderTab('/usage/cost?installation=alpha');
 
       expect(await screen.findByText('cost-view')).toBeInTheDocument();
       const tabs = screen.getAllByRole('tab');
@@ -416,7 +547,7 @@ describe('UsageRouter', () => {
       ]);
       expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
         'href',
-        '/agent-platform/usage/overview?installation=alpha',
+        '/usage?installation=alpha',
       );
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
         'Cost',
@@ -424,73 +555,15 @@ describe('UsageRouter', () => {
     });
 
     it('puts the scope controls in the header', async () => {
-      renderTab('/agent-platform/usage/overview');
+      renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
       const header = screen.getByRole('heading', { level: 1 }).closest('div')
         ?.parentElement?.parentElement as HTMLElement;
       expect(
-        within(header).getByRole('radiogroup', { name: 'Time range' }),
+        within(header).getByRole('button', { name: /Time range/ }),
       ).toBeInTheDocument();
       expect(within(header).getByTestId('environment-select')).toBeVisible();
     });
-  });
-});
-
-// T22 C23: a phone never shows the greyed buttons' `title=`.
-describe('UsageScopeBar · the window limit on a phone', () => {
-  let layout: MockedLayout;
-  beforeEach(() => {
-    scopeState.isSingleInstallation = false;
-    scopeState.isLoading = false;
-    sessionUsageState.usage = { windowDays: 30 };
-  });
-  afterEach(() => layout.restore());
-
-  const REASON =
-    'kagent keeps 30 days of session usage, so the longer ranges are unavailable.';
-
-  it('says why the longer windows are off beside the control', async () => {
-    layout = mockPhoneLayout();
-    renderTab('/agent-platform/usage/conversations');
-
-    expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '90 days' })).toBeDisabled();
-    expect(screen.getByText(REASON)).toBeVisible();
-  });
-
-  it('leaves it to the button’s tooltip on a desktop with a mouse', async () => {
-    layout = mockDesktopLayout();
-    renderTab('/agent-platform/usage/conversations');
-
-    expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-    expect(screen.queryByText(REASON)).toBeNull();
-  });
-
-  it('bottom-aligns the time range with the Environment control, not with the reason', async () => {
-    // The Environment select carries its label above the field, so only the
-    // two controls share an end-aligned row; layout itself is not measured
-    // in jsdom, so this pins the grouping that gives it.
-    layout = mockPhoneLayout();
-    renderTab('/agent-platform/usage/conversations');
-
-    const timeRange = await screen.findByRole('radiogroup', {
-      name: 'Time range',
-    });
-    const controls = timeRange.parentElement!;
-    expect(controls).toHaveClass('bui-align-end');
-    expect(controls).toContainElement(screen.getByTestId('environment-select'));
-    expect(controls).not.toContainElement(screen.getByText(REASON));
-    expect(controls.parentElement).toHaveClass('bui-align-center');
-  });
-
-  it('says nothing where no window is off', async () => {
-    layout = mockPhoneLayout();
-    renderTab('/agent-platform/usage/overview');
-
-    expect(await screen.findByText('overview-view')).toBeInTheDocument();
-    expect(
-      screen.queryByText(/so the longer ranges are unavailable/),
-    ).toBeNull();
   });
 });

@@ -40,10 +40,17 @@ const modelManagerApi = {
   listModels,
   listNodes,
 } as unknown as ModelManagerApi;
-const musterApi = { listServers } as unknown as MusterApi;
+// Every installation's muster signs the person in: model-manager runs as them.
+const listInstallations = jest.fn(async () => ({
+  installations: [] as { name: string; requiresAuth: boolean }[],
+}));
+const musterApi = { listServers, listInstallations } as unknown as MusterApi;
 
 /** The installations whose muster lists model-manager, as `listServers` answers it. */
 function modelManagerOn(installations: string[]) {
+  listInstallations.mockImplementation(async () => ({
+    installations: installations.map(name => ({ name, requiresAuth: true })),
+  }));
   listServers.mockImplementation(async (installation: string) => ({
     mcpServers: installations.includes(installation)
       ? [{ name: 'mcp-kubernetes' }, { name: 'model-manager' }]

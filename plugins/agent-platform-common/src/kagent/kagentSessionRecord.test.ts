@@ -38,6 +38,7 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
         title: expect.any(String),
         agent: { namespace: 'kagent', name: expect.any(String) },
         agentId: encodeKagentAgentId('kagent', first.agent!.name),
+        preparedRevision: sessions.sessions[0].preparedRevision,
         source: 'user',
         state: 'ready',
         contextId: expect.any(String),
@@ -108,6 +109,22 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
     });
   });
 
+  it('says a listing the backend cut is truncated, keeping its rows', () => {
+    const { sessions: rows, drift } = normalizeSessionList(
+      { sessions: [sessions.sessions[0]], truncated: true },
+      'lab',
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(drift).toEqual({
+      kind: 'truncated',
+      message: 'the listing was cut at the backend’s page limit',
+    });
+    expect(normalizeSessionList({ truncated: true }, 'lab').drift?.kind).toBe(
+      'truncated',
+    );
+  });
+
   it('keeps unknown fields and unknown states out of the way', () => {
     const { sessions: rows } = normalizeSessionList(
       {
@@ -122,6 +139,54 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
       'lab',
     );
     expect(rows[0].state).toBe('hibernating');
+  });
+
+  it('reads the workspace a session works in from its volume source', () => {
+    const { sessions: rows } = normalizeSessionList(
+      {
+        sessions: [
+          {
+            ...sessions.sessions[0],
+            volumeSource: {
+              volume: {
+                csiDriver: 'nfs.csi.k8s.io',
+                volumeHandle: 'nfs-server#share#ws-docs',
+              },
+              mounts: [
+                { subPath: 'sessions/${SESSION_ID}', mountPath: '/workspace' },
+              ],
+            },
+            providers: [
+              { hostname: 'github.com', scheme: 'Basic', provider: 'github' },
+              {
+                hostname: 'api.github.com',
+                scheme: 'Bearer',
+                provider: 'github',
+              },
+              // Stored before `provider` existed.
+              {
+                hostname: 'gitlab.example',
+                scheme: 'Basic',
+                audience: 'gitlab',
+              },
+            ],
+            changed: ['giantswarm/devctl', 7],
+            lastTurnTime: '2026-10-21T08:00:00Z',
+          },
+          sessions.sessions[0],
+        ],
+      },
+      'lab',
+    );
+    expect(rows[0].workspace).toEqual({
+      volumeHandle: 'nfs-server#share#ws-docs',
+      csiDriver: 'nfs.csi.k8s.io',
+      fetched: ['giantswarm/devctl'],
+      providers: ['github', 'gitlab'],
+    });
+    // A session started without a workspace has none.
+    expect(rows[1].workspace).toBeUndefined();
+    expect('workspace' in rows[1]).toBe(false);
   });
 
   it('spells runtime states as one lower-case word', () => {

@@ -1,3 +1,4 @@
+import { ModelConfigConditionType } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   countNoun,
   matchesQuery,
@@ -7,14 +8,15 @@ import {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
+import { matches } from './search';
 import { SERVED_MODEL_READINESS } from './serving';
 import {
   canonicalSkillId,
   normalizedRepoUrl,
   type DiscoveredSkill,
   repoSlug,
+  skillTags,
 } from './skills';
-import { parseSelector, toolsetShape } from './toolset';
 
 /** A state as the shell's Customize screen shows it: a dot and a few words. */
 export type CustomizeStatus = {
@@ -49,45 +51,6 @@ export function agentStatus(row: AgentRow): CustomizeStatus {
 }
 
 /**
- * How many connectors (MCP servers) an agent's toolset names, read off its
- * carrier. `undefined` when the toolset does not say: unread, the whole
- * gateway, or presets and single tools whose servers are only known to muster.
- */
-export function connectorCount(row: AgentRow): number | undefined {
-  const toolset = row.toolset;
-  if (!toolset) {
-    return undefined;
-  }
-  if (toolset.state === 'no-gateway') {
-    return 0;
-  }
-  if (toolset.state !== 'declared') {
-    return undefined;
-  }
-  const shape = toolsetShape(toolset.selectors);
-  if (shape === 'none') {
-    return 0;
-  }
-  if (shape === 'full') {
-    return undefined;
-  }
-  const selectors = toolset.selectors.map(parseSelector);
-  if (selectors.some(selector => selector?.kind !== 'server')) {
-    return undefined;
-  }
-  return new Set(selectors.map(selector => selector?.name)).size;
-}
-
-/** "2 skills · 3 connectors", leaving out the connectors when unknown. */
-export function agentParts(row: AgentRow): string {
-  const connectors = connectorCount(row);
-  return [
-    countNoun(row.skillCount, 'skill'),
-    ...(connectors === undefined ? [] : [countNoun(connectors, 'connector')]),
-  ].join(' · ');
-}
-
-/**
  * The Harnesses the agents run on, by name, each with the title the first of
  * its agents carries. An inline Harness has no name and is not counted.
  */
@@ -119,11 +82,18 @@ export const STALE_MODEL_DETAIL =
  * review M14). A model nothing here serves (a provider's) is Ready once
  * accepted. A verdict short of accepted carries the controller's message
  * (which Secret is missing, say) as its detail.
+ *
+ * A failure is named by the condition that failed: "Not accepted" when kagent
+ * rejects the settings (`Accepted`), "Incomplete" when it accepts them but
+ * cannot find what they refer to, such as the key Secret (`ResolvedRefs`).
  */
 export function modelStatus(row: ModelRow): CustomizeStatus {
   if (row.readiness === 'notAccepted') {
     return {
-      label: 'Not accepted',
+      label:
+        row.failedCondition === ModelConfigConditionType.ResolvedRefs
+          ? 'Incomplete'
+          : 'Not accepted',
       tone: 'danger',
       detail: row.readinessMessage,
     };
@@ -175,10 +145,6 @@ export function agentsBySkill(agents: AgentRow[]): Map<string, number> {
   return counts;
 }
 
-function matches(needle: string, fields: (string | undefined)[]): boolean {
-  return fields.some(field => field?.toLowerCase().includes(needle));
-}
-
 export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {
   const needle = search.trim().toLowerCase();
   return needle
@@ -190,6 +156,7 @@ export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {
           row.model,
           row.harness,
           row.harnessTitle,
+          ...row.tags,
         ]),
       )
     : rows;
@@ -207,8 +174,8 @@ export function searchModels(rows: ModelRow[], search: string): ModelRow[] {
 /**
  * The skill catalog's one search, for Customize › Skills and the agent
  * wizard's skill step alike: token-boundary matching (`matchesQuery`) over the
- * name, description, path and source, so one query finds the same skills in
- * both places.
+ * name, description, path, source and tags, so one query finds the same
+ * skills in both places.
  */
 export function searchSkills<T extends DiscoveredSkill>(
   skills: T[],
@@ -219,9 +186,13 @@ export function searchSkills<T extends DiscoveredSkill>(
     ? skills.filter(skill =>
         matchesQuery(
           query,
-          [skill.name, skill.description, skill.path, skillSource(skill)].join(
-            ' ',
-          ),
+          [
+            skill.name,
+            skill.description,
+            skill.path,
+            skillSource(skill),
+            ...skillTags(skill),
+          ].join(' '),
         ),
       )
     : skills;

@@ -56,12 +56,14 @@ function adopt(
 }
 
 /** The writes after which the detail page shows the template converging. */
-export type AgentWriteAction = 'created' | 'updated' | 'skills-updated';
+export type AgentWriteAction =
+  'created' | 'updated' | 'skills-updated' | 'harness-changed';
 
 const WRITE_ACTIONS: readonly AgentWriteAction[] = [
   'created',
   'updated',
   'skills-updated',
+  'harness-changed',
 ];
 
 /** The router-state key the review page writes and this hook reads. */

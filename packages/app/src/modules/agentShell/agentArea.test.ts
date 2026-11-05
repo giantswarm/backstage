@@ -13,12 +13,18 @@ import { PortalFeatureFlags } from './PortalFeatureFlags';
 describe('isAgentArea', () => {
   it.each([
     '/',
-    '/agent-platform',
-    '/agent-platform/',
-    '/agent-platform/sessions',
-    '/agent-platform/agents/gazelle/kagent/sre',
+    '/sessions',
+    '/sessions/gazelle/abc',
+    '/usage',
+    '/usage/cost',
+    '/profile',
     '/customize',
     '/customize/connectors',
+    '/customize/agents/gazelle/kagent/sre',
+    // The old tree, whose addresses only redirect.
+    '/agent-platform',
+    '/agent-platform/',
+    '/agent-platform/agents/gazelle/kagent/sre',
   ])('counts %s as the agent area', pathname => {
     expect(isAgentArea(pathname)).toBe(true);
   });
@@ -33,6 +39,9 @@ describe('isAgentArea', () => {
     // Prefix matches respect path-segment boundaries.
     '/agent-platform-docs',
     '/customized',
+    '/sessionsx',
+    '/usages',
+    '/profiles',
   ])('keeps %s classic', pathname => {
     expect(isAgentArea(pathname)).toBe(false);
   });

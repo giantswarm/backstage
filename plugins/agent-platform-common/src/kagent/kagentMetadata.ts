@@ -14,6 +14,14 @@ const TIMELINE_POSITION_KEYS = [
 ];
 
 /**
+ * Where kagent could mark a message as a notice from the runtime rather than
+ * the agent's words: the key giantswarm/giantswarm#38834 gives as an example,
+ * and its spelling under the public contract's prefix. kagent sends neither
+ * today and has not agreed to either.
+ */
+const NOTICE_KEYS = ['kagent.dev/notice', `${A2A_PREFIX}notice`];
+
+/**
  * Read a value from an A2A message's or part's `metadata` bag.
  *
  * kagent's public metadata contract (`docs/architecture/a2a-metadata.md` in
@@ -117,6 +125,25 @@ export function readKagentTimelinePosition(
     const parsed = Date.parse(value);
     if (!Number.isNaN(parsed)) {
       return parsed;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The kind of notice a message's `metadata` marks it as (`workspace-setup`,
+ * say), or undefined when it carries no such mark. kagent sets none yet; the
+ * reader is here so the keys live beside the other spellings.
+ */
+export function readKagentNotice(metadata: unknown): string | undefined {
+  const bag = asRecord(metadata);
+  if (!bag) {
+    return undefined;
+  }
+  for (const key of NOTICE_KEYS) {
+    const value = bag[key];
+    if (isNonEmptyString(value)) {
+      return value;
     }
   }
   return undefined;

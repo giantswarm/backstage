@@ -1,15 +1,19 @@
 import { useEffect, useId } from 'react';
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FieldErrorText,
+  ExternalLink,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { newModelRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   isDefaultModelConfig,
+  type ModelChoice,
   preselectedModelConfig,
   type PreselectionReason,
+  tenantModelConfigs,
 } from './helpers';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import {
@@ -73,9 +77,17 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
 
   // An existing agent's model is a ModelConfig of its own namespace: an update
   // cannot move the agent, so the other namespaces' models are not offered.
-  const modelConfigs = (
-    installation ? modelConfigsFor(installation) : []
-  ).filter(mc => !edit || (mc.getNamespace() ?? '') === edit.agent.namespace);
+  // A new agent's are those of the tenant it is created in.
+  const listed = installation ? modelConfigsFor(installation) : [];
+  const modelConfigs: ModelChoice[] = edit
+    ? listed.filter(mc => (mc.getNamespace() ?? '') === edit.agent.namespace)
+    : tenantModelConfigs(listed, state.tenant);
+  // The tenants are known and several, none picked yet: a model is the
+  // tenant's, so none is offered (or preselected) before the tenant.
+  const awaitsTenant =
+    !edit &&
+    state.tenant === undefined &&
+    (state.tenantChoices?.length ?? 0) > 0;
   // The agent's current model, when the list does not carry it (a ModelConfig
   // the person may not read, or one that is gone): the picker still says what
   // the agent has, and picking a listed one replaces it.
@@ -90,7 +102,9 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   // step 1 needs no model decision. Only while nothing is picked, so a pick of
   // their own is never replaced; an installation change clears the pick and
   // the new installation's default takes its place.
-  const preselection = preselectedModelConfig(modelConfigs);
+  const preselection = awaitsTenant
+    ? undefined
+    : preselectedModelConfig(modelConfigs);
   const preselected = preselection?.modelConfig;
   useEffect(() => {
     if (preselected && !state.modelConfigName) {
@@ -115,6 +129,19 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
           status="info"
           title="Select an environment first"
           description="Models are provisioned per environment."
+        />
+      </Flex>
+    );
+  }
+
+  if (awaitsTenant) {
+    return (
+      <Flex direction="column" gap="2" {...invalidProps}>
+        {label}
+        <Alert
+          status="info"
+          title="Choose who the agent belongs to first"
+          description="The models offered depend on it."
         />
       </Flex>
     );
@@ -151,12 +178,12 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
             title="No models found"
             description={`No ModelConfigs on ${installation}. A platform admin must add one before agents can be created here.`}
           />
-          {/* Leaving the create flow here loses this form's state, which is
-              fine: without a model, nothing on it can proceed anyway. */}
+          {/* A new tab, like every link in the form: it stays as it is. */}
           {newModelLink && (
             <Text variant="body-small" color="secondary">
-              Platform admins can <Link to={newModelLink()}>add a model</Link>{' '}
-              in the Models tab.
+              Platform admins can{' '}
+              <ExternalLink href={newModelLink()}>add a model</ExternalLink> in
+              the Models tab.
             </Text>
           )}
         </>

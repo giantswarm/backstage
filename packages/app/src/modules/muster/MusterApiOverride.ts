@@ -17,7 +17,10 @@ export const MusterApiOverride = ApiBlueprint.make({
         // Same single sign-on fallback as the ai-chat MCP auth providers:
         // without a dedicated provider entry, the main Dex ID token is
         // forwarded as the muster bearer token.
-        const mainAuthApi = getOptionalMainAuthApi(gsAuthProvidersApi);
+        const mainAuthApi = getOptionalMainAuthApi(
+          gsAuthProvidersApi,
+          'muster',
+        );
         return new MusterAuthProviders(authProviders, mainAuthApi);
       },
     }),

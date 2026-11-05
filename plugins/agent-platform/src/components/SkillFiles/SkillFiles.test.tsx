@@ -141,7 +141,9 @@ describe('SkillFiles', () => {
     ).toBeInTheDocument();
     expect(
       within(viewer('SKILL.md')).getByText(
-        'ticket-triage/SKILL.md at a1b2c3d · 2.0 KiB',
+        (_content, element) =>
+          element?.tagName === 'P' &&
+          element.textContent === 'ticket-triage/SKILL.md at a1b2c3d · 2.0 KiB',
       ),
     ).toBeInTheDocument();
     // SKILL.md came with the listing: no file read.

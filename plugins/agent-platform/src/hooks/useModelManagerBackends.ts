@@ -150,7 +150,8 @@ export function useBackendWrite(
 
   const { mutateAsync, isPending, variables } = useTrackedMutation({
     event: null,
-    untrackedReason: 'Model configuration is not a tracked portal action yet.',
+    untrackedReason:
+      'Backend writes are a follow-up; the model events cover the model form only.',
     mutationFn: ({
       write,
     }: {

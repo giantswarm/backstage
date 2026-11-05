@@ -1,4 +1,4 @@
-import { Fact } from '@giantswarm/backstage-plugin-ui-react';
+import { Fact, shortSha } from '@giantswarm/backstage-plugin-ui-react';
 import { Action } from '../apis';
 import { choiceValue, Field, labelOf } from './schemaForm';
 
@@ -34,7 +34,7 @@ export function stateDetailOf(action: Action): string | undefined {
         ? [
             pr.revert.pullRequest
               ? `#${pr.revert.pullRequest}`
-              : pr.revert.commit.slice(0, 7),
+              : shortSha(pr.revert.commit),
           ]
         : [],
     );

@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -14,7 +13,7 @@ import {
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import { BusyDialog } from '@giantswarm/backstage-plugin-ui-react';
 import {
   CapabilityState,
   Committed,
@@ -261,180 +260,191 @@ export function CapabilityDialog({
   };
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      {...dialogDismissLock(isWriting, open => {
+      isBusy={isWriting}
+      onOpenChange={open => {
         if (!open) {
           onClose();
         }
-      })}
+      }}
       width="min(90vw, 900px)"
     >
-      <form
-        ref={formRef}
-        noValidate
-        onSubmit={onSubmit}
-        style={FORM_STYLE}
-        aria-label={title}
-      >
-        <DialogHeader>{title}</DialogHeader>
-        <DialogBody>
-          <VisuallyHidden role="status" data-testid="review-outcome">
-            {announcement}
-          </VisuallyHidden>
-          <Flex direction="column" gap="4">
-            <Text variant="body-small" color="secondary">
-              Nothing is written before you open the pull requests.
-            </Text>
-            {reason && refusal && !done && (
-              <Alert
-                status={refusal}
-                icon
-                title="The manager would refuse this"
-                description={reason}
-                customActions={
-                  named.length > 0
-                    ? named.map(field => (
-                        <Button
-                          key={field.name}
-                          variant="tertiary"
-                          size="small"
-                          onPress={() => goTo(field)}
-                        >
-                          {labels.get(field.name)}
-                        </Button>
-                      ))
-                    : undefined
-                }
-                data-testid="refused"
-              />
-            )}
-            {editing && (
-              <SchemaForm
-                form={form}
-                values={values}
-                onChange={setValues}
-                errors={errors}
-              />
-            )}
-            {accepted && (
-              <>
-                <Text
-                  as="h3"
-                  variant="title-x-small"
-                  weight="bold"
-                  tabIndex={-1}
-                  ref={resultRef}
-                  data-testid="review-result"
-                >
-                  {RESULT_TITLE}
-                </Text>
-                <ComparisonView result={accepted} />
-                <PlanView plan={accepted} />
-                {!nothingToOpen && (
-                  <TextField
-                    name="reason"
-                    label={WHY_LABEL}
-                    description={WHY_DESCRIPTION}
-                    isRequired
-                    isDisabled={busy}
-                    value={why}
-                    onChange={setWhy}
-                  />
-                )}
-                {!connected && (
-                  <Alert
-                    status="warning"
-                    title="Needs your session"
-                    description={
-                      connection.data?.message ??
-                      'Connect to the platform manager first.'
-                    }
-                  />
-                )}
-              </>
-            )}
-            {done && (
-              <Flex direction="column" gap="2" data-testid="committed">
-                <Text variant="body-medium" tabIndex={-1} ref={doneRef}>
-                  {done.message ?? 'Action started.'}
-                </Text>
-                {done.action && (
-                  <ActionView
-                    action={done.action}
-                    installation={installation}
-                    definition={definition}
-                  />
-                )}
-              </Flex>
-            )}
-            {failure && <ErrorAlert title={REFUSED_TITLE} error={failure} />}
-          </Flex>
-        </DialogBody>
-        <DialogFooter>
-          <Flex gap="4" justify="between" align="center">
-            {editing && missing.length > 0 ? (
-              <Flex
-                gap="1"
-                align="center"
-                style={{ flexWrap: 'wrap' }}
-                data-testid="missing-required"
-              >
+      {close => (
+        <>
+          <form
+            ref={formRef}
+            noValidate
+            onSubmit={onSubmit}
+            style={FORM_STYLE}
+            aria-label={title}
+          >
+            <DialogHeader>{title}</DialogHeader>
+            <DialogBody>
+              <VisuallyHidden role="status" data-testid="review-outcome">
+                {announcement}
+              </VisuallyHidden>
+              <Flex direction="column" gap="4">
                 <Text variant="body-small" color="secondary">
-                  Required, not chosen yet:
+                  Nothing is written before you open the pull requests.
                 </Text>
-                {missing.map(field => (
-                  <Button
-                    key={field.name}
-                    variant="tertiary"
-                    size="small"
-                    onPress={() => goTo(field)}
-                  >
-                    {labels.get(field.name)}
-                  </Button>
-                ))}
+                {reason && refusal && !done && (
+                  <Alert
+                    status={refusal}
+                    icon
+                    title="The manager would refuse this"
+                    description={reason}
+                    customActions={
+                      named.length > 0
+                        ? named.map(field => (
+                            <Button
+                              key={field.name}
+                              variant="tertiary"
+                              size="small"
+                              onPress={() => goTo(field)}
+                            >
+                              {labels.get(field.name)}
+                            </Button>
+                          ))
+                        : undefined
+                    }
+                    data-testid="refused"
+                  />
+                )}
+                {editing && (
+                  <SchemaForm
+                    form={form}
+                    values={values}
+                    onChange={setValues}
+                    errors={errors}
+                  />
+                )}
+                {accepted && (
+                  <>
+                    <Text
+                      as="h3"
+                      variant="title-x-small"
+                      weight="bold"
+                      tabIndex={-1}
+                      ref={resultRef}
+                      data-testid="review-result"
+                    >
+                      {RESULT_TITLE}
+                    </Text>
+                    <ComparisonView result={accepted} />
+                    <PlanView plan={accepted} />
+                    {!nothingToOpen && (
+                      <TextField
+                        name="reason"
+                        label={WHY_LABEL}
+                        description={WHY_DESCRIPTION}
+                        isRequired
+                        isDisabled={busy}
+                        value={why}
+                        onChange={setWhy}
+                      />
+                    )}
+                    {!connected && (
+                      <Alert
+                        status="warning"
+                        title="Needs your session"
+                        description={
+                          connection.data?.message ??
+                          'Connect to the platform manager first.'
+                        }
+                      />
+                    )}
+                  </>
+                )}
+                {done && (
+                  <Flex direction="column" gap="2" data-testid="committed">
+                    <Text variant="body-medium" tabIndex={-1} ref={doneRef}>
+                      {done.message ?? 'Action started.'}
+                    </Text>
+                    {done.action && (
+                      <ActionView
+                        action={done.action}
+                        installation={installation}
+                        definition={definition}
+                      />
+                    )}
+                  </Flex>
+                )}
+                {failure && (
+                  <ErrorAlert title={REFUSED_TITLE} error={failure} />
+                )}
               </Flex>
-            ) : (
-              <span />
-            )}
-            <Flex gap="2" justify="end">
-              <Button
-                variant="secondary"
-                onPress={onClose}
-                isDisabled={isWriting}
-              >
-                {done ? 'Close' : 'Cancel'}
-              </Button>
-              {editing && (
-                <Button
-                  ref={reviewRef}
-                  type="submit"
-                  variant="primary"
-                  isDisabled={busy}
-                >
-                  {review.isPending ? 'Comparing…' : 'Review'}
-                </Button>
-              )}
-              {accepted && (
-                <Button variant="secondary" onPress={back} isDisabled={busy}>
-                  Back
-                </Button>
-              )}
-              {accepted && !nothingToOpen && (
-                <Button
-                  type="submit"
-                  variant="primary"
-                  isDisabled={busy || !connected || !explained}
-                >
-                  {commit.isPending
-                    ? 'Opening…'
-                    : `Open ${count(toOpen, 'pull request')}`}
-                </Button>
-              )}
-            </Flex>
-          </Flex>
-        </DialogFooter>
-      </form>
-    </Dialog>
+            </DialogBody>
+            <DialogFooter>
+              <Flex gap="4" justify="between" align="center">
+                {editing && missing.length > 0 ? (
+                  <Flex
+                    gap="1"
+                    align="center"
+                    style={{ flexWrap: 'wrap' }}
+                    data-testid="missing-required"
+                  >
+                    <Text variant="body-small" color="secondary">
+                      Required, not chosen yet:
+                    </Text>
+                    {missing.map(field => (
+                      <Button
+                        key={field.name}
+                        variant="tertiary"
+                        size="small"
+                        onPress={() => goTo(field)}
+                      >
+                        {labels.get(field.name)}
+                      </Button>
+                    ))}
+                  </Flex>
+                ) : (
+                  <span />
+                )}
+                <Flex gap="2" justify="end">
+                  <Button
+                    variant="secondary"
+                    onPress={close}
+                    isDisabled={isWriting}
+                  >
+                    {done ? 'Close' : 'Cancel'}
+                  </Button>
+                  {editing && (
+                    <Button
+                      ref={reviewRef}
+                      type="submit"
+                      variant="primary"
+                      isDisabled={busy}
+                    >
+                      {review.isPending ? 'Comparing…' : 'Review'}
+                    </Button>
+                  )}
+                  {accepted && (
+                    <Button
+                      variant="secondary"
+                      onPress={back}
+                      isDisabled={busy}
+                    >
+                      Back
+                    </Button>
+                  )}
+                  {accepted && !nothingToOpen && (
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      isDisabled={busy || !connected || !explained}
+                    >
+                      {commit.isPending
+                        ? 'Opening…'
+                        : `Open ${count(toOpen, 'pull request')}`}
+                    </Button>
+                  )}
+                </Flex>
+              </Flex>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </BusyDialog>
   );
 }

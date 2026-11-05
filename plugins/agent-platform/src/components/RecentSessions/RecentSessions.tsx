@@ -11,15 +11,24 @@ import {
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { StatusDot, TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PinIcon,
+  StatusDot,
+  TOUCH_MEDIA,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
+import {
+  useWorkspaceNames,
+  workspaceInstallations,
+} from '../../hooks/useWorkspaceNames';
+import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
-import { PinIcon } from '../PinIcon';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
@@ -89,33 +98,18 @@ const useStyles = makeStyles({
   active: {
     background: 'var(--bui-bg-neutral-3)',
   },
-  // After `link`, whose hover background it takes back.
+  // After `link`, whose hover background it takes back: the row stretched
+  // over (`useStretchedLinkStyles`) takes the highlight, and the focus ring
+  // with it.
   rowLink: {
     '&:hover': {
       background: 'transparent',
     },
-    '&::after': {
-      content: '""',
-      position: 'absolute',
-      inset: 0,
-      borderRadius: 'inherit',
-    },
-    // The focus ring goes round the row, as the highlight does. Inset, so the
-    // rail's scroll box does not clip it.
-    '&[data-focus-visible]': {
-      outline: 'none',
-    },
-    '&[data-focus-visible]::after': {
-      outline: '2px solid var(--bui-ring)',
-      outlineOffset: -2,
-    },
   },
-  // Above the row's stretched hit area, so the dot's tooltip (its only
+  // Lifted above the row's stretched hit area, so the dot's tooltip (its only
   // visible meaning) is reached by hovering it; a click on it still opens
   // the session, since the dot is inside the link.
   dot: {
-    position: 'relative',
-    zIndex: 1,
     display: 'inline-flex',
   },
   pin: {
@@ -161,6 +155,7 @@ type SessionDetailRoute = RouteFunc<{
 
 function SessionItem({
   row,
+  workspaceName,
   href,
   isActive,
   waiting,
@@ -168,6 +163,8 @@ function SessionItem({
   pin,
 }: {
   row: SessionRow;
+  /** The session's workspace by name, once read; absent without one. */
+  workspaceName?: string;
   href: string;
   isActive: boolean;
   waiting: boolean;
@@ -176,15 +173,17 @@ function SessionItem({
   pin?: { isPinned: boolean; onToggle: () => void };
 }) {
   const classes = useStyles();
+  const stretched = useStretchedLinkStyles();
   // With a pin, the row carries the highlight (`item`); without, the link.
   const activeClass = isActive ? classes.active : '';
   return (
     <li className={pin ? `${classes.item} ${activeClass}` : undefined}>
       <Link
+        standalone
         href={href}
         className={
           pin
-            ? `${classes.link} ${classes.rowLink}`
+            ? `${classes.link} ${classes.rowLink} ${stretched.link}`
             : `${classes.link} ${activeClass}`
         }
         aria-current={isActive ? 'page' : undefined}
@@ -197,7 +196,7 @@ function SessionItem({
               A dot with no visible label carries its meaning as a tooltip and
               an accessible name. */}
           {(waiting || working) && (
-            <span className={classes.dot}>
+            <span className={`${classes.dot} ${stretched.above}`}>
               {waiting ? (
                 <StatusDot
                   tone="warning"
@@ -223,9 +222,9 @@ function SessionItem({
             >
               {row.title}
             </Text>
-            {row.agentName && (
+            {(row.agentName || workspaceName) && (
               <Text as="div" variant="body-x-small" color="secondary" truncate>
-                {row.agentName}
+                {[row.agentName, workspaceName].filter(Boolean).join(' · ')}
               </Text>
             )}
           </Box>
@@ -314,6 +313,11 @@ function RecentSessionsList({
     [rows, pinnedKey, limit, shellRail, today, states],
   );
   const recent = useMemo(() => pickRecentSessions(rows, limit), [rows, limit]);
+  const installationsWithWorkspaces = useMemo(
+    () => workspaceInstallations(rows),
+    [rows],
+  );
+  const workspaceNameOf = useWorkspaceNames(installationsWithWorkspaces);
 
   const renderRow = (row: SessionRow) => {
     const href = sessionDetailRoute({
@@ -324,6 +328,7 @@ function RecentSessionsList({
       <SessionItem
         key={row.id}
         row={row}
+        workspaceName={workspaceNameLabel(workspaceNameOf(row))}
         href={href}
         isActive={pathname === href}
         waiting={needsAttention(states.get(row.id))}
@@ -357,6 +362,7 @@ function RecentSessionsList({
       </Link>
       {grouped.waitingCount > 0 && (
         <Link
+          standalone
           href={`${allSessionsHref}${sessionsListSearch({ state: 'waiting' })}`}
           aria-label={`${grouped.waitingCount} ${SESSION_STATE_LABELS.waiting.toLowerCase()}`}
           className={classes.countLink}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -10,15 +11,21 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  addTags,
+  commitTagDraft,
+  draftProblem,
   EmptyStateCard,
-  fieldErrorProps,
+  sameTags,
   searchableIf,
+  tagCounts,
+  TagsField,
   TextAreaField,
   useFieldValidation,
   useProvidePageHeaderActions,
   useSelectFieldError,
   WizardFrame,
   WizardStepHeading,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
@@ -28,13 +35,17 @@ import {
   type SkillPullRequest,
 } from '../../hooks/useProposeSkill';
 import type { SkillContent } from '../../hooks/useSkillContent';
+import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { uniqueSkills } from '../../lib/customize';
 import {
   canProposeSkillTo,
   repoSlug,
-  shortCommit,
+  skillTags,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
+import { skillsRouteRef } from '../../routes';
 import { SkillEditFiles } from '../SkillEditFiles';
 import {
   SkillCreationAssist,
@@ -87,14 +98,14 @@ function SkillPullRequestOutcome({
 
 /**
  * Add a skill to one of the configured skill repositories
- * (`/agent-platform/skills/new`), as a pull request opened **as the signed-in
+ * (`/customize/skills/new`), as a pull request opened **as the signed-in
  * person** (decision G16 B): name, description and instructions become a
  * `<name>/SKILL.md` on a branch, and the flow ends on the opened pull request.
  * Nothing deploys from here — a teammate approves the PR, and discovery picks
  * the skill up once it merges.
  *
  * With `edit`, the same flow changes an existing skill (`EditSkillPage`,
- * `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
+ * `/customize/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
  * name are fixed, description and instructions start from the SKILL.md the
  * skill reads now, and the pull request rewrites `<dir>/SKILL.md` on
  * `update-skill/<directory as a slug>` (the repository name for a skill at
@@ -129,7 +140,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   );
   /** Configured repositories left out of the targets for not being on github.com. */
   const skippedCount = edit ? 0 : configured.length - repositories.length;
-  const closeHref = edit?.skillHref ?? `${SHELL_CUSTOMIZE_PATH}/skills`;
+  const { skills: customizeSkills } = useCustomizePaths();
+  const skillsRoute = useRouteRef(skillsRouteRef);
+  const closeHref = useCloseHref(
+    edit?.skillHref,
+    customizeSkills,
+    skillsRoute?.(),
+  );
 
   const [repoUrl, setRepoUrl] = useState<string | undefined>(repositories[0]);
   const [skillName, setSkillName] = useState(edit?.skill.name ?? '');
@@ -139,6 +156,29 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const [instructions, setInstructions] = useState(
     edit?.content.instructions ?? '',
   );
+  /** The edited skill's tags, as its SKILL.md reads now. */
+  const baselineTags = useMemo(
+    () => edit?.content.tags ?? (edit ? skillTags(edit.skill) : []),
+    [edit],
+  );
+  const [tags, setTags] = useState<string[]>(baselineTags);
+  /** What the Tags field holds but has not added yet. */
+  const [tagDraft, setTagDraft] = useState('');
+  // A draft that can be tags counts as added: submitting adds it, as the
+  // agent form's Continue does.
+  const submittedTags = useMemo(
+    () => commitTagDraft(tags, tagDraft, baselineTags).tags,
+    [tags, tagDraft, baselineTags],
+  );
+  // The tags the catalog's skills already use, offered while typing a tag.
+  const { skills: catalogSkills } = useSkillCatalog();
+  const knownTags = useMemo(
+    () =>
+      tagCounts(
+        uniqueSkills(catalogSkills).map(skill => ({ tags: skillTags(skill) })),
+      ),
+    [catalogSkills],
+  );
   const { proposeSkill, isProposing, error, result } = useProposeSkill();
 
   useEffect(() => {
@@ -147,9 +187,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     }
   }, [repoUrl, repositories]);
 
-  // Each field's problem, shown on the field itself once a submit was
-  // blocked; a name that breaks the folder rule says so while it is typed.
-  const nameInvalid = skillName.length > 0 && !SKILL_NAME_RE.test(skillName);
+  // Each field's problem, shown on the field itself once the person leaves
+  // it having typed in it, or once a submit was blocked (the `forms` skill).
   const fieldErrors = {
     repository: repoUrl ? undefined : 'Choose a repository',
     name: (() => {
@@ -157,14 +196,15 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         return undefined;
       }
       if (!skillName) {
-        return 'Name is required';
+        return 'Enter a name for the skill.';
       }
-      return nameInvalid
-        ? 'Use lowercase letters, digits and dashes, e.g. ticket-triage'
-        : undefined;
+      return SKILL_NAME_RE.test(skillName)
+        ? undefined
+        : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
-    description: description.trim() ? undefined : 'Description is required',
-    instructions: instructions.trim() ? undefined : 'Instructions are required',
+    description: description.trim() ? undefined : 'Enter a description.',
+    tags: draftProblem(tagDraft, tags, baselineTags),
+    instructions: instructions.trim() ? undefined : 'Enter the instructions.',
   };
   const isValid = Object.values(fieldErrors).every(problem => !problem);
   // An edit with nothing changed has nothing to propose — not a field's
@@ -172,11 +212,12 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const isChanged =
     !edit ||
     description.trim() !== edit.content.description.trim() ||
-    instructions.trim() !== edit.content.instructions.trim();
+    instructions.trim() !== edit.content.instructions.trim() ||
+    !sameTags(submittedTags, baselineTags);
   const validation = useFieldValidation();
-  const { reveal } = validation;
+  const { reveal, errorFor, fieldProps, textFieldProps } = validation;
   const repositoryError = useSelectFieldError(
-    validation.errorFor(fieldErrors.repository),
+    errorFor('repository', fieldErrors.repository),
   );
 
   const onSubmit = useCallback(async () => {
@@ -187,12 +228,22 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     if (!isChanged) {
       return;
     }
+    setTags(submittedTags);
+    setTagDraft('');
     try {
       await proposeSkill({
         repoUrl,
         skillName,
         description: description.trim(),
         instructions: instructions.trim(),
+        // Only a change: an edit that leaves them keeps the file's as written.
+        ...((
+          edit
+            ? !sameTags(submittedTags, baselineTags)
+            : submittedTags.length > 0
+        )
+          ? { tags: submittedTags }
+          : {}),
         ...(edit
           ? {
               kind: 'update' as const,
@@ -213,6 +264,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     skillName,
     description,
     instructions,
+    submittedTags,
+    baselineTags,
     edit,
   ]);
 
@@ -237,6 +290,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               instructions.trim() !== edit.content.instructions.trim()
                 ? instructions
                 : undefined,
+            tags: sameTags(submittedTags, baselineTags)
+              ? undefined
+              : submittedTags,
           }
         : {
             kind: 'create',
@@ -244,8 +300,18 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             name: skillName,
             description,
             instructions,
+            ...(submittedTags.length > 0 ? { tags: submittedTags } : {}),
           },
-    [edit, repoUrl, repositories, skillName, description, instructions],
+    [
+      edit,
+      repoUrl,
+      repositories,
+      skillName,
+      description,
+      instructions,
+      submittedTags,
+      baselineTags,
+    ],
   );
 
   // Memoized so the frame's footer slot only updates when the handlers change,
@@ -321,7 +387,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             <Text variant="body-small" color="secondary">
               {edit.skill.path ? `${edit.skill.path}/SKILL.md` : 'SKILL.md'} in{' '}
               {repoSlug(edit.skill.repoUrl)}, as of{' '}
-              {shortCommit(edit.content.commit)}
+              <CommitSha value={edit.content.commit} />
             </Text>
           )}
           {!edit && repositories.length > 1 && (
@@ -368,11 +434,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               description="Use lowercase letters, digits and dashes, e.g. ticket-triage."
               value={skillName}
               onChange={setSkillName}
-              {...fieldErrorProps(
-                nameInvalid
-                  ? fieldErrors.name
-                  : validation.errorFor(fieldErrors.name),
-              )}
+              {...textFieldProps('name', fieldErrors.name)}
             />
           )}
           <TextField
@@ -381,7 +443,17 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             description="Write one sentence on when an agent should reach for it."
             value={description}
             onChange={setDescription}
-            {...fieldErrorProps(validation.errorFor(fieldErrors.description))}
+            {...textFieldProps('description', fieldErrors.description)}
+          />
+          <TagsField
+            tags={tags}
+            draft={tagDraft}
+            error={errorFor('tags', fieldErrors.tags)}
+            counts={knownTags}
+            stored={baselineTags}
+            onDraftChange={setTagDraft}
+            onAdd={added => setTags(prev => addTags(prev, added, baselineTags))}
+            onRemove={tag => setTags(prev => prev.filter(each => each !== tag))}
           />
           <TextAreaField
             label="Instructions"
@@ -391,7 +463,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             rows={10}
             value={instructions}
             onChange={setInstructions}
-            error={validation.errorFor(fieldErrors.instructions)}
+            {...fieldProps('instructions', fieldErrors.instructions)}
           />
           {edit && (
             <SkillEditFiles

@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 
 import {
   buildTimeline,
@@ -9,6 +10,11 @@ import {
 } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import { applyStreamEvent, createStreamTurn } from '../../lib/kagentStreamTurn';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from '../../lib/__fixtures__/workspaceNotice';
 import { TimelineEntry } from './TimelineEntry';
 
 import {
@@ -21,6 +27,14 @@ import {
   tasksRuntimeLost,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import {
+  mockCollapsibleLayout,
+  type MockedCollapsibleLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -509,29 +523,41 @@ describe('SessionTimeline', () => {
 
   describe('a stalled turn', () => {
     const since = Date.parse('2026-09-13T13:52:00Z');
-    const clock = new Date(since).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
 
     it('replaces the working row with when progress last came, and a cancel', async () => {
+      // Relative to the real clock, which the row reads: taken as the test
+      // runs, not when the file is collected.
+      const stalledSince = Date.now() - 12 * 60 * 1000;
       const onCancelTurn = jest.fn();
       await renderInTestApp(
-        <SessionTimeline
-          timeline={timelineFor(tasksV099)}
-          agentName="Issue tracker"
-          // The page never passes both; if it did, the stall must win — a
-          // spinner next to "no progress" contradicts itself.
-          isAgentWorking
-          stalledSince={since}
-          onCancelTurn={onCancelTurn}
-        />,
+        <DateTimeZoneProvider timeZone="local">
+          <SessionTimeline
+            timeline={timelineFor(tasksV099)}
+            agentName="Issue tracker"
+            // The page never passes both; if it did, the stall must win — a
+            // spinner next to "no progress" contradicts itself.
+            isAgentWorking
+            stalledSince={stalledSince}
+            onCancelTurn={onCancelTurn}
+          />
+        </DateTimeZoneProvider>,
       );
 
       expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-      expect(
-        screen.getByText(`The agent has not reported progress since ${clock}.`),
-      ).toBeInTheDocument();
+      // Relative, so a stall from yesterday does not read as today; the
+      // date and time on hover.
+      expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+        'The agent last reported progress 12 minutes ago.',
+      );
+      const time = screen.getByText('12 minutes ago');
+      expect(time).toHaveAttribute(
+        'title',
+        formatLocalDateFull(new Date(stalledSince)),
+      );
+      // It ticks every minute: kept out of the status's announcements, so
+      // the stall is announced once.
+      expect(time.closest('[role="status"]')).not.toBeNull();
+      expect(time).toHaveAttribute('aria-live', 'off');
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Stop the turn' }),
@@ -548,7 +574,7 @@ describe('SessionTimeline', () => {
         />,
       );
 
-      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Stop the turn' }),
       ).not.toBeInTheDocument();
@@ -566,7 +592,7 @@ describe('SessionTimeline', () => {
         />,
       );
 
-      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Stop the turn' }),
       ).toBeInTheDocument();
@@ -914,6 +940,22 @@ describe('SessionTimeline — with tool activity hidden (S9)', () => {
 });
 
 describe('a lost stream', () => {
+  it('says the stream is being picked up again, in place of Working…', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        isAgentWorking
+        streamLost="reconnecting"
+      />,
+    );
+
+    expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('The live view was interrupted. Reconnecting…'),
+    ).toBeInTheDocument();
+  });
+
   it('says the result is being checked, in place of Working…', async () => {
     await renderInTestApp(
       <SessionTimeline
@@ -926,7 +968,7 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     expect(
-      screen.getByText('The live stream was lost. Checking the result…'),
+      screen.getByText('Could not restore the live view. Checking the result…'),
     ).toBeInTheDocument();
   });
 
@@ -942,7 +984,9 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/The live stream was lost. Still working/),
+      screen.getByText(
+        /Could not restore the live view. The agent is still working/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -957,7 +1001,7 @@ describe('a lost stream', () => {
       />,
     );
 
-    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
   });
 
   it('yields to a stall', async () => {
@@ -973,8 +1017,8 @@ describe('a lost stream', () => {
       />,
     );
 
-    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
-    expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+    expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
+    expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
   });
 });
 
@@ -1523,5 +1567,368 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
       name: /x_agentlab-mcp-kubernetes_get_pods/,
     });
     expect(row).toHaveTextContent('via Muster');
+  });
+});
+
+describe('SessionTimeline — a long user message', () => {
+  // jsdom lays nothing out: one line of the bubble's text per line of the
+  // message, and the cut's ten `lh` as ten of them.
+  let layout: MockedCollapsibleLayout;
+  beforeEach(() => {
+    layout = mockCollapsibleLayout();
+  });
+  afterEach(() => layout.restore());
+
+  const lines = (count: number, prefix = 'line') =>
+    Array.from({ length: count }, (_, i) => `${prefix} ${i + 1}`).join('\n');
+  const base = { taskIndex: 0, at: '2026-10-16T10:00:00Z' };
+  const timeline = (items: TimelineItem[]): Timeline => ({
+    items,
+    tokens: { total: 0, prompt: 0, completion: 0 },
+    skippedMessages: 0,
+  });
+
+  async function renderItems(items: TimelineItem[]) {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline(items)}
+        agentName="Issue tracker"
+        isAgentWorking={false}
+      />,
+    );
+  }
+
+  /** A timeline the test can replace, as a poll does. */
+  async function renderChanging(first: TimelineItem[]) {
+    let replace: (items: TimelineItem[]) => void = () => {};
+    function Harness() {
+      const [items, setItems] = useState(first);
+      replace = setItems;
+      return (
+        <SessionTimeline
+          timeline={timeline(items)}
+          agentName="Issue tracker"
+          isAgentWorking={false}
+        />
+      );
+    }
+    await renderInTestApp(<Harness />);
+    return (items: TimelineItem[]) => act(() => replace(items));
+  }
+
+  it('cuts it to ten lines behind Show more, and opens and closes it in place', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    const toggle = screen.getByRole('button', { name: 'Show more' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const region = panelFor(toggle);
+    // Ten lines of the bubble's own text, at whatever size the browser sets.
+    expect(region.style.maxHeight).toBe('10lh');
+    // Cut, not removed: the whole message stays in the page for a screen
+    // reader and for copying.
+    expect(region).toHaveTextContent('line 40');
+    // In the bubble, under the cut: after it, never over it.
+    const bubble = screen.getByTestId('user-message-bubble');
+    expect(bubble).toContainElement(toggle);
+    expect(region).not.toContainElement(toggle);
+    expect(
+      region.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await userEvent.click(toggle);
+    const less = screen.getByRole('button', { name: 'Show less' });
+    expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(less).style.maxHeight).toBe('');
+    // At the end of the opened text, in the bubble still.
+    expect(bubble).toContainElement(less);
+    expect(panelFor(less)).not.toContainElement(less);
+
+    await userEvent.click(less);
+    expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('opens from the keyboard', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    screen.getByRole('button', { name: 'Show more' }).focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('shows a message that fits whole, with no control', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(10) },
+    ]);
+
+    expect(screen.getByText(/line 10/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows whole a message only a line or two past the cut', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(12) },
+    ]);
+
+    expect(screen.getByText(/line 12/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps each message open or closed on its own', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u1', text: lines(40, 'first') },
+      { ...base, kind: 'agent-message', id: 'a1', text: 'Noted.' },
+      {
+        ...base,
+        taskIndex: 1,
+        kind: 'user-message',
+        id: 'u2',
+        text: lines(40, 'second'),
+      },
+    ]);
+
+    const [first, second] = screen.getAllByRole('button', {
+      name: 'Show more',
+    });
+    await userEvent.click(second);
+
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('stays open when kagent’s copy of a sent message replaces the optimistic one', async () => {
+    const text = lines(40);
+    const replace = await renderChanging([
+      {
+        ...base,
+        kind: 'user-message',
+        id: 'pending:m1',
+        messageId: 'm1',
+        text,
+      },
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // The poll's item: the same message under a positional key.
+    replace([
+      { ...base, kind: 'user-message', id: '0:0:0', messageId: 'm1', text },
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('stays open while its turn is out of the window and back', async () => {
+    const turn = (index: number): TimelineItem[] => [
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'user-message',
+        id: `${index}:u`,
+        messageId: `m${index}`,
+        text: index === 0 ? lines(40, 'opener') : `Q${index}?`,
+      },
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'agent-message',
+        id: `${index}:a`,
+        text: `A${index}.`,
+      },
+    ];
+    const turns = (count: number) =>
+      Array.from({ length: count }, (_, i) => turn(i)).flat();
+    const replace = await renderChanging(turns(RECENT_TURNS));
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // A new turn pushes the opener's out of the window, unmounting it.
+    replace(turns(RECENT_TURNS + 1));
+    expect(screen.queryByText(/opener 1/)).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show earlier activity' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('leaves the agent’s messages whole', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: 'Summarize it' },
+      { ...base, kind: 'agent-message', id: 'a', text: lines(40) },
+    ]);
+
+    expect(screen.queryByRole('button', { name: /Show more/ })).toBeNull();
+  });
+});
+
+describe('egress refusals', () => {
+  const at = '2026-10-19T10:42:00Z';
+  const timeline = (refusal: Partial<TimelineItem>): Timeline => ({
+    ...timelineFor(tasksEmpty),
+    items: [
+      { kind: 'user-message', id: 'u', taskIndex: 0, at, text: 'update' },
+      {
+        kind: 'egress-refused',
+        id: 'r',
+        taskIndex: 0,
+        at,
+        scheme: 'https',
+        host: 'proxy.golang.org',
+        port: 443,
+        count: 3,
+        ...refusal,
+      } as TimelineItem,
+      { kind: 'agent-message', id: 'a', taskIndex: 0, at, text: 'no' },
+    ],
+  });
+
+  it('names the host, the agent and the count, with the remedy it is given', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({})}
+        agentName="otter-coder"
+        egressRemedyFor={() => ({
+          kind: 'edit',
+          editHref: '/customize/agents/lab/agents/otter-coder/edit',
+        })}
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        'Outgoing connection to proxy.golang.org blocked',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /otter-coder is not allowed to reach this address · .* · 3 attempts/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /add https:\/\/proxy\.golang\.org to otter-coder’s Extra egress origins/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByRole('link', { name: 'Edit otter-coder' }),
+    ).toHaveAttribute('href', '/customize/agents/lab/agents/otter-coder/edit');
+  });
+
+  it('says raw TCP is not available, with no origin to add', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({
+          scheme: 'tcp',
+          host: '10.0.0.7',
+          port: 22,
+          count: 1,
+        })}
+        agentName="otter-coder"
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        /Raw TCP connections are not available to agents · .* · 1 attempt$/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If 10.0.0.7 offers HTTPS, have otter-coder use that instead.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
+  });
+});
+
+describe('workspace setup notices', () => {
+  it('shows a notice as a status of its turn, above the agent’s name and reply', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(sessionWithNotices)}
+        agentName="Claude Code"
+      />,
+    );
+
+    const notices = screen.getAllByTestId('timeline-workspace-notice');
+    expect(notices.map(notice => notice.dataset.severity)).toEqual([
+      'warning',
+      'info',
+    ]);
+    const replies = screen.getAllByTestId('timeline-agent-message');
+    expect(replies.map(reply => reply.textContent)).toEqual([
+      'No, the gh CLI is not installed here.',
+      "I'm Claude.",
+    ]);
+    const [firstName] = screen.getAllByText('Claude Code');
+    // Notice, then the agent's name, then its reply.
+    expect(
+      notices[0].compareDocumentPosition(firstName) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      firstName.compareDocumentPosition(replies[0]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders the streamed notice as the polled one', async () => {
+    const streamed = applyStreamEvent(createStreamTurn('user-1'), {
+      statusUpdate: {
+        taskId: 'task-1',
+        contextId: 'ctx-1',
+        status: {
+          state: 'TASK_STATE_WORKING',
+          message: {
+            messageId: 'notice-1',
+            role: 'ROLE_AGENT',
+            parts: [{ text: NOTICE_STALE }],
+          },
+        },
+      },
+    });
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...timelineFor(tasksEmpty),
+          items: [
+            { kind: 'user-message', id: 'u', taskIndex: 0, text: 'hi' },
+            ...streamed.items,
+          ],
+        }}
+        agentName="Claude Code"
+        isAgentWorking
+      />,
+    );
+
+    expect(
+      within(screen.getByTestId('timeline-workspace-notice')).getByText(
+        'Workspace setup: 3 repositories not updated',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-agent-message'),
+    ).not.toBeInTheDocument();
   });
 });

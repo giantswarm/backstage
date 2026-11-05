@@ -41,6 +41,12 @@ const WORDING: Record<
     done: 'Skills updated',
     failedTitle: 'The agent did not become ready with its updated skills',
   },
+  'harness-changed': {
+    wrote: 'moved the agent to its new Harness',
+    doing: 'Changing the runtime…',
+    done: 'Runtime changed',
+    failedTitle: 'The agent did not become ready on its new Harness',
+  },
 };
 
 /**

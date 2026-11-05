@@ -79,7 +79,7 @@ function renderPage() {
     <PageHeaderActionsProvider>
       <Routes>
         <Route
-          path="/agent-platform/models/edit/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name/edit"
           element={<EditModelPage />}
         />
         <Route
@@ -89,9 +89,9 @@ function renderPage() {
       </Routes>
     </PageHeaderActionsProvider>,
     {
-      initialRouteEntries: ['/agent-platform/models/edit/inst-1/kagent/sonnet'],
+      initialRouteEntries: ['/customize/models/inst-1/kagent/sonnet/edit'],
       mountedRoutes: {
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
     },

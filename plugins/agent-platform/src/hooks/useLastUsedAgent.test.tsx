@@ -11,6 +11,7 @@ function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'SRE Agent',
     technicalName: 'sre-agent',
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready',
     ...overrides,
@@ -44,6 +45,20 @@ describe('useLastUsedAgent', () => {
     });
 
     expect(result.current.lastUsedAgent).toEqual(platform);
+  });
+
+  it('offers no default whose installation cannot start a session as the person', () => {
+    const shared = {
+      ...platform,
+      sessionBlocker: 'Muster on golem has no per-user sign-in in this portal.',
+    };
+    const { result } = renderHook(() => useLastUsedAgent([sre, shared]));
+
+    act(() => {
+      result.current.rememberAgent(shared);
+    });
+
+    expect(result.current.lastUsedAgent).toBeUndefined();
   });
 
   it('survives a remount, which is the whole point', () => {

@@ -46,16 +46,32 @@ jest.mock('../../hooks/useTokenRates', () => ({
     model: undefined,
     isLoading: false,
     isAvailable: true,
-    window: '7d',
+    windowDays: 7,
   }),
+}));
+jest.mock('../../hooks/useSessionEgressRefusals', () => ({
+  useSessionEgressRefusals: () => [],
+}));
+jest.mock('../../hooks/useEgressRemedy', () => ({
+  useEgressRemedy: () => ({ kind: 'pending' }),
 }));
 
 jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({
     servers: [],
     resources: [],
+    labels: new Map(),
     isLoading: false,
     isUnavailable: false,
+  }),
+}));
+
+// The agent's model is no ChatGPT login here; that gate has its own tests.
+jest.mock('../../hooks/useChatGptConnection', () => ({
+  useChatGptConnection: () => ({
+    isPersonalModel: false,
+    blocksTurn: false,
+    isLoading: false,
   }),
 }));
 
@@ -70,6 +86,7 @@ const agent: AgentRow = {
   name: 'Issue tracker',
   technicalName: 'issue-tracker',
   description: 'Tracks issues',
+  tags: [],
   skillCount: 0,
   readiness: 'ready',
 };
@@ -82,6 +99,12 @@ const agents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
+  kagentMissing: undefined,
+  kagentSwitchedOff: [],
+  unknownPin: undefined,
+  inventoryFailure: undefined,
+  retry: async () => {},
 };
 
 jest.mock('../AgentsDataProvider', () => ({
@@ -157,7 +180,7 @@ async function startSession(sessionId: string) {
           }
         />
         <Route
-          path="/agent-platform/sessions/:installation/:sessionId"
+          path="/sessions/:installation/:sessionId"
           element={
             <QueryClientProvider key="sessions">
               <SessionDetailRoute />
@@ -172,8 +195,8 @@ async function startSession(sessionId: string) {
         [musterApiRef, musterApi],
       ],
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/sessions': sessionsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );

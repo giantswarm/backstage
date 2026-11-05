@@ -23,13 +23,15 @@ import {
 import { musterApiRef } from '../../apis';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { WorkflowStep, WorkflowSubStep } from '../../lib/k8s';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { executionOutcome } from '../../lib/workflowDisplay';
+import { workflowShapeLabel } from '../../lib/workflowShape';
 import {
   buildWorkflowGraph,
   findFlowStep,
   FLOW_METRICS,
+  flowItemsInOrder,
   FlowStepNode,
   layoutWorkflowGraph,
   mapRunToGraph,
@@ -41,9 +43,10 @@ import {
   stepToolEffects,
   TitleFit,
 } from '../../lib/workflowGraph';
-import { useToolCatalogue } from '../shared';
+import { EffectBadge, MarkerBadge, useToolCatalogue } from '../shared';
 import {
   accessibleName,
+  featureWords,
   quietStatus,
   runBadgeLabel,
   runSpoken,
@@ -53,6 +56,7 @@ import { useLatestRun } from './useLatestRun';
 import { useContentAreaLeft, useInertBehind } from './contentAreaLayer';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
 import { WorkflowStepList } from './WorkflowStepList';
+import { StepFeatureBadges } from './StepFeatureBadges';
 
 export { runBadgeLabel } from './flowLabels';
 
@@ -231,16 +235,20 @@ const useStyles = makeStyles({
     gap: 8,
     minWidth: 0,
   },
+  // What the group does — its loop and how many run at once — wraps onto a
+  // second line (the layout sized the head for it) before it is clamped,
+  // with the full line as its tooltip.
   groupLabel: {
-    display: 'block',
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
     flex: '1 1 auto',
     minWidth: 0,
-    fontSize: 12,
-    lineHeight: '16px',
+    fontSize: FLOW_METRICS.groupLabelFontSize,
+    lineHeight: `${FLOW_METRICS.groupLabelLineHeight}px`,
     color: 'var(--bui-fg-secondary)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    overflowWrap: 'anywhere',
   },
   // The step's box: its button (number, name, tool, last run) on top and,
   // while expanded, its details under it — the layout gave the box the room.
@@ -339,6 +347,15 @@ const useStyles = makeStyles({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
+  // What the step does with its result (paginated, jq), under its lines.
+  // It wraps in a narrow box; the layout gave the box a row per line.
+  features: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: FLOW_METRICS.featureRow - 18,
+    minWidth: 0,
+    marginTop: FLOW_METRICS.featureRow - 18,
+  },
   run: {
     flex: 'none',
     marginLeft: 'auto',
@@ -350,23 +367,16 @@ const useStyles = makeStyles({
   runFailed: { color: 'var(--bui-fg-negative)', fontWeight: 500 },
   runRunning: { color: 'var(--bui-announcement-fg-subdued)' },
   runQuiet: { color: 'var(--bui-fg-secondary)' },
-  // Small markers riding the node's top edge: its number on the left, what
-  // it does to the world and whether it may fail on the right.
+  // Small markers riding the node's top edge, all compact MarkerBadges: its
+  // number on the left, what it does to the world and whether it may fail on
+  // the right. The number is round and placed here; its look is MarkerBadge's.
   number: {
     position: 'absolute',
     top: -9,
     left: 10,
-    height: 18,
     minWidth: 18,
-    padding: '0 5px',
     boxSizing: 'border-box',
     borderRadius: 9,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
-    textAlign: 'center',
-    color: 'var(--bui-fg-secondary)',
     fontVariantNumeric: 'tabular-nums',
   },
   numberInline: {
@@ -379,22 +389,6 @@ const useStyles = makeStyles({
     right: 10,
     display: 'flex',
     gap: 4,
-  },
-  marker: {
-    height: 18,
-    padding: '0 6px',
-    borderRadius: 6,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
-    whiteSpace: 'nowrap',
-    color: 'var(--bui-fg-secondary)',
-  },
-  markerChanges: {
-    borderColor: 'var(--bui-warning-border)',
-    background: 'var(--bui-warning-bg-subdued)',
-    color: 'var(--bui-warning-fg-subdued)',
   },
   gate: {
     position: 'absolute',
@@ -431,6 +425,7 @@ const useStyles = makeStyles({
     textAlign: 'center',
     '& $groupTitleRow, & $subRow': { justifyContent: 'center' },
     '& $groupTitleText, & $groupLabel': { flex: '0 1 auto' },
+    '& $features': { justifyContent: 'center' },
   },
 });
 
@@ -485,16 +480,12 @@ function Markers({
   }
   return (
     <span className={classes.markers}>
-      {effect && (
-        <span
-          className={`${classes.marker} ${
-            effect === 'changes' ? classes.markerChanges : ''
-          }`}
-        >
-          {effect === 'changes' ? 'Changes things' : 'Reads'}
-        </span>
+      {effect && <EffectBadge effect={effect} size="compact" />}
+      {allowFailure && (
+        <MarkerBadge tone="neutral" size="compact">
+          May fail
+        </MarkerBadge>
       )}
-      {allowFailure && <span className={classes.marker}>May fail</span>}
     </span>
   );
 }
@@ -551,7 +542,11 @@ function StepNode({
       }}
       data-node={node.key}
     >
-      {node.number && <span className={classes.number}>{node.number}</span>}
+      {node.number && (
+        <MarkerBadge tone="neutral" size="compact" className={classes.number}>
+          {node.number}
+        </MarkerBadge>
+      )}
       <Markers effect={effect} allowFailure={node.allowFailure} />
       <button
         type="button"
@@ -563,8 +558,9 @@ function StepNode({
         aria-label={accessibleName(node, [
           line,
           gate,
-          effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+          effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
           node.allowFailure && 'may fail',
+          ...featureWords(node),
           overlay && runSpoken(overlay),
         ])}
         onClick={() => onToggle(node.key)}
@@ -590,6 +586,7 @@ function StepNode({
               <RunBadge overlay={overlay} />
             </span>
           )}
+          <StepFeatureBadges node={node} className={classes.features} />
         </span>
       </button>
       {expanded && details}
@@ -622,9 +619,13 @@ function Group({
     <>
       <span className={classes.groupTitleRow}>
         {node?.number && (
-          <span className={`${classes.number} ${classes.numberInline}`}>
+          <MarkerBadge
+            tone="neutral"
+            size="compact"
+            className={`${classes.number} ${classes.numberInline}`}
+          >
             {node.number}
-          </span>
+          </MarkerBadge>
         )}
         <span
           className={`${classes.title} ${classes.groupTitleText}`}
@@ -632,14 +633,22 @@ function Group({
         >
           {title}
         </span>
-        {node?.allowFailure && <span className={classes.marker}>May fail</span>}
+        {node?.allowFailure && (
+          <MarkerBadge tone="neutral" size="compact">
+            May fail
+          </MarkerBadge>
+        )}
       </span>
       <span className={classes.subRow}>
-        <span className={classes.groupLabel} title={group.label}>
+        <span
+          className={classes.groupLabel}
+          title={titleTooltip(group.label, group.labelFit)}
+        >
           {group.label}
         </span>
         <RunBadge overlay={overlay} />
       </span>
+      {node && <StepFeatureBadges node={node} className={classes.features} />}
     </>
   );
   let stateClass = '';
@@ -674,6 +683,7 @@ function Group({
               group.label,
               gate,
               node.allowFailure && 'may fail',
+              ...featureWords(node),
               overlay && runSpoken(overlay),
             ])}
             onClick={() => onToggle(node.key)}
@@ -700,7 +710,7 @@ export interface WorkflowFlowCanvasProps {
   steps: WorkflowStep[];
   onFailure: WorkflowSubStep[];
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** Whether the muster session can read runs and the tool catalogue. */
   hasSession: boolean;
 }
@@ -755,7 +765,7 @@ function useDetailsHeight(
  * No trigger, schedule or version: muster has none of them. With a muster
  * session the latest run's per-step records colour the nodes (done, failed,
  * skipped, not run) with durations where muster recorded them, and each
- * step's tool says whether it only reads or changes things.
+ * step's tool says whether it reads or changes things.
  *
  * The flow is the page's only step view. A step (or group head) expands in
  * place: its box grows to hold its details — plain first, technical
@@ -960,10 +970,8 @@ export function WorkflowFlowCanvas({
       <Text as="span" variant="body-small" color="secondary">
         What each step's tool does:
       </Text>
-      <span className={classes.marker}>Reads</span>
-      <span className={`${classes.marker} ${classes.markerChanges}`}>
-        Changes things
-      </span>
+      <EffectBadge effect="reads" size="compact" />
+      <EffectBadge effect="changes" size="compact" />
     </span>
   );
 
@@ -1024,7 +1032,7 @@ export function WorkflowFlowCanvas({
         variant="inline"
         id={detailsId(expanded.node.key)}
         context={expanded}
-        stepIds={graph.stepIds}
+        stepNumbers={graph.stepNumbers}
         prefixes={prefixes}
         installation={installation}
         overlay={overlayOf(expanded.node.key)}
@@ -1041,8 +1049,9 @@ export function WorkflowFlowCanvas({
   });
 
   // Reading (and tab) order follows the flow: each group's head before its
-  // steps, the cleanup lane last. Groups paint before their steps, so the
-  // steps sit on top of the group boxes.
+  // steps (a nested group's head before its own), the cleanup lane last.
+  // Groups paint before their steps, so the steps sit on top of the group
+  // boxes, and a nested group on top of the group around it.
   const nodeByKey = new Map(layout.nodes.map(n => [n.node.key, n]));
   const gateByKey = new Map(layout.gates.map(g => [g.key, g.label]));
   const groupByKey = new Map(
@@ -1078,12 +1087,11 @@ export function WorkflowFlowCanvas({
       />,
     );
   };
-  for (const item of graph.main) {
+  for (const item of flowItemsInOrder(graph.main)) {
     if (item.kind === 'step') {
       pushNode(item.node.key);
     } else {
       pushGroup(item.node.key);
-      item.children.forEach(child => pushNode(child.key));
     }
   }
   if (graph.onFailure.length > 0) {
@@ -1104,9 +1112,9 @@ export function WorkflowFlowCanvas({
           fullScreen ? classes.scrollerFull : ''
         }`}
         role="group"
-        aria-label={`Flow of the workflow's ${steps.length} step${
-          steps.length === 1 ? '' : 's'
-        }${onFailure.length > 0 ? ' and its cleanup steps' : ''}`}
+        aria-label={`Flow of the workflow's ${workflowShapeLabel(steps)}${
+          onFailure.length > 0 ? ' and its cleanup steps' : ''
+        }`}
         data-testid="workflow-flow-viewport"
       >
         <div

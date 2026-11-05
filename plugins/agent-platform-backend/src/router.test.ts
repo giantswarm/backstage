@@ -1,6 +1,10 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
-import { ConflictError, NotFoundError } from '@backstage/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -19,6 +23,20 @@ import { createRouter, kagentProbeUrl, RouterOptions } from './router';
  * A reachability cache that never touches the network: every endpoint answers
  * as reachable, immediately. Tests of the reachability route build their own.
  */
+/**
+ * Base64 of bytes that start like a PNG of `width` × `height` — the signature
+ * and the IHDR chunk's dimensions, all a header check reads — padded to `size`.
+ */
+function pngBase64(size = 64, width = 1, height = 1): string {
+  const bytes = Buffer.alloc(Math.max(size, 24));
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes.toString('base64');
+}
+
 function reachableEverywhere() {
   return new ReachabilityCache({
     probe: async () => ({ reachable: true, checkedAt: 0 }),
@@ -38,6 +56,7 @@ const twoInstallations = {
 describe('createRouter', () => {
   const listSessions = jest.fn();
   const getMe = jest.fn();
+  const listAgentNamespaces = jest.fn();
   const getSession = jest.fn();
   const listSessionTasks = jest.fn();
 
@@ -51,10 +70,13 @@ describe('createRouter', () => {
   const answerConfirmation = jest.fn();
   const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
+  const subscribeToTask = jest.fn();
+  const readSessionImageUsage = jest.fn();
 
   const mockClient = {
     listSessions,
     getMe,
+    listAgentNamespaces,
     getSession,
     listSessionTasks,
     deleteSession,
@@ -67,6 +89,8 @@ describe('createRouter', () => {
     answerConfirmation,
     streamAnswer,
     cancelTask,
+    subscribeToTask,
+    readSessionImageUsage,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -95,7 +119,10 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     listSessions.mockReset();
+    readSessionImageUsage.mockReset();
+    readSessionImageUsage.mockResolvedValue({ bytes: 0, count: 0 });
     getMe.mockReset();
+    listAgentNamespaces.mockReset();
     getSession.mockReset();
     listSessionTasks.mockReset();
     deleteSession.mockReset();
@@ -1686,7 +1713,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
       );
     });
@@ -1699,7 +1726,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         expect.anything(),
-        { messageId: 'msg-1', text: 'line one\n\n  line two' },
+        { messageId: 'msg-1', text: 'line one\n\n  line two', images: [] },
         expect.anything(),
       );
     });
@@ -1715,6 +1742,101 @@ describe('createRouter', () => {
       ['missing messageId', { ...validBody, messageId: undefined }],
     ])('rejects a body with %s as a 400', async (_, body) => {
       const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('decodes the images a message carries and forwards them with it', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        images: [{ mediaType: 'image/png', data: pngBase64(), name: 'a.png' }],
+      });
+
+      expect(response.status).toBe(200);
+      const [, , message] = sendMessage.mock.calls[0];
+      expect(message.images).toEqual([
+        {
+          mediaType: 'image/png',
+          bytes: expect.any(Uint8Array),
+          name: 'a.png',
+        },
+      ]);
+      expect(Array.from(message.images[0].bytes.subarray(0, 4))).toEqual([
+        0x89, 0x50, 0x4e, 0x47,
+      ]);
+      // Checked against what the session already carries, as the person.
+      expect(readSessionImageUsage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('reads no session usage for a message without images', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      await post();
+
+      expect(readSessionImageUsage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['bytes', { bytes: 16 * 1024 * 1024 - 10, count: 3 }, 'of images'],
+      ['images', { bytes: 0, count: 50 }, '50 images'],
+    ])(
+      'refuses images past what the session can carry in %s, in words the composer can show',
+      async (_, usage, words) => {
+        readSessionImageUsage.mockResolvedValue(usage);
+
+        const response = await post({
+          ...validBody,
+          images: [{ mediaType: 'image/png', data: pngBase64() }],
+        });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toContain(words);
+        expect(response.body.error.message).toContain(
+          'Start a new session to send more images.',
+        );
+        expect(sendMessage).not.toHaveBeenCalled();
+      },
+    );
+
+    it('takes a body of full-size images past the general 256 kB limit', async () => {
+      // Two images filling the per-message cap, base64 in the JSON: ~4 MB.
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        text: '漢'.repeat(32_000),
+        images: [
+          { mediaType: 'image/png', data: pngBase64(2 * 1024 * 1024) },
+          { mediaType: 'image/png', data: pngBase64(1024 * 1024) },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['images that are not an array', { images: 'x' }],
+      [
+        'an image whose bytes are not its type',
+        { images: [{ mediaType: 'image/jpeg', data: pngBase64() }] },
+      ],
+      [
+        'an SVG',
+        { images: [{ mediaType: 'image/svg+xml', data: 'PHN2Zz4=' }] },
+      ],
+      [
+        'an image longer than 2000 pixels on a side',
+        { images: [{ mediaType: 'image/png', data: pngBase64(64, 2001, 10) }] },
+      ],
+    ])('rejects a body with %s as a 400', async (_, extra) => {
+      const response = await post({ ...validBody, ...extra });
 
       expect(response.status).toBe(400);
       expect(sendMessage).not.toHaveBeenCalled();
@@ -1846,7 +1968,7 @@ describe('createRouter', () => {
       expect(streamMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
         expect.any(AbortSignal),
       );
@@ -1860,6 +1982,10 @@ describe('createRouter', () => {
         { ...validBody, text: 'x'.repeat(32_001) },
         { ...validBody, agentName: undefined },
         { ...validBody, messageId: undefined },
+        {
+          ...validBody,
+          images: [{ mediaType: 'image/gif', data: pngBase64() }],
+        },
       ]) {
         const response = await post(body);
         expect(response.status).toBe(400);
@@ -1938,6 +2064,74 @@ describe('createRouter', () => {
     });
   });
 
+  describe('POST /kagent/sessions/:sessionId/tasks/:taskId/subscribe', () => {
+    const agentBody = { agentNamespace: 'kagent', agentName: 'issue-tracker' };
+
+    function post(
+      body: unknown = agentBody,
+      { sessionId = 'abc', taskId = 'task-1' } = {},
+    ) {
+      return request(app)
+        .post(`/kagent/sessions/${sessionId}/tasks/${taskId}/subscribe`)
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    beforeEach(() => subscribeToTask.mockReset());
+
+    it('relays the subscription as the person, to the Agent the body names', async () => {
+      const frame = 'data: {"statusUpdate":{"taskId":"task-1"}}\n\n';
+      subscribeToTask.mockResolvedValue(
+        new Response(frame, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+      );
+
+      const response = await post(agentBody, {
+        sessionId: 'a%2Fb',
+        taskId: '01a086cf-7f84-761d-980a-48f485eded5e',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frame);
+      expect(subscribeToTask).toHaveBeenCalledWith(
+        'a/b',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        '01a086cf-7f84-761d-980a-48f485eded5e',
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/tasks/task-1/subscribe')
+        .query({ installation: 'gazelle' })
+        .send(agentBody);
+
+      expect(response.status).toBe(401);
+      expect(subscribeToTask).not.toHaveBeenCalled();
+    });
+
+    it('requires the Agent', async () => {
+      const response = await post({ agentNamespace: 'kagent' });
+
+      expect(response.status).toBe(400);
+      expect(subscribeToTask).not.toHaveBeenCalled();
+    });
+
+    it('answers a decision as its 4xx', async () => {
+      subscribeToTask.mockRejectedValue(new NotFoundError('no such turn'));
+
+      const response = await post();
+
+      expect(response.status).toBe(404);
+    });
+  });
+
   describe('POST /kagent/sessions/:sessionId/answer', () => {
     const validBody = {
       agentNamespace: 'kagent',
@@ -1975,6 +2169,19 @@ describe('createRouter', () => {
           text: 'Rideable proof-of-concept',
         },
         { userToken: 'user-token' },
+      );
+    });
+
+    it('forwards the status message the answer was given for', async () => {
+      answerConfirmation.mockResolvedValue({});
+
+      await post({ ...validBody, askedIn: 'status-msg-1' });
+
+      expect(answerConfirmation).toHaveBeenCalledWith(
+        'abc',
+        expect.anything(),
+        expect.objectContaining({ askedIn: 'status-msg-1' }),
+        expect.anything(),
       );
     });
 
@@ -2179,6 +2386,34 @@ describe('createRouter', () => {
     });
   });
 
+  describe('GET /kagent/agent-namespaces', () => {
+    it('asks as the person and answers the namespaces', async () => {
+      listAgentNamespaces.mockResolvedValue({
+        namespaces: ['kagent', 'org-a'],
+      });
+
+      const response = await request(app)
+        .get('/kagent/agent-namespaces')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ namespaces: ['kagent', 'org-a'] });
+      expect(listAgentNamespaces).toHaveBeenCalledWith(
+        expect.objectContaining({ userToken: 'user-token' }),
+      );
+    });
+
+    it('refuses a call without the person’s token', async () => {
+      const response = await request(app)
+        .get('/kagent/agent-namespaces')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listAgentNamespaces).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /kagent/me', () => {
     it('works without a user token and echoes the body', async () => {
       getMe.mockResolvedValue({ sub: 'marian@giantswarm.io' });
@@ -2190,6 +2425,124 @@ describe('createRouter', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ sub: 'marian@giantswarm.io' });
       expect(getMe).toHaveBeenCalledWith({ userToken: undefined });
+    });
+  });
+
+  describe('GET /usage/model-cost', () => {
+    const mimirQuery = jest.fn();
+    const costApp = () =>
+      buildApp(twoInstallations, { mimir: { query: mimirQuery } });
+
+    beforeEach(() => {
+      mimirQuery.mockReset();
+      mimirQuery.mockImplementation(async ({ query }: { query: string }) => ({
+        status: 'success',
+        data: {
+          resultType: 'vector',
+          result: [
+            {
+              metric: query.startsWith('sum by')
+                ? { agent_namespace: 'kagent', agent: 'sre-agent' }
+                : {},
+              value: [0, query.startsWith('sum by') ? '1.25' : '1'],
+            },
+          ],
+        },
+      }));
+      getMe.mockResolvedValue({ sub: 'me@example.com' });
+    });
+
+    it('answers the caller’s own cost, with no-store', async () => {
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toMatchObject({
+        status: 'actual',
+        windowDays: 7,
+        totalUsd: 1.25,
+        byAgent: [{ agentId: 'kagent__NS__sre_agent', costUsd: 1.25 }],
+      });
+      expect(getMe).toHaveBeenCalledWith({ userToken: 'user-token' });
+    });
+
+    it('takes the person from kagent, never from the request', async () => {
+      // Every way a caller might try to name someone else: a parameter, a
+      // PromQL fragment, a header. None reaches the query.
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({
+          installation: 'gazelle',
+          days: '7',
+          user: 'someone-else@example.com',
+          email: 'someone-else@example.com',
+          query: 'sum by (user) (agentgateway_gen_ai_client_cost_usd_total)',
+        })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .set('X-Forwarded-User', 'someone-else@example.com');
+
+      expect(response.status).toBe(200);
+      const queries = mimirQuery.mock.calls.map(([args]) => args.query);
+      expect(queries.join('\n')).not.toContain('someone-else');
+      // Every matcher naming a person names the one kagent vouched for.
+      const personal = queries.filter((query: string) =>
+        /user="[^"]/.test(query),
+      );
+      expect(personal).not.toHaveLength(0);
+      for (const query of personal) {
+        expect(query).toContain('user="me@example.com"');
+      }
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' });
+
+      expect(response.status).toBe(401);
+      expect(getMe).not.toHaveBeenCalled();
+      expect(mimirQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '91', '7.5', 'seven', ''])(
+      'refuses days=%p with a 400',
+      async days => {
+        const response = await request(await costApp())
+          .get('/usage/model-cost')
+          .query({ installation: 'gazelle', days })
+          .set(KAGENT_AUTH_HEADER, 'user-token');
+
+        expect(response.status).toBe(400);
+        expect(mimirQuery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('answers no-mimir where no Mimir is wired in, as for an installation without one', async () => {
+      const response = await request(app)
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        status: 'unavailable',
+        windowDays: 7,
+        reason: 'no-mimir',
+      });
+    });
+
+    it('answers 200, not a 5xx for Sentry, when kagent is down', async () => {
+      getMe.mockRejectedValue(new ServiceUnavailableError('kagent is down'));
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.reason).toBe('identity-unreadable');
     });
   });
 

@@ -1,4 +1,9 @@
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { KubeObject } from './KubeObject';
+import { harnessRuntimeOf, type HarnessRuntime } from './Harness';
 import {
   KAGENT_API_GROUP,
   type AgentCondition,
@@ -306,6 +311,16 @@ export class Agent extends KubeObject<AgentInterface> {
   }
 
   /**
+   * The keywords people find the agent by: the comma-joined
+   * `ui.giantswarm.io/tags` annotation, trimmed and lowercased, without
+   * empties or repeats. A value the chart would refuse (see `tagProblem` in
+   * ui-react, the one tag rule) is left out of what is shown.
+   */
+  getTags(): string[] {
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
+  }
+
+  /**
    * The inline template. `undefined` when the agent names an `AgentTemplate`
    * instead, in which case every template reader below answers `undefined`
    * or empty and {@link getTemplateRef} names where to look.
@@ -327,12 +342,34 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.jsonData.spec?.harnessRef?.name;
   }
 
+  /** Whether the agent carries its Harness inline, under `spec.harness`. */
+  hasInlineHarness(): boolean {
+    return this.jsonData.spec?.harness !== undefined;
+  }
+
+  /**
+   * The runtime of the Harness inline under `spec.harness`, `undefined` when
+   * the agent names its Harness instead (read that one's) or the inline one
+   * sets no runtime this client knows.
+   */
+  getInlineHarnessRuntime(): HarnessRuntime | undefined {
+    return harnessRuntimeOf(this.jsonData.spec?.harness);
+  }
+
   /**
    * The HTTP(S) origins the agent may reach besides what its revision
    * compiles (`spec.egress`), such as `https://github.com:443`.
    */
   getEgress(): string[] {
     return [...(this.jsonData.spec?.egress ?? [])];
+  }
+
+  /**
+   * The names of the EgressPolicies of its namespace the agent picks
+   * (`spec.egressPolicyRefs`): their origins it may reach too.
+   */
+  getEgressPolicyRefs(): string[] {
+    return (this.jsonData.spec?.egressPolicyRefs ?? []).map(ref => ref.name);
   }
 
   getDescription() {

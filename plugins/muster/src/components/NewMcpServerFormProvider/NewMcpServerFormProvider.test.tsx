@@ -1,14 +1,38 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { TestApiProvider } from '@backstage/test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { musterApiRef, type MusterApi } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import {
   NewMcpServerFormProvider,
   useNewMcpServerForm,
 } from './NewMcpServerFormProvider';
 
+/** The input schema muster's create and update tools describe. */
+let toolArguments: Record<string, unknown> = { tags: { type: 'array' } };
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <NewMcpServerFormProvider>{children}</NewMcpServerFormProvider>;
+  const musterApi = {
+    describeTool: jest.fn(async () => ({
+      inputSchema: { properties: toolArguments },
+    })),
+  } as unknown as MusterApi;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>
+        <NewMcpServerFormProvider>{children}</NewMcpServerFormProvider>
+      </QueryClientProvider>
+    </TestApiProvider>
+  );
 }
+
+beforeEach(() => {
+  toolArguments = { tags: { type: 'array' } };
+});
 
 function renderForm() {
   const { result } = renderHook(() => useNewMcpServerForm(), { wrapper });
@@ -39,9 +63,9 @@ describe('NewMcpServerFormProvider', () => {
 
     expect(result.current.isComplete).toBe(false);
     expect(result.current.validationErrors).toEqual([
-      'Name is required',
-      'Select an installation',
-      'URL is required',
+      'Enter a name for the connector.',
+      'Choose an environment.',
+      'Enter the URL, e.g. https://mcp.example.com/mcp.',
     ]);
   });
 
@@ -98,10 +122,6 @@ describe('NewMcpServerFormProvider', () => {
 
     act(() => result.current.setAuthMode('own-account'));
     expect(result.current.authFields.authorizationServer.available).toBe(true);
-    // Scopes only make sense together with an issuer.
-    expect(result.current.authFields.scopes.available).toBe(false);
-    act(() => result.current.setIssuer('https://auth.example.com'));
-    expect(result.current.authFields.scopes.available).toBe(true);
   });
 
   it('offers required audiences only for Platform SSO, explaining the exclusion', () => {
@@ -130,6 +150,7 @@ describe('NewMcpServerFormProvider', () => {
       authorizationServer: {
         issuer: 'https://auth.example.com',
         scopes: 'openid',
+        grantScope: 'subject',
       },
     });
 
@@ -191,7 +212,7 @@ describe('NewMcpServerFormProvider', () => {
 
     expect(result.current.isComplete).toBe(false);
     expect(result.current.validationErrors).toEqual([
-      'Signing region is required for AWS SigV4',
+      'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
     ]);
 
     act(() => result.current.setSigv4Region('eu-central-1'));
@@ -273,6 +294,7 @@ describe('NewMcpServerFormProvider', () => {
 
     expect(result.current.definition).toEqual({
       name: 'weather-mcp',
+      displayName: 'Weather MCP',
       type: 'sse',
       url: 'https://weather.example.com/mcp',
       autoStart: true,
@@ -282,6 +304,29 @@ describe('NewMcpServerFormProvider', () => {
         requiredAudiences: ['dex-k8s-authenticator'],
       },
     });
+  });
+
+  it('checks the Tags field only where the muster keeps tags', async () => {
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setTagDraft('!!'));
+    await waitFor(() => expect(result.current.takesTags).toBe(true));
+    expect(result.current.fieldErrors.tags).toBeDefined();
+  });
+
+  it('leaves a hidden Tags field out of every step’s problems', async () => {
+    toolArguments = { name: { type: 'string' } };
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setTagDraft('!!'));
+    // Give the schema read time to land; it says the muster keeps no tags.
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    expect(result.current.takesTags).toBe(false);
+    expect(result.current.fieldErrors.tags).toBeUndefined();
+    expect(result.current.detailsErrors).toEqual([]);
+    expect(result.current.isComplete).toBe(true);
   });
 
   describe('editing a registered server', () => {
@@ -305,6 +350,7 @@ describe('NewMcpServerFormProvider', () => {
       act(() => result.current.startEdit(server));
 
       expect(result.current.registeredName).toBe('weather-mcp');
+      expect(result.current.startedFromEdit).toBe(true);
       expect(result.current.isComplete).toBe(true);
       expect(result.current.definition).toMatchObject({
         name: 'weather-mcp',
@@ -324,13 +370,75 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.state.installation).toBe('gaggle');
     });
 
-    it('does not require the hidden display name', () => {
+    it('requires a name, now that an edit can change it', () => {
       const { result } = renderForm();
       act(() => result.current.startEdit(server));
 
       act(() => result.current.setName(''));
 
-      expect(result.current.isComplete).toBe(true);
+      expect(result.current.fieldErrors.name).toBe(
+        'Enter a name for the connector.',
+      );
+    });
+
+    it('changes the display name, never the technical name', () => {
+      const named = new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: {
+            name: 'weather-mcp',
+            annotations: { 'ui.giantswarm.io/display-name': 'Weather' },
+          },
+          spec: { type: 'streamable-http', url: 'https://w.example.com/mcp' },
+        } as never,
+        'gaggle',
+      );
+      const { result } = renderForm();
+      act(() => result.current.startEdit(named));
+
+      expect(result.current.state.name).toBe('Weather');
+      // Unchanged: the update leaves the annotation as it is.
+      expect(result.current.definition).not.toHaveProperty('displayName');
+
+      act(() => result.current.setName('Weather forecasts'));
+      expect(result.current.state.slug).toBe('weather-mcp');
+      expect(result.current.definition).toMatchObject({
+        name: 'weather-mcp',
+        displayName: 'Weather forecasts',
+      });
+
+      // Saved, it is the name a later save compares with.
+      act(() => result.current.markSaved(result.current.definition));
+      expect(result.current.definition).not.toHaveProperty('displayName');
+
+      // Back to the technical name removes the annotation.
+      act(() => result.current.setName('weather-mcp'));
+      expect(result.current.definition.displayName).toBe('');
+    });
+
+    it('names the connector by its technical name after a save that could not keep the typed one', () => {
+      // An installation whose muster does not take a display name saves the
+      // definition without it: the connector is then called by its technical
+      // name, and the form says so rather than showing a name it does not have.
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      const { displayName: _dropped, ...sent } = result.current.definition;
+
+      act(() => result.current.markSaved(sent));
+
+      expect(result.current.state.name).toBe('weather-mcp');
+      expect(result.current.definition).not.toHaveProperty('displayName');
+    });
+
+    it('keeps the typed name in the form after a save that kept it', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.state.name).toBe('Weather MCP');
+      expect(result.current.definition).not.toHaveProperty('displayName');
     });
 
     it('lays later saves over what was saved, not over the server as it was', () => {
@@ -362,6 +470,193 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.definition.description).toBe('New');
     });
 
+    it('remembers that a save stored a client, with no value in its base', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://app.hubspot.com');
+      });
+      expect(result.current.storedClientCredentials).toBe(false);
+
+      // The wizard hands markSaved what it sent, without the credentials.
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+
+      expect(result.current.storedClientCredentials).toBe(true);
+      // A later save sends no reference: muster keeps the client it stored.
+      expect(result.current.definition.auth?.authorizationServer).toEqual({
+        issuer: 'https://app.hubspot.com',
+        grantScope: 'subject',
+      });
+
+      act(() => result.current.reset());
+      expect(result.current.storedClientCredentials).toBe(false);
+    });
+
+    it('forgets the replaced reference after a save that stored a client', () => {
+      const { result } = renderForm();
+      act(() =>
+        result.current.startEdit(
+          new MCPServer(
+            {
+              apiVersion: 'muster.giantswarm.io/v1alpha1',
+              kind: 'MCPServer',
+              metadata: { name: 'weather-mcp' },
+              spec: {
+                type: 'streamable-http',
+                url: 'https://weather.example.com/mcp',
+                auth: {
+                  type: 'oauth',
+                  authorizationServer: {
+                    issuer: 'https://idp',
+                    clientCredentialsSecretRef: {
+                      name: 'weather-mcp-oauth-client-old01',
+                    },
+                  },
+                },
+              },
+            } as never,
+            'gaggle',
+          ),
+        ),
+      );
+      expect(
+        result.current.definition.auth?.authorizationServer
+          ?.clientCredentialsSecretRef,
+      ).toEqual({ name: 'weather-mcp-oauth-client-old01' });
+
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+
+      expect(result.current.state.clientSecretName).toBe('');
+      expect(result.current.definition.auth?.authorizationServer).toEqual({
+        issuer: 'https://idp',
+      });
+      expect(result.current.authorizationServerChanged).toBe(false);
+      act(() => result.current.setIssuer('https://other-idp'));
+      expect(result.current.authorizationServerChanged).toBe(true);
+    });
+
+    it('forgets the stored client after a save naming an existing Secret', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://idp');
+      });
+      // Add with a typed client.
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+      expect(result.current.storedClientCredentials).toBe(true);
+
+      // Back, Existing Secret my-secret, save.
+      act(() => {
+        result.current.setUseExistingSecret(true);
+        result.current.setClientSecretName('my-secret');
+      });
+      act(() => result.current.markSaved(result.current.definition));
+      expect(result.current.storedClientCredentials).toBe(false);
+
+      // Back, New Secret: nothing is stored, nothing is named.
+      act(() => result.current.setUseExistingSecret(false));
+      expect(result.current.storedClientCredentials).toBe(false);
+      expect(result.current.state.clientSecretName).toBe('');
+      expect(
+        result.current.definition.auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
+    });
+
+    it('forgets the stored client after a save without an authorization server', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://idp');
+      });
+      act(() =>
+        result.current.markSaved(result.current.definition, {
+          storedClientCredentials: true,
+        }),
+      );
+      act(() => result.current.setIssuer(''));
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.storedClientCredentials).toBe(false);
+    });
+
+    it.each([
+      ['a stored client', 'weather-mcp-oauth-client-x7k2p', false],
+      ['an existing Secret', 'weather-oauth-client', true],
+    ])(
+      'brings %s back when its side is chosen again, empty on the other',
+      (_what, secretName, existing) => {
+        const { result } = renderForm();
+        act(() =>
+          result.current.startEdit(
+            new MCPServer(
+              {
+                apiVersion: 'muster.giantswarm.io/v1alpha1',
+                kind: 'MCPServer',
+                metadata: { name: 'weather-mcp' },
+                spec: {
+                  type: 'streamable-http',
+                  url: 'https://weather.example.com/mcp',
+                  auth: {
+                    type: 'oauth',
+                    authorizationServer: {
+                      issuer: 'https://idp',
+                      clientCredentialsSecretRef: { name: secretName },
+                    },
+                  },
+                },
+              } as never,
+              'gaggle',
+            ),
+          ),
+        );
+        expect(result.current.state.useExistingSecret).toBe(existing);
+
+        act(() => result.current.setUseExistingSecret(!existing));
+        expect(result.current.state.clientSecretName).toBe('');
+        expect(
+          result.current.definition.auth?.authorizationServer,
+        ).not.toHaveProperty('clientCredentialsSecretRef');
+
+        act(() => result.current.setUseExistingSecret(existing));
+        expect(result.current.state.clientSecretName).toBe(secretName);
+      },
+    );
+
+    it('composes an existing Secret only while Existing Secret is chosen', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      act(() => {
+        result.current.setAuthMode('own-account');
+        result.current.setIssuer('https://github.com');
+        result.current.setUseExistingSecret(true);
+        result.current.setClientSecretName('github-oauth-client');
+      });
+      expect(
+        result.current.definition.auth?.authorizationServer
+          ?.clientCredentialsSecretRef,
+      ).toEqual({ name: 'github-oauth-client' });
+
+      act(() => result.current.setUseExistingSecret(false));
+      expect(
+        result.current.definition.auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
+    });
+
     it('records a create as the base of the "Edit details" loop', () => {
       const { result, fillDetails } = renderForm();
       fillDetails();
@@ -371,6 +666,8 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.lastSave).toBe('create');
       expect(result.current.registeredName).toBe('weather-mcp');
       expect(result.current.registeredInstallation).toBe('gaggle');
+      // Later saves correct the registration; the run is still an Add.
+      expect(result.current.startedFromEdit).toBe(false);
     });
 
     it('brings the registered auth answer back when its mode is picked again', () => {
@@ -411,6 +708,7 @@ describe('NewMcpServerFormProvider', () => {
 
       act(() => result.current.reset());
       expect(result.current.registeredName).toBeUndefined();
+      expect(result.current.startedFromEdit).toBe(false);
       expect(result.current.state.url).toBe('https://draft.example.com/mcp');
 
       // Brought back once; the next reset is an empty form.

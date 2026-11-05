@@ -12,17 +12,26 @@ describe('parseFrontmatter', () => {
       parseFrontmatter(
         '---\nname: demo\ndescription: A demo skill.\n---\n\nBody text.',
       ),
-    ).toEqual({ name: 'demo', description: 'A demo skill.' });
+    ).toEqual({ name: 'demo', description: 'A demo skill.', tags: [] });
+  });
+
+  it('reads metadata.tags, dropping invalid entries', () => {
+    expect(
+      parseFrontmatter(
+        '---\nname: demo\nmetadata:\n  tags: "Triage, kubernetes, not valid!"\n---\n',
+      ).tags,
+    ).toEqual(['triage', 'kubernetes']);
   });
 
   it('returns empty when there is no frontmatter', () => {
-    expect(parseFrontmatter('# Just a heading\n')).toEqual({});
+    expect(parseFrontmatter('# Just a heading\n')).toEqual({ tags: [] });
   });
 
   it('ignores non-string / missing fields', () => {
     expect(parseFrontmatter('---\nname: demo\n---\n')).toEqual({
       name: 'demo',
       description: undefined,
+      tags: [],
     });
   });
 
@@ -127,7 +136,8 @@ describe('discoverAgentSkills', () => {
         { path: 'some/dir', type: 'tree' },
       ],
       {
-        'demo/SKILL.md': '---\nname: Demo\ndescription: A demo.\n---\nbody',
+        'demo/SKILL.md':
+          '---\nname: Demo\ndescription: A demo.\nmetadata:\n  tags: triage, k8s\n---\nbody',
         'sre/incident/SKILL.md': '---\nname: Incident responder\n---\nbody',
       },
     ) as unknown as typeof fetch;
@@ -144,6 +154,7 @@ describe('discoverAgentSkills', () => {
       {
         name: 'Demo',
         description: 'A demo.',
+        tags: ['triage', 'k8s'],
         repoUrl: 'https://github.com/giantswarm/agent-skills',
         path: 'demo',
         ref: 'main',
@@ -154,6 +165,7 @@ describe('discoverAgentSkills', () => {
       {
         name: 'Incident responder',
         description: '',
+        tags: [],
         repoUrl: 'https://github.com/giantswarm/agent-skills',
         path: 'sre/incident',
         ref: 'main',
@@ -162,6 +174,58 @@ describe('discoverAgentSkills', () => {
         fileCount: 1,
       },
     ]);
+  });
+
+  it('lists the plugins of the same tree, and reuses them at the same commit', async () => {
+    const fetchMock = mockGitHub(
+      [
+        { path: 'review/plugin.json', type: 'blob' },
+        { path: 'review/skills/go-review/SKILL.md', type: 'blob' },
+        { path: 'commits/.claude-plugin/plugin.json', type: 'blob' },
+      ],
+      {
+        'review/skills/go-review/SKILL.md':
+          '---\nname: Go review\ndescription: Reviews Go.\n---\nbody',
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const first = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+    });
+    const source = {
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      ref: 'main',
+      commit: HEAD,
+    };
+    expect(first.plugins).toEqual([
+      {
+        name: 'commits',
+        ...source,
+        path: 'commits',
+        format: 'claude-code',
+        skills: [],
+      },
+      {
+        name: 'review',
+        ...source,
+        path: 'review',
+        format: 'agent-plugins',
+        skills: [{ name: 'go-review', description: 'Reviews Go.' }],
+      },
+    ]);
+
+    fetchMock.mockClear();
+    const again = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      previous: first,
+    });
+    expect(again.plugins).toEqual(first.plugins);
+    expect(
+      fetchMock.mock.calls.some(([url]) => url.includes('/git/trees/')),
+    ).toBe(false);
   });
 
   it('reads the tree and every SKILL.md at the resolved commit, not at the branch', async () => {
@@ -409,6 +473,7 @@ describe('discoverAgentSkills', () => {
             {
               name: 'Ok skill',
               description: 'Was readable.',
+              tags: [],
               repoUrl: 'https://github.com/giantswarm/agent-skills',
               path: 'ok',
               ref: 'main',
@@ -603,6 +668,7 @@ describe('discoverAgentSkills', () => {
             {
               name: 'Demo',
               description: '',
+              tags: [],
               repoUrl: 'https://github.com/giantswarm/agent-skills',
               path: 'demo',
               ref: 'main',

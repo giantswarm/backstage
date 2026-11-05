@@ -97,6 +97,12 @@ export function deriveModelConfigReadiness(
 }
 
 /**
+ * What a person's own ChatGPT login is called wherever a model is named: the
+ * model runs each Session on the ChatGPT subscription its person connected.
+ */
+export const PERSONAL_CHATGPT_MODEL_LABEL = 'ChatGPT (your subscription)';
+
+/**
  * kagent ModelConfig — a platform-admin-provisioned reference to a model, its
  * provider and (via a Secret) its credential. Agents pick one by name; the
  * Agent Platform section's Models tab lists and manages them.
@@ -117,11 +123,41 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
   }
 
   /**
-   * Friendly name for pickers. Prefers the `ui.giantswarm.io/display-name`
-   * annotation when set, otherwise falls back to the resource name.
+   * Friendly name for pickers. {@link PERSONAL_CHATGPT_MODEL_LABEL} for a
+   * person's own ChatGPT login; else the `ui.giantswarm.io/display-name`
+   * annotation when set, otherwise the resource name.
    */
   getDisplayName() {
+    if (this.isPersonalChatGptLogin()) {
+      return PERSONAL_CHATGPT_MODEL_LABEL;
+    }
     return this.getDisplayNameAnnotation() ?? this.getName();
+  }
+
+  /**
+   * `spec.openAI.credentialType`: `chatgptOAuth` for a ChatGPT subscription
+   * login rather than an API key. Read untyped: the generated CRD types
+   * predate the field.
+   */
+  getOpenAICredentialType(): string | undefined {
+    const openAI = this.jsonData.spec?.openAI as
+      { credentialType?: unknown } | undefined;
+    return typeof openAI?.credentialType === 'string'
+      ? openAI.credentialType
+      : undefined;
+  }
+
+  /**
+   * A person's own ChatGPT login: a `chatgptOAuth` model without a Secret.
+   * Each Session runs on the ChatGPT subscription its person connected in the
+   * portal (muster's provider App `chatgpt`), and a person who has not
+   * connected one cannot run a turn on it.
+   */
+  isPersonalChatGptLogin(): boolean {
+    return (
+      this.getOpenAICredentialType() === 'chatgptOAuth' &&
+      !this.getApiKeySecret()
+    );
   }
 
   getModel() {
@@ -152,6 +188,14 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
 
   getOllama() {
     return this.jsonData.spec?.ollama;
+  }
+
+  getAnthropicVertexAI() {
+    return this.jsonData.spec?.anthropicVertexAI;
+  }
+
+  getGeminiVertexAI() {
+    return this.jsonData.spec?.geminiVertexAI;
   }
 
   getTls() {
@@ -190,6 +234,30 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
   /** Whether the conditions describe an older spec ({@link isModelConfigStatusStale}). */
   isStale(): boolean {
     return isModelConfigStatusStale(this.jsonData);
+  }
+
+  /**
+   * The condition that failed (`False`): the first in the order the
+   * controller evaluates them, so `ResolvedRefs` when only the references
+   * fail and `Accepted` holds, then any other the controller may add.
+   * `undefined` when none has failed, including while the status is stale,
+   * since its conditions then describe the previous spec.
+   */
+  getFailedCondition(): ModelConfigCondition | undefined {
+    if (this.isStale()) {
+      return undefined;
+    }
+    const conditions = this.getConditions();
+    const known = READINESS_CONDITIONS.map(type =>
+      conditions.find(condition => condition.type === type),
+    );
+    return [
+      ...known,
+      ...conditions.filter(
+        condition =>
+          !(READINESS_CONDITIONS as readonly string[]).includes(condition.type),
+      ),
+    ].find(condition => condition?.status === 'False');
   }
 
   /**

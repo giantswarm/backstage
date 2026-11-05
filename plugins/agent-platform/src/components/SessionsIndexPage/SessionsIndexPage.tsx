@@ -11,6 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
+import { useNewSessionHref } from '../../hooks/useNewSessionHref';
 import {
   HIDE_INSTALLATION,
   isSoleInstallation,
@@ -26,14 +27,21 @@ import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert'
  * to the shell's start screen.
  */
 function SessionsFrame({ children }: { children: ReactNode }) {
+  const newSessionHref = useNewSessionHref();
   return (
     <ShellPage
       title="Sessions"
       description="Find your conversations with agents."
       actions={
-        <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
-          New session
-        </ButtonLink>
+        newSessionHref && (
+          <ButtonLink
+            href={newSessionHref()}
+            variant="primary"
+            iconStart={<AddIcon />}
+          >
+            New session
+          </ButtonLink>
+        )
       }
     >
       {children}
@@ -48,6 +56,7 @@ function SessionsFrame({ children }: { children: ReactNode }) {
  */
 function ShellSessionsEmpty({ replacesList }: { replacesList: boolean }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const newSessionHref = useNewSessionHref();
   useEffect(() => {
     const active = document.activeElement;
     if (replacesList && (!active || active === document.body)) {
@@ -60,9 +69,15 @@ function ShellSessionsEmpty({ replacesList }: { replacesList: boolean }) {
       title="No sessions yet"
       description="The sessions you start with an agent are listed here."
       actions={
-        <ButtonLink href="/" variant="secondary" iconStart={<AddIcon />}>
-          New session
-        </ButtonLink>
+        newSessionHref && (
+          <ButtonLink
+            href={newSessionHref()}
+            variant="secondary"
+            iconStart={<AddIcon />}
+          >
+            New session
+          </ButtonLink>
+        )
       }
     />
   );

@@ -9,13 +9,18 @@ import {
   RemoteMCPServer,
   RemoteMCPServerInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import type { ServedModel } from '../../lib/serving';
 import {
+  agentManagerSessionGate,
   getAgentsRefetchInterval,
   resolveModelConfig,
-  resolveModelLabel,
   sortAgentRows,
   toAgentRow,
+  describeKagentSwitchedOff,
+  selectAgentsInventoryFailure,
+  selectKagentMissing,
+  selectUnknownPin,
 } from './helpers';
 
 function makeAgent(
@@ -24,6 +29,8 @@ function makeAgent(
     namespace?: string;
     displayName?: string;
     description?: string;
+    /** The `ui.giantswarm.io/tags` annotation as written. */
+    tags?: string;
     modelConfig?: string;
     /** The Harness `spec.harnessRef` names; `null` leaves the ref out. */
     harness?: string | null;
@@ -43,6 +50,7 @@ function makeAgent(
     namespace = 'team-a',
     displayName,
     description,
+    tags,
     modelConfig,
     harness = 'kagent',
     skills = 0,
@@ -61,9 +69,15 @@ function makeAgent(
       namespace,
       generation,
       creationTimestamp,
-      annotations: displayName
-        ? { 'ui.giantswarm.io/display-name': displayName }
-        : undefined,
+      annotations:
+        displayName || tags !== undefined
+          ? {
+              ...(displayName && {
+                'ui.giantswarm.io/display-name': displayName,
+              }),
+              ...(tags !== undefined && { 'ui.giantswarm.io/tags': tags }),
+            }
+          : undefined,
     },
     status: status ? { ...status, observedGeneration } : undefined,
     spec: {
@@ -191,51 +205,6 @@ const readyStatus = (ageMs = 0) =>
     ),
   ]);
 
-describe('resolveModelLabel', () => {
-  it('resolves to the ModelConfig display name when found', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6', namespace: 'team-a' });
-    const modelConfigs = [
-      makeModelConfig({
-        name: 'sonnet-4-6',
-        namespace: 'team-a',
-        displayName: 'Claude Sonnet 4.6',
-      }),
-    ];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('Claude Sonnet 4.6');
-  });
-
-  it('falls back to the model when the ModelConfig has no display-name annotation', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6' });
-    const modelConfigs = [makeModelConfig({ name: 'sonnet-4-6' })];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('claude-sonnet-4-6');
-  });
-
-  it('falls back to the raw reference when no ModelConfig matches', () => {
-    const agent = makeAgent({ modelConfig: 'default-model-config' });
-
-    expect(resolveModelLabel(agent, [])).toBe('default-model-config');
-  });
-
-  it('only matches ModelConfigs in the same namespace', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6', namespace: 'team-a' });
-    const modelConfigs = [
-      makeModelConfig({
-        name: 'sonnet-4-6',
-        namespace: 'team-b',
-        displayName: 'Wrong namespace',
-      }),
-    ];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('sonnet-4-6');
-  });
-
-  it('returns undefined when the agent references no model', () => {
-    expect(resolveModelLabel(makeAgent({}), [])).toBeUndefined();
-  });
-});
-
 describe('toAgentRow', () => {
   it('maps an agent to a plain row', () => {
     const agent = makeAgent({
@@ -243,6 +212,7 @@ describe('toAgentRow', () => {
       namespace: 'sre-team',
       displayName: 'Incident triager',
       description: 'Triages incidents',
+      tags: 'sre, incidents',
       modelConfig: 'sonnet-4-6',
       skills: 3,
     });
@@ -261,11 +231,13 @@ describe('toAgentRow', () => {
       name: 'Incident triager',
       technicalName: 'triager',
       description: 'Triages incidents',
+      tags: ['sre', 'incidents'],
       model: 'Claude Sonnet 4.6',
       // The display label and the model string are deliberately different
       // fields: only `modelName` matches what the gateway calls the model
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
+      modelProvider: 'Anthropic',
       harness: 'kagent',
       skillCount: 3,
       skillIds: Array.from(
@@ -277,7 +249,45 @@ describe('toAgentRow', () => {
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
       readinessMessage: undefined,
+      tenant: 'namespace sre-team',
     });
+  });
+
+  it('carries the creator agent-manager recorded, for display and filtering', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'org-acme' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
+    };
+
+    expect(toAgentRow(agent, [])).toMatchObject({
+      tenant: 'acme',
+      createdBy: 'ana@acme.example',
+    });
+  });
+
+  it('carries the default workspace by its name, for the session pickers', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'kagent' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/default-workspace': 'kagent/platform-mix',
+    };
+    expect(toAgentRow(agent, []).defaultWorkspace).toBe('platform-mix');
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'defaultWorkspace',
+    );
+  });
+
+  it('carries the default toolchains with their versions, for the session pickers', () => {
+    const agent = makeAgent({ name: 'coder', namespace: 'kagent' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/default-toolchains': 'go@0.2.0,node',
+    };
+    expect(toAgentRow(agent, []).defaultToolchains).toEqual([
+      { name: 'go', version: '0.2.0' },
+      { name: 'node' },
+    ]);
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'defaultToolchains',
+    );
   });
 
   it('identifies git skills as the catalog does and leaves the others out', () => {
@@ -407,6 +417,13 @@ describe('toAgentRow', () => {
       ]).harnessTitle,
     ).toBe('Go coder Harness');
     expect(toAgentRow(agent, []).harnessTitle).toBeUndefined();
+    // Its runtime too, which decides whether a message may carry images.
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', namespace!),
+      ]).harnessRuntime,
+    ).toBe('claude');
+    expect(toAgentRow(agent, []).harnessRuntime).toBeUndefined();
   });
 
   it('carries the Harness warnings', () => {
@@ -686,6 +703,29 @@ describe('toAgentRow with a serving resolver', () => {
 });
 
 describe('toAgentRow model fields', () => {
+  it('names a person\'s own ChatGPT login "ChatGPT (your subscription)"', () => {
+    const chatgpt = new ModelConfig(
+      {
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'ModelConfig',
+        metadata: { name: 'codex-personal', namespace: 'team-a' },
+        spec: {
+          provider: 'OpenAI',
+          model: 'gpt-5.5',
+          openAI: { credentialType: 'chatgptOAuth' },
+        },
+      } as unknown as ModelConfigInterface,
+      'installation-1',
+    );
+    const row = toAgentRow(
+      makeAgent({ name: 'coder', modelConfig: 'codex-personal' }),
+      [chatgpt],
+    );
+
+    expect(row.model).toBe('ChatGPT (your subscription)');
+    expect(row.modelName).toBe('gpt-5.5');
+  });
+
   it('keeps the display label and the model string apart', () => {
     // `model` is for a reader; `modelName` is `spec.model` verbatim, because it
     // has to match the gateway's `gen_ai_response_model` to price anything.
@@ -732,5 +772,206 @@ describe('toAgentRow model fields', () => {
 
     expect(row.model).toBe('somewhere-else');
     expect(row.modelName).toBeUndefined();
+  });
+});
+
+function inventoryEntry(
+  installation: string,
+  overrides: Partial<InstallationInventoryEntry> & { kagent?: boolean } = {},
+): InstallationInventoryEntry {
+  const { kagent = true, ...rest } = overrides;
+  return {
+    installation,
+    home: false,
+    accessState: 'healthy',
+    muted: false,
+    probe: 'answered',
+    components: { kagent, muster: true, kserve: false, capi: true },
+    ...rest,
+  };
+}
+
+const failedProbe = (name: string) => Object.assign(new Error(name), { name });
+
+describe('selectKagentMissing', () => {
+  it('offers another environment when one outside the scope runs kagent', () => {
+    expect(
+      selectKagentMissing(
+        [inventoryEntry('golem'), inventoryEntry('dingo', { kagent: false })],
+        'dingo',
+      ),
+    ).toEqual({ installations: ['dingo'], canChooseAnother: true });
+  });
+
+  it('offers none when no environment runs kagent', () => {
+    expect(
+      selectKagentMissing(
+        [
+          inventoryEntry('golem', { kagent: false }),
+          inventoryEntry('dingo', { kagent: false }),
+        ],
+        'all',
+      ),
+    ).toEqual({ installations: ['golem', 'dingo'], canChooseAnother: false });
+  });
+
+  it('offers none where the only other kagent environment is out of reach', () => {
+    // A signed-out environment is not one the composer can offer agents of.
+    expect(
+      selectKagentMissing(
+        [
+          inventoryEntry('golem', { accessState: 'session-expired' }),
+          inventoryEntry('dingo', { kagent: false }),
+        ],
+        'dingo',
+      ),
+    ).toEqual({ installations: ['dingo'], canChooseAnother: false });
+  });
+
+  it('is undefined where the scope runs kagent', () => {
+    expect(
+      selectKagentMissing(
+        [inventoryEntry('golem'), inventoryEntry('dingo', { kagent: false })],
+        'golem',
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('describeKagentSwitchedOff', () => {
+  it('says it of one environment', () => {
+    expect(describeKagentSwitchedOff(['lab'])).toBe(
+      'lab runs kagent but is switched off in Cluster access, so its agents are not read.',
+    );
+  });
+
+  it('says it of several', () => {
+    expect(describeKagentSwitchedOff(['lab', 'dingo'])).toBe(
+      'lab, dingo run kagent but are switched off in Cluster access, so their agents are not read.',
+    );
+  });
+});
+
+describe('selectUnknownPin', () => {
+  const entries = [inventoryEntry('golem')];
+
+  it('names a pin the inventory does not know', () => {
+    expect(selectUnknownPin({ entries, isLoading: false }, 'old-lab')).toBe(
+      'old-lab',
+    );
+  });
+
+  it('names none for a known pin, under All, or before the inventory answers', () => {
+    expect(
+      selectUnknownPin({ entries, isLoading: false }, 'golem'),
+    ).toBeUndefined();
+    expect(
+      selectUnknownPin({ entries, isLoading: false }, 'all'),
+    ).toBeUndefined();
+    expect(
+      selectUnknownPin({ entries, isLoading: true }, 'old-lab'),
+    ).toBeUndefined();
+    expect(
+      selectUnknownPin({ entries: [], isLoading: false }, 'old-lab'),
+    ).toBeUndefined();
+  });
+});
+
+describe('selectAgentsInventoryFailure', () => {
+  const home = inventoryEntry('golem', {
+    home: true,
+    probe: 'failed',
+    error: failedProbe('UnauthorizedError'),
+  });
+  const other = inventoryEntry('dingo', {
+    probe: 'failed',
+    error: failedProbe('ForbiddenError'),
+  });
+
+  it('names the home environment under All environments', () => {
+    expect(
+      selectAgentsInventoryFailure(
+        { entries: [home, other], home: 'golem' },
+        'all',
+        { unknownPin: undefined, listsNothing: false },
+      ),
+    ).toMatchObject({ installation: 'golem', kind: 'unauthorized' });
+  });
+
+  it('names another environment only when nothing is listed and nothing can be read', () => {
+    const inventory = {
+      entries: [inventoryEntry('golem', { home: true, kagent: false }), other],
+      home: 'golem',
+    };
+    expect(
+      selectAgentsInventoryFailure(inventory, 'all', {
+        unknownPin: undefined,
+        listsNothing: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      selectAgentsInventoryFailure(inventory, 'all', {
+        unknownPin: undefined,
+        listsNothing: true,
+      }),
+    ).toMatchObject({ installation: 'dingo', kind: 'forbidden' });
+  });
+
+  it('names none for an unknown pin', () => {
+    expect(
+      selectAgentsInventoryFailure(
+        { entries: [home, other], home: 'golem' },
+        'old-lab',
+        { unknownPin: 'old-lab', listsNothing: true },
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('agentManagerSessionGate', () => {
+  const availability = (
+    presence: string,
+    { isLoading = false, isUnavailable = false } = {},
+  ) => ({
+    presenceOf: () => presence as never,
+    isLoading,
+    isUnavailable,
+  });
+
+  it('blocks where muster runs under its shared identity or lists no agent-manager', () => {
+    expect(
+      agentManagerSessionGate(availability('sharedIdentity'), 'golem')
+        .sessionBlocker,
+    ).toMatch(/^Muster on golem has no per-user sign-in in this portal/);
+    expect(agentManagerSessionGate(availability('missing'), 'golem')).toEqual({
+      sessionBlocker: 'Muster on golem lists no agent-manager.',
+    });
+  });
+
+  it('holds the agent back while the reads are in flight', () => {
+    expect(
+      agentManagerSessionGate(
+        availability('unknown', { isLoading: true }),
+        'golem',
+      ),
+    ).toEqual({ isSessionPending: true });
+  });
+
+  it('leaves a settled unknown to the start, which offers the sign-in', () => {
+    expect(agentManagerSessionGate(availability('unknown'), 'golem')).toEqual(
+      {},
+    );
+  });
+
+  it('leaves the agent offered where agent-manager is available, or without the muster plugin', () => {
+    expect(agentManagerSessionGate(availability('available'), 'golem')).toEqual(
+      {},
+    );
+    expect(
+      agentManagerSessionGate(
+        availability('unknown', { isUnavailable: true }),
+        'golem',
+      ),
+    ).toEqual({});
   });
 });

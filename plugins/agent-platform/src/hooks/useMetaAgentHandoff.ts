@@ -12,6 +12,7 @@ import { sessionDetailRouteRef } from '../routes';
 import { useCreateSession, type SessionEntryPoint } from './useCreateSession';
 import { useMetaAgent } from './useMetaAgent';
 import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
   type NewSessionHandoff,
 } from './useNewSessionHandoff';
@@ -93,6 +94,7 @@ export function useMetaAgentHandoff(
             text: prompt,
             agentNamespace: agent.namespace,
             agentName: agent.technicalName,
+            modelConfig: modelConfigNameOf(agent),
             prepared: true,
           } satisfies NewSessionHandoff,
         },

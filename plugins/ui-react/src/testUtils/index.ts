@@ -7,3 +7,14 @@ export {
   mockDesktopLayout,
 } from './mockPhoneLayout';
 export type { MockViewportOptions, MockedLayout } from './mockPhoneLayout';
+export { mockIntersectionObserver } from './mockIntersectionObserver';
+export type {
+  IntersectionPosition,
+  MockedIntersectionObserver,
+} from './mockIntersectionObserver';
+export { mockCollapsibleLayout } from './mockCollapsibleLayout';
+export type {
+  MockCollapsibleLayoutOptions,
+  MockedCollapsibleLayout,
+} from './mockCollapsibleLayout';
+export { declaredStyle } from './declaredStyle';

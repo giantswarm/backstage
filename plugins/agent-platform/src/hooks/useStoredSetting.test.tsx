@@ -2,7 +2,11 @@ import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider, mockApis } from '@backstage/test-utils';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
-import { useStoredSetting } from './useStoredSetting';
+import {
+  isTransientStoredSettingError,
+  StoredSettingReadError,
+  useStoredSetting,
+} from './useStoredSetting';
 
 const BUCKET = 'agent-platform';
 const KEY = 'someList';
@@ -136,5 +140,145 @@ describe('useStoredSetting', () => {
     });
 
     await waitFor(() => expect(bucket.snapshot(KEY).value).toEqual(['a', 'b']));
+  });
+
+  it('refuses to write when the stored value could not be read', async () => {
+    // The app's user-settings storage hands out a read the backend did not
+    // answer as unknown. A write built on it would replace the stored value.
+    const inner = mockApis.storage().forBucket(BUCKET);
+    await inner.set(KEY, ['a', 'b']);
+    const bucket = {
+      forBucket: () => bucket,
+      snapshot: (key: string) => ({ key, presence: 'unknown' }),
+      observe$: (key: string) => ({
+        subscribe: (
+          observer:
+            ((value: unknown) => void) | { next: (value: unknown) => void },
+        ) => {
+          const next =
+            typeof observer === 'function' ? observer : observer.next;
+          next({ key, presence: 'unknown' });
+          return { unsubscribe: () => {} };
+        },
+      }),
+      remove: (key: string) => inner.remove(key),
+      set: jest.fn((key: string, value: never) => inner.set(key, value)),
+    } as unknown as StorageApi;
+    const { result } = renderWith(bucket);
+
+    await act(async () => {
+      await expect(result.current.update(append('c'))).rejects.toThrow(
+        'could not be read',
+      );
+    });
+
+    expect(bucket.set).not.toHaveBeenCalled();
+    expect(inner.snapshot(KEY).value).toEqual(['a', 'b']);
+    // The storage says nothing of why: not worth reading again.
+    await act(async () => {
+      await expect(result.current.update(append('c'))).rejects.toMatchObject({
+        name: 'StoredSettingReadError',
+        transient: false,
+      });
+    });
+  });
+
+  it('keeps showing a known value when a later read is not answered', async () => {
+    const listeners: Array<(value: unknown) => void> = [];
+    const bucket = {
+      forBucket: () => bucket,
+      snapshot: (key: string) => ({ key, presence: 'unknown' }),
+      observe$: () => ({
+        subscribe: (observer: (value: unknown) => void) => {
+          listeners.push(observer);
+          return { unsubscribe: () => {} };
+        },
+      }),
+    } as unknown as StorageApi;
+    const { result } = renderWith(bucket);
+
+    act(() =>
+      listeners.forEach(next =>
+        next({ key: KEY, presence: 'present', value: ['a'] }),
+      ),
+    );
+    act(() =>
+      listeners.forEach(next => next({ key: KEY, presence: 'unknown' })),
+    );
+
+    expect(result.current.snapshot).toEqual({
+      key: KEY,
+      presence: 'present',
+      value: ['a'],
+    });
+  });
+
+  it('keeps the shown value, not a new copy, when a read answers the same', async () => {
+    const listeners: Array<(value: unknown) => void> = [];
+    const bucket = {
+      forBucket: () => bucket,
+      snapshot: (key: string) => ({ key, presence: 'unknown' }),
+      observe$: () => ({
+        subscribe: (observer: (value: unknown) => void) => {
+          listeners.push(observer);
+          return { unsubscribe: () => {} };
+        },
+      }),
+    } as unknown as StorageApi;
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[storageApiRef, bucket]]}>
+        {children}
+      </TestApiProvider>
+    );
+    const { result } = renderHook(() => useStoredSetting(KEY), { wrapper });
+    const emit = (value: unknown) =>
+      act(() =>
+        listeners.forEach(next =>
+          next({ key: KEY, presence: 'present', value }),
+        ),
+      );
+
+    emit({ sessions: { 'gazelle/abc': { level: 'all', at: 1 } } });
+    const shown = result.current.snapshot;
+    // A write's own answer and the signal's re-read: the same value again.
+    // The same snapshot object, so what readers derive from it (the session
+    // page's header actions) keeps its identity too.
+    emit({ sessions: { 'gazelle/abc': { level: 'all', at: 1 } } });
+    emit({ sessions: { 'gazelle/abc': { level: 'all', at: 1 } } });
+
+    expect(result.current.snapshot).toBe(shown);
+
+    emit({ sessions: { 'gazelle/abc': { level: 'muted', at: 2 } } });
+    expect(result.current.snapshot.value).toEqual({
+      sessions: { 'gazelle/abc': { level: 'muted', at: 2 } },
+    });
+  });
+});
+
+describe('isTransientStoredSettingError', () => {
+  it('tries again after a transient read, the network or a 5xx, not after a timeout, a 4xx or a bug', () => {
+    const answered = (status: number) =>
+      Object.assign(new Error(`answered ${status}`), { status });
+
+    expect(
+      isTransientStoredSettingError(new StoredSettingReadError('503', true)),
+    ).toBe(true);
+    expect(
+      isTransientStoredSettingError(
+        Object.assign(new Error('unreachable'), { network: true }),
+      ),
+    ).toBe(true);
+    // A TypeError the write's own code throws is no network failure.
+    expect(isTransientStoredSettingError(new TypeError('x is undefined'))).toBe(
+      false,
+    );
+    expect(isTransientStoredSettingError(answered(503))).toBe(true);
+    expect(
+      isTransientStoredSettingError(
+        new StoredSettingReadError('timed out', false),
+      ),
+    ).toBe(false);
+    expect(isTransientStoredSettingError(answered(413))).toBe(false);
+    expect(isTransientStoredSettingError(new Error('other'))).toBe(false);
   });
 });

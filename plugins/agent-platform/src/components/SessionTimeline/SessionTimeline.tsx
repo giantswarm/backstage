@@ -26,6 +26,7 @@ import {
   segmentTurn,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
+import type { EgressRemedyFor } from '../../lib/egressRemedy';
 
 const useStyles = makeStyles(theme => ({
   turnMarker: {
@@ -103,18 +104,23 @@ const useStyles = makeStyles(theme => ({
 /**
  * How a turn is being followed once its live stream ended before the turn did.
  *
- * - `checking`: the stream is gone and the conversation is being re-read to
- *   find out how far the turn got — the moment the streamed text stopped
- *   mid-sentence, before anything says whether the turn finished.
+ * - `reconnecting`: the stream was cut — a kagent controller rollout cuts
+ *   every stream in flight — and the page is resubscribing to the turn. The
+ *   preview stays on screen and continues where it stopped once it is back.
+ * - `checking`: the stream could not be picked up again, and the
+ *   conversation is being re-read to find out how far the turn got — the
+ *   moment the streamed text stopped mid-sentence, before anything says
+ *   whether the turn finished.
  * - `following`: that read came back and the turn is still running. Its preview
  *   is gone for good; the poll delivers the reply when the turn ends.
  */
-export type StreamLossPhase = 'checking' | 'following';
+export type StreamLossPhase = 'reconnecting' | 'checking' | 'following';
 
 const STREAM_LOST_LABELS: Record<StreamLossPhase, string> = {
-  checking: 'The live stream was lost. Checking the result…',
+  reconnecting: 'The live view was interrupted. Reconnecting…',
+  checking: 'Could not restore the live view. Checking the result…',
   following:
-    'The live stream was lost. Still working; the reply appears when the turn finishes.',
+    'Could not restore the live view. The agent is still working, and its reply appears when the turn finishes.',
 };
 
 /**
@@ -135,14 +141,6 @@ function findTurn(
     container?.querySelector<HTMLElement>(`[data-turn-index="${index}"]`) ??
     null
   );
-}
-
-/** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
-function formatClockTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 /**
@@ -177,6 +175,11 @@ export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
+  /**
+   * What an egress refusal's alert offers for this agent, by the refused
+   * destination's scheme (`useEgressRemedy`).
+   */
+  egressRemedyFor?: EgressRemedyFor;
   /** The agent's avatar, shown where its side of a turn begins. */
   agentAvatarUrl?: string;
   /**
@@ -240,6 +243,7 @@ export type SessionTimelineProps = {
 export function SessionTimeline({
   timeline,
   agentName,
+  egressRemedyFor,
   agentAvatarUrl,
   isAgentWorking = false,
   streamLost,
@@ -259,6 +263,24 @@ export function SessionTimeline({
   // works joins it at the bottom and the oldest shown one leaves at the top —
   // the DOM stays bounded however long the session runs.
   const [windowSize, setWindowSize] = useState(RECENT_TURNS);
+  // The long user messages shown whole, by kagent's message id where there is
+  // one. Held here rather than in each bubble, which loses its state twice:
+  // a sent message's optimistic copy gives way to kagent's under another key,
+  // and the window above unmounts the oldest turn as a new one arrives.
+  const [expandedMessages, setExpandedMessages] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const setMessageExpanded = useCallback((key: string, expanded: boolean) => {
+    setExpandedMessages(previous => {
+      const next = new Set(previous);
+      if (expanded) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, []);
   const firstShown = Math.max(0, turns.length - windowSize);
   const listRef = useRef<HTMLDivElement>(null);
   // The turn that was first on screen when earlier ones were asked for, and
@@ -318,8 +340,15 @@ export function SessionTimeline({
     workingRow = (
       <div className={classes.stalled} role="status">
         <span className={classes.stalledText}>
-          The agent has not reported progress since{' '}
-          {formatClockTime(stalledSince)}.
+          The agent last reported progress{' '}
+          {/* The relative time ticks every minute: kept out of the live
+              region's announcements, so the stall is announced once. */}
+          <DateComponent
+            value={new Date(stalledSince).toISOString()}
+            relative
+            aria-live="off"
+          />
+          .
         </span>
         {onCancelTurn && (
           <Button
@@ -376,16 +405,34 @@ export function SessionTimeline({
   const firstUserMessageId = firstMessageCaption
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
-  const renderEntry = (item: TimelineItem, technical = false) => (
-    <TimelineEntry
-      key={item.id}
-      item={item}
-      isAgentWorking={isAgentWorking}
-      technical={technical}
-      caption={item.id === firstUserMessageId ? firstMessageCaption : undefined}
-      connectorOf={connectorOf}
-    />
-  );
+  const egressSettings = { agentName, remedyFor: egressRemedyFor };
+  const renderEntry = (item: TimelineItem, technical = false) => {
+    const messageKey =
+      item.kind === 'user-message' ? (item.messageId ?? item.id) : undefined;
+    return (
+      <TimelineEntry
+        key={item.id}
+        item={item}
+        isAgentWorking={isAgentWorking}
+        technical={technical}
+        caption={
+          item.id === firstUserMessageId ? firstMessageCaption : undefined
+        }
+        isMessageExpanded={
+          messageKey === undefined
+            ? undefined
+            : expandedMessages.has(messageKey)
+        }
+        onMessageExpandedChange={
+          messageKey === undefined
+            ? undefined
+            : expanded => setMessageExpanded(messageKey, expanded)
+        }
+        connectorOf={connectorOf}
+        egressSettings={egressSettings}
+      />
+    );
+  };
 
   return (
     <Flex ref={listRef} direction="column" gap="3">
@@ -429,9 +476,12 @@ export function SessionTimeline({
         segments.forEach((segment, segmentIndex) => {
           const first =
             segment.kind === 'item' ? segment.item : segment.items[0];
+          // A workspace setup notice is the harness's, not the agent's, and
+          // comes before anything the agent does: it stands above the agent's
+          // name rather than under it, where it would read as its reply.
           if (isUserItem(first)) {
             needsHeader = true;
-          } else if (needsHeader) {
+          } else if (needsHeader && first.kind !== 'workspace-notice') {
             entries.push(
               <AgentHeader
                 key={`author:${first.id}`}

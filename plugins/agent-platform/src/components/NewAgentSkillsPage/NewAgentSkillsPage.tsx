@@ -15,27 +15,26 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   LoadingIndicator,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { agentsBySkill, searchSkills } from '../../lib/customize';
-import {
-  DiscoveredSkill,
-  repoSlug,
-  shortCommit,
-  skillId,
-} from '../../lib/skills';
+import { DiscoveredSkill, repoSlug, skillId } from '../../lib/skills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { SkillsFilterBar, useSkillFilters } from '../SkillsFilterBar';
 import { KeptSkills } from './KeptSkills';
+import { KeptPlugins, PluginCards } from './PluginCards';
+import { repeatedSkillNames } from '../../lib/plugins';
 import { AUTO_EXPAND_MAX } from '../ToolsetResolutionList';
 import {
   SelectableCard,
@@ -120,19 +119,26 @@ function SkillCard({
           the pin is shown where it is chosen. */}
       {pinned ? (
         <Text variant="body-x-small" color="secondary">
-          pinned at <span className={classes.code}>{shortCommit(pinned)}</span>
+          pinned at{' '}
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' · '}
           {skill.ref} is at{' '}
-          <span className={classes.code}>{shortCommit(skill.commit)}</span>
+          <CommitSha
+            value={skill.commit}
+            copy={false}
+            className={classes.code}
+          />
         </Text>
       ) : (
         <Text
           variant="body-x-small"
           color="secondary"
-          aria-label={`Pinned to commit ${shortCommit(skill.commit)} of ${skill.ref}`}
+          aria-label={`Pinned to commit ${shortSha(skill.commit)} of ${skill.ref}`}
         >
           {skill.ref}{' '}
-          <span className={classes.code}>@{shortCommit(skill.commit)}</span>
+          <span className={classes.code}>
+            @<CommitSha value={skill.commit} copy={false} />
+          </span>
         </Text>
       )}
     </SelectableCard>
@@ -325,10 +331,19 @@ function NewAgentSkillsPageContent() {
   const links = useAgentWizardLinks();
   const newAgentLink = links.details;
   const toolsLink = links.tools;
-  const { state, edit, toggleSkill, removeKeptSkill, isComplete } =
-    useNewAgentForm();
+  const {
+    state,
+    edit,
+    toggleSkill,
+    removeKeptSkill,
+    togglePlugin,
+    togglePluginSkill,
+    removeKeptPlugin,
+    isComplete,
+  } = useNewAgentForm();
   const {
     skills,
+    plugins,
     isLoading,
     error,
     hasRepositories,
@@ -337,18 +352,7 @@ function NewAgentSkillsPageContent() {
   } = useSkillCatalog();
 
   const [query, setQuery] = useState('');
-  // A handful of skills is read at a glance: no search field and no count of
-  // the selection (every card shows its own state). The field comes with a
-  // catalogue long enough to need it; should it shrink back under the
-  // threshold, the query goes with the field, so nothing stays filtered by
-  // text the author can no longer see or clear.
-  const isSearchable = skills.length > SEARCH_MIN;
-  const trimmed = isSearchable ? query.trim() : '';
-  useEffect(() => {
-    if (!isSearchable) {
-      setQuery('');
-    }
-  }, [isSearchable]);
+  const trimmed = query.trim();
   // A single repository needs no accordion around it, and a short catalogue
   // opens every repository it spans. Both read the whole catalogue, not the
   // matches, so the layout does not change shape on a keystroke.
@@ -373,10 +377,10 @@ function NewAgentSkillsPageContent() {
     [skills, trimmed],
   );
 
-  // Source and Usage, as on Customize → Skills (T49, T64): a multi-select
-  // dropdown each, always there — three skills from one repository get a
-  // Source dropdown of one option. Usage waits for the agents rather than
-  // calling every skill unused.
+  // Source and Usage, as on Customize → Skills (T49): a multi-select
+  // dropdown each, where it can narrow the list — skills from one repository
+  // get no Source dropdown. Usage waits for the agents rather than calling
+  // every skill unused.
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const filters = useSkillFilters({
@@ -384,7 +388,15 @@ function NewAgentSkillsPageContent() {
     searched: visibleSkills,
     usage: agentsLoading ? undefined : usage,
   });
-  const hasFilters = filters.dimensions.length > 0;
+  // A handful of skills is read at a glance: no search, no filters and no
+  // count of the selection (every card shows its own state). Both come with a
+  // catalogue long enough to need them, and stay while either narrows it, so
+  // what narrows the list can still be seen and cleared.
+  const isSearchable = isSearchableList(
+    skills.length,
+    trimmed !== '' || filters.isFiltered,
+  );
+  const hasFilters = filters.dimensions.length > 0 && isSearchable;
 
   // Search and filters narrow within the grouping rather than replacing it
   // with a flat list: the repo/subfolder a match came from is part of what
@@ -415,6 +427,16 @@ function NewAgentSkillsPageContent() {
     </Text>
   );
 
+  // agent-manager refuses a skill name used twice (each is one directory of
+  // the agent's skills); said where the pick is made, not only at review.
+  const repeated = repeatedSkillNames(
+    [
+      ...state.selectedSkills.map(skill => skill.name),
+      ...state.keptSkills.map(skill => skill.name),
+    ],
+    [...state.selectedPlugins, ...state.keptPlugins],
+  );
+
   // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
     () => (
@@ -433,6 +455,11 @@ function NewAgentSkillsPageContent() {
       navigate(newAgentLink());
     }
   }, [newAgentLink, navigate]);
+
+  const stepTitle =
+    plugins.length > 0 || state.keptPlugins.length > 0
+      ? 'Select skills and plugins'
+      : 'Select skills';
 
   // Guarded like NewAgentReviewPage: when this render only produces a redirect,
   // pushing this step's actions into the shared section header would flash
@@ -457,20 +484,21 @@ function NewAgentSkillsPageContent() {
   return (
     <AgentWizardFrame step="skills" onBack={onBack}>
       {edit ? (
-        <WizardStepHeading title="Select skills">
+        <WizardStepHeading title={stepTitle}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. The agent's skills
           stay at the commit they are pinned to; a skill you add is pinned to
           the commit shown on its card. Update skills on the agent's page moves
-          the pins.
+          the pins, plugins' included.
         </WizardStepHeading>
       ) : (
-        <WizardStepHeading title="Select skills">
+        <WizardStepHeading title={stepTitle}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. Each skill is
           pinned to the commit shown on its card — the head of its repository
-          when it was discovered — and stays there until you update it. Optional
-          — you can continue without selecting any.
+          when it was discovered — and stays there until you update it. Plugins
+          found in the same repositories are pinned the same way. Optional — you
+          can continue without selecting any.
         </WizardStepHeading>
       )}
 
@@ -505,13 +533,16 @@ function NewAgentSkillsPageContent() {
           />
         )}
 
-        {!isLoading && !error && skills.length === 0 && (
-          <Alert
-            status="info"
-            title="No skills found"
-            description="No SKILL.md files were found in the configured repositories."
-          />
-        )}
+        {!isLoading &&
+          !error &&
+          skills.length === 0 &&
+          plugins.length === 0 && (
+            <Alert
+              status="info"
+              title="No skills found"
+              description="No SKILL.md files were found in the configured repositories."
+            />
+          )}
 
         {skills.length > 0 && (
           <>
@@ -534,17 +565,7 @@ function NewAgentSkillsPageContent() {
               </Flex>
             )}
 
-            {hasFilters && (
-              <Flex
-                align="center"
-                justify="between"
-                gap="4"
-                style={{ flexWrap: 'wrap' }}
-              >
-                <SkillsFilterBar filters={filters} />
-                {!isSearchable && filters.isFiltered && selectedCount}
-              </Flex>
-            )}
+            {hasFilters && <SkillsFilterBar filters={filters} />}
 
             {groups.length > 0 ? (
               catalogue
@@ -557,6 +578,25 @@ function NewAgentSkillsPageContent() {
               />
             )}
           </>
+        )}
+
+        <KeptPlugins plugins={state.keptPlugins} onRemove={removeKeptPlugin} />
+
+        <PluginCards
+          plugins={plugins}
+          selected={state.selectedPlugins}
+          onTogglePlugin={togglePlugin}
+          onTogglePluginSkill={togglePluginSkill}
+        />
+
+        {repeated.length > 0 && (
+          <Alert
+            status="warning"
+            title="A skill name is used twice"
+            description={`Each skill name may appear once across the skills and the plugins' skills: ${repeated.join(
+              ', ',
+            )}. Deselect one of each.`}
+          />
         )}
       </Flex>
 

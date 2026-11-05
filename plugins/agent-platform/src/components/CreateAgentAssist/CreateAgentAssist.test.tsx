@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   mockPhoneLayout,
   type MockedLayout,
@@ -126,6 +127,7 @@ const emptyView: SessionDetailView = {
   isAgentWorking: false,
   taskCount: 0,
   hasConversation: false,
+  isConversationCurrent: false,
   isLoading: false,
   isNotFound: false,
 };
@@ -181,13 +183,15 @@ function SystemPromptProbe() {
 
 function renderAssist() {
   return renderInTestApp(
-    <NewAgentFormProvider>
-      <CreateAgentAssist />
-      <SystemPromptProbe />
-    </NewAgentFormProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NewAgentFormProvider>
+        <CreateAgentAssist />
+        <SystemPromptProbe />
+      </NewAgentFormProvider>
+    </QueryClientProvider>,
     {
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
+        '/sessions': sessionsRouteRef,
       },
     },
   );

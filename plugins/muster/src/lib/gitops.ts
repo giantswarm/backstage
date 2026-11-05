@@ -2,6 +2,10 @@ import {
   KubeObject,
   Provenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Provenance detection is implemented in `kubernetes-react`: it only reads labels
@@ -52,27 +56,31 @@ export function isChartRendered(p: Provenance): boolean {
   return Boolean(p.fluxHelmRelease || p.helmRelease || p.managedBy === 'Helm');
 }
 
-/** The object that reconciles a resource, by kind, for display. */
+/**
+ * The object that reconciles a resource, by kind, for display: its `name`
+ * and `namespace` for a fact list, and `id`, the two joined, for a sentence.
+ */
 export function gitOpsManagerDescription(
   p: Provenance,
-): { kind: string; id: string } | undefined {
+): { kind: string; id: string; name: string; namespace?: string } | undefined {
+  const describe = (kind: string, name: string, namespace?: string) => ({
+    kind,
+    id: qualifiedName(name, namespace),
+    name,
+    namespace,
+  });
   if (p.fluxHelmRelease) {
-    return {
-      kind: 'HelmRelease',
-      id: qualifiedName(p.fluxHelmRelease, p.fluxHelmNamespace),
-    };
+    return describe('HelmRelease', p.fluxHelmRelease, p.fluxHelmNamespace);
   }
   if (p.helmRelease) {
-    return {
-      kind: 'Helm release',
-      id: qualifiedName(p.helmRelease, p.helmNamespace),
-    };
+    return describe('Helm release', p.helmRelease, p.helmNamespace);
   }
   if (p.fluxKustomization) {
-    return {
-      kind: 'Kustomization',
-      id: qualifiedName(p.fluxKustomization, p.fluxKustomizationNamespace),
-    };
+    return describe(
+      'Kustomization',
+      p.fluxKustomization,
+      p.fluxKustomizationNamespace,
+    );
   }
   return undefined;
 }
@@ -218,7 +226,8 @@ function quoteScalar(value: string): string {
  * GitOps PR path. This is the artifact an operator commits to the
  * management-clusters repo; the app never applies it live (GitOps-managed
  * resources are read-only here). The apiVersion/kind come from the object, so
- * the same emitter serves both kinds.
+ * the same emitter serves both kinds. Its tags (`ui.giantswarm.io/tags`) ride
+ * along as the one annotation the manifest carries, so a commit keeps them.
  */
 export function toManifestYaml(
   obj: KubeObject,
@@ -227,12 +236,16 @@ export function toManifestYaml(
   const spec = (
     obj as unknown as { jsonData: { spec?: Record<string, unknown> } }
   ).jsonData.spec;
+  const tags = parseTags(obj.getAnnotations()?.[TAGS_ANNOTATION]);
   const manifest = {
     apiVersion: obj.getApiVersion() || 'muster.giantswarm.io/v1alpha1',
     kind: resourceKind(obj),
     metadata: {
       name: obj.getName(),
       namespace: obj.getNamespace() ?? defaultNamespace,
+      ...(tags.length > 0
+        ? { annotations: { [TAGS_ANNOTATION]: tags.join(',') } }
+        : {}),
     },
     spec: spec ?? {},
   };

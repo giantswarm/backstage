@@ -1,7 +1,7 @@
 import type { McpUsage } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import {
-  addedLine,
+  addedAt,
   callsLine,
   healthLine,
   runsAsCaller,
@@ -36,21 +36,21 @@ function server(opts: {
   );
 }
 
-function usage(servers: McpUsage['servers'], available = true): McpUsage {
+function usage(calls: number, errors: number, available = true): McpUsage {
   return {
     available,
-    range_hours: 216,
+    range_hours: 720,
     step_hours: 24,
     buckets: [],
     totals: {
-      calls: 0,
-      errors: 0,
-      error_ratio: null,
+      calls,
+      errors,
+      error_ratio: calls > 0 ? errors / calls : null,
       p95_seconds: null,
       distinct_tools: 0,
     },
     top_tools: [],
-    servers,
+    servers: [],
   };
 }
 
@@ -80,30 +80,28 @@ describe('connectorFacts', () => {
     ).toBe('1 of 3 instances healthy');
   });
 
-  it('sums the calls and errors of every name the connector goes by', () => {
-    const line = callsLine(
-      usage([
-        { server: 'walrus-mcp-kubernetes', calls: 3000, errors: 10 },
-        { server: 'gazelle-mcp-kubernetes', calls: 418, errors: 4 },
-        { server: 'prometheus', calls: 99, errors: 99 },
-      ]),
-      ['kubernetes', 'walrus-mcp-kubernetes', 'gazelle-mcp-kubernetes'],
-    );
-    expect(line).toBe('3,418 · 0.4% errors');
+  it('counts the calls of the usage read for the connector, with its errors', () => {
+    // Fractions, as Prometheus' `increase()` estimates counts.
+    expect(callsLine(usage(3417.6, 14.2))).toBe('3,418 · 0.4% errors');
+    expect(callsLine(usage(40, 8))).toBe('40 · 20% errors');
   });
 
   it('says plainly when there were no calls, and nothing without usage', () => {
-    expect(callsLine(usage([]), ['jira'])).toBe('0');
-    expect(callsLine(usage([], false), ['jira'])).toBeUndefined();
+    expect(callsLine(usage(0, 0))).toBe('0');
+    // An estimate that rounds to no calls is none, as the Usage tab says.
+    expect(callsLine(usage(0.4, 0.4))).toBe('0');
+    expect(callsLine(usage(0, 0, false))).toBeUndefined();
   });
 
   it('dates the oldest instance', () => {
     expect(
-      addedLine([
+      addedAt([
         server({ created: '2026-09-02T10:00:00Z' }),
         server({ created: '2026-08-04T10:00:00Z' }),
+        server({ created: 'not a date' }),
       ]),
-    ).toBe('4 Aug 2026');
-    expect(addedLine([server({})])).toBeUndefined();
+    ).toBe('2026-08-04T10:00:00Z');
+    expect(addedAt([server({})])).toBeUndefined();
+    expect(addedAt([])).toBeUndefined();
   });
 });

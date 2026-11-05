@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext, useMemo } from 'react';
 import { useClusterFromUrl } from './useClusterFromUrl';
 import {
   App,
@@ -13,9 +13,13 @@ export type ClusterLoadingStatus = {
   clusterApp?: App;
   /** The HelmRelease that installs the cluster, where no App does. */
   clusterRelease?: HelmRelease;
+  /** Deletion was requested and the cluster is not gone yet. */
+  isDeleting: boolean;
   loading: boolean;
   notFound: boolean;
   error: Error | null;
+  /** Why the last re-read of a cluster already shown failed. */
+  refreshError: Error | null;
 };
 
 const ClusterContext = createContext<ClusterLoadingStatus>({
@@ -23,9 +27,11 @@ const ClusterContext = createContext<ClusterLoadingStatus>({
   cluster: undefined,
   clusterApp: undefined,
   clusterRelease: undefined,
+  isDeleting: false,
   loading: false,
   notFound: false,
   error: null,
+  refreshError: null,
 });
 
 export interface AsyncClusterProviderProps {
@@ -45,20 +51,37 @@ export const AsyncClusterProvider = ({
     cluster,
     clusterApp,
     clusterRelease,
+    isDeleting,
     loading,
     notFound,
     error,
+    refreshError,
   } = useClusterFromUrl();
 
-  const value = {
-    installationName,
-    cluster,
-    clusterApp,
-    clusterRelease,
-    loading,
-    notFound,
-    error,
-  };
+  const value = useMemo(
+    () => ({
+      installationName,
+      cluster,
+      clusterApp,
+      clusterRelease,
+      isDeleting,
+      loading,
+      notFound,
+      error,
+      refreshError,
+    }),
+    [
+      installationName,
+      cluster,
+      clusterApp,
+      clusterRelease,
+      isDeleting,
+      loading,
+      notFound,
+      error,
+      refreshError,
+    ],
+  );
 
   return (
     <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
@@ -76,6 +99,7 @@ export function useCurrentCluster(): {
   cluster: Cluster;
   clusterApp?: App;
   clusterRelease?: HelmRelease;
+  isDeleting: boolean;
 } {
   const value = useContext(ClusterContext);
 
@@ -94,6 +118,7 @@ export function useCurrentCluster(): {
     cluster: value.cluster,
     clusterApp: value.clusterApp,
     clusterRelease: value.clusterRelease,
+    isDeleting: value.isDeleting,
   };
 }
 

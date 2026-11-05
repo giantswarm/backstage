@@ -1,48 +1,94 @@
 import { type ReactNode, useState } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
 import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
-import { agentsRouteRef, installationsExternalRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  installationsExternalRouteRef,
+  newSessionExternalRouteRef,
+} from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
-let mockAgents: Partial<AgentsContextValue>;
-jest.mock('../AgentsDataProvider', () => ({
-  useAgents: () => mockAgents,
-}));
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
-// The inventory the panel reads to tell an environment without kagent, and
-// which environment's failure the gate explains (the real selectors). The
-// gate itself, covered by its own tests in gs, renders a marker naming it.
+// The inventory behind what `useAgents` says about kagent and which
+// environment's failure the gate explains. The gate itself, covered by its
+// own tests in gs, renders a marker naming it.
 let mockInventoryEntries: InstallationInventoryEntry[] = [];
+let mockAgents: Partial<AgentsContextValue>;
+// What `useAgents` says about the inventory (`kagentMissing`,
+// `kagentSwitchedOff`, `unknownPin`, `inventoryFailure`) follows the mocked
+// inventory and rows by the provider's own selectors.
+jest.mock('../AgentsDataProvider', () => {
+  const helpers = jest.requireActual('../AgentsDataProvider/helpers');
+  const gs = jest.requireActual('@giantswarm/backstage-plugin-gs');
+  return {
+    describeKagentSwitchedOff: helpers.describeKagentSwitchedOff,
+    useAgents: () => {
+      const scope = mockAgents.scope ?? 'all';
+      const rows = mockAgents.rows ?? [];
+      const inventory = {
+        entries: mockInventoryEntries,
+        home: mockInventoryEntries.find(entry => entry.home)?.installation,
+        isLoading: false,
+      };
+      const unknownPin = helpers.selectUnknownPin(inventory, scope);
+      return {
+        kagentMissing:
+          rows.length === 0
+            ? helpers.selectKagentMissing(mockInventoryEntries, scope)
+            : undefined,
+        kagentSwitchedOff: gs.installationsSwitchedOffWithComponent(
+          mockInventoryEntries,
+          scope,
+          'kagent',
+        ),
+        unknownPin,
+        inventoryFailure: helpers.selectAgentsInventoryFailure(
+          inventory,
+          scope,
+          {
+            unknownPin,
+            listsNothing:
+              !mockAgents.isLoading &&
+              rows.length === 0 &&
+              (mockAgents.installations ?? []).length === 0,
+          },
+        ),
+        noAccessInstallations: [],
+        ...mockAgents,
+      };
+    },
+  };
+});
+// The person as agent-manager names a creator, on every installation: whom
+// "created by me" compares an agent's creator with.
+const mockCaller = 'me@example.com';
+jest.mock('../../hooks/useKagentCapabilities', () => ({
+  useKagentCapabilitiesMap: () => () => ({
+    isUserScoped: true,
+    caller: mockCaller,
+  }),
+}));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
-  useInstallationInventory: () => ({
-    entries: mockInventoryEntries,
-    home: mockInventoryEntries.find(entry => entry.home)?.installation,
-    isLoading: false,
-    isProbing: false,
-    installationsWith: (component: 'kagent') =>
-      mockInventoryEntries
-        .filter(
-          entry =>
-            !entry.muted &&
-            entry.probe === 'answered' &&
-            entry.components[component],
-        )
-        .map(entry => entry.installation),
-    refresh: () => {},
-  }),
+  useInstallationInventory: () => ({ refresh: () => {} }),
   InventoryFailureGate: ({
     failure,
   }: {
@@ -91,6 +137,7 @@ function row(overrides: Partial<AgentRow>): AgentRow {
     name: 'Agent',
     technicalName: 'agent',
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready' as const,
     ...overrides,
@@ -125,14 +172,63 @@ const notes = row({
   readiness: 'failed',
 });
 
-function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
-  return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
-    mountedRoutes: {
-      '/agent-platform/agents': agentsRouteRef,
-      '/installations': installationsExternalRouteRef,
+function renderPanel(
+  search = '',
+  storage: StorageApi = mockApis.storage(),
+  musterApi?: MusterApi,
+) {
+  const panel = (
+    // The first-agent card asks agent-manager where the person may create.
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <CustomizeAgentsPanel search={search} />
+    </QueryClientProvider>
+  );
+  return renderInTestApp(
+    musterApi ? (
+      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+        {panel}
+      </TestApiProvider>
+    ) : (
+      panel
+    ),
+    {
+      mountedRoutes: {
+        '/': newSessionExternalRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/installations': installationsExternalRouteRef,
+      },
+      apis: [[storageApiRef, storage]],
     },
-    apis: [[storageApiRef, storage]],
-  });
+  );
+}
+
+/**
+ * muster on each installation named, reaching agent-manager as the person,
+ * whose `get_info` names `managed`: the tenants the person may create agents
+ * in there.
+ */
+function musterWhereCreatableIn(managed: Record<string, string[]>): MusterApi {
+  return {
+    listInstallations: async () => ({
+      installations: Object.keys(managed).map(name => ({
+        name,
+        requiresAuth: true,
+      })),
+    }),
+    listServers: async () => ({ mcpServers: [{ name: 'agent-manager' }] }),
+    callTool: async (name: string, _args: unknown, installation: string) => {
+      if (name !== 'x_agent-manager_get_info') {
+        throw new Error(`unexpected tool ${name}`);
+      }
+      return {
+        namespaces: { default: 'kagent', managed: managed[installation] },
+      };
+    },
+  } as unknown as MusterApi;
 }
 
 // Re-render the panel from inside the test app (its own `rerender` would drop
@@ -146,10 +242,18 @@ function RerenderablePanel() {
 }
 
 function renderRerenderablePanel() {
-  return renderInTestApp(<RerenderablePanel />, {
-    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
-    apis: [[storageApiRef, mockApis.storage()]],
-  });
+  return renderInTestApp(
+    <QueryClientProvider client={new QueryClient()}>
+      <RerenderablePanel />
+    </QueryClientProvider>,
+    {
+      mountedRoutes: {
+        '/': newSessionExternalRouteRef,
+        '/customize/agents': agentsRouteRef,
+      },
+      apis: [[storageApiRef, mockApis.storage()]],
+    },
+  );
 }
 
 /** A storage with these agents already favorited. */
@@ -213,20 +317,26 @@ describe('CustomizeAgentsPanel', () => {
     const items = within(list).getAllByRole('listitem');
     expect(items).toHaveLength(2);
 
-    const triageLink = within(items[0]).getByRole('link');
+    // The name is the link; its hit area covers the row.
+    const triageLink = within(items[0]).getByRole('link', {
+      name: 'Support triage',
+    });
     expect(triageLink).toHaveAttribute(
       'href',
-      '/agent-platform/agents/golem/support/triage',
+      '/customize/agents/golem/support/triage',
     );
-    expect(within(triageLink).getByText('Support triage')).toBeInTheDocument();
-    expect(within(triageLink).getByText('Sorts tickets')).toBeInTheDocument();
-    expect(within(triageLink).getByText('Sonnet 4.5')).toBeInTheDocument();
+    const triageRow = items[0];
+    expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
+    // The model, skills and connectors are technical: the agent's page has them.
+    expect(within(triageRow).queryByText('Sonnet 4.5')).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText(/connector/)).not.toBeInTheDocument();
+    // No tags, no tag list.
     expect(
-      within(triageLink).getByText('2 skills · 2 connectors'),
-    ).toBeInTheDocument();
-    expect(within(triageLink).queryByText('support')).not.toBeInTheDocument();
+      within(triageRow).queryByRole('list', { name: 'Tags' }),
+    ).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     // A Ready agent shows no state; one that needs a look says so inline.
-    expect(within(triageLink).queryByText('Ready')).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText('Ready')).not.toBeInTheDocument();
     expect(within(items[1]).getByText('Release notes')).toBeInTheDocument();
     expect(within(items[1]).getByText('Failed')).toBeInTheDocument();
     // One environment: no environment fact.
@@ -254,6 +364,75 @@ describe('CustomizeAgentsPanel', () => {
     await renderPanel('triage');
     expect(screen.getByText('Support triage')).toBeInTheDocument();
     expect(screen.queryByText('Release notes')).not.toBeInTheDocument();
+  });
+
+  it('shows the first three tags of an agent on its row, then how many more', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['util', 'ops', 'support', 'tickets'] }, notes],
+    };
+    await renderPanel();
+
+    const [triageItem] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    const tags = within(triageItem).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(tag => tag.textContent),
+    ).toEqual(['util', 'ops', 'support', '+11 more tags']);
+    // Shown, not operated: nothing in them takes the focus.
+    expect(within(tags).queryByRole('grid')).not.toBeInTheDocument();
+    expect(within(tags).queryAllByRole('row')).toHaveLength(0);
+    expect(within(tags).getByText('+1')).toHaveAttribute('aria-hidden');
+    expect(within(tags).getByText('1 more tags')).toBeInTheDocument();
+    // The row's link carries them as its description, and all of them in
+    // its tooltip.
+    const link = within(triageItem).getByRole('link', { name: triage.name });
+    expect(link).toHaveAccessibleDescription(/util ops support 1 more tags/);
+    expect(link).toHaveAttribute(
+      'title',
+      expect.stringContaining('Tags: util, ops, support, tickets'),
+    );
+  });
+
+  it('keeps a tag named "more" apart from the count of the rest', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['a', 'b', 'c', 'more', 'e'] }, notes],
+    };
+    await renderPanel();
+
+    const [triageItem] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(
+      within(within(triageItem).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(tag => tag.textContent),
+    ).toEqual(['a', 'b', 'c', '+22 more tags']);
+  });
+
+  it('offers a Tags filter once an agent has tags, and narrows to any picked', async () => {
+    const tagsFilter = () =>
+      screen.queryByRole('button', { name: /Filter by tags/, hidden: true });
+    const { unmount } = await renderPanel();
+    expect(tagsFilter()).not.toBeInTheDocument();
+    unmount();
+
+    mockAgents = {
+      ...mockAgents,
+      rows: [{ ...triage, tags: ['util', 'ops'] }, notes],
+    };
+    await renderPanel();
+    await userEvent.click(tagsFilter()!);
+    await userEvent.click(await screen.findByRole('option', { name: /ops/ }));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByText('Release notes')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('Support triage')).toBeInTheDocument();
   });
 
   it('renders 300 agents a page of 25 at a time', async () => {
@@ -341,8 +520,77 @@ describe('CustomizeAgentsPanel', () => {
       expect(screen.getByText(/An agent is an assistant/)).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Create your first agent' }),
-      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      ).toHaveAttribute('href', '/customize/agents/new');
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    });
+
+    it('says who grants access where no organization binds the person, instead of inviting a first agent', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        noAccessInstallations: ['golem'],
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents for you yet' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /no agents on golem\. Access to agents is granted per organization: .*agent-platform:user/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Create your first agent' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['in no tenant', [], 'No agents for you yet', false],
+      ['in a tenant', ['org-acme'], 'No agents yet', true],
+    ])(
+      'follows where the person may create, though every tenant answered: %s',
+      async (_case, managed, title, invited) => {
+        // The platform tenant answers everyone (bound to all authenticated
+        // people), so nothing was refused; agent-manager decides the offer.
+        mockAgents = { ...mockAgents, rows: [], noAccessInstallations: [] };
+        await renderPanel(
+          '',
+          mockApis.storage(),
+          musterWhereCreatableIn({ golem: managed }),
+        );
+
+        expect(
+          await screen.findByRole('heading', { name: title }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryAllByRole('link', { name: 'Create your first agent' }),
+        ).toHaveLength(invited ? 1 : 0);
+        expect(
+          screen.queryAllByText(/agent-platform:user.*agent-platform:editor/),
+        ).toHaveLength(invited ? 0 : 1);
+      },
+    );
+
+    it('invites creating where the person may, though another environment refused every tenant', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        installations: ['golem', 'lab'],
+        noAccessInstallations: ['golem'],
+      };
+      await renderPanel(
+        '',
+        mockApis.storage(),
+        musterWhereCreatableIn({ lab: ['org-acme'] }),
+      );
+
+      expect(
+        await screen.findByRole('link', { name: 'Create your first agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('No agents for you yet'),
+      ).not.toBeInTheDocument();
     });
 
     it('says when no environments are configured', async () => {
@@ -707,27 +955,39 @@ describe('CustomizeAgentsPanel', () => {
   });
 
   describe('last used by you', () => {
-    it('shows the agents of the latest sessions as cards opening a new session', async () => {
+    it('shows the agents of the latest sessions as cards opening their page', async () => {
       const docs = row({ name: 'Docs', technicalName: 'docs' });
       mockAgents = { ...mockAgents, rows: [triage, notes, docs] };
       mockSessions = [
         sessionWith(triage, '2026-10-08T10:00:00Z'),
         sessionWith(docs, '2026-10-09T10:00:00Z'),
-        // Not startable: no card.
+        // Failed since: still a card, since its page says why.
         sessionWith(notes, '2026-10-10T10:00:00Z'),
       ];
       await renderPanel();
 
       const strip = screen.getByRole('region', { name: 'Last used by you' });
       const cards = within(strip).getAllByRole('link');
-      expect(cards).toHaveLength(2);
-      expect(cards[0]).toHaveTextContent('Docs');
+      expect(cards).toHaveLength(3);
+      // The name is the link, as on the list's rows, and opens the agent's
+      // page like every other item of the list: it is where a session
+      // starts, with Use this agent.
+      expect(cards[0]).toHaveAccessibleName('Release notes');
       expect(cards[0]).toHaveAttribute(
         'href',
-        `/?agent=${encodeURIComponent(docs.id)}`,
+        '/customize/agents/golem/engineering/notes',
       );
-      expect(cards[1]).toHaveTextContent('Support triage');
-      expect(cards[1]).toHaveTextContent('Start a session');
+      expect(cards[1]).toHaveAccessibleName('Docs');
+      expect(cards[1]).toHaveAttribute(
+        'href',
+        `/customize/agents/${docs.installation}/${docs.namespace}/docs`,
+      );
+      expect(cards[2]).toHaveAccessibleName('Support triage');
+      expect(cards[2]).toHaveAttribute(
+        'href',
+        '/customize/agents/golem/support/triage',
+      );
+      expect(strip).not.toHaveTextContent('Start a session');
     });
 
     it('shows at most three cards however many sessions there are', async () => {
@@ -860,7 +1120,7 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
   });
   afterEach(() => layout.restore());
 
-  it('wraps the name, the description and the facts instead of cutting them', async () => {
+  it('wraps the name and the description instead of cutting them', async () => {
     await renderPanel();
 
     const name = screen.getByText(longName);
@@ -871,9 +1131,30 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
         'Reconciles the cloud bills against the budget every quarter',
       ),
     ).not.toHaveAttribute('data-truncate');
-    expect(within(items()[0]).getByText('Sonnet 4.5')).not.toHaveAttribute(
-      'data-truncate',
+  });
+
+  it('wraps an organization under the name instead of cutting it', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [
+        triage,
+        row({
+          name: 'Billing',
+          technicalName: 'billing',
+          namespace: 'org-a-rather-long-organization-name',
+          tenant: 'a-rather-long-organization-name',
+        }),
+      ],
+    };
+    await renderPanel();
+
+    const organization = within(items()[1]).getByText(
+      'Organization: a-rather-long-organization-name',
     );
+    expect(organization).not.toHaveAttribute('data-truncate');
+    expect(organization.previousElementSibling).toHaveTextContent('Billing');
+    // The platform agent's row names none.
+    expect(items()[0]).not.toHaveTextContent('Organization');
   });
 
   it('keeps a not-Ready agent’s state to its few words; its page says why', async () => {
@@ -967,13 +1248,154 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   };
   const listed = (name = 'Agents') =>
     within(screen.getByRole('list', { name })).getAllByRole('listitem');
+  /** The column of a row's name and description. */
+  const nameColumnOf = (item: HTMLElement) =>
+    within(item).getByRole('link').parentElement!.parentElement!;
+  /** A row's fact columns, in order, as text. */
+  const factsOf = (item: HTMLElement) =>
+    Array.from(
+      within(item).getByTestId('agent-facts').children,
+      fact => fact.textContent,
+    );
 
   beforeEach(() => {
     mockSessions = [];
     mockMetaAgent = undefined;
   });
 
-  it('offers the model dropdown over three agents on one model, none starred', async () => {
+  it('filters by organization and by who created the agent, each organization’s row naming its organization', async () => {
+    mockAgents = {
+      rows: [
+        row({
+          name: 'SRE',
+          technicalName: 'sre',
+          namespace: 'kagent',
+          tenant: 'None',
+          model: 'Opus',
+        }),
+        row({
+          name: 'Billing',
+          technicalName: 'billing',
+          namespace: 'org-acme',
+          tenant: 'acme',
+          model: 'Opus',
+          createdBy: mockCaller,
+        }),
+        row({
+          name: 'Sales',
+          technicalName: 'sales',
+          namespace: 'org-acme',
+          tenant: 'acme',
+          createdBy: 'other@example.com',
+        }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    await renderPanel();
+
+    // The platform's agent belongs to no organization, and its row says
+    // nothing of one: no "None" without its label, no info icon.
+    const sre = listed()[0];
+    expect(sre).not.toHaveTextContent(/None|Organization|Platform/);
+    expect(
+      within(sre).queryByRole('button', { name: /None/ }),
+    ).not.toBeInTheDocument();
+    // An organization's agent names it with its label, not to be taken for
+    // the environment, beside its name: whose agent it is.
+    const billing = listed()[1];
+    const organization = within(billing).getByText('Organization: acme');
+    expect(organization.previousElementSibling).toHaveTextContent(/^Billing$/);
+    // The name link's hit area covers the row, the organization included:
+    // the link's tooltip names both, and a screen reader hears whose agent
+    // it opens.
+    const link = within(billing).getByRole('link', { name: 'Billing' });
+    expect(link).toHaveAttribute('title', 'Billing\nOrganization: acme');
+    expect(link).toHaveAccessibleDescription('Organization: acme');
+    expect(organization).not.toHaveAttribute('title');
+    expect(within(sre).getByRole('link', { name: 'SRE' })).toHaveAttribute(
+      'title',
+      'SRE',
+    );
+    // Room for the organization beside the name, on every row of the list.
+    expect(getComputedStyle(nameColumnOf(billing)).flexBasis).toBe('320px');
+    expect(getComputedStyle(nameColumnOf(sre)).flexBasis).toBe('320px');
+    // Not among the facts: both rows have the same fact columns, so they
+    // line up from row to row however the facts wrap. The model is not one
+    // of them: the agent's page has it.
+    expect(factsOf(billing)).toEqual(factsOf(sre));
+    expect(factsOf(billing).join()).not.toMatch(/Opus/);
+    expect(factsOf(billing).join()).not.toMatch(/Organization|acme/);
+    expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
+    expect(await filterOptions('created by')).toEqual(['Me 1']);
+
+    await pickFilter('created by', 'Me 1');
+    expect(listed().map(item => item.textContent)).toEqual([
+      expect.stringContaining('Billing'),
+    ]);
+  });
+
+  it('names another namespace as it is, an organization as its filter option does, and no organization where there is only one', async () => {
+    const billing = row({
+      name: 'Billing',
+      technicalName: 'billing',
+      namespace: 'org-acme',
+      tenant: 'acme',
+    });
+    mockAgents = {
+      rows: [
+        row({
+          name: 'SRE',
+          technicalName: 'sre',
+          namespace: 'sre-team',
+          tenant: 'namespace sre-team',
+        }),
+        billing,
+        // An organization named like the platform's None keeps its filter
+        // option's qualifier.
+        row({
+          name: 'Odd',
+          technicalName: 'odd',
+          namespace: 'org-none',
+          tenant: 'organization none',
+        }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    const { unmount } = await renderPanel();
+
+    // Another namespace is no organization, in the tooltip either.
+    expect(within(listed()[0]).getByText('namespace sre-team')).toBeVisible();
+    expect(within(listed()[0]).getByRole('link')).toHaveAttribute(
+      'title',
+      'SRE\nnamespace sre-team',
+    );
+    expect(listed()[1]).toHaveTextContent('Organization: acme');
+    expect(within(listed()[2]).getByRole('link')).toHaveAccessibleDescription(
+      'Organization: organization none',
+    );
+    expect(await filterOptions('organization')).toContain(
+      'organization none 1',
+    );
+    unmount();
+
+    // One organization's agents alone: the list says it of none of them, and
+    // the name stands alone on its line.
+    mockAgents = { ...mockAgents, rows: [billing] };
+    await renderPanel();
+    expect(listed()[0]).not.toHaveTextContent('Organization');
+    const name = within(listed()[0]).getByText('Billing');
+    expect(name.nextElementSibling).toBe(null);
+    expect(name).not.toHaveAttribute('aria-describedby');
+    // And no wider name column than a list without organizations needs: its
+    // facts stay beside the name down to the narrower width.
+    expect(getComputedStyle(nameColumnOf(listed()[0])).flexBasis).toBe('220px');
+  });
+
+  it('offers no dropdown over three agents on one model, none starred', async () => {
     mockAgents = {
       rows: [
         row({ name: 'A', technicalName: 'a', model: 'Sonnet 4.5' }),
@@ -987,11 +1409,10 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     await renderPanel();
 
     expect(listed()).toHaveLength(3);
-    // One model is still a dropdown, of one option (T64); nothing starred is
-    // nothing to offer.
-    expect(await filterOptions('model')).toEqual(['Sonnet 4.5 3']);
+    // One model for all is no choice, and nothing starred is nothing to
+    // offer: no filters at all.
     expect(
-      screen.queryByRole('button', { name: /Filter by favorites/ }),
+      screen.queryByRole('group', { name: 'Filters' }),
     ).not.toBeInTheDocument();
   });
 
@@ -1090,8 +1511,28 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       await renderPanel();
 
       expect(listed()).toHaveLength(3);
-      // The singleHarness rule: no dropdown of one, unlike Model.
-      expect(filterDropdown('model')).toBeInTheDocument();
+      // The singleHarness rule: no Harness fact, and no dropdown of one.
+      expect(
+        screen.queryByRole('button', { name: /Filter by harness/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    });
+
+    it('shows neither the Harness nor its filter while one Harness is all some agents report', async () => {
+      mockAgents = {
+        rows: [
+          { ...triage, ...onHarness('claude-code', 'Claude Code') },
+          { ...notes, ...onHarness('claude-code', 'Claude Code') },
+          // No Harness read for this one: not a second Harness to choose.
+          row({ name: 'Coder', technicalName: 'coder' }),
+        ],
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      expect(listed()).toHaveLength(3);
       expect(
         screen.queryByRole('button', { name: /Filter by harness/ }),
       ).not.toBeInTheDocument();

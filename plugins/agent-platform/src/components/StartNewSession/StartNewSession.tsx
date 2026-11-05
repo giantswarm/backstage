@@ -1,18 +1,32 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Flex, Link, Text } from '@backstage/ui';
-import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
+import { Button, Flex, Link, Text } from '@backstage/ui';
+import RefreshIcon from '@material-ui/icons/Refresh';
+import {
+  EmptyStateCard,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useCreateSession,
   type SessionEntryPoint,
 } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  modelConfigNameOf,
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
-import { AgentRow, useAgents } from '../AgentsDataProvider';
+import {
+  AgentRow,
+  describeKagentSwitchedOff,
+  useAgents,
+} from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
+import { KagentMissingCard } from '../KagentMissingCard';
 import {
   isStartableAgent,
   NewSessionComposer,
@@ -67,8 +81,14 @@ export type StartNewSessionProps = {
  * conversation.
  *
  * Withheld with a reason when the fleet offers no agent at all. An inert prompt
- * box that refuses every Start would be worse than saying why. Renders nothing
- * while the agents are loading.
+ * box that refuses every Start would be worse than saying why. The reasons are
+ * Customize › Agents' own, from the same `useAgents` values. Standalone, it
+ * shows the loading indicator while the agents are read, and the
+ * kagent-missing card (even while other environments still load); the other
+ * layouts render nothing while loading and say a missing kagent in a line.
+ * Where the inventory gate or the installation scope note is the whole answer
+ * (an environment that could not be asked, an unknown pin), it renders
+ * nothing: the caller renders those, as Home does.
  *
  * Reads `useAgents`, so it renders under `AgentsDataProvider`.
  */
@@ -87,16 +107,33 @@ export function StartNewSession({
     isLoading: isLoadingAgents,
     isLoadingMore: isLoadingMoreAgents,
     unreachableInstallations,
+    hasInstallations,
+    kagentMissing,
+    kagentSwitchedOff,
+    unknownPin,
+    inventoryFailure,
+    retry,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
 
   const { createSession } = creation;
   const onStart = useCallback(
-    async (agent: AgentRow, prompt: string) => {
+    async (
+      agent: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+      toolchains?: string[],
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent, prompt });
+        sessionId = await createSession({
+          agent,
+          prompt,
+          workspace,
+          toolchains,
+        });
       } catch {
         // Left to the composer, which renders the hook's `error` beside the
         // prompt the user still has.
@@ -128,6 +165,8 @@ export function StartNewSession({
             // The technical name: it is what addresses the agent's A2A
             // endpoint. The display name is an annotation.
             agentName: agent.technicalName,
+            modelConfig: modelConfigNameOf(agent),
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -135,8 +174,18 @@ export function StartNewSession({
     [createSession, navigate, rememberAgent, sessionDetailRoute],
   );
 
+  // Every environment in scope answered without kagent: no agent can be
+  // started there, whatever else is still loading. Customize › Agents says it
+  // with the same card; above a list of sessions (`inline`) a full card would
+  // crowd the list out, so there the line below says it.
+  if (layout === 'standalone' && kagentMissing) {
+    return <KagentMissingCard {...kagentMissing} />;
+  }
+
   if (isLoadingAgents) {
-    return null;
+    return layout === 'standalone' ? (
+      <LoadingIndicator label="Reading your agents…" />
+    ) : null;
   }
 
   // The same predicate the picker filters on, so the composer is never offered with
@@ -153,22 +202,76 @@ export function StartNewSession({
       unreachableInstallations.length === 0 &&
       agentInstallations.length > 0
     ) {
-      return <FirstAgentCard />;
+      return <FirstAgentCard installations={agentInstallations} />;
     }
 
-    // Three distinct situations, and conflating them would tell the user to look
-    // in the wrong place: nothing could be read (look at the warning), nothing
-    // is deployed and there is nowhere to deploy to either (an installation
-    // scope that runs no kagent), or something is deployed but none of it is
-    // ready (look at the Agents tab, where the reason is). Standalone, the
+    // An environment that could not be asked whether it runs kagent, or a pin
+    // the portal does not know: the inventory gate or the scope note the
+    // caller renders is the whole answer, as on Customize › Agents.
+    if (
+      agents.length === 0 &&
+      unreachableInstallations.length === 0 &&
+      agentInstallations.length === 0 &&
+      (unknownPin || inventoryFailure)
+    ) {
+      return null;
+    }
+
+    // A ready agent whose installation is still being asked whether
+    // agent-manager can start a session as the person: nothing to say yet.
+    if (
+      agents.some(
+        agent => agent.readiness === 'ready' && agent.isSessionPending,
+      )
+    ) {
+      return null;
+    }
+
+    // Distinct situations, and conflating them would tell the user to look in
+    // the wrong place: nothing could be read (look at the warning), no
+    // environment is configured, the environments that run kagent are
+    // switched off in Cluster access (switch one back on), no environment in
+    // reach runs kagent, or something is deployed but none of it is ready
+    // (look at the Agents tab, where the reason is). Each sentence but the
+    // first and the last is the one Customize › Agents says. Standalone, the
     // Agents tab is a link rather than a neighbouring tab.
+    // One more: agents are ready, but their installations' agent-manager
+    // cannot start a session as the person; the reasons say why, and the
+    // Agents tab would not.
+    const blockers = [
+      ...new Set(
+        agents.flatMap(agent =>
+          agent.readiness === 'ready' && agent.sessionBlocker
+            ? [agent.sessionBlocker]
+            : [],
+        ),
+      ),
+    ];
+    // Standalone, the composer's place is the page's answer: a read that
+    // failed there is an error state with its way forward, never a line that
+    // could pass for an empty roster.
+    if (
+      layout === 'standalone' &&
+      unreachableInstallations.length > 0 &&
+      agents.length === 0
+    ) {
+      return <AgentsReadFailedCard onRetry={retry} />;
+    }
+
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
       reason = 'No agents could be read to start a session with.';
       pointer = 'warning';
+    } else if (agents.length === 0 && !hasInstallations) {
+      reason =
+        'Agents are read from your environments, and this portal knows none.';
+    } else if (agents.length === 0 && kagentSwitchedOff.length > 0) {
+      reason = describeKagentSwitchedOff(kagentSwitchedOff);
     } else if (agents.length === 0) {
-      reason = 'No agents are deployed on the reachable environments.';
+      reason = 'No environment this portal can reach runs kagent.';
+    } else if (blockers.length > 0) {
+      reason = `Sessions cannot start from this portal. ${blockers.join(' ')}`;
     } else {
       reason =
         agents.length === 1
@@ -225,6 +328,9 @@ export function StartNewSession({
       collapsible={layout === 'inline'}
       isStarting={creation.isCreating}
       error={creation.error ?? undefined}
+      // The session page sends the prompt, images and all.
+      acceptsImages
+      offersWorkspaces
       onStart={onStart}
     />
   );
@@ -251,5 +357,42 @@ export function StartNewSession({
       </Text>
       {composer}
     </Flex>
+  );
+}
+
+/**
+ * The agents could not be read, so whether the person has any is not known:
+ * says so, points at the warning that names the environments and the reason,
+ * and reads them again. Retry stays pressed until the reads have answered;
+ * their answer then replaces the card (the composer, the first-agent card, or
+ * this card again).
+ */
+function AgentsReadFailedCard({ onRetry }: { onRetry: () => Promise<void> }) {
+  const [isRetrying, setIsRetrying] = useState(false);
+  const onPress = async () => {
+    setIsRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  // Not announced itself: the warning below, an alert, says it.
+  return (
+    <EmptyStateCard
+      title="Couldn't load your agents"
+      description="Your agents could not be read, so none can be offered to start a session with. The warning below says where and why."
+      actions={
+        <Button
+          variant="primary"
+          iconStart={<RefreshIcon />}
+          loading={isRetrying}
+          onPress={onPress}
+        >
+          Retry
+        </Button>
+      }
+    />
   );
 }

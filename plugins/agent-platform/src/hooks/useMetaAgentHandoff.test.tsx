@@ -40,7 +40,7 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
       installation: string;
       sessionId: string;
     }) =>
-      `/agent-platform/sessions/${installation}/${sessionId}`,
+      `/sessions/${installation}/${sessionId}`,
 }));
 
 beforeEach(() => {
@@ -64,7 +64,7 @@ describe('useMetaAgentHandoff', () => {
       prompt: 'Write me a skill.',
     });
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/session-1',
+      '/sessions/gazelle/session-1',
       expect.anything(),
     );
   });

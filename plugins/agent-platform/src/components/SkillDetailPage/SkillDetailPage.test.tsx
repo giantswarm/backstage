@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   mockPhoneLayout,
@@ -11,6 +12,18 @@ import { agentsRouteRef, sessionsRouteRef, skillsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { evaluationPrompt } from './evaluationPrompt';
 import { SkillDetailPage } from './SkillDetailPage';
+
+/**
+ * The innermost element whose text, across its children, reads `text`: a
+ * sentence with a short commit (`CommitSha`) in it is several elements.
+ */
+function byFullText(text: string) {
+  return screen.getByText(
+    (_content, element) =>
+      element?.textContent === text &&
+      Array.from(element.children).every(child => child.textContent !== text),
+  );
+}
 
 const REPO = 'https://github.com/giantswarm/skills';
 
@@ -35,11 +48,12 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 let mockRows: AgentRow[] = [];
+let mockAgentsLoading = false;
 let mockUnreachable: string[] = [];
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({
     rows: mockRows,
-    isLoading: false,
+    isLoading: mockAgentsLoading,
     unreachableInstallations: mockUnreachable,
   }),
 }));
@@ -132,6 +146,7 @@ function agent(
 
 const loaded: SkillCatalog = {
   skills: [skill],
+  plugins: [],
   isLoading: false,
   error: null,
   hasRepositories: true,
@@ -141,15 +156,18 @@ const loaded: SkillCatalog = {
 
 function renderPage(path = 'giantswarm/skills/ticket-triage') {
   return renderInTestApp(
-    <Routes>
-      <Route path="/agent-platform/skills/*" element={<SkillDetailPage />} />
-    </Routes>,
+    // The shell mounts the scope around its pages, as the app does.
+    <ShellScopeProvider>
+      <Routes>
+        <Route path="/customize/skills/*" element={<SkillDetailPage />} />
+      </Routes>
+    </ShellScopeProvider>,
     {
-      initialRouteEntries: [`/agent-platform/skills/${path}`],
+      initialRouteEntries: [`/customize/skills/${path}`],
       mountedRoutes: {
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/sessions': sessionsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );
@@ -159,6 +177,7 @@ beforeEach(() => {
   mockUpdateDialog.mockReset();
   mockCatalog = loaded;
   mockRows = [];
+  mockAgentsLoading = false;
   mockUnreachable = [];
   mockEvaluator = undefined;
   mockCreationError = null;
@@ -214,18 +233,75 @@ describe('SkillDetailPage', () => {
         'How to classify, prioritise and route a support ticket.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('ticket-triage/SKILL.md')).toBeInTheDocument();
-    expect(screen.getByText('main')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
-      'href',
-      `https://github.com/giantswarm/skills/commit/${skill.commit}`,
-    );
-    expect(screen.getByRole('link', { name: /View source/ })).toHaveAttribute(
+    // The facts are a section of the Overview, not a column beside it.
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    const facts = screen.getByRole('region', { name: 'Where it lives' });
+    expect(
+      within(facts).getByText('ticket-triage/SKILL.md'),
+    ).toBeInTheDocument();
+    expect(within(facts).getByText('main')).toBeInTheDocument();
+    // The latest commit opens the skill's folder at that commit; there is no
+    // View source button besides.
+    expect(
+      within(facts).getByRole('link', { name: 'a1b2c3d' }),
+    ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
+    expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
+    // Labels, values and links read at the shell's body size.
+    for (const text of ['Branch', 'main']) {
+      expect(within(facts).getByText(text)).toHaveAttribute(
+        'data-variant',
+        'body-medium',
+      );
+    }
+    expect(
+      within(facts).getByRole('link', { name: 'a1b2c3d' }),
+    ).toHaveAttribute('data-variant', 'body-medium');
+    // The full commit on hover.
+    expect(within(facts).getByText('a1b2c3d')).toHaveAttribute(
+      'title',
+      skill.commit,
+    );
     // The Overview reads nothing more than the listing has.
     expect(mockUseSkillContent).not.toHaveBeenCalled();
+  });
+
+  it('shows the skill’s tags under what it is for, and none when it has none', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, tags: ['triage', 'ops'] }],
+    };
+    const { unmount } = await renderPage();
+
+    const section = screen.getByRole('region', { name: 'What it’s for' });
+    const tags = within(section).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['triage', 'ops']);
+    // Each opens Customize → Skills with that tag picked.
+    expect(within(tags).getByRole('link', { name: 'ops' })).toHaveAttribute(
+      'href',
+      '/customize/skills?tags=ops',
+    );
+    unmount();
+
+    mockCatalog = loaded;
+    await renderPage();
+    expect(screen.queryByRole('list', { name: 'Tags' })).toBeNull();
+  });
+
+  it('links the latest commit of a skill at the repository root to the tree at that commit', async () => {
+    mockCatalog = { ...loaded, skills: [{ ...skill, path: '' }] };
+    await renderPage('giantswarm/skills');
+
+    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/tree/${skill.commit}`,
+    );
   });
 
   it('draws Agent detail’s routed tabs below the skill’s own address', async () => {
@@ -237,19 +313,38 @@ describe('SkillDetailPage', () => {
         .getAllByRole('tab')
         .map(tab => [tab.textContent, tab.getAttribute('href')]),
     ).toEqual([
-      ['Overview', '/agent-platform/skills/giantswarm/skills/ticket-triage'],
+      ['Overview', '/customize/skills/giantswarm/skills/ticket-triage'],
       [
         'Instructions',
-        '/agent-platform/skills/giantswarm/skills/ticket-triage/instructions',
+        '/customize/skills/giantswarm/skills/ticket-triage/instructions',
       ],
       [
         'Used by (1)',
-        '/agent-platform/skills/giantswarm/skills/ticket-triage/used-by',
+        '/customize/skills/giantswarm/skills/ticket-triage/used-by',
       ],
     ]);
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
       'Overview',
     );
+  });
+
+  it('holds the Used by count’s place in the frame drawn while the catalog loads', async () => {
+    mockCatalog = { ...loaded, skills: [], isLoading: true };
+    await renderPage();
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'Used by' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
+  });
+
+  it('holds the Used by count’s place while the agents load', async () => {
+    mockAgentsLoading = true;
+    await renderPage();
+
+    const usedBy = screen.getByRole('tab', { name: 'Used by' });
+    expect(usedBy.querySelector('[data-count="loading"]')).not.toBeNull();
   });
 
   it('lists the agents using the skill on the Used by tab', async () => {
@@ -262,17 +357,28 @@ describe('SkillDetailPage', () => {
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
       'Used by (1)',
     );
-    // Used by: only the agent that mounts the skill, its row opening its page.
-    expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('triage-bot'));
+    // Used by: only the agent that mounts the skill, as the connector page
+    // lists its agents — the name a link to its page, where it runs at the
+    // row's end, and the whole row opening it.
+    const list = screen.getByRole('grid', { name: 'Agents using this skill' });
+    expect(
+      within(list)
+        .getAllByRole('row')
+        .map(item => item.textContent),
+    ).toEqual([expect.stringContaining('triage-botgazelle')]);
+    expect(screen.getByRole('link', { name: 'triage-bot' })).toHaveAttribute(
+      'href',
+      '/customize/agents/gazelle/kagent/triage-bot',
+    );
+    await userEvent.click(within(list).getByText('gazelle'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/agents/gazelle/kagent/triage-bot',
+      '/customize/agents/gazelle/kagent/triage-bot',
       undefined,
     );
     expect(screen.queryByText('other-bot')).not.toBeInTheDocument();
     // Nobody behind: a quiet line, and no Update agents action.
     expect(
-      screen.getByText('All agents use the newest version (a1b2c3d).'),
+      byFullText('All agents use the newest version (a1b2c3d).'),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Update agents' }),
@@ -293,9 +399,12 @@ describe('SkillDetailPage', () => {
     await renderPage('giantswarm/skills/ticket-triage/used-by');
 
     // The behind row says so; the line under the list counts them.
-    expect(screen.getByText(/older version \(cb1fb76\)/)).toBeInTheDocument();
+    // The full pin on hover.
     expect(
-      screen.getByText(
+      screen.getByText('gazelle · older version (cb1fb76)'),
+    ).toHaveAttribute('title', `Pinned at ${OLD_COMMIT}`);
+    expect(
+      byFullText(
         'One agent pins an older commit than the newest (a1b2c3d). Update agents moves it there.',
       ),
     ).toBeInTheDocument();
@@ -337,10 +446,55 @@ describe('SkillDetailPage', () => {
     );
     await renderPage('giantswarm/skills/ticket-triage/used-by');
 
-    expect(screen.getByText('Used by 300 agents')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Used by (300)',
+    );
     expect(screen.getByText('bot-000')).toBeInTheDocument();
     expect(screen.queryByText('bot-299')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show all 300 agents' }),
+    );
+    expect(screen.getByText('bot-299')).toBeInTheDocument();
   }, 30_000);
+
+  it('names the namespace of agents that share a name on one installation', async () => {
+    const elsewhere = {
+      ...agent('triage-bot', [`${REPO}#ticket-triage`]),
+      id: 'gazelle/team-a/triage-bot',
+      namespace: 'team-a',
+    };
+    mockRows = [
+      agent('triage-bot', [`${REPO}#ticket-triage`]),
+      elsewhere,
+      agent('solo-bot', [`${REPO}#ticket-triage`]),
+    ];
+    await renderPage('giantswarm/skills/ticket-triage/used-by');
+
+    const list = screen.getByRole('grid', { name: 'Agents using this skill' });
+    expect(
+      within(list)
+        .getAllByRole('row')
+        .map(item => item.textContent),
+    ).toEqual([
+      expect.stringContaining('solo-botgazelle'),
+      expect.stringContaining('triage-botgazelle · kagent'),
+      expect.stringContaining('triage-botgazelle · team-a'),
+    ]);
+  }, 30_000);
+
+  it('says when no agent uses the skill', async () => {
+    mockRows = [agent('other-bot', [])];
+    await renderPage('giantswarm/skills/ticket-triage/used-by');
+
+    expect(
+      screen.getByText(
+        'No agent uses this skill yet. Add it to an agent when creating or editing one.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.queryByText(/newest version/)).not.toBeInTheDocument();
+  });
 
   it('renders the SKILL.md instructions on the Instructions tab, without raw HTML', async () => {
     mockContent = {
@@ -416,7 +570,7 @@ describe('SkillDetailPage', () => {
 
       expect(screen.getByText('Classify.')).toBeInTheDocument();
       expect(
-        screen.getByText('ticket-triage/SKILL.md at a1b2c3d'),
+        byFullText('ticket-triage/SKILL.md at a1b2c3d'),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('navigation', { name: 'Skill files' }),
@@ -449,7 +603,7 @@ describe('SkillDetailPage', () => {
     // The relative link opens the file here, not on GitHub.
     expect(screen.getByRole('link', { name: 'the setup' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/giantswarm/skills/ticket-triage/instructions?file=references/setup.md',
+      '/customize/skills/giantswarm/skills/ticket-triage/instructions?file=references/setup.md',
     );
   });
 
@@ -457,14 +611,14 @@ describe('SkillDetailPage', () => {
     mockCatalog = { ...loaded, skills: [{ ...skill, fileCount: 3 }] };
     const { unmount } = await renderPage();
     expect(
-      screen.getByText('Read from giantswarm/skills at a1b2c3d · 2 more files'),
+      byFullText('Read from giantswarm/skills at a1b2c3d · 2 more files'),
     ).toBeInTheDocument();
     unmount();
 
     mockCatalog = { ...loaded, skills: [{ ...skill, fileCount: 1 }] };
     await renderPage();
     expect(
-      screen.getByText('Read from giantswarm/skills at a1b2c3d'),
+      byFullText('Read from giantswarm/skills at a1b2c3d'),
     ).toBeInTheDocument();
   });
 
@@ -488,11 +642,11 @@ describe('SkillDetailPage', () => {
     );
     expect(
       Array.from(edit.parentElement!.children).map(child => child.textContent),
-    ).toEqual(['Edit', 'View source ↗', 'Evaluate with skill-evaluator']);
+    ).toEqual(['Edit', 'Evaluate with skill-evaluator']);
 
     await userEvent.click(edit);
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/skills/edit/giantswarm/skills/ticket-triage',
+      '/customize/skills/edit/giantswarm/skills/ticket-triage',
     );
   });
 
@@ -517,9 +671,11 @@ describe('SkillDetailPage', () => {
     expect(
       screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: /View source/ }),
-    ).toBeInTheDocument();
+    // The source is still a link away, from the latest commit.
+    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
+    );
   });
 
   it('says nothing about the source of a readable skill', async () => {
@@ -561,13 +717,14 @@ describe('SkillDetailPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /View source/ }),
-    ).not.toBeInTheDocument();
+    // The latest commit is plain text: there is no github.com tree to open.
+    // Short, as in the header's line, the full commit in its title.
+    expect(screen.getAllByTitle(skill.commit)).toHaveLength(2);
+    expect(screen.queryByRole('link', { name: 'a1b2c3d' })).toBeNull();
     // Readable all the same: its instructions are a tab away.
     expect(screen.getByRole('tab', { name: 'Instructions' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/instructions',
+      '/customize/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/instructions',
     );
   });
 
@@ -587,19 +744,16 @@ describe('SkillDetailPage', () => {
       prompt,
     });
     // The standard handoff: the session page sends the first message.
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/session-1',
-      {
-        state: {
-          newSession: {
-            text: prompt,
-            agentNamespace: 'kagent',
-            agentName: 'skill-evaluator',
-            prepared: true,
-          },
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/session-1', {
+      state: {
+        newSession: {
+          text: prompt,
+          agentNamespace: 'kagent',
+          agentName: 'skill-evaluator',
+          prepared: true,
         },
       },
-    );
+    });
   }, 30_000);
 
   it('stays on the page and says why when the session could not start', async () => {
@@ -657,45 +811,46 @@ describe('SkillDetailPage at phone width', () => {
       screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
-    expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
       screen.getAllByRole('menuitem').map(item => item.textContent),
-    ).toEqual(['Update agents', 'Edit', 'View source ↗']);
-    expect(
-      screen.getByRole('menuitem', { name: 'View source ↗' }),
-    ).toHaveAttribute(
-      'href',
-      `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
-    );
+    ).toEqual(['Update agents', 'Edit']);
     await userEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/skills/edit/giantswarm/skills/ticket-triage',
+      '/customize/skills/edit/giantswarm/skills/ticket-triage',
     );
   });
 
   it('makes the first action the button where there is no Evaluate', async () => {
+    mockRows = [agent('old-bot', [`${REPO}#ticket-triage`], OLD_COMMIT)];
     await renderPage();
 
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Update agents' })).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
       screen.getAllByRole('menuitem').map(item => item.textContent),
-    ).toEqual(['View source ↗']);
+    ).toEqual(['Edit']);
   });
 
-  it('puts the facts first, folded under Details', async () => {
+  it('shows the lone action without a menu', async () => {
     await renderPage();
 
-    const details = screen.getByRole('button', { name: 'Details' });
-    expect(details).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeVisible();
     expect(
-      details.compareDocumentPosition(screen.getByText('What it’s for')) &
+      screen.queryByRole('button', { name: 'More actions' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('puts the facts in the Overview under what the skill is for, unfolded', async () => {
+    await renderPage();
+
+    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+    expect(
+      screen
+        .getByText('What it’s for')
+        .compareDocumentPosition(screen.getByText('ticket-triage/SKILL.md')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.queryByText('ticket-triage/SKILL.md')).toBeNull();
-    await userEvent.click(details);
-    expect(screen.getByText('ticket-triage/SKILL.md')).toBeInTheDocument();
   });
 
   it('writes where a using agent runs under its name, not beside it', async () => {
@@ -703,6 +858,8 @@ describe('SkillDetailPage at phone width', () => {
     await renderPage('giantswarm/skills/ticket-triage/used-by');
 
     const row = screen.getByRole('row', { name: /old-bot/ });
-    expect(row).toHaveTextContent('gazelle · kagent · older version (cb1fb76)');
+    expect(
+      within(row).getByText('gazelle · older version (cb1fb76)'),
+    ).toHaveAttribute('slot', 'description');
   });
 });

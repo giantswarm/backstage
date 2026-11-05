@@ -19,10 +19,7 @@ import {
 } from '../mutedInstallations';
 import { INVENTORY_PROBE_PATH } from './probeInstallationInventory';
 import { installationInventoryQueryKey } from './queryKey';
-import {
-  orderInstallations,
-  useInstallationInventory,
-} from './useInstallationInventory';
+import { useInstallationInventory } from './useInstallationInventory';
 
 /** Per-installation canned `/apis` answers. */
 type Answer =
@@ -188,28 +185,6 @@ const probesOf = (result: {
     result.current.entries.map(entry => [entry.installation, entry.probe]),
   );
 
-describe('orderInstallations', () => {
-  it('puts the home first, then settled probes in settle order, then config order', () => {
-    const settled = new Map([
-      ['snail', 0],
-      ['wombat', 1],
-    ]);
-    expect(
-      orderInstallations(
-        ['wombat', 'golem', 'snail', 'yak', 'emu'],
-        'golem',
-        settled,
-      ),
-    ).toEqual(['golem', 'snail', 'wombat', 'yak', 'emu']);
-  });
-
-  it('keeps config order without a home or any settled probe', () => {
-    expect(
-      orderInstallations(['wombat', 'golem', 'snail'], undefined, new Map()),
-    ).toEqual(['wombat', 'golem', 'snail']);
-  });
-});
-
 describe('useInstallationInventory', () => {
   beforeEach(() => {
     __resetInstallationsConfigForTests();
@@ -245,6 +220,8 @@ describe('useInstallationInventory', () => {
     expect(names(result)).toEqual(['golem', 'wombat', 'snail']);
 
     act(() => statusApi.recordHealthy('snail'));
+    // A settled probe goes ahead of the ones still connecting.
+    expect(names(result)).toEqual(['golem', 'snail', 'wombat']);
     act(() => statusApi.recordHealthy('wombat'));
     act(() => statusApi.recordHealthy('golem'));
 

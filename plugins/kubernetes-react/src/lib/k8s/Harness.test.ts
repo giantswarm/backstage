@@ -38,17 +38,7 @@ describe('Harness', () => {
     expect(Harness.plural).toBe('harnesses');
   });
 
-  it('reads the Claude limits and the declared egress', () => {
-    expect(
-      makeHarness({
-        claude: { limits: { budgetUSD: '2.50', maxTurns: 40 } },
-        substrate: {
-          workerPoolRef: { name: 'kagent' },
-          snapshotPolicy: { location: 's3://snapshots/claude' },
-          egress: ['github.com', '*.githubusercontent.com'],
-        },
-      }).getLimits(),
-    ).toEqual({ budgetUSD: '2.50', maxTurns: 40 });
+  it('reads the declared egress', () => {
     expect(
       makeHarness({
         substrate: {
@@ -58,7 +48,6 @@ describe('Harness', () => {
         },
       }).getEgress(),
     ).toEqual(['github.com', '*.githubusercontent.com']);
-    expect(makeHarness({ claude: {} }).getLimits()).toBeUndefined();
     expect(makeHarness({}).getEgress()).toEqual([]);
   });
 

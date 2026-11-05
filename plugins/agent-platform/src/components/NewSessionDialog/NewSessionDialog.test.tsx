@@ -12,6 +12,15 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => mockBuildAvatarUrl,
 }));
 
+// The picker's reads are the hook's own tests'; here the installation offers none.
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
+}));
+
+// The toolchain picker's reads are its own tests'; here it is not offered.
+jest.mock('../ToolchainPicker', () => ({ ToolchainPicker: () => null }));
+
 const onStart = jest.fn();
 const onOpenChange = jest.fn();
 
@@ -22,6 +31,7 @@ const sre: AgentRow = {
   name: 'SRE Agent',
   technicalName: 'sre-agent',
   description: 'Investigates incidents',
+  tags: [],
   skillCount: 3,
   readiness: 'ready',
 };
@@ -72,7 +82,13 @@ describe('NewSessionDialog', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Start' }));
 
-    expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'why is the ingress failing?',
+      [],
+      undefined,
+      undefined,
+    );
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 

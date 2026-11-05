@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { ShellScopeProvider } from '../ShellScope';
+import { Mono } from '../Mono';
 import { FactList } from './FactList';
 
 const facts = [
@@ -75,5 +76,41 @@ describe('FactList', () => {
   it('keeps the classic 520px stack point outside the shell', () => {
     const { container } = render(<FactList facts={facts} />);
     expect(narrowMediaOf(container)).toBe('520');
+  });
+
+  const variantOf = (text: string) =>
+    screen.getByText(text).getAttribute('data-variant');
+
+  it('sets labels and values in the shell’s body size inside the shell', () => {
+    render(
+      <FactList
+        facts={[...facts, { label: 'Image', value: <Mono>ami-123</Mono> }]}
+      />,
+      { wrapper: ShellScopeProvider },
+    );
+    for (const text of ['Node image', 'AL2023', '110', 'ami-123']) {
+      expect(variantOf(text)).toBe('body-medium');
+    }
+  });
+
+  it('keeps small text outside the shell and in a stacked list', () => {
+    const { unmount } = render(
+      <FactList facts={[{ label: 'Image', value: <Mono>ami-123</Mono> }]} />,
+    );
+    expect(variantOf('Image')).toBe('body-small');
+    expect(variantOf('ami-123')).toBe('body-small');
+    unmount();
+
+    render(<FactList facts={facts} stacked />, {
+      wrapper: ShellScopeProvider,
+    });
+    expect(variantOf('AL2023')).toBe('body-small');
+  });
+
+  it('takes an explicit size over the default', () => {
+    render(<FactList facts={facts} size="small" />, {
+      wrapper: ShellScopeProvider,
+    });
+    expect(variantOf('AL2023')).toBe('body-small');
   });
 });

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@backstage/ui';
+import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 import {
   useClusterPageTarget,
   useInstallations,
@@ -16,13 +17,16 @@ import {
   offersCommit,
   offersTool,
 } from '../../lib/clusterManager';
+import { sharedIdentityReason } from '../../lib/sharedIdentity';
 import { CreateClusterDialog } from '../CreateClusterDialog';
 import { DeleteClusterDialog } from '../DeleteClusterDialog';
 
 /**
  * **Create cluster** beside the Clusters list's header, where an
  * installation's muster registers a cluster-manager that offers
- * `create_cluster`; nothing elsewhere.
+ * `create_cluster`. Where cluster-manager is listed only on installations
+ * whose muster has no per-user sign-in, the button is there, disabled, and
+ * says why; nothing elsewhere.
  */
 export function CreateClusterAction() {
   const { installations } = useInstallations();
@@ -30,7 +34,8 @@ export function CreateClusterAction() {
     () => installations.map(installation => installation.name),
     [installations],
   );
-  const { available } = useClusterManagerAvailability(names);
+  const { available, sharedIdentity, isLoading } =
+    useClusterManagerAvailability(names);
   const offering = useInstallationsOffering(
     available,
     CLUSTER_MANAGER_TOOLS.createCluster,
@@ -38,7 +43,28 @@ export function CreateClusterAction() {
   const [isOpen, setOpen] = useState(false);
 
   if (offering.length === 0) {
-    return null;
+    if (available.length > 0 || isLoading || sharedIdentity.length === 0) {
+      return null;
+    }
+    return (
+      <DisabledAction
+        reason={sharedIdentityReason(
+          'Clusters are created through cluster-manager',
+          sharedIdentity,
+        )}
+      >
+        {describedBy => (
+          <Button
+            variant="primary"
+            size="small"
+            isDisabled
+            aria-describedby={describedBy}
+          >
+            Create cluster
+          </Button>
+        )}
+      </DisabledAction>
+    );
   }
   return (
     <>
@@ -80,40 +106,75 @@ function isDeletable(
 
 /**
  * **Delete** beside a cluster's header, where the installation's
- * cluster-manager offers `delete_cluster` and the cluster is one it removes.
+ * cluster-manager offers `delete_cluster` and the cluster is one it removes;
+ * not on a cluster already being deleted, which `delete_cluster` leaves alone
+ * until it is gone. The open dialog keeps the cluster it opened for, so its
+ * **Finish removal** and live steps outlast the deletion the page follows.
+ * Where the installation's muster has no per-user sign-in, cluster-manager
+ * cannot be asked, so a cluster it would remove shows Delete disabled, with
+ * the reason.
  */
 export function DeleteClusterAction() {
   const target = useClusterPageTarget();
-  const deletable = isDeletable(target);
+  const offered =
+    isDeletable(target) && !target.isDeleting ? target : undefined;
+  const [opened, setOpened] = useState<ClusterPageTarget>();
+  const subject = opened ?? offered;
   const { presenceOf } = useClusterManagerAvailability(
-    deletable ? [target.installationName] : [],
+    subject ? [subject.installationName] : [],
   );
-  const reachable =
-    deletable && presenceOf(target.installationName) === 'available';
+  const presence = subject ? presenceOf(subject.installationName) : 'unknown';
+  const reachable = subject !== undefined && presence === 'available';
   const { info } = useClusterManagerInfo(
-    reachable ? target.installationName : undefined,
+    reachable ? subject.installationName : undefined,
   );
-  const [isOpen, setOpen] = useState(false);
 
-  if (!deletable || !offersTool(info, CLUSTER_MANAGER_TOOLS.deleteCluster)) {
+  if (offered && presence === 'sharedIdentity') {
+    return (
+      <DisabledAction
+        reason={sharedIdentityReason(
+          'Clusters are deleted through cluster-manager',
+          [offered.installationName],
+        )}
+      >
+        {describedBy => (
+          <Button
+            variant="secondary"
+            size="small"
+            destructive
+            isDisabled
+            aria-describedby={describedBy}
+          >
+            Delete
+          </Button>
+        )}
+      </DisabledAction>
+    );
+  }
+  if (
+    !subject ||
+    (!opened && !offersTool(info, CLUSTER_MANAGER_TOOLS.deleteCluster))
+  ) {
     return null;
   }
   return (
     <>
-      <Button
-        variant="secondary"
-        size="small"
-        destructive
-        onPress={() => setOpen(true)}
-      >
-        Delete
-      </Button>
+      {offered && (
+        <Button
+          variant="secondary"
+          size="small"
+          destructive
+          onPress={() => setOpened(offered)}
+        >
+          Delete
+        </Button>
+      )}
       <DeleteClusterDialog
-        isOpen={isOpen}
-        onOpenChange={setOpen}
-        installation={target.installationName}
-        organization={target.organization}
-        name={target.name}
+        isOpen={opened !== undefined}
+        onOpenChange={isOpen => setOpened(isOpen ? subject : undefined)}
+        installation={subject.installationName}
+        organization={subject.organization}
+        name={subject.name}
         commitOffered={offersCommit(info, CLUSTER_MANAGER_TOOLS.deleteCluster)}
       />
     </>

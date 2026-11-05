@@ -6,16 +6,31 @@ import {
   deriveAgentReadiness,
   getAgentStatusChangedAt,
   Harness,
+  type HarnessRuntime,
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ALL_INSTALLATIONS,
+  classifyInventoryFailure,
+  installationsWithComponent,
+  installationsWithoutComponent,
+  selectInventoryFailure,
+  type InstallationInventory,
+  type InstallationInventoryEntry,
+  type InstallationScope,
+  type InventoryFailure,
+} from '@giantswarm/backstage-plugin-gs';
+import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import {
   summarizeClientServing,
   type ClientServingState,
   type ClientServingSummary,
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
+import { agentManagerBlocker } from '../../lib/agentManager';
+import type { AgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -23,6 +38,16 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
+import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
+import {
+  DEFAULT_WORKSPACE_ANNOTATION,
+  defaultWorkspaceName,
+} from '../../lib/defaultWorkspace';
+import {
+  DEFAULT_TOOLCHAINS_ANNOTATION,
+  defaultToolchainsOf,
+  type ToolchainPick,
+} from '../../lib/toolchainManager';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -98,27 +123,17 @@ export function getAgentRefetchInterval(
 }
 
 /**
- * Per-installation refetch interval for the agent list.
+ * Per-installation refetch interval for the agent list, re-evaluated by
+ * react-query after every fetch of that installation's list:
  *
- * `useResources` applies this to each installation's list query separately, and
- * react-query re-evaluates it after every fetch resolves — so this needs no
- * provider state and is self-correcting: an installation whose agents are all
- * ready stays on the baseline, and one whose agent starts converging tightens to
- * the fast interval and relaxes again once it settles.
+ * - no list yet, or an empty one: the baseline;
+ * - an agent still converging (see {@link isAgentConverging}): the
+ *   transitional tier;
+ * - every agent settled, or broken past the convergence window: the baseline.
  *
- * What this does **not** do is accelerate the first sighting of a *newly created*
- * agent. The decision is made from the data already in hand, so an installation
- * whose cached list predates the new agent stays on the baseline until the next
- * poll reveals it. Nothing invalidates the Agent list after creation (the flow
- * hands off to the scaffolder task page, and the agent does not exist yet at that
- * point), and `staleTime` suppresses a refetch on mount for a cache entry under a
- * minute old — so a new agent can take up to the baseline interval to appear, and
- * only then does the fast tier engage. Invalidating on creation would be the fix
- * if that wait proves annoying in practice.
- *
- * Note that interval refetches only fire while the tab is focused
- * (`refetchIntervalInBackground` defaults to `false`), which is the same
- * guard kagent's UI implements by hand with `document.hidden`.
+ * An agent deployed from this tab but not listed yet is not seen here;
+ * `AgentsDataProvider` tightens the interval for it. Interval refetches fire
+ * only while the tab is focused.
  */
 export function getAgentsRefetchInterval(
   query: Query<KubeObjectInterface[]>,
@@ -159,6 +174,8 @@ export type AgentRow = {
    */
   technicalName: string;
   description: string;
+  /** Keywords to find the agent by (`Agent.getTags()`); empty when none. */
+  tags: string[];
   /**
    * Human-readable model label resolved from the referenced ModelConfig: its
    * display name, else its `spec.model`, else its resource name. `undefined`
@@ -180,6 +197,13 @@ export type AgentRow = {
   harness?: string;
   /** {@link harnessTitle} of that Harness, once it has been read. */
   harnessTitle?: string;
+  /**
+   * That Harness's runtime family, once it has been read: what decides
+   * whether a message may carry images (`imagesUnsupportedReason`).
+   */
+  harnessRuntime?: HarnessRuntime;
+  /** The ModelConfig's `spec.provider` (`Anthropic`, `OpenAI`, `Ollama`, …). */
+  modelProvider?: string;
   skillCount: number;
   /**
    * The git-sourced skills the agent mounts, each as its
@@ -226,7 +250,71 @@ export type AgentRow = {
    * provider, or no serving layer is in view.
    */
   modelServing?: ClientServingSummary;
+  /**
+   * Why no session can start with the agent from this portal, whatever its
+   * readiness: sessions start through agent-manager as the person, and the
+   * installation's muster lists none or runs calls under its shared identity
+   * ({@link agentManagerSessionGate}). `undefined` when nothing stands in the
+   * way, or while that is still being read.
+   */
+  sessionBlocker?: string;
+  /**
+   * Whether that is still being read: the agent is not offered yet, so
+   * nothing is preselected or started that the answer then withdraws.
+   */
+  isSessionPending?: boolean;
+  /**
+   * The tenant the agent belongs to ({@link tenantOf} its namespace):
+   * `platform`, `organization <name>`, or `namespace <name>`.
+   */
+  tenant?: string;
+  /**
+   * Who created the agent ({@link CREATED_BY_ANNOTATION}, the caller's email
+   * agent-manager recorded): for display and the "created by me" filter only.
+   * `undefined` for an agent created before agent-manager recorded it, or
+   * not through agent-manager.
+   */
+  createdBy?: string;
+  /**
+   * The name of the agent's default workspace
+   * ({@link DEFAULT_WORKSPACE_ANNOTATION}): what a new session's workspace
+   * picker presets to when the person has not chosen one with the agent
+   * before. `undefined` for none.
+   */
+  defaultWorkspace?: string;
+  /**
+   * The agent's default toolchains ({@link DEFAULT_TOOLCHAINS_ANNOTATION}):
+   * what a new session mounts unless the person starting it changes them.
+   * `undefined` for none.
+   */
+  defaultToolchains?: ToolchainPick[];
 };
+
+/**
+ * Whether sessions can start on an installation through agent-manager, from
+ * its availability: a blocker with its reason, or pending while the reads are
+ * in flight. A settled `unknown` (the person's muster session there is not
+ * connected yet, or the read failed) blocks nothing: starting then offers
+ * the sign-in, as it always has. Nothing either on a portal without the
+ * muster plugin, where starting reports that itself.
+ */
+export function agentManagerSessionGate(
+  availability: Pick<
+    AgentManagerAvailability,
+    'presenceOf' | 'isLoading' | 'isUnavailable'
+  >,
+  installation: string,
+): Pick<AgentRow, 'sessionBlocker' | 'isSessionPending'> {
+  if (availability.isUnavailable) {
+    return {};
+  }
+  const presence = availability.presenceOf(installation);
+  if (presence === 'unknown') {
+    return availability.isLoading ? { isSessionPending: true } : {};
+  }
+  const sessionBlocker = agentManagerBlocker(presence, installation);
+  return sessionBlocker ? { sessionBlocker } : {};
+}
 
 /**
  * The ModelConfig an agent's `spec.modelConfig` references, among
@@ -251,25 +339,6 @@ export function resolveModelConfig(
 }
 
 /**
- * Resolve an agent's `spec.modelConfig` reference to a
- * human-readable label by joining against the ModelConfigs on the same
- * installation ({@link resolveModelConfig}).
- *
- * Falls back to the raw reference name when the ModelConfig can't be found,
- * and to `undefined` when the agent references no model at all.
- */
-export function resolveModelLabel(
-  agent: Agent,
-  modelConfigs: ModelConfig[],
-): string | undefined {
-  const ref = agent.getModelConfigName();
-  if (!ref) {
-    return undefined;
-  }
-  return modelLabel(resolveModelConfig(agent, modelConfigs)) ?? ref;
-}
-
-/**
  * How a ModelConfig resolves to the serving layer —
  * `useServing().servingStateFor`, partially applied to the installation.
  */
@@ -278,12 +347,16 @@ export type ResolveModelServing = (
 ) => ClientServingState | undefined;
 
 /**
- * What a reader calls the model: the ModelConfig's display name, else the
- * model it configures, else its resource name.
+ * What a reader calls the model: "ChatGPT (your subscription)" for a person's
+ * own ChatGPT login, else the ModelConfig's display name, else the model it
+ * configures, else its resource name.
  */
 function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
   if (!modelConfig) {
     return undefined;
+  }
+  if (modelConfig.isPersonalChatGptLogin()) {
+    return modelConfig.getDisplayName();
   }
   return (
     modelConfig.getDisplayNameAnnotation() ??
@@ -316,6 +389,10 @@ export function toAgentRow(
       candidate.getNamespace() === namespace &&
       candidate.getName() === harnessName,
   );
+  // The named Harness's once read, or the inline one's.
+  const harnessRuntime = harnessName
+    ? harness?.getRuntime()
+    : agent.getInlineHarnessRuntime();
   const modelConfig = resolveModelConfig(agent, modelConfigs);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
@@ -329,6 +406,13 @@ export function toAgentRow(
       pin: skill.pin,
     }));
   const skillIds = gitSkills.map(skill => skill.id);
+  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  const defaultWorkspace = defaultWorkspaceName(
+    agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
+  );
+  const defaultToolchains = defaultToolchainsOf(
+    agent.getAnnotations()?.[DEFAULT_TOOLCHAINS_ANNOTATION],
+  );
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -340,10 +424,15 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
+    tags: agent.getTags(),
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     harness: harnessName,
     ...(harness && { harnessTitle: harnessTitle(harnessChoiceOf(harness)) }),
+    ...(harnessRuntime && { harnessRuntime }),
+    ...(modelConfig?.getProvider() && {
+      modelProvider: modelConfig.getProvider(),
+    }),
     skillCount: agent.getSkillCount(),
     ...(skillIds.length > 0 ? { skillIds, skillPins } : {}),
     ...(modelConfigName
@@ -351,6 +440,10 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
+    tenant: tenantOf(namespace),
+    ...(createdBy ? { createdBy } : {}),
+    ...(defaultWorkspace ? { defaultWorkspace } : {}),
+    ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers
@@ -372,5 +465,101 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
       rank(a.installation) - rank(b.installation) ||
       a.installation.localeCompare(b.installation) ||
       a.name.localeCompare(b.name),
+  );
+}
+
+/**
+ * The environments in scope that answered without kagent, so no agent can be
+ * listed or created there -- `installationsWithoutComponent`, the rule every
+ * tab says "kagent is not installed on <environment>" by.
+ */
+export type KagentMissing = {
+  /** The environments in scope, each answered without kagent. */
+  installations: string[];
+  /** Another environment runs kagent, so the Environment select is a way out. */
+  canChooseAnother: boolean;
+};
+
+/**
+ * {@link KagentMissing} for the scope, or `undefined` when kagent is not known
+ * to be missing from it (see `installationsWithoutComponent`).
+ */
+export function selectKagentMissing(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+): KagentMissing | undefined {
+  const installations = installationsWithoutComponent(entries, scope, 'kagent');
+  if (!installations) {
+    return undefined;
+  }
+  return {
+    installations,
+    canChooseAnother: installationsWithComponent(entries, 'kagent').some(
+      installation => !installations.includes(installation),
+    ),
+  };
+}
+
+/**
+ * What every page says when no agent is read because the environments that
+ * run kagent are switched off in Cluster access
+ * (`installationsSwitchedOffWithComponent`).
+ */
+export function describeKagentSwitchedOff(installations: string[]): string {
+  return installations.length === 1
+    ? `${installations[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
+    : `${joinNames(
+        installations,
+      )} run kagent but are switched off in Cluster access, so their agents are not read.`;
+}
+
+/**
+ * The pinned environment, when the inventory has answered and knows no
+ * environment by that name (a stale `?installation=` deep link): nothing to
+ * ask, and nothing else can say why nothing is listed.
+ */
+export function selectUnknownPin(
+  inventory: Pick<InstallationInventory, 'entries' | 'isLoading'>,
+  scope: InstallationScope,
+): string | undefined {
+  if (
+    scope === ALL_INSTALLATIONS ||
+    inventory.isLoading ||
+    inventory.entries.length === 0 ||
+    inventory.entries.some(entry => entry.installation === scope)
+  ) {
+    return undefined;
+  }
+  return scope;
+}
+
+/**
+ * The environment that could not be asked whether it runs kagent, as the
+ * agents lists explain it: the pinned one, or the home one under "All
+ * environments" -- or, when nothing is listed and no environment in scope
+ * runs kagent within reach (`listsNothing`), any environment in scope not
+ * switched off, since that failure is then the only explanation there is.
+ * `undefined` for an unknown pin, which is its own explanation.
+ */
+export function selectAgentsInventoryFailure(
+  inventory: Pick<InstallationInventory, 'entries' | 'home'>,
+  scope: InstallationScope,
+  {
+    unknownPin,
+    listsNothing,
+  }: { unknownPin: string | undefined; listsNothing: boolean },
+): InventoryFailure | undefined {
+  if (unknownPin) {
+    return undefined;
+  }
+  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
+  return (
+    selectInventoryFailure(inventory, pinned) ??
+    (listsNothing && pinned === null
+      ? inventory.entries
+          .filter(entry => !entry.muted)
+          .map(classifyInventoryFailure)
+          .find(failure => failure !== undefined)
+      : undefined)
   );
 }

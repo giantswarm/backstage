@@ -5,6 +5,7 @@ import express from 'express';
 import request from 'supertest';
 import {
   EndpointProbeResult,
+  MusterAuthRequiredError,
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
@@ -147,21 +148,6 @@ describe('createRouter', () => {
     expect(callTool).toHaveBeenCalledWith('core_workflow_list', {}, {});
   });
 
-  it('proxies workflow detail by name', async () => {
-    const payload = { workflow: { name: 'wf-a', steps: [] } };
-    callTool.mockResolvedValue(payload);
-
-    const response = await request(app).get('/workflows/wf-a');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(payload);
-    expect(callTool).toHaveBeenCalledWith(
-      'core_workflow_get',
-      { name: 'wf-a' },
-      {},
-    );
-  });
-
   it('proxies execution list with filters', async () => {
     const payload = { executions: [], total: 0 };
     callTool.mockResolvedValue(payload);
@@ -241,8 +227,19 @@ describe('createRouter', () => {
   });
 
   it.each([
-    ['a window other than the month', '/usage?window=week'],
-    ['both hours and a window', '/usage?hours=24&window=month'],
+    ['too many hours', '/usage?hours=2161'],
+    // Gone: a stale client must not read 24 hours as the month.
+    ['the month window', '/usage?window=month'],
+    ['a server that is not a resource name', '/usage?server=a%22b'],
+    ['an empty server', '/usage?server='],
+    ['a tool with a control character', '/usage?tool=a%0Ab'],
+    ['an overlong tool', `/usage?tool=${'t'.repeat(513)}`],
+    ['an empty tool', '/usage?tool='],
+    ['two tools', '/usage?tool=a&tool=b'],
+    [
+      'more servers than a read may name',
+      `/usage?${Array.from({ length: 257 }, (_, i) => `server=s${i}`).join('&')}`,
+    ],
   ])('rejects usage with %s', async (_, path) => {
     const response = await request(app).get(path);
 
@@ -251,20 +248,82 @@ describe('createRouter', () => {
   });
 
   it.each([
-    ['/usage?window=month', 'month'],
     ['/usage?hours=72', 72],
     ['/usage', 24],
-  ])('reads %s as the range %s', async (path, range) => {
+  ])(
+    'reads %s as the last %s hours of every connector',
+    async (path, hours) => {
+      mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+      const response = await request(app).get(path);
+
+      expect(response.status).toBe(200);
+      expect(mockGetMcpUsage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        hours,
+        [],
+        undefined,
+      );
+    },
+  );
+
+  it('takes any tool name muster may expose, left to the escaping', async () => {
     mockGetMcpUsage.mockResolvedValueOnce({ available: false });
 
-    const response = await request(app).get(path);
+    const response = await request(app).get(
+      `/usage?tool=${encodeURIComponent('x_legacy_get:item@v1 "a"}')}`,
+    );
 
     expect(response.status).toBe(200);
     expect(mockGetMcpUsage).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      range,
+      24,
+      [],
+      'x_legacy_get:item@v1 "a"}',
+    );
+  });
+
+  it('narrows usage to one tool of a connector', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      '/usage?hours=720&server=kagi&tool=x_kagi_search',
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      ['kagi'],
+      'x_kagi_search',
+    );
+  });
+
+  it("narrows usage to every server named, past the query parser's 20 repeats", async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+    const servers = Array.from(
+      { length: 25 },
+      (_, i) => `mc${i}-mcp-kubernetes`,
+    );
+
+    const response = await request(app).get(
+      `/usage?hours=720&${servers.map(name => `server=${name}`).join('&')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      servers,
+      undefined,
     );
   });
 
@@ -923,6 +982,38 @@ describe('createRouter', () => {
       expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
+    it("starts the grant of a provider App with muster's app argument", async () => {
+      callToolWithStructured.mockResolvedValue({
+        text: "Authentication required for 'github'.",
+        structuredContent: {
+          app: 'github',
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+        },
+      });
+
+      const response = await login({ app: 'github' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'auth_required',
+        authUrl:
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+      });
+      expect(callToolWithStructured).toHaveBeenCalledWith(
+        'core_auth_login',
+        { app: 'github' },
+        { authToken: TOKEN },
+      );
+    });
+
+    it('refuses a body naming both a server and an app', async () => {
+      const response = await login({ server: 'pro', app: 'github' });
+
+      expect(response.status).toBe(400);
+      expect(callToolWithStructured).not.toHaveBeenCalled();
+    });
+
     it('fails with 401 when the user token is missing', async () => {
       const response = await request(authApp)
         .post('/auth/login?installation=gazelle')
@@ -1040,8 +1131,15 @@ describe('createRouter', () => {
     });
   });
 
+  // An installation that forwards the person's token: every tool runs as them.
+  const personApp = () =>
+    buildMultiApp([
+      { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+    ]);
+  const asPerson = { authToken: 'user-token' };
+
   describe('/call', () => {
-    it('executes any tool unconditionally', async () => {
+    it('executes a core tool on an installation without per-user auth', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -1052,7 +1150,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith('core_service_list', {}, {});
     });
 
-    it('executes a mutating-looking tool without any gate', async () => {
+    it('executes a mutating-looking core tool without any gate', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -1074,6 +1172,57 @@ describe('createRouter', () => {
       expect(callTool).not.toHaveBeenCalled();
     });
 
+    /**
+     * Without an authProvider muster would run the call under its own
+     * identity, shared by every portal user. Only muster's core tools run
+     * there: an aggregated server's tool under any name, a workflow whose
+     * steps call one, a meta-tool wrapping another call and per-user auth
+     * are refused before muster is called.
+     */
+    it.each([
+      'x_agent-manager_start_session',
+      'x_agent-manager_create_agent',
+      'x_agent-manager_update_agent',
+      'x_agent-manager_delete_agent',
+      'x_model-manager_load_model',
+      'x_cluster-manager_delete_node_pool',
+      'x_agents_create_agent',
+      'workflow_start-agent-session',
+      'call_tool',
+      'core_auth_login',
+    ])('refuses %s on an installation without per-user auth', async name => {
+      const response = await request(app)
+        .post('/call')
+        .send({
+          name,
+          arguments: {
+            name: 'x_agent-manager_delete_agent',
+            arguments: {},
+          },
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain('without an authProvider');
+      expect(response.body.error.message).toContain(name);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it("runs an aggregated server's tool with the person's token", async () => {
+      callTool.mockResolvedValue({ session: { id: 's-1' } });
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_agent-manager_start_session', arguments: {} });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_start_session',
+        {},
+        asPerson,
+      );
+    });
+
     // cluster-manager's delete_node_pool answers its structured refusal as a
     // second text block; gs-node keeps it as the error's `details`, and the
     // error middleware serializes it next to the message for the frontend.
@@ -1084,8 +1233,9 @@ describe('createRouter', () => {
         ]),
       );
 
-      const response = await request(app)
+      const response = await request(await personApp())
         .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
         .send({ name: 'x_cluster-manager_delete_node_pool', arguments: {} });
 
       expect(response.status).toBe(500);
@@ -1097,12 +1247,217 @@ describe('createRouter', () => {
     });
   });
 
+  describe("/call of muster's connector tools", () => {
+    const SECRET = 'hubspot-s3cret';
+    const refusal =
+      'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
+    const create = async () =>
+      request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'core_mcpserver_create',
+          arguments: {
+            name: 'jira',
+            clientCredentials: {
+              clientId: 'hubspot-client',
+              clientSecret: SECRET,
+            },
+          },
+        });
+
+    // A refusal is the person's answer, not the portal's fault: below the
+    // 500 at which the error middleware logs to Sentry.
+    it("answers muster's refusal as a 422 with its message, never the arguments", async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError(refusal, ['{"missing":"create secrets"}']),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterToolError',
+        message: refusal,
+        details: ['{"missing":"create secrets"}'],
+      });
+      expect(JSON.stringify(response.body)).not.toContain(SECRET);
+    });
+
+    // MiddlewareFactory.error() logs at error level, which the root logger
+    // ships to Sentry, only from 500 on: a refusal stays out, an outage not.
+    it.each([
+      [new MusterToolError(refusal), 422, false],
+      [new Error('fetch failed'), 500, true],
+    ])(
+      'logs %s at error level only for a 5xx',
+      async (error, status, loggedAsError) => {
+        const logger = mockServices.logger.mock();
+        jest.mocked(logger.child).mockReturnValue(logger);
+        const config = mockServices.rootConfig({
+          data: {
+            muster: {
+              installations: [
+                { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+              ],
+            },
+          },
+        });
+        const router = await createRouter({
+          logger,
+          config,
+          client: mockClient,
+          reachability: reachableEverywhere(),
+        });
+        const loggedApp = expressApp();
+        loggedApp.use(router);
+        loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
+        callTool.mockRejectedValue(error);
+
+        const response = await request(loggedApp)
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({
+            name: 'core_mcpserver_create',
+            arguments: { clientCredentials: { clientSecret: SECRET } },
+          });
+
+        expect(response.status).toBe(status);
+        expect(jest.mocked(logger.error).mock.calls.length > 0).toBe(
+          loggedAsError,
+        );
+        expect(
+          JSON.stringify(jest.mocked(logger.error).mock.calls),
+        ).not.toContain(SECRET);
+      },
+    );
+
+    it('keeps the sign-in muster asks for a 401', async () => {
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError('jira', 'https://idp/authorize', [
+          "auth_required: server 'jira' requires authentication",
+        ]),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('server_sign_in_required');
+    });
+
+    it("keeps muster's expired-token answer a 401", async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError(
+          'token has expired for muster, re-authenticate to refresh: token is expired',
+        ),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+    });
+
+    // muster's refusals, as its connector write tools word them.
+    it.each([
+      'Permission denied: your user may not create MCPServer "jira" (mcpservers) in namespace "muster". Ask a platform admin to grant you the mcpserver-editor role. API server response: forbidden',
+      'Invalid MCP server definition: url is required',
+      'Validation failed: auth.authorizationServer needs an issuer',
+      "MCP server 'jira' already exists",
+      "Cannot create MCP server 'jira': server 'hubspot' pins issuer https://app.hubspot.com with another client. One issuer, one client: use an existing Secret with that server's client, or another issuer",
+      "Cannot update MCP server 'jira': its stored client belongs to the previous issuer and endpoints of auth.authorizationServer; re-enter it with clientCredentials",
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster".',
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: Secret "jira-oauth-client-ab12c" already exists in namespace "muster"; retry to generate another name',
+      "Failed to create MCP server: mcpservers.muster.giantswarm.io \"jira\" is forbidden: ValidatingAdmissionPolicy 'muster-mcpserver-secret-references' with binding 'muster-mcpserver-secret-references' denied request: the writer of an MCPServer may name only Secrets they may get",
+    ])('answers the refusal %j as a 422', async message => {
+      callTool.mockRejectedValue(new MusterToolError(message));
+
+      const response = await create();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.message).toBe(message);
+    });
+
+    // muster's own failures are tool errors too: they stay 500 and reach
+    // Sentry rather than read as the person's mistake.
+    it.each([
+      'Failed to create MCP server: etcdserver: request timed out',
+      'Failed to update MCP server: Internal error occurred: failed calling webhook "mcpservers.muster.giantswarm.io": connection refused',
+      'Failed to get existing MCP server: the server is currently unable to handle the request',
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: failed to create Secret "jira-oauth-client-ab12c" in namespace "muster": connection refused',
+      "Cannot store the client credentials of MCP server 'jira': it has no UID to own the Secret",
+      'Cannot store the client credentials of MCP server \'jira\': Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster". Removing the server failed too, so it is left behind without its client: delete MCP server \'jira\' (connection refused)',
+      'unknown args: [clientCredentials]. Allowed args: [name url]',
+    ])("leaves muster's failure %j a 500", async message => {
+      callTool.mockRejectedValue(new MusterToolError(message));
+
+      const response = await create();
+
+      expect(response.status).toBe(500);
+    });
+
+    it('keeps the stack of the tool error it answers 422', async () => {
+      const error = new MusterToolError(refusal);
+      callTool.mockRejectedValue(error);
+
+      const response = await create();
+
+      // The 422 is set on muster's own error, not on a copy without its stack.
+      expect(response.status).toBe(422);
+      expect((error as { statusCode?: number }).statusCode).toBe(422);
+    });
+
+    it.each(['core_mcpserver_update', 'core_mcpserver_validate'])(
+      "answers %s's refusal as a 422 too",
+      async name => {
+        callTool.mockRejectedValue(new MusterToolError(refusal));
+
+        const response = await request(await personApp())
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({ name, arguments: { name: 'jira' } });
+
+        expect(response.status).toBe(422);
+        expect(response.body.error.message).toBe(refusal);
+      },
+    );
+
+    it.each([
+      'core_mcpserver_get',
+      'core_mcpserver_list',
+      'core_mcpserver_detect',
+      'core_mcpserver_delete',
+    ])("leaves %s's tool error a 500", async name => {
+      callTool.mockRejectedValue(new MusterToolError('not found'));
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name, arguments: { name: 'jira' } });
+
+      expect(response.status).toBe(500);
+    });
+
+    it('leaves an outage a 5xx', async () => {
+      callTool.mockRejectedValue(new Error('fetch failed'));
+
+      const response = await create();
+
+      expect(response.status).toBe(500);
+    });
+  });
+
   describe('/call/progress', () => {
     const lines = (text: string) =>
       text
         .trim()
         .split('\n')
         .map(line => JSON.parse(line));
+    const sweep = async (body: object) =>
+      request(await personApp())
+        .post('/call/progress')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send(body);
 
     it("streams the tool's progress, then its result, as lines", async () => {
       callToolWithProgress.mockImplementation(async (_name, _args, options) => {
@@ -1111,9 +1466,10 @@ describe('createRouter', () => {
         return { swept: 2 };
       });
 
-      const response = await request(app)
-        .post('/call/progress')
-        .send({ name: 'x_marge_sweep', arguments: { team: 'honeybadger' } });
+      const response = await sweep({
+        name: 'x_marge_sweep',
+        arguments: { team: 'honeybadger' },
+      });
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toMatch(/application\/x-ndjson/);
@@ -1125,7 +1481,10 @@ describe('createRouter', () => {
       expect(callToolWithProgress).toHaveBeenCalledWith(
         'x_marge_sweep',
         { team: 'honeybadger' },
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        expect.objectContaining({
+          ...asPerson,
+          signal: expect.any(AbortSignal),
+        }),
       );
     });
 
@@ -1134,9 +1493,7 @@ describe('createRouter', () => {
         new MusterToolError('no team file for "x"'),
       );
 
-      const response = await request(app)
-        .post('/call/progress')
-        .send({ name: 'x_marge_sweep', arguments: {} });
+      const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toMatchObject({
@@ -1151,9 +1508,7 @@ describe('createRouter', () => {
         throw new MusterToolError('refused', ['{"why":"x"}']);
       });
 
-      const response = await request(app)
-        .post('/call/progress')
-        .send({ name: 'x_marge_sweep', arguments: {} });
+      const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
 
       expect(response.status).toBe(200);
       expect(lines(response.text)).toEqual([
@@ -1177,6 +1532,21 @@ describe('createRouter', () => {
       expect(response.status).toBe(400);
       expect(callToolWithProgress).not.toHaveBeenCalled();
     });
+
+    it.each(['x_agent-manager_start_session', 'workflow_sweep', 'call_tool'])(
+      'refuses %s on an installation without per-user auth',
+      async name => {
+        const response = await request(app)
+          .post('/call/progress')
+          .send({ name, arguments: {} });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.message).toContain(
+          'without an authProvider',
+        );
+        expect(callToolWithProgress).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('computes workflow stats from executions', async () => {
@@ -1322,6 +1692,179 @@ describe('createRouter', () => {
       expect(response.status).toBe(401);
       expect(response.body.error.message).toContain('mcp-muster');
       expect(callTool).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * giantswarm/giantswarm#38779: a 401 with an empty body left the page and
+   * the logs guessing. Every 401 now names its reason, which the frontend
+   * picks its action from, and is logged with it -- never with the token.
+   */
+  describe('every 401 says why', () => {
+    /** An unsigned JWT that expires at `exp` (seconds since the epoch). */
+    function jwt(exp: number): string {
+      const b64url = (value: object) =>
+        Buffer.from(JSON.stringify(value)).toString('base64url');
+      return `${b64url({ alg: 'RS256' })}.${b64url({
+        sub: 'person-subject',
+        exp: Math.floor(exp),
+      })}.sig`;
+    }
+    const LIVE = jwt(Date.now() / 1000 + 600);
+    const EXPIRED = jwt(Date.now() / 1000 - 60);
+
+    async function buildCallApp() {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({
+        data: {
+          muster: {
+            installations: [
+              {
+                name: 'gazelle',
+                url: 'https://muster.gazelle.example.io/mcp',
+                authProvider: 'mcp-muster',
+              },
+            ],
+          },
+        },
+      });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      const callApp = expressApp();
+      callApp.use(router);
+      callApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { callApp, logger };
+    }
+
+    const call = (callApp: express.Express, token?: string) => {
+      const pending = request(callApp)
+        .post('/call?installation=gazelle')
+        .send({ name: 'x_cluster-manager_list_clusters', arguments: {} });
+      return token ? pending.set(MUSTER_AUTH_HEADER, token) : pending;
+    };
+
+    /** Everything the 401 put in the log, as one string. */
+    const logged = (logger: ReturnType<typeof mockServices.logger.mock>) =>
+      JSON.stringify(
+        [logger.info, logger.warn, logger.error].flatMap(fn => fn.mock.calls),
+      );
+
+    it('says a server needs the person sign-in, and names the server', async () => {
+      const { callApp, logger } = await buildCallApp();
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError(
+          'cluster-manager',
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+          ["auth_required: server 'cluster-manager' requires authentication"],
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({
+        name: 'MusterUnauthorizedError',
+        message:
+          "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
+        reason: 'server_sign_in_required',
+        server: 'cluster-manager',
+      });
+      expect(logger.info).toHaveBeenCalledWith('Muster request answered 401', {
+        installation: 'gazelle',
+        route: '/call',
+        reason: 'server_sign_in_required',
+        server: 'cluster-manager',
+      });
+      // The sign-in link is the person's: the page asks for its own.
+      expect(JSON.stringify(response.body)).not.toContain('state=abc');
+    });
+
+    it('says the token is missing', async () => {
+      const { callApp, logger } = await buildCallApp();
+
+      const response = await call(callApp);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_missing');
+      expect(response.body.error.message).toContain(
+        "installation 'gazelle' requires a user token",
+      );
+      expect(callTool).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        'Muster request answered 401',
+        expect.objectContaining({ reason: 'token_missing' }),
+      );
+    });
+
+    it('says the token expired, without asking muster', async () => {
+      const { callApp, logger } = await buildCallApp();
+
+      const response = await call(callApp, EXPIRED);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+      expect(callTool).not.toHaveBeenCalled();
+      expect(logged(logger)).not.toContain(EXPIRED);
+    });
+
+    it("says muster's expired-token answer is an expired token", async () => {
+      const { callApp } = await buildCallApp();
+      callTool.mockRejectedValue(
+        new MusterToolError(
+          'token has expired for cluster-manager, re-authenticate to refresh: token is expired',
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+    });
+
+    it('says muster refused a token that has not expired', async () => {
+      const { callApp, logger } = await buildCallApp();
+      callTool.mockRejectedValue(
+        Object.assign(
+          new Error(
+            'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): invalid_token for person@example.com',
+          ),
+          { name: 'MCPClientError', statusCode: 401 },
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_rejected');
+      // muster's own text may name the person: it stays out of both.
+      expect(JSON.stringify(response.body)).not.toContain('person@');
+      expect(logged(logger)).not.toContain('person@');
+      expect(logged(logger)).not.toContain(LIVE);
+    });
+
+    it('says why on the streamed call too, before its first line', async () => {
+      const { callApp } = await buildCallApp();
+
+      const response = await request(callApp)
+        .post('/call/progress?installation=gazelle')
+        .send({ name: 'x_cluster-manager_create_node_pool', arguments: {} });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_missing');
+    });
+
+    it('leaves every other failure to the error middleware', async () => {
+      const { callApp } = await buildCallApp();
+      callTool.mockRejectedValue(new MusterToolError('node pool not found'));
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.reason).toBeUndefined();
     });
   });
 });

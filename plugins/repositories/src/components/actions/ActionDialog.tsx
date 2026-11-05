@@ -2,14 +2,13 @@ import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
   Flex,
   Text,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import { BusyDialog } from '@giantswarm/backstage-plugin-ui-react';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 
 /** The manager's answer to a write it does not accept, shown as its own. */
@@ -128,76 +127,84 @@ export function ActionDialog<TPlan, TDone>({
   };
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      {...dialogDismissLock(isWriting, open => {
+      isBusy={isWriting}
+      onOpenChange={open => {
         if (!open) {
           onClose();
         }
-      })}
+      }}
       width="min(90vw, 860px)"
     >
-      <form onSubmit={onSubmit} style={FORM_STYLE} aria-label={title}>
-        <DialogHeader>{title}</DialogHeader>
-        <DialogBody>
-          <Flex direction="column" gap="4">
-            {intro && (
-              <Text variant="body-small" color="secondary">
-                {intro}
-              </Text>
-            )}
-            {fields !== undefined && !plan && !done && (
-              <Flex direction="column" gap="3">
-                {fields}
+      {close => (
+        <>
+          <form onSubmit={onSubmit} style={FORM_STYLE} aria-label={title}>
+            <DialogHeader>{title}</DialogHeader>
+            <DialogBody>
+              <Flex direction="column" gap="4">
+                {intro && (
+                  <Text variant="body-small" color="secondary">
+                    {intro}
+                  </Text>
+                )}
+                {fields !== undefined && !plan && !done && (
+                  <Flex direction="column" gap="3">
+                    {fields}
+                  </Flex>
+                )}
+                {reviewsOnOpen && review.isPending && (
+                  <Text variant="body-small" color="secondary">
+                    Asking the manager what it would change…
+                  </Text>
+                )}
+                {plan && !done && renderPlan?.(plan)}
+                {done && renderDone(done)}
+                {failure && (
+                  <RepositoriesErrorAlert
+                    title={REFUSED_TITLE}
+                    error={failure}
+                  />
+                )}
               </Flex>
-            )}
-            {reviewsOnOpen && review.isPending && (
-              <Text variant="body-small" color="secondary">
-                Asking the manager what it would change…
-              </Text>
-            )}
-            {plan && !done && renderPlan?.(plan)}
-            {done && renderDone(done)}
-            {failure && (
-              <RepositoriesErrorAlert title={REFUSED_TITLE} error={failure} />
-            )}
-          </Flex>
-        </DialogBody>
-        <DialogFooter>
-          <Flex gap="2" justify="end">
-            <Button
-              variant="secondary"
-              onPress={onClose}
-              isDisabled={isWriting}
-            >
-              {done ? 'Close' : 'Cancel'}
-            </Button>
-            {!done && awaitsPlan && !reviewsOnOpen && (
-              <Button
-                type="submit"
-                variant="primary"
-                isDisabled={!ready || busy}
-              >
-                {review.isPending ? 'Rendering…' : 'Review'}
-              </Button>
-            )}
-            {!done && dryRun && plan && !reviewsOnOpen && (
-              <Button variant="secondary" onPress={back} isDisabled={busy}>
-                Back
-              </Button>
-            )}
-            {!done && !awaitsPlan && (
-              <Button
-                type="submit"
-                variant="primary"
-                isDisabled={!ready || busy}
-              >
-                {write.isPending ? 'Working…' : commitText}
-              </Button>
-            )}
-          </Flex>
-        </DialogFooter>
-      </form>
-    </Dialog>
+            </DialogBody>
+            <DialogFooter>
+              <Flex gap="2" justify="end">
+                <Button
+                  variant="secondary"
+                  onPress={close}
+                  isDisabled={isWriting}
+                >
+                  {done ? 'Close' : 'Cancel'}
+                </Button>
+                {!done && awaitsPlan && !reviewsOnOpen && (
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    isDisabled={!ready || busy}
+                  >
+                    {review.isPending ? 'Rendering…' : 'Review'}
+                  </Button>
+                )}
+                {!done && dryRun && plan && !reviewsOnOpen && (
+                  <Button variant="secondary" onPress={back} isDisabled={busy}>
+                    Back
+                  </Button>
+                )}
+                {!done && !awaitsPlan && (
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    isDisabled={!ready || busy}
+                  >
+                    {write.isPending ? 'Working…' : commitText}
+                  </Button>
+                )}
+              </Flex>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </BusyDialog>
   );
 }

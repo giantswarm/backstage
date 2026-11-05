@@ -30,17 +30,15 @@ const WORKSPACE: Workspace = {
       exclude: ['legacy'],
     },
   ],
-  sync: { schedule: 'nightly' },
   sizing: { headroom: '8Gi', minimum: '32Gi' },
   resourceVersion: '4711',
   createdAt: '2026-10-01T08:00:00Z',
   lastSync: {
     time: '2026-10-12T02:00:00Z',
     result: 'Succeeded',
-    trigger: 'schedule',
+    trigger: 'change',
     job: 'platform-sync-29341',
   },
-  nextSync: '2026-10-13T02:00:00Z',
   repositories: 12,
   volume: {
     claimName: 'workspace-platform',
@@ -89,16 +87,24 @@ describe('WorkspaceManagerClient', () => {
       (c: WorkspaceManagerClient) => c.listWorkspaces('acme'),
       'x_workspace-manager_list_workspaces',
       { organization: 'acme' },
+      { workspaces: [WORKSPACE], organizations: ['acme', 'beta'] },
+      { workspaces: [WORKSPACE], organizations: ['acme', 'beta'] },
+    ],
+    [
+      'listWorkspaces from a manager that names no Organizations',
+      (c: WorkspaceManagerClient) => c.listWorkspaces(),
+      'x_workspace-manager_list_workspaces',
+      {},
       { workspaces: [WORKSPACE] },
-      [WORKSPACE],
+      { workspaces: [WORKSPACE], organizations: ['acme'] },
     ],
     [
       'listWorkspaces of every Organization',
       (c: WorkspaceManagerClient) => c.listWorkspaces(),
       'x_workspace-manager_list_workspaces',
       {},
-      { workspaces: [] },
-      [],
+      { workspaces: [], organizations: ['acme'] },
+      { workspaces: [], organizations: ['acme'] },
     ],
     [
       'getWorkspace',
@@ -115,7 +121,6 @@ describe('WorkspaceManagerClient', () => {
           name: 'platform',
           organization: 'acme',
           sources: WORKSPACE.sources,
-          sync: { schedule: 'custom', weekdays: ['monday'], hour: 3 },
           sizing: { minimum: '32Gi' },
         }),
       'x_workspace-manager_create_workspace',
@@ -123,7 +128,6 @@ describe('WorkspaceManagerClient', () => {
         name: 'platform',
         organization: 'acme',
         sources: WORKSPACE.sources,
-        sync: { schedule: 'custom', weekdays: ['monday'], hour: 3 },
         sizing: { minimum: '32Gi' },
       },
       WORKSPACE,
@@ -263,8 +267,10 @@ describe('WorkspaceManagerClient', () => {
             name: 'github',
             kind: 'github',
             connected: false,
-            connectURL: 'https://workspaces.example.com/connect/github',
+            signIn:
+              'muster holds no grant for provider github: the workspace-manager is pinned to the App of provider gitlab only',
           },
+          { name: 'gitlab', kind: 'gitlab', connected: true },
         ],
       },
       [
@@ -272,31 +278,11 @@ describe('WorkspaceManagerClient', () => {
           name: 'github',
           kind: 'github',
           connected: false,
-          connectURL: 'https://workspaces.example.com/connect/github',
+          signIn:
+            'muster holds no grant for provider github: the workspace-manager is pinned to the App of provider gitlab only',
         },
+        { name: 'gitlab', kind: 'gitlab', connected: true },
       ],
-    ],
-    [
-      'connectProvider',
-      (c: WorkspaceManagerClient) => c.connectProvider('github'),
-      'x_workspace-manager_connect_provider',
-      { provider: 'github' },
-      {
-        provider: 'github',
-        authorizationURL: 'https://github.com/login/oauth/authorize?state=s',
-        expiresAt: '2026-10-12T10:10:00Z',
-      },
-      expect.objectContaining({
-        authorizationURL: 'https://github.com/login/oauth/authorize?state=s',
-      }),
-    ],
-    [
-      'disconnectProvider',
-      (c: WorkspaceManagerClient) => c.disconnectProvider('github'),
-      'x_workspace-manager_disconnect_provider',
-      { provider: 'github' },
-      { provider: 'github', revoked: true },
-      { provider: 'github', revoked: true },
     ],
   ])(
     '%s calls its tool on the installation and parses the answer',
@@ -313,7 +299,10 @@ describe('WorkspaceManagerClient', () => {
     const { api } = makeMusterApi(JSON.stringify({ workspaces: [WORKSPACE] }));
     const client = new WorkspaceManagerClient(api, 'lab');
 
-    await expect(client.listWorkspaces()).resolves.toEqual([WORKSPACE]);
+    await expect(client.listWorkspaces()).resolves.toEqual({
+      workspaces: [WORKSPACE],
+      organizations: ['acme'],
+    });
   });
 
   it('fails on prose where the data was expected', async () => {

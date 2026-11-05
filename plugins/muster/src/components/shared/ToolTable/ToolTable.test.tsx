@@ -43,21 +43,23 @@ describe('ToolTable', () => {
       staticItem('write', { annotations: { destructiveHint: true } }),
     ]);
 
-    expect(screen.getByText('read-only')).toBeInTheDocument();
-    expect(screen.getByText('destructive')).toBeInTheDocument();
+    // The effect vocabulary every tool list uses, not the hints' own words.
+    expect(screen.getByText('Reads')).toBeInTheDocument();
+    expect(screen.getByText('Changes things')).toBeInTheDocument();
+    expect(screen.queryByText(/destructive/i)).not.toBeInTheDocument();
   });
 
   // A server that sends both hints means read-only: the MCP spec defines
   // `destructiveHint` only for tools that are not read-only.
-  it('does not call a read-only tool destructive', () => {
+  it('does not say a read-only tool changes things', () => {
     renderTable([
       staticItem('both', {
         annotations: { readOnlyHint: true, destructiveHint: true },
       }),
     ]);
 
-    expect(screen.getByText('read-only')).toBeInTheDocument();
-    expect(screen.queryByText('destructive')).not.toBeInTheDocument();
+    expect(screen.getByText('Reads')).toBeInTheDocument();
+    expect(screen.queryByText('Changes things')).not.toBeInTheDocument();
   });
 
   // The marker column exists only when a row can fill it, so an unannotated

@@ -3,6 +3,7 @@ import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { parseFrontmatter } from './frontmatter';
 import { assignSkillFiles, SkillFile, SkillFileList } from './skillFiles';
+import { DiscoveredPlugin, pluginsOf } from './discoverPlugins';
 
 /**
  * A skill discovered in a GitHub repository. Each `SKILL.md` file defines one
@@ -15,6 +16,11 @@ export interface DiscoveredSkill {
   name: string;
   /** Frontmatter `description` (empty string when absent). */
   description: string;
+  /**
+   * Frontmatter `metadata.tags`, a comma-joined string, parsed (see
+   * `skillTagsOf`): valid tags only, empty when absent.
+   */
+  tags: string[];
   /** Canonical repository URL the skill lives in. */
   repoUrl: string;
   /** Subdirectory within the repo that is the skill root; '' at repo root. */
@@ -50,6 +56,12 @@ export interface DiscoveredSkill {
  */
 export interface DiscoverAgentSkillsResult {
   skills: DiscoveredSkill[];
+  /**
+   * The plugins in the same tree (see `pluginsOf`), at the same commit. An
+   * Agent Plugins package's skills are in `skills` too: each can also be
+   * mounted on its own.
+   */
+  plugins?: DiscoveredPlugin[];
   ref: string;
   commit: string;
   truncated: boolean;
@@ -469,14 +481,20 @@ export async function discoverAgentSkills(options: {
 
   let skillDirs: string[];
   let files: Map<string, SkillFileList>;
+  // The tree's file paths, for the plugins; undefined when the previous
+  // snapshot's plugins are reused.
+  let treePaths: string[] | undefined;
   let treeTruncated = false;
-  if (unchanged && previous.files) {
-    // The same commit: the same tree, so the same skills and files.
+  if (unchanged && previous.files && previous.plugins) {
+    // The same commit: the same tree, so the same skills, files and plugins.
     skillDirs = previous.skills.map(s => s.path);
     files = previous.files;
   } else {
     const tree = await readGitHubTree(owner, repo, commit, token, signal);
     ({ skillDirs, files } = skillFilesFromTree(tree.entries, tree.truncated));
+    treePaths = tree.entries
+      .filter(entry => entry.type === 'blob')
+      .map(entry => entry.path);
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing.
     treeTruncated = tree.truncated;
@@ -533,15 +551,16 @@ export async function discoverAgentSkills(options: {
       const known = previousByDir.get(dir);
       if (read === undefined && known) {
         // Reused from the snapshot at this commit.
-        return { ...known, ...base };
+        return { ...known, tags: known.tags ?? [], ...base };
       }
       if (read?.status === 'fulfilled') {
         contents.set(dir, read.value);
-        const { name, description } = parseFrontmatter(read.value);
+        const { name, description, tags } = parseFrontmatter(read.value);
         return {
           ...base,
           name: name?.trim() || fallbackName,
           description: description?.trim() ?? '',
+          tags,
           contentReadable: true,
         };
       }
@@ -549,6 +568,7 @@ export async function discoverAgentSkills(options: {
         ...base,
         name: known?.name ?? fallbackName,
         description: known?.description ?? '',
+        tags: known?.tags ?? [],
         contentReadable: false,
       };
     })
@@ -557,8 +577,18 @@ export async function discoverAgentSkills(options: {
       (a, b) => a.path.localeCompare(b.path) || a.name.localeCompare(b.name),
     );
 
+  const plugins = treePaths
+    ? pluginsOf(treePaths, skills, {
+        repoUrl: canonicalRepoUrl,
+        ref: branch,
+        commit,
+        repoName: repo,
+      })
+    : (previous?.plugins ?? []);
+
   return {
     skills,
+    plugins,
     ref: branch,
     commit,
     truncated: treeTruncated,

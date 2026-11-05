@@ -1,6 +1,6 @@
 {
   "name": "@giantswarm/backstage-plugin-gs-react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "license": "Apache-2.0",
   "description": "Web library shared by the Giant Swarm frontend plugins: the configuration the signed-in portal reads",
   "main": "src/index.ts",
@@ -32,7 +32,8 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/config": "backstage:^"
+    "@backstage/config": "backstage:^",
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
   },
   "peerDependencies": {
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"

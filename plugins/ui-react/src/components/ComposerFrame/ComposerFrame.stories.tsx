@@ -143,3 +143,21 @@ export const Disabled: Story = {
     isDisabled: true,
   },
 };
+
+export const DropTarget: Story = {
+  args: {
+    ...Reply.args,
+    isDropTarget: true,
+    dropLabel: 'Drop images to attach them',
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'While something the caller accepts is dragged over the box: a dashed ' +
+          'edge and a label saying what letting go does. The caller owns the drag ' +
+          'events and puts what was dropped in the `attachments` slot.',
+      },
+    },
+  },
+};

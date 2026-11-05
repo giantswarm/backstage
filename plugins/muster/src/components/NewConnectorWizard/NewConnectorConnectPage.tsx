@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
-  fieldErrorProps,
+  tagCounts,
+  TagsField,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerAuthRouteRef } from '../../routes';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
+import { useToolTakesArgument } from '../shared/hooks';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
@@ -106,14 +106,14 @@ function DetectionStatus({
 }
 
 /**
- * The shared validator words its problems for the definition's fields
- * ("URL", "installation"); this step labels them "Server address" and, in the
- * agent area, "Environment". Say them in this step's words.
+ * The shared validator words the address's problems for the definition's
+ * field ("URL"); this step labels it "Server address". Say them in this
+ * step's words.
  */
 function inStepWords(message: string | undefined): string | undefined {
   return message
     ?.replace(/^URL\b/, 'Server address')
-    .replace(/^Select an installation$/, 'Select an environment');
+    .replace(/^Enter the URL\b/, 'Enter the server address');
 }
 
 /**
@@ -122,24 +122,40 @@ function inStepWords(message: string | undefined): string | undefined {
  * state), the connector's name and an optional description. The transport is
  * taken from the probe rather than asked.
  *
+ * The name is the connector's display name; its technical name derives from
+ * it on create and is fixed after. An edit lets the name change only where
+ * the installation's muster takes a display name on update (v5.43.0 and
+ * later, read from the tool's input schema), and not on a family member,
+ * whose members share one name a rename of one would split.
+ *
+ * Tags show only where the installation's muster takes them (read from the
+ * create or update tool's input schema), since an older one refuses them.
+ *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
  * per-person visibility to map it to, so the wizard does not pretend to ask.
  */
 export function NewConnectorConnectPage() {
   const navigate = useNavigate();
-  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
-  const { activeInstallation } = useMusterInstance();
+  const wizardLinks = useConnectorWizardLinks();
+  const { activeInstallation, mcpServers } = useMusterInstance();
   const {
     state,
     setName,
     setDescription,
+    addTags,
+    removeTag,
+    setTagDraft,
+    commitTagDraft,
     setInstallation,
     setUrl,
     setTransport,
     detailsErrors,
     fieldErrors,
     registeredName,
+    registeredInstallation,
+    takesTags,
+    storedTags,
   } = useNewMcpServerForm();
 
   // The wizard registers onto the section's active installation, mirrored into
@@ -152,6 +168,35 @@ export function NewConnectorConnectPage() {
     }
   }, [registeredName, activeInstallation, state.installation, setInstallation]);
 
+  // Whether this muster's update keeps a changed name; read only for an edit.
+  // Until the schema is read the name stays read-only, as it was before
+  // muster took a display name. A family's members are named together (the
+  // name they agree on), so one member is not renamed on its own.
+  const updateTakesDisplayName = useToolTakesArgument(
+    'core_mcpserver_update',
+    registeredInstallation,
+    'displayName',
+    { enabled: Boolean(registeredName) },
+  );
+  const family = registeredName
+    ? mcpServers
+        .find(server => server.getName() === registeredName)
+        ?.getFamily()
+    : undefined;
+  // The tags the installation's connectors already use, offered while typing:
+  // their own, not the read-only tool-group tag (`connectorTags`).
+  const knownTags = useMemo(
+    () => tagCounts(mcpServers.map(server => ({ tags: server.getTags() }))),
+    [mcpServers],
+  );
+  const canRename = !registeredName || (updateTakesDisplayName && !family);
+  let nameDescription = 'Shown when giving an agent access.';
+  if (!canRename) {
+    nameDescription = family
+      ? `Shared with the other members of the ${family} family, so it is set where they are defined.`
+      : 'It cannot be changed after registration.';
+  }
+
   // The detected transport is applied as long as this run has not been
   // registered yet; an edit keeps the transport the server is registered with,
   // so a re-probe of the unchanged URL cannot quietly switch it.
@@ -163,9 +208,9 @@ export function NewConnectorConnectPage() {
     setTransport(detected);
   }, [registeredName, detected, state.transport, setTransport]);
 
-  // Each field shows its own problem once the person tries to proceed — not
-  // before, so the form doesn't shout about empty fields up front — and a
-  // blocked Continue moves the focus to the first one.
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or tries to proceed — not while they first type — and a blocked
+  // Continue moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { reveal } = validation;
   const errorCount = detailsErrors.length;
@@ -174,10 +219,28 @@ export function NewConnectorConnectPage() {
       reveal();
       return;
     }
-    if (signInLink) {
-      navigate(withEditParam(signInLink(), registeredName));
+    // A typed tag not yet added goes with the connector, as on the agent form.
+    // Where the field is not offered, its text stays out of the connector.
+    if (takesTags) {
+      commitTagDraft();
     }
-  }, [errorCount, reveal, signInLink, navigate, registeredName]);
+    const signIn = wizardLinks('auth', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (signIn) {
+      navigate(signIn);
+    }
+  }, [
+    errorCount,
+    reveal,
+    takesTags,
+    commitTagDraft,
+    wizardLinks,
+    navigate,
+    registeredName,
+    registeredInstallation,
+  ]);
   // Problems no field on this step can show: the installation comes from the
   // section, request metadata has no field in this wizard. Named in a summary.
   const unanchoredErrors = [
@@ -216,9 +279,7 @@ export function NewConnectorConnectPage() {
           value={state.url}
           onChange={setUrl}
           placeholder="https://mcp.example.com/mcp"
-          {...fieldErrorProps(
-            validation.errorFor(inStepWords(fieldErrors.url)),
-          )}
+          {...validation.textFieldProps('url', inStepWords(fieldErrors.url))}
         />
         <DetectionStatus url={state.url} installation={state.installation} />
       </Flex>
@@ -227,24 +288,23 @@ export function NewConnectorConnectPage() {
       <TextField
         label="Name"
         isRequired
-        isReadOnly={Boolean(registeredName)}
+        isReadOnly={!canRename}
         value={state.name}
         onChange={setName}
         placeholder="e.g. Jira"
-        description={
-          registeredName
-            ? 'It cannot be changed after registration.'
-            : 'Shown when giving an agent access.'
-        }
-        {...fieldErrorProps(
-          validation.errorFor(fieldErrors.name ?? fieldErrors.slug),
+        description={nameDescription}
+        {...validation.textFieldProps(
+          'name',
+          fieldErrors.name ?? fieldErrors.slug,
         )}
       />
-      {!registeredName && state.slug && (
-        <Text variant="body-small" color="secondary">
-          Registered as <code>{state.slug}</code> — used in its tool names.
-        </Text>
-      )}
+      {state.slug &&
+        (!registeredName || canRename || state.name.trim() !== state.slug) && (
+          <Text variant="body-small" color="secondary">
+            Registered as <code>{state.slug}</code> — used in its tool names.
+            {registeredName && canRename && ' It cannot be changed.'}
+          </Text>
+        )}
 
       <TextAreaField
         label="What does it give access to?"
@@ -253,10 +313,23 @@ export function NewConnectorConnectPage() {
         onChange={setDescription}
         rows={2}
         placeholder="e.g. Search, read and update tickets"
-        error={validation.errorFor(fieldErrors.description)}
+        {...validation.fieldProps('description', fieldErrors.description)}
       />
 
-      {validation.shown && unanchoredErrors.length > 0 && (
+      {takesTags && (
+        <TagsField
+          tags={state.tags}
+          draft={state.tagDraft}
+          error={validation.errorFor('tags', fieldErrors.tags)}
+          counts={knownTags}
+          stored={storedTags}
+          onDraftChange={setTagDraft}
+          onAdd={addTags}
+          onRemove={removeTag}
+        />
+      )}
+
+      {validation.submitted && unanchoredErrors.length > 0 && (
         <Alert
           status="danger"
           title="Fix before continuing"

@@ -6,9 +6,12 @@ description: Rules for building UI in the agent-platform shell — patterns to r
 # Agent Platform UI: UX and coding rules
 
 Load this skill before you touch anything that renders in the agent-platform
-shell: `/`, `/agent-platform/**` and `/customize/**`, built from
-`plugins/agent-platform`, `plugins/muster`, the shell components in
-`plugins/ui-react` and `packages/app/src/modules/agentShell`.
+shell: `/`, `/sessions/**`, `/usage/**`, `/profile` and `/customize/**`, built
+from `plugins/agent-platform`, `plugins/muster`, the shell components in
+`plugins/ui-react` and `packages/app/src/modules/agentShell`. The old
+`/agent-platform/**` addresses only redirect. Where a page lives, how it is
+addressed and linked, and what adding or moving one takes are the
+[`urls`](../urls/SKILL.md) skill's rules.
 
 Repository conventions (bui first, component directories, named exports,
 telemetry, `useTrackedMutation`, changesets, logging) live in
@@ -38,10 +41,14 @@ update this file in the same change.
   render time only through `isAgentShellOn`, which latches it per app load so
   chrome and routes agree. Do not add `useAgentShell()`-style classic branches;
   the shell is the only renderer.
-- Fixed product decisions: there are no Organization selectors; the
+- Fixed product decisions: there is no Organization selector that scopes
+  a page (a new agent's form asks whether it belongs to the platform or an
+  organization, and says "Organization", never "tenant"); the
   Environment (installation) selector appears only with more than one
-  installation; the UI is light mode only; workflows are read-only; runtimes,
-  budgets, organizations and workspaces have no UI.
+  installation; the UI is light mode only; workflows are not created, edited
+  or deleted in the UI, but a workflow's Run it tab runs it (reversing D11's
+  read-only page); runtimes, budgets, organizations and workspaces have no
+  UI.
 - A feature that needs a meta-agent role (`agentPlatform.metaAgents.<role>`)
   hides when the role is unconfigured, unresolvable or ambiguous. Production
   needs qualified names, a GitHub token and the avatar service; see
@@ -61,6 +68,13 @@ them and never invent a palette.
 - Every page is a `ShellPage` (`ui-react`): breadcrumbs, title row, badges,
   header actions, routed tabs (`RouteTabs`) and an optional facts column that
   folds above the content at phone width.
+- `ShellPage` owns the header's geometry: the actions and any `leading`
+  mark sit beside the title's first line, a long title wraps beside them, and
+  only a group too wide to leave the title 192px (320px with a description)
+  moves under it. Actions are top-aligned 8px apart; a row with a labelled
+  field (the Environment select) aligns on the bottom edge, so the field's
+  box lines up with the buttons. Pass header controls as the row's own items
+  (a fragment), and do not wrap, align or space them per page.
 - `Breadcrumbs` leads with a back arrow to the nearest linked parent crumb.
   Navigate to the parent, never to browser history.
 - `ShellPage` and `WizardFrame` set the document title through
@@ -69,7 +83,9 @@ them and never invent a palette.
   Do not add a raw `<Helmet>`.
 - Type scale beats pixel-matching an artboard. Page sections and wizard
   sub-sections use `SectionHeader` as `h2` with `variant="title-x-small"`;
-  only a wizard's step heading is `title-small`.
+  only a wizard's step heading is `title-small`. A detail page tab's sections
+  are `PageSection` (`ui-react`), which draws that heading and names the
+  region by it.
 
 ### Lists
 
@@ -95,8 +111,15 @@ them and never invent a palette.
 - Carve-out: a static scope selector with a fixed handful of choices may stay
   a direct selection. The test is whether the control narrows a data list by a
   field (dropdown) or switches the scope or view of the whole surface (direct
-  selection allowed). The PO-ruled instances are the Usage time range
-  (7 | 30 | 90 toggle) and the command palette's result-type chips.
+  selection allowed). The PO-ruled instance is the command palette's
+  result-type chips.
+- The Usage time range is a select, not a direct choice (PO, 2026-10-23,
+  reversing the earlier 7 | 30 | 90 toggle): `UsageWindowSelect`
+  (`agent-platform`), labelled "Time range", options "Last 7 days", "Last 30
+  days", "Last 90 days", then this month so far and the two months before it.
+  Beside the Environment and Organization selects it has the same label, box
+  and height. A window that cannot be chosen is a disabled option with the
+  reason as its description, not a tooltip and not a note beside the control.
 
 ### States
 
@@ -106,6 +129,10 @@ them and never invent a palette.
   pages render their loading frame in the final geometry with
   `ShellPageTitleSkeleton`, `ShellPageBadgeSkeleton` and
   `ShellPageFactsSkeleton`, so nothing moves when data lands.
+- A tab's count (`RouteTabSpec.count`, through `ShellPage`'s `tabs`) is
+  `'loading'` while it is read, never left out: the tab draws a two-digit
+  skeleton and keeps its width when the count lands. Leave the count out only
+  when it cannot be read.
 - Show loading only while there is no data (`!data && isLoading`). The
   persisted query cache reports `isLoading` during its restore, and cached
   data must render from the first commit.
@@ -143,6 +170,9 @@ them and never invent a palette.
 - Technical detail is a fold-out in place, never a page-wide toggle, switch or
   stored "technical mode". Pages use a "Technical details" bui `Accordion`
   styled by `useSimpleAccordionStyles`, mounted only while open.
+  Plain facts directly above it (a Details tab's, the model page's Overview)
+  sit in `FoldOutAlignedSection`, which lines them up with the fold-out's
+  title.
 - The one page-wide switch is the session page's "Show tool activity" (PO,
   S9): it hides the agent's work, it does not change how detail reads. It is
   small, at the end of the header's meta line after "Started …", on by
@@ -157,19 +187,83 @@ them and never invent a palette.
 - Field edges, focus rings and invalid states come from the shell's
   `--agent-shell-input-*` rules in `agent-shell.css`. Do not restyle fields per
   component.
-- Validate per field with `useFieldValidation` (`ui-react/FieldValidation`):
-  errors appear after the first blocked attempt, on the field, and focus moves
-  to the first invalid one. A summary box is only for problems no field can
+- Validation follows the [`forms`](../forms/SKILL.md) skill: a field is
+  checked when the person leaves it, a shown error follows each change until
+  it is fixed, and a blocked submit shows every error and focuses the first
+  invalid field, all through `useFieldValidation` (`ui-react/FieldValidation`).
+  Submit buttons stay enabled. A summary box is only for problems no field can
   show.
 - Mark optional fields "(optional)" consistently within a form.
+
+### Links
+
+- The rule: a link is underlined and in the link colour. Exceptions only where
+  the click target is larger than the text (a table or list row, a card, a nav
+  or rail item, a breadcrumb, a tab, a button); anything else needs a reason.
+  A link in a table cell stays underlined.
+- A text link is bui's `Link` with an absolute href; core-components' `Link`
+  only where the target is a route ref (see the `ui` skill).
+- Every text link in the shell looks the same: the shell's link colour
+  (`--agent-shell-link`, #00609c) and a solid underline, on every surface,
+  white or tinted, banner or card, whatever its `color` prop. One rule in
+  `agent-shell.css` does this for bui's and MUI's links alike (and a toast's);
+  do not colour, underline or un-underline a link per component. A bui `Text`
+  inside a text link takes the link's colour from the same rule.
+- The underline is the cue, not the colour: #00609c holds 4.5:1 against every
+  surface a link sits on, but only 2.3:1 against the body text, short of the
+  3:1 at which colour alone may mark a link. A trailing arrow is not a cue
+  either: "↗" marks a new tab (`ExternalLink`, `GSReleaseInfo`), nothing else.
+- Dark mode: the shell renders light, but a toast inverts the theme the person
+  picked, so its links can sit on bui's dark surfaces. There the link colour is
+  #bcdcff (`agentShellDarkColors`), which holds 4.5:1 against bui's dark app
+  background, neutral-1 to neutral-3 surfaces and banners. `theme.test.ts`
+  checks both modes; a new link colour or surface goes through it.
+- A control rendered as a link is not a text link and keeps its own look:
+  `ButtonLink`, core-components' `LinkButton`, a `Tab`, `MenuItem`, `Tag` or
+  `Card` with an `href`. A bui `Link` that is a control — a rail or nav item,
+  a breadcrumb, a wizard's step, Close or Cancel, an icon-only link, a link
+  filling a tag, a title a row or a card stretches over its whole area —
+  passes `standalone`, which is how it opts out of the rule. Never opt out with a class or a selector in the
+  rule; `agentShellLinks.test.tsx` checks the controls most at risk.
+
+### Kubernetes resources and commits
+
+- A resource a card is about shows its namespace and name as two facts,
+  Namespace and Name: `namespacedNameFacts` (`ui-react` utils). A second resource in
+  the same list passes its `kind`, so its labels read "HelmRelease namespace"
+  and "HelmRelease name". Never one `namespace/name` value in a fact list.
+- A reference inside a value (the ModelConfig under Model, a sub-agent, the
+  HelmRelease under Deployed by) names the resource alone when it is in the
+  page resource's namespace, which the Resource card states; in another one it
+  adds a "Namespace <ns>" line under it. Sentences and outcome lines ("Deletes
+  claim ns/name") keep the joined form.
+- A git SHA is shown in 7 characters, through `shortSha` (`gs-common`,
+  re-exported by `ui-react`), wherever it sits: a bare SHA-1, a Flux revision
+  (`main@sha1:…`), a version that carries one (`1.2.3-<sha>`). A digest
+  (`sha256:`, `sha384:`, `sha512:`, `blake3:`, or a bare 64-hex value) keeps
+  its prefix and 12. An abbreviated SHA is shown as it comes. The full value
+  stays at hand: render `CommitSha`, which sets the `title` and adds a copy
+  button on a touch screen; `copy={false}` inside a link, a row or a
+  selectable card, where a button cannot go. Where the SHA sits in a plain
+  string (a row's detail line), the line carries the full value as its
+  title. Never `sha.slice(0, n)` or a hand-rolled `<span title>`.
 
 ### Shared helpers
 
 - Counts: `countNoun(n, noun)`. Name lists: `joinNames` and `groupNames`.
 - Numbers, durations and bytes: `formatCount`, `formatSeconds` and
   `formatBytes` in `agent-platform-common/src/formatNumbers.ts`. Relative dates:
-  `getRelativeDate` (`ui-react`). Durations read "1.2 s" and "420 ms".
-- Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
+  `getRelativeDate` (`ui-react`). `formatSeconds` is the one duration
+  format — "420 ms", "1.2 s", "3 s", "18 s", "2 min 30 s", "1 h 5 min";
+  milliseconds go through `formatMilliseconds`. Never print raw milliseconds or floor to
+  minutes by hand.
+- Copy affordances: `CopyButton`. Manifests: `ManifestDialog`. A file
+  shown inline (a manifest, a values file, a Dockerfile): `FileView`; a
+  command or a log, which is not a file: `CodeBlock` (`ui-react` both).
+- Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,
+  Run button, run note and result that a tool's page and a workflow's Run it
+  tab share. Do not build a second run form or result viewer. A connector's
+  and a tool's Usage tab share `UsageFigures` (muster `ConnectorPage`).
 - Meta-agent hand-off strips: `MetaAgentBanner`; session starts go through
   `useMetaAgentHandoff`.
 - Before writing a helper, grep `ui-react/src/utils`,
@@ -208,6 +302,7 @@ them and never invent a palette.
 | Gateway-priced money           | **Spend** ("Est. spend" when converted); every tile says whose                                                                            | Cost, Spend (estimated)                                |
 | Token-based estimate           | **Est. cost**                                                                                                                             | Estimated cost                                         |
 | Runtime-reported money         | **Reported cost**                                                                                                                         |                                                        |
+| ModelConfig verdict            | `modelStatus`: Not accepted (`Accepted` False), Incomplete (`ResolvedRefs` False), Pending                                                | "Not accepted" for a missing key                       |
 | Served-model readiness         | `SERVED_MODEL_READINESS` labels: Ready, Not serving, Pending, Idle                                                                        | Serving already, Not running, Available (on Customize) |
 | A session with no turn running | **Idle**                                                                                                                                  | Finished                                               |
 | Starting from an agent         | **Start a session** ("New session" stays the nav, home and Sessions entry); the agent page's header button alone reads **Use this agent** | Use this agent anywhere else                           |
@@ -228,6 +323,12 @@ them and never invent a palette.
 - A wizard that holds typed input sets `WizardFrame`'s `confirmDiscard`, so
   Close and Cancel ask "Discard changes" or "Keep editing". Dialogs with
   unsaved edits ask the same way.
+- The router cannot hold in-app navigation, so a create wizard keeps its
+  input as a draft (`useSessionDraft`, per person, in the tab's
+  `sessionStorage`; never a secret or a token), shows `DraftRestoredAlert`
+  when it comes back with one, and drops it on submit and in `WizardFrame`'s
+  `onDiscard`. The new-agent wizard does; see `NewAgentFormProvider`.
+- A link inside a form opens in a new tab and says so: `ExternalLink`.
 - Hand-off naming contract (`MetaAgentBanner`):
   - "Let X help" opens a side chat and keeps the form; nothing is sent.
   - "Ask X …" opens New session with X preselected; nothing starts.
@@ -237,6 +338,16 @@ them and never invent a palette.
     portal".
 - Never lose typed work. Links out of a form that is being filled open in a
   new tab.
+- A page whose work in flight shows only on it (a tool's or a workflow's run)
+  asks before the person leaves, saying whether the work goes on. Keep the
+  work above the tabs where the page can (a tool's page keeps the run and
+  the typed form with `useToolRun` and `useToolForm`), so only leaving the
+  page asks; a page that keeps it in a tab (a workflow's Run it) holds its
+  tabs too. The app's router has no blocker, so hold what can be held: the
+  page's tabs through `ShellPage`'s `onTabNavigate`, plain clicks on links in
+  the capture phase, and `beforeunload`. `useRunLeaveGuard` (muster
+  `ToolDetail`) is the precedent. Back, the palette and navigation from code
+  pass.
 - A field that cannot change after creation is shown read-only, and the lock
   is stated once in a sentence ("Its technical name is `x`; it cannot be
   changed once the agent exists."). Do not use disabled fields or a "fixed"
@@ -290,6 +401,9 @@ them and never invent a palette.
 
 - `truncate={false}` still truncates, because bui writes
   `data-truncate="false"`. Pass `undefined`.
+- bui's `Tooltip` drops a `className`: it applies to no element. Style an
+  element inside the tooltip, or pass `style`. ESLint fails on one
+  (`giantswarm/no-restricted-bui-syntax`).
 - bui's `Table` clips instead of scrolling at phone width. The
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
@@ -323,8 +437,8 @@ is a defect; one with it is not a finding. The kept list:
   more" window.
 - Agents and connectors draw an avatar or tile plus a bold name; models and
   workflows use stock `CellText`.
-- The scope selectors (Usage 7 | 30 | 90, palette type chips) are direct
-  selections.
+- The palette's type chips are a direct selection; the Usage time range is
+  a select (PO, 2026-10-23).
 - Confirm-delete and row-menu actions are dialogs.
 - The session page's "Show tool activity" switch is the one page-wide view
   switch.
@@ -336,9 +450,9 @@ is a defect; one with it is not a finding. The kept list:
 - `AssistPanel`, the workflow full-screen layer and `DisabledAction` handle
   Escape themselves. The New session, palette and attachment dialogs close
   only from the header X, because they have nothing to cancel.
-- The workflow page has an "Advanced" fold-out; the connector wizard's
-  credentials group carries a third-level label; Home has a centred landing
-  frame without a page header; the session crumb reads "Session".
+- The connector wizard's credentials group carries a third-level label; Home
+  has a centred landing frame without a page header; the session crumb reads
+  "Session".
 - "Let X help" and "Create with X" differ because they are different actions.
 - `formatCompactAge` (the rail's "16m") and lifecycle's elapsed `ago` are
   deliberate formats.

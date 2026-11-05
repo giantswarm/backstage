@@ -8,8 +8,17 @@ import {
 import {
   AGENT_PLATFORM_CACHE_BUSTER,
   AGENT_PLATFORM_PERSISTER_KEY,
+  markRestoredListsStale,
   shouldDehydrateAgentPlatformQuery,
+  shouldRetryQuery,
 } from './QueryClientProvider';
+import { modelCostQueryKey } from '../lib/queryKeys';
+import {
+  MusterTokenMintError,
+  MusterUnauthorizedError,
+} from '@giantswarm/backstage-plugin-muster';
+import { classifyClusterManagerError } from '../lib/clusterManager';
+import { classifyModelManagerToolError } from '../lib/modelManagerBackends';
 
 describe('AGENT_PLATFORM_PERSISTER_KEY', () => {
   it("is this plugin's own localStorage key, not the shared library default", () => {
@@ -32,6 +41,11 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
       // enough that nothing but this rule keeps it off the disk.
       'the usage summary',
       ['agent-platform', 'kagent', 'session-usage', 'gazelle'],
+    ],
+    [
+      // One person's model spend; the backend answers it `no-store`.
+      'the model cost',
+      modelCostQueryKey('gazelle', 30),
     ],
     [
       // `musterToolsetResolutionQueryKey`: toolset ∩ the caller's own session
@@ -219,5 +233,144 @@ describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
     const { queryClient } = await restore(AGENT_PLATFORM_CACHE_BUSTER);
 
     expect(queryClient.getQueryCache().getAll()).toHaveLength(1);
+  });
+});
+
+describe('markRestoredListsStale', () => {
+  const agentsKey = [
+    'cluster',
+    'gazelle',
+    'list',
+    'api.kagent.dev',
+    'v1alpha3',
+    'agents',
+  ];
+  const modelsKey = [
+    'cluster',
+    'gazelle',
+    'list',
+    'api.kagent.dev',
+    'v1alpha3',
+    'modelconfigs',
+  ];
+  const inventoryKey = ['gs', 'installation-inventory', 'gazelle'];
+
+  /**
+   * A client as a page load restores it: the lists as the blob held them,
+   * written seconds ago -- before the agent the list now holds was deployed.
+   */
+  function restoredClient() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: 60_000 } },
+    });
+    queryClient.setQueryData(agentsKey, []);
+    queryClient.setQueryData(modelsKey, [{ name: 'default-model-config' }]);
+    queryClient.setQueryData(inventoryKey, { kagent: true });
+    return queryClient;
+  }
+
+  const readAgents = (queryClient: QueryClient, agents: unknown[]) =>
+    queryClient.fetchQuery({
+      queryKey: agentsKey,
+      queryFn: async () => agents,
+    });
+
+  it('trusts a restored list for the stale time without it', async () => {
+    const queryClient = restoredClient();
+
+    expect(await readAgents(queryClient, [{ name: 'sre-agent' }])).toEqual([]);
+  });
+
+  it('reads a restored list again, so a load right after a change shows the current list', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(await readAgents(queryClient, [{ name: 'sre-agent' }])).toEqual([
+      { name: 'sre-agent' },
+    ]);
+  });
+
+  it('never shows a restored empty list: it waits for the read', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(queryClient.getQueryData(agentsKey)).toBeUndefined();
+  });
+
+  it('keeps showing a restored list with rows until the read replaces it', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(queryClient.getQueryData(modelsKey)).toEqual([
+      { name: 'default-model-config' },
+    ]);
+    expect(queryClient.getQueryState(modelsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('keeps what is not a cluster list, such as the installation inventory, fresh', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(queryClient.getQueryState(inventoryKey)?.isInvalidated).toBe(false);
+  });
+});
+
+/**
+ * giantswarm/giantswarm#38779: a 401 from muster was retried after 1, 2 and
+ * 4 seconds, because the cluster-manager and model-manager clients wrap it in
+ * their own errors. It is never retried, wrapped or not.
+ */
+describe('shouldRetryQuery', () => {
+  const signIn = new MusterUnauthorizedError(
+    "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
+    'server_sign_in_required',
+    'cluster-manager',
+  );
+
+  it.each([
+    ['as muster answered it', signIn],
+    ['wrapped by cluster-manager', classifyClusterManagerError(signIn)],
+    [
+      'wrapped by model-manager',
+      classifyModelManagerToolError(
+        new MusterUnauthorizedError('expired', 'token_expired'),
+      ),
+    ],
+    [
+      'when the portal session is gone',
+      new MusterTokenMintError('gazelle', 'session-expired', 'expired'),
+    ],
+  ])('never retries a muster auth failure %s', (_label, error) => {
+    expect(shouldRetryQuery(0, error)).toBe(false);
+  });
+
+  it('never retries a write kagent rejected', () => {
+    expect(
+      shouldRetryQuery(
+        0,
+        Object.assign(new Error('rejected'), { name: 'RejectedError' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('retries a token mint that failed for another reason than a gone session', () => {
+    expect(
+      shouldRetryQuery(
+        0,
+        new MusterTokenMintError('golem', 'mint-failed', 'broker unreachable'),
+      ),
+    ).toBe(true);
+  });
+
+  it('retries any other failure up to three times', () => {
+    const error = classifyClusterManagerError(new Error('connection reset'));
+
+    expect(shouldRetryQuery(0, error)).toBe(true);
+    expect(shouldRetryQuery(2, error)).toBe(true);
+    expect(shouldRetryQuery(3, error)).toBe(false);
   });
 });

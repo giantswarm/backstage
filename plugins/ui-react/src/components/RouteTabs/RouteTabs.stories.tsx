@@ -76,3 +76,35 @@ export const ManyTabs: Story = {
     router: { initialEntries: ['/mcp-servers/kubernetes/workflows'] },
   },
 };
+
+/**
+ * Customize's tabs while their counts load (`count: 'loading'`): a skeleton
+ * holds each count's place, as wide as two digits, so the strip already has
+ * its final layout. Compare with `ManyTabs`: up to 99 nothing moves when the
+ * counts arrive; Tools' 128 outgrows its slot.
+ */
+export const CountsLoading: Story = {
+  args: {
+    tabs: [
+      { id: 'agents', path: '', title: 'Agents', count: 'loading' },
+      { id: 'skills', path: 'skills', title: 'Skills', count: 'loading' },
+      {
+        id: 'connectors',
+        path: 'connectors',
+        title: 'Connectors',
+        count: 'loading',
+      },
+      { id: 'models', path: 'models', title: 'Models', count: 'loading' },
+      {
+        id: 'workflows',
+        path: 'workflows',
+        title: 'Workflows',
+        count: 'loading',
+      },
+      { id: 'tools', path: 'tools', title: 'Tools', count: 'loading' },
+    ],
+  },
+  parameters: {
+    router: { initialEntries: ['/mcp-servers/kubernetes/workflows'] },
+  },
+};

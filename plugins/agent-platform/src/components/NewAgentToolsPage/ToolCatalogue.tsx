@@ -1,7 +1,6 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
   EffectBadge,
-  isDestructive,
   ServerSignIn,
   toolEffect,
   ToolTable,
@@ -11,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import {
+  bucketLabel,
   CatalogueGroup,
   countNoun,
   groupWorkflows,
@@ -30,8 +30,8 @@ import { ShowMore } from '../ShowMore';
  * Every row says what the tool does — Reads or Changes things — as the
  * Connector Tools tab and the CreateAgentTools artboard do (T60): it is what
  * the catalogue's effect filter sorts by, and an unannotated tool counts as
- * changing things. The read-only marker would only repeat the badge, so of
- * the server's markers only *destructive* stays: the sharper warning.
+ * changing things. The server's own markers would only repeat the badge, so
+ * the row carries none.
  */
 function toolRowItem(
   tool: ToolSummary,
@@ -43,7 +43,7 @@ function toolRowItem(
   const title = isWorkflow ? workflowNameOf(tool.name) : tool.name;
   return toolTableItem(tool, {
     name: title,
-    annotations: isDestructive(tool) ? tool.annotations : undefined,
+    annotations: undefined,
     meta: <EffectBadge effect={toolEffect(tool)} />,
     ariaLabel: `${isWorkflow ? 'Workflow' : 'Tool'} ${title}`,
     mode: {
@@ -119,10 +119,12 @@ function ServerTools({
       <Flex direction="column" gap="2">
         <Alert
           status="info"
-          title={`Sign in to see the tools of ${bucket.name}`}
+          title={`Sign in to see the tools of ${bucketLabel(bucket)}`}
           description={
             wholeServerSelected
-              ? `Selected without a sign-in: it resolves for people with access to ${bucket.name}. Sign in to list and pick its tools.`
+              ? `Selected without a sign-in: it resolves for people with access to ${bucketLabel(
+                  bucket,
+                )}. Sign in to list and pick its tools.`
               : 'Sign in to list and pick its tools. The whole connector can be selected without it.'
           }
         />
@@ -133,6 +135,7 @@ function ServerTools({
           <ServerSignIn
             noun="connector"
             serverName={bucket.name}
+            displayName={bucketLabel(bucket)}
             installation={installation}
           />
         )}
@@ -143,7 +146,7 @@ function ServerTools({
     return (
       <ToolRows
         tools={bucket.tools}
-        ariaLabel={`Tools of ${bucket.name}`}
+        ariaLabel={`Tools of ${bucketLabel(bucket)}`}
         noun="tool"
         selected={selected}
         onToggle={onToggle}
@@ -185,12 +188,12 @@ function ServerPanel({
           selector itself as the meta. */}
       <ToolTable
         role="group"
-        ariaLabel={`Whole connector ${bucket.name}`}
+        ariaLabel={`Whole connector ${bucketLabel(bucket)}`}
         items={[
           {
             key: selector,
-            name: `Every tool of ${bucket.name}`,
-            ariaLabel: `Connector ${bucket.name}`,
+            name: `Every tool of ${bucketLabel(bucket)}`,
+            ariaLabel: `Connector ${bucketLabel(bucket)}`,
             meta: (
               <Text variant="body-x-small" color="secondary">
                 <span className={cardClasses.code}>{selector}</span>
@@ -235,7 +238,7 @@ function serverEntries(
       : countNoun(bucket.tools.length, 'tool');
     return {
       key: `${group.key}/${bucket.name}`,
-      trigger: `${bucket.name} — ${summary}${pickedSuffix(
+      trigger: `${bucketLabel(bucket)} — ${summary}${pickedSuffix(
         pickedTools(bucket.tools, props.selected),
         whole,
       )}`,

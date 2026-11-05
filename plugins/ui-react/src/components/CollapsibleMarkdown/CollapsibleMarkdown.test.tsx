@@ -1,11 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/test-utils';
 import { CollapsibleMarkdown } from './CollapsibleMarkdown';
+import {
+  mockCollapsibleLayout,
+  type MockedCollapsibleLayout,
+} from '../../testUtils';
 
 const TOGGLE_LABELS = { expand: 'Show all', collapse: 'Show less' };
 
-// jsdom lays nothing out and has no ResizeObserver. The stub reports this
-// height for every observed element, as the observer's first notification.
+// jsdom lays nothing out: the content measures this height.
 let contentHeight = 0;
 
 function stubContentHeight(height: number) {
@@ -17,30 +20,16 @@ function stubBottom(element: Element, bottom: number) {
 }
 
 describe('CollapsibleMarkdown', () => {
-  const RealResizeObserver = globalThis.ResizeObserver;
   const RealScrollIntoView = Element.prototype.scrollIntoView;
+  let layout: MockedCollapsibleLayout;
 
-  beforeAll(() => {
-    globalThis.ResizeObserver = class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback(
-          [
-            {
-              target,
-              contentRect: { width: 600, height: contentHeight },
-            } as unknown as ResizeObserverEntry,
-          ],
-          this as unknown as ResizeObserver,
-        );
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
+  beforeEach(() => {
+    layout = mockCollapsibleLayout({ contentHeight: () => contentHeight });
   });
 
+  afterEach(() => layout.restore());
+
   afterAll(() => {
-    globalThis.ResizeObserver = RealResizeObserver;
     Element.prototype.scrollIntoView = RealScrollIntoView;
   });
 

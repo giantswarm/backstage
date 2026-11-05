@@ -7,11 +7,20 @@
  * in every package's config, which overrides the root's, and the root's
  * `@typescript-eslint/no-restricted-imports` warns (the MUI migration debt).
  * This id carries the restrictions that fail CI.
+ *
+ * `no-restricted-syntax` is the same trick for ESLint's core rule of that
+ * name, which the eslint-factory configures in every package too.
+ *
+ * `no-restricted-bui-syntax` is that core rule once more, for the bui
+ * restrictions: ESLint keeps one set of options per rule id, so selectors for
+ * every file cannot share an id with selectors for some files.
  */
 const { builtinRules } = require('eslint/use-at-your-own-risk');
 
 module.exports = {
   rules: {
     'no-restricted-imports': builtinRules.get('no-restricted-imports'),
+    'no-restricted-syntax': builtinRules.get('no-restricted-syntax'),
+    'no-restricted-bui-syntax': builtinRules.get('no-restricted-syntax'),
   },
 };

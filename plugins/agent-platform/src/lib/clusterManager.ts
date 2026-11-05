@@ -346,6 +346,9 @@ export type ObjectAction = {
     | 'would-create'
     | 'would-update'
     | 'would-delete'
+    | 'create'
+    | 'update'
+    | 'delete'
     | 'created'
     | 'updated'
     | 'deleted'
@@ -1001,8 +1004,13 @@ export class ClusterManagerError extends Error {
   /** The structured not-found answer, when the answer carried one. */
   readonly notFound?: NotFound;
 
-  constructor(message: string, refused?: Refusal, notFound?: NotFound) {
-    super(message);
+  constructor(
+    message: string,
+    refused?: Refusal,
+    notFound?: NotFound,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.refused = refused;
     this.notFound = notFound;
   }
@@ -1031,13 +1039,14 @@ export function classifyClusterManagerError(error: unknown): Error {
   }
   const message = error instanceof Error ? error.message : String(error);
   if (looksNotConnected(message)) {
-    return new ClusterManagerNotConnectedError(message);
+    return new ClusterManagerNotConnectedError(message, { cause: error });
   }
   const details = toolErrorDetails(error);
   return new ClusterManagerError(
     message,
     parseRefusal(details),
     parseNotFound(details),
+    { cause: error },
   );
 }
 

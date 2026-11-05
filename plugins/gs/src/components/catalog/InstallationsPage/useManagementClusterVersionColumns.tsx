@@ -22,7 +22,11 @@ import {
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
-import { gsAuthProvidersApiRef } from '../../../apis/auth';
+import {
+  asLoginRequestCallerApi,
+  gsAuthProvidersApiRef,
+} from '../../../apis/auth';
+import { hasUserGesture } from '../../../apis/auth/userGesture';
 import { useInstallations } from '../../../apis/installations';
 import { getClusterReleaseVersion } from '../../clusters/utils';
 import { formatVersion } from '../../utils/helpers';
@@ -54,12 +58,22 @@ const LOADING: ManagementClusterVersions = {
 };
 
 /**
+ * Whether a read failed because the person is not signed in: a declined or
+ * failed main sign-in (`RejectedError`), or an expired portal session found
+ * by a background read (`PortalSessionExpiredError`).
+ */
+function isSignedOut(error: Error): boolean {
+  return (
+    error.name === 'RejectedError' || error.name === 'PortalSessionExpiredError'
+  );
+}
+
+/**
  * A failed read's cell: a short status that fits the column, the error's own
- * text on hover. A declined or failed main sign-in (`RejectedError`) means
- * not signed in.
+ * text on hover.
  */
 function failed(error: Error): VersionCell {
-  if (error.name === 'RejectedError') {
+  if (isSignedOut(error)) {
     return {
       state: 'failed',
       reason: 'Not signed in',
@@ -210,10 +224,25 @@ export function useManagementClusterVersions(): Record<
   const query = useQuery({
     queryKey: ['installations', 'management-cluster-versions'],
     queryFn: async (): Promise<ManagementClusterVersionsResponse> => {
+      // Only a read the person starts may open the sign-in. A background
+      // read (a refetch, a remount) asks the main login optionally: it
+      // refreshes silently where it can and, without a session, ends as
+      // not signed in instead of opening Login Required.
+      const optional = !hasUserGesture();
       const [idToken, baseUrl] = await Promise.all([
-        gsAuthProvidersApi.getMainAuthApi().getIdToken(),
+        asLoginRequestCallerApi(
+          'installations-versions',
+          gsAuthProvidersApi.getMainAuthApi(),
+        ).getIdToken({ optional }),
         discoveryApi.getBaseUrl('gs'),
       ]);
+      if (!idToken) {
+        const error = new Error(
+          'The portal session expired: sign in to the portal again',
+        );
+        error.name = 'PortalSessionExpiredError';
+        throw error;
+      }
       const response = await fetchApi.fetch(
         `${baseUrl}/installations/versions`,
         { headers: { [SUBJECT_TOKEN_HEADER]: idToken } },
@@ -238,8 +267,11 @@ export function useManagementClusterVersions(): Record<
 
   return useMemo(() => {
     const result: Record<string, ManagementClusterVersions> = {};
+    // Signed out, the versions read earlier are no longer shown: they were
+    // the signed-in person's.
+    const signedOut = query.isError && isSignedOut(query.error);
     for (const { name } of installations) {
-      if (query.data) {
+      if (query.data && !signedOut) {
         const versions =
           query.data.installations[name] ?? browserVersions[name];
         if (versions) {

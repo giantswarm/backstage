@@ -3,6 +3,8 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  CommitSha,
+  FileView,
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -10,7 +12,11 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { supportsTags } from '../../lib/agentManager';
+import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
+import { useSignInTool } from '../../hooks/useSignInTool';
+import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
@@ -27,28 +33,44 @@ import {
 } from '../../lib/agentEdit';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
-import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
+import { pluginEntryName, pluginSummary } from '../../lib/plugins';
+import {
+  harnessTitle,
+  platformHarnessOf,
+  platformRuntimeLine,
+  RUNTIME_LABEL,
+} from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
-import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { useRuntimeChoices } from '../HarnessPicker';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import {
   Notes,
   PlainRow,
+  SignInToolChange,
   SectionTitle,
   SummaryItem,
   toolsetSummaryLabel,
   UnderlyingModelItem,
   useReviewStyles,
-  Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
+import { ValidationRefusal } from '../ValidationRefusal';
 
-/** A refused or failed dry run or save, in agent-manager's words. */
+/**
+ * A refused or failed dry run or save, in agent-manager's words. The two
+ * refusals the edit page checks for before the form — a release outside
+ * agent-manager's directory, a GitHub authorization a sign-in gives — read as
+ * they do there, should the repository or the authorization change in
+ * between (`classifyCommitFailure`).
+ */
 function WriteFailure({
   installation,
   failure,
@@ -58,12 +80,23 @@ function WriteFailure({
   failure: AgentWriteFailure;
   title: string;
 }) {
-  if (failure.kind === 'not-connected') {
+  const refused = classifyCommitFailure(failure);
+  if (refused?.kind === 'connect') {
     return (
       <ConnectAgentManagerAlert
         installation={installation}
-        message={failure.message}
+        message={refused.message}
         action="Agents are edited"
+        needsGitHub={refused.github}
+      />
+    );
+  }
+  if (refused?.kind === 'release-outside') {
+    return (
+      <MissingReleaseFileAlert
+        missing={refused.missing}
+        message={refused.message}
+        action="edit"
       />
     );
   }
@@ -92,12 +125,33 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
   const { hasRepositories } = useSkillCatalog();
   const { agent, installation, writeMode, detailHref } = edit;
-  const { info } = useAgentManagerInfo(installation);
+  const { info, isLoading: isInfoLoading } = useAgentManagerInfo(installation);
+  // The platform Harness the runtime field shows, for its summary row.
+  const { platformChoice } = useRuntimeChoices();
+  // The Harness a refusal names, by the title the runtime field shows.
+  const formRuntime = useFormHarnessRuntime();
   const viaPullRequest = writeMode === 'commit';
 
+  // The selection with the sign-in tool the Tools step adds: an agent whose
+  // connector needs it and whose toolset lacks it gets it with this save.
+  const signIn = useSignInTool(
+    installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const toolset = signIn.toolset;
+  // What the save does to the sign-in tool the agent has now.
+  const hadSignInTool = Boolean(agent.toolset?.includes(SIGN_IN_TOOL_SELECTOR));
+  const hasSignInTool = toolset.includes(SIGN_IN_TOOL_SELECTOR);
+  let signInChange: 'added' | 'removed' | undefined;
+  if (hasSignInTool !== hadSignInTool) {
+    signInChange = hasSignInTool ? 'added' : 'removed';
+  }
+  const tagsSupported = supportsTags(info);
   const editState = useMemo(
-    () => editStateOfForm(agent, state),
-    [agent, state],
+    () =>
+      editStateOfForm(agent, { ...state, toolset }, { tags: tagsSupported }),
+    [agent, state, toolset, tagsSupported],
   );
   const changed = useMemo(
     () => changedFields(agent, editState),
@@ -112,12 +166,17 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   // requested while nothing changed.
   const dryRun = useValidateAgentUpdate(
     installation,
-    isReady && dirty ? update : undefined,
+    // Not before the sign-in tool is decided, nor before agent-manager says
+    // whether it takes tags: the update would differ from what Save sends.
+    isReady && dirty && !signIn.isLoading && !isInfoLoading
+      ? update
+      : undefined,
     writeMode,
   );
   const violations = dryRun.result?.errors ?? [];
   const notes = dryRun.result?.notes ?? [];
   const canWrite =
+    !signIn.isLoading &&
     dirty &&
     Boolean(dryRun.result) &&
     violations.length === 0 &&
@@ -125,13 +184,10 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
 
   // What the agent will declare. An agent from before toolsets declares none
   // and keeps its implicit full access while nothing is selected.
-  const keepsImplicitAccess = !agent.toolset && state.toolset.length === 0;
-  const declared = useMemo(
-    () => declaredToolset(state.toolset),
-    [state.toolset],
-  );
+  const keepsImplicitAccess = !agent.toolset && toolset.length === 0;
+  const declared = useMemo(() => declaredToolset(toolset), [toolset]);
   const shape = toolsetShape(declared);
-  const { servers } = useMusterServers(installation);
+  const { servers, labels } = useMusterServers(installation);
   const resolution = useToolsetResolution(installation, declared);
 
   const updating = useUpdateAgent(installation);
@@ -234,8 +290,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   // In words only (QA R2-2): a Harness known by its name alone (the agent's
   // own, unchanged) has no title to show, so its row is left to Technical
   // details' Harness.
-  const platformHarness = info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
-  let runtime: string | undefined = 'Standard (platform default)';
+  const platformHarness = platformHarnessOf(info);
+  let runtime: string | undefined = platformRuntimeLine(platformChoice);
   if (state.harness && state.harness.name !== platformHarness) {
     runtime =
       state.harness.displayName || state.harness.runtime
@@ -247,6 +303,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     ? dump(dryRun.result.manifests.values, YAML_OPTS)
     : '';
   const skillNames = editState.skills.map(skill => skill.name);
+  const pluginSummaries = editState.plugins.map(pluginSummary);
 
   return (
     <AgentWizardFrame step="review" onBack={onBack} isProposed={isCommitted}>
@@ -262,19 +319,40 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           {state.description.trim() && (
             <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
+          {(editState.tags.length > 0 || changed.includes('tags')) && (
+            <PlainRow label="Tags">
+              {editState.tags.length === 0 ? 'None' : editState.tags.join(', ')}
+            </PlainRow>
+          )}
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          {runtime && <PlainRow label="Runtime">{runtime}</PlainRow>}
+          {runtime && <PlainRow label={RUNTIME_LABEL}>{runtime}</PlainRow>}
+          {state.defaultWorkspace && (
+            <PlainRow label="Default workspace">
+              {state.defaultWorkspace}
+            </PlainRow>
+          )}
           {(hasRepositories || skillNames.length > 0) && (
             <PlainRow label="Skills">
               {skillNames.length === 0 ? 'None' : skillNames.join(', ')}
             </PlainRow>
           )}
+          {(pluginSummaries.length > 0 || (agent.plugins ?? []).length > 0) && (
+            <PlainRow label="Plugins">
+              {pluginSummaries.length === 0
+                ? 'None'
+                : pluginSummaries.join('; ')}
+            </PlainRow>
+          )}
           <PlainRow label="Tools">
             {keepsImplicitAccess
               ? 'Every tool the gateway exposes (no toolset declared)'
-              : toolsetSummaryLabel(shape, declared)}
+              : toolsetSummaryLabel(
+                  shape,
+                  declared,
+                  connector => labels.get(connector) ?? connector,
+                )}
           </PlainRow>
         </dl>
 
@@ -287,6 +365,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               {changed.map(field => (
                 <li key={field}>
                   <Text variant="body-small">{EDIT_FIELD_LABELS[field]}</Text>
+                  {field === 'toolset' && signInChange && (
+                    <SignInToolChange change={signInChange} signIn={signIn} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -315,7 +396,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             title="Could not check the change"
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <ValidationRefusal
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.editTitle}
+            harness={formRuntime.harness}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
         {updating.failure && (
           <WriteFailure
@@ -377,6 +464,15 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                   )}
                 </Text>
               </SummaryItem>
+              {state.egressPolicyRefs.length > 0 && (
+                <SummaryItem label="EgressPolicies">
+                  <PickedEgressPolicies
+                    installation={installation}
+                    namespace={agent.namespace}
+                    names={state.egressPolicyRefs}
+                  />
+                </SummaryItem>
+              )}
               {egressOrigins.length > 0 && (
                 <SummaryItem label="Extra egress">
                   <Text variant="body-small">
@@ -395,9 +491,29 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                         {skill.name}{' '}
                         <span className={classes.code}>
                           @
-                          {shortPin(
-                            'git' in skill ? skill.git.commit : skill.oci,
-                          )}
+                          <CommitSha
+                            value={
+                              'git' in skill ? skill.git.commit : skill.oci
+                            }
+                          />
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+              {editState.plugins.length > 0 && (
+                <SummaryItem label="Plugin pins">
+                  <Text variant="body-small">
+                    {editState.plugins.map((plugin, index) => (
+                      <span key={`${pluginEntryName(plugin)}#${index}`}>
+                        {index > 0 ? ', ' : ''}
+                        {pluginEntryName(plugin)}{' '}
+                        <span className={classes.code}>
+                          @
+                          <CommitSha
+                            value={plugin.git?.commit ?? plugin.oci ?? ''}
+                          />
                         </span>
                       </span>
                     ))}
@@ -431,7 +547,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                     </>
                   }
                 />
-                <CodeBlock
+                <FileView
                   filename={`${agent.name}-values.yaml`}
                   content={valuesYaml}
                   language="yaml"

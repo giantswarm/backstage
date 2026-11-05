@@ -18,7 +18,7 @@ import {
  */
 
 async function reachTools(page: Page) {
-  await open(page, '/agent-platform/agents/new');
+  await open(page, '/customize/agents/new');
   await fillAgentDetails(page, {
     name: 'E2E Rail Docking',
     description: 'Layout check of the Playwright suite; never created.',

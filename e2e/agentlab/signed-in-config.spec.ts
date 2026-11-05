@@ -1,4 +1,4 @@
-import { expect, portalChrome, test } from './fixtures';
+import { expect, open, portalChrome, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -82,11 +82,16 @@ test('the signed-in config needs a session and carries the installations', async
   expect(anonymous.status(), 'no session, no config').toBe(401);
 
   // The loader fetches it once per app load, after the sign-in resolves; a
-  // reload of the signed-in page shows the fetch.
+  // fresh load of the portal shows the fetch. `open` signs the page in again
+  // when an earlier spec left it signed out, and the fetch that counts is the
+  // one that succeeds, after that sign-in.
   const response = admin.waitForResponse(
-    r => r.url().endsWith('/api/gs/config') && r.request().method() === 'GET',
+    r =>
+      r.url().endsWith('/api/gs/config') &&
+      r.request().method() === 'GET' &&
+      r.ok(),
   );
-  await admin.reload();
+  await open(admin, '/');
   const config = (await (await response).json()) as {
     gs: { installations: Record<string, { baseDomain?: string }> };
   };

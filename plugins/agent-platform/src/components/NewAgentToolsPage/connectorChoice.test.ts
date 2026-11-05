@@ -180,6 +180,38 @@ describe('the Selected rail', () => {
     ]);
   });
 
+  it('heads a connector with its display name, keyed by its name', () => {
+    expect(
+      railGroups(
+        ['tool:x_jira_search', 'server:github'],
+        [
+          {
+            ...groups[0],
+            servers: [
+              { ...JIRA, displayName: 'Acme Jira' },
+              {
+                ...bucket('github', [changes('x_github_merge')]),
+                displayName: 'GitHub',
+              },
+            ],
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        key: 'connector:jira',
+        title: 'Acme Jira',
+        selectors: ['tool:x_jira_search'],
+      },
+      {
+        key: 'connector:github',
+        title: 'GitHub',
+        whole: 'server:github',
+        selectors: [],
+      },
+    ]);
+  });
+
   it('names a tool without its connector prefix', () => {
     expect(railToolLabel('tool:x_jira_search', 'jira')).toBe('search');
     expect(railToolLabel('tool:core_service_list')).toBe('core_service_list');

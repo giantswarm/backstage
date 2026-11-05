@@ -1,15 +1,20 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
   AuthChain,
-  RuntimeState,
+  hasHealthDetails,
+  HealthDetails,
   ServerConfig,
   ServerTools,
 } from './serverDetail';
@@ -266,7 +271,7 @@ async function renderTools(
     </TestApiProvider>,
     // ServerTools links each tool to its page, so the route the link resolves
     // against has to be mounted.
-    { mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef } },
+    { mountedRoutes: { '/customize/connectors': mcpServersRouteRef } },
   );
 }
 
@@ -282,14 +287,27 @@ describe('ServerTools', () => {
     const link = await screen.findByRole('link', { name: 'list_buckets' });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/connectors/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+      '/customize/connectors/gazelle/aws-root/tools/x_aws-root_list_buckets',
     );
     expect(
       screen.getByRole('link', { name: 'Open the server’s tools' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/connectors/aws-root?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/aws-root');
+  });
+
+  it('marks a tool pill’s link as a control, and the text link as text', async () => {
+    // The agent shell underlines every bui link that is not `standalone`; a
+    // link filling a pill is a control, not a text link.
+    await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
+      total: 1,
+      tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
+    });
+
+    expect(
+      await screen.findByRole('link', { name: 'list_buckets' }),
+    ).toHaveAttribute('data-standalone', 'true');
+    expect(
+      screen.getByRole('link', { name: 'Open the server’s tools' }),
+    ).not.toHaveAttribute('data-standalone', 'true');
   });
 });
 
@@ -377,56 +395,78 @@ describe('ServerTools with no tools to show', () => {
   });
 });
 
-describe('RuntimeState on a deactivated server', () => {
-  /** Renders the live runtime block over a stubbed `core_mcpserver_list`. */
-  async function renderRuntime(server: MCPServer) {
-    const musterApi = {
-      listServers: jest.fn().mockResolvedValue({
-        mcpServers: [
-          {
-            name: 'aws-root',
-            state: 'Disconnected',
-            sessionStatus: 'connected',
-            toolsCount: 58,
-          },
-        ],
-      }),
-    };
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    return renderInTestApp(
-      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <RuntimeState server={server} />
-        </QueryClientProvider>
-      </TestApiProvider>,
+describe('HealthDetails', () => {
+  const MINUTE = 60 * 1000;
+
+  function serverWithStatus(status: Record<string, unknown>): MCPServer {
+    return new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'aws-root' },
+        spec: OAUTH_SPEC,
+        status: { state: 'Failed', ...status },
+      } as never,
+      'gazelle',
     );
   }
 
-  it('marks the session rows so a stale connection is not read as a working server', async () => {
-    // The aggregator answers the session's last connection ("connected",
-    // 58 tools) next to a `Disconnected` live state; without the note the
-    // block reads like a working server with an empty Tools block.
-    await renderRuntime(
-      makeServer({ ...OAUTH_SPEC, suspended: true }, 'Disconnected'),
+  /** Renders the block on the shell's clock, as the app mounts it. */
+  function renderHealth(server: MCPServer) {
+    return renderInTestApp(
+      <DateTimeZoneProvider timeZone="local">
+        <HealthDetails server={server} />
+      </DateTimeZoneProvider>,
+    );
+  }
+
+  it('says when it last connected and when it retries, the local time on hover', async () => {
+    const lastConnected = new Date(Date.now() - 5 * MINUTE).toISOString();
+    const nextRetry = new Date(Date.now() + 3 * MINUTE).toISOString();
+
+    await renderHealth(
+      serverWithStatus({
+        lastConnected,
+        consecutiveFailures: 3,
+        nextRetryAfter: nextRetry,
+      }),
     );
 
-    expect(await screen.findByText('connected')).toBeInTheDocument();
-    expect(screen.getByText('58')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /the Session, Tools, Resources and Prompts rows are your session's last/,
-      ),
-    ).toBeInTheDocument();
+    const last = screen.getByText('5 minutes ago');
+    expect(last).toHaveAttribute('title', formatLocalDateFull(lastConnected));
+    const retry = screen.getByText('in 3 minutes');
+    expect(retry).toHaveAttribute('title', formatLocalDateFull(nextRetry));
+    // No browser-locale timestamp in parentheses beside them.
+    expect(screen.queryByText(/\(/)).not.toBeInTheDocument();
   });
 
-  it('leaves an active server’s session rows unremarked', async () => {
-    await renderRuntime(makeServer(OAUTH_SPEC, 'Disconnected'));
+  it('shows a timestamp that does not parse as muster wrote it', async () => {
+    await renderHealth(serverWithStatus({ lastConnected: 'not a date' }));
 
-    expect(await screen.findByText('connected')).toBeInTheDocument();
+    expect(screen.getByText('Last connected')).toBeInTheDocument();
+    expect(screen.getByText('not a date')).toBeInTheDocument();
+  });
+
+  it('leaves out a retry time that has passed, and one once it passes', async () => {
+    const passed = new Date(Date.now() - 2 * MINUTE).toISOString();
+    expect(hasHealthDetails(serverWithStatus({ nextRetryAfter: passed }))).toBe(
+      false,
+    );
     expect(
-      screen.queryByText(/the Session, Tools, Resources and Prompts rows/),
-    ).not.toBeInTheDocument();
+      hasHealthDetails(serverWithStatus({ nextRetryAfter: 'not a date' })),
+    ).toBe(false);
+
+    const soon = new Date(Date.now() + 1500).toISOString();
+    await renderHealth(
+      serverWithStatus({ consecutiveFailures: 2, nextRetryAfter: soon }),
+    );
+    expect(screen.getByText('Next retry')).toBeInTheDocument();
+
+    // Not "Next retry less than a minute ago".
+    await waitFor(
+      () => expect(screen.queryByText('Next retry')).not.toBeInTheDocument(),
+      { timeout: 4000 },
+    );
+    expect(screen.getByText('Consecutive failures')).toBeInTheDocument();
   });
 });

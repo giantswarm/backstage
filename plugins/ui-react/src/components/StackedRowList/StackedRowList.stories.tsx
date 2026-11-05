@@ -24,7 +24,7 @@ const meta = {
       {
         id: '1',
         title: 'Why is the ingress on gazelle returning 504s?',
-        href: '/agent-platform/sessions/1',
+        href: '/sessions/gazelle/1',
         status: <StatusDot tone="success" label="Done" />,
         facts: ['incident-helper', 'gazelle', '3 min ago'],
         actions: more('Why is the ingress on gazelle returning 504s?'),
@@ -33,7 +33,7 @@ const meta = {
         id: '2',
         title:
           'rotate_cluster_certificates_for_all_workload_clusters_in_the_management_cluster',
-        href: '/agent-platform/sessions/2',
+        href: '/sessions/gazelle/2',
         status: <StatusDot tone="warning" label="Needs input" />,
         facts: ['platform-ops', 'gazelle', 'yesterday'],
         actions: more('rotate certificates'),
@@ -100,7 +100,7 @@ export const WithDetails: Story = {
       {
         id: 'llama',
         title: 'llama3.1-8b-instruct',
-        href: '/agent-platform/models/llama',
+        href: '/customize/models/gazelle/kagent/llama',
         status: <StatusDot tone="warning" label="Starting" />,
         facts: ['meta-llama/Llama-3.1-8B-Instruct', 'vLLM', '1 GPU'],
         details:

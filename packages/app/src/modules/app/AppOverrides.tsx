@@ -35,16 +35,13 @@ import {
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
 } from '@backstage/integration-react';
-import {
-  createFetchApi,
-  FetchMiddlewares,
-  GithubAuth,
-} from '@backstage/core-app-api';
+import { GithubAuth } from '@backstage/core-app-api';
 import {
   GSDiscoveryApiClient,
   gsAuthProvidersApiRef,
   SignedInConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
+import { signalApiRef } from '@backstage/plugin-signals-react';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { grafanaPlugin } from '@backstage-community/plugin-grafana';
 import { SentryErrorReporter } from '../../apis/errorReporter';
@@ -59,6 +56,8 @@ import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
 import { ScopedStorageApi } from './scopedStorageApi';
+import { getOptionalMainAuthApi } from '../auth/getOptionalMainAuthApi';
+import { createBackstageFetchApi } from './backstageFetch';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -113,28 +112,22 @@ export const appOverrides = createFrontendModule({
             configApi: configApiRef,
             identityApi: identityApiRef,
             discoveryApi: discoveryApiRef,
+            gsAuthProvidersApi: gsAuthProvidersApiRef,
           },
-          factory: ({ configApi, identityApi, discoveryApi }) =>
-            createFetchApi({
-              middleware: [
-                FetchMiddlewares.resolvePluginProtocol({ discoveryApi }),
-                FetchMiddlewares.injectIdentityAuth({
-                  identityApi,
-                  config: configApi,
-                  // Per-request matcher (not a static allowlist): the
-                  // per-installation `backendUrl` overrides are loaded from the
-                  // backend after sign-in, so the set of URLs needing the
-                  // Backstage token grows after app boot.
-                  allowUrl:
-                    GSDiscoveryApiClient.createUrlPrefixAllowlistMatcher(
-                      configApi,
-                    ),
-                  header: {
-                    name: 'X-Backstage-Token',
-                    value: (token: string) => `Bearer ${token}`,
-                  },
-                }),
-              ],
+          factory: ({
+            configApi,
+            identityApi,
+            discoveryApi,
+            gsAuthProvidersApi,
+          }) =>
+            createBackstageFetchApi({
+              configApi,
+              discoveryApi,
+              identityApi,
+              mainAuthApi: getOptionalMainAuthApi(
+                gsAuthProvidersApi,
+                'portal-fetch',
+              ),
             }),
         }),
     }),
@@ -144,7 +137,9 @@ export const appOverrides = createFrontendModule({
      * backend database via `@backstage/plugin-user-settings-backend`, so it
      * roams across browsers and devices; every other bucket (the classic
      * portal's starred entities, home visits, …) stays in WebStorage
-     * (localStorage) exactly as the upstream default. See `ScopedStorageApi`.
+     * (localStorage) exactly as the upstream default. With the signals API, a
+     * change written in one tab reaches the person's other tabs. See
+     * `ScopedStorageApi`.
      */
     ApiBlueprint.make({
       name: 'storage',
@@ -156,13 +151,21 @@ export const appOverrides = createFrontendModule({
             errorApi: errorApiRef,
             fetchApi: fetchApiRef,
             identityApi: identityApiRef,
+            signalApi: signalApiRef,
           },
-          factory: ({ discoveryApi, errorApi, fetchApi, identityApi }) =>
+          factory: ({
+            discoveryApi,
+            errorApi,
+            fetchApi,
+            identityApi,
+            signalApi,
+          }) =>
             ScopedStorageApi.create({
               discoveryApi,
               errorApi,
               fetchApi,
               identityApi,
+              signalApi,
             }),
         }),
     }),

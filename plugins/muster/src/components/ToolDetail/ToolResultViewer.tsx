@@ -20,10 +20,14 @@ import UnfoldLessIcon from '@material-ui/icons/UnfoldLess';
 import UnfoldMoreIcon from '@material-ui/icons/UnfoldMore';
 import {
   CopyButton,
+  saveFile,
   ShowMore,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatBytes } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  formatBytes,
+  formatMilliseconds,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { detectTable } from '../../lib/resultShape';
 
 type ViewMode = 'parsed' | 'raw' | 'table';
@@ -32,7 +36,7 @@ type ViewMode = 'parsed' | 'raw' | 'table';
 // with a usable minimum on short windows. The dynamic viewport and the
 // shell's phone bar (0 elsewhere) count, so on a phone the box ends above the
 // bar instead of under it, and a swipe past its end reaches the page.
-const RESULT_MAX_HEIGHT =
+export const RESULT_MAX_HEIGHT =
   'max(240px, calc(100dvh - var(--agent-shell-mobile-bar-height, 0px) - 200px))';
 
 /**
@@ -132,15 +136,8 @@ export function ToolResultViewer({
     [rows, table, needle],
   );
 
-  const download = () => {
-    const blob = new Blob([pretty], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'tool-result.json';
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
+  const download = () =>
+    saveFile(pretty, 'tool-result.json', 'application/json');
 
   const onModeChange = (keys: Set<Key>) => {
     const next = [...keys][0];
@@ -218,7 +215,7 @@ export function ToolResultViewer({
               color="secondary"
               style={{ fontVariantNumeric: 'tabular-nums' }}
             >
-              {durationMs} ms
+              {formatMilliseconds(durationMs)}
             </Text>
           )}
           <Text

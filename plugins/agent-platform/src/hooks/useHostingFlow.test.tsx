@@ -31,7 +31,7 @@ describe('useOpenHostingFlow / useHostingFlowReturn', () => {
         <Route path="/flow" element={<Flow />} />
         <Route path="*" element={<View />} />
       </Routes>,
-      { initialRouteEntries: ['/agent-platform/models/serving?x=1'] },
+      { initialRouteEntries: ['/customize/models/hosting?x=1'] },
     );
 
     await userEvent.click(
@@ -40,7 +40,7 @@ describe('useOpenHostingFlow / useHostingFlowReturn', () => {
 
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving?x=1',
+      '/customize/models/hosting?x=1',
     );
   });
 

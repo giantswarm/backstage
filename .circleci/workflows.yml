@@ -5,7 +5,70 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  architect: giantswarm/architect@10.13.0
+  architect: giantswarm/architect@10.16.7
+
+commands:
+  # Pre-steps of the chart-test jobs: pull the images run-tests-with-ats starts
+  # (app-test-suite, the kind node) before the orb does, so `docker run` and
+  # `kind create cluster` find them locally. The pull is logged in with the
+  # registry's credentials from the architect context: ACR throttles all
+  # anonymous pulls of a registry together as one identity, an authenticated
+  # pull has its own budget. A transient `toomanyrequests` (or any failed pull)
+  # is retried with backoff; ACR's Retry-After counts down to the end of its
+  # throttling period, at most about a minute, which the longer delays cover.
+  pull-chart-test-images:
+    parameters:
+      registry:
+        type: string
+      images:
+        description: Images to pull, space-separated.
+        type: string
+    steps:
+    - run:
+        name: Pull chart-test images (logged in, with retry)
+        environment:
+          PULL_REGISTRY: << parameters.registry >>
+          PULL_IMAGES: << parameters.images >>
+        command: |
+          delays="15 30 60 60 60"
+          retry() {
+            for delay in $delays ""; do
+              if "$@"; then return 0; fi
+              [ -n "$delay" ] || return 1
+              echo "Attempt failed, retrying in ${delay}s: $*"
+              sleep "$delay"
+            done
+          }
+
+          # Same input as architect/image-login-to-registries: one registry per
+          # line, "visibility registry username_envvar password_envvar push_dev".
+          # No xtrace: the loop resolves the password.
+          set +x
+          username_val=""
+          password_val=""
+          while read -r _ reg username password _; do
+            [ "$reg" = "$PULL_REGISTRY" ] && [ -n "$username" ] && [ -n "$password" ] || continue
+            case "$username$password" in *[!a-zA-Z0-9_]*) echo "Invalid credential variable name for $reg" >&2; exit 1 ;; esac
+            eval "username_val=\${$username:-}"
+            eval "password_val=\${$password:-}"
+          done \<<EOF
+          $(printf '%s' "${REGISTRIES_DATA_BASE64:-}" | base64 -d)
+          EOF
+          login() {
+            printf '%s' "$password_val" | docker login "$PULL_REGISTRY" --username "$username_val" --password-stdin
+          }
+          if [ -z "$username_val" ] || [ -z "$password_val" ]; then
+            echo "No $PULL_REGISTRY credentials in the job's context: pulling anonymously."
+          elif ! retry login; then
+            echo "Login to $PULL_REGISTRY failed: pulling anonymously."
+          fi
+
+          for image in $PULL_IMAGES; do
+            if ! retry docker pull "$image"; then
+              echo "Pulling $image failed after every retry." >&2
+              exit 1
+            fi
+          done
 
 jobs:
   # Self-contained Node build/test on a cimg/node executor (architect ships no
@@ -15,8 +78,19 @@ jobs:
   # repo redirects its bespoke toolchain by editing those scripts, not this job.
   node-build:
     docker:
-    - image: cimg/node:24.21.0
+    - image: cimg/node:24.22.2
     resource_class: large
+    # Worker counts sized from the resource class's memory, not from the CPUs
+    # the tools detect (the Docker executor shows the host's count to
+    # os.cpus(), the cgroup's quota to jest), which start more workers than the
+    # class has memory for. backstage-cli's repo lint and repo build read
+    # BACKSTAGE_CLI_CONCURRENCY; jest reads no variable, so the repo's test
+    # script passes --maxWorkers=${JEST_MAX_WORKERS:-40%}. A repo that raises
+    # resource_class or adds a service container in .circleci/custom.yml sets
+    # both under this job's environment there; its values win the merge.
+    environment:
+      BACKSTAGE_CLI_CONCURRENCY: "1"
+      JEST_MAX_WORKERS: "2"
     steps:
     - checkout
     - restore_cache:
@@ -32,7 +106,7 @@ jobs:
     # partially and skip postinstall (patch-package), see devctl#2183.
     - restore_cache:
         keys:
-        - node-build-yarn-v2-24.21.0-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v2-24.22.2-{{ checksum "yarn.lock" }}
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -69,7 +143,7 @@ jobs:
     # incremental caches those steps write under node_modules/.cache -- the
     # compute-side analogue of persisting $GOCACHE. Write-once per lockfile.
     - save_cache:
-        key: node-build-yarn-v2-24.21.0-{{ checksum "yarn.lock" }}
+        key: node-build-yarn-v2-24.22.2-{{ checksum "yarn.lock" }}
         paths:
         - node_modules
         - .yarn/install-state.gz
@@ -83,6 +157,16 @@ jobs:
 workflows:
   build:
     jobs:
+    # Resolve the version once, at the start of the workflow, and persist it to
+    # the workspace (.pipeline_version). Every image and chart job requires
+    # this job and builds with that version instead of resolving its own, so a
+    # stable tag landing while the workflow runs (a promote) cannot give the
+    # image and the chart that references it different versions.
+    - architect/pin-version:
+        name: pin-version
+        filters:
+          tags:
+            only: /^v.*/
     - node-build:
         filters:
           tags:
@@ -106,6 +190,7 @@ workflows:
         resource_class: small
         dockerfile: packages/backend/Dockerfile
         requires:
+        - pin-version
         - node-build
         filters:
           branches:
@@ -119,6 +204,7 @@ workflows:
         resource_class: arm.medium
         dockerfile: packages/backend/Dockerfile
         requires:
+        - pin-version
         - node-build
         filters:
           branches:
@@ -135,6 +221,7 @@ workflows:
         merge-digests: true
         platforms: "linux/amd64,linux/arm64"
         requires:
+        - pin-version
         - build-image-amd64
         - build-image-arm64
         filters:
@@ -159,6 +246,7 @@ workflows:
         dockerfile: packages/backend/Dockerfile
         split-china-push: true
         requires:
+        - pin-version
         - node-build
         filters:
           tags:
@@ -173,6 +261,7 @@ workflows:
         dockerfile: packages/backend/Dockerfile
         split-china-push: true
         requires:
+        - pin-version
         - node-build
         filters:
           tags:
@@ -187,6 +276,7 @@ workflows:
         platforms: "linux/amd64,linux/arm64"
         split-china-push: true
         requires:
+        - pin-version
         - build-image-release-amd64
         - build-image-release-arm64
         filters:
@@ -222,6 +312,9 @@ workflows:
         push_to_appcatalog: false
         push_to_oci_registry: false
         persist_chart_archive: true
+        # The version pin-version persisted (every chart job attaches the
+        # workspace for it).
+        attach_workspace: true
         # app-build-suite fails a chart whose gsoci image references the registry
         # does not carry. build-chart runs before this pipeline pushes its own
         # image (a branch without branchPublish never pushes it), so that image
@@ -234,6 +327,7 @@ workflows:
             name: Exempt this pipeline's own image from the image reference check
             command: echo 'export ABS_HELM_IMAGE_REFERENCE_VALIDATOR_OWN_IMAGE=gsoci.azurecr.io/giantswarm/backstage' >> "$BASH_ENV"
         requires:
+        - pin-version
         - node-build
         filters:
           tags:
@@ -253,6 +347,8 @@ workflows:
     # patches, extra nodes) from .ats/kind-config.yaml when the repo carries one
     # -- repo-owned, like .ats/main.yaml -- and its resource class from
     # gen.ci.atsResourceClass in giantswarm/github (the orb default is medium).
+    # Its pre-steps pull the images it starts logged in and with retry (see
+    # pull-chart-test-images above).
     - architect/run-tests-with-ats:
         name: execute-chart-tests
         context: architect
@@ -260,6 +356,11 @@ workflows:
         # app-test-suite 1.x provisions no cluster: the job creates the kind
         # cluster and runs the pinned image against its kubeconfig.
         create_kind_cluster: true
+        kind_node_image: "gsoci.azurecr.io/giantswarm/kind-node:v1.37.0"
+        pre-steps:
+        - pull-chart-test-images:
+            registry: gsoci.azurecr.io
+            images: "gsoci.azurecr.io/giantswarm/app-test-suite:1.0.3 gsoci.azurecr.io/giantswarm/kind-node:v1.37.0"
         requires:
         - build-chart
         - push-to-registries
@@ -278,7 +379,9 @@ workflows:
         app_catalog: giantswarm-operations-platform-catalog
         app_catalog_test: giantswarm-operations-platform-test-catalog
         chart: backstage
+        attach_workspace: true
         requires:
+        - pin-version
         - execute-chart-tests
         - push-to-registries
         filters:
@@ -302,7 +405,9 @@ workflows:
         app_catalog: giantswarm-operations-platform-catalog
         app_catalog_test: giantswarm-operations-platform-test-catalog
         chart: backstage
+        attach_workspace: true
         requires:
+        - pin-version
         - build-chart
         - push-to-registries-release
         filters:

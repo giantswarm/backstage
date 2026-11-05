@@ -1,12 +1,38 @@
 import type {
-  ClaudeHarnessLimits,
   Harness,
   HarnessRuntime,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { formatCount } from './formatNumbers';
+
+import type { AgentManagerInfo } from './agentManager';
 
 /** agent-manager's platform Harness when `get_info` has not answered. */
 export const DEFAULT_PLATFORM_HARNESS = 'kagent';
+
+/**
+ * The words for an agent's Harness wherever a person reads it: the create and
+ * edit form's runtime field, its review and the agent page's facts, so the
+ * two read the same.
+ */
+export const RUNTIME_LABEL = 'Runtime';
+/** The technical term beside {@link RUNTIME_LABEL}. */
+export const RUNTIME_TERM = 'Harness';
+/** What the runtime is, in one sentence. */
+export const RUNTIME_DESCRIPTION = 'What runs the agent.';
+/** The mark on the platform Harness, the one a request naming none gets. */
+export const PLATFORM_DEFAULT_LABEL = 'Platform default';
+
+/**
+ * The platform Harness agent-manager composes when a request names none:
+ * `get_info`'s, else {@link DEFAULT_PLATFORM_HARNESS} while it has not
+ * answered. Right for what a request will get; a page that marks a Harness
+ * as the platform's reads `info?.harness?.name` alone, so it never marks one
+ * on a guess.
+ */
+export function platformHarnessOf(
+  info: Pick<AgentManagerInfo, 'harness'> | undefined,
+): string {
+  return info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
+}
 
 /**
  * A Harness an agent can be created on, as the wizard offers it. The name is
@@ -20,8 +46,6 @@ export type HarnessChoice = {
   runtime?: HarnessRuntime;
   /** The image's repository name, without registry, tag or digest. */
   imageName?: string;
-  /** Per-turn limits; only a Claude Code Harness sets them. */
-  limits?: ClaudeHarnessLimits;
 };
 
 const RUNTIME_LABELS: Record<HarnessRuntime, string> = {
@@ -30,6 +54,15 @@ const RUNTIME_LABELS: Record<HarnessRuntime, string> = {
   codex: 'Codex',
   byo: 'Custom image',
 };
+
+/**
+ * Whether a Harness runtime runs a coding CLI (every runtime but kagent's): an
+ * agent on one reaches its Harness's platform list only, so it picks no
+ * EgressPolicy. Undefined, the runtime is not known yet.
+ */
+export function isCodingRuntime(runtime: HarnessRuntime | undefined): boolean {
+  return runtime !== undefined && runtime !== 'kagent';
+}
 
 export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
   return runtime ? RUNTIME_LABELS[runtime] : 'Unknown runtime';
@@ -42,6 +75,16 @@ export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
  */
 export function harnessTitle(choice: HarnessChoice): string {
   return choice.displayName ?? runtimeLabel(choice.runtime);
+}
+
+/**
+ * The platform Harness in one line, as a summary row reads it: its title and
+ * the platform default's mark, or the mark alone until (or unless) it is read.
+ */
+export function platformRuntimeLine(choice: HarnessChoice | undefined): string {
+  return choice
+    ? `${harnessTitle(choice)} · ${PLATFORM_DEFAULT_LABEL}`
+    : PLATFORM_DEFAULT_LABEL;
 }
 
 /** `gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:…` → `claude-harness`. */
@@ -59,7 +102,6 @@ export function harnessChoiceOf(harness: Harness): HarnessChoice {
     }),
     runtime: harness.getRuntime(),
     imageName: imageNameOf(harness.getImage()),
-    limits: harness.getLimits(),
   };
 }
 
@@ -83,25 +125,18 @@ export function harnessChoicesOf(
     );
 }
 
-export type HarnessLimitEntry = { label: string; value: string };
-
-/** The set limits, the budget as configured (`$0.50`, not rounded). */
-export function harnessLimitEntries(
-  limits: ClaudeHarnessLimits | undefined,
-): HarnessLimitEntry[] {
-  const entries: HarnessLimitEntry[] = [];
-  const budget = limits?.budgetUSD?.trim();
-  if (budget) {
-    entries.push({
-      label: 'Budget per turn',
-      value: Number.isFinite(Number(budget)) ? `$${budget}` : `${budget} USD`,
-    });
-  }
-  if (typeof limits?.maxTurns === 'number' && limits.maxTurns > 0) {
-    entries.push({
-      label: 'Max steps per turn',
-      value: formatCount(limits.maxTurns),
-    });
-  }
-  return entries;
+/**
+ * The origins the platform lets agents on a coding Harness reach: agent-manager's
+ * chart value `harness.egress.<harness>`, which it writes for every agent on
+ * that Harness and holds requested origins to (`guardCoding`). agent-manager
+ * does not report it yet (proposed as `get_info.harnessEgress`, keyed by
+ * Harness name, giantswarm/giantswarm#38814), so this answers `undefined` and
+ * the agent form says only that the platform sets the agent's network access.
+ * Once it does, read it here: the form lists what this returns.
+ */
+export function platformEgressOf(
+  _info: AgentManagerInfo | undefined,
+  _harness: string | undefined,
+): string[] | undefined {
+  return undefined;
 }

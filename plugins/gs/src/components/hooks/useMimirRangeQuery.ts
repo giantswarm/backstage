@@ -70,7 +70,7 @@ export function useMimirRangeQuery(options: {
     enabled && installationName && query && start && end && step,
   );
 
-  const { data, error, isPending, fetchStatus } = useQuery<
+  const { data, error, isPending, fetchStatus, isPlaceholderData } = useQuery<
     MimirRangeQueryResponse,
     Error
   >({
@@ -121,7 +121,12 @@ export function useMimirRangeQuery(options: {
       isLoading: isLoading || (wanted && isAvailable === undefined),
       error: error as Error | null,
       isAvailable,
+      /**
+       * Whether `data` is the previous key's answer, held by
+       * `keepPreviousAnswer` while this key's first fetch runs.
+       */
+      isPlaceholderData,
     }),
-    [data, isLoading, error, wanted, isAvailable],
+    [data, isLoading, error, wanted, isAvailable, isPlaceholderData],
   );
 }

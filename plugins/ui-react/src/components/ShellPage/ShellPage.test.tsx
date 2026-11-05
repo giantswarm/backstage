@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   mockDesktopLayout,
@@ -8,12 +8,17 @@ import {
   mockPhoneLayout,
 } from '../../testUtils/mockPhoneLayout';
 import {
+  mockIntersectionObserver,
+  type MockedIntersectionObserver,
+} from '../../testUtils/mockIntersectionObserver';
+import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
 } from '../PageHeaderActions';
 import {
   ShellPage,
   ShellPageBadgeSkeleton,
+  ShellPageExpandedOnly,
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
 } from './ShellPage';
@@ -288,6 +293,235 @@ describe('ShellPage', () => {
       ).toBeInTheDocument();
       // Title line, badge row and three facts' caption and value.
       expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(8);
+    });
+  });
+
+  describe('with a compact header', () => {
+    let observer: MockedIntersectionObserver;
+    beforeEach(() => {
+      observer = mockIntersectionObserver();
+    });
+    afterEach(() => observer.restore());
+
+    const header = () => screen.getByTestId('shell-page-header');
+
+    function renderLongPage() {
+      return renderAt(
+        '/connectors/jira',
+        <ShellPage
+          title={<button>Jira</button>}
+          documentTitle="Jira"
+          breadcrumbs={[{ label: 'Connectors', href: '/connectors' }]}
+          badges={
+            <>
+              <span>Connected</span>
+              <ShellPageExpandedOnly>
+                <span>on gazelle</span>
+                <button>gazelle</button>
+              </ShellPageExpandedOnly>
+              <ShellPageExpandedOnly onlyAtPhoneWidth>
+                <span>Phone-only detail</span>
+              </ShellPageExpandedOnly>
+            </>
+          }
+          meta="Search, read and update tickets"
+          description="A connector to the support desk."
+          actions={<button>Edit</button>}
+          menu={<button>More actions</button>}
+          compactHeader
+        >
+          <RegistersAction label="Pin" />
+          <p>A long conversation</p>
+        </ShellPage>,
+      );
+    }
+
+    it('is expanded while the content start is in view or below it', () => {
+      renderLongPage();
+
+      expect(header()).not.toHaveAttribute('data-compact');
+      act(() => observer.report('in-view'));
+      expect(header()).not.toHaveAttribute('data-compact');
+      act(() => observer.report('below'));
+      expect(header()).not.toHaveAttribute('data-compact');
+    });
+
+    it('watches a sentinel that ends where the content starts', () => {
+      renderLongPage();
+
+      const [sentinel] = observer.observed();
+      expect(sentinel).toBeDefined();
+      expect(
+        screen
+          .getByRole('heading', { level: 1 })
+          .compareDocumentPosition(sentinel) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        sentinel.compareDocumentPosition(
+          screen.getByText('A long conversation'),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // Reaching up from there, so it cannot pass the view unseen.
+      expect(sentinel).toHaveStyle({ position: 'absolute', bottom: '0px' });
+    });
+
+    it('turns compact and sticky once the content start is above the view', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+
+      expect(header()).toHaveAttribute('data-compact');
+      expect(header()).toHaveStyle({ position: 'sticky', top: '0px' });
+    });
+
+    it('does not flick back and forth while the content start moves a few pixels', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+      expect(header()).toHaveAttribute('data-compact');
+
+      // A reflow nudging the content's start just back into view keeps it
+      // compact; coming properly back into view expands it.
+      act(() => observer.report(10));
+      expect(header()).toHaveAttribute('data-compact');
+      act(() => observer.report(-2));
+      act(() => observer.report(12));
+      expect(header()).toHaveAttribute('data-compact');
+      act(() => observer.report(100));
+      expect(header()).not.toHaveAttribute('data-compact');
+
+      // And expanded, a few pixels below the edge stay expanded.
+      act(() => observer.report(10));
+      expect(header()).not.toHaveAttribute('data-compact');
+    });
+
+    it('keeps the header, its spacer and the sentinel out of scroll anchoring', () => {
+      renderLongPage();
+      act(() => observer.report('above'));
+
+      // The compact header is the first thing in view: anchored on, its
+      // turning back into the expanded header would scroll the page.
+      const [sentinel] = observer.observed();
+      for (const element of [
+        header(),
+        header().nextElementSibling!,
+        sentinel.parentElement!,
+      ]) {
+        expect(element).toHaveStyle({ overflowAnchor: 'none' });
+      }
+    });
+
+    it('keeps one header: one h1 and one of each action, the same elements', () => {
+      renderLongPage();
+      const edit = screen.getByRole('button', { name: 'Edit' });
+      const heading = screen.getByRole('heading', { level: 1 });
+
+      act(() => observer.report('above'));
+
+      expect(screen.getAllByRole('heading', { level: 1 })).toEqual([heading]);
+      expect(screen.getAllByRole('button', { name: 'Edit' })).toEqual([edit]);
+      expect(screen.getAllByRole('button', { name: 'Pin' })).toHaveLength(1);
+      expect(
+        screen.getAllByRole('button', { name: 'More actions' }),
+      ).toHaveLength(1);
+    });
+
+    it('leaves out the description, the meta text and the expanded-only parts', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+
+      expect(screen.getByText('Connected')).toBeVisible();
+      expect(screen.getByText('on gazelle')).not.toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'gazelle' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText('A connector to the support desk.'),
+      ).not.toBeVisible();
+      expect(
+        screen.getByText('Search, read and update tickets'),
+      ).not.toBeVisible();
+      // Phone-only parts stay at desktop width.
+      expect(screen.getByText('Phone-only detail')).toBeVisible();
+    });
+
+    it('stays expanded while focus is on a part the compact row leaves out', () => {
+      renderLongPage();
+      const gazelle = screen.getByRole('button', { name: 'gazelle' });
+      act(() => gazelle.focus());
+
+      act(() => observer.report('above'));
+
+      expect(header()).not.toHaveAttribute('data-compact');
+      expect(gazelle).toHaveFocus();
+
+      act(() => screen.getByRole('button', { name: 'Edit' }).focus());
+
+      expect(header()).toHaveAttribute('data-compact');
+    });
+
+    it('keeps focus on an action as the header turns compact and back', () => {
+      renderLongPage();
+      const pin = screen.getByRole('button', { name: 'Pin' });
+      act(() => pin.focus());
+
+      act(() => observer.report('above'));
+      expect(pin).toHaveFocus();
+
+      act(() => observer.report('in-view'));
+      expect(header()).not.toHaveAttribute('data-compact');
+      expect(pin).toHaveFocus();
+    });
+
+    it('scrolls what comes into view clear of the compact header, never the header itself', () => {
+      renderLongPage();
+      act(() => observer.report('above'));
+
+      // A margin on the content, not padding on the document: padding would
+      // count the stuck header's own top as hidden, and focusing a control
+      // in it (react-aria focuses the switch's input on every press) would
+      // scroll the page to the top and back.
+      expect(document.documentElement.style.scrollPaddingTop).toBe('');
+      expect(screen.getByText('A long conversation')).toHaveStyle({
+        scrollMarginTop:
+          'calc(var(--shell-page-compact-header-height, 0px) + 8px)',
+      });
+      expect(screen.getByRole('button', { name: 'Edit' })).toHaveStyle({
+        scrollMarginTop: '0',
+      });
+    });
+
+    it('publishes the compact header height only while it is compact', () => {
+      const { unmount } = renderLongPage();
+      const height = () =>
+        document.documentElement.style.getPropertyValue(
+          '--shell-page-compact-header-height',
+        );
+      expect(height()).toBe('');
+
+      act(() => observer.report('above'));
+      expect(height()).not.toBe('');
+
+      act(() => observer.report('in-view'));
+      expect(height()).toBe('');
+
+      act(() => observer.report('above'));
+      unmount();
+      expect(height()).toBe('');
+    });
+
+    it('watches nothing on a page without one', () => {
+      renderAt(
+        '/connectors/jira',
+        <ShellPage title="Jira">
+          <p>Content</p>
+        </ShellPage>,
+      );
+
+      expect(observer.observed()).toHaveLength(0);
+      expect(screen.queryByTestId('shell-page-header')).not.toBeInTheDocument();
+      expect(document.documentElement.style.scrollPaddingTop).toBe('');
     });
   });
 });

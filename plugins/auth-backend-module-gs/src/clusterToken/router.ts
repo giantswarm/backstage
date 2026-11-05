@@ -11,7 +11,10 @@ import { InputError, NotFoundError } from '@backstage/errors';
 // broker exchanges for a per-management-cluster token. Backstage does not
 // expose provider sessions server-side, so the token travels alongside the
 // regular Backstage credentials (same pattern the AI chat uses for MCP auth).
-import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  jwtLifetimeSeconds,
+  SUBJECT_TOKEN_HEADER,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 const TOKEN_EXCHANGE_GRANT_TYPE =
   'urn:ietf:params:oauth:grant-type:token-exchange';
@@ -22,6 +25,9 @@ const ID_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:id_token';
  * larger than the frontend's session refresh margin (3 minutes in OAuth2's
  * sessionShouldRefresh), so a refresh-triggering request never gets a token
  * that immediately triggers another refresh.
+ *
+ * A request that needs more names it in `minLifetimeLeft` (an agent turn,
+ * whose token has to outlast the turn): see {@link readMinLifetimeLeft}.
  */
 const EXPIRY_SKEW_SECONDS = 240;
 
@@ -30,8 +36,34 @@ const DEFAULT_EXPIRES_IN_SECONDS = 300;
 
 type CachedToken = {
   token: string;
+  /**
+   * The token's whole lifetime: its `exp` − `iat` when it is a JWT (both on
+   * the issuer's clock), else its `expires_in`, as if just issued.
+   */
+  lifetimeMs: number;
+  /** When it expires on this backend's clock: the exchange plus expires_in. */
   expiresAt: number;
 };
+
+/**
+ * The `minLifetimeLeft` query parameter: the share of its lifetime (0 to 1)
+ * a cached token must still have to be served, so the caller gets a token
+ * that lasts. Undefined when absent; anything but a number in (0, 1] is an
+ * InputError.
+ */
+function readMinLifetimeLeft(req: express.Request): number | undefined {
+  const raw = req.query.minLifetimeLeft;
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = typeof raw === 'string' ? Number(raw) : NaN;
+  if (!(value > 0 && value <= 1)) {
+    throw new InputError(
+      'minLifetimeLeft must be a number greater than 0 and at most 1',
+    );
+  }
+  return value;
+}
 
 /**
  * One RFC 8693 token endpoint and the confidential client the portal
@@ -103,7 +135,9 @@ export interface ClusterTokenRouterOptions {
  * Given the caller's authenticated Backstage session and their main Dex ID
  * token (forwarded in the `gs-subject-token` header), it mints a short-lived
  * per-management-cluster token (RFC 8693 token exchange) and caches it per
- * (user, installation) with expiry-aware re-exchange. An installation with an
+ * (user, installation) with expiry-aware re-exchange; `?minLifetimeLeft=`
+ * asks for a token with at least that share of its lifetime left, which a
+ * cached one may not have. An installation with an
  * entry under `gs.clusterTokenBroker.targets` is exchanged at its own Dex;
  * every other one at the muster broker (`gs.clusterTokenBroker.tokenUrl`),
  * when one is configured. Exchanged tokens are returned to the frontend as
@@ -181,6 +215,7 @@ export function createClusterTokenRouter(
       if (!subjectToken) {
         throw new InputError(`Missing ${SUBJECT_TOKEN_HEADER} header`);
       }
+      const minLifetimeLeft = readMinLifetimeLeft(req);
 
       res.setHeader('Cache-Control', 'no-store');
 
@@ -189,7 +224,11 @@ export function createClusterTokenRouter(
 
       const cacheKey = `${userEntityRef}:${installation}`;
       const cached = tokenCache.get(cacheKey);
-      if (cached && cached.expiresAt - now > EXPIRY_SKEW_SECONDS * 1000) {
+      const lastsLongEnough = (token: CachedToken) =>
+        token.expiresAt - now > EXPIRY_SKEW_SECONDS * 1000 &&
+        (minLifetimeLeft === undefined ||
+          token.expiresAt - now >= minLifetimeLeft * token.lifetimeMs);
+      if (cached && lastsLongEnough(cached)) {
         res.json({
           token: cached.token,
           expiresInSeconds: Math.floor((cached.expiresAt - now) / 1000),
@@ -367,8 +406,15 @@ export function createClusterTokenRouter(
 
       const expiresInSeconds =
         tokenResponse.expires_in ?? DEFAULT_EXPIRES_IN_SECONDS;
+      // The token's own lifetime when it says: a broker that hands out a
+      // token it cached itself reports only what is left of it in
+      // expires_in. What is left is still measured on this backend's clock
+      // (now + expires_in), so no clock but the issuer's enters the lifetime.
       tokenCache.set(cacheKey, {
         token: tokenResponse.access_token,
+        lifetimeMs:
+          (jwtLifetimeSeconds(tokenResponse.access_token) ?? expiresInSeconds) *
+          1000,
         expiresAt: now + expiresInSeconds * 1000,
       });
 

@@ -1,6 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { createRef } from 'react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TechnicalDetailsFoldOut } from './TechnicalDetailsFoldOut';
+import {
+  TechnicalDetailsFoldOut,
+  type TechnicalDetailsFoldOutHandle,
+} from './TechnicalDetailsFoldOut';
 
 const trigger = () => screen.getByRole('button', { name: 'Technical details' });
 
@@ -27,6 +31,20 @@ describe('TechnicalDetailsFoldOut', () => {
 
     await userEvent.click(trigger());
     expect(screen.getByText('The conditions')).toBeInTheDocument();
+  });
+
+  it('names one piece of technical detail by its own title', () => {
+    render(
+      <TechnicalDetailsFoldOut title="Input schema" defaultExpanded={false}>
+        <p>The schema</p>
+      </TechnicalDetailsFoldOut>,
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Input schema' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Technical details' }),
+    ).toBeNull();
   });
 
   it('only seeds the first render by default, as on the agent page', () => {
@@ -68,6 +86,45 @@ describe('TechnicalDetailsFoldOut', () => {
 
     rerender(foldOut(true, true));
     rerender(foldOut(false, true));
+    expect(trigger()).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('opens, scrolls into view and takes focus on reveal, and stays open', () => {
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const ref = createRef<TechnicalDetailsFoldOutHandle>();
+    const { rerender } = render(
+      <TechnicalDetailsFoldOut
+        ref={ref}
+        defaultExpanded={false}
+        followDefaultExpanded
+      >
+        <p>The conditions</p>
+      </TechnicalDetailsFoldOut>,
+    );
+
+    act(() => ref.current?.reveal());
+
+    expect(trigger()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('The conditions')).toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(trigger()).toHaveFocus();
+
+    // The person's choice: a fresh read does not fold it away again.
+    rerender(
+      <TechnicalDetailsFoldOut ref={ref} defaultExpanded followDefaultExpanded>
+        <p>The conditions</p>
+      </TechnicalDetailsFoldOut>,
+    );
+    rerender(
+      <TechnicalDetailsFoldOut
+        ref={ref}
+        defaultExpanded={false}
+        followDefaultExpanded
+      >
+        <p>The conditions</p>
+      </TechnicalDetailsFoldOut>,
+    );
     expect(trigger()).toHaveAttribute('aria-expanded', 'true');
   });
 });

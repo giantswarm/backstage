@@ -4,10 +4,15 @@ import {
   createStreamTurn,
   isStreamTurnOver,
   readStreamFrame,
+  resumeStreamTurn,
   StreamTurn,
 } from './kagentStreamTurn';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { buildTimeline, TimelineItem } from './kagentTimeline';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from './__fixtures__/workspaceNotice';
 
 describe('createSseDataDecoder', () => {
   it('decodes one event per blank-line delimiter', () => {
@@ -1195,3 +1200,293 @@ describe('carriesFile', () => {
     ).toBe(true);
   });
 });
+
+describe('resuming a cut stream', () => {
+  const fold = (turn: StreamTurn, events: unknown[]) =>
+    events.reduce<StreamTurn>(applyStreamEvent, turn);
+  const said = (text: string, messageId: string, final = false) => ({
+    kind: 'status-update',
+    taskId: 'task-1',
+    final,
+    status: {
+      state: final ? 'completed' : 'working',
+      message: {
+        kind: 'message',
+        messageId,
+        role: 'agent',
+        parts: [{ kind: 'text', text }],
+      },
+    },
+  });
+  const chunk = (text: string) => ({
+    kind: 'artifact-update',
+    taskId: 'task-1',
+    artifact: { artifactId: 'a-1', parts: [{ kind: 'text', text }] },
+    metadata: { kagent_partial: true },
+  });
+  const snapshot = {
+    kind: 'task',
+    id: 'task-1',
+    status: { state: 'working' },
+    // A resumed task's snapshot repeats its history; none of it is ingested.
+    history: [
+      {
+        kind: 'message',
+        messageId: 'm-1',
+        role: 'agent',
+        parts: [{ kind: 'text', text: 'Checking the nodes.' }],
+      },
+    ],
+  };
+
+  it('continues where the stream stopped, showing nothing twice', () => {
+    const cut = fold(createStreamTurn('sent-1'), [
+      { kind: 'task', id: 'task-1', status: { state: 'working' } },
+      said('Checking the nodes.', 'm-1'),
+    ]);
+
+    const resumed = fold(resumeStreamTurn(cut), [
+      snapshot,
+      said('Seven are ready.', 'm-2'),
+      said('Seven are ready.', 'm-2', true),
+    ]);
+
+    const texts = [
+      ...resumed.items.map(item => ('text' in item ? item.text : item.kind)),
+      ...(resumed.live ? [resumed.live.text] : []),
+    ];
+    expect(texts).toEqual(['Checking the nodes.', 'Seven are ready.']);
+    expect(isStreamTurnOver(resumed)).toBe(true);
+  });
+
+  it('drops a half-received reply of artifact chunks, which the complete artifact supersedes', () => {
+    // The chunks sent while no stream was open are gone: the next ones would
+    // be glued onto these with a hole in the middle.
+    const cut = fold(createStreamTurn('sent-1'), [
+      { kind: 'task', id: 'task-1', status: { state: 'working' } },
+      chunk('Seven nodes are '),
+    ]);
+    expect(cut.live?.text).toBe('Seven nodes are ');
+
+    const resumed = resumeStreamTurn(cut);
+
+    expect(resumed.live).toBeUndefined();
+    expect(resumed.revision).toBeGreaterThan(cut.revision);
+  });
+
+  it('shows a reply of artifact chunks only once whole after the cut, never from mid-word', () => {
+    const cut = fold(createStreamTurn('sent-1'), [chunk('Seven nodes are ')]);
+
+    const midway = fold(resumeStreamTurn(cut), [chunk('ady, and the ')]);
+    expect(midway.live).toBeUndefined();
+
+    const whole = fold(midway, [
+      {
+        kind: 'artifact-update',
+        taskId: 'task-1',
+        artifact: {
+          artifactId: 'a-1',
+          parts: [
+            { kind: 'text', text: 'Seven nodes are ready, and the rest.' },
+          ],
+        },
+        metadata: { kagent_partial: false },
+      },
+      chunk('Next reply '),
+    ]);
+    expect(whole.items.map(item => ('text' in item ? item.text : ''))).toEqual([
+      'Seven nodes are ready, and the rest.',
+    ]);
+    // The next reply streams as usual again.
+    expect(whole.live?.text).toBe('Next reply ');
+  });
+
+  it('keeps the text a message opened, which is that message as sent', () => {
+    const cut = fold(createStreamTurn('sent-1'), [said('Checking.', 'm-1')]);
+
+    expect(resumeStreamTurn(cut).live).toEqual(cut.live);
+  });
+
+  it('knows its task from an update event when no snapshot named it', () => {
+    // A stream cut before its snapshot was read can still be resubscribed.
+    const turn = fold(createStreamTurn('sent-1'), [said('Checking.', 'm-1')]);
+
+    expect(turn.taskId).toBe('task-1');
+  });
+});
+
+describe('a workspace setup notice in the stream', () => {
+  const taskId = 'task-1';
+  const noticeUpdate = {
+    statusUpdate: {
+      taskId,
+      contextId: 'ctx-1',
+      status: {
+        state: 'TASK_STATE_WORKING',
+        message: {
+          messageId: 'notice-1',
+          contextId: 'ctx-1',
+          taskId,
+          role: 'ROLE_AGENT',
+          parts: [{ text: NOTICE_STALE }],
+        },
+      },
+    },
+  };
+  const chunk = (text: string, partial: boolean) => ({
+    artifactUpdate: {
+      taskId,
+      contextId: 'ctx-1',
+      artifact: {
+        artifactId: 'reply-1',
+        parts: [{ text }],
+        metadata: { kagent_partial: partial },
+      },
+      ...(partial ? { append: true } : { lastChunk: true }),
+    },
+  });
+  const fold = (events: unknown[]) =>
+    events.reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+  it('is a notice item from the moment it arrives, not the start of a reply', () => {
+    const turn = fold([noticeUpdate]);
+    expect(turn.live).toBeUndefined();
+    expect(turn.items).toEqual([
+      expect.objectContaining({
+        kind: 'workspace-notice',
+        messageId: 'notice-1',
+        notice: expect.objectContaining({ severity: 'warning' }),
+      }),
+    ]);
+  });
+
+  it('keeps the reply that follows it apart', () => {
+    const partway = fold([
+      noticeUpdate,
+      chunk('No, ', true),
+      chunk('gh', true),
+    ]);
+    expect(partway.items.map(item => item.kind)).toEqual(['workspace-notice']);
+    expect(partway.live).toEqual(
+      expect.objectContaining({ kind: 'agent-message', text: 'No, gh' }),
+    );
+
+    const done = fold([
+      noticeUpdate,
+      chunk('No, ', true),
+      chunk('gh', true),
+      chunk('No, gh is not installed.', false),
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'ctx-1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+        },
+      },
+    ]);
+    expect(done.items.map(item => item.kind)).toEqual([
+      'workspace-notice',
+      'agent-message',
+    ]);
+    expect(done.items[1]).toEqual(
+      expect.objectContaining({ text: 'No, gh is not installed.' }),
+    );
+  });
+
+  it('shows a repeat of the same notice once', () => {
+    expect(fold([noticeUpdate, noticeUpdate]).items).toHaveLength(1);
+  });
+
+  it('shows a repeat of a notice without an id once', () => {
+    const anonymous = {
+      statusUpdate: {
+        ...noticeUpdate.statusUpdate,
+        status: {
+          ...noticeUpdate.statusUpdate.status,
+          message: {
+            role: 'ROLE_AGENT',
+            parts: [{ text: NOTICE_STALE }],
+          },
+        },
+      },
+    };
+    expect(
+      fold([
+        anonymous,
+        {
+          statusUpdate: {
+            ...anonymous.statusUpdate,
+            status: {
+              ...anonymous.statusUpdate.status,
+              state: 'TASK_STATE_FAILED',
+            },
+          },
+        },
+      ]).items.filter(item => item.kind === 'workspace-notice'),
+    ).toHaveLength(1);
+  });
+
+  it('leaves a reply that starts with the same words a reply', () => {
+    // As an artifact (Go executor), and as a status-update message after the
+    // agent has already said something (Python executor).
+    const reply = 'Workspace setup here uses mirrors.';
+    const asArtifact = fold([chunk(reply, false)]);
+    expect(asArtifact.items.map(item => item.kind)).toEqual(['agent-message']);
+
+    const afterWords = fold([
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'ctx-1',
+          status: {
+            state: 'TASK_STATE_WORKING',
+            message: {
+              messageId: 'said-1',
+              role: 'ROLE_AGENT',
+              parts: [{ text: 'Let me look.' }],
+            },
+          },
+        },
+      },
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'ctx-1',
+          status: {
+            state: 'TASK_STATE_WORKING',
+            message: {
+              messageId: 'reply-1',
+              role: 'ROLE_AGENT',
+              parts: [{ text: reply }],
+            },
+          },
+        },
+      },
+    ]);
+    expect(
+      afterWords.items.some(item => item.kind === 'workspace-notice'),
+    ).toBe(false);
+    expect(afterWords.live).toEqual(
+      expect.objectContaining({ kind: 'agent-message', text: reply }),
+    );
+  });
+
+  it('is the item the poll makes of the same message', () => {
+    const streamed = fold([noticeUpdate]).items[0];
+    const polled = timelineFor(sessionWithNotices).items.find(
+      item => item.messageId === 'notice-1',
+    );
+    expect(polled).toEqual({
+      ...streamed,
+      id: polled?.id,
+      at: polled?.at,
+    });
+  });
+});
+
+function timelineFor(fixture: unknown) {
+  return buildTimeline(normalizeTaskList(fixture).tasks);
+}

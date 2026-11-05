@@ -94,6 +94,7 @@ jest.mock('../../hooks/useProposeSkill', () => ({
 
 const loaded: SkillCatalog = {
   skills: [skill],
+  plugins: [],
   isLoading: false,
   error: null,
   hasRepositories: true,
@@ -105,15 +106,12 @@ function renderPage(path = 'giantswarm/skills/support/ticket-triage') {
   return renderInTestApp(
     <PageHeaderActionsProvider>
       <Routes>
-        <Route
-          path="/agent-platform/skills/edit/*"
-          element={<EditSkillPage />}
-        />
+        <Route path="/customize/skills/edit/*" element={<EditSkillPage />} />
       </Routes>
     </PageHeaderActionsProvider>,
     {
-      initialRouteEntries: [`/agent-platform/skills/edit/${path}`],
-      mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
+      initialRouteEntries: [`/customize/skills/edit/${path}`],
+      mountedRoutes: { '/customize/skills': skillsRouteRef },
     },
   );
 }
@@ -150,7 +148,7 @@ describe('EditSkillPage', () => {
     );
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/giantswarm/skills/support/ticket-triage',
+      '/customize/skills/giantswarm/skills/support/ticket-triage',
     );
   });
 
@@ -222,7 +220,7 @@ describe('EditSkillPage', () => {
     // Cancel goes back to the skill's own (read-only) page.
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/support/ticket-triage',
+      '/customize/skills/-/gitea.lab.local/lab/skills/-/support/ticket-triage',
     );
   });
 

@@ -1,45 +1,72 @@
 import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import SecurityIcon from '@material-ui/icons/Security';
 import {
   Agent,
   AgentSkill,
+  Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
   DateComponent,
   type Fact,
-  SectionHeader,
+  InfoHint,
+  Mono,
+  PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
+  TagList,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import {
+  harnessChoiceOf,
+  PLATFORM_DEFAULT_LABEL,
+  RUNTIME_DESCRIPTION,
+  RUNTIME_LABEL,
+  runtimeLabel,
+} from '../../lib/harnesses';
 import type { ClientServingSummary } from '../../lib/serving';
 import {
   canonicalSkillId,
   repoSlug,
   sameCommit,
-  skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { bindsGateway } from '../../lib/toolset';
-import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import {
+  describeReach,
+  reachedConnectors,
+  reachNeedsCatalogue,
+} from '../../lib/toolsetReach';
+import { useMusterServers } from '../../hooks/useMusterServers';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
-import { skillsRouteRef } from '../../routes';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
+import { HarnessSummary } from '../HarnessSummary';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { OrganizationValue } from '../OrganizationValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
+import { CREATED_BY_ANNOTATION } from '../../lib/tenants';
 import {
+  DEFAULT_WORKSPACE_ANNOTATION,
+  defaultWorkspaceName,
+} from '../../lib/defaultWorkspace';
+import {
+  connectorIcons,
   describeToolScope,
+  directServerName,
   isGatewayServerBinding,
+  mcpBindingId,
   skillLabel,
 } from './helpers';
 
@@ -48,21 +75,6 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(4),
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-  },
-  sectionHead: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: theme.spacing(1),
-    // SectionHeader carries a bottom margin meant for a description under
-    // it; these sections put their own content there.
-    '& h2': { marginBottom: 0 },
   },
   // Readable cards that each open the skill's own page: what it is, in its
   // own words, and where it comes from.
@@ -97,29 +109,36 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
   },
+  logos: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  logo: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
+  // The approval request's shield, small on the logo's corner.
+  approvalMark: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    backgroundColor: 'var(--bui-warning-bg-subdued, #fff3e8)',
+    color: 'var(--bui-warning-fg-subdued, #7d3900)',
+    boxShadow: '0 0 0 2px var(--bui-bg-surface-1, #fff)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    '& svg': { width: 11, height: 11 },
+  },
 }));
-
-/** A section of the plain overview: a small heading, then what it says. */
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
-  return (
-    <section className={classes.section} aria-label={title}>
-      <div className={classes.sectionHead}>
-        <SectionHeader as="h2" variant="title-x-small" title={title} />
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 /** The skill as the catalog discovered it, when the catalog has it. */
 function useCatalogSkills(): Map<string, DiscoveredSkill> {
@@ -143,14 +162,12 @@ function SkillCard({
   discovered?: DiscoveredSkill;
 }) {
   const classes = useStyles();
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
   const label = discovered?.name || skillLabel(skill);
-  const detailPath =
-    skill.source === 'git'
-      ? skillDetailPath({ repoUrl: skill.url, path: skill.path ?? '' })
-      : undefined;
   const href =
-    skillsRoute && detailPath ? `${skillsRoute()}/${detailPath}` : undefined;
+    skill.source === 'git'
+      ? skillPaths.detail({ repoUrl: skill.url, path: skill.path ?? '' })
+      : undefined;
   const from = skill.source === 'git' ? repoSlug(skill.url) : skill.url;
   // Behind the catalog's head of the skill's branch — the comparison Skill ›
   // Used by makes, from the catalog this page has read already: no read of
@@ -224,7 +241,7 @@ function SkillsSection({
     ) : undefined;
 
   return (
-    <Section title="Skills" action={action}>
+    <PageSection title="Skills" action={action}>
       {skills.length === 0 ? (
         <Flex direction="column" gap="2" align="start">
           <Text variant="body-medium" color="secondary">
@@ -271,15 +288,26 @@ function SkillsSection({
           )}
         </ShowMore>
       )}
-    </Section>
+    </PageSection>
   );
 }
 
+/** One logo in the Connectors section's row. */
+type ConnectorMark = {
+  key: string;
+  name: string;
+  icon?: string;
+  detail?: string;
+  /** The binding pauses for the person's approval before every call. */
+  approval?: boolean;
+};
+
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares; the exact tools are the Tools tab.
- * Servers bound directly rather than through the gateway, and agents it calls
- * as tools, follow by name.
+ * read from the toolset it declares; the exact tools are the Tools tab. The
+ * connectors it names, and the servers it binds directly rather than through
+ * the gateway, follow as a row of logos, each named on hover or focus; agents
+ * it calls as tools follow by name.
  */
 function ConnectorsSection({
   agent,
@@ -289,7 +317,7 @@ function ConnectorsSection({
   isFailing: boolean;
 }) {
   const classes = useStyles();
-  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  const { declared, isReading, isUnreadable, servers } = useAgentToolset(agent);
   const groups = useReachCatalogue(
     agent.cluster,
     reachNeedsCatalogue(declared),
@@ -298,7 +326,36 @@ function ConnectorsSection({
     .getMcpBindings()
     .filter(binding => !isGatewayServerBinding(agent, binding));
   const hasGateway = bindsGateway(agent);
+  const reached = hasGateway ? reachedConnectors(declared, groups) : [];
+  // Labels and icons: read only when the toolset names a connector, as the
+  // composer's reach line does.
+  const muster = useMusterServers(
+    reached.length > 0 ? agent.cluster : undefined,
+  );
   const subAgents = agent.getSubAgentBindings();
+
+  const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
+
+  const marks: ConnectorMark[] = [
+    ...reached.map(name => ({
+      key: `server:${name}`,
+      name: muster.labels.get(name) ?? name,
+      icon: icons.get(name),
+    })),
+    ...direct.map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      name: directServerName(binding, servers),
+      detail: `${describeToolScope(binding)}${
+        binding.requireApproval ? ' · asks you before every call' : ''
+      }`,
+      approval: Boolean(binding.requireApproval),
+    })),
+  ];
+  const asksFirst = [
+    ...new Set(marks.filter(mark => mark.approval).map(mark => mark.name)),
+  ];
 
   let reach: string;
   if (!hasGateway) {
@@ -310,30 +367,45 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared, groups) ??
+      describeReach(declared, groups, muster.labels) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
   }
 
   return (
-    <Section title="Connectors">
+    <PageSection title="Connectors">
       <Text variant="body-medium">{reach}</Text>
-      {(direct.length > 0 || subAgents.length > 0) && (
-        <div className={classes.rows}>
-          {direct.map((binding, index) => (
-            <Flex
-              key={`${binding.server.name}#${index}`}
-              direction="column"
-              gap="1"
-            >
-              <Text variant="body-medium">{binding.server.name}</Text>
-              <Text variant="body-small" color="secondary">
-                {describeToolScope(binding)}
-                {binding.requireApproval ? ' · asks you before every call' : ''}
-              </Text>
-            </Flex>
+      {marks.length > 0 && (
+        <ul className={classes.logos} aria-label="Connectors">
+          {marks.map(mark => (
+            <li key={mark.key} className={classes.logo}>
+              <ConnectorLogo
+                name={mark.name}
+                icon={mark.icon}
+                detail={mark.detail}
+                tooltip
+              />
+              {mark.approval && (
+                <span
+                  className={classes.approvalMark}
+                  data-testid="approval-mark"
+                  aria-hidden
+                >
+                  <SecurityIcon />
+                </span>
+              )}
+            </li>
           ))}
+        </ul>
+      )}
+      {asksFirst.length > 0 && (
+        <Text variant="body-small" color="secondary">
+          Asks before every call: {asksFirst.join(', ')}
+        </Text>
+      )}
+      {subAgents.length > 0 && (
+        <div className={classes.rows}>
           {subAgents.map(ref => (
             <Flex
               key={`agent/${ref.name}/${ref.templateRef.name}`}
@@ -349,7 +421,7 @@ function ConnectorsSection({
         </div>
       )}
       {isFailing && <FailureMarker />}
-    </Section>
+    </PageSection>
   );
 }
 
@@ -389,10 +461,10 @@ function InstructionsSection({
   }
 
   return (
-    <Section title="Instructions">
+    <PageSection title="Instructions">
       {body}
       {isFailing && <FailureMarker />}
-    </Section>
+    </PageSection>
   );
 }
 
@@ -434,10 +506,12 @@ export function AgentPlainOverview({
   const classes = useStyles();
   const failure = agent.getFailure();
   const description = agent.getDescription();
+  const tags = agent.getTags();
+  const { agents: agentsPath } = useCustomizePaths();
 
   return (
     <div className={classes.sections}>
-      <Section title="What it’s for">
+      <PageSection title="What it’s for">
         {description ? (
           <Text as="p" variant="body-medium" style={{ margin: 0 }}>
             {description}
@@ -447,7 +521,11 @@ export function AgentPlainOverview({
             No description yet.
           </Text>
         )}
-      </Section>
+        <TagList
+          tags={tags}
+          getHref={agentsPath ? tag => tagHref(agentsPath, tag) : undefined}
+        />
+      </PageSection>
 
       <InstructionsSection
         agent={agent}
@@ -547,17 +625,110 @@ function ModelFact({
   );
 }
 
-/** The facts beside the overview: the model, where it runs, since when. */
+/**
+ * The Harness the agent runs on, in the create form's words: the runtime
+ * card's `HarnessSummary`, with the platform default's mark once
+ * agent-manager has said which Harness that is. A Harness the person cannot
+ * read is known by its name alone, and an agent whose runtime is not known
+ * says so rather than leaving the fact blank.
+ */
+function RuntimeFact({
+  agent,
+  harness,
+  isReading,
+  platformHarness,
+}: {
+  agent: Agent;
+  harness?: Harness;
+  isReading: boolean;
+  platformHarness?: string;
+}) {
+  const name = agent.getHarnessName();
+  const hint = (
+    <InfoHint label="What the runtime is" size="medium">
+      {RUNTIME_DESCRIPTION}
+    </InfoHint>
+  );
+  const mark =
+    name !== undefined && name === platformHarness
+      ? PLATFORM_DEFAULT_LABEL
+      : undefined;
+
+  if (harness) {
+    return (
+      <Flex direction="column" gap="1">
+        <HarnessSummary
+          choice={harnessChoiceOf(harness)}
+          mark={mark}
+          titleAddon={hint}
+          compact
+        />
+      </Flex>
+    );
+  }
+
+  let title: ReactNode;
+  let note: string | undefined;
+  if (name) {
+    title = <Mono>{name}</Mono>;
+    note = isReading ? undefined : 'Its runtime could not be read.';
+  } else {
+    // An inline Harness, which the chart never renders: its runtime family
+    // is all there is to name, when this client knows it.
+    const inlineRuntime = agent.getInlineHarnessRuntime();
+    title = <Text variant="body-small">{runtimeLabel(inlineRuntime)}</Text>;
+    if (!agent.hasInlineHarness()) {
+      note = 'The agent names no Harness.';
+    } else if (!inlineRuntime) {
+      note = 'Its runtime is not known.';
+    }
+  }
+
+  return (
+    <Flex direction="column" gap="1">
+      <Flex align="center" gap="1">
+        {title}
+        {hint}
+      </Flex>
+      {mark && (
+        <Text variant="body-small" color="secondary">
+          {mark}
+        </Text>
+      )}
+      {note && (
+        <Text variant="body-x-small" color="secondary">
+          {note}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * The facts beside the overview: the model and the runtime, where it runs,
+ * the organization it belongs to, who created it and how long ago.
+ */
 export function agentFacts({
   agent,
   installation,
   modelConfig,
   modelServing,
+  harness,
+  isReadingHarness = false,
+  platformHarness,
 }: {
   agent: Agent;
   installation: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  /** The Harness the agent names, once read. */
+  harness?: Harness;
+  isReadingHarness?: boolean;
+  /**
+   * agent-manager's platform Harness, marked as the default; undefined until
+   * (or unless) `get_info` names it, so no Harness is marked on a guess.
+   */
+  platformHarness?: string;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
@@ -574,14 +745,39 @@ export function agentFacts({
         />
       ),
     },
+    {
+      label: RUNTIME_LABEL,
+      value: (
+        <RuntimeFact
+          agent={agent}
+          harness={harness}
+          isReading={isReadingHarness}
+          platformHarness={platformHarness}
+        />
+      ),
+    },
     { label: 'Environment', value: installation },
+    {
+      label: 'Organization',
+      value: <OrganizationValue namespace={agent.getNamespace() ?? ''} />,
+    },
   ];
+  const defaultWorkspace = defaultWorkspaceName(
+    agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
+  );
+  if (defaultWorkspace) {
+    facts.push({ label: 'Default workspace', value: defaultWorkspace });
+  }
+  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  if (createdBy) {
+    facts.push({ label: 'Created by', value: createdBy });
+  }
   if (created) {
     facts.push({
       label: 'Created',
       value: (
         <Text variant="body-small">
-          <DateComponent value={created} />
+          <DateComponent value={created} relative />
         </Text>
       ),
     });

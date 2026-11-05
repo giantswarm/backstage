@@ -1,8 +1,8 @@
 import type { ReactElement, ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
-import { Route, Routes } from 'react-router-dom';
-import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { mcpServersRouteRef } from '../../routes';
 import { McpServersRouter } from './McpServersRouter';
 
 function mockPassThrough({ children }: { children: ReactNode }) {
@@ -13,7 +13,22 @@ jest.mock('../NewMcpServerFormProvider', () => ({
   NewMcpServerFormProvider: mockPassThrough,
 }));
 jest.mock('../NewMcpServerEditGate', () => ({
+  ...jest.requireActual('../NewMcpServerEditGate'),
   NewMcpServerEditGate: mockPassThrough,
+}));
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({
+    installation,
+    children,
+  }: {
+    installation?: string;
+    children: ReactNode;
+  }) => (
+    <>
+      <p>Providers on {installation ?? 'the scope'}</p>
+      {children}
+    </>
+  ),
 }));
 jest.mock('../NewConnectorWizard', () => ({
   NewConnectorConnectPage: () => <p>Wizard connect</p>,
@@ -30,59 +45,66 @@ jest.mock('../ConnectorPage', () => ({
 }));
 jest.mock('../ToolPage', () => ({ ToolPage: () => <p>Tool page</p> }));
 
-function renderAt(
-  path: string,
-  usedBy?: ReactElement,
-  { withCustomize = true }: { withCustomize?: boolean } = {},
-) {
+function Where() {
+  return <p>At {useLocation().pathname}</p>;
+}
+
+function renderAt(path: string, usedBy?: ReactElement) {
   return renderInTestApp(
     <Routes>
+      <Route path="/customize/connectors" element={<Where />} />
       <Route
-        path="/agent-platform/connectors/*"
-        element={<McpServersRouter usedBy={usedBy} />}
+        path="/customize/connectors/*"
+        element={
+          <>
+            <Where />
+            <McpServersRouter usedBy={usedBy} />
+          </>
+        }
       />
-      <Route path="/customize/*" element={<p>Customize screen</p>} />
     </Routes>,
     {
       initialRouteEntries: [path],
-      // The review redirect resolves its target through the route ref, the
-      // list redirect through the app-bound Customize page.
-      mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
-        ...(withCustomize ? { '/customize': customizeExternalRouteRef } : {}),
-      },
+      mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
 }
 
 describe('McpServersRouter', () => {
   it.each([
-    // The list is the Customize screen's Connectors tab.
-    ['/agent-platform/connectors', 'Customize screen'],
-    ['/agent-platform/connectors/new', 'Wizard connect'],
-    ['/agent-platform/connectors/new/auth', 'Wizard sign-in'],
-    // The wizard has no review step; its old address lands on Sign-in.
-    ['/agent-platform/connectors/new/review', 'Wizard sign-in'],
-    ['/agent-platform/connectors/new/verify', 'Wizard test'],
-    ['/agent-platform/connectors/jira', 'Connector page'],
-    ['/agent-platform/connectors/jira/used-by', 'Connector page'],
-    ['/agent-platform/connectors/jira/settings', 'Connector page'],
-    ['/agent-platform/connectors/jira/tools/search', 'Tool page'],
-  ])('routes %s', async (path, text) => {
+    ['/customize/connectors/new', 'Wizard connect', 'the scope'],
+    ['/customize/connectors/new/auth', 'Wizard sign-in', 'the scope'],
+    ['/customize/connectors/new/verify', 'Wizard test', 'the scope'],
+    ['/customize/connectors/alpha/jira', 'Connector page', 'alpha'],
+    ['/customize/connectors/alpha/jira/used-by', 'Connector page', 'alpha'],
+    ['/customize/connectors/alpha/jira/tools/search', 'Tool page', 'alpha'],
+    ['/customize/connectors/alpha/jira/edit', 'Wizard connect', 'alpha'],
+    ['/customize/connectors/alpha/jira/edit/auth', 'Wizard sign-in', 'alpha'],
+    ['/customize/connectors/alpha/jira/edit/verify', 'Wizard test', 'alpha'],
+  ])('routes %s', async (path, text, installation) => {
     await renderAt(path);
     expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(
+      screen.getByText(`Providers on ${installation}`),
+    ).toBeInTheDocument();
   });
 
-  it('renders no list when the app binds no Customize page', async () => {
-    await renderAt('/agent-platform/connectors', undefined, {
-      withCustomize: false,
-    });
-    expect(screen.queryByText('Customize screen')).not.toBeInTheDocument();
-    expect(screen.queryByText('Connector page')).not.toBeInTheDocument();
+  it.each([
+    // An unknown step: the wizard's first.
+    ['/customize/connectors/new/review', '/customize/connectors/new'],
+    [
+      '/customize/connectors/alpha/jira/edit/x',
+      '/customize/connectors/alpha/jira/edit',
+    ],
+    // An installation alone names no page: the list.
+    ['/customize/connectors/alpha', '/customize/connectors'],
+  ])('redirects %s to its nearest valid parent', async (path, target) => {
+    await renderAt(path);
+    expect(await screen.findByText(`At ${target}`)).toBeInTheDocument();
   });
 
   it('hands the attached Used by element to the connector page', async () => {
-    await renderAt('/agent-platform/connectors/jira', <p>Agents using it</p>);
+    await renderAt('/customize/connectors/alpha/jira', <p>Agents using it</p>);
     expect(screen.getByText('Agents using it')).toBeInTheDocument();
   });
 });

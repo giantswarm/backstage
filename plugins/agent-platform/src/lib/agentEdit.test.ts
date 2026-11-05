@@ -8,6 +8,7 @@ import {
 } from './agentEdit';
 import type { AgentManagerAgent, AgentSkillEntry } from './agentManager';
 import type { DiscoveredSkill } from './skills';
+import type { DiscoveredPlugin } from './plugins';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -30,6 +31,7 @@ function agent(overrides: Partial<AgentManagerAgent> = {}): AgentManagerAgent {
     exists: true,
     displayName: 'PR reviewer',
     description: 'Reviews pull requests.',
+    tags: ['review', 'github'],
     systemMessage: 'You review pull requests.',
     modelConfig: 'opus-4-7',
     skills: [PR_REVIEW, OCI_SKILL],
@@ -45,11 +47,15 @@ describe('editStateOf', () => {
     expect(editStateOf(agent())).toEqual({
       displayName: 'PR reviewer',
       description: 'Reviews pull requests.',
+      tags: ['review', 'github'],
       systemMessage: 'You review pull requests.',
       modelConfig: 'opus-4-7',
       toolset: ['preset:read-only'],
       skills: [PR_REVIEW, OCI_SKILL],
+      plugins: [],
       egressText: '',
+      egressPolicyRefs: [],
+      defaultWorkspace: '',
     });
     // No runtime: every agent runs on the platform Harness.
     expect(Object.keys(editStateOf(agent()))).not.toContain('runtime');
@@ -60,12 +66,14 @@ describe('editStateOf', () => {
       agent({
         displayName: undefined,
         description: undefined,
+        tags: undefined,
         systemMessage: undefined,
         toolset: undefined,
         skills: undefined,
       }),
     );
     expect(state.displayName).toBe('');
+    expect(state.tags).toEqual([]);
     expect(state.systemMessage).toBe('');
     expect(state.toolset).toEqual([]);
     expect(state.skills).toEqual([]);
@@ -79,6 +87,65 @@ describe('editStateOf', () => {
 });
 
 describe('updateOf', () => {
+  it('sets, changes and removes the default workspace, qualified with the agent namespace', () => {
+    const plain = agent();
+    expect(
+      updateOf(plain, { ...editStateOf(plain), defaultWorkspace: 'platform' }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      defaultWorkspace: 'kagent/platform',
+    });
+    const withDefault = agent({ defaultWorkspace: 'kagent/platform' });
+    expect(editStateOf(withDefault).defaultWorkspace).toBe('platform');
+    expect(changedFields(withDefault, editStateOf(withDefault))).toEqual([]);
+    expect(
+      updateOf(withDefault, {
+        ...editStateOf(withDefault),
+        defaultWorkspace: '',
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      defaultWorkspace: '',
+    });
+  });
+
+  it('replaces the whole tag list when it changed, clears it with an empty list, and ignores order', () => {
+    const current = agent();
+    const base = editStateOf(current);
+
+    expect(updateOf(current, { ...base, tags: ['github', 'review'] })).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+    });
+    expect(changedFields(current, { ...base, tags: ['review'] })).toEqual([
+      'tags',
+    ]);
+    expect(updateOf(current, { ...base, tags: ['review', 'ops'] })).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      tags: ['review', 'ops'],
+    });
+    expect(updateOf(current, { ...base, tags: [] })).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      tags: [],
+    });
+    // An agent without tags, left without: no change.
+    const untagged = agent({ tags: undefined });
+    expect(hasChanges(updateOf(untagged, editStateOf(untagged)))).toBe(false);
+  });
+
+  it('never resends a tag the chart refuses', () => {
+    const current = agent({ tags: ['review', 'Bad Tag', 'über'] });
+    expect(editStateOf(current).tags).toEqual(['review']);
+    expect(
+      updateOf(current, { ...editStateOf(current), tags: ['review', 'ops'] })
+        .tags,
+    ).toEqual(['review', 'ops']);
+  });
+
   it('replaces the whole egress list, and clears it with an empty list', () => {
     const withEgress = agent({ egress: ['https://github.com:443'] });
     expect(editStateOf(withEgress).egressText).toBe('https://github.com:443');
@@ -99,6 +166,35 @@ describe('updateOf', () => {
       changedFields(withEgress, {
         ...editStateOf(withEgress),
         egressText: '  https://github.com:443  ',
+      }),
+    ).toEqual([]);
+  });
+
+  it('replaces the picked EgressPolicies, clears them with an empty list, and ignores their order', () => {
+    const picking = agent({ egressPolicyRefs: ['github'] });
+    expect(editStateOf(picking).egressPolicyRefs).toEqual(['github']);
+    expect(
+      updateOf(picking, {
+        ...editStateOf(picking),
+        egressPolicyRefs: ['github', 'go-modules'],
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egressPolicyRefs: ['github', 'go-modules'],
+    });
+    expect(
+      updateOf(picking, { ...editStateOf(picking), egressPolicyRefs: [] }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egressPolicyRefs: [],
+    });
+    const two = agent({ egressPolicyRefs: ['github', 'go-modules'] });
+    expect(
+      changedFields(two, {
+        ...editStateOf(two),
+        egressPolicyRefs: ['go-modules', 'github'],
       }),
     ).toEqual([]);
   });
@@ -243,6 +339,7 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
       name: 'PR reviewer',
       slug: 'pr-reviewer',
       description: 'Reviews pull requests.',
+      tags: ['review', 'github'],
       systemMessage: 'You review pull requests.',
       installation: 'gazelle',
       modelConfigName: 'opus-4-7',
@@ -263,6 +360,18 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
     expect(seed(agent({ harness: 'claude-code' })).harness).toEqual({
       name: 'claude-code',
     });
+  });
+
+  it('keeps the agent’s own tags where agent-manager takes none', () => {
+    const current = agent();
+    const state = { ...seed(current), tags: [] };
+
+    expect(
+      changedFields(current, editStateOfForm(current, state, { tags: false })),
+    ).toEqual([]);
+    expect(changedFields(current, editStateOfForm(current, state))).toEqual([
+      'tags',
+    ]);
   });
 
   it('is no change at all when nothing is touched', () => {
@@ -319,6 +428,98 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
     );
 
     expect(update.skills).toEqual([]);
+  });
+
+  describe('plugins', () => {
+    const REVIEW_ENTRY = {
+      path: 'plugins/review',
+      git: { url: REPO, commit: HEAD },
+      skills: ['go-review'],
+    };
+    const ELSEWHERE = {
+      oci: 'gsoci.azurecr.io/giantswarm/plugins/ops@sha256:0123',
+      skills: ['runbook'],
+    };
+    const CATALOG_REVIEW: DiscoveredPlugin = {
+      name: 'review',
+      repoUrl: `${REPO}.git`,
+      path: 'plugins/review',
+      ref: 'main',
+      commit: OTHER,
+      format: 'agent-plugins',
+      skills: [
+        { name: 'go-review', description: '' },
+        { name: 'helm-review', description: '' },
+      ],
+    };
+    const CATALOG_COMMITS: DiscoveredPlugin = {
+      ...CATALOG_REVIEW,
+      name: 'commits',
+      path: 'plugins/commits',
+      format: 'claude-code',
+      skills: [],
+    };
+    const withPlugins = () => agent({ plugins: [REVIEW_ENTRY, ELSEWHERE] });
+    const seedPlugins = (current: AgentManagerAgent) =>
+      formStateOfAgent(current, {
+        installation: 'gazelle',
+        catalog: [],
+        pluginCatalog: [CATALOG_REVIEW, CATALOG_COMMITS],
+      });
+
+    it('selects a listed plugin at its pin with its skills and keeps the rest', () => {
+      const state = seedPlugins(withPlugins());
+      expect(state.selectedPlugins).toEqual([
+        { plugin: { ...CATALOG_REVIEW, commit: HEAD }, skills: ['go-review'] },
+      ]);
+      expect(state.keptPlugins).toEqual([ELSEWHERE]);
+    });
+
+    it('is no change when untouched', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, seedPlugins(current)),
+      );
+      expect(hasChanges(update)).toBe(false);
+    });
+
+    it('keeps the pin when the selection changes and appends a new plugin at its card commit', () => {
+      const current = withPlugins();
+      const state = seedPlugins(current);
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...state,
+          selectedPlugins: [
+            {
+              plugin: state.selectedPlugins[0].plugin,
+              skills: ['go-review', 'helm-review'],
+            },
+            { plugin: CATALOG_COMMITS, skills: [] },
+          ],
+        }),
+      );
+      expect(update.plugins).toEqual([
+        { ...REVIEW_ENTRY, skills: ['go-review', 'helm-review'] },
+        ELSEWHERE,
+        { path: 'plugins/commits', git: { url: `${REPO}.git`, commit: OTHER } },
+      ]);
+      expect(update.skills).toBeUndefined();
+    });
+
+    it('clears the list when every plugin is dropped', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...seedPlugins(current),
+          selectedPlugins: [],
+          keptPlugins: [],
+        }),
+      );
+      expect(update.plugins).toEqual([]);
+    });
   });
 
   it('round-trips the Tools step’s Nothing outside the chat (T81)', () => {

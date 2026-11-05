@@ -1,13 +1,20 @@
 import type { WorkflowExecutionStep } from '../apis/types';
 import type { WorkflowStep, WorkflowSubStep } from './k8s';
+import { fleetImageScanWorkflow } from './__fixtures__/fleetImageScan';
 import {
   buildWorkflowGraph,
+  DEFAULT_MAX_PAGES,
   estimateTextWidth,
+  featureLabels,
   findFlowStep,
   FLOW_METRICS,
+  flowItemsInOrder,
   forEachSummary,
+  groupLabel,
+  iterationsLabel,
   layoutWorkflowGraph,
   mapRunToGraph,
+  paginateLabel,
   stepToolEffects,
 } from './workflowGraph';
 
@@ -84,7 +91,17 @@ describe('buildWorkflowGraph', () => {
       'forEach',
       'parallel',
     ]);
-    expect(graph.stepIds).toEqual(['fetch', 'apply', 'fanout', 'both']);
+    expect(Object.fromEntries(graph.stepNumbers)).toEqual({
+      fetch: '1',
+      apply: '2',
+      fanout: '3',
+      probe: '3.1',
+      report: '3.2',
+      both: '4',
+      left: '4.1',
+      right: '4.2',
+      middle: '4.3',
+    });
   });
 
   it('names a step by its description, else its id, and numbers it', () => {
@@ -112,11 +129,13 @@ describe('buildWorkflowGraph', () => {
       throw new Error('expected groups');
     }
     expect(forEach.node.tool).toBeUndefined();
-    expect(forEach.children.map(c => [c.key, c.number, c.title])).toEqual([
+    expect(
+      forEach.children.map(c => [c.node.key, c.node.number, c.node.title]),
+    ).toEqual([
       ['s2.0', '3.1', 'Probe it'],
       ['s2.1', '3.2', 'report'],
     ]);
-    expect(parallel.children.map(c => c.id)).toEqual([
+    expect(parallel.children.map(c => c.node.id)).toEqual([
       'left',
       'right',
       'middle',
@@ -144,9 +163,15 @@ describe('forEachSummary', () => {
       'For each c in the input “clusters”',
     );
     expect(
-      forEachSummary({ items: '{{ .results.fetch.items }}' }, ['x', 'fetch']),
+      forEachSummary(
+        { items: '{{ .results.fetch.items }}' },
+        new Map([
+          ['x', '1'],
+          ['fetch', '2'],
+        ]),
+      ),
     ).toBe('For each item in the result of step 2 (fetch)');
-    expect(forEachSummary({ items: '{{.results.gone}}' }, [])).toBe(
+    expect(forEachSummary({ items: '{{.results.gone}}' }, new Map())).toBe(
       'For each item in the result of “gone”',
     );
   });
@@ -202,7 +227,9 @@ describe('layoutWorkflowGraph', () => {
 
   it('wraps a forEach body as a stacked group inside its container', () => {
     const group = layout.groups.find(g => g.kind === 'forEach')!;
-    expect(group.label).toBe('For each cluster in the input “clusters”');
+    expect(group.label).toBe(
+      'For each cluster in the input “clusters”, in order',
+    );
     expect(group.node?.title).toBe('Check every cluster');
     for (const key of ['s2.0', 's2.1']) {
       const node = byKey(key);
@@ -384,9 +411,13 @@ describe('layoutWorkflowGraph — step titles are never cut', () => {
     const layout = layoutWorkflowGraph(buildWorkflowGraph(steps));
     const loop = layout.groups.find(g => g.kind === 'forEach')!;
     expect(loop.titleFit).toBe('twoLines');
-    expect(loop.headerHeight).toBe(FLOW_METRICS.groupHeaderTwoLines);
+    // What the loop does ("…, in order") wraps at this width as well.
+    expect(loop.labelFit).toBe('twoLines');
+    expect(loop.headerHeight).toBe(
+      FLOW_METRICS.groupHeaderTwoLines + FLOW_METRICS.groupLabelLineHeight,
+    );
     expect(nodeOf(layout, 's0.0').y).toBeGreaterThanOrEqual(
-      loop.y + FLOW_METRICS.groupHeaderTwoLines,
+      loop.y + loop.headerHeight,
     );
     const parallel = layout.groups.find(g => g.kind === 'parallel')!;
     expect(parallel.headerHeight).toBe(FLOW_METRICS.groupHeader);
@@ -656,5 +687,306 @@ describe('findFlowStep', () => {
   it('keeps the definition for the details, and knows nothing of unknown keys', () => {
     expect(findFlowStep(graph, 's1')?.node.definition).toBe(STEPS[1]);
     expect(findFlowStep(graph, 'nope')).toBeUndefined();
+  });
+});
+
+describe('a nested forEach (fleet-image-scan)', () => {
+  const fleet = fleetImageScanWorkflow();
+  const graph = buildWorkflowGraph(fleet.getSteps(), fleet.getOnFailureSteps());
+  const KINDS = [
+    'deployments',
+    'replicasets',
+    'statefulsets',
+    'daemonsets',
+    'cronjobs',
+    'jobs',
+    'pods',
+  ];
+
+  const outer = graph.main[0];
+  const inner = outer.kind === 'forEach' ? outer.children[1] : undefined;
+  const nodeOf = (
+    layout: ReturnType<typeof layoutWorkflowGraph>,
+    key: string,
+  ) => layout.nodes.find(placed => placed.node.key === key)!;
+
+  it('models the nested loop as a group of its own, numbered on', () => {
+    if (outer.kind !== 'forEach' || inner?.kind !== 'forEach') {
+      throw new Error('expected two loops');
+    }
+    expect(graph.main).toHaveLength(1);
+    expect(
+      outer.children.map(c => [c.kind, c.node.key, c.node.number]),
+    ).toEqual([
+      ['step', 's0.0', '1.1'],
+      ['forEach', 's0.1', '1.2'],
+    ]);
+    expect(
+      inner.children.map(c => [c.kind, c.node.key, c.node.number, c.node.id]),
+    ).toEqual(
+      KINDS.map((kind, k) => ['step', `s0.1.${k}`, `1.2.${k + 1}`, kind]),
+    );
+    expect(inner.node.parentKey).toBe('s0');
+    expect(inner.children[0].node.parentKey).toBe('s0.1');
+    // Every tool step names its tool; only the loop heads have none.
+    for (const item of flowItemsInOrder(graph.main)) {
+      expect(Boolean(item.node.tool)).toBe(item.kind === 'step');
+    }
+    expect(Object.fromEntries(graph.stepNumbers)).toMatchObject({
+      fleet: '1',
+      clusters: '1.1',
+      scan: '1.2',
+      pods: '1.2.7',
+    });
+  });
+
+  it('labels each loop with what it reads and how many run at once', () => {
+    if (outer.kind !== 'forEach' || inner?.kind !== 'forEach') {
+      throw new Error('expected two loops');
+    }
+    expect(groupLabel(outer, graph.stepNumbers)).toBe(
+      'For each mc in the input “management_clusters”, up to 8 at once',
+    );
+    expect(groupLabel(inner, graph.stepNumbers)).toBe(
+      'For each cluster in the result of step 1.1 (clusters), one at a time',
+    );
+    expect(iterationsLabel({})).toBe('in order');
+    expect(iterationsLabel({ parallelism: 1 })).toBe('one at a time');
+    expect(iterationsLabel({ parallelism: 50 })).toBe('up to 50 at once');
+  });
+
+  it('keeps each step’s pagination bound and jq program', () => {
+    const nodes = flowItemsInOrder(graph.main).map(item => item.node);
+    const byId = Object.fromEntries(nodes.map(node => [node.id, node]));
+    expect(byId.clusters.paginate).toEqual({ maxPages: 10 });
+    expect(byId.deployments.paginate).toEqual({ maxPages: 100 });
+    expect(byId.fleet.paginate).toBeUndefined();
+    expect(byId.fleet.jq).toContain('clusters_scanned');
+    expect(byId.scan.jq).toBeUndefined();
+    expect(nodes.filter(node => node.jq)).toHaveLength(9);
+    expect(featureLabels(byId.pods)).toEqual([
+      'Paginated, up to 100 pages',
+      'jq transform',
+    ]);
+    // muster's default bound where the definition sets none.
+    const unbounded = buildWorkflowGraph([
+      { id: 'a', tool: 'x_a', paginate: {} },
+    ]);
+    expect(unbounded.main[0].node.paginate).toEqual({
+      maxPages: DEFAULT_MAX_PAGES,
+    });
+    expect(paginateLabel({ maxPages: 1 })).toBe('Paginated, up to 1 page');
+  });
+
+  it('finds a nested step with its loop, and a nested loop with the loop around it', () => {
+    const step = findFlowStep(graph, 's0.1.3')!;
+    expect(step.node.id).toBe('daemonsets');
+    expect(step.group?.node.key).toBe('s0.1');
+    expect(step.container?.node.key).toBe('s0.1');
+    const head = findFlowStep(graph, 's0.1')!;
+    expect(head.group?.node.key).toBe('s0.1');
+    expect(head.container?.node.key).toBe('s0');
+    expect(findFlowStep(graph, 's0')!.container).toBeUndefined();
+  });
+
+  it('draws the nested loop inside the outer one and its steps inside it', () => {
+    const layout = layoutWorkflowGraph(graph);
+    const [outerBox, innerBox] = layout.groups;
+    expect(layout.groups.map(g => [g.kind, g.node?.key])).toEqual([
+      ['forEach', 's0'],
+      ['forEach', 's0.1'],
+    ]);
+    const inside = (
+      a: { x: number; y: number; width: number; height: number },
+      b: { x: number; y: number; width: number; height: number },
+    ) =>
+      a.x >= b.x &&
+      a.y >= b.y &&
+      a.x + a.width <= b.x + b.width &&
+      a.y + a.height <= b.y + b.height;
+    expect(inside(innerBox, outerBox)).toBe(true);
+    expect(innerBox.width).toBe(outerBox.width - 2 * FLOW_METRICS.groupPadding);
+    expect(layout.nodes).toHaveLength(8);
+    for (const node of layout.nodes) {
+      expect(inside(node, outerBox)).toBe(true);
+      expect(inside(node, innerBox)).toBe(node.node.key !== 's0.0');
+      // Below the head of the innermost group it sits in.
+      const group = node.node.key === 's0.0' ? outerBox : innerBox;
+      expect(node.y).toBeGreaterThanOrEqual(group.y + group.headerHeight);
+    }
+    // The steps stack in order, none over another.
+    const sorted = [...layout.nodes].sort((a, b) => a.y - b.y);
+    sorted.slice(1).forEach((node, i) => {
+      expect(node.y).toBeGreaterThanOrEqual(sorted[i].y + sorted[i].height);
+    });
+    // The step before the nested loop ends above it; the gate (its
+    // condition) sits on the edge between them.
+    const clusters = nodeOf(layout, 's0.0');
+    expect(clusters.y + clusters.height).toBeLessThan(innerBox.y);
+    expect(layout.gates.map(g => g.key)).toEqual(['s0.1']);
+    // A row of markers more than a plain step.
+    expect(clusters.height).toBeGreaterThanOrEqual(
+      FLOW_METRICS.nodeHeight + FLOW_METRICS.featureRow,
+    );
+    expect(outerBox.headerHeight).toBeGreaterThanOrEqual(
+      FLOW_METRICS.groupHeader + FLOW_METRICS.featureRow,
+    );
+  });
+
+  it('opens a nested step in place, moving what follows it down', () => {
+    const folded = layoutWorkflowGraph(graph);
+    const open = layoutWorkflowGraph(graph, { key: 's0.1.2', height: 120 });
+    expect(nodeOf(open, 's0.1.2').height).toBe(
+      nodeOf(folded, 's0.1.2').height + 120,
+    );
+    expect(nodeOf(open, 's0.1.3').y).toBe(nodeOf(folded, 's0.1.3').y + 120);
+    expect(nodeOf(open, 's0.1.1').y).toBe(nodeOf(folded, 's0.1.1').y);
+    expect(open.groups[0].height).toBe(folded.groups[0].height + 120);
+  });
+
+  it('lays a group inside a parallel group out in the row', () => {
+    const layout = layoutWorkflowGraph(
+      buildWorkflowGraph([
+        {
+          id: 'both',
+          parallel: [
+            { id: 'a', tool: 'x_a' },
+            {
+              id: 'loop',
+              forEach: {
+                items: '{{ .input.xs }}',
+                steps: [{ id: 'b', tool: 'x_b' }],
+              },
+            },
+          ],
+        },
+      ]),
+    );
+    const [row, loopBox] = layout.groups;
+    const a = nodeOf(layout, 's0.0');
+    expect(loopBox.y).toBe(a.y);
+    expect(loopBox.x).toBeGreaterThanOrEqual(a.x + a.width);
+    expect(loopBox.x + loopBox.width).toBeLessThanOrEqual(row.x + row.width);
+    expect(nodeOf(layout, 's0.1.0').y).toBeGreaterThan(loopBox.y);
+    // The loop's own exit and the row's fan-in are two edges, two keys: the
+    // canvas keys its edges by them.
+    const keys = layout.edges.map(edge => edge.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual(expect.arrayContaining(['s0.1:out', 's0.1:join']));
+  });
+
+  it('numbers a step with an id an object already has', () => {
+    const odd = buildWorkflowGraph([
+      { id: 'constructor', tool: 'x_a' },
+      {
+        id: 'loop',
+        forEach: { items: '{{ .results.constructor }}', steps: [] },
+      },
+    ]);
+    expect(odd.stepNumbers.get('constructor')).toBe('1');
+    const loopItem = odd.main[1];
+    if (loopItem.kind !== 'forEach') throw new Error('expected a loop');
+    expect(forEachSummary(loopItem.forEach, odd.stepNumbers)).toBe(
+      'For each item in the result of step 1 (constructor)',
+    );
+  });
+
+  it('keeps a step whose own id ends in _<digits> apart from its iteration suffixes', () => {
+    const odd = buildWorkflowGraph([
+      { id: 'step', tool: 'x_a' },
+      {
+        id: 'phase_2',
+        forEach: {
+          items: '{{ .input.xs }}',
+          steps: [
+            { id: 'step_1', tool: 'x_b' },
+            {
+              id: 'inner',
+              forEach: {
+                items: '{{ .input.ys }}',
+                steps: [{ id: 'leaf_3', tool: 'x_c' }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const overlay = mapRunToGraph(odd, [
+      record('step', 'completed'),
+      record('step_1_0', 'completed'),
+      record('step_1_1', 'completed'),
+      record('leaf_3_0_1', 'completed'),
+      record('leaf_3_1_0', 'completed'),
+    ]);
+    expect(overlay.s0).toMatchObject({ status: 'completed', runs: 1 });
+    expect(overlay['s1.0']).toMatchObject({ status: 'completed', runs: 2 });
+    expect(overlay['s1.1.0']).toMatchObject({ status: 'completed', runs: 2 });
+  });
+
+  it('lays the last run’s nested records onto the nested steps', () => {
+    const records = [
+      record('clusters', 'completed', { duration_ms: 100 }),
+      record('deployments', 'completed', { duration_ms: 10 }),
+      record('deployments_1', 'completed', { duration_ms: 10 }),
+      record('pods_0_1', 'failed', { error: 'boom' }),
+    ];
+    const overlay = mapRunToGraph(graph, records);
+    expect(overlay['s0.0']).toMatchObject({ status: 'completed', runs: 1 });
+    expect(overlay['s0.1.0']).toMatchObject({
+      status: 'completed',
+      runs: 2,
+      durationMs: 20,
+    });
+    expect(overlay['s0.1.6']).toMatchObject({
+      status: 'failed',
+      error: 'boom',
+    });
+    expect(overlay['s0.1.1']).toEqual({ status: 'notRun', runs: 0 });
+    // Each loop head takes its verdict from what it holds.
+    expect(overlay['s0.1'].status).toBe('failed');
+    expect(overlay.s0.status).toBe('failed');
+  });
+
+  it('reads each nested tool’s effect off the catalogue', () => {
+    const effects = stepToolEffects(graph, [
+      { name: 'x_kubernetes_list', annotations: { readOnlyHint: true } },
+    ]);
+    expect(Object.keys(effects).sort()).toEqual(
+      ['s0.0', ...KINDS.map((_, k) => `s0.1.${k}`)].sort(),
+    );
+  });
+
+  it('builds what it knows of fields it does not know', () => {
+    const odd = buildWorkflowGraph([
+      { id: 'wait', ...({ wait: { seconds: 5 } } as object) } as WorkflowStep,
+      {
+        id: 'loop',
+        forEach: {
+          items: '{{ .input.xs }}',
+          parallelism: 'all' as never,
+          steps: [
+            {
+              id: 'call',
+              tool: 'x_a',
+              paginate: 'yes' as never,
+              jq: 42 as never,
+            },
+          ],
+        },
+      },
+      { id: 'empty', forEach: { items: '{{ .input.xs }}' } as never },
+    ]);
+    expect(odd.main.map(item => item.kind)).toEqual([
+      'step',
+      'forEach',
+      'forEach',
+    ]);
+    expect(odd.main[0].node.tool).toBeUndefined();
+    const loopItem = odd.main[1];
+    if (loopItem.kind !== 'forEach') throw new Error('expected a loop');
+    expect(iterationsLabel(loopItem.forEach)).toBe('in order');
+    expect(loopItem.children[0].node).not.toHaveProperty('paginate');
+    expect(loopItem.children[0].node).not.toHaveProperty('jq');
+    expect(() => layoutWorkflowGraph(odd)).not.toThrow();
   });
 });

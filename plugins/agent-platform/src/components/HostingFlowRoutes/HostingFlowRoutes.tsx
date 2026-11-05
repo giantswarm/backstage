@@ -11,6 +11,7 @@ import {
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { useHostingFlowReturn } from '../../hooks/useHostingFlow';
 import { useServeIntents } from '../../hooks/useServeIntents';
@@ -39,6 +40,12 @@ import {
   type LoadTarget,
 } from '../ModelManagerControls';
 import { useServing } from '../ServingProvider';
+import {
+  GPU_POOLS_VIA,
+  MODEL_SERVING_VIA,
+  useModelHostingSharedIdentity,
+} from '../ModelHostingSharedIdentity';
+import { sharedIdentityReason } from '../../lib/sharedIdentity';
 import { OPENED_SERVED_MODEL_KEY, useServingTargets } from '../ServingPage';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -82,14 +89,24 @@ function HostingFlowGate({
   );
 }
 
+/**
+ * Why a serving flow has no target, where the reason is model-manager
+ * withheld for want of a per-user sign-in; else `otherwise`.
+ */
+function servingUnavailable(sharedModelManager: string[], otherwise: string) {
+  return sharedModelManager.length > 0
+    ? sharedIdentityReason(MODEL_SERVING_VIA, sharedModelManager)
+    : otherwise;
+}
+
 /** The Serving view's path: where the serving flows return and land. */
 function useServingHref(): string {
   const servingRoute = useRouteRef(servingRouteRef);
-  return servingRoute?.() ?? '/';
+  return useCloseHref(servingRoute?.());
 }
 
 /**
- * Serve model's route (`/agent-platform/models/serving/serve`): the backends
+ * Serve model's route (`/customize/models/hosting/serve`): the backends
  * that can load, the seed from the query, and — once model-manager accepted
  * the load — a toast and the Serving view, opened on the served model's
  * timeline.
@@ -97,6 +114,7 @@ function useServingHref(): string {
 export function ServeModelRoute() {
   const serving = useServing();
   const { loadTargets } = useServingTargets();
+  const shared = useModelHostingSharedIdentity();
   const [searchParams] = useSearchParams();
   const seed = useMemo(() => parseServeSeed(searchParams), [searchParams]);
   const servingHref = useServingHref();
@@ -147,7 +165,10 @@ export function ServeModelRoute() {
       isLoading={serving.isLoading && loadTargets.length === 0}
       unavailable={
         loadTargets.length === 0
-          ? 'No backend can serve a model yet. Add a model backend or a GPU node pool first.'
+          ? servingUnavailable(
+              shared.modelManager,
+              'No backend can serve a model yet. Add a model backend or a GPU node pool first.',
+            )
           : undefined
       }
     >
@@ -162,10 +183,11 @@ export function ServeModelRoute() {
   );
 }
 
-/** Import from Hugging Face's route (`/agent-platform/models/serving/import`). */
+/** Import from Hugging Face's route (`/customize/models/hosting/import`). */
 export function ImportModelRoute() {
   const serving = useServing();
   const { importTargets } = useServingTargets();
+  const shared = useModelHostingSharedIdentity();
   const servingHref = useServingHref();
   const closeHref = useHostingFlowReturn(servingHref);
   const navigate = useNavigate();
@@ -181,7 +203,10 @@ export function ImportModelRoute() {
       isLoading={serving.isLoading && importTargets.length === 0}
       unavailable={
         importTargets.length === 0
-          ? 'No backend in reach can import models from Hugging Face.'
+          ? servingUnavailable(
+              shared.modelManager,
+              'No backend in reach can import models from Hugging Face.',
+            )
           : undefined
       }
     >
@@ -194,10 +219,11 @@ export function ImportModelRoute() {
   );
 }
 
-/** Pull model's route (`/agent-platform/models/serving/pull`). */
+/** Pull model's route (`/customize/models/hosting/pull`). */
 export function PullModelRoute() {
   const serving = useServing();
   const { pullTargets } = useServingTargets();
+  const shared = useModelHostingSharedIdentity();
   const servingHref = useServingHref();
   const closeHref = useHostingFlowReturn(servingHref);
   const navigate = useNavigate();
@@ -213,7 +239,10 @@ export function PullModelRoute() {
       isLoading={serving.isLoading && pullTargets.length === 0}
       unavailable={
         pullTargets.length === 0
-          ? 'No backend in reach can pull models by reference.'
+          ? servingUnavailable(
+              shared.modelManager,
+              'No backend in reach can pull models by reference.',
+            )
           : undefined
       }
     >
@@ -227,13 +256,14 @@ export function PullModelRoute() {
 }
 
 /**
- * Add model backend's route (`/agent-platform/models/serving/add-backend`):
+ * Add model backend's route (`/customize/models/hosting/add-backend`):
  * the installations whose muster lists model-manager, and — after a Deploy —
  * a toast and the Serving view, where the backend's group appears.
  */
 export function AddModelBackendRoute() {
   const { available, installations, isLoading, registeredKinds } =
     useModelBackendTargets();
+  const shared = useModelHostingSharedIdentity();
   const servingHref = useServingHref();
   const closeHref = useHostingFlowReturn(servingHref);
   const navigate = useNavigate();
@@ -260,7 +290,10 @@ export function AddModelBackendRoute() {
       unavailable={
         available
           ? undefined
-          : 'No environment in reach runs model-manager, so no backend can be added.'
+          : servingUnavailable(
+              shared.modelManager,
+              'No environment in reach runs model-manager, so no backend can be added.',
+            )
       }
     >
       <AddModelBackendPage
@@ -274,7 +307,7 @@ export function AddModelBackendRoute() {
 }
 
 /**
- * Add GPU node pool's route (`/agent-platform/models/capacity/add-pool`): the
+ * Add GPU node pool's route (`/customize/models/hosting/capacity/add-pool`): the
  * installations whose muster lists cluster-manager, and — after a complete
  * Deploy — the GPU pools view, opened on the pool's lifecycle panel. A preset
  * chosen to serve becomes the pool's serve intent (a Deploy without one
@@ -285,8 +318,9 @@ export function AddGpuNodePoolRoute() {
   const availability = useClusterManagerAvailability(
     serving.reachableInstallations ?? [],
   );
+  const shared = useModelHostingSharedIdentity();
   const capacityRoute = useRouteRef(gpuCapacityRouteRef);
-  const capacityHref = capacityRoute?.() ?? '/';
+  const capacityHref = useCloseHref(capacityRoute?.());
   const closeHref = useHostingFlowReturn(capacityHref);
   const navigate = useNavigate();
   const intents = useServeIntents();
@@ -307,17 +341,22 @@ export function AddGpuNodePoolRoute() {
     [intents, navigate, capacityHref],
   );
   const available = availability.available.length > 0;
+  let unavailable: string | undefined;
+  if (available) {
+    unavailable = undefined;
+  } else if (shared.clusterManager.length > 0) {
+    unavailable = sharedIdentityReason(GPU_POOLS_VIA, shared.clusterManager);
+  } else {
+    unavailable =
+      'No environment in reach runs cluster-manager, so no GPU node pool can be added.';
+  }
 
   return (
     <HostingFlowGate
       title="Add GPU node pool"
       closeHref={closeHref}
       isLoading={availability.isLoading && !available}
-      unavailable={
-        available
-          ? undefined
-          : 'No environment in reach runs cluster-manager, so no GPU node pool can be added.'
-      }
+      unavailable={unavailable}
     >
       <AddGpuNodePoolPage
         installations={availability.available}

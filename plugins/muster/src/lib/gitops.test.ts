@@ -89,6 +89,24 @@ describe('workflow definitions (gitops.ts)', () => {
     expect(yaml).toContain('kind: Workflow');
     expect(yaml).toContain('apiVersion: muster.giantswarm.io/v1alpha1');
     expect(yaml).toContain('name: deploy');
+    expect(yaml).not.toContain('annotations');
+  });
+
+  it('carries the tags annotation, and no other', () => {
+    const yaml = toManifestYaml(
+      makeWorkflow({
+        metadata: {
+          annotations: {
+            'ui.giantswarm.io/tags': 'oncall, Alerts',
+            'kustomize.toolkit.fluxcd.io/checksum': 'abc',
+          },
+        },
+      }),
+    );
+    expect(yaml).toContain(
+      '  annotations:\n    ui.giantswarm.io/tags: "oncall,alerts"',
+    );
+    expect(yaml).not.toContain('checksum');
   });
 });
 
@@ -140,13 +158,20 @@ describe('GitOps display helpers', () => {
     ).toEqual({
       kind: 'HelmRelease',
       id: 'agent-platform/agent-platform-mcps',
+      name: 'agent-platform-mcps',
+      namespace: 'agent-platform',
     });
     expect(
       gitOpsManagerDescription({
         fluxKustomization: 'flux-extras',
         fluxKustomizationNamespace: 'flux-giantswarm',
       }),
-    ).toEqual({ kind: 'Kustomization', id: 'flux-giantswarm/flux-extras' });
+    ).toEqual({
+      kind: 'Kustomization',
+      id: 'flux-giantswarm/flux-extras',
+      name: 'flux-extras',
+      namespace: 'flux-giantswarm',
+    });
     expect(gitOpsManagerDescription({ managedBy: 'flux' })).toBeUndefined();
   });
 });

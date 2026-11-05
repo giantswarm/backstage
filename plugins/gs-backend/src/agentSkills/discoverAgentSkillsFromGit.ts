@@ -15,6 +15,7 @@ import { InputError } from '@backstage/errors';
 import { createHash } from 'node:crypto';
 import { parseFrontmatter } from './frontmatter';
 import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
+import { pluginsOf } from './discoverPlugins';
 import {
   assignSkillFiles,
   gitBlobSha,
@@ -22,6 +23,7 @@ import {
   repositoryFilePath,
   SkillFileList,
 } from './skillFiles';
+import { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * Discovery over the plain git protocol (smart HTTP), for skill repositories
@@ -275,6 +277,8 @@ export interface ScannedSkill {
   name?: string;
   /** Frontmatter `description`, when present. */
   description?: string;
+  /** Frontmatter `metadata.tags`, parsed; empty when absent. */
+  tags: string[];
   /** The raw `SKILL.md`. */
   content: string;
 }
@@ -313,8 +317,8 @@ async function walkCheckout(
         files.push({ path: entryRel, size });
         if (entry.name === SKILL_FILE) {
           const content = await readFile(entryPath, 'utf8');
-          const { name, description } = parseFrontmatter(content);
-          skills.push({ path: rel, name, description, content });
+          const { name, description, tags } = parseFrontmatter(content);
+          skills.push({ path: rel, name, description, tags, content });
         }
       }
     }
@@ -407,7 +411,7 @@ function movedOn(
 ): GitFetchError {
   return new GitFetchError(
     409,
-    `${cloned.ref} of ${repoUrl} has moved on from ${commit.slice(0, 7)} to ${cloned.commit.slice(0, 7)}; reload the skill to read its current version.`,
+    `${cloned.ref} of ${repoUrl} has moved on from ${shortSha(commit)} to ${shortSha(cloned.commit)}; reload the skill to read its current version.`,
   );
 }
 
@@ -486,6 +490,7 @@ export async function discoverAgentSkillsFromGit(options: {
           repoBasename(repoUrl) ||
           'skill',
         description: s.description?.trim() ?? '',
+        tags: s.tags,
         repoUrl,
         path: s.path,
         ref: cloned.ref,
@@ -501,6 +506,16 @@ export async function discoverAgentSkillsFromGit(options: {
 
     return {
       skills,
+      plugins: pluginsOf(
+        walked.files.map(f => f.path),
+        skills,
+        {
+          repoUrl,
+          ref: cloned.ref,
+          commit: cloned.commit,
+          repoName: repoBasename(repoUrl),
+        },
+      ),
       ref: cloned.ref,
       commit: cloned.commit,
       // A full checkout was scanned; nothing can be missing.
@@ -554,7 +569,7 @@ export async function readFileFromGit(options: {
     const target = path.join(root, ...filePath.split('/'));
     const notFound = new GitFetchError(
       404,
-      `${filePath} was not found in ${repoUrl} at ${commit.slice(0, 7)}.`,
+      `${filePath} was not found in ${repoUrl} at ${shortSha(commit)}.`,
     );
     const stat = await lstat(target).catch(() => undefined);
     if (!stat?.isFile()) {

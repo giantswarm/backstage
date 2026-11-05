@@ -81,7 +81,9 @@ describe('ResourceMetadata for Flux Operator kinds', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('kubernetes, multi-tenant')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'https://github.com/example/fleet' }),
+      screen.getByRole('link', {
+        name: 'https://github.com/example/fleet (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText('v2.7.2@sha256:abc')).toBeInTheDocument();
     expect(screen.getByText(/took 1.5s/)).toBeInTheDocument();

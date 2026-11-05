@@ -23,30 +23,45 @@ import {
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
+  ShellPageExpandedOnly,
   ShellPageTitleSkeleton,
   StatusDot,
   TOUCH_MEDIA,
   useProvidePageHeaderActions,
-  useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
+import { useExportSession } from '../../hooks/useExportSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
-import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
 import {
+  isAnswerNotTakenError,
+  useAnswerConfirmation,
+} from '../../hooks/useAnswerConfirmation';
+import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
   useNewSessionHandoff,
 } from '../../hooks/useNewSessionHandoff';
+import {
+  ComposerImage,
+  imagesUnsupportedReason,
+} from '../../lib/messageImages';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import { useChatGptConnection } from '../../hooks/useChatGptConnection';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
+import { useStickToEnd } from '../../hooks/useStickToEnd';
+import { useWorkspaceNames } from '../../hooks/useWorkspaceNames';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
 import { AvatarSize } from '../../lib/agentAvatar';
@@ -54,6 +69,7 @@ import {
   AWAITING_INPUT_STATES,
   describeSessionState,
   isRuntimeLostFailureText,
+  readSendTimeoutRuntimeLoss,
   RuntimeLoss,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -63,8 +79,15 @@ import {
   sessionsRouteRef,
 } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
+import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
+import { ConnectorSignInLinks } from '../ConnectorSignInLinks';
 import { SessionComposer } from '../SessionComposer';
+import {
+  ChatGptConnectDialog,
+  ChatGptConnectPrompt,
+  CHATGPT_CONNECT_REASON,
+} from '../ChatGptConnectPrompt';
 import {
   RUNTIME_LOST_LABEL,
   RUNTIME_LOST_TITLE,
@@ -74,10 +97,21 @@ import { sessionStateDotVar } from '../../lib/stableClassNames';
 import {
   createPolledPairing,
   fresherStreamedCopy,
+  readLastUserMessage,
+  readUnansweredUserMessage,
+  withFailedSend,
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
+import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
+import {
+  buildContinuationPrompt,
+  splitContinuation,
+} from '../../lib/continuationPrompt';
+import { ContinuedSessionBanner } from './ContinuedSessionBanner';
+import type { NotificationLevel } from '../../lib/notificationRecord';
 import { SessionActionsMenu } from './SessionActionsMenu';
+import { useReadingAnchor } from './useReadingAnchor';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
   COLUMN_RESERVE_VAR,
@@ -94,15 +128,27 @@ import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
+import { useEgressRemedy } from '../../hooks/useEgressRemedy';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
+import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
-import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
-import { SendKeyHint } from '../SendKeyHint';
 
 /** Long enough to read why the switch went back, like the other failure toasts. */
 const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
 
+/** No installation's workspaces to read, for a session without a workspace. */
+const NO_INSTALLATIONS: string[] = [];
+
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
+
+/**
+ * How a session that carries on another is titled: the earlier title after a
+ * prefix, which a further continuation replaces rather than stacks.
+ */
+const CONTINUED_TITLE_PREFIX = 'Continued: ';
+const CONTINUED_TITLE_PATTERN = /^(?:Continued: )+/;
 
 const useStyles = makeStyles(theme => ({
   // bui's Switch has one size, sized for forms. On the meta line it takes the
@@ -246,6 +292,7 @@ function Shell({
   documentTitle,
   badges,
   meta,
+  compactHeader,
   children,
 }: {
   /** The shell header's h1; the exits leave it to the fallback "Session". */
@@ -256,6 +303,8 @@ function Shell({
   badges?: ReactNode;
   /** Muted text at the end of that row: when the session started. */
   meta?: ReactNode;
+  /** Whether the header turns compact once it has scrolled away. */
+  compactHeader?: boolean;
   children: ReactNode;
 }) {
   const sessionsRoute = useRouteRef(sessionsRouteRef);
@@ -274,6 +323,7 @@ function Shell({
       ]}
       badges={badges}
       meta={meta}
+      compactHeader={compactHeader}
     >
       {children}
     </ShellPage>
@@ -322,7 +372,6 @@ export function SessionDetailPage() {
   const classes = useStyles();
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
-  const touch = useTouchInput();
 
   // Before the reads, because it gates them: a delete is in flight from this very
   // page, and an interval landing between "kagent accepted the delete" and the
@@ -332,10 +381,12 @@ export function SessionDetailPage() {
   const { isUserScoped } = useKagentCapabilities(installation);
   // Tool calls name their connector as Customize does (UX review M2), from
   // the installation's MCPServer CRs.
-  const { servers: musterServers } = useMusterServers(installation);
+  const { servers: musterServers, labels: connectorLabelsOf } =
+    useMusterServers(installation);
   const connectorOf = useCallback(
-    (toolName: string) => connectorOfTool(toolName, musterServers),
-    [musterServers],
+    (toolName: string) =>
+      connectorOfTool(toolName, musterServers, connectorLabelsOf),
+    [musterServers, connectorLabelsOf],
   );
 
   // The prompt this session was started with, if the user arrived here by
@@ -352,8 +403,10 @@ export function SessionDetailPage() {
     turnProgress,
     pendingConfirmation,
     runtimeLoss: conversationRuntimeLoss,
+    tasks,
     taskCount,
     hasConversation,
+    isConversationCurrent,
     isLoading,
     isNotFound,
     error,
@@ -366,6 +419,22 @@ export function SessionDetailPage() {
   });
   const cancellation = useCancelTask(installation, sessionId);
 
+  // How long the sessions people open are: once per opening, when the
+  // session and a current read of its turns are in hand (not an older cache
+  // the opening read is about to replace), and not again as it polls.
+  const turns = detail && isConversationCurrent ? taskCount : undefined;
+  const viewEvent = useMemo(
+    () =>
+      turns === undefined
+        ? undefined
+        : {
+            name: 'AgentPlatform.sessionViewed' as const,
+            attributes: { turns },
+          },
+    [turns],
+  );
+  useTrackedView(viewEvent, `${installation}/${sessionId}`);
+
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
   const agentIndex = useAgentIndex();
@@ -374,6 +443,12 @@ export function SessionDetailPage() {
     () => (detail ? toSessionRow(detail.session, agentIndex) : undefined),
     [detail, agentIndex],
   );
+  // The workspace's name, from the installation's workspace list: read only
+  // for a session that works in one.
+  const workspaceNameOf = useWorkspaceNames(
+    row?.workspace ? [row.installation] : NO_INSTALLATIONS,
+  );
+  const workspaceName = row ? workspaceNameOf(row) : undefined;
 
   // `useDeleteSession`, `useRenameSession` and `useKagentCapabilities` are all called
   // here rather than inside the menu: the menu is rendered in the shared plugin
@@ -416,7 +491,19 @@ export function SessionDetailPage() {
    * reported in-band before any event, or one the transport mapped, whose
    * message carries the same words. Either way the words are the runtime's
    * and are shown as the evidence, never as the explanation.
+   *
+   * Last, a runtime that leaves no words anywhere: sends that keep timing out
+   * before kagent's first event, none of them landing
+   * (`readSendTimeoutRuntimeLoss`). Each such failure re-reads the session, so
+   * a loss kagent has since reported reaches the first branch instead.
    */
+  // Read on every render, but only its count goes into the memo below: every
+  // poll brings new tasks, and a loss with a new identity each time would
+  // rebuild the header actions for nothing.
+  const sendTimeoutAttempts = readSendTimeoutRuntimeLoss(
+    send.timeouts,
+    tasks,
+  )?.attempts;
   const runtimeLoss = useMemo<RuntimeLoss | undefined>(() => {
     if (conversationRuntimeLoss) {
       return conversationRuntimeLoss;
@@ -424,8 +511,104 @@ export function SessionDetailPage() {
     const cause = [send.error?.message, confirmation.error?.message].find(
       isRuntimeLostFailureText,
     );
-    return cause ? { reported: false, cause, attempts: 1 } : undefined;
-  }, [conversationRuntimeLoss, send.error, confirmation.error]);
+    if (cause) {
+      return { reported: false, cause, attempts: 1 };
+    }
+    return sendTimeoutAttempts
+      ? {
+          reported: false,
+          attempts: sendTimeoutAttempts,
+          source: 'send-timeouts',
+        }
+      : undefined;
+  }, [
+    conversationRuntimeLoss,
+    send.error,
+    confirmation.error,
+    sendTimeoutAttempts,
+  ]);
+
+  /**
+   * The answer kagent did not take: the agent could not resume, and the
+   * question it answered is still open (`useAnswerConfirmation`). Terminal like
+   * a reported runtime loss — the card and the box go, the notice offers the
+   * new session — but only while **that** question stands: the same task, asking
+   * in the same status message. A resume that lands late moves the task on,
+   * and a follow-up question in the same task is a new one to answer.
+   */
+  /**
+   * The conversation as kagent recorded it, with a continuation's marker line
+   * taken out of the first message: what a new session is built from, and
+   * what the person's last message is read from. A marker carried along would
+   * link the next session to the wrong one.
+   */
+  const conversationItems = useMemo(
+    () => splitContinuation(timeline.items).items,
+    [timeline.items],
+  );
+  const failedAnswer = confirmation.failed;
+  /** The failed answer is to the request that still stands. */
+  const failedAnswerStands =
+    failedAnswer !== null &&
+    pendingConfirmation !== undefined &&
+    pendingConfirmation !== null &&
+    failedAnswer.taskId === pendingConfirmation.taskId &&
+    failedAnswer.askedIn === pendingConfirmation.askedIn;
+  const answerNotTaken =
+    isAnswerNotTakenError(confirmation.error) && failedAnswerStands;
+  /** Nothing more can happen in this session; the way on is a new one. */
+  const cannotContinue = Boolean(runtimeLoss?.reported) || answerNotTaken;
+  /**
+   * Whether this page offers to carry the session on in a new one: after a
+   * lost runtime (suspected or reported) and after an answer kagent did not
+   * take. The new session starts with this one's conversation either way.
+   */
+  const carriesOn = answerNotTaken || Boolean(runtimeLoss);
+  /**
+   * The answer that did not reach the agent — not taken, or lost with the
+   * runtime: a question's answers, positionally. Not an approval's words (a
+   * decline's reason), which say nothing as an answer to a new session. Shown
+   * in the notice, and carried into the new session's first message.
+   */
+  const failedAnswers =
+    carriesOn &&
+    failedAnswerStands &&
+    failedAnswer?.decision === 'approve' &&
+    failedAnswer.answers?.length
+      ? failedAnswer.answers
+      : undefined;
+  const failedAnswerText = failedAnswers ? failedAnswer?.text : undefined;
+  /**
+   * What the session that carries this one on starts with: the first message,
+   * holding the whole conversation, the open question and the answer
+   * (`buildContinuationPrompt`), and the images of the message that never got
+   * its answer, which the conversation names. Nothing the box holds: a
+   * session that cannot go on shows no box, and a suspected loss keeps its
+   * box for the retry. Built once, so the notice says what the start sends.
+   */
+  const continuation = useMemo(() => {
+    if (!carriesOn) {
+      return undefined;
+    }
+    const items = withFailedSend(conversationItems, send.failed);
+    return {
+      ...buildContinuationPrompt({
+        items,
+        pendingQuestions: pendingConfirmation?.questions ?? [],
+        answers: failedAnswers,
+        continues: { installation, sessionId },
+      }),
+      images: readUnansweredUserMessage(items)?.images ?? [],
+    };
+  }, [
+    carriesOn,
+    conversationItems,
+    send.failed,
+    pendingConfirmation,
+    failedAnswers,
+    installation,
+    sessionId,
+  ]);
 
   /**
    * The agent, as a row the create path takes — the same join the composer
@@ -440,6 +623,20 @@ export function SessionDetailPage() {
     [agentIndex, installation, detail?.session.agentId],
   );
 
+  // The agent's model may be the person's own ChatGPT subscription, which
+  // takes no turn until the person has connected it. The hand-off names the
+  // ModelConfig before the agent list has joined.
+  const chatGpt = useChatGptConnection(
+    installation,
+    agent && {
+      namespace: agent.namespace,
+      name: (agentRow && modelConfigNameOf(agentRow)) ?? handoff?.modelConfig,
+    },
+  );
+  // Kept here, not in the prompt: the dialog stays open, reading Connected,
+  // after the prompt has gone.
+  const [isChatGptDialogOpen, setChatGptDialogOpen] = useState(false);
+
   // The $/token to price this session's tokens at, and which observation it
   // came from. The **model** is what matters: pricing an Opus session at the
   // installation's Sonnet-derived blend halved a real session's figure, so a
@@ -451,7 +648,7 @@ export function SessionDetailPage() {
   const {
     rates,
     tier: rateTier,
-    window: rateWindow,
+    windowDays: rateWindowDays,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -463,6 +660,32 @@ export function SessionDetailPage() {
     timeline.tokens.completion,
     rates,
   );
+
+  // What the composer needs to know about images: whether this agent can take
+  // them, and how much the conversation already carries — every turn sends
+  // the model all of it, so a session has a budget of its own.
+  // The budget counts the images the person sent, which every turn resends;
+  // a file the agent produced is not one of them.
+  const composerImages = useMemo(() => {
+    const session = { bytes: 0, count: 0 };
+    for (const item of timeline.items) {
+      if (
+        item.kind === 'attachment' &&
+        item.isUser &&
+        item.preview.kind === 'image'
+      ) {
+        session.bytes += item.preview.byteSize;
+        session.count += 1;
+      }
+    }
+    return {
+      // Not guessed while the agent is still being looked up.
+      unsupportedReason: agentRow
+        ? imagesUnsupportedReason(agentRow)
+        : 'The portal cannot tell yet whether this agent can take images: it has not read the agent. Try again in a moment.',
+      session,
+    };
+  }, [agentRow, timeline.items]);
 
   // Dispatch the session's first message, once.
   //
@@ -478,12 +701,20 @@ export function SessionDetailPage() {
     if (!handoff || dispatched.current) {
       return;
     }
+    // An agent on the person's own ChatGPT subscription takes no turn until
+    // the person has connected it: the message waits, and goes once they have.
+    if (chatGpt.isLoading || chatGpt.blocksTurn) {
+      return;
+    }
     dispatched.current = true;
     // Errors surface through `send.error` and `send.failed`, exactly as they do
     // for a reply typed into the composer — which is also what hands the text
     // back so it is not lost.
-    sendMessage(handoff.text).catch(() => {});
-  }, [handoff, sendMessage]);
+    sendMessage(handoff.text, handoff.images).catch(() => {});
+  }, [handoff, sendMessage, chatGpt.isLoading, chatGpt.blocksTurn]);
+  // A hand-off still undispatched is the first message waiting for the
+  // connection, said on the prompt.
+  const chatGptHoldsHandoff = Boolean(handoff) && chatGpt.blocksTurn;
 
   // The message the user just sent, shown as the newest turn before kagent's copy
   // of it has been read back — a turn can run for minutes, and a conversation that
@@ -546,6 +777,27 @@ export function SessionDetailPage() {
         taskIndex,
         text: pending.text,
       });
+      // Its images after it, as kagent's copy will have them. Previewed from
+      // what the composer already checked and encoded: this runs on every
+      // streamed delta, and reading megabytes of base64 again each time would
+      // stall the stream.
+      for (const image of pending.images ?? []) {
+        items.push({
+          kind: 'attachment' as const,
+          id: `pending:${pending.messageId}:${image.id}`,
+          messageId: pending.messageId,
+          taskIndex,
+          isUser: true,
+          name: image.name,
+          declaredType: image.mediaType,
+          preview: {
+            kind: 'image',
+            type: image.mediaType,
+            dataUrl: image.previewUrl,
+            byteSize: image.byteSize,
+          },
+        });
+      }
     }
 
     if (streamVisible) {
@@ -603,6 +855,43 @@ export function SessionDetailPage() {
     return { ...timeline, items };
   }, [timeline, send.pending, send.stream, answerStream]);
 
+  /**
+   * The session this one carries on, from the marker the portal puts on a
+   * continuation's first line (`buildContinuationPrompt`), and the timeline
+   * with that line taken out: the banner above the conversation shows it
+   * instead, with a link. Read off the live timeline, so it shows from the
+   * moment the first message is sent.
+   */
+  const { items: shownItems, continues: continuedFrom } = useMemo(
+    () => splitContinuation(timelineWithLive.items),
+    [timelineWithLive.items],
+  );
+  // The Session's egress refusals, on the turns that met them: counted by the
+  // egress gateway, not kagent, so read beside the conversation.
+  const egressRefusals = useSessionEgressRefusals({
+    installation,
+    sessionId,
+    agentNamespace: agent?.namespace,
+    createdAt: row?.createdAt,
+  });
+  const shownTimeline = useMemo(
+    () => ({
+      ...timelineWithLive,
+      items: withEgressRefusals(shownItems, egressRefusals),
+    }),
+    [timelineWithLive, shownItems, egressRefusals],
+  );
+  // What a refusal's alert offers for this agent: read once there is one
+  // that needs it, since it takes agent-manager's reading of the agent and
+  // the person's access. Raw TCP's remedy needs none of it
+  // (giantswarm/giantswarm#38814).
+  const egressRemedyFor = useEgressRemedy({
+    installation,
+    agent,
+    row: agentRow,
+    enabled: egressRefusals.some(refusal => remedyNeedsAgent(refusal.scheme)),
+  });
+
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
   const [isRenameOpen, setRenameOpen] = useState(false);
@@ -641,6 +930,22 @@ export function SessionDetailPage() {
     [rowId, pinned, togglePin],
   );
 
+  // The menu's Notifications submenu: the session's Notification level, kept
+  // per person in the same storage as the pin.
+  const notificationSettings = useSessionNotificationSettings();
+  const notificationLevel = notificationSettings.isKnown
+    ? notificationSettings.levelOf(installation, sessionId)
+    : undefined;
+  const { setLevel } = notificationSettings;
+  const notifications = useMemo(
+    () => ({
+      level: notificationLevel,
+      onChange: (level: NotificationLevel) =>
+        setLevel(installation, sessionId, level),
+    }),
+    [notificationLevel, setLevel, installation, sessionId],
+  );
+
   // Whether the conversation shows the agent's tool activity, kept per
   // person through the StorageApi like the pin.
   const toastApi = useApi(toastApiRef);
@@ -649,8 +954,31 @@ export function SessionDetailPage() {
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
+
+  // The conversation column and the chat bar docked at its end, held as state
+  // through callback refs: both exist only on the loaded path (and the dock
+  // only while a composer is offered), and the layout hook re-measures when
+  // either comes or goes.
+  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
+  useDockedComposerLayout(columnElement, dockElement);
+
+  // Stick to the end: the page follows the reply as it streams in while the
+  // reader is at the end, and leaves them alone once they scroll away — up
+  // through the history, mid-stream included — until they come back to it.
+  const { stickToEnd, markReaderChange } = useStickToEnd(columnElement);
+
+  // Adding or removing the work summaries around the place being read must
+  // not move it: from the compact header the switch is pressed mid-session.
+  const captureReadingAnchor = useReadingAnchor(showToolActivity);
   const changeToolActivity = useCallback(
     (show: boolean) => {
+      captureReadingAnchor();
+      // The summaries it adds or removes are the reader's change: they keep
+      // their place, and follow the end only if it is still in view.
+      markReaderChange();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
       setShowToolActivity(show).catch((failure: Error) => {
@@ -664,8 +992,16 @@ export function SessionDetailPage() {
         });
       });
     },
-    [setShowToolActivity, toastApi],
+    [captureReadingAnchor, markReaderChange, setShowToolActivity, toastApi],
   );
+
+  // The menu's Export session: the file is named after the agent, by its
+  // technical name where an Agent matched and its display name otherwise.
+  const exportSession = useExportSession({
+    installation,
+    sessionId,
+    agentName: agent?.name ?? row?.agentName,
+  });
 
   const actions = useMemo(
     () =>
@@ -677,37 +1013,23 @@ export function SessionDetailPage() {
           isUserScoped={isUserScoped}
           runtimeLoss={runtimeLoss}
           pin={pin}
+          notifications={notifications}
+          onExport={exportSession}
         />
       ) : null,
-    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss, pin],
+    [
+      row,
+      sessionTitle,
+      deletion,
+      openRename,
+      isUserScoped,
+      runtimeLoss,
+      pin,
+      notifications,
+      exportSession,
+    ],
   );
   useProvidePageHeaderActions(actions);
-
-  // The page scrolls the document, so that is what "to the bottom" means here.
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      el.scrollTop = el.scrollHeight;
-    });
-  }, []);
-
-  // Follow the reply as it streams in — but only when already reading the end.
-  // Someone scrolled up through the history must not have the page yanked away
-  // under them by every arriving token.
-  // The turn's own event counter, not a size derived from its content: closing
-  // a text run moves length out of `live` into `items`, which can leave any such
-  // size unchanged across a real update and skip the follow for it.
-  const streamTick = (send.stream ?? answerStream)?.revision ?? 0;
-  useEffect(() => {
-    if (streamTick === 0) {
-      return;
-    }
-    const el = document.scrollingElement ?? document.documentElement;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
-    if (nearBottom) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [streamTick]);
 
   /**
    * The newest turn is active but has reported nothing for the age bound: the
@@ -750,18 +1072,24 @@ export function SessionDetailPage() {
   /**
    * How the turn is being followed once its live stream ended before it did.
    *
-   * A gateway's request timeout closes the stream mid-reply while the turn runs
-   * on; "Working…" over text that stopped half-way promises a continuation that
-   * is not coming through the stream. Instead the row says what is happening:
-   * `checking` while the send is still re-reading the conversation, `following`
-   * once that read has come back with the task still working — the preview is
-   * gone for good and the poll delivers the reply. Nothing once the poll shows
-   * the turn over (the stream hooks retire the loss themselves), so a finished
-   * turn reads as finished with no reload. A stall keeps its own row.
+   * A controller rollout or a gateway's request timeout closes the stream
+   * mid-reply while the turn runs on; "Working…" over text that stopped
+   * half-way promises a continuation that is not coming through the stream.
+   * Instead the row says what is happening: `reconnecting` while the stream
+   * hooks resubscribe to the turn — the preview stays and continues once it is
+   * back — and, when that fails, `checking` while the send is still re-reading
+   * the conversation, `following` once that read has come back with the task
+   * still working — the preview is gone for good and the poll delivers the
+   * reply. Nothing once the poll shows the turn over (the stream hooks retire
+   * the loss themselves), so a finished turn reads as finished with no reload.
+   * A stall keeps its own row.
    */
+  const isReconnecting = send.isReconnecting || confirmation.isReconnecting;
   const isStreamLost = send.isStreamLost || confirmation.isStreamLost;
   let streamLost: StreamLossPhase | undefined;
-  if (isStreamLost && !isStalled) {
+  if (isReconnecting && !isStalled) {
+    streamLost = 'reconnecting';
+  } else if (isStreamLost && !isStalled) {
     if (send.isSending || confirmation.isAnswering) {
       streamLost = 'checking';
     } else if (agentIsWorking) {
@@ -790,67 +1118,82 @@ export function SessionDetailPage() {
   const [redraft, setRedraft] = useState<{
     messageId: string;
     text: string;
+    images?: ComposerImage[];
   } | null>(null);
-  const lastUserMessageText = useMemo(() => {
-    for (let index = timeline.items.length - 1; index >= 0; index -= 1) {
-      const item = timeline.items[index];
-      if (item.kind === 'user-message') {
-        return item.text;
-      }
-    }
-    return undefined;
-  }, [timeline.items]);
+  // With the images it carried, as the composer holds them, so a message
+  // sent again or opened in a new session is the whole message.
+  const lastUserMessage = useMemo(
+    () => readLastUserMessage(conversationItems),
+    [conversationItems],
+  );
 
   /**
-   * The way out of a lost runtime: a new session with the same agent, opened
-   * on the message that never got its answer.
+   * The way out of a lost runtime or an answer kagent did not take: a new
+   * session with the same agent, titled `Continued: <title>`, whose first
+   * message carries this conversation on (`buildContinuationPrompt`).
    *
    * Create, navigate, then send — the order every entry point keeps, see
-   * "Starting a session" in docs/agent-platform.md. The text is what the box
-   * holds, else the message that failed (handed back by the send), else the
-   * last message the person sent into this session: the one the runtime never
-   * read. Carried through the router state exactly as the list's composer
-   * carries a first message, so the new page dispatches it on arrival — a
-   * different page instance, since `SessionDetailRoute` keys the page on the
-   * session.
+   * "Starting a session" in docs/agent-platform.md. Carried through the router
+   * state exactly as the list's composer carries a first message, so the new
+   * page dispatches it on arrival — a different page instance, since
+   * `SessionDetailRoute` keys the page on the session.
    */
   const creation = useCreateSession('sessionDetail');
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  const unansweredText = send.failed?.text ?? lastUserMessageText;
-  const startNewSession = useCallback(
-    async (draft: string) => {
-      const text = draft.trim() || unansweredText;
-      if (!agentRow || !text) {
-        return;
-      }
-      let newSessionId: string;
-      try {
-        newSessionId = await createSession({ agent: agentRow, prompt: text });
-      } catch {
-        // Left to the notice, which renders the hook's `error`.
-        return;
-      }
-      const href = sessionDetailRoute?.({
-        installation: agentRow.installation,
-        sessionId: newSessionId,
+  const startNewSession = useCallback(async () => {
+    // The new session has none of this conversation, and an answer alone
+    // answers nothing in it.
+    if (!continuation) {
+      return;
+    }
+    const { text, images } = continuation;
+    // One prefix however many times a session is carried on.
+    const title = `${CONTINUED_TITLE_PREFIX}${sessionTitle.replace(
+      CONTINUED_TITLE_PATTERN,
+      '',
+    )}`;
+    if (!agentRow) {
+      return;
+    }
+    let newSessionId: string;
+    try {
+      newSessionId = await createSession({
+        agent: agentRow,
+        prompt: text,
+        title,
       });
-      if (!href) {
-        return;
-      }
-      navigate(href, {
-        state: {
-          [NEW_SESSION_STATE_KEY]: {
-            text,
-            agentNamespace: agentRow.namespace,
-            agentName: agentRow.technicalName,
-          },
+    } catch {
+      // Left to the notice, which renders the hook's `error`.
+      return;
+    }
+    const href = sessionDetailRoute?.({
+      installation: agentRow.installation,
+      sessionId: newSessionId,
+    });
+    if (!href) {
+      return;
+    }
+    navigate(href, {
+      state: {
+        [NEW_SESSION_STATE_KEY]: {
+          text,
+          agentNamespace: agentRow.namespace,
+          agentName: agentRow.technicalName,
+          modelConfig: modelConfigNameOf(agentRow),
+          imagesKey: stashHandoffImages(images),
         },
-      });
-    },
-    [agentRow, createSession, navigate, sessionDetailRoute, unansweredText],
-  );
+      },
+    });
+  }, [
+    agentRow,
+    createSession,
+    navigate,
+    sessionDetailRoute,
+    continuation,
+    sessionTitle,
+  ]);
 
   const { cancelTask } = cancellation;
   const { reset: resetSend } = send;
@@ -862,18 +1205,18 @@ export function SessionDetailPage() {
    */
   const cancelTurn = useCallback(
     (taskId: string, redraftLast: boolean) => {
-      const draft = lastUserMessageText;
+      const draft = lastUserMessage;
       cancelTask(taskId)
         .then(() => {
           resetSend();
           if (redraftLast && draft) {
-            setRedraft({ messageId: `redraft:${taskId}`, text: draft });
+            setRedraft({ messageId: `redraft:${taskId}`, ...draft });
           }
         })
         // Errors surface through the hook's `error`, shown beside the composer.
         .catch(() => {});
     },
-    [cancelTask, lastUserMessageText, resetSend],
+    [cancelTask, lastUserMessage, resetSend],
   );
   const stopTurn = useMemo(() => {
     if (!runningTaskId) {
@@ -922,36 +1265,20 @@ export function SessionDetailPage() {
     return state;
   }, [showWorking, isStalled, state]);
 
-  // The conversation column and the chat bar docked at its end, held as state
-  // through callback refs: both exist only on the loaded path (and the dock
-  // only while a composer is offered), and the layout hook re-measures when
-  // either comes or goes.
-  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
-    null,
-  );
-  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
-  useDockedComposerLayout(columnElement, dockElement);
-
   // A session opens at its newest turn, the way a desktop chat app does (live
   // round 2, R8: a long session opened at its top). Once per session, when its
   // conversation first renders — the column exists only then. Later scrolling
   // is the reader's: "Show earlier activity" adds turns above without coming
-  // back here, and the follow above only moves a reader already at the end.
-  // Before paint, so the top never flashes; and once more a frame later, for
-  // layout that lands after the first (the dock's measured min-height).
+  // back here. Before paint, so the top never flashes; layout that lands after
+  // (the dock's measured min-height) is followed by `useStickToEnd`.
   const openedAtEndFor = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     if (!columnElement || openedAtEndFor.current === sessionId) {
-      return undefined;
+      return;
     }
     openedAtEndFor.current = sessionId;
-    const el = document.scrollingElement ?? document.documentElement;
-    el.scrollTop = el.scrollHeight;
-    const frame = requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [columnElement, sessionId]);
+    stickToEnd();
+  }, [columnElement, sessionId, stickToEnd]);
 
   // The loaded page's header from the first paint, with skeletons where the
   // read will fill in: the title and the badge row (T95).
@@ -1021,15 +1348,20 @@ export function SessionDetailPage() {
       installation={row.installation}
       model={row.agentModel}
       tokens={timeline.tokens}
-      lastTurnTokens={timeline.lastTurnTokens}
+      context={timeline.context}
       taskCount={taskCount}
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({
         tier: rateTier,
         model: row.agentModel,
         installation: row.installation,
-        window: rateWindow,
-        tokens: timeline.tokens.total,
+        windowDays: rateWindowDays,
+        inputTokens: timeline.tokens.prompt,
+        outputTokens: timeline.tokens.completion,
+        unpricedTokens:
+          timeline.tokens.total -
+          timeline.tokens.prompt -
+          timeline.tokens.completion,
       })}
     />
   );
@@ -1074,6 +1406,15 @@ export function SessionDetailPage() {
    * Assembled here rather than as a ternary chain in the JSX — there are three
    * outcomes and two of them are multi-element.
    */
+  // Whether the question card is up: the agent waits on a question the page
+  // lets the person answer. Not while kagent has reported the runtime lost,
+  // nor once it did not take an answer (see below), nor where the composer is
+  // withheld.
+  const isConfirming =
+    !composerWithheldReason &&
+    Boolean(pendingConfirmation && agent) &&
+    !answerDispatched &&
+    !cannotContinue;
   let bottomControl: ReactNode;
   if (composerWithheldReason) {
     // The chip keeps the session's totals in reach even where there is no box
@@ -1109,28 +1450,86 @@ export function SessionDetailPage() {
     // — up to 10 s behind — still says. Until the next poll the composer below
     // stands in with "working", which is what the stream says is happening.
     //
-    // Not while kagent has reported the runtime lost: an answer would run into
-    // the same lost runtime, so the question is left where it is and the way
-    // out takes the card's place.
-    const isConfirming =
-      Boolean(pendingConfirmation && agent) &&
-      !answerDispatched &&
-      !runtimeLoss?.reported;
-    // The way out, offered under the box: a second button while the loss is
-    // only suspected, the only one once kagent has reported it. Needs the agent
+    // Not while kagent has reported the runtime lost, nor once it did not take
+    // an answer: another answer would go the same way, so the question is left
+    // where it is and the notice, with the way out, takes the card's place.
+    // The way out, offered in the notice that explains it: beside the retry
+    // while the loss is only suspected, the only way on once kagent has
+    // reported it or did not take an answer. Needs the agent
     // as a row to create against; without one the notice says where else to go.
-    const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
+    // Withheld where agent-manager cannot start a session as the person (the
+    // notice gives the row's `sessionBlocker`), and while that is still read.
+    const offersNewSession = Boolean(
+      (runtimeLoss || answerNotTaken) &&
+      agentRow &&
+      !agentRow.sessionBlocker &&
+      !agentRow.isSessionPending &&
+      !isConfirming,
+    );
+    // The prototype's waiting caption, naming who waits on what and pointing
+    // at the card attached just above the box. The box is disabled meanwhile,
+    // because a plain message cannot answer the card: it would open a new
+    // turn.
+    let composerDisabledReason: string | undefined;
+    if (isConfirming) {
+      composerDisabledReason = `${row.agentName || 'The agent'} is waiting for your ${
+        pendingConfirmation?.asks === 'input'
+          ? 'answer above.'
+          : 'decision above.'
+      }`;
+    } else if (chatGpt.blocksTurn) {
+      // The agent runs on the person's own ChatGPT subscription, which they
+      // have not connected: the prompt above the box is the way on.
+      composerDisabledReason = CHATGPT_CONNECT_REASON;
+    }
+    const chatGptPrompt = chatGpt.blocksTurn ? (
+      <ChatGptConnectPrompt
+        hasHeldMessage={chatGptHoldsHandoff}
+        onConnect={() => setChatGptDialogOpen(true)}
+      />
+    ) : undefined;
+    const newSession = offersNewSession
+      ? {
+          onStart: () => {
+            // Errors surface through the create hook's `error`, which the
+            // notice renders.
+            startNewSession().catch(() => {});
+          },
+          isStarting: creation.isCreating,
+        }
+      : undefined;
     bottomControl = (
       <div
         ref={setDockElement}
         className={classes.bottomDock}
         data-testid="session-dock"
       >
-        {runtimeLoss && (
+        <ChatGptConnectDialog
+          installation={installation}
+          isOpen={isChatGptDialogOpen}
+          onOpenChange={setChatGptDialogOpen}
+        />
+        {runtimeLoss && (runtimeLoss.reported || !answerNotTaken) && (
           <RuntimeLostNotice
             loss={runtimeLoss}
             agentName={row.agentName || undefined}
-            offersNewSession={offersNewSession}
+            newSession={newSession}
+            newSessionBlocker={agentRow?.sessionBlocker}
+            hasQuestion={Boolean(pendingConfirmation?.questions.length)}
+            // Not while the question card is up: it holds the answer itself.
+            answer={isConfirming ? undefined : failedAnswerText}
+            continuation={continuation}
+            startError={creation.error?.message}
+          />
+        )}
+        {/* Over a merely suspected loss too, whose retry this case rules out. */}
+        {answerNotTaken && !runtimeLoss?.reported && (
+          <AnswerNotTakenNotice
+            agentName={row.agentName || undefined}
+            newSession={newSession}
+            newSessionBlocker={agentRow?.sessionBlocker}
+            answer={failedAnswerText}
+            continuation={continuation}
             startError={creation.error?.message}
           />
         )}
@@ -1153,100 +1552,81 @@ export function SessionDetailPage() {
             }
           />
         )}
-        <SessionComposer
-          attachment={
-            isConfirming ? (
-              <PendingConfirmationPanel
-                pending={pendingConfirmation!}
-                agentName={row.agentName || undefined}
-                connectorOf={connectorOf}
-                isAnswering={confirmation.isAnswering}
-                error={confirmation.error?.message}
-                restore={confirmation.failed}
-                isUserScoped={isUserScoped}
-                onAnswer={answer => {
-                  // Errors surface through the hook's `error`, which the card
-                  // renders above the choices it hands back.
-                  confirmation.answer(answer).catch(() => {});
-                }}
-              />
-            ) : undefined
-          }
-          // Waiting on an answer is the opposite of busy; the caption is the
-          // reason below either way. A stalled turn still withholds Send —
-          // kagent would refuse the message — but says so instead of promising
-          // a reply.
-          isAgentWorking={isConfirming ? false : showWorking || isStalled}
-          isStalled={isStalled}
-          isFinished={Boolean(shownState && !shownState.isActive)}
-          agentName={row.agentName || undefined}
-          // The prototype's waiting caption, naming who waits on what and
-          // pointing at the card attached just above the box. A plain message
-          // cannot answer it (it would open a new turn), which is why the box
-          // is disabled meanwhile.
-          disabledReason={
-            isConfirming
-              ? `${row.agentName || 'The agent'} is waiting for your ${
-                  pendingConfirmation?.asks === 'input'
-                    ? 'answer above.'
-                    : 'decision above.'
-                }`
-              : undefined
-          }
-          // A conflict has its own notice above; the composer must not also
-          // report it as a generic failure. Nor must a lost runtime: the
-          // notice carries the runtime's words as its evidence.
-          error={isConflict || runtimeLoss ? undefined : send.error?.message}
-          // A failed Stop is reported as one, not as a message that was not
-          // sent — the turn it aimed at is still running.
-          stopError={describeStopFailure(cancellation.error)}
-          // On failure the optimistic copy is dropped, so this is the only place the
-          // user's text still exists. After a stalled turn was cancelled, the
-          // message it never answered comes back the same way.
-          restore={send.failed ?? redraft}
-          onStop={isConfirming ? undefined : stopTurn}
-          isStopping={cancellation.isCancelling}
-          details={costChip}
-          newSession={
-            offersNewSession
-              ? {
-                  label: `Start a new session with ${row.agentName || 'this agent'}`,
-                  onStart: draft => {
-                    // Errors surface through the create hook's `error`, which
-                    // the notice renders.
-                    startNewSession(draft).catch(() => {});
-                  },
-                  isStarting: creation.isCreating,
-                  replacesSend: runtimeLoss!.reported,
-                  caption: runtimeLoss!.reported ? (
-                    <>
-                      This session cannot continue; your message starts a new
-                      one with the same agent.{' '}
-                      <SendKeyHint
-                        options={SEND_KEY_CAPTIONS.runtimeLost}
-                        touch={touch}
-                      />
-                    </>
-                  ) : (
-                    'Sending again retries the runtime. If it fails again, start a new session with the same agent — your message goes with it.'
-                  ),
-                }
-              : undefined
-          }
-          // The user arrived here by starting the session — typing in a composer
-          // one screen ago — and the navigation dropped the focus. Restoring it to
-          // the box is continuity, the one case the a11y rule does not have in mind;
-          // a session merely opened from the list gets no autofocus.
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={Boolean(handoff)}
-          onSubmit={text => {
-            // Errors are surfaced through the hook's `error`, which the composer
-            // renders beside the text it hands back.
-            send.sendMessage(text).catch(() => {});
-            // The optimistic echo appears at the very bottom; go where it is.
-            scrollToBottom();
-          }}
-        />
+        {/* A session that cannot go on takes no more messages, so it shows no
+            box: the notice above is the way on. The chip keeps the session's
+            totals in reach without one. */}
+        {cannotContinue ? (
+          <Flex justify="end">{costChip}</Flex>
+        ) : (
+          <SessionComposer
+            attachment={
+              isConfirming ? (
+                <PendingConfirmationPanel
+                  pending={pendingConfirmation!}
+                  agentName={row.agentName || undefined}
+                  connectorOf={connectorOf}
+                  isAnswering={confirmation.isAnswering}
+                  error={confirmation.error?.message}
+                  restore={confirmation.failed}
+                  isUserScoped={isUserScoped}
+                  onAnswer={answer => {
+                    // Errors surface through the hook's `error`, which the card
+                    // renders above the choices it hands back. The request it
+                    // answers goes along, so a not-taken verdict is tied to it.
+                    confirmation
+                      .answer({
+                        ...answer,
+                        ...(pendingConfirmation?.askedIn && {
+                          askedIn: pendingConfirmation.askedIn,
+                        }),
+                      })
+                      .catch(() => {});
+                  }}
+                />
+              ) : (
+                chatGptPrompt
+              )
+            }
+            // Waiting on an answer is the opposite of busy; the caption is the
+            // reason below either way. A stalled turn still withholds Send —
+            // kagent would refuse the message — but says so instead of promising
+            // a reply.
+            isAgentWorking={isConfirming ? false : showWorking || isStalled}
+            isStalled={isStalled}
+            isFinished={Boolean(shownState && !shownState.isActive)}
+            agentName={row.agentName || undefined}
+            disabledReason={composerDisabledReason}
+            // A conflict has its own notice above; the composer must not also
+            // report it as a generic failure. Nor must a lost runtime: the
+            // notice carries the runtime's words as its evidence.
+            error={isConflict || runtimeLoss ? undefined : send.error?.message}
+            // A failed Stop is reported as one, not as a message that was not
+            // sent — the turn it aimed at is still running.
+            stopError={describeStopFailure(cancellation.error)}
+            // On failure the optimistic copy is dropped, so this is the only place the
+            // user's text still exists. After a stalled turn was cancelled, the
+            // message it never answered comes back the same way.
+            restore={send.failed ?? redraft}
+            onStop={isConfirming ? undefined : stopTurn}
+            isStopping={cancellation.isCancelling}
+            details={costChip}
+            // The user arrived here by starting the session — typing in a composer
+            // one screen ago — and the navigation dropped the focus. Restoring it to
+            // the box is continuity, the one case the a11y rule does not have in mind;
+            // a session merely opened from the list gets no autofocus.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus={Boolean(handoff)}
+            images={composerImages}
+            onSubmit={(text, images) => {
+              // Errors are surfaced through the hook's `error`, which the composer
+              // renders beside the text it hands back.
+              send.sendMessage(text, images).catch(() => {});
+              // The optimistic echo appears at the very bottom; go where it is,
+              // and follow the reply from there.
+              stickToEnd();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -1331,44 +1711,51 @@ export function SessionDetailPage() {
     </>
   );
 
-  const agentIdentity = (
-    <>
-      {row.agentName && (
-        <Flex align="center" gap="2">
-          <AgentAvatar
-            size="small"
-            purpose="decoration"
-            name={row.agentName}
-            src={avatarUrl ?? ''}
-          />
-          {/* core-components' `Link`, which routes client-side — a bui
-              link would reload the page. */}
-          {agentHref ? (
-            <Link to={agentHref}>
-              {/* bui `Text` sets its own colour, which would leave a
-                  link that doesn't look like one; `inherit` hands it back
-                  to the anchor. `as="span"`: Text renders a <p> by
-                  default. */}
-              <Text
-                as="span"
-                variant="body-medium"
-                style={{ color: 'inherit' }}
-              >
-                {row.agentName}
-              </Text>
-            </Link>
-          ) : (
-            <Text variant="body-medium">{row.agentName}</Text>
-          )}
-        </Flex>
+  const agentLink = row.agentName && (
+    <Flex align="center" gap="2">
+      <AgentAvatar
+        size="small"
+        purpose="decoration"
+        name={row.agentName}
+        src={avatarUrl ?? ''}
+      />
+      {/* core-components' `Link`, which routes client-side — a bui
+          link would reload the page. */}
+      {agentHref ? (
+        <Link to={agentHref}>
+          {/* bui `Text` sets its own colour, which would leave a
+              link that doesn't look like one; `inherit` hands it back
+              to the anchor. `as="span"`: Text renders a <p> by
+              default. */}
+          <Text as="span" variant="body-medium" style={{ color: 'inherit' }}>
+            {row.agentName}
+          </Text>
+        </Link>
+      ) : (
+        <Text variant="body-medium">{row.agentName}</Text>
       )}
-      <Flex align="center" gap="1">
-        <Text variant="body-medium" color="secondary">
-          on
-        </Text>
-        <InstallationChip installation={row.installation} />
-      </Flex>
-    </>
+    </Flex>
+  );
+
+  const environment = (
+    <Flex align="center" gap="1">
+      <Text variant="body-medium" color="secondary">
+        on
+      </Text>
+      <InstallationChip installation={row.installation} />
+    </Flex>
+  );
+
+  /* The workspace the session works in, beside the agent: what its
+     directory holds and how fresh it is. Nothing for a session without one,
+     so that header reads as before. */
+  const workspaceChip = row.workspace && workspaceName && (
+    <SessionWorkspaceChip
+      sessionId={row.sessionId}
+      installation={row.installation}
+      workspace={row.workspace}
+      name={workspaceName}
+    />
   );
 
   /* Absolute, not relative: the list keeps the relative form, where scanning
@@ -1403,59 +1790,101 @@ export function SessionDetailPage() {
       badges={
         <>
           {stateBadges}
-          {agentIdentity}
-          {startedMeta}
-          {toolActivitySwitch}
+          {agentLink}
+          {workspaceChip}
+          {/* The header once it has scrolled away (ShellPage's
+              `compactHeader`) keeps the name, the state, the agent, the
+              switch, the pin and the menu in sight while reading. Where the
+              session runs and when it started are read once, not while
+              reading. At phone width the switch is left out too: beside the
+              state and the agent it wraps the compact row to a third line
+              over the conversation. */}
+          <ShellPageExpandedOnly>
+            {environment}
+            {startedMeta}
+          </ShellPageExpandedOnly>
+          {toolActivitySwitch && (
+            <ShellPageExpandedOnly onlyAtPhoneWidth>
+              {toolActivitySwitch}
+            </ShellPageExpandedOnly>
+          )}
         </>
       }
+      compactHeader
     >
-      <Flex
-        ref={setColumnElement}
-        direction="column"
-        gap="4"
-        className={classes.column}
+      {/* A connector sign-in the agent passes on reads as a sign-in action,
+          in its messages and its question alike, and answers the question
+          once done (giantswarm/giantswarm#38774). */}
+      <ConnectorSignInLinks
+        items={shownTimeline.items}
+        servers={musterServers}
+        labels={connectorLabelsOf}
+        // Only a question the card offers, with no answer under way: a
+        // finished sign-in never answers a second time, nor a session the
+        // page says cannot go on.
+        pending={
+          isConfirming && !confirmation.isAnswering && !confirmation.pending
+            ? pendingConfirmation
+            : undefined
+        }
+        onAnswer={answer => {
+          // Errors surface through the hook's `error`, as the card's own.
+          confirmation.answer(answer).catch(() => {});
+        }}
       >
-        {/* A refresh that failed after the page had loaded. Shown rather than
+        <Flex
+          ref={setColumnElement}
+          direction="column"
+          gap="4"
+          className={classes.column}
+        >
+          {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
-        {error && (
-          <Alert
-            status="warning"
-            title="This session may be out of date"
-            description={`The last refresh failed: ${error.message}`}
-          />
-        )}
+          {error && (
+            <Alert
+              status="warning"
+              title="This session may be out of date"
+              description={`The last refresh failed: ${error.message}`}
+            />
+          )}
 
-        {/* Held until the stored "Show tool activity" choice is read, so a
+          {continuedFrom && (
+            <ContinuedSessionBanner continues={continuedFrom} />
+          )}
+
+          {/* Held until the stored "Show tool activity" choice is read, so a
             person who hides the work never sees it appear and vanish. */}
-        {!isToolActivityKnown ? (
-          <LoadingIndicator label="Reading the session…" />
-        ) : (
-          <SessionTimeline
-            timeline={timelineWithLive}
-            agentName={row.agentName}
-            agentAvatarUrl={avatarUrl}
-            isAgentWorking={showWorking}
-            streamLost={streamLost}
-            stalledSince={stalledSince}
-            onCancelTurn={isStalled ? stopTurn : undefined}
-            isCancellingTurn={cancellation.isCancelling}
-            // A hand-off's opener was written by the portal, not the person
-            // (UX review M20). Known only from the router state of the arrival:
-            // kagent stores no such flag, so a later visit shows it plain.
-            firstMessageCaption={
-              handoff?.prepared ? 'Prepared by the portal' : undefined
-            }
-            connectorOf={connectorOf}
-            showToolActivity={showToolActivity}
-            isAwaitingPerson={Boolean(
-              state && AWAITING_INPUT_STATES.has(state.key),
-            )}
-          />
-        )}
+          {!isToolActivityKnown ? (
+            <LoadingIndicator label="Reading the session…" />
+          ) : (
+            <SessionTimeline
+              timeline={shownTimeline}
+              agentName={row.agentName}
+              egressRemedyFor={egressRemedyFor}
+              agentAvatarUrl={avatarUrl}
+              isAgentWorking={showWorking}
+              streamLost={streamLost}
+              stalledSince={stalledSince}
+              onCancelTurn={isStalled ? stopTurn : undefined}
+              isCancellingTurn={cancellation.isCancelling}
+              // A hand-off's opener was written by the portal, not the person
+              // (UX review M20). Known only from the router state of the arrival:
+              // kagent stores no such flag, so a later visit shows it plain.
+              firstMessageCaption={
+                handoff?.prepared ? 'Prepared by the portal' : undefined
+              }
+              connectorOf={connectorOf}
+              showToolActivity={showToolActivity}
+              isAwaitingPerson={Boolean(
+                state && AWAITING_INPUT_STATES.has(state.key),
+              )}
+            />
+          )}
 
-        {bottomControl}
-      </Flex>
+          {bottomControl}
+        </Flex>
+      </ConnectorSignInLinks>
 
       {/* One dialog for both entry points, rendered here rather than inside the
           menu — react-aria unmounts the menu on selection, and the title could not

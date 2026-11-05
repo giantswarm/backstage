@@ -121,6 +121,10 @@ right column.
 | MUI-lab `ToggleButtonGroup` | `ToggleButtonGroup` + `ToggleButton` |
 | MUI pickers | `DatePicker`, `DateRangePicker` |
 
+Form fields and their validation (when errors show, submit buttons, focus,
+wording) follow the **`forms`** skill and `useFieldValidation` from
+`ui-react`.
+
 bui `Tabs` covers both modes: in-page tabs keyed by `id`
 (`<Tab id="overview">`, with `selectedKey`/`onSelectionChange` on `Tabs`) and
 routed tabs (`href` + `matchStrategy: 'exact' | 'prefix'`, active state derived
@@ -188,6 +192,41 @@ tooltip. Prefer it over hand-rolling a code block or reaching for
 core-components' `CopyTextButton` — that button renders an oversized,
 primary-colored `ButtonIcon` that needs margin hacks to sit right. Source:
 `plugins/ui-react/src/components/CodeBlock/CodeBlock.tsx`.
+
+`CodeBlock` is for a command, a snippet or a log; pass `maxHeight` when the
+text has no bound (a build log), so it scrolls inside the block. A file a
+person reviews or copies whole (a manifest, a values file, a Dockerfile) is
+`FileView` instead: a header with the file name, an optional path and a copy
+button, and YAML in a read-only `YamlEditor`. Source:
+`plugins/ui-react/src/components/FileView/FileView.tsx`.
+
+### Commits and Kubernetes names: `CommitSha`, `namespacedNameFacts`
+
+A git SHA is shown in 7 characters everywhere in the portal, classic pages
+included: `shortSha` (`gs-common`, re-exported by `ui-react`) for the text,
+`CommitSha` (`ui-react`) to render it with the full value as its `title` and a
+copy button on touch screens (`copy={false}` inside a link or a row). Never
+`sha.slice(0, n)`. A resource's namespace
+and name in a `FactList` are two facts through `namespacedNameFacts`. See
+"Commits and resource names" in `docs/ui.md`; the shell's own rules for both
+are in the `agent-platform-ux-coding` skill.
+
+### Links: underlined, in the link colour
+
+A link is underlined and in the link colour. Exceptions only where the click
+target is larger than the text — a table or list row, a card, a nav or rail
+item, a breadcrumb, a tab, a button — and anything else needs a reason. A link
+in a table cell stays underlined. See "Links" in `docs/ui.md`.
+
+### Links in the Agent Platform shell
+
+Every text link in the shell takes the shell's link colour and a solid
+underline, from one rule in `agent-shell.css`: never colour or underline a
+link per component. A bui `Link` that is a control rather than text (a nav
+item, a breadcrumb, a row or card title stretched over its area, an
+icon-only link) passes `standalone` to opt out. See "Links in the Agent
+Platform shell" in `docs/ui.md` and "Links" in the `agent-platform-ux-coding`
+skill.
 
 ### Overriding bui component sizes
 

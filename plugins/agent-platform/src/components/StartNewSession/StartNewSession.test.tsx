@@ -3,13 +3,26 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
-import { agentsRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  installationsExternalRouteRef,
+  sessionsRouteRef,
+} from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import { StartNewSession, type StartNewSessionProps } from './StartNewSession';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
+
+// The picker's reads are the hook's own tests'; here the installation offers none.
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
+}));
+
+// The toolchain picker's reads are its own tests'; here it is not offered.
+jest.mock('../ToolchainPicker', () => ({ ToolchainPicker: () => null }));
 
 const mockUseAgents = jest.fn<AgentsContextValue, []>();
 jest.mock('../AgentsDataProvider', () => ({
@@ -36,6 +49,7 @@ const sre: AgentRow = {
   name: 'SRE Agent',
   technicalName: 'sre-agent',
   description: 'Investigates incidents',
+  tags: [],
   skillCount: 3,
   readiness: 'ready',
 };
@@ -48,13 +62,20 @@ const loadedAgents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
+  kagentMissing: undefined,
+  kagentSwitchedOff: [],
+  unknownPin: undefined,
+  inventoryFailure: undefined,
+  retry: async () => {},
 };
 
 function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
   return renderInTestApp(<StartNewSession {...props} />, {
     mountedRoutes: {
-      '/agent-platform/sessions': sessionsRouteRef,
-      ...(agentsBound && { '/agent-platform/agents': agentsRouteRef }),
+      '/sessions': sessionsRouteRef,
+      ...(agentsBound && { '/customize/agents': agentsRouteRef }),
+      '/installations': installationsExternalRouteRef,
     },
   });
 }
@@ -94,7 +115,7 @@ describe('StartNewSession', () => {
       prompt: 'Why is the ingress failing?',
     });
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/new-session-id',
+      '/sessions/gazelle/new-session-id',
       {
         state: {
           [NEW_SESSION_STATE_KEY]: {
@@ -132,14 +153,108 @@ describe('StartNewSession', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders nothing while the agents are loading', async () => {
+  it('inline, renders nothing while the agents are loading', async () => {
+    mockUseAgents.mockReturnValue({ ...loadedAgents, isLoading: true });
+
+    await render({ entryPoint: 'sessionsList' });
+
+    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: 'Prompt' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Start a new session')).not.toBeInTheDocument();
+  });
+
+  it('standalone, shows the loading indicator while the agents are loading', async () => {
     mockUseAgents.mockReturnValue({ ...loadedAgents, isLoading: true });
 
     await render({ entryPoint: 'home', layout: 'standalone' });
 
     expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole('textbox', { name: 'Prompt' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('says kagent is missing in place of the composer, even while the agents load', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      scope: 'dingo',
+      installations: [],
+      isLoading: true,
+      kagentMissing: { installations: ['dingo'], canChooseAnother: true },
+    });
+
+    await render({ entryPoint: 'home', layout: 'standalone' });
+
+    expect(
+      screen.getByRole('heading', { name: 'kagent is not installed on dingo' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Go to Installations' }),
+    ).toHaveAttribute('href', '/installations');
+    expect(
+      screen.queryByRole('textbox', { name: 'Prompt' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('inline, says no environment in reach runs kagent instead of a full card', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      scope: 'dingo',
+      installations: [],
+      kagentMissing: { installations: ['dingo'], canChooseAnother: true },
+    });
+
+    await render({ entryPoint: 'sessionsList' });
+
+    expect(
+      screen.getByText('No environment this portal can reach runs kagent.'),
+    ).toHaveAttribute('data-variant', 'body-small');
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+  });
+
+  describe("when the agents' installation cannot start sessions as the person", () => {
+    const blocker =
+      "Muster on gazelle has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity instead of as you.";
+
+    beforeEach(() => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [{ ...sre, sessionBlocker: blocker }],
+      });
+    });
+
+    it('says nothing while it is still being asked', async () => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [{ ...sre, isSessionPending: true }],
+      });
+      await render({ entryPoint: 'sessionsList' });
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Prompt' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Sessions cannot start/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/not ready/)).not.toBeInTheDocument();
+    });
+
+    it('offers no composer and says why, instead of a Start that ends in a refusal', async () => {
+      await render({ entryPoint: 'sessionsList' });
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Prompt' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(`Sessions cannot start from this portal. ${blocker}`),
+      ).toBeInTheDocument();
+    });
   });
 
   describe('when no agent is ready', () => {
@@ -165,7 +280,7 @@ describe('StartNewSession', () => {
 
       expect(
         screen.getByRole('link', { name: 'See why on the Agents tab.' }),
-      ).toHaveAttribute('href', '/agent-platform/agents');
+      ).toHaveAttribute('href', '/customize/agents');
     });
 
     it('standalone, says only what is wrong when the Agents tab is not bound', async () => {

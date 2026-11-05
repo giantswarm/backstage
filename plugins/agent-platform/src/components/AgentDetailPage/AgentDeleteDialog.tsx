@@ -1,13 +1,26 @@
 import { Flex, Text } from '@backstage/ui';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
+import {
+  classifyCommitFailure,
+  useAgentCommitCheck,
+} from '../../hooks/useAgentCommitCheck';
 import type { AgentDeletionState } from '../../hooks/useAgentDeletion';
-import type { CommitAgentResult } from '../../lib/agentManager';
+import type {
+  CommitAgentResult,
+  MissingReleaseFile,
+} from '../../lib/agentManager';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 
 export type AgentDeleteDialogProps = {
   installation: string;
+  namespace: string;
+  name: string;
   displayName: string;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
@@ -48,11 +61,22 @@ export function isCommitSettled(result: CommitAgentResult): boolean {
  * happens to the namespace's shared chart source, why a GitOps-owned or
  * suspended release is refused, which repository the pull request goes to —
  * and comes back in its words: a refusal is shown as the error, verbatim; a
- * viewer's confirm shows the apiserver's Forbidden. The portal decides nothing
- * in advance and never passes `force`.
+ * viewer's confirm shows the apiserver's Forbidden. The portal never passes
+ * `force`.
+ *
+ * One thing is asked in advance, for a pull request: whether agent-manager
+ * can open one for this agent at all (`useAgentCommitCheck`). The page mounts
+ * the dialog only while it is open, so every open asks afresh. Confirm waits
+ * for the answer: an agent defined outside agent-manager's directory gets the
+ * explanation and only Close, a GitHub authorization a sign-in can give gets
+ * the sign-in, and anything else enables confirm, so the delete answers for
+ * itself. Once the delete has answered, its own refusal is what the dialog
+ * shows, the same two in the same way.
  */
 export function AgentDeleteDialog({
   installation,
+  namespace,
+  name,
   displayName,
   isOpen,
   onOpenChange,
@@ -63,8 +87,34 @@ export function AgentDeleteDialog({
   commitResult,
 }: AgentDeleteDialogProps) {
   const { failure, isDeleting, isCommitting } = deletion;
-  const notConnected = failure?.kind === 'not-connected';
   const viaPullRequest = mode === 'commit';
+  const check = useAgentCommitCheck(
+    installation,
+    namespace,
+    name,
+    isOpen && viaPullRequest,
+  );
+
+  // What stands in the way: the delete's own refusal once it answered, the
+  // check's answer before that. A re-run of the check (after a sign-in
+  // elsewhere) never covers what the delete said.
+  const refused = classifyCommitFailure(failure);
+  let releaseOutside:
+    { missing: MissingReleaseFile; message: string } | undefined;
+  let connect: { github: boolean; message: string } | undefined;
+  if (refused) {
+    if (refused.kind === 'release-outside') {
+      releaseOutside = refused;
+    } else if (refused.kind === 'connect') {
+      connect = refused;
+    }
+  } else if (check.status === 'release-outside') {
+    releaseOutside = check;
+  } else if (check.status === 'connect') {
+    connect = check;
+  }
+  const shownError = refused?.kind === 'other' ? refused.message : undefined;
+  const isChecking = !refused && check.status === 'checking';
 
   return (
     <ConfirmDialog
@@ -79,32 +129,49 @@ export function AgentDeleteDialog({
       // agent-manager's refusal, in its own words: a GitOps-owned release its
       // verdict was not read for, a suspended one, the apiserver's Forbidden
       // for a viewer.
-      error={failure && !notConnected ? failure.message : undefined}
+      error={shownError}
+      isConfirmDisabled={
+        viaPullRequest && !refused && (isChecking || Boolean(connect))
+      }
       isDone={
         viaPullRequest &&
-        commitResult !== undefined &&
-        isCommitSettled(commitResult)
+        (Boolean(releaseOutside) ||
+          (commitResult !== undefined && isCommitSettled(commitResult)))
       }
       onConfirm={viaPullRequest ? onCommit : onConfirm}
     >
       <Flex direction="column" gap="3">
-        {viaPullRequest && (
-          <Text variant="body-medium">
-            This agent is applied from GitOps, so agent-manager opens a pull
-            request as you that removes its files. The agent is deleted once it
-            is merged.
-          </Text>
+        {releaseOutside ? (
+          <MissingReleaseFileAlert
+            missing={releaseOutside.missing}
+            message={releaseOutside.message}
+            action="delete"
+          />
+        ) : (
+          <>
+            {viaPullRequest && (
+              <Text variant="body-medium">
+                This agent is applied from GitOps, so agent-manager opens a pull
+                request as you that removes its files. The agent is deleted once
+                it is merged.
+              </Text>
+            )}
+            <Text variant="body-medium">
+              {viaPullRequest ? 'That ends' : 'This ends'} every running session
+              with this agent, including other people's.
+            </Text>
+          </>
         )}
-        <Text variant="body-medium">
-          {viaPullRequest ? 'That ends' : 'This ends'} every running session
-          with this agent, including other people's.
-        </Text>
-        {notConnected && (
+        {connect && (
           <ConnectAgentManagerAlert
             installation={installation}
-            message={failure.message}
+            message={connect.message}
             action="Agents are deleted"
+            needsGitHub={connect.github}
           />
+        )}
+        {isChecking && (
+          <LoadingIndicator label="Asking agent-manager whether it can open the pull request…" />
         )}
         {viaPullRequest && commitResult && (
           <CommitOutcome result={commitResult} />

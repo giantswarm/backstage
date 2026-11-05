@@ -6,39 +6,35 @@ import {
   useParams,
 } from 'react-router-dom';
 
-import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Button,
-  ButtonLink,
-  Flex,
-  Link,
-  List,
-  ListRow,
-  Text,
-} from '@backstage/ui';
+import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
   type Fact,
-  FactsColumn,
+  FactList,
   LoadingIndicator,
   MoreActionsMenu,
+  type MoreActionsMenuItem,
+  PageSection,
+  TagList,
   type RouteTabSpec,
-  SectionHeader,
   ShellPage,
   ShellPageBadgeSkeleton,
-  ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
+  useFactTextVariant,
   usePhoneLayout,
+  CommitSha,
+  shortSha,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useMetaAgentHandoff } from '../../hooks/useMetaAgentHandoff';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
-import { skillSource, usedByLabel } from '../../lib/customize';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
+import { skillSource } from '../../lib/customize';
 import {
   canonicalRepoUrl,
   canonicalSkillId,
@@ -46,18 +42,14 @@ import {
   isSkillContentReadable,
   resolveSkillDetailPath,
   sameCommit,
-  shortCommit,
-  skillCommitUrl,
-  skillDetailPath,
   skillSourceUrl,
+  skillTags,
   type DiscoveredSkill,
   type SkillDetailTab,
 } from '../../lib/skills';
-import { agentDetailRouteRef, skillsRouteRef } from '../../routes';
-import { AgentAvatar } from '../AgentAvatar';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
-import { ShowMore, USED_BY_ROWS } from '../ShowMore';
+import { AgentUsageList } from '../AgentUsageList';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { SkillFiles } from '../SkillFiles';
 import { SkillInstructions } from '../SkillInstructions';
 import { evaluationPrompt } from './evaluationPrompt';
@@ -65,8 +57,6 @@ import {
   SkillUpdateAgentsDialog,
   type BehindAgent,
 } from './SkillUpdateAgentsDialog';
-
-const AVATAR_SIZE = 96;
 
 /** The agents whose mounted skills include this one, by canonical id. */
 export function agentsUsingSkill(
@@ -105,42 +95,50 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 'var(--bui-space-6)',
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 'var(--bui-space-3)',
-    // SectionHeader carries a bottom margin meant for a description under
-    // it; these sections put their own content there.
-    '& h2': { marginBottom: 0 },
-  },
 });
 
-/** A section of a tab: a small heading, then what it says. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const classes = useStyles();
+/** A fact's link out to GitHub, at the size of the fact list it is in. */
+function FactLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <section className={classes.section} aria-label={title}>
-      <SectionHeader as="h2" variant="title-x-small" title={title} />
+    <Link
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      variant={useFactTextVariant()}
+    >
       {children}
-    </section>
+    </Link>
+  );
+}
+
+/** A commit as a fact's value, at the fact list's size, the full SHA at hand. */
+function FactCommit({ commit }: { commit: string }) {
+  return (
+    <Text variant={useFactTextVariant()}>
+      <CommitSha value={commit} />
+    </Text>
   );
 }
 
 /**
- * What the skill is for, in its own words, and why the page offers less than
- * usual when it does: a repository the portal cannot propose changes to, or a
- * SKILL.md it could not read. The facts sit beside it (`aside`).
+ * What the skill is for, in its own words, and its tags, then where it lives,
+ * and why the page offers less than usual when it does: a repository the
+ * portal cannot propose changes to, or a SKILL.md it could not read.
  */
 function OverviewTab({
   skill,
+  facts,
   readable,
   proposable,
 }: {
   skill: DiscoveredSkill;
+  facts: Fact[];
   readable: boolean;
   proposable: boolean;
 }) {
   const classes = useStyles();
+  const tags = skillTags(skill);
+  const { skills: skillsPath } = useCustomizePaths();
   return (
     <div className={classes.sections}>
       {!proposable && (
@@ -157,7 +155,7 @@ function OverviewTab({
           description="Its SKILL.md could not be read, so this page shows only what the listing knows and the skill cannot be edited here."
         />
       )}
-      <Section title="What it’s for">
+      <PageSection title="What it’s for">
         {skill.description ? (
           <Text as="p" variant="body-medium" style={{ margin: 0 }}>
             {skill.description}
@@ -167,7 +165,14 @@ function OverviewTab({
             Its SKILL.md gives no description.
           </Text>
         )}
-      </Section>
+        <TagList
+          tags={tags}
+          getHref={skillsPath ? tag => tagHref(skillsPath, tag) : undefined}
+        />
+      </PageSection>
+      <PageSection title="Where it lives">
+        <FactList facts={facts} labelWidth={160} />
+      </PageSection>
     </div>
   );
 }
@@ -227,7 +232,7 @@ function InstructionsTab({ skill }: { skill: DiscoveredSkill }) {
   return (
     <Flex direction="column" gap="3">
       <Text as="p" variant="body-small" color="secondary">
-        {file} at {shortCommit(content.commit)}
+        {file} at <CommitSha value={content.commit} />
       </Text>
       {content.instructions.trim() ? (
         <SkillInstructions
@@ -244,11 +249,12 @@ function InstructionsTab({ skill }: { skill: DiscoveredSkill }) {
 }
 
 /**
- * The agents using the skill, each linking to its own page. Each pins the
- * skill to a commit; a row pinned at an older one than the catalog's head says
- * so, and the line under the list says whether any are behind — the header's
- * "Update agents" moves them, so no update control repeats here. Windowed
- * (`ShowMore`), since a popular skill can be mounted by hundreds of agents.
+ * The agents using the skill, as the connector page's Used by tab lists its
+ * agents (`AgentUsageList`): each linking to its own page, with where it runs
+ * at the row's end. Each pins the skill to a commit; a row pinned at an older
+ * one than the catalog's head says so, and the line under the list says
+ * whether any are behind — the header's "Update agents" moves them, so no
+ * update control repeats here.
  */
 function UsedByTab({
   using,
@@ -263,93 +269,35 @@ function UsedByTab({
   isLoading: boolean;
   unreachableInstallations: string[];
 }) {
-  const buildAvatarUrl = useAgentAvatarUrl();
-  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  const pinnedBehind = useMemo(
-    () => new Map(behind.map(({ row, pinned }) => [row.id, pinned])),
-    [behind],
-  );
-
-  let body;
-  if (isLoading) {
-    body = <LoadingIndicator label="Reading the agents…" />;
-  } else if (using.length === 0) {
-    body = (
-      <Text as="p" variant="body-medium" color="secondary">
-        No agent uses this skill yet. Add it to an agent when creating or
-        editing one.
-      </Text>
+  const agents = useMemo(() => {
+    const pinnedBehind = new Map(
+      behind.map(({ row, pinned }) => [row.id, pinned]),
     );
-  } else {
-    body = (
-      <Flex direction="column" gap="2">
-        <ShowMore items={using} initial={USED_BY_ROWS} noun="agent" revealAll>
-          {shown => (
-            <List aria-label="Agents using this skill">
-              {shown.map(row => (
-                <ListRow
-                  key={row.id}
-                  id={row.id}
-                  href={agentDetailRoute?.({
-                    installation: row.installation,
-                    namespace: row.namespace,
-                    name: row.technicalName,
-                  })}
-                  icon={
-                    <AgentAvatar
-                      size="small"
-                      purpose="decoration"
-                      name={row.name}
-                      src={
-                        buildAvatarUrl(row.installation, row.technicalName, {
-                          size: AVATAR_SIZE,
-                        }) ?? ''
-                      }
-                    />
-                  }
-                  // Under the name, not beside it: at the row's end it
-                  // squeezed the agent's name to ~130px on a phone.
-                  description={[
-                    row.installation,
-                    row.namespace,
-                    ...(pinnedBehind.has(row.id)
-                      ? [
-                          `older version (${shortCommit(
-                            pinnedBehind.get(row.id)!,
-                          )})`,
-                        ]
-                      : []),
-                  ].join(' · ')}
-                >
-                  {row.name}
-                </ListRow>
-              ))}
-            </List>
-          )}
-        </ShowMore>
-        <Text as="p" variant="body-small" color="secondary">
-          {behind.length === 0 &&
-            `All agents use the newest version (${shortCommit(head)}).`}
-          {behind.length === 1 &&
-            `One agent pins an older commit than the newest (${shortCommit(
-              head,
-            )}). Update agents moves it there.`}
-          {behind.length > 1 &&
-            `${behind.length} agents pin an older commit than the newest (${shortCommit(
-              head,
-            )}). Update agents moves them there.`}
-        </Text>
-      </Flex>
-    );
-  }
+    // The rows span every installation and namespace: where two agents share
+    // a name on one installation, their namespaces tell them apart.
+    const nameKey = (row: AgentRow) => `${row.installation}\u0000${row.name}`;
+    const named = new Map<string, number>();
+    for (const row of using) {
+      named.set(nameKey(row), (named.get(nameKey(row)) ?? 0) + 1);
+    }
+    return using.map(row => {
+      const pinned = pinnedBehind.get(row.id);
+      // The older pin keeps its full value in the line's title; in a row,
+      // which takes the press, there is no room for a copy button.
+      return {
+        row,
+        detail: [
+          row.installation,
+          ...(named.get(nameKey(row))! > 1 ? [row.namespace] : []),
+          ...(pinned ? [`older version (${shortSha(pinned)})`] : []),
+        ].join(' · '),
+        detailTitle: pinned ? `Pinned at ${pinned}` : undefined,
+      };
+    });
+  }, [using, behind]);
 
   return (
     <Flex direction="column" gap="3">
-      <SectionHeader
-        as="h2"
-        variant="title-x-small"
-        title={usedByLabel(using.length)}
-      />
       {unreachableInstallations.length > 0 && (
         <Text as="p" variant="body-small" color="secondary">
           {unreachableInstallations.length === 1
@@ -357,18 +305,44 @@ function UsedByTab({
             : `The agents on ${unreachableInstallations.length} environments could not be read, so some users of this skill may be missing.`}
         </Text>
       )}
-      {body}
+      <AgentUsageList
+        agents={agents}
+        label="Agents using this skill"
+        emptyText="No agent uses this skill yet. Add it to an agent when creating or editing one."
+        isLoading={isLoading}
+      >
+        {agents.length > 0 && (
+          <Text as="p" variant="body-small" color="secondary">
+            {behind.length === 0 && (
+              <>
+                All agents use the newest version (<CommitSha value={head} />
+                ).
+              </>
+            )}
+            {behind.length === 1 && (
+              <>
+                One agent pins an older commit than the newest (
+                <CommitSha value={head} />
+                ). Update agents moves it there.
+              </>
+            )}
+            {behind.length > 1 && (
+              <>
+                {behind.length} agents pin an older commit than the newest (
+                <CommitSha value={head} />
+                ). Update agents moves them there.
+              </>
+            )}
+          </Text>
+        )}
+      </AgentUsageList>
     </Flex>
   );
 }
 
-/** One header action: a press, or a link (View source, in a new tab). */
-type SkillAction = {
-  id: string;
-  label: string;
-  onAction?: () => void;
-  href?: string;
-  isDisabled?: boolean;
+/** One header action: a press, as a button or a menu item. */
+type SkillAction = Pick<MoreActionsMenuItem, 'id' | 'label' | 'isDisabled'> & {
+  onAction: () => void;
 };
 
 /**
@@ -387,34 +361,16 @@ function PhoneSkillActions({
   if (!button) {
     return null;
   }
-  const buttonProps = {
-    variant: button === primary ? ('primary' as const) : ('secondary' as const),
-    isDisabled: button.isDisabled,
-  };
   return (
     <Flex align="center" gap="2">
-      {button.href ? (
-        <ButtonLink
-          {...buttonProps}
-          href={button.href}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {button.label}
-        </ButtonLink>
-      ) : (
-        <Button {...buttonProps} onPress={button.onAction}>
-          {button.label}
-        </Button>
-      )}
-      <MoreActionsMenu
-        items={rest.map(action => ({
-          ...action,
-          // A link here leaves the portal (View source), so it opens a new
-          // tab as the same action does as a button.
-          newTab: Boolean(action.href),
-        }))}
-      />
+      <Button
+        variant={button === primary ? 'primary' : 'secondary'}
+        isDisabled={button.isDisabled}
+        onPress={button.onAction}
+      >
+        {button.label}
+      </Button>
+      <MoreActionsMenu items={rest} />
     </Flex>
   );
 }
@@ -431,7 +387,8 @@ function SkillPage({
 }) {
   const navigate = useNavigate();
   const isPhone = usePhoneLayout();
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
+  const { customize, skills } = useCustomizePaths();
   const {
     rows,
     isLoading: agentsLoading,
@@ -474,11 +431,7 @@ function SkillPage({
   // of one it cannot read would end in an error. Evaluate stays: the
   // evaluator reads the repository with its own access.
   const readable = isSkillContentReadable(skill);
-  const detailPath = skillDetailPath(skill);
-  const editHref =
-    proposable && readable && skillsRoute && detailPath
-      ? `${skillsRoute()}/edit/${detailPath}`
-      : undefined;
+  const editHref = proposable && readable ? skillPaths.edit(skill) : undefined;
   const openEdit = useCallback(() => {
     if (editHref) {
       navigate(editHref);
@@ -486,21 +439,14 @@ function SkillPage({
   }, [editHref, navigate]);
 
   const source = skillSource(skill);
+  // The skill's folder at the catalog's head (github.com only).
   const sourceUrl = skillSourceUrl(skill);
-  const commitUrl = skillCommitUrl(skill);
 
   const facts: Fact[] = [
     {
       label: 'Source',
       value: (
-        <Link
-          href={canonicalRepoUrl(skill.repoUrl)}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="body-small"
-        >
-          {source}
-        </Link>
+        <FactLink href={canonicalRepoUrl(skill.repoUrl)}>{source}</FactLink>
       ),
     },
     {
@@ -510,26 +456,21 @@ function SkillPage({
     { label: 'Branch', value: skill.ref },
     {
       // The catalog's head, not a pin: "pinned" is each agent's own commit
-      // (UX review M19).
+      // (UX review M19). It opens the skill's folder at that commit.
       label: 'Latest commit',
-      value: commitUrl ? (
-        <Link
-          href={commitUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="body-small"
-        >
-          {shortCommit(skill.commit)}
-        </Link>
+      value: sourceUrl ? (
+        <FactLink href={sourceUrl}>
+          <CommitSha value={skill.commit} copy={false} />
+        </FactLink>
       ) : (
-        shortCommit(skill.commit)
+        <FactCommit commit={skill.commit} />
       ),
     },
   ];
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-    { label: 'Skills', href: `${SHELL_CUSTOMIZE_PATH}/skills` },
+    { label: 'Customize', href: customize },
+    { label: 'Skills', href: skills },
     { label: skill.name },
   ];
 
@@ -544,7 +485,7 @@ function SkillPage({
       id: 'used-by',
       path: 'used-by',
       title: 'Used by',
-      count: agentsLoading ? undefined : using.length,
+      count: agentsLoading ? 'loading' : using.length,
     },
   ];
 
@@ -572,9 +513,6 @@ function SkillPage({
           ]
         : []),
       ...(editHref ? [{ id: 'edit', label: 'Edit', onAction: openEdit }] : []),
-      ...(sourceUrl
-        ? [{ id: 'view-source', label: 'View source ↗', href: sourceUrl }]
-        : []),
     ];
     actions = (
       <PhoneSkillActions
@@ -591,7 +529,7 @@ function SkillPage({
         others={others}
       />
     );
-  } else if (canUpdateAgents || editHref || sourceUrl || canEvaluate) {
+  } else if (canUpdateAgents || editHref || canEvaluate) {
     actions = (
       <>
         {canUpdateAgents && (
@@ -603,16 +541,6 @@ function SkillPage({
           <Button variant="secondary" onPress={openEdit}>
             Edit
           </Button>
-        )}
-        {sourceUrl && (
-          <ButtonLink
-            href={sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-          >
-            View source ↗
-          </ButtonLink>
         )}
         {canEvaluate && (
           <Button
@@ -642,7 +570,12 @@ function SkillPage({
     );
   } else {
     content = (
-      <OverviewTab skill={skill} readable={readable} proposable={proposable} />
+      <OverviewTab
+        skill={skill}
+        facts={facts}
+        readable={readable}
+        proposable={proposable}
+      />
     );
   }
 
@@ -651,19 +584,15 @@ function SkillPage({
       <ShellPage
         title={skill.name}
         breadcrumbs={breadcrumbs}
-        meta={`Read from ${source} at ${shortCommit(
-          skill.commit,
-        )}${moreFilesCaption(skill.fileCount)}`}
+        meta={
+          <>
+            Read from {source} at <CommitSha value={skill.commit} />
+            {moreFilesCaption(skill.fileCount)}
+          </>
+        }
         actions={actions}
         tabs={tabs}
         tabsBasePath={basePath}
-        // The facts belong to the Overview; the instructions and the agents
-        // take the whole width.
-        aside={
-          tab === 'overview' ? (
-            <FactsColumn aria-label="About this skill" facts={facts} />
-          ) : undefined
-        }
       >
         <Flex direction="column" gap="4">
           {evaluateError && (
@@ -699,14 +628,15 @@ function SkillPage({
  * the header's right, and three routed tabs —
  *
  * - **Overview** (the index): what it is for (frontmatter `description`),
- *   with where it lives and the pinned commit as facts beside it;
+ *   then where it lives and the catalog's head commit as facts under it;
  * - **Instructions** (`…/instructions`): the SKILL.md body as a document
  *   (`SkillInstructions`: GFM, no raw HTML, no remote loads) — only for a
  *   skill whose SKILL.md the portal could read (`contentReadable`); otherwise
  *   the Overview says the portal cannot read its source. A skill with more
  *   files shows them there as a tree beside a viewer (`SkillFiles`), and the
  *   header says "· N more files";
- * - **Used by** (`…/used-by`): the agents mounting it, windowed.
+ * - **Used by** (`…/used-by`): the agents mounting it, windowed, as the
+ *   connector page lists its agents.
  *
  * Actions: "Update agents" appears only while some agent using the skill pins
  * an older commit than the catalog's head, and opens `SkillUpdateAgentsDialog`
@@ -715,14 +645,13 @@ function SkillPage({
  * tab says "All agents use the newest version" instead. "Edit" opens the
  * add-skill flow prefilled (`EditSkillPage`), which
  * proposes the change as a pull request — only for a readable skill in a
- * github.com repository; "View source" opens the folder at the pinned commit
- * (github.com only); "Evaluate with …" appears only where `metaAgents.skillEvaluation`
+ * github.com repository; "Evaluate with …" appears only where `metaAgents.skillEvaluation`
  * resolves and starts a session with that agent straight away — the prompt
  * names the skill and asks for a report and an improvement pull request.
  *
  * Addressed as `<owner>/<repo>[/<skill dir>]` (github.com) or
  * `-/<host>/<repo path>[/-/<skill dir>]` (any other git repository, shown
- * read-only) under `/agent-platform/skills`, a tab as one more segment; the
+ * read-only) under `/customize/skills`, a tab as one more segment; the
  * skill itself is found in the discovered catalog, so an unknown address is a
  * not-found state, and an unreadable catalog says so instead.
  */
@@ -730,6 +659,7 @@ export function SkillDetailPage() {
   const splat = useParams()['*'] ?? '';
   const { pathname } = useLocation();
   const catalog = useSkillCatalog();
+  const { customize, skills } = useCustomizePaths();
 
   const resolved = useMemo(
     () => resolveSkillDetailPath(splat, catalog.skills),
@@ -738,7 +668,7 @@ export function SkillDetailPage() {
 
   if (!resolved) {
     // Not even `owner/repo`: nothing to look up, back to the list.
-    return <Navigate to={`${SHELL_CUSTOMIZE_PATH}/skills`} replace />;
+    return <ShellCustomizeRedirect tab="skills" keepSearch={false} />;
   }
 
   if (resolved.skill) {
@@ -755,14 +685,14 @@ export function SkillDetailPage() {
   }
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-    { label: 'Skills', href: `${SHELL_CUSTOMIZE_PATH}/skills` },
+    { label: 'Customize', href: customize },
+    { label: 'Skills', href: skills },
     { label: 'Skill' },
   ];
 
   if (catalog.isLoading) {
     // The loaded page's frame from the first paint — its trail, title line,
-    // meta row, tab strip and, on the Overview, the facts column — with
+    // meta row and tab strip — with
     // skeletons where the catalog will fill in (T95). Only the tabs every
     // skill has are drawn; Instructions joins them once the skill is known
     // to be readable.
@@ -775,10 +705,16 @@ export function SkillDetailPage() {
         badges={<ShellPageBadgeSkeleton />}
         tabs={[
           { id: 'overview', path: '', title: 'Overview' },
-          { id: 'used-by', path: 'used-by', title: 'Used by' },
+          // Its count's place held from the first paint, as the loaded
+          // page's while the agents load.
+          {
+            id: 'used-by',
+            path: 'used-by',
+            title: 'Used by',
+            count: 'loading',
+          },
         ]}
         tabsBasePath={tab ? own.slice(0, own.lastIndexOf('/')) : own}
-        aside={tab ? undefined : <ShellPageFactsSkeleton />}
       >
         <LoadingIndicator label="Reading the skill repositories…" />
       </ShellPage>
@@ -787,9 +723,9 @@ export function SkillDetailPage() {
 
   // As the agent and model pages: a failed read is an error, a skill that is
   // not there an empty state, each with the way back.
-  const backToSkills = (
-    <Link href={`${SHELL_CUSTOMIZE_PATH}/skills`}>Back to skills</Link>
-  );
+  const backToSkills = skills ? (
+    <Link href={skills}>Back to skills</Link>
+  ) : null;
   let body;
   if (catalog.error || catalog.failedRepositories.length > 0) {
     body = (

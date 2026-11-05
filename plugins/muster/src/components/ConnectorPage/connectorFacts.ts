@@ -50,28 +50,19 @@ export function healthLine(servers: MCPServer[]): string {
 }
 
 /**
- * "3,418 · 0.4% errors": the calls muster dispatched to any of `serverNames`
- * over the usage window. Undefined when the usage carries no per-server rows
- * to count from.
+ * "3,418 · 0.4% errors": the calls muster dispatched to the connector over
+ * the window its usage was read for (`useConnectorUsage`, narrowed to it).
+ * Undefined where usage cannot be queried.
  */
-export function callsLine(
-  usage: McpUsage,
-  serverNames: string[],
-): string | undefined {
+export function callsLine(usage: McpUsage): string | undefined {
   if (!usage.available) {
     return undefined;
   }
-  const names = new Set(serverNames);
-  let calls = 0;
-  let errors = 0;
-  for (const row of usage.servers) {
-    if (names.has(row.server)) {
-      calls += row.calls;
-      errors += row.errors;
-    }
-  }
+  const { calls, errors } = usage.totals;
   const count = Math.round(calls).toLocaleString('en-US');
-  if (calls === 0) {
+  // Rounded as the count is, and as the Usage tab decides "no calls": the
+  // figures are `increase()` estimates, so 0.4 calls is none.
+  if (Math.round(calls) === 0) {
     return count;
   }
   const ratio = (errors / calls) * 100;
@@ -80,21 +71,15 @@ export function callsLine(
   return `${count} · ${percent}% errors`;
 }
 
-/** When the oldest of `servers` was created, as "4 Aug 2026". */
-export function addedLine(servers: MCPServer[]): string | undefined {
-  const times = servers
+/**
+ * When the oldest of `servers` was created, as its timestamp, for a relative
+ * `DateComponent` ("3 months ago", the local date and time on hover).
+ */
+export function addedAt(servers: MCPServer[]): string | undefined {
+  return servers
     .map(server => server.getCreatedTimestamp())
     .filter((value): value is string => Boolean(value))
-    .map(value => new Date(value))
-    .filter(date => !Number.isNaN(date.getTime()))
-    .sort((a, b) => a.getTime() - b.getTime());
-  if (times.length === 0) {
-    return undefined;
-  }
-  return times[0].toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+    .map(value => ({ value, time: new Date(value).getTime() }))
+    .filter(({ time }) => !Number.isNaN(time))
+    .sort((a, b) => a.time - b.time)[0]?.value;
 }

@@ -2,6 +2,7 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import type { WorkflowExecutionSummary } from '../../apis/types';
+import { workflowRunKeys } from '../../lib/workflowRunKeys';
 
 /** The newest run of a page of summaries (muster lists newest first). */
 function newestRun(
@@ -29,7 +30,7 @@ export function useLatestRun(
 ) {
   const musterApi = useApi(musterApiRef);
   const query = useQuery({
-    queryKey: ['muster', 'workflow-latest-run', installation, name],
+    queryKey: workflowRunKeys.latest(installation, name),
     queryFn: () =>
       musterApi.listExecutions({
         workflowName: name,
@@ -54,7 +55,7 @@ export function useRunCounts(
 ): { succeeded: number; failed: number } | undefined {
   const musterApi = useApi(musterApiRef);
   const count = (status: 'completed' | 'failed') => ({
-    queryKey: ['muster', 'workflow-run-count', installation, name, status],
+    queryKey: workflowRunKeys.count(installation, name, status),
     queryFn: () =>
       musterApi.listExecutions({
         workflowName: name,

@@ -1,0 +1,27 @@
+# DO NOT EDIT. Generated with:
+#
+#    devctl
+#
+#    https://github.com/giantswarm/devctl/blob/7141e9a44c23ab8bc9aaf8ef9fdb92c9beed7422/pkg/gen/input/workflows/internal/file/chart_tests.yaml.template
+#
+
+name: chart-tests
+
+on:
+  pull_request:
+    branches:
+      - master
+      - main
+  merge_group: {}
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  chart-tests:
+    uses: giantswarm/github-workflows/.github/workflows/chart-tests.yaml@main
+    permissions:
+      contents: read

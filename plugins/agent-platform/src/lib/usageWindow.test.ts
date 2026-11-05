@@ -3,7 +3,6 @@ import {
   DEFAULT_USAGE_WINDOW_DAYS,
   formatUsageWindowParam,
   parseUsageWindowParam,
-  usageWindowLabel,
 } from './usageWindow';
 
 it('defaults to the query layer’s own default window', () => {
@@ -48,11 +47,5 @@ describe('formatUsageWindowParam', () => {
   it('writes what parse reads', () => {
     expect(parseUsageWindowParam(formatUsageWindowParam(7))).toBe(7);
     expect(parseUsageWindowParam(formatUsageWindowParam(90))).toBe(90);
-  });
-});
-
-describe('usageWindowLabel', () => {
-  it('names the window in days', () => {
-    expect(usageWindowLabel(7)).toBe('7 days');
   });
 });

@@ -17,12 +17,17 @@ export {
   MAX_CATEGORICAL_SERIES,
   OTHER_SERIES_LABEL,
 } from './chartPalette';
+export { saveFile } from './saveFile';
+export { namespacedNameFacts } from './namespacedNameFacts';
+export type { NamespacedNameFactsOptions } from './namespacedNameFacts';
+// One rule for every SHA the portal shows, frontend and backend alike.
+export { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 export { stopRowPress } from './rowPress';
 export { MENU_WIDTH } from './menuWidth';
 export { createMarkdownLinkResolver } from './resolveMarkdownLink';
-export { dialogDismissLock } from './dialogDismissLock';
 export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
+export { isWebURL, safeWebURL } from './webURL';
 export {
   PHONE_MAX_WIDTH,
   PHONE_QUERY,

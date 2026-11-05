@@ -3,8 +3,14 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { usageRouteRef } from '../../routes';
 import type { LlmUsage } from '../../lib/llmUsage';
 import { formatDayWithYear } from '../../lib/formatDay';
+import {
+  previousUsageMonth,
+  usageMonthLabel,
+  usageMonthOf,
+} from '../../lib/usageWindow';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageCostPage } from './UsageCostPage';
+import { SHELL_CONTENT_MAX_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 // The chart and the two tables have their own tests; this file is about which
 // figures the Cost tab carries, so they stand in as markers.
@@ -13,6 +19,23 @@ jest.mock('../LlmUsage', () => ({
   CostPerDayCard: () => <div>cost-per-day</div>,
   LlmByAgentTable: () => <div>by-agent-table</div>,
   LlmByModelTable: () => <div>by-model-table</div>,
+  LlmByPersonTable: () => <div>by-person-table</div>,
+  LlmByOrganizationTable: ({
+    hrefFor,
+    rows,
+  }: {
+    hrefFor: (row: { kind: string; namespace: string }) => string | undefined;
+    rows: { kind: string; namespace: string }[];
+  }) => (
+    <div>
+      by-organization-table
+      {rows.map(row => (
+        <a key={row.namespace} href={hrefFor(row)}>
+          {row.namespace || row.kind}
+        </a>
+      ))}
+    </div>
+  ),
   PricingCoverageNote: () => <div>pricing-coverage-note</div>,
 }));
 
@@ -34,6 +57,11 @@ function usage(overrides: Partial<LlmUsage['totals']> = {}): LlmUsage {
     },
     byAgent: [],
     byModel: [],
+    byOrganization: [
+      { kind: 'organization', namespace: 'org-acme' },
+      { kind: 'platform', namespace: 'kagent' },
+      { kind: 'unattributed', namespace: '' },
+    ],
     costPerDay: { rows: [], series: [] },
     unpricedModels: [],
   } as unknown as LlmUsage;
@@ -47,8 +75,14 @@ const view: LlmUsageViewModel = {
   notReachable: [],
 };
 
+/** What the page last asked the usage view for: the window and the scope. */
+let viewOptions: Record<string, unknown> | undefined;
+
 jest.mock('../../hooks/useLlmUsageView', () => ({
-  useLlmUsageView: () => view,
+  useLlmUsageView: (options: Record<string, unknown>) => {
+    viewOptions = options;
+    return view;
+  },
 }));
 
 const sessionUsageState = {
@@ -73,11 +107,21 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 
-function renderPage() {
+function renderPage(path = '/usage/cost') {
   return renderInTestApp(<UsageCostPage />, {
-    initialRouteEntries: ['/agent-platform/usage/cost'],
-    mountedRoutes: { '/agent-platform/usage': usageRouteRef },
+    initialRouteEntries: [path],
+    mountedRoutes: { '/usage': usageRouteRef },
   });
+}
+
+/**
+ * The caption paragraph whose whole text matches: its installation is in a
+ * `<strong>`, which a text matcher on one node's own text would skip.
+ */
+function caption(pattern: RegExp) {
+  return screen.findByText(
+    (_, node) => node?.tagName === 'P' && pattern.test(node.textContent ?? ''),
+  );
 }
 
 describe('UsageCostPage without gateway metrics (mimirEnabled: false)', () => {
@@ -95,7 +139,9 @@ describe('UsageCostPage without gateway metrics (mimirEnabled: false)', () => {
     ).toBeInTheDocument();
     // The ShellPage idiom: a centered max-width column, not full bleed.
     expect(
-      container.querySelector('[style*="max-width: 1080px"]'),
+      container.querySelector(
+        `[style*="max-width: ${SHELL_CONTENT_MAX_WIDTH}px"]`,
+      ),
     ).not.toBeNull();
     // No invented figures.
     expect(screen.queryByText('Reported cost')).toBeNull();
@@ -159,6 +205,92 @@ describe('UsageCostPage with gateway metrics', () => {
     expect(screen.getByText('cost-per-day')).toBeInTheDocument();
     expect(screen.getByText('by-agent-table')).toBeInTheDocument();
     expect(screen.getByText('by-model-table')).toBeInTheDocument();
+  });
+
+  it('rolls the spend up by organization above the agents, and says whose spend it is and for whom', async () => {
+    renderPage();
+
+    expect(
+      await screen.findByText('by-organization-table'),
+    ).toBeInTheDocument();
+    expect(
+      await caption(
+        /Shows the spend of every organization on gazelle over the last 30 days, for everyone who can read this environment's metrics\./,
+      ),
+    ).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ days: 30, org: undefined });
+    // An organization and the platform open the narrowed view; unattributed
+    // traffic has no namespace to narrow to.
+    expect(screen.getByRole('link', { name: 'org-acme' })).toHaveAttribute(
+      'href',
+      '/usage/cost?organization=org-acme',
+    );
+    expect(screen.getByRole('link', { name: 'kagent' })).toHaveAttribute(
+      'href',
+      '/usage/cost?organization=kagent',
+    );
+    expect(screen.getByText('unattributed')).not.toHaveAttribute('href');
+    expect(screen.queryByText('Show all organizations')).toBeNull();
+  });
+
+  it('narrows to the organization a link names, keeps the other parameters, and offers the way back', async () => {
+    renderPage('/usage/cost?window=7d&organization=org-acme');
+
+    expect(
+      await caption(/Shows the spend of the acme organization on gazelle/),
+    ).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ days: 7, org: 'org-acme' });
+    // One organization is one row: the roll-up gives way.
+    expect(screen.queryByText('by-organization-table')).toBeNull();
+    expect(screen.getByText('by-agent-table')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Show all organizations' }),
+    ).toHaveAttribute('href', '/usage/cost?window=7d');
+  });
+
+  it('reports a calendar month, with the by-person table, when a link names one', async () => {
+    const month = previousUsageMonth(usageMonthOf(Date.now()));
+    const label = usageMonthLabel(month);
+    view.usage = { ...usage(), window: { kind: 'month', month } };
+
+    renderPage(`/usage/cost?window=${month}`);
+
+    expect(
+      await caption(
+        new RegExp(
+          `Shows the spend of every organization on gazelle in ${label}, for everyone`,
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ month, byPerson: true });
+    expect(screen.getByText('by-person-table')).toBeInTheDocument();
+    expect(screen.getByText('by-organization-table')).toBeInTheDocument();
+    // The change against the month before, not against "the previous N days".
+    expect(
+      screen.getByText(
+        `▲ 25% vs ${usageMonthLabel(previousUsageMonth(month))}`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no by-person table in a days window', async () => {
+    renderPage('/usage/cost?window=7d');
+
+    expect(await screen.findByText('by-agent-table')).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({
+      days: 7,
+      month: undefined,
+      byPerson: false,
+    });
+    expect(screen.queryByText('by-person-table')).toBeNull();
+  });
+
+  it('names the platform as the scope in a sentence', async () => {
+    renderPage('/usage/cost?organization=kagent');
+
+    expect(
+      await caption(/Shows the spend of the platform on gazelle/),
+    ).toBeInTheDocument();
   });
 
   it("carries no activity figures — those are the Overview's", async () => {

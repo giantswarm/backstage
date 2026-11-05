@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InstallationSelect } from './InstallationSelect';
 
@@ -21,7 +21,7 @@ let mockModelConfigs: {
 // muster's MCP Servers route, where the sign-in pointer links to.
 jest.mock('@backstage/frontend-plugin-api', () => ({
   ...jest.requireActual('@backstage/frontend-plugin-api'),
-  useRouteRef: () => () => '/agent-platform/mcp-servers',
+  useRouteRef: () => () => '/customize/connectors',
 }));
 
 jest.mock('../NewAgentFormProvider', () => ({
@@ -42,10 +42,11 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => mockModelConfigs,
 }));
 
-type Presence = 'available' | 'missing' | 'unknown';
+type Presence = 'available' | 'missing' | 'unknown' | 'sharedIdentity';
 let mockPresence: Record<string, Presence>;
 let mockAgentManagerLoading: boolean;
 let mockMusterPluginMissing: boolean;
+const mockRecheck = jest.fn(() => Promise.resolve());
 
 // Feature detection: which installations' musters list agent-manager. Driven per
 // case; the hook itself is covered with the muster API in useAgentManager's tests.
@@ -53,15 +54,20 @@ jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: (installations: string[]) => ({
     available: installations.filter(name => mockPresence[name] === 'available'),
     missing: installations.filter(name => mockPresence[name] === 'missing'),
+    sharedIdentity: installations.filter(
+      name => mockPresence[name] === 'sharedIdentity',
+    ),
     presenceOf: (name: string) => mockPresence[name] ?? 'unknown',
     isLoading: mockAgentManagerLoading,
     isUnavailable: mockMusterPluginMissing,
+    recheck: mockRecheck,
   }),
 }));
 
 describe('InstallationSelect', () => {
   beforeEach(() => {
     mockSetInstallation.mockClear();
+    mockRecheck.mockClear();
     mockState = { installation: undefined };
     mockInstallations = [{ name: 'alpha' }, { name: 'beta' }];
     mockIsLoadingInstallations = false;
@@ -89,6 +95,43 @@ describe('InstallationSelect', () => {
       expect(
         getByText(/muster on beta lists no agent-manager,/),
       ).toBeInTheDocument();
+    });
+
+    it('offers no installation whose muster runs under its shared identity, and says why', () => {
+      mockPresence = { alpha: 'available', beta: 'sharedIdentity' };
+
+      const { getByText, queryByText } = render(<InstallationSelect />);
+
+      expect(getByText('alpha')).toBeInTheDocument();
+      expect(queryByText('beta')).not.toBeInTheDocument();
+      expect(
+        getByText('Agents cannot be created on beta from this portal'),
+      ).toBeInTheDocument();
+      expect(
+        getByText(/muster on beta has no per-user sign-in in this portal/),
+      ).toBeInTheDocument();
+    });
+
+    it('withdraws a pick whose muster turns out to run under its shared identity', () => {
+      mockInstallations = [
+        { name: 'alpha' },
+        { name: 'beta' },
+        { name: 'gamma' },
+      ];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['alpha', 'beta', 'gamma'],
+      };
+      mockState = { installation: 'beta' };
+      mockPresence = {
+        alpha: 'available',
+        beta: 'sharedIdentity',
+        gamma: 'available',
+      };
+
+      render(<InstallationSelect />);
+
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
     });
 
     it('withdraws a pick whose muster turns out to lack agent-manager', () => {
@@ -156,6 +199,24 @@ describe('InstallationSelect', () => {
 
       expect(getByText('The muster plugin is required')).toBeInTheDocument();
       expect(queryByLabelText('Environment')).not.toBeInTheDocument();
+    });
+
+    it('never picks the sole installation when its muster runs under its shared identity', () => {
+      mockInstallations = [{ name: 'solo' }];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['solo'],
+      };
+      mockState = { installation: 'solo' };
+      mockPresence = { solo: 'sharedIdentity' };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(mockSetInstallation).not.toHaveBeenCalledWith('solo');
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
+      expect(
+        getByText('Agents cannot be created on solo from this portal'),
+      ).toBeInTheDocument();
     });
 
     it('does not hide the sole installation when its muster lacks agent-manager', () => {
@@ -333,15 +394,61 @@ describe('InstallationSelect', () => {
       expect(
         getByText('Could not check beta for agent-manager'),
       ).toBeInTheDocument();
+      // What it means for the agent being created.
+      expect(
+        getByText(/beta is not offered for this agent until it is checked/),
+      ).toBeInTheDocument();
       expect(
         getByText(/Sign in to muster on beta to check whether agents/),
       ).toBeInTheDocument();
-      // Points at where that sign-in happens: muster, scoped to beta.
-      expect(getByRole('link', { name: 'Sign in to muster' })).toHaveAttribute(
+      // Points at where that sign-in happens: muster, scoped to beta, in a
+      // new tab, so the form stays as it is (and says so).
+      const link = getByRole('link', {
+        name: 'Sign in to muster (opens in a new tab)',
+      });
+      expect(link).toHaveAttribute(
         'href',
-        '/agent-platform/mcp-servers?installation=beta',
+        '/customize/connectors?installation=beta',
       );
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
       expect(mockSetInstallation).not.toHaveBeenCalled();
+    });
+
+    it('reads the server lists again on Check again, keeping the note while it does', async () => {
+      mockPresence = { alpha: 'available', beta: 'unknown' };
+      // The refetched read has no data: it is pending again, so the hook
+      // reports loading until it answers.
+      let settle = () => {};
+      mockRecheck.mockImplementationOnce(() => {
+        mockAgentManagerLoading = true;
+        return new Promise<void>(resolve => {
+          settle = resolve;
+        });
+      });
+
+      render(<InstallationSelect />);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Check again' }),
+      );
+
+      expect(mockRecheck).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText('Could not check beta for agent-manager'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Check again/ })).toHaveFocus();
+      expect(
+        screen.queryByText('Still checking the remaining environments…'),
+      ).not.toBeInTheDocument();
+
+      // Signed in meanwhile: beta answers with agent-manager.
+      mockAgentManagerLoading = false;
+      mockPresence = { alpha: 'available', beta: 'available' };
+      await act(async () => settle());
+
+      expect(
+        screen.queryByText('Could not check beta for agent-manager'),
+      ).not.toBeInTheDocument();
     });
 
     it('keeps the picker while the server lists are still being read', () => {
@@ -544,7 +651,7 @@ describe('InstallationSelect', () => {
       );
     };
 
-    it('offers three environments without a search', async () => {
+    it('offers type-ahead over three environments', async () => {
       offer(['alpha', 'beta', 'gamma']);
       render(<InstallationSelect />);
 
@@ -554,7 +661,7 @@ describe('InstallationSelect', () => {
       expect(
         await screen.findByRole('option', { name: 'gamma' }),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('searchbox')).toBeNull();
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
     });
 
     it('offers type-ahead over 300 environments', async () => {

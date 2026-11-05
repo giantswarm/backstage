@@ -1,15 +1,30 @@
-import { createContext, type ReactNode, useContext } from 'react';
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 import { Helmet } from 'react-helmet';
 import type { BreadcrumbItem } from '../Breadcrumbs';
 
 const SEPARATOR = ' · ';
 
 const SuffixContext = createContext<string | undefined>(undefined);
+const CountContext = createContext(0);
+const SetCountContext = createContext<((count: number) => void) | undefined>(
+  undefined,
+);
 
 /**
  * Names the product every shell page's document title ends with, e.g.
  * "Agent Platform". The app mounts it around the shell's pages; without one,
  * titles carry no suffix.
+ *
+ * It also holds the count a title is prefixed with ("(2) Sessions · Agent
+ * Platform"), which one component below it sets with
+ * {@link useShellDocumentTitleCount}: the shell's Notification inbox, for its
+ * unread rows.
  */
 export function ShellDocumentTitleProvider({
   suffix,
@@ -18,19 +33,40 @@ export function ShellDocumentTitleProvider({
   suffix: string;
   children?: ReactNode;
 }) {
+  const [count, setCount] = useState(0);
   return (
-    <SuffixContext.Provider value={suffix}>{children}</SuffixContext.Provider>
+    <SuffixContext.Provider value={suffix}>
+      <SetCountContext.Provider value={setCount}>
+        <CountContext.Provider value={count}>{children}</CountContext.Provider>
+      </SetCountContext.Provider>
+    </SuffixContext.Provider>
   );
+}
+
+/**
+ * Prefixes every shell page's document title with `count` while it is above
+ * zero and the caller is mounted. One caller per shell: the Notification
+ * inbox, for its unread count. Does nothing without a
+ * {@link ShellDocumentTitleProvider}.
+ */
+export function useShellDocumentTitleCount(count: number) {
+  const setCount = useContext(SetCountContext);
+  useEffect(() => {
+    setCount?.(count);
+  }, [setCount, count]);
+  useEffect(() => () => setCount?.(0), [setCount]);
 }
 
 /**
  * A shell page's document title: its parts, most specific first, then the
  * suffix — "Lab Helper · Agents · Agent Platform". Empty parts are dropped,
- * and so is a part repeating the one before it, or the suffix.
+ * and so is a part repeating the one before it, or the suffix. A `count` above
+ * zero leads: "(2) Lab Helper · Agents · Agent Platform".
  */
 export function shellDocumentTitle(
   parts: ReadonlyArray<string | undefined>,
   suffix?: string,
+  count = 0,
 ) {
   const kept: string[] = [];
   for (const part of parts) {
@@ -39,7 +75,8 @@ export function shellDocumentTitle(
       kept.push(trimmed);
     }
   }
-  return (suffix ? [...kept, suffix] : kept).join(SEPARATOR);
+  const title = (suffix ? [...kept, suffix] : kept).join(SEPARATOR);
+  return title && count > 0 ? `(${count}) ${title}` : title;
 }
 
 /**
@@ -78,8 +115,9 @@ export function ShellDocumentTitle({
   title: string | ReadonlyArray<string | undefined>;
 }) {
   const suffix = useContext(SuffixContext);
+  const count = useContext(CountContext);
   const parts = typeof title === 'string' ? [title] : title;
-  const documentTitle = shellDocumentTitle(parts, suffix);
+  const documentTitle = shellDocumentTitle(parts, suffix, count);
   // Nothing to name yet (a session's name still loading, no suffix): leave
   // the title to the layout rather than blanking it.
   if (!documentTitle) {

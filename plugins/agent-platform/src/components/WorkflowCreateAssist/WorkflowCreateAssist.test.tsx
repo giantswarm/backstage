@@ -84,7 +84,7 @@ function agent(
 
 function renderAssist() {
   return renderInTestApp(<WorkflowCreateAssist installation="gazelle" />, {
-    mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    mountedRoutes: { '/sessions': sessionsRouteRef },
   });
 }
 
@@ -154,19 +154,16 @@ describe('WorkflowCreateAssist', () => {
       agent: mockRows[1],
       prompt,
     });
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/session-3',
-      {
-        state: {
-          newSession: {
-            text: prompt,
-            agentNamespace: 'kagent',
-            agentName: 'workflow-manager',
-            prepared: true,
-          },
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/session-3', {
+      state: {
+        newSession: {
+          text: prompt,
+          agentNamespace: 'kagent',
+          agentName: 'workflow-manager',
+          prepared: true,
         },
       },
-    );
+    });
   }, 30_000);
 
   it('stays on the overview and says why when the session could not start', async () => {

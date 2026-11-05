@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
+  declaredStyle,
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
@@ -9,8 +10,10 @@ import {
 import type { AgentRow } from '../AgentsDataProvider';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
+import { mockImageEncoding, pngFile } from '../../lib/__fixtures__/images';
 import {
   agentOptionLabel,
+  isStartableAgent,
   modelWarningFor,
   NewSessionComposer,
 } from './NewSessionComposer';
@@ -33,6 +36,7 @@ function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'SRE Agent',
     technicalName: 'sre-agent',
     description: 'Investigates incidents',
+    tags: [],
     skillCount: 3,
     readiness: 'ready',
     ...overrides,
@@ -275,7 +279,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), '  why is the ingress failing?  ');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'why is the ingress failing?',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('starts on Enter', async () => {
@@ -283,7 +293,13 @@ describe('NewSessionComposer', () => {
 
       await userEvent.type(field(), 'check the cluster{Enter}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the cluster',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('still starts on Cmd/Ctrl+Enter, the key it used to be', async () => {
@@ -292,7 +308,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check the cluster');
       await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the cluster',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('breaks the line on Shift+Enter', async () => {
@@ -533,7 +555,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check',
+        [],
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -583,6 +611,24 @@ describe('opt-in picker options', () => {
 
     expect(option).toHaveAttribute('aria-disabled', 'true');
     expect(option).toHaveTextContent('Unavailable: 0/1 pods are ready');
+  });
+
+  it("leaves out a ready agent whose installation's agent-manager cannot start a session, and lists it disabled with the reason", async () => {
+    const shared = {
+      ...issues,
+      sessionBlocker:
+        'Muster on gazelle has no per-user sign-in in this portal.',
+    };
+    expect(isStartableAgent(shared)).toBe(false);
+
+    renderComposer({ agents: [sre, shared], showUnavailable: true });
+
+    await userEvent.click(agentPicker());
+    const option = screen.getByRole('option', { name: /Issue Tracker/ });
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    expect(option).toHaveTextContent(
+      'Unavailable: Muster on gazelle has no per-user sign-in in this portal.',
+    );
   });
 
   it('never selects a disabled option', async () => {
@@ -660,7 +706,13 @@ describe('opt-in picker options', () => {
     await userEvent.type(field(), 'check');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(research, 'check');
+    expect(onStart).toHaveBeenCalledWith(
+      research,
+      'check',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('lists the favorites second, after the recent agents, in display order', async () => {
@@ -728,7 +780,13 @@ describe('opt-in picker options', () => {
     await userEvent.type(field(), 'check');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(research, 'check');
+    expect(onStart).toHaveBeenCalledWith(
+      research,
+      'check',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('moves from Recent into Favorites with the arrow keys', async () => {
@@ -737,6 +795,8 @@ describe('opt-in picker options', () => {
       groupByNamespace: true,
       recentAgentIds: [research.id],
       favoriteAgentIds: [issues.id],
+      // The plain list's keyboard path; the searchable one is tested below.
+      searchable: false,
     });
 
     agentPicker().focus();
@@ -1142,9 +1202,15 @@ describe('opt-in picker options', () => {
 
     await userEvent.click(agentPicker());
 
-    expect(screen.getByRole('option', { name: 'Manage agents' })).toHaveStyle({
-      borderTop: '1px solid var(--bui-border-1)',
+    const footer = screen.getByRole('option', { name: 'Manage agents' });
+    expect(footer).toHaveStyle({
+      borderTopWidth: '1px',
+      borderTopStyle: 'solid',
     });
+    // Declared, not computed: jsdom computes a `var()` to the initial color.
+    expect(declaredStyle(footer, 'border-top-color')).toBe(
+      'var(--bui-border-1)',
+    );
   });
 
   it('starts with the initial prompt', () => {
@@ -1355,7 +1421,13 @@ describe('NewSessionComposer agent-first', () => {
     expect(field()).toBeEnabled();
     await userEvent.type(field(), 'Check the cluster');
     await userEvent.click(startButton());
-    expect(onStart).toHaveBeenCalledWith(sre, 'Check the cluster');
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'Check the cluster',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('without the flag, an unchosen agent leaves the field open and is refused on submit', async () => {
@@ -1389,7 +1461,13 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Start' }));
-    expect(onStart).toHaveBeenCalledWith(sre, 'line one\nline two');
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'line one\nline two',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('names Enter and Shift+Enter with a keyboard', () => {
@@ -1403,5 +1481,91 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
       'Enter starts the session with this message, Shift+Enter for a new line.',
     );
     expect(field()).toHaveAttribute('enterkeyhint', 'send');
+  });
+});
+
+describe('NewSessionComposer — images', () => {
+  // On the Go ADK runtime with an Anthropic model: one that takes images.
+  const seer = agentRow({
+    harnessRuntime: 'kagent',
+    modelProvider: 'Anthropic',
+  });
+  let encoding: ReturnType<typeof mockImageEncoding>;
+  beforeEach(() => {
+    encoding = mockImageEncoding();
+  });
+  afterEach(() => {
+    encoding.restore();
+  });
+
+  function paste(files: File[]) {
+    fireEvent.paste(field(), {
+      clipboardData: { files, types: ['Files'], getData: () => '' },
+    });
+  }
+
+  it('starts with the pasted images as part of the first message', async () => {
+    renderComposer({ agents: [seer], defaultAgent: seer, acceptsImages: true });
+
+    paste([pngFile('image.png')]);
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
+    await userEvent.type(field(), 'what is this?{Enter}');
+
+    expect(onStart).toHaveBeenCalledWith(
+      seer,
+      'what is this?',
+      [
+        expect.objectContaining({
+          name: 'Pasted image.png',
+          mediaType: 'image/png',
+        }),
+      ],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('takes no images without acceptsImages', async () => {
+    renderComposer({ defaultAgent: sre });
+
+    paste([pngFile('a.png')]);
+
+    await act(async () => {});
+    expect(screen.queryByText('a.png')).not.toBeInTheDocument();
+  });
+
+  it('holds the start while the chosen agent cannot take the attached images', async () => {
+    const coder = agentRow({
+      id: 'gazelle/kagent/coder',
+      name: 'Coder',
+      technicalName: 'coder',
+      harnessRuntime: 'claude',
+    });
+    renderComposer({ agents: [seer, coder], acceptsImages: true });
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
+    await userEvent.click(screen.getByRole('option', { name: /^SRE Agent/ }));
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
+
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
+    await userEvent.click(screen.getByRole('option', { name: /^Coder/ }));
+    await userEvent.type(field(), 'fix it{Enter}');
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Coder cannot take images: its Claude Code runtime accepts text only. Remove the images, or choose another agent.',
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Pasted image.png' }),
+    );
+    await userEvent.click(startButton());
+    expect(onStart).toHaveBeenCalledWith(
+      coder,
+      'fix it',
+      [],
+      undefined,
+      undefined,
+    );
   });
 });

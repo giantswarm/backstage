@@ -36,6 +36,17 @@ const mockUseModelConfigs = jest.fn<ModelConfigsContextValue, []>();
 // cluster-manager is absent on most of these fleets: the controls render
 // nothing. The header cases offer Add GPU node pool through `addAction`.
 let mockPoolAddAction: { open: () => void; isDisabled: boolean } | undefined;
+// Which installations withhold cluster-manager and model-manager for want of
+// a per-user sign-in; none unless a case says so.
+let mockSharedIdentity: { clusterManager: string[]; modelManager: string[] } = {
+  clusterManager: [],
+  modelManager: [],
+};
+jest.mock('../ModelHostingSharedIdentity', () => ({
+  ...jest.requireActual('../ModelHostingSharedIdentity'),
+  useModelHostingSharedIdentity: () => mockSharedIdentity,
+}));
+
 jest.mock('../GpuNodePools', () => ({
   useGpuNodePoolControls: () => ({
     available: false,
@@ -313,7 +324,7 @@ const FlowPage = () => {
 const renderSection = (initialRouteEntries?: string[]) =>
   renderInTestApp(
     <Routes>
-      <Route path="/agent-platform/models/serving/*" element={<FlowPage />} />
+      <Route path="/customize/models/hosting/*" element={<FlowPage />} />
       <Route
         path="/handoff"
         element={
@@ -329,7 +340,7 @@ const renderSection = (initialRouteEntries?: string[]) =>
     </Routes>,
     {
       mountedRoutes: {
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
       initialRouteEntries,
@@ -338,6 +349,7 @@ const renderSection = (initialRouteEntries?: string[]) =>
 
 describe('ServingPage', () => {
   beforeEach(() => {
+    mockSharedIdentity = { clusterManager: [], modelManager: [] };
     mockUseServing.mockReset();
     mockUseModelConfigs.mockReset();
     mockStop.mockReset();
@@ -400,7 +412,7 @@ describe('ServingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
 
     expect(await screen.findByTestId('flow-page')).toHaveTextContent(
-      '/agent-platform/models/serving/serve from /',
+      '/customize/models/hosting/serve from /',
     );
   });
 
@@ -418,7 +430,7 @@ describe('ServingPage', () => {
     ]);
 
     expect(await screen.findByTestId('flow-page')).toHaveTextContent(
-      '/agent-platform/models/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
+      '/customize/models/hosting/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
     );
   });
 
@@ -542,7 +554,7 @@ describe('ServingPage', () => {
         }),
       );
       expect(await screen.findByTestId('flow-page')).toHaveTextContent(
-        '/agent-platform/models/serving/import',
+        '/customize/models/hosting/import',
       );
     });
 
@@ -728,7 +740,7 @@ describe('ServingPage', () => {
         screen.getByRole('button', { name: /Import from Hugging Face/ }),
       );
       expect(await screen.findByTestId('flow-page')).toHaveTextContent(
-        '/agent-platform/models/serving/import',
+        '/customize/models/hosting/import',
       );
     });
 
@@ -780,7 +792,7 @@ describe('ServingPage', () => {
       // to: model-manager composes the LLMInferenceService; nothing is
       // composed here.
       expect(await screen.findByTestId('flow-page')).toHaveTextContent(
-        '/agent-platform/models/serving/serve?installation=inst-1&backend=kserve&model=devstral-small-2',
+        '/customize/models/hosting/serve?installation=inst-1&backend=kserve&model=devstral-small-2',
       );
     });
   });

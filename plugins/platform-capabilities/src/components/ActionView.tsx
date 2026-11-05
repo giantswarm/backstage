@@ -1,6 +1,10 @@
 import { CSSProperties, Fragment, ReactNode, useMemo } from 'react';
 import { Flex, Link, Text } from '@backstage/ui';
-import { DateComponent, FactList } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateComponent,
+  FactList,
+  CommitSha,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Action, ActionRevert, Definition, Installation } from '../apis';
 import { inputFacts, stateDetailOf, verbOf } from '../lib/actions';
 import { linkify, repositoriesOf } from '../lib/links';
@@ -71,9 +75,12 @@ function Message({
  * manager recorded the page -- `merged, reverted by #12`.
  */
 function RevertedBy({ revert }: { revert: ActionRevert }) {
-  const name = revert.pullRequest
-    ? `#${revert.pullRequest}`
-    : revert.commit.slice(0, 7);
+  // A commit is named by its short SHA, the full one in the title.
+  const name = revert.pullRequest ? (
+    `#${revert.pullRequest}`
+  ) : (
+    <CommitSha value={revert.commit} copy={false} />
+  );
   const href = revert.pullRequest ? revert.pullRequestUrl : revert.url;
   return (
     <span data-testid="action-revert">

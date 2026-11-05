@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
-import { buildCatalogue, type CatalogueGroup } from '../../lib/toolset';
+import {
+  buildCatalogue,
+  type CatalogueGroup,
+  type ServerInfo,
+} from '../../lib/toolset';
 import { AgentReachLine } from './AgentReachLine';
 
 let mockGroups: CatalogueGroup[] | undefined;
@@ -11,6 +15,21 @@ const mockUseReachCatalogue = jest.fn(
 jest.mock('../../hooks/useReachCatalogue', () => ({
   useReachCatalogue: (installation: string | undefined, needed: boolean) =>
     mockUseReachCatalogue(installation, needed),
+}));
+// The installation's connectors, as `serverInfoOf` reads them.
+const mockMusterServers: { servers: ServerInfo[] } = { servers: [] };
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => {
+    const { connectorLabels: labelsOf } =
+      jest.requireActual('../../lib/toolset');
+    return {
+      servers: mockMusterServers.servers,
+      resources: [],
+      labels: labelsOf(mockMusterServers.servers),
+      isLoading: false,
+      isUnavailable: false,
+    };
+  },
 }));
 
 const reads = (name: string): ToolSummary => ({
@@ -60,7 +79,7 @@ describe('AgentReachLine', () => {
       <AgentReachLine
         toolset={PICKED}
         installation="gazelle"
-        toolsHref="/agent-platform/agents/gazelle/kagent/sre-agent/tools"
+        toolsHref="/customize/agents/gazelle/kagent/sre-agent/tools"
       />,
     );
 
@@ -76,7 +95,7 @@ describe('AgentReachLine', () => {
       screen.getByRole('link', { name: 'See which tools' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+      '/customize/agents/gazelle/kagent/sre-agent/tools',
     );
   });
 
@@ -110,7 +129,7 @@ describe('AgentReachLine', () => {
     render(
       <AgentReachLine
         toolset={{ state: 'no-gateway' }}
-        toolsHref="/agent-platform/agents/gazelle/kagent/chat/tools"
+        toolsHref="/customize/agents/gazelle/kagent/chat/tools"
       />,
     );
 

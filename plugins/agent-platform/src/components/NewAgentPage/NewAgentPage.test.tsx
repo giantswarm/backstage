@@ -1,10 +1,22 @@
-import { useEffect, type ReactNode } from 'react';
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PageHeaderActionsProvider,
+  type TagSourceProps,
+  TagVocabularyProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import { agentsRouteRef } from '../../routes';
+import { formStateOfAgent } from '../../lib/agentEdit';
+import type { AgentManagerAgent } from '../../lib/agentManager';
+import type { HarnessChoice } from '../../lib/harnesses';
+import { agentsRouteRef, customizeExternalRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentPage } from './NewAgentPage';
 
@@ -65,29 +77,320 @@ jest.mock('../ModelConfigPicker', () => ({
     return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
+jest.mock('../TenantPicker', () => ({
+  TenantPicker: () => <p>tenant picker</p>,
+}));
+let mockHarnessChoices: HarnessChoice[] = [];
+let mockPlatformChoice: HarnessChoice | undefined;
+// The runtime marker can pick a coding Harness, which takes the extra egress
+// origins field away.
 jest.mock('../HarnessPicker', () => ({
-  HarnessPicker: () => <p>runtime picker</p>,
+  HarnessPicker: function MockHarnessPicker() {
+    const { selectHarness } = useNewAgentForm();
+    return (
+      <button
+        type="button"
+        onClick={() => selectHarness({ name: 'claude', runtime: 'claude' })}
+      >
+        runtime picker
+      </button>
+    );
+  },
+  // The namespace's Harnesses, for an edited agent's runtime; the platform
+  // Harness not read unless a test reads it (the summary then names it by its
+  // mark).
+  useRuntimeChoices: () => ({
+    choices: mockHarnessChoices,
+    platformHarness: mockPlatformChoice?.name ?? 'kagent',
+    platformChoice: mockPlatformChoice,
+  }),
+}));
+// agent-manager's get_info; it takes tags unless a test says otherwise.
+let mockManagerInfo: { capabilities: Record<string, boolean> } | undefined;
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: () => ({
+    info: mockManagerInfo,
+    isLoading: false,
+    error: null,
+  }),
+}));
+jest.mock('../DefaultWorkspacePicker', () => ({
+  DefaultWorkspacePicker: () => <p>default workspace picker</p>,
+}));
+jest.mock('../EgressPolicyPicker', () => ({
+  EgressPolicyPicker: () => <p>egress policy picker</p>,
 }));
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
+// The tags the shell's vocabulary reports; none by default.
+let mockAgentTags: string[][] = [];
+function MockTagSource({ onTags }: TagSourceProps) {
+  useEffect(() => onTags(mockAgentTags), [onTags]);
+  return null;
+}
+const TAG_SOURCES = [MockTagSource];
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 
-async function renderPage() {
+/** The form's tags, as the state holds them. */
+let formTags: string[] = [];
+function TagsProbe() {
+  formTags = useNewAgentForm().state.tags;
+  return null;
+}
+
+async function renderPage(
+  provider: Omit<ComponentProps<typeof NewAgentFormProvider>, 'children'> = {},
+) {
+  await renderInTestApp(
+    <TagVocabularyProvider sources={TAG_SOURCES}>
+      <PageHeaderActionsProvider>
+        <NewAgentFormProvider {...provider}>
+          <NewAgentPage />
+          <TagsProbe />
+        </NewAgentFormProvider>
+      </PageHeaderActionsProvider>
+    </TagVocabularyProvider>,
+    {
+      mountedRoutes: {
+        '/customize/agents': agentsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
+  );
+}
+
+/** The page, with a rerender that keeps the form's state. */
+async function renderPageWithRerender() {
+  let bump: () => void = () => {};
+  function Rerenderable() {
+    const [, setTick] = useState(0);
+    bump = () => setTick(tick => tick + 1);
+    return <NewAgentPage />;
+  }
   await renderInTestApp(
     <PageHeaderActionsProvider>
       <NewAgentFormProvider>
-        <NewAgentPage />
+        <Rerenderable />
       </NewAgentFormProvider>
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    {
+      mountedRoutes: {
+        '/customize/agents': agentsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
   );
+  return { rerender: () => act(() => bump()) };
 }
 
 const moreOptions = () =>
   screen.getByText('More options').closest('details') as HTMLDetailsElement;
 
 beforeEach(() => {
+  mockManagerInfo = { capabilities: { tags: true } };
+  mockAgentTags = [];
+  formTags = [];
   mockNavigate.mockReset();
   mockPreselectedModel = 'Claude Sonnet';
+  mockHarnessChoices = [];
+  mockPlatformChoice = undefined;
+});
+
+describe('NewAgentPage tags', () => {
+  const tagsField = () => screen.getByRole('textbox', { name: /^Tags/ });
+  const rowsOf = (name: string) =>
+    within(screen.getByRole('grid', { name }))
+      .getAllByRole('row')
+      .map(row => row.textContent);
+
+  it('adds what is typed on Enter and comma, normalized, once each', async () => {
+    await renderPage();
+
+    await userEvent.type(tagsField(), ' On_Call! {Enter}');
+    await userEvent.type(tagsField(), 'Util, marketing,util,');
+    expect(formTags).toEqual(['on-call', 'util', 'marketing']);
+    expect(rowsOf('Tags')).toEqual(['on-call', 'util', 'marketing']);
+    expect(tagsField()).toHaveValue('');
+  });
+
+  it('adds a pasted list', async () => {
+    await renderPage();
+
+    await userEvent.click(tagsField());
+    await userEvent.paste('a, b, c');
+    // The last part is still being typed until Enter, a comma or leaving.
+    expect(formTags).toEqual(['a', 'b']);
+    await userEvent.tab();
+    expect(formTags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('adds what is typed on leaving the field', async () => {
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'ops');
+    await userEvent.tab();
+    expect(formTags).toEqual(['ops']);
+    expect(tagsField()).toHaveValue('');
+  });
+
+  it('keeps the tags, and adds a typed one, when Continue is pressed', async () => {
+    await renderPage();
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Notes');
+    await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+    await userEvent.type(tagsField(), 'util{Enter}');
+    await userEvent.type(tagsField(), 'ops');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockNavigate).toHaveBeenCalled();
+    expect(formTags).toEqual(['util', 'ops']);
+  });
+
+  it('keeps a draft that cannot be a tag, with the reason', async () => {
+    await renderPage();
+
+    await userEvent.type(tagsField(), '!!!{Enter}');
+    expect(formTags).toEqual([]);
+    expect(tagsField()).toHaveValue('!!!');
+    expect(screen.getByText('Use letters and numbers.')).toBeInTheDocument();
+  });
+
+  it('blocks Continue on a draft that cannot be a tag', async () => {
+    await renderPage();
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Notes');
+    await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+    await userEvent.type(tagsField(), '!!!');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText('Use letters and numbers.')).toBeInTheDocument();
+    expect(tagsField()).toHaveFocus();
+
+    await userEvent.clear(tagsField());
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it('removes a tag', async () => {
+    await renderPage();
+    await userEvent.type(tagsField(), 'util,ops,');
+
+    await userEvent.click(
+      within(screen.getByRole('row', { name: /util/ })).getByRole('button'),
+    );
+    expect(formTags).toEqual(['ops']);
+    expect(rowsOf('Tags')).toEqual(['ops']);
+  });
+
+  it('offers the fleet’s matching tags while typing, the most used first, and adds a clicked one', async () => {
+    mockAgentTags = [['util', 'ops'], ['ops'], ['ops', 'marketing']];
+    await renderPage();
+    const field = tagsField();
+    expect(
+      screen.queryByRole('grid', { name: 'Suggested tags' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(field, 't');
+    expect(rowsOf('Suggested tags')).toEqual(['marketing', 'util']);
+    // Typing on is the same input: nothing remounts under the cursor.
+    await userEvent.type(field, 'il');
+    expect(tagsField()).toBe(field);
+    expect(field).toHaveValue('til');
+    expect(rowsOf('Suggested tags')).toEqual(['util']);
+
+    await userEvent.click(screen.getByRole('row', { name: 'util' }));
+    // The partial draft is not added on the way to the suggestion.
+    expect(formTags).toEqual(['util']);
+    expect(field).toHaveValue('');
+    expect(
+      screen.queryByRole('grid', { name: 'Suggested tags' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(field, 'u');
+    expect(
+      screen.queryByRole('grid', { name: 'Suggested tags' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('points out the existing tag a new one is close to, and swaps it in', async () => {
+    mockAgentTags = [['marketing']];
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'marketng{Enter}');
+    expect(formTags).toEqual(['marketng']);
+    expect(screen.getByText(/Existing:/)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Use marketing instead' }),
+    );
+    expect(formTags).toEqual(['marketing']);
+    expect(screen.queryByText(/Existing:/)).not.toBeInTheDocument();
+    expect(tagsField()).toHaveFocus();
+  });
+
+  it('announces the hint politely', async () => {
+    mockAgentTags = [['marketing']];
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'marketng{Enter}');
+    expect(
+      screen.getByText(/Existing:/).closest('[aria-live]'),
+    ).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('returns to the field after a suggestion is picked', async () => {
+    mockAgentTags = [['util']];
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'ut');
+    await userEvent.click(screen.getByRole('row', { name: 'util' }));
+    expect(formTags).toEqual(['util']);
+    expect(tagsField()).toHaveFocus();
+  });
+
+  it('adds what is typed when tabbing on through the suggestions', async () => {
+    mockAgentTags = [['utility']];
+    await renderPage();
+
+    await userEvent.type(tagsField(), 'util');
+    // Into the suggestions: nothing is added yet.
+    await userEvent.tab();
+    expect(
+      within(screen.getByRole('grid', { name: 'Suggested tags' })).getByRole(
+        'row',
+        { name: 'utility' },
+      ),
+    ).toHaveFocus();
+    expect(formTags).toEqual([]);
+    // And on, out of the field and its suggestions.
+    await userEvent.tab();
+    expect(formTags).toEqual(['util']);
+  });
+
+  it('adds what is typed when Continue is pressed without leaving the field', async () => {
+    await renderPage();
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Notes');
+    await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+    await userEvent.type(tagsField(), 'ops, util');
+    // A press that does not move the focus out of the field first.
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(tagsField()).toHaveFocus();
+    expect(mockNavigate).toHaveBeenCalled();
+    expect(formTags).toEqual(['ops', 'util']);
+  });
+
+  it('has no Tags field where agent-manager takes no tags', async () => {
+    mockManagerInfo = { capabilities: {} };
+    await renderPage();
+
+    expect(
+      screen.queryByRole('textbox', { name: /^Tags/ }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('NewAgentPage', () => {
@@ -101,14 +404,15 @@ describe('NewAgentPage', () => {
     expect(screen.getByLabelText(/^What is it for\?/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Instructions/)).toBeInTheDocument();
 
-    // Model, runtime, technical name and egress sit in the collapsed
-    // disclosure.
+    // Model, runtime, technical name, EgressPolicies and egress sit in the
+    // collapsed disclosure.
     const details = moreOptions();
     expect(details.open).toBe(false);
     for (const inside of [
       screen.getByText('model picker'),
       screen.getByText('runtime picker'),
       screen.getByLabelText(/^Technical name/),
+      screen.getByText('egress policy picker'),
       screen.getByLabelText(/^Extra egress origins/),
     ]) {
       expect(inside.closest('details')).toBe(details);
@@ -171,7 +475,7 @@ describe('NewAgentPage', () => {
     expect(moreOptions().open).toBe(true);
     // The picker itself carries the problem, inside the opened disclosure.
     expect(
-      screen.getByText('model picker: Select a model'),
+      screen.getByText('model picker: Choose a model.'),
     ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -184,7 +488,7 @@ describe('NewAgentPage', () => {
       'support-triage',
     );
     expect(moreOptions().querySelector('summary')).toHaveTextContent(
-      'More options · Standard runtime, technical name support-triage',
+      'More options · Platform default runtime, technical name support-triage',
     );
     // The irreversible part is said beside the name, outside the
     // disclosure (M7).
@@ -222,7 +526,11 @@ describe('NewAgentPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(screen.getByText(/Name is required/)).toBeInTheDocument();
+    // On the field itself: the live announcer may say it too, depending on
+    // whether the blur's announcement lands before the press.
+    expect(screen.getByLabelText(/^Name/)).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a name for the agent.'),
+    );
     expect(moreOptions().open).toBe(false);
   });
 
@@ -235,7 +543,7 @@ describe('NewAgentPage', () => {
 
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Enter a name for the agent.'),
     );
     expect(name).toHaveFocus();
     expect(
@@ -246,5 +554,222 @@ describe('NewAgentPage', () => {
     // Fixing it clears the field's error at once.
     await userEvent.type(name, 'Support triage');
     expect(name).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('checks an egress origin when the person leaves the field, not while they type', async () => {
+    await renderPage();
+    await userEvent.click(screen.getByText('More options'));
+    const egress = screen.getByLabelText(/^Extra egress origins/);
+
+    await userEvent.type(egress, 'github.com/x');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.tab();
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+
+    // Edited from one problem into another without passing a valid value:
+    // the error stays, and follows the change.
+    await userEvent.type(egress, '{Home}https://');
+    expect(egress).toHaveValue('https://github.com/x');
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    // The moment it is valid, the error goes.
+    await userEvent.type(egress, '{End}{Backspace}{Backspace}');
+    expect(egress).toHaveValue('https://github.com');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('refuses a tls:// service without a port, naming why, and takes it with one', async () => {
+    await renderPage();
+    await userEvent.click(screen.getByText('More options'));
+    const egress = screen.getByLabelText(/^Extra egress origins/);
+
+    await userEvent.type(egress, 'tls://db.example.com');
+    await userEvent.tab();
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    expect(
+      screen.getAllByText(
+        /"tls:\/\/db\.example\.com" has no port: a tls:\/\/ origin requires one/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await userEvent.type(egress, ':5432');
+    expect(egress).toHaveValue('tls://db.example.com:5432');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('says nothing about an empty Name that was only tabbed through', async () => {
+    await renderPage();
+    const name = screen.getByLabelText(/^Name/);
+
+    await userEvent.click(name);
+    await userEvent.tab();
+
+    expect(name).not.toHaveAttribute('aria-invalid');
+    expect(
+      screen.queryByText(/Enter a name for the agent/),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('on a coding Harness', () => {
+    it('takes typed origins away with the move to one, and says so', async () => {
+      await renderPage();
+      await userEvent.click(screen.getByText('More options'));
+      await userEvent.type(
+        screen.getByLabelText(/^Extra egress origins/),
+        'https://registry.npmjs.org',
+      );
+
+      await userEvent.click(screen.getByText('runtime picker'));
+
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+      expect(
+        screen.getByText(
+          'The platform sets what Claude Code agents may reach. Extra origins cannot be added.',
+        ),
+      ).toBeInTheDocument();
+      const note = screen.getByRole('status');
+      expect(
+        within(note).getByText('Extra egress removed'),
+      ).toBeInTheDocument();
+      expect(
+        within(note).getByText(
+          'Claude Code agents reach only the addresses the platform allows, so the extra origin https://registry.npmjs.org was removed.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('says nothing was removed when nothing was typed', async () => {
+      await renderPage();
+      await userEvent.click(screen.getByText('More options'));
+
+      await userEvent.click(screen.getByText('runtime picker'));
+
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+      expect(screen.queryByText('Extra egress removed')).toBeNull();
+    });
+
+    it('shows an edited agent’s network access as the platform’s, not as a field', async () => {
+      mockHarnessChoices = [{ name: 'claude', runtime: 'claude' }];
+      const agent: AgentManagerAgent = {
+        name: 'coder',
+        namespace: 'kagent',
+        exists: true,
+        ready: true,
+        managed: 'helmrelease',
+        displayName: 'Coder',
+        modelConfig: 'default-model-config',
+        harness: 'claude',
+        egress: ['https://github.com'],
+      };
+      await renderPage({
+        edit: {
+          agent,
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        },
+        initialState: formStateOfAgent(agent, {
+          installation: 'gazelle',
+          catalog: [],
+          pluginCatalog: [],
+          platformHarness: 'kagent',
+        }),
+      });
+      await userEvent.click(screen.getByText('More options'));
+
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+      expect(
+        screen.getByText(
+          'The platform sets what Claude Code agents may reach. Extra origins cannot be added.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the field while a named Harness’s runtime is unknown', async () => {
+      const agent: AgentManagerAgent = {
+        name: 'coder',
+        namespace: 'kagent',
+        exists: true,
+        ready: true,
+        managed: 'helmrelease',
+        modelConfig: 'default-model-config',
+        harness: 'unread',
+      };
+      await renderPage({
+        edit: {
+          agent,
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        },
+        initialState: formStateOfAgent(agent, {
+          installation: 'gazelle',
+          catalog: [],
+          pluginCatalog: [],
+          platformHarness: 'kagent',
+        }),
+      });
+      await userEvent.click(screen.getByText('More options'));
+
+      expect(
+        screen.getByLabelText(/^Extra egress origins/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/The platform sets/)).toBeNull();
+    });
+
+    it('reads the platform Harness’s runtime too, and drops what was typed once it is known', async () => {
+      // The platform default read as a coding Harness after the person typed.
+      const { rerender } = await renderPageWithRerender();
+      await userEvent.click(screen.getByText('More options'));
+      await userEvent.type(
+        screen.getByLabelText(/^Extra egress origins/),
+        'https://a.example.com{Enter}https://b.example.com',
+      );
+
+      mockPlatformChoice = { name: 'kagent', runtime: 'claude' };
+      rerender();
+
+      expect(
+        await screen.findByText(
+          'Claude Code agents reach only the addresses the platform allows, so the extra origins https://a.example.com and https://b.example.com were removed.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+    });
+
+    it('does not check an edited agent’s egress the form does not show', async () => {
+      mockHarnessChoices = [{ name: 'claude', runtime: 'claude' }];
+      const agent: AgentManagerAgent = {
+        name: 'coder',
+        namespace: 'kagent',
+        exists: true,
+        ready: true,
+        managed: 'helmrelease',
+        displayName: 'Coder',
+        modelConfig: 'default-model-config',
+        harness: 'claude',
+        // Not an origin the form would take: unseen, it must not block.
+        egress: ['github.com/x'],
+      };
+      await renderPage({
+        edit: {
+          agent,
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        },
+        initialState: formStateOfAgent(agent, {
+          installation: 'gazelle',
+          catalog: [],
+          pluginCatalog: [],
+          platformHarness: 'kagent',
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(mockNavigate).toHaveBeenCalled();
+      expect(screen.queryByText(/github\.com\/x/)).toBeNull();
+    });
   });
 });

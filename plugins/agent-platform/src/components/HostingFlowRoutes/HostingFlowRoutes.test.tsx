@@ -35,6 +35,17 @@ jest.mock('../ServingPage', () => ({
   useServingTargets: () => ({ loadTargets: mockLoadTargets }),
 }));
 
+// Which installations withhold cluster-manager and model-manager for want of
+// a per-user sign-in; none unless a case says so.
+let mockSharedIdentity: { clusterManager: string[]; modelManager: string[] } = {
+  clusterManager: [],
+  modelManager: [],
+};
+jest.mock('../ModelHostingSharedIdentity', () => ({
+  ...jest.requireActual('../ModelHostingSharedIdentity'),
+  useModelHostingSharedIdentity: () => mockSharedIdentity,
+}));
+
 let mockPoolInstallations: string[] = ['inst-1'];
 jest.mock('../../hooks/useClusterManager', () => ({
   useClusterManagerAvailability: () => ({
@@ -138,7 +149,7 @@ function renderAt(path: string, element: JSX.Element) {
       </Routes>
     </PageHeaderActionsProvider>,
     {
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: { '/customize/models': modelsRouteRef },
       initialRouteEntries: [
         `${path}?installation=inst-1&cluster=wc1&pool=gpu-l4&preset=qwen3-8b-fp8`,
       ],
@@ -147,6 +158,7 @@ function renderAt(path: string, element: JSX.Element) {
 }
 
 beforeEach(() => {
+  mockSharedIdentity = { clusterManager: [], modelManager: [] };
   jest.clearAllMocks();
   mockServing = {
     isLoading: false,
@@ -158,14 +170,14 @@ beforeEach(() => {
 });
 
 describe('ServeModelRoute', () => {
-  const path = '/agent-platform/models/serving/serve';
+  const path = '/customize/models/hosting/serve';
 
   it('seeds the page from the query and returns to the Serving view by default', async () => {
     await renderAt(path, <ServeModelRoute />);
 
     expect(
       screen.getByText(
-        'Serve on inst-1/gpu-l4 qwen3-8b-fp8, back to /agent-platform/models/serving',
+        'Serve on inst-1/gpu-l4 qwen3-8b-fp8, back to /customize/models/hosting',
       ),
     ).toBeInTheDocument();
   });
@@ -182,7 +194,7 @@ describe('ServeModelRoute', () => {
       }),
     );
     expect(screen.getByTestId('landing')).toHaveTextContent(
-      '/agent-platform/models/serving {"openedServedModel":{"installation":"inst-1","name":"qwen3-8b-fp8-a1"}}',
+      '/customize/models/hosting {"openedServedModel":{"installation":"inst-1","name":"qwen3-8b-fp8-a1"}}',
     );
   });
 
@@ -202,7 +214,7 @@ describe('ServeModelRoute', () => {
 });
 
 describe('AddGpuNodePoolRoute', () => {
-  const path = '/agent-platform/models/capacity/add-pool';
+  const path = '/customize/models/hosting/capacity/add-pool';
 
   it('records the preset to serve and lands on GPU pools, opened on the pool', async () => {
     await renderAt(path, <AddGpuNodePoolRoute />);
@@ -215,7 +227,7 @@ describe('AddGpuNodePoolRoute', () => {
       { preset: 'qwen3-8b-fp8' },
     );
     const landing = screen.getByTestId('landing');
-    expect(landing).toHaveTextContent('/agent-platform/models/capacity');
+    expect(landing).toHaveTextContent('/customize/models/hosting/capacity');
     expect(landing).toHaveTextContent(
       '"openedPool":{"id":"inst-1/wc1/wc1-gpu-l4","installation":"inst-1","cluster":"wc1","poolName":"gpu-l4"',
     );
@@ -228,6 +240,18 @@ describe('AddGpuNodePoolRoute', () => {
     expect(
       screen.getByText(
         'No environment in reach runs cluster-manager, so no GPU node pool can be added.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says why where cluster-manager runs only behind a muster without per-user sign-in', async () => {
+    mockPoolInstallations = [];
+    mockSharedIdentity = { clusterManager: ['inst-2'], modelManager: [] };
+    await renderAt(path, <AddGpuNodePoolRoute />);
+
+    expect(
+      screen.getByText(
+        /GPU node pools are managed through cluster-manager as you, and muster on inst-2 has no per-user sign-in in this portal/,
       ),
     ).toBeInTheDocument();
   });

@@ -64,6 +64,14 @@ jest.mock('../ModelConfigsProvider', () => ({
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: agents, isLoading: false }),
 }));
+// The installations whose muster offers cluster-manager as the person.
+let mockClusterManager: string[] = [];
+jest.mock('../../hooks/useClusterManager', () => ({
+  useClusterManagerAvailability: () => ({
+    available: mockClusterManager,
+    isLoading: false,
+  }),
+}));
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: { installations: string[] }) =>
     serving.installations.length > 0,
@@ -76,7 +84,7 @@ jest.mock('../ServingProvider', () => ({
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeModelsPanel search={search} />, {
     mountedRoutes: {
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
     },
   });
@@ -95,7 +103,7 @@ function RerenderablePanel() {
 function renderRerenderablePanel() {
   return renderInTestApp(<RerenderablePanel />, {
     mountedRoutes: {
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
     },
   });
@@ -107,6 +115,7 @@ describe('CustomizeModelsPanel', () => {
     mockModelsLoading = false;
     mockUnreachableInstallations = [];
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
   it('lists the models with their usage and state', async () => {
@@ -160,7 +169,7 @@ describe('CustomizeModelsPanel', () => {
         </ShellScopeProvider>,
         {
           mountedRoutes: {
-            '/agent-platform/models': modelsRouteRef,
+            '/customize/models': modelsRouteRef,
             '/customize': customizeExternalRouteRef,
           },
         },
@@ -215,11 +224,78 @@ describe('CustomizeModelsPanel', () => {
     await renderPanel();
     expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
     expect(
       screen.queryByRole('link', { name: 'How to turn it on' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers model hosting where cluster-manager runs without a serving layer', async () => {
+    mockClusterManager = ['golem'];
+    await renderPanel();
+    // GPU pools and the model cache are managed there.
+    expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
+      'href',
+      '/customize/models/hosting',
+    );
+    expect(
+      screen.queryByRole('link', { name: 'How to turn it on' }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('the Model hosting row', () => {
+    function PathProbe() {
+      return <div data-testid="path">{useLocation().pathname}</div>;
+    }
+
+    async function renderAtModels() {
+      mockServingInstallations = ['golem'];
+      await renderInTestApp(
+        <>
+          <PathProbe />
+          <CustomizeModelsPanel search="" />
+        </>,
+        {
+          initialRouteEntries: ['/customize/models'],
+          mountedRoutes: {
+            '/customize/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
+      );
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models$/,
+      );
+    }
+
+    it('opens Model hosting from its link', async () => {
+      await renderAtModels();
+
+      await userEvent.click(
+        screen.getByRole('link', { name: 'Model hosting' }),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
+
+    it('opens Model hosting from anywhere on the card, its text included', async () => {
+      await renderAtModels();
+
+      // The card's link is visually hidden; bui forwards a click on the card's
+      // surface to it.
+      await userEvent.click(
+        screen.getByText(
+          'Admins can run models on their own GPUs and manage what is served.',
+        ),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
   });
 
   describe('at list scale', () => {
@@ -369,7 +445,9 @@ describe('CustomizeModelsPanel at phone width (T22 C7)', () => {
   });
 
   it('windows 300 models and keeps the provider filter', async () => {
-    mockModelRows = manyModels(300);
+    mockModelRows = manyModels(300).map((each, i) =>
+      i % 2 ? { ...each, provider: 'Ollama' } : each,
+    );
     await renderPanel();
 
     expect(headers()).toEqual(['Model', 'Status']);
@@ -416,15 +494,20 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
   beforeEach(() => {
     mockModelsLoading = false;
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
-  it('offers a one-option provider dropdown over three models of one provider', async () => {
+  it('offers no provider dropdown over three models of one provider', async () => {
     mockModelRows = [0, 1, 2].map(index => model(index, 'Anthropic'));
     await renderPanel();
 
     expect(bodyRows()).toHaveLength(3);
-    expect(providerDropdown()).toHaveTextContent('ProviderAll');
-    expect(await providerOptions()).toEqual(['Anthropic 3']);
+    expect(
+      screen.queryByRole('button', {
+        name: /Filter by provider/,
+        hidden: true,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters three models by provider, together with the search', async () => {

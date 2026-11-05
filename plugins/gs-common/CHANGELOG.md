@@ -1,5 +1,123 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.22.0
+
+### Minor Changes
+
+- 9312feb: The agent page's Technical details drop the Resource card's "Copy system
+  prompt" button, show the agent's namespace and name as two facts, Namespace
+  and Name, and link each skill version to its skill's page. The model and
+  connector pages' Technical details split their resources the same way; a
+  reference in the agent's own namespace (its ModelConfig, a sub-agent, the
+  HelmRelease behind it) is named alone. The Configuration card's "See tools" is
+  bui's link.
+
+  Every git SHA the portal shows is 7 characters, a digest 12, with the full
+  value as its title and a copy button on touch screens: skill pins and
+  versions, agent revisions, workspace heads, Flux revisions and digests,
+  branch-build versions, the release footer, scaffold and revert commits, and
+  the backend's messages.
+
+  New in `gs-common`: `shortSha`, re-exported by `ui-react`. New in `ui-react`:
+  `CommitSha` and `namespacedNameFacts`.
+
+- 21ae39b: Export `ReleaseReadinessFlags` and `releaseReadinessFlagNames` — the release
+  blockers `AppReadinessProcessor` writes into `giantswarm.io/readiness-flags`.
+
+  That annotation has two authors: `backstage-catalog-importer` merges its enforced
+  chart-metadata gaps into the same list. Consumers have to tell the two apart to
+  attribute each flag to the verdict it came from, and they do so by recognising
+  these names, so they belong in one shared place rather than being duplicated on
+  each side of the package boundary.
+
+- 2fa183d: New `BuildStatusProcessor`: records whether a component's default branch
+  builds, as the `giantswarm.io/build-status` label (`passing` / `failing` /
+  `unknown`), the confirmed failing checks in `giantswarm.io/build-failing-checks`
+  (a JSON array, since check names contain commas),
+  the branch in `giantswarm.io/default-branch`, and `BUILD-RED` merged into
+  `giantswarm.io/readiness-flags` when failing. Off by default
+  (`catalog.processors.buildStatus.enabled`).
+
+  GitHub hangs commit statuses off a SHA, so a red from a branch cut off main, a
+  merge-queue branch or a tag shows up on main. Each failing status is therefore
+  resolved through the CircleCI build behind it and counted only when that build
+  really ran on the default branch and really reached a verdict; tag builds and
+  other branches' builds are set aside. `passing` needs positive evidence: a
+  context still running, cancelled or pending on the default branch, a red that
+  cannot be resolved, or a rollup whose every context was set aside is `unknown`,
+  never `failing` and never `passing`; a skipped or neutral check is not evidence
+  either, and where CircleCI reports to the commit only a green CircleCI build of
+  the default branch is (a green pre-commit or scorecard workflow says nothing
+  about whether the build runs). When a lookup fails (GitHub 5xx, CircleCI rate limit) the last known
+  verdict is kept for up to a day with its original `build-status-checked`, rather than every
+  affected component flipping to `unknown` for a pass. A repository GitHub cannot find writes
+  nothing, and a missing GitHub token is warned about once per owner rather than
+  written as `unknown`. The release verdict in `giantswarm.io/readiness` is not
+  touched.
+
+  `gs-common` exports `BuildReadinessFlags` / `buildReadinessFlagNames` next to the
+  release flags, so the frontend can attribute the flag to the build rather than
+  to the release or to chart metadata. `TtlCache` moves to
+  `catalog-backend-module-gs/src/util` and is shared by both processors.
+
+- e5bd97a: The Installations page shows every installation's versions again. The backend reads only the installations it can read as the signed-in person (the main installation, the ones the cluster token broker covers, the ones the Kubernetes plugin authenticates to itself) within one 15-second deadline per installation, and leaves the others (their own OIDC sign-in, a `backendUrl` override) to the browser, as before. An expired session shows "Not signed in", a failed read a short status with the details on hover, and the answer is no longer persisted to the browser's storage, where the next person to sign in on the same browser saw it. The subject token header and the endpoint's types live in `gs-common`.
+- 846f143: A person who has not signed in to cluster-manager sees "Sign in to
+  cluster-manager to see GPU node pools" with its Sign in on the GPU capacity
+  and model cache views (and on Add GPU node pool's cluster list) instead of an
+  authentication error, and the view fills in once the sign-in lands. Every
+  `401` from muster-backend now says why in `error.reason`
+  (`server_sign_in_required` with the server, `token_missing`, `token_expired`,
+  `token_rejected`) and is logged with it. The muster client refreshes the
+  forwarded token ahead of its expiry, sends a call once more after a refresh
+  for a refused token, and no query retries a muster `401` with backoff. New
+  exports: `ConnectorSignInAlert`, `splitConnectorSignIns`,
+  `musterSignInRequiredOf`, `musterUnauthorizedInfoOf`, `isMusterAuthFailure`,
+  `shouldRetryMusterQuery`, `MusterUnauthorizedError` and the
+  `MusterUnauthorizedReason` type (muster); `MusterUnauthorizedError` and
+  `toMusterUnauthorizedError` (gs-node); `MUSTER_UNAUTHORIZED_REASONS`,
+  `MUSTER_TOKEN_REASONS`, `isMusterUnauthorizedReason`,
+  `MUSTER_TOKEN_EXPIRED_TEXT` and `MusterUnauthorizedReason` (gs-common, the
+  contract both sides share).
+- cba71a8: An agent turn (a message, streamed or not, and the answer to a confirmation)
+  goes out with an ID token that has at least 25 of its 30 minutes left, so a
+  long turn no longer fails part-way with `Unauthorized` when the token the
+  session had cached runs out. The session is refreshed silently first when its
+  token has less of its lifetime left; reads keep Backstage's 3-minute margin. A
+  turn whose token could not be refreshed is still sent, with a console warning.
+
+  - `gs`: the Kubernetes auth APIs (`LastingAuthApi`) carry
+    `getLastingIdToken(minLifetimeLeft)`; its refresh never opens a sign-in.
+  - `gs-react`: `idTokenLifetimeLeft` and `hasIdTokenLifetimeLeft`.
+  - `gs-common`: `readJwtClaims`, `readJwtLifetimeClaims` and
+    `jwtLifetimeSeconds`, the one unverified JWT claims reader of frontend and
+    backend.
+  - `kubernetes-react`: `getInstallationOidcToken` takes `{ minLifetimeLeft }`.
+  - `auth-backend-module-gs`: `POST /cluster-token/:installation` takes
+    `?minLifetimeLeft=` and re-exchanges a cached token with less of its
+    lifetime (`exp` − `iat`, on the issuer's clock) left.
+
+- 103014c: The Version History card and tab list only stable releases by default. A "Show all" switch brings back release candidates and dev builds. Stable means a semantic version without a pre-release part (`isStableVersion` in `gs-common`).
+
+  The backend parses and compares versions with `@giantswarm/semver-ts` instead of npm `semver`, so tags are read the way Flux reads them (Masterminds/semver): `sortVersions` in `gs-node` now also drops tags that are no version, and accepts incomplete ones such as `1.2`. GitHub release tags in the app readiness check are still parsed strictly, so a date-named release is not mistaken for a version.
+
+  `ContainerRegistryService.getTags` without a `limit` now follows the registry's pagination (`Link: rel="next"`), so the version history lists every tag instead of the 100 most recent ones ACR returns on its first page. With a `limit` it stops once it holds that many tags, which for the catalog processors' limit of 500 is a single request. The OCI path now honours `limit` and asks for pages of 1000 tags, as the ACR path asks for 999.
+
+- 0af6fea: Usage → Your sessions shows your actual model cost, as the gateway priced
+  it, instead of an estimate: in the totals strip ("Cost", "All your model
+  calls") and per agent. It covers every model call made as you, in your
+  sessions or not, and the tooltips say so. Where it cannot be read (kagent
+  names no one, the gateway records no user, none of your calls was priced, or
+  Mimir is down), the page falls back to the estimate, labelled "Est. cost",
+  with the reason. The description drops "Overview and Cost cover every user's
+  model calls."
+
+  The figure comes from a new route, `GET /api/agent-platform/usage/model-cost`,
+  which takes the person from kagent (`GetCurrentUser`, with their own token)
+  and builds the query itself, so no request can read anyone else's cost.
+  `MimirService` and `mimirServiceRef` move from gs-backend to gs-node, the
+  metric registry from gs to gs-common (`mimirMetrics.ts`, still re-exported
+  by gs), and `counterIncrease` to agent-platform-common.
+
 ## 0.21.1
 
 ### Patch Changes

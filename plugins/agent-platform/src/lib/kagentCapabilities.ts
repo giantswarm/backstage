@@ -1,3 +1,5 @@
+import { KAGENT_SHARED_SUBJECTS } from '@giantswarm/backstage-plugin-agent-platform-common';
+
 /**
  * Per-installation kagent capabilities.
  *
@@ -36,19 +38,19 @@ export type KagentCapabilities = {
    * treat `undefined` as "stay silent" rather than as either answer.
    */
   isUserScoped?: boolean;
+  /**
+   * The signed-in person as agent-manager records an agent's creator
+   * (`agent-platform.giantswarm.io/created-by`): the token's email, else its
+   * subject. Set when sessions are scoped to them (`isUserScoped`); "created
+   * by me" compares with it.
+   */
+  caller?: string;
 };
 
 /** Capabilities assumed before (or instead of) a successful probe: claim nothing. */
 export const FALLBACK_KAGENT_CAPABILITIES: KagentCapabilities = {
   isUserScoped: undefined,
 };
-
-/**
- * kagent's `unsecure` auth mode ignores the forwarded token and resolves every
- * caller to a shared built-in user, so seeing that subject means the list is not
- * this user's.
- */
-const UNSCOPED_SUBJECTS = ['admin@kagent.dev'];
 
 /**
  * Whether the subject kagent reported means the session list is user-scoped.
@@ -63,5 +65,5 @@ export function isUserScopedSubject(
   if (!sub) {
     return undefined;
   }
-  return !UNSCOPED_SUBJECTS.includes(sub);
+  return !KAGENT_SHARED_SUBJECTS.includes(sub);
 }

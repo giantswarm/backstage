@@ -3,24 +3,36 @@ import {
   Navigate,
   Route,
   Routes,
-  useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from 'react-router-dom';
+import {
+  lastDaysLabel,
+  parseUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   toastApiRef,
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
-import { useQuery } from '@tanstack/react-query';
+import {
+  Alert,
+  Button,
+  ButtonIcon,
+  Flex,
+  Link,
+  Skeleton,
+  Text,
+} from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
   type Fact,
   CopyButton,
+  DateComponent,
   DisabledAction,
   EmptyStateCard,
   LoadingIndicator,
@@ -32,9 +44,9 @@ import {
   ShellPageBadgeSkeleton,
   StatusDot,
   type StatusDotTone,
+  TagList,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
 import {
   MCPServer,
   MCPServerSeverity,
@@ -42,21 +54,30 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
-import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
-import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
+import { mcpServersRouteRef } from '../../routes';
+import {
+  INFRASTRUCTURE_FAMILY_NOTE,
+  MUSTER_PAGE_DESCRIPTION,
+  rowTags,
+} from '../../lib/connectorTags';
 import {
   familyGroups,
+  familyToolGroup,
   findServerRow,
   fleetManagementClusters,
   partitionServers,
+  mcpServerDisplayNames,
   ServerPageRow,
+  serverRowDisplayName,
   serverRowKey,
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { noToolsExplanation } from '../McpServersPage/serverDetail';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { type ConnectorPageTabPath } from './connectorTabs';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import {
   AdHocServerDialog,
   ConfirmActionDialog,
@@ -71,51 +92,35 @@ import {
 } from '../ServerPage/useServerPageData';
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
-  authActionParts,
   deactivatedSignInGate,
+  type ExplainedStatusText,
   familyHealthLabel,
+  portalOnlyStatus,
   ServerAuthActions,
   serverStateLabel,
+  StatusWithHint,
   SessionGate,
-  useConnectorGroupPaths,
+  useConnectorListPaths,
   useServerSignIn,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
-import {
-  addedLine,
-  callsLine,
-  healthLine,
-  runsAsCaller,
-  signInLabel,
-} from './connectorFacts';
+import { addedAt, callsLine, healthLine, signInLabel } from './connectorFacts';
 import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
 } from './connectorPageTarget';
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
+import { ConnectorCannotConnect } from './ConnectorCannotConnect';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
+import { ConnectorLogo } from '../ConnectorLogo';
+import { ConnectorUsageTab } from './ConnectorUsageTab';
+import { useConnectorUsage } from './hooks/useConnectorUsage';
+import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
-
-const useStyles = makeStyles({
-  tile: {
-    flex: 'none',
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    border: '1px solid var(--bui-border-1)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 20,
-    fontWeight: 700,
-    color: 'var(--bui-fg-secondary)',
-    textTransform: 'uppercase',
-  },
-});
 
 /**
  * muster's endpoint, the address an MCP client connects to, with its copy
@@ -142,15 +147,6 @@ function MusterEndpoint({ endpoint }: { endpoint: string }) {
   );
 }
 
-function ConnectorTile({ name }: { name: string }) {
-  const classes = useStyles();
-  return (
-    <span className={classes.tile} aria-hidden>
-      {name.charAt(0)}
-    </span>
-  );
-}
-
 /** The page's dot tones for muster's severities, as the list's dots read. */
 const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
   ok: 'success',
@@ -160,12 +156,60 @@ const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
 };
 
 /**
+ * The line under the connector's name: its description; for muster, what it
+ * is and that it is fixed; for an infrastructure family, that it has an
+ * instance per management cluster.
+ */
+function connectorMeta(
+  row: ServerPageRow,
+  description: string | undefined,
+): string | undefined {
+  if (row.kind === 'core') {
+    return MUSTER_PAGE_DESCRIPTION;
+  }
+  if (
+    row.kind === 'family' &&
+    familyToolGroup(row.servers) === 'infrastructure'
+  ) {
+    if (!description) {
+      return INFRASTRUCTURE_FAMILY_NOTE;
+    }
+    const sentence = /[.!?]$/.test(description.trim())
+      ? description.trim()
+      : `${description.trim()}.`;
+    return `${sentence} ${INFRASTRUCTURE_FAMILY_NOTE}`;
+  }
+  return description;
+}
+
+/**
  * The connector's state beside its name: a dot and its words, as the
  * Customize list and the agent, model and session headers draw a state. The
  * words stay muster's own (`serverStateLabel`, `familyHealthLabel`), with the
  * Ready condition's explanation as the tooltip.
  */
-function StatusBadge({ row }: { row: ServerPageRow }) {
+function StatusBadge({
+  row,
+  displayName,
+  portalOnly,
+}: {
+  row: ServerPageRow;
+  displayName: string;
+  /**
+   * The person's sign-in serves this muster session only, so the state says
+   * so in place of muster's healthy one, as the Customize list does.
+   */
+  portalOnly?: ExplainedStatusText;
+}) {
+  if (row.kind === 'server' && portalOnly) {
+    return (
+      <StatusWithHint
+        {...portalOnly}
+        subject={displayName}
+        title={row.server.getStateExplanation()}
+      />
+    );
+  }
   if (row.kind === 'server') {
     return (
       <span title={row.server.getStateExplanation()}>
@@ -192,41 +236,16 @@ function StatusBadge({ row }: { row: ServerPageRow }) {
   return null;
 }
 
-function rowServers(row: ServerPageRow): MCPServer[] {
-  if (row.kind === 'server') {
-    return [row.server];
-  }
-  if (row.kind === 'family') {
-    return row.servers;
-  }
-  return [];
-}
-
-/**
- * The calls muster dispatched to the connector since the 1st of the month
- * (UTC). Undefined while unread, and where usage cannot be queried.
- */
-function useCallsThisMonth(
-  installation: string,
-  serverNames: string[],
-  enabled: boolean,
-): string | undefined {
-  const musterApi = useApi(musterApiRef);
-  const { data } = useQuery({
-    queryKey: ['muster', 'mcp-usage', installation, 'month'],
-    queryFn: () => musterApi.getMcpUsage({ installation, window: 'month' }),
-    enabled: enabled && serverNames.length > 0,
-  });
-  return data ? callsLine(data, serverNames) : undefined;
-}
-
 function ConnectorPageContent({
   row,
+  displayName,
   servers,
   installation,
   usedBy,
 }: {
   row: ServerPageRow;
+  /** What people call it; `serverRowKey(row)` stays what links and muster use. */
+  displayName: string;
   servers: MCPServer[];
   installation: string;
   usedBy?: ReactElement;
@@ -236,14 +255,13 @@ function ConnectorPageContent({
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
-  const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector, where its crumb and a removal lead.
-  const listPath = paths.listOf(serverRowKey(row), row);
+  const paths = useConnectorListPaths();
+  // The list, where its crumb, its tags and a removal lead.
+  const listPath = paths.connectors;
   const { activeInstallationInfo } = useMusterInstance();
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
-  const search = `?installation=${encodeURIComponent(installation)}`;
   const name = serverRowKey(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
@@ -251,7 +269,7 @@ function ConnectorPageContent({
   const singular = row.kind === 'server' ? row.server : undefined;
 
   // Above the tabs, so a search on Tools survives a visit to another tab:
-  // the tab links carry only `?installation=`, and the page is keyed per
+  // the tab links carry no query, and the page is keyed per
   // connector, so another connector starts afresh.
   const toolSearch = useToolSearchState();
   const tools = useServerTools(row, servers, installation, {
@@ -269,11 +287,24 @@ function ConnectorPageContent({
     () => [...new Set([name, ...members.map(server => server.getName())])],
     [name, members],
   );
-  const calls = useCallsThisMonth(
-    installation,
-    row.kind === 'core' ? [] : serverNames,
-    authenticated,
-  );
+  // One read for the Usage tab and the Details' calls, so the two agree;
+  // none for muster itself, whose own tools no connector counts. Only on
+  // those two tabs: Tools, where a connector opens, shows no usage, and
+  // each connector's read repeats the installation-wide `data_start` query.
+  const { '*': tabPath = '' } = useParams();
+  // The Usage tab's window follows the `?window=` Usage → Connectors links
+  // with, so a row's figures and the tab it opens agree. Details keeps its 30
+  // days, which its label names.
+  const [searchParams] = useSearchParams();
+  const usageDays =
+    tabPath === 'usage'
+      ? parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM))
+      : CONNECTOR_USAGE_DAYS;
+  const usage = useConnectorUsage(row, installation, {
+    enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
+    days: usageDays,
+  });
+  const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
   // The person's own sign-in to the connector. Signing in is offered where its
   // absence shows — the Tools tab's gate, in place of the hidden tools — so
@@ -287,30 +318,31 @@ function ConnectorPageContent({
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
-  // An SSO connector muster failed to connect for this person: the Customize
-  // list says "Could not sign in" and keeps the why in a hint; this page says
-  // it in full. Where muster asks for a sign-in, the Tools tab's gate already
-  // carries the same sentence.
-  const signInParts = canSignIn
-    ? authActionParts(singular!.getName(), signIn, { noun: 'connector' })
+  // muster's report of this person's sign-in where it was read, so the badge
+  // and the Customize list agree on "Portal only"; without one (no muster
+  // session, still loading) nobody signed in, and the badge keeps muster's
+  // state.
+  const portalOnly = singular
+    ? portalOnlyStatus(
+        singular,
+        displayName,
+        canSignIn ? signIn.status : undefined,
+      )
     : undefined;
-  const ssoFailure =
-    signInParts?.kind === 'sso' && !signIn.needsLogin
-      ? signInParts.explanation
-      : undefined;
   const canSignOut =
     canSignIn &&
     !signIn.isSsoManaged &&
     singular!.getAuth()?.type === 'oauth' &&
     signIn.isConnected;
 
-  // Edit opens the connector wizard on this connector (`?edit=`), the flow
-  // that added it; the wizard's edit gate seeds it from the server list.
+  // Edit opens the connector wizard on this connector (its `edit` address),
+  // the flow that added it; the wizard's edit gate seeds it from the server
+  // list.
   const editBlock = connectorEditBlock(row, authenticated);
-  const newConnectorRoute = useRouteRef(newMcpServerRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const editHref =
-    singular && !editBlock && newConnectorRoute
-      ? withEditParam(newConnectorRoute(), singular.getName())
+    singular && !editBlock
+      ? wizardLinks('connect', { name: singular.getName(), installation })
       : undefined;
   const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
 
@@ -363,7 +395,7 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...deactivate,
-            label: `Turn off "${singular.getName()}"?`,
+            label: `Turn off "${displayName}"?`,
             confirmLabel: 'Turn off',
           }),
       });
@@ -376,7 +408,7 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...activate,
-            label: `Turn on "${singular.getName()}"?`,
+            label: `Turn on "${displayName}"?`,
             confirmLabel: 'Turn on',
           }),
       });
@@ -388,7 +420,7 @@ function ConnectorPageContent({
       onAction: () =>
         openAction({
           ...live.remove,
-          label: `Remove "${singular.getName()}"?`,
+          label: `Remove "${displayName}"?`,
           confirmLabel: 'Remove',
         }),
     });
@@ -413,8 +445,19 @@ function ConnectorPageContent({
       context="Tools need a muster session."
     />
   );
-  const signInGate: ReactNode =
-    singular && canSignIn && signIn.needsLogin ? (
+  // An SSO connector that refused this person's sign-in hides its tools as a
+  // missing sign-in does, but nothing signs in to it: the Customize list says
+  // "Cannot connect" with the why in a hint, and this gate says it in full.
+  let signInGate: ReactNode;
+  if (singular && canSignIn && signIn.isSsoRefused) {
+    signInGate = (
+      <ConnectorCannotConnect
+        displayName={displayName}
+        error={signIn.status?.error}
+      />
+    );
+  } else if (singular && canSignIn && signIn.needsLogin) {
+    signInGate = (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
           Sign in to this connector to see its tools.
@@ -422,6 +465,7 @@ function ConnectorPageContent({
         <ServerAuthActions
           noun="connector"
           serverName={singular.getName()}
+          displayName={displayName}
           installation={installation}
           oauthConfigured={singular.getAuth()?.type === 'oauth'}
           signInGate={
@@ -431,7 +475,8 @@ function ConnectorPageContent({
           }
         />
       </Flex>
-    ) : undefined;
+    );
+  }
 
   const emptyExplanation = singular
     ? noToolsExplanation(singular)
@@ -450,28 +495,59 @@ function ConnectorPageContent({
   }));
 
   const tabs: RouteTabSpec[] = [
-    { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
+    {
+      id: 'tools',
+      path: '',
+      title: 'Tools',
+      count: tools.isLoading ? 'loading' : tools.tools?.length,
+    },
   ];
+  // Every other tab by its path, one of `CONNECTOR_PAGE_TAB_PATHS`.
+  const addTab = (
+    path: ConnectorPageTabPath,
+    title: string,
+    count?: RouteTabSpec['count'],
+  ) => tabs.push({ id: path, path, title, count });
   for (const { capability, title, count, shown } of capabilities) {
     if (shown) {
-      tabs.push({ id: capability, path: capability, title, count });
+      addTab(capability, title, count);
     }
   }
+  // Before Used by, as on the model page; muster's own tools are counted
+  // under no connector, so muster has none.
+  const hasUsage = row.kind !== 'core';
+  if (hasUsage) {
+    addTab('usage', 'Usage');
+  }
   if (usedBy && row.kind !== 'core') {
-    tabs.push({ id: 'used-by', path: 'used-by', title: 'Used by' });
+    addTab('used-by', 'Used by');
   }
   if (row.kind === 'family') {
-    tabs.push({
-      id: 'instances',
-      path: 'instances',
-      title: 'Instances',
-      count: row.servers.length,
-    });
+    addTab('instances', 'Instances', row.servers.length);
   }
 
   // The Details tab's plain facts; the address and the rest of the MCPServer
   // are in its Technical details.
   const facts: Fact[] = [];
+  const tags = rowTags(row);
+  if (tags.length > 0) {
+    facts.push({
+      label: 'Tags',
+      value: (
+        <TagList
+          tags={tags}
+          getHref={
+            // On the connector's own installation: the list's scope may be
+            // another one, which does not list it.
+            listPath
+              ? tag =>
+                  withInstallationQuery(listPath, installation, { tags: tag })
+              : undefined
+          }
+        />
+      ),
+    });
+  }
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });
   }
@@ -479,34 +555,32 @@ function ConnectorPageContent({
     facts.push({ label: 'Health', value: healthLine(members) });
   }
   if (calls !== undefined) {
-    facts.push({ label: 'Calls this month', value: calls });
+    facts.push({
+      label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
+      value: calls,
+    });
   }
-  const added = addedLine(members);
+  const added = addedAt(members);
   if (added) {
-    facts.push({ label: 'Added', value: added });
+    facts.push({
+      label: 'Added',
+      value: <DateComponent value={added} relative />,
+    });
   }
   // Last, as the agent page's Overview is first: the tab people open least.
   // muster itself has neither facts nor an MCPServer, so no Details.
   const hasDetails = row.kind !== 'core';
   if (hasDetails) {
-    tabs.push({ id: 'details', path: 'details', title: 'Details' });
+    addTab('details', 'Details');
   }
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
     { label: 'Connectors', href: listPath },
-    { label: name },
+    { label: displayName },
   ];
 
-  const toIndex = <Navigate to={`${basePath}${search}`} replace />;
-  // The removed Settings tab's address, kept for links and bookmarks: to the
-  // edit it offered where the wizard can make it, to a family's instances it
-  // listed, else to the connector itself.
-  const settingsTarget =
-    editHref ??
-    (row.kind === 'family'
-      ? `${basePath}/instances${search}`
-      : `${basePath}${search}`);
+  const toIndex = <Navigate to={basePath} replace />;
 
   // The same two controls in the same place for every connector, whatever
   // its sign-in state or session: Edit, disabled with the reason where it
@@ -556,25 +630,32 @@ function ConnectorPageContent({
   return (
     <ConnectorPageTargetProvider target={target}>
       <ShellPage
-        title={name}
+        title={displayName}
         breadcrumbs={breadcrumbs}
-        leading={<ConnectorTile name={name} />}
-        badges={<StatusBadge row={row} />}
-        meta={
-          row.kind === 'core'
-            ? MUSTER_PAGE_DESCRIPTION
-            : representative?.getDescription()
+        leading={
+          <ConnectorLogo
+            name={displayName}
+            icon={representative?.getStatusIcon()}
+            size={56}
+            decorative
+          />
         }
+        badges={
+          <StatusBadge
+            row={row}
+            displayName={displayName}
+            portalOnly={portalOnly}
+          />
+        }
+        meta={connectorMeta(row, representative?.getDescription())}
         description={
           endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined
         }
         actions={editAction}
         menu={menuAction}
         tabs={tabs}
-        tabsSearch={search}
       >
         <Flex direction="column" gap="3">
-          {ssoFailure && <Alert status="danger" description={ssoFailure} />}
           {canSignIn && signIn.error && (
             <Alert status="danger" description={signIn.error} />
           )}
@@ -586,11 +667,9 @@ function ConnectorPageContent({
               index
               element={
                 <ConnectorToolsTab
+                  server={name}
                   installation={installation}
                   tools={tools}
-                  runsAsCaller={
-                    representative ? runsAsCaller(representative) : false
-                  }
                   emptyExplanation={emptyExplanation}
                   sessionGate={sessionGate}
                   signInGate={signInGate}
@@ -616,6 +695,31 @@ function ConnectorPageContent({
                 }
               />
             ))}
+            {hasUsage && (
+              <Route
+                path="usage"
+                element={
+                  <ConnectorUsageTab
+                    row={row}
+                    server={name}
+                    installation={installation}
+                    days={usageDays}
+                    usage={usage}
+                    tools={tools}
+                    ownsTool={target.ownsTool}
+                    sessionGate={
+                      authenticated ? undefined : (
+                        <SessionGate
+                          session={session}
+                          installation={installation}
+                          context="Usage figures need a muster session."
+                        />
+                      )
+                    }
+                  />
+                }
+              />
+            )}
             {usedBy && row.kind !== 'core' && (
               <Route path="used-by" element={usedBy} />
             )}
@@ -643,12 +747,6 @@ function ConnectorPageContent({
                     installation={installation}
                   />
                 }
-              />
-            )}
-            {row.kind !== 'core' && (
-              <Route
-                path="settings"
-                element={<Navigate to={settingsTarget} replace />}
               />
             )}
             <Route path="*" element={toIndex} />
@@ -681,7 +779,7 @@ function ConnectorPageContent({
                 // it, so the removal is acknowledged as the platform's other
                 // deletes are: a toast on the list it returns to.
                 toastApi.post({
-                  title: `Connector "${singular.getName()}" removed`,
+                  title: `Connector "${displayName}" removed`,
                   status: 'success',
                   timeout: TOAST_TIMEOUT_MS,
                 });
@@ -706,39 +804,58 @@ export interface ConnectorPageProps {
 /**
  * One connector's page in the agent-platform shell: Tools (the index), Used
  * by, a family's Instances, Resources and Prompts when it exposes any, and
- * Details with its facts and technical details. `:server` names a server, a server family or
- * muster itself on the installation the section's scope selects.
+ * Details with its facts and technical details. `:server` names a server, a
+ * server family or muster itself on the installation the address names (the
+ * muster providers are pinned to it).
  *
- * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
- * that added the connector, the way agents and skills are edited; the old
- * `settings` tab address redirects there. Where the wizard cannot edit the
- * connector — applied from Git, a family, no muster session, settings the
- * wizard cannot represent — Edit stays in place, disabled, saying why.
+ * Edit opens the connector wizard pre-filled
+ * (`<installation>/<server>/edit`), the flow that added the
+ * connector, the way agents and skills are edited. Where the
+ * wizard cannot edit the connector — applied from Git, a family, no muster
+ * session, settings the wizard cannot represent — Edit stays in place,
+ * disabled, saying why.
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();
+  const { mcpServers } = useMusterInstance();
+  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  // What people read: the display name once the connector is read (a cached
+  // row names it while it is read again), its URL name until then. `key`
+  // stays what links, muster and the URL use.
+  const shownName = useMemo(
+    () =>
+      row ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers)) : key,
+    [row, mcpServers, key],
+  );
   // Above every state the page can be in; the form an agent's page uses.
   return (
     <>
-      <ShellDocumentTitle title={[key, 'Connectors']} />
-      <ConnectorPageBody serverKey={key} usedBy={usedBy} />
+      <ShellDocumentTitle title={[shownName, 'Connectors']} />
+      <ConnectorPageBody
+        serverKey={key}
+        row={row}
+        shownName={shownName}
+        usedBy={usedBy}
+      />
     </>
   );
 }
 
 function ConnectorPageBody({
   serverKey: key,
+  row,
+  shownName,
   usedBy,
-}: ConnectorPageProps & { serverKey: string }) {
+}: ConnectorPageProps & {
+  serverKey: string;
+  row: ServerPageRow | undefined;
+  shownName: string;
+}) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
-  const paths = useConnectorGroupPaths();
-  const { search } = useLocation();
-  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
-  // The sub-tab that lists the connector: known from a cached row (or for
-  // muster) even while loading; otherwise the crumb has no link rather than
-  // one to a sub-tab that does not list it.
-  const listPath = paths.listOf(key, row);
+  const { installation = '' } = useParams();
+  const paths = useConnectorListPaths();
+  const listPath = paths.connectors;
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
@@ -746,16 +863,18 @@ function ConnectorPageBody({
     // (T95). Tools is the one tab every connector has; the rest join it.
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
-        leading={<ConnectorTile name={key} />}
+        // The logo's place held: the letter, then the icon, would flicker.
+        leading={<Skeleton width={56} height={56} />}
         badges={<ShellPageBadgeSkeleton />}
-        tabs={[{ id: 'tools', path: '', title: 'Tools' }]}
-        tabsSearch={search}
+        // Tools with its count's place held, so the tab keeps its width as
+        // the page and then the tools land.
+        tabs={[{ id: 'tools', path: '', title: 'Tools', count: 'loading' }]}
       >
         <LoadingIndicator label="Reading the environment's connectors…" />
       </ShellPage>
@@ -764,16 +883,21 @@ function ConnectorPageBody({
   if (!activeInstallation) {
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
       >
         <EmptyStateCard
-          title="No muster environment"
-          description="None of this portal's environments runs muster."
+          title="Environment not available"
+          description={`Connectors on ${installation} cannot be read here. It may be turned off under Cluster access, or run no muster.`}
+          actions={
+            paths.connectors ? (
+              <Link href={paths.connectors}>Back to connectors</Link>
+            ) : undefined
+          }
         />
       </ShellPage>
     );
@@ -804,6 +928,7 @@ function ConnectorPageBody({
     <ConnectorPageContent
       key={`${activeInstallation}/${key}`}
       row={row}
+      displayName={shownName}
       servers={mcpServers}
       installation={activeInstallation}
       usedBy={usedBy}

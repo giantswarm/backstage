@@ -6,6 +6,7 @@ import {
   expectWizardStep,
   fillAgentDetails,
   open,
+  reloadAccepting,
   test,
 } from './fixtures';
 
@@ -28,7 +29,7 @@ async function continueFrom(page: Page, step: string) {
 
 test('the agent wizard walks to Review at 375px', async ({ admin }) => {
   test.setTimeout(4 * 60_000);
-  await open(admin, '/agent-platform/agents/new');
+  await open(admin, '/customize/agents/new');
 
   // --- Details ------------------------------------------------------------
   await expectWizardStep(admin, 'Details');
@@ -39,6 +40,15 @@ test('the agent wizard walks to Review at 375px', async ({ admin }) => {
     instructions: 'You are a test agent.',
   });
   await expectNoHorizontalScroll(admin, 'Details');
+  // A reload brings the input back with the draft note, which fits the phone
+  // too (giantswarm/giantswarm#38775).
+  await reloadAccepting(admin);
+  await expectWizardStep(admin, 'Details');
+  await expect(
+    admin.getByRole('textbox', { name: 'Name', exact: true }),
+  ).toHaveValue(NAME);
+  await expect(admin.getByText('Your draft is back')).toBeVisible();
+  await expectNoHorizontalScroll(admin, 'Details with the draft note');
   await continueFrom(admin, 'Details');
 
   // --- Skills -------------------------------------------------------------

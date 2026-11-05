@@ -15,7 +15,7 @@ import {
   KubeDeploymentCreated,
   KubeStatefulsetCreated,
   KubeDaemonsetCreated,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { mimirQueryRetry } from './mimirRetry';
 import { sanitizePromQLValue } from './promql';
 import { useMimirInstallations } from './useMimirInstallations';

@@ -5,6 +5,7 @@ import {
   agentManagerToolName,
   classifyAgentManagerError,
   type AgentManagerAgent,
+  type AgentManagerEgressPolicy,
   type AgentManagerInfo,
   type AgentManagerModelConfig,
   type AgentManagerTool,
@@ -21,6 +22,16 @@ import {
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
+
+/**
+ * A session's toolchains for `start_session`, named only when the person
+ * changed the agent's defaults: none is said with `noToolchains`, since an
+ * empty list means the defaults.
+ */
+function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
+  if (!toolchains) return {};
+  return toolchains.length > 0 ? { toolchains } : { noToolchains: true };
+}
 
 /**
  * agent-manager's tools on one installation, called as the signed-in person.
@@ -124,6 +135,20 @@ export class AgentManagerClient {
   }
 
   /**
+   * The EgressPolicies of a namespace, as the caller reads them — the names
+   * `egressPolicyRefs` may take — each origin with its credential header's
+   * name, never the Secret.
+   */
+  async listEgressPolicies(
+    namespace: string,
+  ): Promise<AgentManagerEgressPolicy[]> {
+    const result = await this.call<{
+      egressPolicies?: AgentManagerEgressPolicy[];
+    }>(AGENT_MANAGER_TOOLS.listEgressPolicies, { namespace });
+    return result.egressPolicies ?? [];
+  }
+
+  /**
    * The dry run of an update: the values and manifests agent-manager would
    * write for `update` — with `refreshSkills`, every git skill re-pinned to its
    * default-branch head — and every violation. Nothing is written. `commit`
@@ -224,9 +249,12 @@ export class AgentManagerClient {
         ...(request.message ? { message: request.message } : {}),
         requestId: request.requestId,
         ...(request.sessionName ? { sessionName: request.sessionName } : {}),
+        // Without a grant the session starts without a workspace, said
+        // explicitly: a call naming neither starts in the agent's default.
         ...(request.workspaceGrant
           ? { workspaceGrant: request.workspaceGrant }
-          : {}),
+          : { noWorkspace: true }),
+        ...toolchainArgs(request.toolchains),
       },
     );
     // The id is where the person is taken next: an answer without one has

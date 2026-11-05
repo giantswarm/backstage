@@ -4,6 +4,9 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  CodeBlock,
+  CommitSha,
+  FileView,
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -12,13 +15,14 @@ import {
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { useHarnessChoices } from '../../hooks/useHarnessChoices';
+import { supportsTags } from '../../lib/agentManager';
 import {
   useCreateAgent,
   type CreateAgentFailure,
 } from '../../hooks/useCreateAgent';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
@@ -27,9 +31,14 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
-import { harnessTitle } from '../../lib/harnesses';
+import {
+  harnessTitle,
+  platformRuntimeLine,
+  RUNTIME_LABEL,
+} from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
-import { shortCommit } from '../../lib/skills';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
+import { pluginEntryOf, pluginSummary } from '../../lib/plugins';
 import {
   buildCatalogue,
   declaredToolset,
@@ -38,9 +47,8 @@ import {
 } from '../../lib/toolset';
 import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { useRuntimeChoices } from '../HarnessPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { CodeBlock } from '../CodeBlock';
-import { HarnessLimits } from '../HarnessLimits';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { EditAgentReview } from './EditAgentReview';
@@ -49,13 +57,16 @@ import {
   Notes,
   PlainRow,
   SectionTitle,
+  SignInToolChange,
   SummaryItem,
   toolsetSummaryLabel,
   UnderlyingModelItem,
   useReviewStyles,
-  Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
+import { ValidationRefusal } from '../ValidationRefusal';
 
 /** The headline for a refused write, by agent-manager's code. */
 function refusalTitle(code: CreateAgentFailure['code']): string {
@@ -82,7 +93,8 @@ function CreateAgentReview() {
   const navigate = useNavigate();
   const { details: newAgentLink, tools: toolsLink } = useAgentWizardLinks();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
-  const { state, isComplete, isToolsetValid } = useNewAgentForm();
+  const { state, isComplete, isToolsetValid, discardDraft, clearSavedDraft } =
+    useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
   // step doesn't exist. Cached by the time this page renders.
   const { hasRepositories } = useSkillCatalog();
@@ -91,30 +103,29 @@ function CreateAgentReview() {
   // person, from the same cached queries — so what is reviewed is exactly what
   // is applied, and the "selected without a sign-in" flag is repeated here.
   const toolCatalogue = useMusterToolCatalogue(state.installation);
-  const { servers } = useMusterServers(state.installation);
-  const resolution = useToolsetResolution(state.installation, state.toolset);
+  const { servers, labels } = useMusterServers(state.installation);
+  // The selection with the sign-in tool the Tools step adds.
+  const signIn = useSignInTool(
+    state.installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const toolset = signIn.toolset;
+  const resolution = useToolsetResolution(state.installation, toolset);
   const unsignedServers = useMemo(
     () =>
       unsignedServerSelectors(
-        state.toolset,
+        toolset,
         buildCatalogue(
           toolCatalogue.tools,
           servers,
           toolCatalogue.serversRequiringAuth,
         ),
       ),
-    [
-      state.toolset,
-      toolCatalogue.tools,
-      servers,
-      toolCatalogue.serversRequiringAuth,
-    ],
+    [toolset, toolCatalogue.tools, servers, toolCatalogue.serversRequiringAuth],
   );
   // What the release declares: the selection, or `preset:none` for none.
-  const declared = useMemo(
-    () => declaredToolset(state.toolset),
-    [state.toolset],
-  );
+  const declared = useMemo(() => declaredToolset(toolset), [toolset]);
   const shape = toolsetShape(declared);
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
@@ -129,29 +140,32 @@ function CreateAgentReview() {
   // re-requested on every re-render — this page re-renders as the queries below
   // settle and as the deploy advances. Computed before the completeness guard
   // so the hook order stays stable (only rendered when complete).
+  const { info, isLoading: isInfoLoading } = useAgentManagerInfo(
+    state.installation,
+  );
+  const tagsSupported = supportsTags(info);
   const spec = useMemo(
     () =>
       agentSpecOf(state, {
         toolset: declared,
         iconUrl: buildIconUrl(state.installation, state.slug),
+        tags: tagsSupported,
       }),
-    [state, declared, buildIconUrl],
+    [state, declared, buildIconUrl, tagsSupported],
   );
   const namespace = spec.namespace;
 
-  const { info } = useAgentManagerInfo(state.installation);
-  const { choices, platformChoice } = useHarnessChoices(
-    state.installation,
-    state.modelConfigNamespace,
-  );
-  // As listed now, so the limits match what the picker step shows.
-  const runningHarness = state.harness
-    ? (choices.find(choice => choice.name === state.harness?.name) ??
-      state.harness)
-    : platformChoice;
+  // The platform Harness the runtime field shows, for its summary row.
+  const { platformChoice } = useRuntimeChoices();
+  // The Harness a refusal names, by the title the runtime field shows.
+  const formRuntime = useFormHarnessRuntime();
+  // Not before the sign-in tool is decided, nor before agent-manager says
+  // whether it takes tags: the spec would differ from what Create sends.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid ? spec : undefined,
+    isComplete && isToolsetValid && !signIn.isLoading && !isInfoLoading
+      ? spec
+      : undefined,
   );
   const creation = useCreateAgent(state.installation);
   const [commitResult, setCommitResult] = useState<
@@ -162,7 +176,10 @@ function CreateAgentReview() {
   const violations = dryRun?.errors ?? [];
   const notes = dryRun?.notes ?? [];
   const canWrite =
-    Boolean(dryRun) && violations.length === 0 && !validation.failure;
+    !signIn.isLoading &&
+    Boolean(dryRun) &&
+    violations.length === 0 &&
+    !validation.failure;
   const isBusy = creation.isDeploying || creation.isCommitting;
   // The button shows only when agent-manager reports the capability that lands
   // the manifests as a pull request (giantswarm/agent-manager#24).
@@ -196,6 +213,13 @@ function CreateAgentReview() {
           },
         },
       });
+      // Created: the draft has done its job, and the next agent starts
+      // empty.
+      discardDraft();
+    } else {
+      // Nowhere to go: the page stays, with the form under the outcome, and
+      // only the kept draft goes.
+      clearSavedDraft();
     }
   }, [
     creation,
@@ -204,17 +228,27 @@ function CreateAgentReview() {
     state.installation,
     namespace,
     navigate,
+    discardDraft,
+    clearSavedDraft,
   ]);
 
   const onCommit = useCallback(async () => {
     setCommitResult(undefined);
     creation.reset();
+    let result;
     try {
-      setCommitResult(await creation.commit(spec));
+      result = await creation.commit(spec);
     } catch {
       // Left to `creation.failure`.
+      return;
     }
-  }, [creation, spec]);
+    setCommitResult(result);
+    // The agent is in the pull request now (what `isProposed` says too); the
+    // page still shows the form and the outcome, so only the kept draft goes.
+    if (result.commit !== undefined) {
+      clearSavedDraft();
+    }
+  }, [creation, spec, clearSavedDraft]);
 
   const createLabel = creation.isDeploying ? 'Creating…' : 'Create agent';
   const proposeLabel = creation.isCommitting
@@ -307,22 +341,20 @@ function CreateAgentReview() {
           {state.description.trim() && (
             <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
+          {spec.tags && (
+            <PlainRow label="Tags">{spec.tags.join(', ')}</PlainRow>
+          )}
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          <PlainRow label="Runtime">
+          <PlainRow label={RUNTIME_LABEL}>
             {state.harness
               ? harnessTitle(state.harness)
-              : 'Standard (platform default)'}
+              : platformRuntimeLine(platformChoice)}
           </PlainRow>
-          {runningHarness?.runtime === 'claude' && (
-            <PlainRow label="Limits">
-              <HarnessLimits
-                limits={runningHarness.limits}
-                harnessName={runningHarness.name}
-                showWhenUnset
-                showTitle={false}
-              />
+          {state.defaultWorkspace && (
+            <PlainRow label="Default workspace">
+              {state.defaultWorkspace}
             </PlainRow>
           )}
           {hasRepositories && (
@@ -332,8 +364,22 @@ function CreateAgentReview() {
                 : state.selectedSkills.map(skill => skill.name).join(', ')}
             </PlainRow>
           )}
+          {state.selectedPlugins.length > 0 && (
+            <PlainRow label="Plugins">
+              {state.selectedPlugins
+                .map(pick => pluginSummary(pluginEntryOf(pick)))
+                .join('; ')}
+            </PlainRow>
+          )}
           <PlainRow label="Tools">
-            {toolsetSummaryLabel(shape, declared)}
+            {toolsetSummaryLabel(
+              shape,
+              declared,
+              connector => labels.get(connector) ?? connector,
+            )}
+            {signIn.status === 'added' && (
+              <SignInToolChange change="added" signIn={signIn} />
+            )}
           </PlainRow>
         </dl>
 
@@ -370,7 +416,13 @@ function CreateAgentReview() {
             description={validation.failure.message}
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <ValidationRefusal
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.createTitle}
+            harness={formRuntime.harness}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
 
         {creation.failure?.kind === 'not-connected' && (
@@ -491,6 +543,15 @@ function CreateAgentReview() {
                   <span className={classes.code}>{declared.join(', ')}</span>
                 </Text>
               </SummaryItem>
+              {state.egressPolicyRefs.length > 0 && (
+                <SummaryItem label="EgressPolicies">
+                  <PickedEgressPolicies
+                    installation={state.installation}
+                    namespace={state.modelConfigNamespace}
+                    names={state.egressPolicyRefs}
+                  />
+                </SummaryItem>
+              )}
               {egressOrigins.length > 0 && (
                 <SummaryItem label="Extra egress">
                   <Text variant="body-small">
@@ -510,7 +571,22 @@ function CreateAgentReview() {
                         {index > 0 ? ', ' : ''}
                         {skill.name}{' '}
                         <span className={classes.code}>
-                          @{shortCommit(skill.commit)}
+                          @<CommitSha value={skill.commit} />
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+              {state.selectedPlugins.length > 0 && (
+                <SummaryItem label="Plugin pins">
+                  <Text variant="body-small">
+                    {state.selectedPlugins.map(({ plugin }, index) => (
+                      <span key={`${plugin.repoUrl}#${plugin.path}`}>
+                        {index > 0 ? ', ' : ''}
+                        {plugin.name}{' '}
+                        <span className={classes.code}>
+                          @<CommitSha value={plugin.commit} />
                         </span>
                       </span>
                     ))}
@@ -567,12 +643,12 @@ function CreateAgentReview() {
                   }
                 />
                 <div className={classes.files}>
-                  <CodeBlock
+                  <FileView
                     filename={`${spec.name}.yaml`}
                     content={dryRun.manifests.helmRelease}
                     language="yaml"
                   />
-                  <CodeBlock
+                  <FileView
                     filename="agent.yaml"
                     content={dryRun.manifests.ociRepository}
                     language="yaml"
@@ -597,12 +673,12 @@ function CreateAgentReview() {
                     copy the resources above, or save the composed values and
                     run the command once against the cluster.
                   </Text>
-                  <CodeBlock
+                  <FileView
                     filename={`${spec.name}-values.yaml`}
                     content={valuesYaml}
                     language="yaml"
                   />
-                  <CodeBlock content={helmInstallCommand(spec, chart)} />
+                  <CodeBlock text={helmInstallCommand(spec, chart)} />
                 </div>
               </details>
             )}

@@ -1,6 +1,8 @@
 import type { AgentSkillEntry, AgentSpec } from './agentManager';
 import type { DiscoveredSkill } from './skills';
 import { parseEgressText } from './egress';
+import { pluginEntryOf } from './plugins';
+import { qualifiedDefaultWorkspace } from './defaultWorkspace';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -28,6 +30,8 @@ export function agentSpecOf(
     toolset: string[];
     /** The canonical avatar URL for the technical name, when resolvable. */
     iconUrl?: string;
+    /** Whether agent-manager takes `tags` (`get_info`'s `tags`). */
+    tags?: boolean;
   },
 ): AgentSpec {
   const spec: AgentSpec = {
@@ -39,6 +43,9 @@ export function agentSpecOf(
   };
   if (state.description.trim()) {
     spec.description = state.description;
+  }
+  if (options.tags && state.tags.length > 0) {
+    spec.tags = state.tags;
   }
   if (state.systemMessage.trim()) {
     spec.systemMessage = state.systemMessage;
@@ -52,9 +59,21 @@ export function agentSpecOf(
   if (state.selectedSkills.length > 0) {
     spec.skills = state.selectedSkills.map(skillEntryOf);
   }
+  if (state.selectedPlugins.length > 0) {
+    spec.plugins = state.selectedPlugins.map(pluginEntryOf);
+  }
   const egress = parseEgressText(state.egressText);
   if (egress.length > 0) {
     spec.egress = egress;
+  }
+  if (state.egressPolicyRefs.length > 0) {
+    spec.egressPolicyRefs = [...state.egressPolicyRefs];
+  }
+  if (state.defaultWorkspace) {
+    spec.defaultWorkspace = qualifiedDefaultWorkspace(
+      spec.namespace,
+      state.defaultWorkspace,
+    );
   }
   return spec;
 }

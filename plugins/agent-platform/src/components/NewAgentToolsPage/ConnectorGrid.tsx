@@ -10,11 +10,11 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   matchesQuery,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { countNoun, type ServerBucket } from '../../lib/toolset';
+import { bucketLabel, countNoun, type ServerBucket } from '../../lib/toolset';
 import {
   type ConnectorChoice,
   connectorState,
@@ -89,11 +89,11 @@ function ConnectorCard({
   const classes = useStyles();
   const { choice, picked } = connectorState(bucket, selected);
   const readOnlyCount = readOnlySelectors(bucket).length;
-  const name = bucket.name;
+  const name = bucketLabel(bucket);
   return (
     <div
       role="group"
-      aria-label={`Connector ${bucket.name}`}
+      aria-label={`Connector ${name}`}
       className={`${classes.card} ${choice === 'none' ? '' : classes.chosen}`}
     >
       <Flex direction="column" gap="0" className={classes.name}>
@@ -103,7 +103,7 @@ function ConnectorCard({
         </Text>
       </Flex>
       <ToggleButtonGroup
-        aria-label={`Access to ${bucket.name}`}
+        aria-label={`Access to ${name}`}
         selectionMode="single"
         isDisabled={disabled}
         selectedKeys={
@@ -141,7 +141,7 @@ function ConnectorCard({
  * *Read-only* picks the tools it marks read-only today, *All* the whole
  * connector (`server:x`, so tools it adds later too). Tools picked one by one
  * in the catalogue show as a count, neither choice checked. A page at a time,
- * with a search past {@link SEARCH_MIN} connectors.
+ * with a search (names and tags) from `SEARCH_MIN` connectors on.
  */
 export function ConnectorGrid({
   connectors,
@@ -161,12 +161,17 @@ export function ConnectorGrid({
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
   // Kept while a search is in force, so it can still be cleared.
-  const isSearchable = connectors.length > SEARCH_MIN || trimmed !== '';
+  const isSearchable = isSearchableList(connectors.length, trimmed !== '');
   const matching = useMemo(
     () =>
       trimmed === ''
         ? connectors
-        : connectors.filter(bucket => matchesQuery(trimmed, bucket.name)),
+        : connectors.filter(
+            bucket =>
+              matchesQuery(trimmed, bucket.name) ||
+              matchesQuery(trimmed, bucketLabel(bucket)) ||
+              (bucket.tags ?? []).some(tag => matchesQuery(trimmed, tag)),
+          ),
     [connectors, trimmed],
   );
 

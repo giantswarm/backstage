@@ -10,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { workflowsRouteRef } from '../../routes';
+import { fleetImageScanWorkflow } from '../../lib/__fixtures__/fleetImageScan';
 import { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from '../../lib/k8s';
 import { CustomizeWorkflowsPanel, runsLabel } from './CustomizeWorkflowsPanel';
 
@@ -47,6 +48,7 @@ function makeWorkflow(
     description?: string;
     category?: string;
     gitops?: boolean;
+    tags?: string;
   } = {},
 ) {
   return new MusterWorkflow(
@@ -55,6 +57,9 @@ function makeWorkflow(
       kind: 'Workflow',
       metadata: {
         name,
+        ...(options.tags
+          ? { annotations: { 'ui.giantswarm.io/tags': options.tags } }
+          : {}),
         labels: {
           ...(options.category
             ? { [WORKFLOW_CATEGORY_LABEL]: options.category }
@@ -174,7 +179,7 @@ function renderPanel(
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
-      mountedRoutes: { '/agent-platform/workflows': workflowsRouteRef },
+      mountedRoutes: { '/customize/workflows': workflowsRouteRef },
     },
   );
 }
@@ -195,6 +200,16 @@ describe('CustomizeWorkflowsPanel', () => {
     api.filterTools.mockClear();
   });
 
+  it('counts a nested workflow’s steps at every depth', async () => {
+    mockWorkflows = [fleetImageScanWorkflow()];
+    await renderPanel();
+
+    const fleet = screen.getByRole('row', { name: /fleet-image-scan/ });
+    expect(
+      within(fleet).getByText('8 tool steps in 2 nested loops'),
+    ).toBeInTheDocument();
+  });
+
   it('lists the workflows with their steps and runs, opening each', async () => {
     await renderPanel();
 
@@ -208,15 +223,12 @@ describe('CustomizeWorkflowsPanel', () => {
     ).toBeInTheDocument();
     expect(report).toHaveAttribute(
       'data-href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
+      '/customize/workflows/gazelle/ticket-report',
     );
     // The name is a real link too (M21): keyboard, new tab.
     expect(
       within(report).getByRole('link', { name: 'ticket-report' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/workflows/gazelle/ticket-report');
 
     const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(within(check).getByText('1 step')).toBeInTheDocument();
@@ -233,15 +245,22 @@ describe('CustomizeWorkflowsPanel', () => {
 
     const report = screen.getByRole('row', { name: /ticket-report/ });
     expect(within(report).getByText('support')).toBeInTheDocument();
-    expect(await within(report).findByText('Only reads')).toBeInTheDocument();
+    expect(await within(report).findByText('Reads')).toBeInTheDocument();
+    // The tool's words, with what they mean for a workflow's steps.
+    expect(
+      within(report).getByText('Reads').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('Every step only reads.');
     expect(within(report).getByText('GitOps')).toBeInTheDocument();
 
     // Without a derived readOnlyHint the workflow can change things — the
     // honest MCP default, never presented as harmless.
     const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(
-      await within(check).findByText('Can change things'),
+      await within(check).findByText('Changes things'),
     ).toBeInTheDocument();
+    expect(
+      within(check).getByText('Changes things').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('At least one step can change things.');
     expect(within(check).getByText('Manually added')).toBeInTheDocument();
   });
 
@@ -291,8 +310,8 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(api.listExecutions).not.toHaveBeenCalled();
     expect(api.filterTools).not.toHaveBeenCalled();
     // No badge is claimed while the hint cannot be read.
-    expect(screen.queryByText('Only reads')).toBeNull();
-    expect(screen.queryByText('Can change things')).toBeNull();
+    expect(screen.queryByText('Reads')).toBeNull();
+    expect(screen.queryByText('Changes things')).toBeNull();
   });
 
   it('asks for no session while one is connected', async () => {
@@ -315,6 +334,46 @@ describe('CustomizeWorkflowsPanel', () => {
 
     expect(screen.getByText('ticket-report')).toBeInTheDocument();
     expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('finds workflows by tag, and shows the category beside the tags', async () => {
+    mockWorkflows = [
+      makeWorkflow('ticket-report', 4, {
+        category: 'support',
+        tags: 'weekly,reports',
+      }),
+      makeWorkflow('upgrade-check', 1),
+    ];
+    await renderPanel('weekly');
+
+    const report = screen.getByRole('row', { name: /ticket-report/ });
+    expect(within(report).getByText('support')).toBeInTheDocument();
+    expect(
+      within(within(report).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['weekly', 'reports']);
+    expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('filters by tags, even without a muster session', async () => {
+    mockAuthenticated = false;
+    mockWorkflows = [
+      makeWorkflow('alpha', 1, { tags: 'ops' }),
+      makeWorkflow('bravo', 1, { tags: 'ops,billing' }),
+      makeWorkflow('charlie', 1),
+    ];
+    await renderPanel();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by tags/, hidden: true }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'billing 1' }),
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getAllByRole('row').slice(1)).toHaveLength(1);
+    expect(screen.getByRole('row', { name: /bravo/ })).toBeInTheDocument();
   });
 
   it('shows three workflows plainly: no reveal control, no pagination footer', async () => {
@@ -403,11 +462,8 @@ describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
     const report = itemOf('ticket-report');
     expect(
       within(report).getByRole('link', { name: 'ticket-report' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
-    );
-    expect(await within(report).findByText('Only reads')).toBeInTheDocument();
+    ).toHaveAttribute('href', '/customize/workflows/gazelle/ticket-report');
+    expect(await within(report).findByText('Reads')).toBeInTheDocument();
     expect(within(report).getByText('support')).toBeInTheDocument();
     expect(within(report).getByText('4 steps')).toBeInTheDocument();
     expect(
@@ -420,7 +476,7 @@ describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
 
     const check = itemOf('upgrade-check');
     expect(
-      await within(check).findByText('Can change things'),
+      await within(check).findByText('Changes things'),
     ).toBeInTheDocument();
     expect(await within(check).findByText('No runs yet')).toBeInTheDocument();
     expect(within(check).getByText('Manually added')).toBeInTheDocument();
@@ -521,7 +577,7 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
     api.filterTools.mockClear();
   });
 
-  it('offers a one-option dropdown over three workflows whose last runs all went the same way', async () => {
+  it('offers no last-run dropdown over three workflows whose last runs all went the same way', async () => {
     mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
       makeWorkflow(name, 2),
     );
@@ -540,7 +596,9 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
       }),
     );
     expect(rows()).toHaveLength(3);
-    expect(await lastRunOptions()).toEqual(['Succeeded 3']);
+    expect(
+      screen.queryByRole('button', { name: /Filter by last run/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters three workflows by their last run, the newest run deciding', async () => {

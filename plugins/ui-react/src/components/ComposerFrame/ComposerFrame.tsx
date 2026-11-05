@@ -74,6 +74,31 @@ const useStyles = makeStyles({
     opacity: 0.7,
     cursor: 'not-allowed',
   },
+  // Something droppable is over the box: a dashed accent edge, and the label
+  // over the field, which says what letting go does.
+  dropTarget: {
+    position: 'relative',
+    borderStyle: 'dashed',
+    borderColor: 'var(--bui-ring)',
+    '&&': {
+      borderColor: 'var(--bui-ring)',
+    },
+  },
+  dropLabel: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 'var(--bui-space-2)',
+    borderRadius: 'inherit',
+    backgroundColor: 'var(--bui-bg-neutral-1)',
+    opacity: 0.94,
+    color: 'var(--bui-fg-primary)',
+    fontWeight: 500,
+    textAlign: 'center',
+    pointerEvents: 'none',
+  },
   controls: {
     display: 'flex',
     alignItems: 'center',
@@ -97,6 +122,19 @@ const useStyles = makeStyles({
 export interface ComposerFrameProps {
   /** The text field — a bui `TextAreaField`, whose own chrome the frame removes. */
   input: ReactNode;
+  /**
+   * Above the text field, inside the box: what the message carries besides
+   * its text, e.g. a `ComposerAttachmentList`.
+   */
+  attachments?: ReactNode;
+  /**
+   * Something the caller accepts is being dragged over the box: the edge turns
+   * dashed and {@link dropLabel} covers the field. The caller owns the drag
+   * events; this is how the box shows them.
+   */
+  isDropTarget?: boolean;
+  /** What letting go does, shown while {@link isDropTarget}. */
+  dropLabel?: string;
   /** Bottom-left of the box, e.g. a picker for where the message goes. */
   leading?: ReactNode;
   /** Bottom-right of the box: the submit button, or what replaces it. */
@@ -118,6 +156,9 @@ export interface ComposerFrameProps {
  */
 export function ComposerFrame({
   input,
+  attachments,
+  isDropTarget = false,
+  dropLabel,
   leading,
   trailing,
   minRows = 2,
@@ -153,16 +194,26 @@ export function ComposerFrame({
       className={classNames(
         classes.root,
         isDisabled && classes.disabled,
+        isDropTarget && classes.dropTarget,
         className,
       )}
       onMouseDown={focusInput}
       data-testid={testId}
+      data-drop-target={isDropTarget || undefined}
     >
+      {attachments}
       {input}
       <div ref={controlsRef} className={classes.controls}>
         {leading && <div className={classes.leading}>{leading}</div>}
         <div className={classes.trailing}>{trailing}</div>
       </div>
+      {isDropTarget && dropLabel && (
+        // Shown, not announced: a drag is a pointer act, and what was dropped
+        // is announced by whatever the caller does with it.
+        <div className={classes.dropLabel} aria-hidden="true">
+          {dropLabel}
+        </div>
+      )}
     </Box>
   );
 }

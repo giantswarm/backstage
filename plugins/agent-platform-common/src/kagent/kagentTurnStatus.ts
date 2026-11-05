@@ -86,19 +86,19 @@ export function historyWithPendingPrompt(
 }
 
 /**
- * The usage on an ended turn's status message, unless `seen` already holds its
- * id, and records the id in `seen` either way.
+ * An ended turn's status message, when it is the agent's and `seen` does not
+ * already hold its id; records the id in `seen` either way.
  *
  * That message is how the turn ended, not a reply, so `toWireTask` leaves it
- * off history. The claude Harness reports what a failed turn spent on it and
- * nowhere else. The id is recorded whether or not the message carries usage,
- * so a later task repeating it in history neither renders it again nor counts
- * it again.
+ * off history. The claude Harness reports what a turn spent on it and nowhere
+ * else. The id is recorded whether or not the message carries usage, so a
+ * later task repeating it in history neither renders it again nor counts it
+ * again. The one gate for reading anything off it.
  */
-export function claimEndedTurnUsage(
+export function claimEndedTurnMessage(
   status: TurnStatus | undefined,
   seen: Set<string>,
-): TokenUsage | undefined {
+): A2aMessageWire | undefined {
   const message = status?.ended ? status.message : undefined;
   if (!message) {
     return undefined;
@@ -110,5 +110,13 @@ export function claimEndedTurnUsage(
     }
     seen.add(messageId);
   }
-  return message.role === 'user' ? undefined : readTokenUsage(message.metadata);
+  return message.role === 'user' ? undefined : message;
+}
+
+/** The usage on the message {@link claimEndedTurnMessage} claims. */
+export function claimEndedTurnUsage(
+  status: TurnStatus | undefined,
+  seen: Set<string>,
+): TokenUsage | undefined {
+  return readTokenUsage(claimEndedTurnMessage(status, seen)?.metadata);
 }

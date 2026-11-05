@@ -4,7 +4,10 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PageHeaderActionsProvider,
+  ShellScopeProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -13,6 +16,7 @@ import {
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, workflowsRouteRef } from '../../routes';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
+import { fleetImageScanWorkflow } from '../../lib/__fixtures__/fleetImageScan';
 import { DEFAULT_DETAILS_HEIGHT } from './WorkflowFlowCanvas';
 import { WorkflowPage } from './WorkflowPage';
 import { useWorkflowPageTarget } from './workflowPageTarget';
@@ -36,26 +40,58 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: (...args: unknown[]) => mockUseGitOpsSource(...args),
 }));
 
+// Watched, not replaced: the manifest is serialized only once it is opened.
+const mockToKubectlYaml = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
+  const actual = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
+  return {
+    ...actual,
+    toKubectlYaml: (object: never) => {
+      mockToKubectlYaml(object);
+      return actual.toKubectlYaml(object);
+    },
+  };
+});
+
 let mockWorkflows: MusterWorkflow[] = [];
+function mcpServer(
+  name: string,
+  family?: string,
+  displayName?: string,
+): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name,
+        namespace: 'muster',
+        ...(displayName
+          ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
+          : {}),
+      },
+      spec: {
+        type: 'streamable-http',
+        ...(family ? { family: { name: family, instanceArg: 'mc' } } : {}),
+      },
+      status: { state: 'Connected' },
+    } as never,
+    'gazelle',
+  );
+}
+let mockServers: MCPServer[] = [mcpServer('kubernetes')];
 let mockAuthenticated = true;
+let mockRequiresAuth = true;
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
     isLoadingInstallations: false,
     activeInstallation: 'gazelle',
-    activeInstallationInfo: { name: 'gazelle', requiresAuth: true },
-    mcpServers: [
-      new MCPServer(
-        {
-          apiVersion: 'muster.giantswarm.io/v1alpha1',
-          kind: 'MCPServer',
-          metadata: { name: 'kubernetes', namespace: 'muster' },
-          spec: { type: 'streamable-http' },
-          status: { state: 'Connected' },
-        } as never,
-        'gazelle',
-      ),
-    ],
+    activeInstallationInfo: { name: 'gazelle', requiresAuth: mockRequiresAuth },
+    installationInfos: [{ name: 'gazelle', requiresAuth: mockRequiresAuth }],
+    mcpServers: mockServers,
     workflows: mockWorkflows,
     isLoading: false,
   }),
@@ -202,7 +238,14 @@ function makeApi() {
       name,
       description: 'Runs the workflow.',
       annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { app: { type: 'string', description: 'The app name' } },
+        required: ['app'],
+      },
     })),
+    callTool: jest.fn(async () => ({ deployed: 'shop' })),
+    getAuthStatus: jest.fn(async () => ({ servers: [] })),
     listExecutions: jest.fn(async (options: { status?: string }) => {
       // Per-status totals: muster's own counts, read off a one-row page.
       if (options.status) {
@@ -235,9 +278,11 @@ function makeApi() {
     getExecution: jest.fn(async (id: string) =>
       id === 'run-1' ? COMPLETED_RUN_DETAIL : FAILED_RUN_DETAIL,
     ),
+    // The installation's tool catalogue: the steps' tools and the
+    // workflow's own, with muster's derived read-only hint.
     filterTools: jest.fn(async () => ({
-      total: 2,
-      filtered_count: 2,
+      total: 3,
+      filtered_count: 3,
       truncated: false,
       tools: [
         {
@@ -245,7 +290,12 @@ function makeApi() {
           annotations: { readOnlyHint: true },
         },
         { name: 'x_kubernetes_apply', annotations: { readOnlyHint: false } },
-      ],
+        {
+          name: 'workflow_deploy',
+          kind: 'workflow',
+          annotations: { readOnlyHint: true },
+        },
+      ] as Array<Record<string, unknown>>,
     })),
     getWorkflowStats: jest.fn(async () => ({
       workflow_name: 'deploy',
@@ -255,13 +305,9 @@ function makeApi() {
       failed: 1,
       inprogress: 0,
       success_rate: 0.5,
-      avg_duration_ms: 10000,
-      max_duration_ms: 18000,
+      avg_duration_ms: 300_000,
+      max_duration_ms: 330_000,
       per_day: [],
-    })),
-    getWorkflow: jest.fn(async () => ({
-      workflow: { name: 'deploy', steps: [] },
-      yaml: 'name: deploy\nsteps: []\n',
     })),
   };
 }
@@ -279,30 +325,33 @@ async function renderAt(
   const page = (
     <Routes>
       <Route
-        path="/agent-platform/workflows/:name/*"
+        path="/customize/workflows/:installation/:name/*"
         element={<WorkflowPage editAction={editAction} />}
       />
     </Routes>
   );
   await renderInTestApp(
-    <QueryClientProvider client={queryClient}>
-      <PageHeaderActionsProvider>
-        {inShell ? (
-          <>
-            <nav aria-label="Main">
-              <a href="/agent-platform/sessions">Sessions</a>
-            </nav>
-            <div id="content">{page}</div>
-          </>
-        ) : (
-          page
-        )}
-      </PageHeaderActionsProvider>
-    </QueryClientProvider>,
+    // The shell mounts the scope around its pages, as the app does.
+    <ShellScopeProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>
+          {inShell ? (
+            <>
+              <nav aria-label="Main">
+                <a href="/sessions">Sessions</a>
+              </nav>
+              <div id="content">{page}</div>
+            </>
+          ) : (
+            page
+          )}
+        </PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </ShellScopeProvider>,
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/workflows': workflowsRouteRef,
+        '/customize/workflows': workflowsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
       apis: [[musterApiRef, api as never]],
@@ -311,11 +360,43 @@ async function renderAt(
   return api;
 }
 
-const BASE = '/agent-platform/workflows';
+const BASE = '/customize/workflows/gazelle';
+
+// The formatters read the reader's locale; the assertions below are English,
+// so the default locale is pinned rather than left to the machine's LANG.
+const pinnedLocale = 'en-US';
+let localeSpies: jest.SpyInstance[] = [];
+
+beforeAll(() => {
+  const pin = (proto: any, method: string) => {
+    const original = proto[method];
+    localeSpies.push(
+      jest.spyOn(proto, method).mockImplementation(function pinned(
+        this: unknown,
+        locale?: any,
+        ...rest: any[]
+      ) {
+        return original.call(this, locale ?? pinnedLocale, ...rest);
+      }),
+    );
+  };
+  pin(Date.prototype, 'toLocaleDateString');
+  pin(Date.prototype, 'toLocaleString');
+  pin(Number.prototype, 'toLocaleString');
+});
+
+afterAll(() => {
+  localeSpies.forEach(spy => spy.mockRestore());
+  localeSpies = [];
+});
 
 beforeEach(() => {
   mockWorkflows = [DEPLOY];
+  mockServers = [mcpServer('kubernetes')];
   mockAuthenticated = true;
+  mockRequiresAuth = true;
+  // Run it remembers a run's inputs per installation and tool.
+  window.localStorage.clear();
   mockUseGitOpsSource.mockReset();
   mockUseGitOpsSource.mockReturnValue({
     inGit: false,
@@ -349,9 +430,18 @@ function gitOpsDeploy(): MusterWorkflow {
   });
 }
 
+/**
+ * The page's title block: its heading and the badges beside it. The flow's
+ * legend and steps show the same effect badges, so the workflow's own is
+ * looked for here.
+ */
+function pageHeading(): HTMLElement {
+  return screen.getByRole('heading', { level: 1 }).parentElement!;
+}
+
 describe('WorkflowPage', () => {
-  it('heads the page with its place under Customize, the honest badge and the description', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('heads the page with its place under Customize and the honest badge', async () => {
+    const api = await renderAt(`${BASE}/deploy`);
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'deploy' }),
@@ -364,24 +454,133 @@ describe('WorkflowPage', () => {
       'href',
       '/customize/workflows',
     );
-    expect(await screen.findByText('Only reads')).toBeInTheDocument();
+    expect(await within(pageHeading()).findByText('Reads')).toBeInTheDocument();
     expect(
-      screen.getByText('Deploys an app and tells the team.'),
-    ).toBeInTheDocument();
+      within(pageHeading()).getByText('Reads').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('Every step only reads.');
     // The derived hint comes off the tools endpoint, never the CR.
-    expect(screen.getByText('workflow_deploy')).toBeInTheDocument();
+    // Off the catalogue the flow canvas reads too: no request of its own.
+    expect(api.filterTools).toHaveBeenCalledTimes(1);
+    expect(api.filterTools).toHaveBeenCalledWith(
+      expect.objectContaining({ installation: 'gazelle' }),
+    );
+    expect(api.describeTool).not.toHaveBeenCalled();
+    // One column: no facts beside the content, everything in the tabs.
+    expect(screen.queryByRole('complementary')).toBeNull();
+  });
+
+  it('opens on Overview: what it is for under its heading, when it was created', async () => {
+    await renderAt(`${BASE}/deploy`);
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    const section = screen.getByRole('region', { name: 'What it’s for' });
+    expect(
+      within(section).getByRole('heading', { level: 2, name: 'What it’s for' }),
+    ).toBeInTheDocument();
+    expect(section).toHaveTextContent('Deploys an app and tells the team.');
+    expect(within(section).getByText(/^Created/)).toBeInTheDocument();
+  });
+
+  it('shows its tags under what it is for', async () => {
+    mockWorkflows = [
+      deployWith({}, { 'ui.giantswarm.io/tags': 'release,ops' }),
+    ];
+    await renderAt(`${BASE}/deploy`);
+
+    const section = await screen.findByRole('region', {
+      name: 'What it’s for',
+    });
+    expect(
+      within(within(section).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['release', 'ops']);
+    // Each opens Customize → Workflows with that tag picked.
+    expect(
+      within(section).getByRole('link', { name: 'release' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/workflows?installation=gazelle&tags=release',
+    );
+  });
+
+  it('says so where the definition gives no description', async () => {
+    mockWorkflows = [
+      new MusterWorkflow(
+        {
+          ...DEPLOY.jsonData,
+          spec: { ...DEPLOY.jsonData.spec, description: undefined },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    await renderAt(`${BASE}/deploy`);
+
+    expect(
+      within(screen.getByRole('region', { name: 'What it’s for' })).getByText(
+        'Its definition gives no description.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('links its tabs under the workflow’s address, on its installation', async () => {
+    await renderAt(`${BASE}/deploy`);
+
+    for (const [name, path] of [
+      ['Overview', ''],
+      ['Run it', '/run'],
+      ['Usage', '/usage'],
+      ['Details', '/details'],
+    ]) {
+      expect(
+        screen.getByRole('tab', { name }).closest('a') ??
+          screen.getByRole('tab', { name }),
+      ).toHaveAttribute('href', `${BASE}/deploy${path}`);
+    }
+  });
+
+  it('links its tabs with the address’s own query, adding none it lacks', async () => {
+    await renderAt(`${BASE}/deploy`);
+
+    expect(screen.getByRole('tab', { name: 'Usage' })).toHaveAttribute(
+      'href',
+      `${BASE}/deploy/usage`,
+    );
+  });
+
+  it('lands an address it no longer has on Overview, keeping its query', async () => {
+    await renderAt(`${BASE}/deploy/runs?foo=b`);
+
+    expect(
+      await screen.findByRole('region', { name: 'What it’s for' }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    expect(screen.getByRole('tab', { name: 'Usage' })).toHaveAttribute(
+      'href',
+      `${BASE}/deploy/usage?foo=b`,
+    );
   });
 
   it('names the workflow in the document title', async () => {
     // Live round 2 (R5): the page set none, so a client-side visit kept the
     // previous page's title.
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await waitFor(() => expect(document.title).toBe('deploy · Workflows'));
   });
 
   it('lists the inputs with type, required and default', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     expect(screen.getByText('app')).toBeInTheDocument();
     expect(screen.getByText('required')).toBeInTheDocument();
@@ -391,13 +590,13 @@ describe('WorkflowPage', () => {
   });
 
   it('draws the flow — spine, gate, loop group, cleanup lane — as the only step view, with no branches or trigger', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const figure = screen.getByTestId('workflow-flow-canvas');
     const canvas = within(figure);
 
     expect(
       screen.getByRole('group', {
-        name: "Flow of the workflow's 3 steps and its cleanup steps",
+        name: "Flow of the workflow's 3 tool steps, 1 loop and its cleanup steps",
       }),
     ).toBeInTheDocument();
     // Each step is a button naming its place, tool and gate.
@@ -411,6 +610,17 @@ describe('WorkflowPage', () => {
         name: /^Step 2: Apply the manifests, kubernetes · apply, Only if step 1 \(fetch\) succeeded/,
       }),
     ).toBeInTheDocument();
+    // Each step's name says what its tool does in its badge's words.
+    expect(
+      await canvas.findByRole('button', {
+        name: /^Step 1: Read the current pods, kubernetes · get_pods, reads(,|$)/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      canvas.getByRole('button', {
+        name: /^Step 2: Apply the manifests, .*, changes things(,|$)/,
+      }),
+    ).toBeInTheDocument();
     // The condition is drawn as a gate on the edge into step 2, not a fork.
     expect(figure.querySelector('[data-gate-for="s1"]')).toHaveTextContent(
       'Only if step 1 (fetch) succeeded',
@@ -419,7 +629,9 @@ describe('WorkflowPage', () => {
     // The forEach step is a group around its body step.
     const loop = figure.querySelector('[data-group="forEach"]');
     expect(loop).toHaveTextContent('Check every cluster');
-    expect(loop).toHaveTextContent('For each cluster in the input “clusters”');
+    expect(loop).toHaveTextContent(
+      'For each cluster in the input “clusters”, in order',
+    );
     expect(
       canvas.getByRole('button', { name: /^Step 3\.1: Probe it/ }),
     ).toBeInTheDocument();
@@ -440,14 +652,14 @@ describe('WorkflowPage', () => {
   });
 
   it('caps the canvas viewport so a long workflow scrolls inside its box', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const viewport = screen.getByTestId('workflow-flow-viewport');
 
     expect(getComputedStyle(viewport).overflow).toBe('auto');
   });
 
   it('expands a step in place to its plain details, with its own technical fold-out', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const figure = within(screen.getByTestId('workflow-flow-canvas'));
     const step = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
@@ -523,7 +735,7 @@ describe('WorkflowPage', () => {
   });
 
   it('gives the expanded step room: its box grows and the steps after it move down', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const box = (key: string) =>
       screen
         .getByTestId('workflow-flow-canvas')
@@ -556,7 +768,7 @@ describe('WorkflowPage', () => {
   });
 
   it('folds the open step by keyboard, by pressing it again and by a click beside the steps', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const step = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
     });
@@ -582,12 +794,7 @@ describe('WorkflowPage', () => {
   });
 
   it('takes the flow full screen over the content area, beside the rail, and back by its button or Escape', async () => {
-    await renderAt(
-      `${BASE}/deploy?installation=gazelle`,
-      makeApi(),
-      undefined,
-      true,
-    );
+    await renderAt(`${BASE}/deploy`, makeApi(), undefined, true);
     const content = document.getElementById('content')!;
     const rail = screen.getByRole('navigation', { name: 'Main' });
     // The content area starts where the rail ends (the layout pads it).
@@ -676,7 +883,7 @@ describe('WorkflowPage', () => {
   });
 
   it('covers the whole window outside the shell frame, everything else inert', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await userEvent.click(screen.getByRole('button', { name: 'Full screen' }));
     const layer = screen.getByRole('dialog', {
@@ -693,7 +900,7 @@ describe('WorkflowPage', () => {
   });
 
   it('expands a group head’s details in place: what the loop runs over', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     const head = screen.getByRole('button', {
       name: /^Step 3: Check every cluster/,
@@ -717,7 +924,7 @@ describe('WorkflowPage', () => {
   });
 
   it('colours the nodes with the latest run and marks what each step does', async () => {
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy`);
     const figure = screen.getByTestId('workflow-flow-canvas');
 
     expect(
@@ -758,15 +965,12 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('orders the sections: what it needs, how it runs, statistics, then one Advanced disclosure', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('orders Overview: what it is for, what it needs, how it runs — no statistics or technical details', async () => {
+    await renderAt(`${BASE}/deploy`);
 
-    const titles = [
-      'What it needs',
-      'How it runs',
-      'Statistics',
-      'Advanced',
-    ].map(title => screen.getByText(title));
+    const titles = ['What it’s for', 'What it needs', 'How it runs'].map(name =>
+      screen.getByRole('heading', { level: 2, name }),
+    );
     for (let i = 1; i < titles.length; i++) {
       expect(
         // eslint-disable-next-line no-bitwise
@@ -774,21 +978,24 @@ describe('WorkflowPage', () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     }
-    // No run list and no runs fact beside the page any more.
-    expect(screen.queryByText('Recent runs')).toBeNull();
-    expect(screen.queryByText(/older run/)).toBeNull();
-    const facts = within(
-      screen.getByRole('complementary', { name: 'Workflow details' }),
-    );
-    expect(facts.queryByText('Runs')).toBeNull();
-    expect(screen.queryByText(/succeeded ·/)).toBeNull();
-    // Where agents use it and the technical details wait inside Advanced.
-    expect(screen.queryByText('Where agents use it')).toBeNull();
+    // Statistics live on Usage, the facts and technical details on Details,
+    // the manifest in the menu.
+    expect(screen.queryByTestId('workflow-last-run')).toBeNull();
+    expect(screen.queryByText(/about three weeks/)).toBeNull();
     expect(screen.queryByText('Technical details')).toBeNull();
+    expect(screen.queryByText('workflow_deploy')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Advanced/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /YAML|Manifest/ })).toBeNull();
   });
 
-  it('puts the last run and muster’s run totals in Statistics', async () => {
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('puts the last run and muster’s run totals on Usage', async () => {
+    const api = await renderAt(`${BASE}/deploy/usage`);
+
+    expect(
+      screen.getByText(
+        'Every run counts, whether an agent, another workflow or a person started it.',
+      ),
+    ).toBeInTheDocument();
 
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Last run');
@@ -816,9 +1023,12 @@ describe('WorkflowPage', () => {
     expect(
       screen.getByText(/about three weeks, at most 10,000/),
     ).toBeInTheDocument();
+    // Minutes past a minute, not "300 s".
+    expect(screen.getByText('5 min')).toBeInTheDocument();
+    expect(screen.getByText('5 min 30 s')).toBeInTheDocument();
   });
 
-  it('names a failed last run’s error in Statistics', async () => {
+  it('names a failed last run’s error on Usage', async () => {
     const api = makeApi();
     api.listExecutions.mockImplementation(
       async (options: { status?: string }) =>
@@ -832,63 +1042,398 @@ describe('WorkflowPage', () => {
               has_more: true,
             },
     );
-    await renderAt(`${BASE}/deploy?installation=gazelle`, api);
+    await renderAt(`${BASE}/deploy/usage`, api);
 
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Failed');
     expect(lastRun).toHaveTextContent('apply refused');
-    expect(lastRun).toHaveTextContent('took 2.0 s');
+    expect(lastRun).toHaveTextContent('took 2 s');
   });
 
-  it('holds where agents use it and the technical details in one Advanced disclosure', async () => {
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('lists the plain facts on Details, then the CR’s bookkeeping in a Technical details fold-out', async () => {
+    await renderAt(`${BASE}/deploy/details`);
 
-    expect(api.getWorkflow).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: /^Advanced/ }));
+    const facts = screen.getByRole('region', { name: 'Workflow details' });
+    expect(facts).toHaveTextContent(
+      'Manually added — changed by agents through muster, not here',
+    );
+    expect(within(facts).getByText('Tool name')).toBeInTheDocument();
+    expect(within(facts).getByText('workflow_deploy')).toBeInTheDocument();
+    expect(within(facts).getByText('Called as a step by')).toBeInTheDocument();
+    expect(within(facts).getByText('No other workflow')).toBeInTheDocument();
+    // When it was created is on Overview only.
+    expect(within(facts).queryByText('Created')).toBeNull();
 
-    expect(screen.getByText('Where agents use it')).toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Technical details' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('x_kubernetes_get_pods')).toBeNull();
+    await userEvent.click(trigger);
+    // A fact per row, as the plain facts above.
+    const [, technical] = screen
+      .getAllByRole('definition')
+      .map(value => value.closest('dl')!)
+      .filter((list, index, lists) => lists.indexOf(list) === index);
     expect(
-      screen.getByText(
-        'Agents run this workflow by calling the tool workflow_deploy.',
+      within(technical)
+        .getAllByRole('term')
+        .map(term => term.textContent),
+    ).toEqual(['Namespace', 'Referenced tools']);
+    expect(
+      within(technical).getByText('x_kubernetes_get_pods'),
+    ).toBeInTheDocument();
+    // Facts read at the shell's body size.
+    expect(within(facts).getByText('workflow_deploy')).toHaveAttribute(
+      'data-variant',
+      'body-medium',
+    );
+    expect(within(technical).getByText('muster')).toHaveAttribute(
+      'data-variant',
+      'body-medium',
+    );
+    // The raw YAML is the menu's manifest, not part of the page.
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('gives the labels a row of their own in Technical details, one label per line', async () => {
+    mockWorkflows = [gitOpsDeploy()];
+    await renderAt(`${BASE}/deploy/details`);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+    const labels = screen.getByText('Labels').closest('dt')!
+      .nextElementSibling as HTMLElement;
+    expect(labels.tagName).toBe('DD');
+    expect(
+      within(labels).getByText(
+        'helm.toolkit.fluxcd.io/name=agent-platform-workflows',
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('No other workflow calls this one as a step.'),
+      within(labels).getByText(
+        'helm.toolkit.fluxcd.io/namespace=agent-platform',
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Technical details')).toBeInTheDocument();
-    // The raw definition is part of the technical details — no second fold.
-    expect(
-      screen.queryByRole('button', { name: 'Show the raw definition' }),
-    ).toBeNull();
-    const editor = await screen.findByRole('textbox', {
-      name: 'Definition (YAML)',
-    });
-    expect(editor).toHaveValue('name: deploy\nsteps: []\n');
-    expect(api.getWorkflow).toHaveBeenCalledWith('deploy', 'gazelle');
-    expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
+    // Namespace is a row of its own, not run into the labels.
+    expect(within(labels).queryByText('muster')).toBeNull();
   });
 
-  it('offers no run, create, edit or delete affordances of its own — the page is read-only (D11)', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('names a family once, by its display name, among the connectors used', async () => {
+    mockServers = [
+      mcpServer('a-mcp-kubernetes', 'kubernetes', 'Kubernetes'),
+      mcpServer('b-mcp-kubernetes', 'kubernetes', 'Kubernetes'),
+    ];
+    await renderAt(`${BASE}/deploy/details`);
+
+    const facts = screen.getByRole('region', { name: 'Workflow details' });
+    expect(within(facts).getByText('Kubernetes')).toBeInTheDocument();
+    expect(within(facts).queryByText(/mcp-kubernetes/)).toBeNull();
+  });
+
+  it('links the workflows that call it as a step on Details', async () => {
+    const caller = new MusterWorkflow(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'Workflow',
+        metadata: { name: 'release', namespace: 'muster' },
+        spec: { steps: [{ id: 'run', tool: 'workflow_deploy' }] },
+      } as never,
+      'gazelle',
+    );
+    mockWorkflows = [DEPLOY, caller];
+    await renderAt(`${BASE}/deploy/details`);
+
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Workflow details' }),
+      ).getByRole('link', { name: 'release' }),
+    ).toHaveAttribute('href', `${BASE}/release`);
+  });
+
+  it('shows the CR’s manifest from "View manifest" in its menu, with a copy button', async () => {
+    mockToKubectlYaml.mockClear();
+    await renderAt(`${BASE}/deploy`);
+    expect(mockToKubectlYaml).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(
+      screen.queryByRole('menuitem', { name: 'Edit in Git…' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'View manifest' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Workflow manifest');
+    expect(dialog).toHaveTextContent('As stored on cluster gazelle');
+    const manifest = within(dialog).getByRole('textbox', { name: 'Manifest' });
+    // ManifestDialog renders the real editor (the mock above replaces only
+    // the barrel's export), so the YAML is read off the lines it draws.
+    expect(manifest).toHaveTextContent('kind: Workflow');
+    expect(manifest).toHaveTextContent('name: deploy');
+    expect(manifest).toHaveTextContent('tool: x_kubernetes_get_pods');
+    expect(
+      within(dialog).getByRole('button', { name: 'Copy manifest' }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no create, edit or delete affordances of its own, and runs only from Run it', async () => {
+    await renderAt(`${BASE}/deploy`);
 
     // Anchored: step buttons may name a tool such as kubernetes · delete.
     expect(screen.queryByRole('button', { name: /^edit/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^delete/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^create/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Run' })).toBeNull();
+    // Overview → Run it → Usage → Details.
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Run it',
+      'Usage',
+      'Details',
+    ]);
   });
 
-  it('has no menu for a workflow outside Git', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('runs the workflow on Run it with the tool page’s form, and shows the result', async () => {
+    const api = await renderAt(`${BASE}/deploy/run`);
+
+    // The tool page's form, for the workflow's tool, without the description
+    // Overview already gives.
+    const inputs = await screen.findByRole('region', { name: 'Inputs' });
+    expect(screen.queryByRole('region', { name: 'What it’s for' })).toBeNull();
+    expect(api.describeTool).toHaveBeenCalledWith('workflow_deploy', 'gazelle');
+    // A workflow on read-only tools changes nothing; its connector has its
+    // own credentials, so the note does not claim it runs as the person.
+    expect(within(inputs).getByText('Nothing is changed.')).toBeInTheDocument();
+    expect(within(pageHeading()).getByText('Reads')).toBeInTheDocument();
+
+    await userEvent.type(
+      within(inputs).getByRole('textbox', { name: /app/i }),
+      'shop',
+    );
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+
+    await waitFor(() =>
+      expect(api.callTool).toHaveBeenCalledWith(
+        'workflow_deploy',
+        expect.objectContaining({ app: 'shop' }),
+        'gazelle',
+      ),
+    );
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+  });
+
+  it('reads the run records again after a run, so Usage counts it', async () => {
+    const api = await renderAt(`${BASE}/deploy/usage`);
+    await waitFor(() => expect(api.listExecutions).toHaveBeenCalled());
+    const before = api.listExecutions.mock.calls.length;
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Run it' }));
+    const inputs = await screen.findByRole('region', { name: 'Inputs' });
+    await userEvent.type(
+      within(inputs).getByRole('textbox', { name: /app/i }),
+      'shop',
+    );
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+    await screen.findByRole('heading', { level: 2, name: 'Result' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    await waitFor(() =>
+      expect(api.listExecutions.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it('says on Run it that the run needs a sign-in to a connector its steps call', async () => {
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'kubernetes', status: 'auth_required' }],
+    } as never);
+    await renderAt(`${BASE}/deploy/run`, api);
 
     expect(
-      screen.queryByRole('button', { name: 'More actions' }),
+      await screen.findByText('Sign in to a connector first'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/muster refuses the run until you are/),
+    ).toBeInTheDocument();
+    // The form still shows: signing in makes the run possible.
+    expect(
+      await screen.findByRole('button', { name: 'Run' }),
+    ).toBeInTheDocument();
+  });
+
+  it('explains on Run it, instead of a form, a workflow muster offers the person no tool for', async () => {
+    const api = makeApi();
+    api.filterTools.mockImplementation(async () => ({
+      total: 1,
+      filtered_count: 1,
+      truncated: false,
+      tools: [{ name: 'x_kubernetes_get_pods' }],
+    }));
+    await renderAt(`${BASE}/deploy/run`, api);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'No tool “workflow_deploy” for you on gazelle',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    // Not described: describing a tool muster lacks is an error, not an answer.
+    expect(api.describeTool).not.toHaveBeenCalled();
+    expect(within(pageHeading()).queryByText('Reads')).toBeNull();
+    expect(within(pageHeading()).queryByText('Changes things')).toBeNull();
+  });
+
+  it('lets the form describe a workflow a truncated catalogue stops short of', async () => {
+    const api = makeApi();
+    api.filterTools.mockImplementation(async () => ({
+      total: 3000,
+      filtered_count: 1,
+      truncated: true,
+      tools: [{ name: 'x_kubernetes_get_pods' }],
+    }));
+    await renderAt(`${BASE}/deploy/run`, api);
+
+    expect(
+      await screen.findByRole('region', { name: 'Inputs' }),
+    ).toBeInTheDocument();
+    // Described, for the badge and the form alike.
+    expect(api.describeTool).toHaveBeenCalledWith('workflow_deploy', 'gazelle');
+    expect(within(pageHeading()).getByText('Reads')).toBeInTheDocument();
+  });
+
+  it('says on Run it that no run is possible where muster has no per-user sessions', async () => {
+    mockRequiresAuth = false;
+    const api = await renderAt(`${BASE}/deploy/run`);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'This portal cannot run workflows on gazelle',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/configure an auth provider/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    expect(api.describeTool).not.toHaveBeenCalled();
+  });
+
+  describe('while a run is in flight', () => {
+    /** Starts a run on Run it that does not return. */
+    async function startRun() {
+      const api = makeApi();
+      api.callTool.mockImplementation(() => new Promise(() => {}));
+      await renderAt(`${BASE}/deploy/run`, api);
+      const inputs = await screen.findByRole('region', { name: 'Inputs' });
+      await userEvent.type(
+        within(inputs).getByRole('textbox', { name: /app/i }),
+        'shop',
+      );
+      await userEvent.click(
+        within(inputs).getByRole('button', { name: 'Run' }),
+      );
+      await within(inputs).findByRole('button', { name: /Running/ });
+      return api;
+    }
+
+    it('asks before a tab switch, says the run goes on, and stays on Stay', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).getByText('Leave while the workflow runs?'),
+      ).toBeInTheDocument();
+      expect(dialog).toHaveTextContent(
+        'muster keeps running it after you leave',
+      );
+      // Still here, behind the modal dialog.
+      expect(
+        screen.getByRole('region', { name: 'Inputs', hidden: true }),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Stay' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(
+        within(screen.getByRole('region', { name: 'Inputs' })).getByRole(
+          'button',
+          { name: /Running/ },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('switches the tab on Leave', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Leave' }),
+      );
+      expect(await screen.findByText(/^Every run counts/)).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Inputs' })).toBeNull();
+    });
+
+    it('asks before following a link out of the page', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('link', { name: 'Workflows' }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      // Still here, behind the modal dialog.
+      expect(
+        screen.getByRole('region', { name: 'Inputs', hidden: true }),
+      ).toBeInTheDocument();
+    });
+
+    it('has the browser ask before a reload or a closed tab', async () => {
+      await startRun();
+
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
+  it('lets the page go without asking once no run is in flight', async () => {
+    await renderAt(`${BASE}/deploy/run`);
+    await screen.findByRole('region', { name: 'Inputs' });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    expect(await screen.findByText(/^Every run counts/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('asks for a muster session on Run it in place of the form', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/deploy/run`);
+
+    expect(
+      screen.getByText(/Running a workflow needs a muster session/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    expect(api.filterTools).not.toHaveBeenCalled();
+    expect(api.describeTool).not.toHaveBeenCalled();
+  });
+
+  it('offers no Edit in Git… for a workflow outside Git', async () => {
+    await renderAt(`${BASE}/deploy`);
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'View manifest' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Edit in Git…' }),
     ).not.toBeInTheDocument();
     expect(mockUseGitOpsSource).not.toHaveBeenCalled();
   });
 
-  it('has no menu for a workflow from a chart installed by hand, which Git does not hold', async () => {
+  it('offers no Edit in Git… for a workflow from a chart installed by hand, which Git does not hold', async () => {
     mockWorkflows = [
       deployWith(
         { 'app.kubernetes.io/managed-by': 'Helm' },
@@ -898,10 +1443,11 @@ describe('WorkflowPage', () => {
         },
       ),
     ];
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
-      screen.queryByRole('button', { name: 'More actions' }),
+      screen.queryByRole('menuitem', { name: 'Edit in Git…' }),
     ).not.toBeInTheDocument();
     expect(mockUseGitOpsSource).not.toHaveBeenCalled();
   });
@@ -924,7 +1470,7 @@ describe('WorkflowPage', () => {
         namespace: 'agent-platform',
       },
     });
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     await userEvent.click(
@@ -966,7 +1512,7 @@ describe('WorkflowPage', () => {
         </button>
       );
     }
-    await renderAt(`${BASE}/deploy?installation=gazelle`, makeApi(), <Probe />);
+    await renderAt(`${BASE}/deploy`, makeApi(), <Probe />);
 
     const action = screen.getByRole('button', {
       name: 'Edit deploy on gazelle via workflow_deploy',
@@ -1006,17 +1552,19 @@ describe('WorkflowPage', () => {
 
   it('asks for a muster session instead of claiming runs or a badge, and still draws the definition', async () => {
     mockAuthenticated = false;
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy`);
 
+    // Overview names what it needs the session for; statistics are on Usage.
     expect(
       screen.getByText(
-        /Statistics, the last run and the read-only badge need a muster session/,
+        /The last run on the flow and the read-only badge need a muster session/,
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Only reads')).toBeNull();
-    expect(
-      screen.getByText(/Connect to muster above to see statistics/),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Statistics need/)).toBeNull();
+    const heading = (await screen.findByRole('heading', { level: 1 }))
+      .parentElement!;
+    expect(within(heading).queryByText('Reads')).toBeNull();
+    expect(within(heading).queryByText('Changes things')).toBeNull();
     expect(screen.queryByTestId('workflow-last-run')).toBeNull();
     expect(api.listExecutions).not.toHaveBeenCalled();
     expect(api.getWorkflowStats).not.toHaveBeenCalled();
@@ -1033,8 +1581,20 @@ describe('WorkflowPage', () => {
     expect(within(figure).queryByText(/Last run/)).toBeNull();
   });
 
+  it('asks for a muster session on Usage in place of statistics', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/deploy/usage`);
+
+    expect(
+      screen.getByText(/Statistics need a muster session/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The last run on the flow/)).toBeNull();
+    expect(screen.queryByText(/Every run counts/)).toBeNull();
+    expect(api.getWorkflowStats).not.toHaveBeenCalled();
+  });
+
   it('says so, with a way back, for a workflow the installation lacks', async () => {
-    await renderAt(`${BASE}/missing?installation=gazelle`);
+    await renderAt(`${BASE}/missing`);
 
     expect(
       screen.getByText('No workflow “missing” on gazelle'),
@@ -1092,8 +1652,40 @@ describe('WorkflowPage at phone width', () => {
   });
   afterEach(() => layout.restore());
 
+  it('keeps the four tabs and the menu, with the facts on Details rather than folded above the content', async () => {
+    await renderAt(`${BASE}/deploy/details`);
+
+    for (const name of ['Overview', 'Run it', 'Usage', 'Details']) {
+      expect(screen.getByRole('tab', { name })).toBeInTheDocument();
+    }
+    expect(
+      screen.getByRole('button', { name: 'More actions' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(
+      screen.getByRole('region', { name: 'Workflow details' }),
+    ).toHaveTextContent('workflow_deploy');
+  });
+
+  it('runs the workflow from Run it at phone width with the same form', async () => {
+    const api = await renderAt(`${BASE}/deploy/run`);
+
+    const inputs = await screen.findByRole('region', { name: 'Inputs' });
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+    // Required input left empty: the form says so on the field, not a call.
+    expect(api.callTool).not.toHaveBeenCalled();
+    await userEvent.type(
+      within(inputs).getByRole('textbox', { name: /app/i }),
+      'shop',
+    );
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+  });
+
   it('lists the steps in place of the canvas: groups indented, gates as lines, cleanup as its own section', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     // No canvas, so no sideways flow and no scroll box to trap the swipe —
     // and nothing to take full screen.
@@ -1104,12 +1696,23 @@ describe('WorkflowPage at phone width', () => {
     expect(list.getByText(/Tap a step to see its details\.$/)).toBeVisible();
 
     const steps = list.getByRole('list', {
-      name: "The workflow's 3 steps, in order",
+      name: "The workflow's 3 tool steps, 1 loop, in order",
     });
     const first = within(steps).getByRole('button', {
       name: /^Step 1: Read the current pods, kubernetes · get_pods/,
     });
     expect(first).toHaveAttribute('aria-expanded', 'false');
+    // Its name says what its tool does in its badge's words.
+    expect(
+      await within(steps).findByRole('button', {
+        name: /^Step 1: Read the current pods, kubernetes · get_pods, reads(,|$)/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(steps).getByRole('button', {
+        name: /^Step 2: Apply the manifests, .*, changes things(,|$)/,
+      }),
+    ).toBeInTheDocument();
     // The title is written out, never cut.
     expect(first).toHaveTextContent('Read the current pods');
 
@@ -1124,7 +1727,9 @@ describe('WorkflowPage at phone width', () => {
     const loop = within(steps).getByRole('button', {
       name: /^Step 3: Check every cluster/,
     });
-    expect(loop).toHaveTextContent('For each cluster in the input “clusters”');
+    expect(loop).toHaveTextContent(
+      'For each cluster in the input “clusters”, in order',
+    );
     const body = list.getByRole('list', { name: 'Steps of step 3' });
     expect(loop.closest('li')).toContainElement(body);
     expect(
@@ -1146,7 +1751,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('opens a step’s details in place under it, several at once, and Close folds them back onto the step', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const gated = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
     });
@@ -1192,7 +1797,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('marks each card with the latest run and what its tool does', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const list = screen.getByTestId('workflow-step-list');
     const card = (key: string) =>
       list.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
@@ -1215,10 +1820,10 @@ describe('WorkflowPage at phone width', () => {
 
   it('shows a long workflow a page of steps at a time, a parallel group as its own indented list', async () => {
     mockWorkflows = [longWorkflow(300)];
-    await renderAt(`${BASE}/long?installation=gazelle`);
+    await renderAt(`${BASE}/long`);
 
     const steps = screen.getByRole('list', {
-      name: "The workflow's 300 steps, in order",
+      name: "The workflow's 301 tool steps, 1 parallel group, in order",
     });
     // 20 top-level cards, the parallel group's two siblings under step 2.
     expect(
@@ -1236,7 +1841,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('wraps a long default instead of cutting it', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const pill = screen.getByTestId('arg-default');
 
     expect(getComputedStyle(pill).whiteSpace).not.toBe('nowrap');
@@ -1245,7 +1850,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('says when the last run started to the minute, as text — a phone shows no hover title', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/usage`);
 
     expect(await screen.findByTestId('workflow-last-run')).toHaveTextContent(
       'started 9 Oct 2026, 08:00 UTC',
@@ -1283,7 +1888,7 @@ describe('WorkflowPage on a desktop', () => {
         'gazelle',
       ),
     ];
-    await renderAt(`${BASE}/titles?installation=gazelle`);
+    await renderAt(`${BASE}/titles`);
     const figure = screen.getByTestId('workflow-flow-canvas');
     const node = (key: string) =>
       figure.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
@@ -1317,12 +1922,355 @@ describe('WorkflowPage on a desktop', () => {
   });
 
   it('keeps the capped canvas, with no step list', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     expect(screen.getByTestId('workflow-flow-viewport')).toBeInTheDocument();
     expect(screen.queryByTestId('workflow-step-list')).toBeNull();
     expect(
       screen.getByText(/Select a step to see its details\.$/),
     ).toBeInTheDocument();
+  });
+});
+
+// giantswarm/giantswarm#38792: a loop (up to 8 at once) holding a paginated
+// tool step and a nested loop (one at a time) of seven paginated tool steps,
+// each reshaping its result with jq, as the outer loop does its records.
+const FLEET = fleetImageScanWorkflow();
+const FLEET_KINDS = [
+  'deployments',
+  'replicasets',
+  'statefulsets',
+  'daemonsets',
+  'cronjobs',
+  'jobs',
+  'pods',
+];
+
+describe('WorkflowPage with nested loops (fleet-image-scan)', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockDesktopLayout();
+    mockWorkflows = [FLEET];
+  });
+  afterEach(() => layout.restore());
+
+  const canvas = () => within(screen.getByTestId('workflow-flow-canvas'));
+  const box = (key: string) =>
+    screen
+      .getByTestId('workflow-flow-canvas')
+      .querySelector(`[data-node="${key}"]`) as HTMLElement;
+
+  it('counts the tool steps at every depth and names the loops in the header', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    expect(
+      screen.getByText('8 tool steps in 2 nested loops · 2 inputs'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('group', {
+        name: "Flow of the workflow's 8 tool steps in 2 nested loops",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('draws every step, the nested loop’s seven inside it, with no empty tool node', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    // Two loop groups: step 1, and step 1.2 drawn inside it.
+    const groups = screen
+      .getByTestId('workflow-flow-canvas')
+      .querySelectorAll('[data-group="forEach"]');
+    expect(groups).toHaveLength(2);
+    const [outer, inner] = [...groups].map(g => g as HTMLElement);
+    const rect = (el: HTMLElement) => ({
+      left: parseFloat(el.style.left),
+      top: parseFloat(el.style.top),
+      right: parseFloat(el.style.left) + parseFloat(el.style.width),
+      bottom: parseFloat(el.style.top) + parseFloat(el.style.height),
+    });
+    const within2 = (a: HTMLElement, b: HTMLElement) => {
+      const [x, y] = [rect(a), rect(b)];
+      return (
+        x.left >= y.left &&
+        x.right <= y.right &&
+        x.top >= y.top &&
+        x.bottom <= y.bottom
+      );
+    };
+    expect(within2(inner, outer)).toBe(true);
+
+    // The eight tool steps, numbered on: 1.1, then 1.2.1 to 1.2.7.
+    const steps = canvas().getAllByRole('button', {
+      name: /^Step 1\.(1|2\.\d): /,
+    });
+    expect(
+      steps.map(step => step.getAttribute('data-step-key')).sort(),
+    ).toEqual(['s0.0', ...FLEET_KINDS.map((_, k) => `s0.1.${k}`)].sort());
+    FLEET_KINDS.forEach((_, k) => {
+      const node = box(`s0.1.${k}`);
+      expect(within2(node, inner)).toBe(true);
+      expect(node).toHaveTextContent(`1.2.${k + 1}`);
+    });
+    expect(within2(box('s0.0'), outer)).toBe(true);
+    expect(within2(box('s0.0'), inner)).toBe(false);
+    // Every tool node names its tool (the kubernetes connector's `list`):
+    // its tile is the connector's initial, never the `·` of no tool.
+    for (const step of steps) {
+      expect(step).toHaveTextContent('kubernetes · list');
+      expect(step.textContent).toMatch(/^K/);
+    }
+    // Read in the flow's order: a group's head before its steps.
+    const order = [
+      ...screen
+        .getByTestId('workflow-flow-canvas')
+        .querySelectorAll('[data-step-key]'),
+    ].map(el => el.getAttribute('data-step-key'));
+    expect(order).toEqual([
+      's0',
+      's0.0',
+      's0.1',
+      ...FLEET_KINDS.map((_, k) => `s0.1.${k}`),
+    ]);
+  });
+
+  it('says on each loop how many iterations run at once', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    expect(
+      canvas().getByRole('button', {
+        name: /^Step 1: Each management cluster.*, For each mc in the input “management_clusters”, up to 8 at once/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      canvas().getByRole('button', {
+        name: /^Step 1\.2: Each cluster in turn.*, For each cluster in the result of step 1\.1 \(clusters\), one at a time/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('marks the paginated steps and the jq transforms', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    expect(box('s0.0')).toHaveTextContent('Paginated, up to 10 pages');
+    FLEET_KINDS.forEach((_, k) => {
+      expect(box(`s0.1.${k}`)).toHaveTextContent('Paginated, up to 100 pages');
+      expect(box(`s0.1.${k}`)).toHaveTextContent('jq transform');
+    });
+    expect(canvas().getAllByText('Paginated, up to 100 pages')).toHaveLength(7);
+    // Eight tool steps and the outer loop reshape with jq; the inner loop
+    // does not.
+    expect(canvas().getAllByText('jq transform')).toHaveLength(9);
+    expect(
+      canvas().getByRole('button', { name: /^Step 1: / }),
+    ).toHaveAccessibleName(/jq transform/);
+    expect(
+      canvas().getByRole('button', { name: /^Step 1\.2: / }),
+    ).not.toHaveAccessibleName(/jq/);
+    expect(
+      canvas().getByRole('button', { name: /^Step 1\.2\.1: / }),
+    ).toHaveAccessibleName(/paginated, up to 100 pages, jq transform/);
+    // The markers give the box a row of their own.
+    const plain = canvas().getByRole('button', { name: /^Step 1\.1: / });
+    expect(plain.closest('[data-node]')).toContainElement(
+      within(box('s0.0')).getByTestId('step-feature-badges'),
+    );
+  });
+
+  it('shows a paginated step’s page bound and its jq program in its details', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    await userEvent.click(
+      canvas().getByRole('button', { name: /^Step 1\.2\.1: / }),
+    );
+    const details = within(
+      screen.getByRole('region', { name: /^Details of Step 1\.2\.1 · / }),
+    );
+    expect(
+      details.getByText(
+        "Follows the tool's pages, up to 100 pages, and keeps every page's items as one list.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      details.getByText(
+        'A jq program reshapes its result before later steps use it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      details.getByText(
+        /^It belongs to step 1\.2 \(Each cluster in turn.*\) and runs for each cluster in the result of step 1\.1 \(clusters\)\.$/,
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      details.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(details.getByText('maxPages: 100')).toBeInTheDocument();
+    // The program next to the templated arguments, as code.
+    expect(details.getByText('Arguments (templated)')).toBeInTheDocument();
+    expect(details.getByText('jq program')).toBeInTheDocument();
+    const program = details.getByTestId('step-jq-program');
+    expect(program.tagName).toBe('PRE');
+    const deployments = FLEET.getSteps()[0].forEach!.steps[1].forEach!.steps[0];
+    expect(program.textContent).toBe(deployments.jq);
+  });
+
+  it('shows a loop’s parallelism and its multi-line jq program as written', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    await userEvent.click(canvas().getByRole('button', { name: /^Step 1: / }));
+    const outer = within(
+      screen.getByRole('region', { name: /^Details of Step 1 · / }),
+    );
+    expect(
+      outer.getByText(
+        'For each mc in the input “management_clusters”, it runs its 2 steps in order.',
+      ),
+    ).toBeInTheDocument();
+    expect(outer.getByText('Up to 8 items run at once.')).toBeInTheDocument();
+    expect(
+      outer.getByText(
+        'A jq program turns the records of its iterations into its result.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      outer.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(outer.getByText('Parallelism')).toBeInTheDocument();
+    expect(outer.getByText('8')).toBeInTheDocument();
+    const program = outer.getByTestId('step-jq-program');
+    // Line breaks kept: the program reads as written.
+    expect(program.textContent).toBe(FLEET.getSteps()[0].jq);
+    expect(program.textContent).toContain('\n  failures: ([');
+
+    await userEvent.click(
+      canvas().getByRole('button', { name: /^Step 1\.2: / }),
+    );
+    const inner = within(
+      screen.getByRole('region', { name: /^Details of Step 1\.2 · / }),
+    );
+    expect(
+      inner.getByText('The items run one at a time, within each mc of step 1.'),
+    ).toBeInTheDocument();
+    expect(
+      inner.getByText(/^It belongs to step 1 \(Each management cluster/),
+    ).toBeInTheDocument();
+    expect(inner.queryByText(/jq program/)).toBeNull();
+  });
+
+  it('says a loop without a parallelism runs its items one after another', async () => {
+    mockWorkflows = [DEPLOY];
+    await renderAt(`${BASE}/deploy`);
+
+    await userEvent.click(canvas().getByRole('button', { name: /^Step 3: / }));
+    const details = within(
+      screen.getByRole('region', { name: /^Details of Step 3 · / }),
+    );
+    expect(
+      details.getByText('The items run one after another.'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      details.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(
+      details.getByText('not set (one after another)'),
+    ).toBeInTheDocument();
+  });
+
+  it('draws what it knows of a step whose fields it does not know', async () => {
+    mockWorkflows = [
+      new MusterWorkflow(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'Workflow',
+          metadata: { name: 'future', namespace: 'muster' },
+          spec: {
+            steps: [
+              // A step kind muster may add later: neither tool nor group.
+              { id: 'pause', wait: { seconds: 5 }, description: 'Wait' },
+              {
+                id: 'loop',
+                forEach: {
+                  items: '{{ .input.xs }}',
+                  parallelism: 'many',
+                  steps: [
+                    {
+                      id: 'call',
+                      tool: 'x_a',
+                      paginate: 'yes',
+                      jq: 42,
+                      retries: 3,
+                    },
+                  ],
+                  window: 2,
+                },
+              },
+            ],
+          },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    await renderAt(`${BASE}/future`);
+
+    expect(
+      canvas().getByRole('button', { name: /^Step 1: Wait/ }),
+    ).toBeInTheDocument();
+    expect(
+      canvas().getByRole('button', {
+        name: /^Step 2: loop, For each item in the input “xs”, in order/,
+      }),
+    ).toBeInTheDocument();
+    const call = canvas().getByRole('button', { name: /^Step 2\.1: call/ });
+    expect(call).toHaveTextContent('x_a');
+    expect(box('s1.0')).not.toHaveTextContent(/Paginated|jq/);
+  });
+});
+
+describe('WorkflowPage with nested loops at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+    mockWorkflows = [FLEET];
+  });
+  afterEach(() => layout.restore());
+
+  it('nests the inner loop’s steps in the outer loop’s list, with the loops’ pace and the markers', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    const all = screen.getByRole('list', {
+      name: "The workflow's 8 tool steps in 2 nested loops, in order",
+    });
+    const outer = within(all).getByRole('list', { name: 'Steps of step 1' });
+    const inner = within(outer).getByRole('list', {
+      name: 'Steps of step 1.2',
+    });
+    expect(
+      within(inner)
+        .getAllByRole('button', { name: /^Step 1\.2\.\d: / })
+        .map(card => card.getAttribute('data-step-key')),
+    ).toEqual(FLEET_KINDS.map((_, k) => `s0.1.${k}`));
+    expect(
+      within(all).getByRole('button', { name: /^Step 1: / }),
+    ).toHaveTextContent('up to 8 at once');
+    expect(
+      within(outer).getByRole('button', { name: /^Step 1\.2: / }),
+    ).toHaveTextContent('one at a time');
+    expect(
+      within(inner).getAllByText('Paginated, up to 100 pages'),
+    ).toHaveLength(7);
+    expect(within(all).getAllByText('jq transform')).toHaveLength(9);
+
+    // A nested step's details open under its card, with the program.
+    await userEvent.click(
+      within(inner).getByRole('button', { name: /^Step 1\.2\.7: / }),
+    );
+    const details = within(
+      screen.getByRole('region', { name: /^Details of Step 1\.2\.7 · / }),
+    );
+    await userEvent.click(
+      details.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(details.getByText('maxPages: 100')).toBeInTheDocument();
+    expect(details.getByTestId('step-jq-program')).toBeInTheDocument();
   });
 });

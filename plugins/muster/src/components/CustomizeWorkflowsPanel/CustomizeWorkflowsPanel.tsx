@@ -1,8 +1,7 @@
 import { ReactNode, useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
-import { Cell, CellText, ColumnConfig, Flex, Table, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { useApi } from '@backstage/frontend-plugin-api';
+import { Cell, CellText, ColumnConfig, Flex, Table } from '@backstage/ui';
 import {
   type CatalogFacet,
   CatalogFilterBar,
@@ -14,6 +13,10 @@ import {
   ShowMore,
   type StackedRowItem,
   StackedRowList,
+  ROW_TAGS_MAX,
+  TagList,
+  TAGS_COLUMN_MIN_WIDTH,
+  tagsFacet,
   useCatalogFilters,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -27,12 +30,13 @@ import { isGitOpsManaged } from '../../lib/gitops';
 import type { ToolEffect } from '../../lib/toolAnnotations';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { workflowEffect } from '../../lib/workflowDisplay';
-import { workflowDetailRouteRef } from '../../routes';
+import { workflowRunKeys } from '../../lib/workflowRunKeys';
+import { workflowShapeLabel } from '../../lib/workflowShape';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
-import { SessionGate, useToolCatalogue } from '../shared';
-import { EffectBadge } from '../shared';
+import { SessionGate, useToolCatalogue, useWorkflowPageLinks } from '../shared';
+import { WorkflowEffectBadge } from '../shared';
 import {
   LAST_RUN_LABELS,
   LAST_RUN_ORDER,
@@ -40,17 +44,6 @@ import {
   type LastRunState,
   lastRunStates,
 } from './lastRuns';
-
-const useStyles = makeStyles({
-  // A phone row's description: two lines, then the workflow's page.
-  description: {
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    overflowWrap: 'anywhere',
-  },
-});
 
 export type CustomizeWorkflowsPanelProps = {
   search: string;
@@ -67,6 +60,7 @@ type Row = {
   name: string;
   description: string;
   category?: string;
+  tags: string[];
   steps: string;
   /** Derived read-only hint of `workflow_<name>`; absent while unknown. */
   effect?: ToolEffect;
@@ -108,25 +102,17 @@ function WorkflowRows({
   hasSession: boolean;
   tools: ToolSummary[] | undefined;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const isPhone = usePhoneLayout();
-  const hrefOf = (row: Row) =>
-    detailRoute
-      ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
-      : undefined;
+  const hrefOf = (row: Row) => workflowLinks.workflow(row.name, installation);
 
   // muster lists executions newest first, so one per workflow gives the
   // latest run, and `total` counts them all.
   const runs = useQueries({
     queries: workflows.map(workflow => ({
-      queryKey: [
-        'muster',
-        'workflow-runs',
-        installation,
-        workflow.getName(),
-      ] as const,
+      // The workflow page's own latest-run read: the same request.
+      queryKey: workflowRunKeys.latest(installation, workflow.getName()),
       queryFn: () =>
         musterApi.listExecutions({
           workflowName: workflow.getName(),
@@ -139,7 +125,6 @@ function WorkflowRows({
   });
 
   const rows = workflows.map<Row>((workflow, index) => {
-    const steps = workflow.getStepCount();
     const response = runs[index]?.data;
     const effect = workflowEffect(workflow.getName(), tools);
     const category = workflow.getCategory();
@@ -148,7 +133,9 @@ function WorkflowRows({
       name: workflow.getName(),
       description: workflow.getDescription() ?? '',
       ...(category ? { category } : {}),
-      steps: countNoun(steps, 'step'),
+      tags: workflow.getTags(),
+      // The steps at every depth: a loop's steps count, not only the loop.
+      steps: workflowShapeLabel(workflow.getSteps()),
       ...(effect ? { effect } : {}),
       ...(response ? { runs: runsLabel(response) } : {}),
       source: SOURCE_LABELS[isGitOpsManaged(workflow) ? 'gitops' : 'manual'],
@@ -178,9 +165,21 @@ function WorkflowRows({
       cell: row => <CellText title={row.category ?? ''} />,
     },
     {
+      id: 'tags',
+      label: 'Tags',
+      defaultWidth: '1.4fr',
+      minWidth: TAGS_COLUMN_MIN_WIDTH,
+      cell: row => (
+        <Cell>
+          <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+        </Cell>
+      ),
+    },
+    {
       id: 'steps',
       label: 'Steps',
-      defaultWidth: '0.8fr',
+      // Room for a nested workflow's "8 tool steps in 2 nested loops".
+      defaultWidth: '1.4fr',
       cell: row => <CellText title={row.steps} />,
     },
     {
@@ -193,9 +192,7 @@ function WorkflowRows({
       // hint stays empty, claiming nothing.
       cell: row => (
         <Cell>
-          {row.effect ? (
-            <EffectBadge effect={row.effect} subject="workflow" />
-          ) : null}
+          {row.effect ? <WorkflowEffectBadge effect={row.effect} /> : null}
         </Cell>
       ),
     },
@@ -216,8 +213,8 @@ function WorkflowRows({
   if (isPhone) {
     // The phone layout (T22 B9): six columns in 343px froze the five
     // secondary ones at bui's 75px minimum and left the name ~51px of text,
-    // with "Can change things" clipped. A stacked row per workflow instead:
-    // the name (the row's link) and its access badge, then category · steps ·
+    // with its access badge clipped. A stacked row per workflow instead:
+    // the name (the row's link) and its access badge, then category · tags · steps ·
     // runs · source, then two lines of what it does.
     const items = rows.map<StackedRowItem>(row => {
       const href = hrefOf(row);
@@ -226,22 +223,18 @@ function WorkflowRows({
         title: row.name,
         ...(href ? { href } : {}),
         ...(row.effect
-          ? { status: <EffectBadge effect={row.effect} subject="workflow" /> }
+          ? { status: <WorkflowEffectBadge effect={row.effect} /> }
           : {}),
-        facts: [row.category, row.steps, row.runs, row.source],
-        ...(row.description
-          ? {
-              details: (
-                <Text
-                  variant="body-small"
-                  color="secondary"
-                  className={classes.description}
-                >
-                  {row.description}
-                </Text>
-              ),
-            }
-          : {}),
+        facts: [
+          row.category,
+          row.tags.length > 0 ? (
+            <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+          ) : null,
+          row.steps,
+          row.runs,
+          row.source,
+        ],
+        ...(row.description ? { description: row.description } : {}),
       };
     });
     return <StackedRowList rows={items} aria-label="Workflows" />;
@@ -286,15 +279,16 @@ function WorkflowsTable({
   // one request however many workflows there are.
   const musterApi = useApi(musterApiRef);
   const lastRuns = useQuery({
-    queryKey: ['muster', 'workflow-last-runs', installation] as const,
+    queryKey: workflowRunKeys.lastRuns(installation),
     queryFn: () =>
       musterApi.listExecutions({ installation, limit: LAST_RUNS_WINDOW }),
     enabled: hasSession,
     staleTime: 30_000,
   });
   const facets = useMemo<CatalogFacet<MusterWorkflow>[]>(() => {
+    const tags = tagsFacet<MusterWorkflow>(workflow => workflow.getTags());
     if (!lastRuns.data) {
-      return [];
+      return [tags];
     }
     const stateOf = lastRunStates(lastRuns.data);
     return [
@@ -305,6 +299,7 @@ function WorkflowsTable({
         optionLabel: value => LAST_RUN_LABELS[value as LastRunState] ?? value,
         order: LAST_RUN_ORDER,
       },
+      tags,
     ];
   }, [lastRuns.data]);
 
@@ -323,6 +318,7 @@ function WorkflowsTable({
               workflow.getName(),
               workflow.getDescription() ?? '',
               workflow.getCategory() ?? '',
+              ...workflow.getTags(),
             ].some(field => field.toLowerCase().includes(needle)),
           )
         : sorted,
@@ -422,12 +418,13 @@ function Panel({ search, createAssist }: CustomizeWorkflowsPanelProps) {
 
 /**
  * The Workflows tab of the shell's Customize screen — read-only (decision
- * D11): the active muster's workflows with their category, step count, honest
- * "Only reads / Can change things" badge (the readOnlyHint muster derives on
- * each `workflow_<name>` tool), run count with the latest run, and whether
- * GitOps or muster's own store holds the definition. Each row opens the
- * workflow's page. Filtered by how the last run went, once runs tell the
- * workflows apart (T49). Must be mounted inside a `CustomizeMusterProvider`.
+ * D11): the active muster's workflows with their category, step count,
+ * "Reads / Changes things" badge (the readOnlyHint muster derives on each
+ * `workflow_<name>` tool, read-only only when every step's tool is), run
+ * count with the latest run, and whether GitOps or muster's own store holds
+ * the definition. Each row opens the workflow's page. Filtered by how the
+ * last run went, once runs tell the workflows apart (T49), and by tags. Must be mounted
+ * inside a `CustomizeMusterProvider`.
  */
 export function CustomizeWorkflowsPanel(props: CustomizeWorkflowsPanelProps) {
   return (

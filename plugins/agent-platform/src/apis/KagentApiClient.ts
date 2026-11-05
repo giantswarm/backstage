@@ -7,6 +7,10 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import {
+  hasIdTokenLifetimeLeft,
+  idTokenLifetimeLeft,
+} from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
 import type { KagentRequestErrorFields } from '../lib/readFailure';
 import {
@@ -25,6 +29,7 @@ import {
   normalizeSessionUsage,
   SessionStatesResponse,
   SessionUsageResponse,
+  ModelCostResponse,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
@@ -33,12 +38,53 @@ import {
   KAGENT_AUTH_HEADER,
   KagentApi,
   KagentIdentity,
+  OutboundMessage,
+  RawSessionBodies,
   REQUEST_ID_HEADER,
+  StreamEnd,
 } from './types';
 
 export const kagentApiRef = createApiRef<KagentApi>({
   id: 'plugin.agent-platform.kagent',
 });
+
+/**
+ * The share of its lifetime a turn's token must still have when the turn is
+ * sent: 25 of the 30 minutes of an installation's Dex ID token, the same share
+ * of any other lifetime.
+ *
+ * The kagent runtime sends the turn's token on every MCP call of the turn and
+ * cannot refresh it, so a turn runs only as long as that token lasts. The
+ * session's cached token alone may have as little as 3 minutes left, when
+ * Backstage refreshes it; a turn asks for one with this much left, which
+ * refreshes the session first when needed. Reads keep the cached token.
+ *
+ * The cost: while a person keeps chatting, a turn refreshes the session at
+ * most once per 5 minutes per installation (the token refreshed to is kept
+ * until it drops below this share), each a refresh-token grant at Dex, or for
+ * a broker-covered installation a main refresh and a token exchange, ahead of
+ * that one send. A smaller share would make that rarer and cap the turns that
+ * can finish; no turn length is known up front to size it by.
+ */
+export const TURN_TOKEN_MIN_LIFETIME_LEFT = 25 / 30;
+
+/**
+ * Say so when a turn goes out with a token that has less than
+ * {@link TURN_TOKEN_MIN_LIFETIME_LEFT} of its lifetime left: the refresh before
+ * it failed or came back no better, so a long turn may fail part-way with
+ * `Unauthorized`. The turn is still sent, since the token is valid and most
+ * turns are short.
+ */
+function checkTurnTokenLifetime(installation: string, token: string) {
+  if (hasIdTokenLifetimeLeft(token, TURN_TOKEN_MIN_LIFETIME_LEFT)) {
+    return;
+  }
+  const left = Math.round((idTokenLifetimeLeft(token) ?? 0) * 100);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `kagent turn on installation '${installation}' sent with a token that has ${left}% of its lifetime left; a turn that outlasts it fails part-way.`,
+  );
+}
 
 /**
  * Drift already reported, keyed by installation + **endpoint** + drift *kind*.
@@ -63,11 +109,61 @@ const reportedDrift = new Set<string>();
  * `ServiceUnavailableError` as "kagent isn't deployed here" and stays silent, so
  * a read that genuinely failed must not borrow either name.
  */
+export const UPSTREAM_ERROR_NAME = 'UpstreamError';
+
 function upstreamError(message: string): Error {
   const error = new Error(message);
-  error.name = 'UpstreamError';
+  error.name = UPSTREAM_ERROR_NAME;
   return error;
 }
+
+export function isUpstreamError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === UPSTREAM_ERROR_NAME;
+}
+
+/**
+ * What a failed response's body and headers say: the backend's message, and
+ * the fields `describeReadFailure` turns into the page's words — the status,
+ * the backend's failure reason and the request id it sent toward kagent.
+ */
+async function readRequestError(
+  response: Response,
+): Promise<{ message?: string; fields: KagentRequestErrorFields }> {
+  const errorData = await response.json().catch(() => ({}));
+  const { message, reason } =
+    (errorData as { error?: { message?: string; reason?: string } })?.error ??
+    {};
+  return {
+    message,
+    fields: {
+      status: response.status,
+      reason,
+      requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+    },
+  };
+}
+
+/** How `relayStream`'s errors name the request they are about. */
+type StreamWording = {
+  /** What an in-band refusal refused. */
+  what: string;
+  /** What was under way when the connection failed. */
+  request: string;
+  /** The stream itself. */
+  stream: string;
+};
+
+const SEND_WORDING: StreamWording = {
+  what: 'the message',
+  request: 'sending the message',
+  stream: 'streaming send',
+};
+
+const SUBSCRIBE_WORDING: StreamWording = {
+  what: 'the subscription to the running turn',
+  request: 'subscribing to the running turn',
+  stream: 'subscription to the running turn',
+};
 
 /**
  * A streaming send failed in a way that says nothing about whether the message
@@ -90,6 +186,29 @@ function streamTransportError(message: string): Error {
 
 export function isStreamTransportError(error: unknown): boolean {
   return (error as Error | undefined)?.name === STREAM_TRANSPORT_ERROR_NAME;
+}
+
+/**
+ * Whether a failed resubscription to a running turn is worth another try: the
+ * connection failed or a gateway answered (`StreamTransportError`), or the
+ * backend said in-band that the controller is unavailable or slow — what a
+ * controller rollout looks like (`UpstreamError`). Anything else is a decision
+ * no retry changes.
+ */
+export function isResubscribeRetryable(error: unknown): boolean {
+  return isStreamTransportError(error) || isUpstreamError(error);
+}
+
+/**
+ * A streaming send the backend gave up on before kagent's first event: its
+ * request timeout ran out (`reason: "timeout"`). A transport failure like any
+ * other — whether the message landed is still for the caller to check.
+ */
+export function isFirstEventTimeout(error: unknown): boolean {
+  return (
+    isStreamTransportError(error) &&
+    (error as KagentRequestErrorFields).reason === 'timeout'
+  );
 }
 
 /**
@@ -149,6 +268,7 @@ function answerBody(
       rejectionReason: answer.rejectionReason,
     }),
     ...(answer.text && { text: answer.text }),
+    ...(answer.askedIn && { askedIn: answer.askedIn }),
   };
 }
 
@@ -182,6 +302,8 @@ function reportDrift(
  *   `KAGENT_AUTH_HEADER`. Tokens are never cached here: callers put results in a
  *   react-query cache that is persisted to localStorage, and a credential must
  *   not be written to disk.
+ *   A turn asks for a token with most of its lifetime left, since kagent holds
+ *   on to it for the whole turn ({@link TURN_TOKEN_MIN_LIFETIME_LEFT}).
  * - **Schema tolerance.** Responses are normalized through the zod layer, so a
  *   kagent version difference between installations stays out of the UI.
  */
@@ -213,6 +335,21 @@ export class KagentApiClient implements KagentApi {
   }
 
   async listSessions(installation: string): Promise<KagentSession[]> {
+    const { sessions } = await this.readSessionList(installation);
+    return sessions;
+  }
+
+  async listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined> {
+    const { sessions, drift } = await this.readSessionList(installation);
+    // Any drift that did not throw left sessions out: rows that did not parse,
+    // a body that did not parse at all (read as no sessions), or a listing
+    // the backend cut at its page limit.
+    return drift ? undefined : sessions;
+  }
+
+  private async readSessionList(installation: string) {
     const body = await this.get<unknown>('/kagent/sessions', installation);
     const { sessions, drift } = normalizeSessionList(body, installation);
 
@@ -237,7 +374,7 @@ export class KagentApiClient implements KagentApi {
       throw upstreamError(drift.message);
     }
 
-    return sessions;
+    return { sessions, drift };
   }
 
   async getSessionDetail(
@@ -302,6 +439,16 @@ export class KagentApiClient implements KagentApi {
     return normalizeSessionUsage(body);
   }
 
+  async getModelCost(
+    installation: string,
+    days: number,
+  ): Promise<ModelCostResponse> {
+    return this.get<ModelCostResponse>(
+      `/usage/model-cost?days=${encodeURIComponent(String(days))}`,
+      installation,
+    );
+  }
+
   async listSessionTasks(
     installation: string,
     sessionId: string,
@@ -327,6 +474,18 @@ export class KagentApiClient implements KagentApi {
     // A session with no tasks is ordinary — created but never run — so an empty
     // list is a success, not a drift.
     return tasks;
+  }
+
+  async getRawSession(
+    installation: string,
+    sessionId: string,
+  ): Promise<RawSessionBodies> {
+    const path = `/kagent/sessions/${encodeURIComponent(sessionId)}`;
+    // One after the other, not together: see `KagentApi.getRawSession`. A
+    // read, so the cached token will do; only a turn needs one that lasts.
+    const sessionBody = await this.get<unknown>(path, installation);
+    const tasksBody = await this.get<unknown>(`${path}/tasks`, installation);
+    return { sessionBody, tasksBody };
   }
 
   async deleteSession(installation: string, sessionId: string): Promise<void> {
@@ -424,11 +583,12 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
   ): Promise<void> {
     const { url, headers } = await this.prepare(
       `/kagent/sessions/${encodeURIComponent(sessionId)}/messages`,
       installation,
+      { turn: true },
     );
     const response = await this.fetchApi.fetch(url, {
       method: 'POST',
@@ -438,6 +598,7 @@ export class KagentApiClient implements KagentApi {
         agentName: agent.name,
         messageId: message.messageId,
         text: message.text,
+        ...(message.images?.length ? { images: message.images } : {}),
       }),
     });
 
@@ -468,11 +629,11 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void> {
-    await this.relayStream(
+  ): Promise<StreamEnd> {
+    return this.relayStream(
       installation,
       `/kagent/sessions/${encodeURIComponent(sessionId)}/messages/stream`,
       {
@@ -480,6 +641,7 @@ export class KagentApiClient implements KagentApi {
         agentName: agent.name,
         messageId: message.messageId,
         text: message.text,
+        ...(message.images?.length ? { images: message.images } : {}),
       },
       onEvent,
       signal,
@@ -493,8 +655,8 @@ export class KagentApiClient implements KagentApi {
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void> {
-    await this.relayStream(
+  ): Promise<StreamEnd> {
+    return this.relayStream(
       installation,
       `/kagent/sessions/${encodeURIComponent(sessionId)}/answer/stream`,
       answerBody(agent, answer),
@@ -503,11 +665,33 @@ export class KagentApiClient implements KagentApi {
     );
   }
 
+  async subscribeToTask(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    taskId: string,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<StreamEnd> {
+    return this.relayStream(
+      installation,
+      `/kagent/sessions/${encodeURIComponent(
+        sessionId,
+      )}/tasks/${encodeURIComponent(taskId)}/subscribe`,
+      { agentNamespace: agent.namespace, agentName: agent.name },
+      onEvent,
+      signal,
+      SUBSCRIBE_WORDING,
+    );
+  }
+
   /**
    * POST a body to one of the backend's streaming routes and hand every event
-   * frame to `onEvent` — the shared half of {@link streamMessage} and
-   * {@link streamAnswer}, so a message and an answer classify a broken stream
-   * identically. See {@link KagentApi.streamMessage} for the contract.
+   * frame to `onEvent` — the shared half of {@link streamMessage},
+   * {@link streamAnswer} and {@link subscribeToTask}, so a message, an answer
+   * and a resubscription classify a broken stream identically. See
+   * {@link KagentApi.streamMessage} for the contract. `wording` names the
+   * request in the errors it rejects with.
    *
    * `signal` reaches the fetch, so an abort ends the body read as well as a
    * request still waiting for its headers; both land in the same classification
@@ -519,8 +703,11 @@ export class KagentApiClient implements KagentApi {
     body: unknown,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void> {
-    const { url, headers } = await this.prepare(path, installation);
+    wording: StreamWording = SEND_WORDING,
+  ): Promise<StreamEnd> {
+    const { url, headers } = await this.prepare(path, installation, {
+      turn: true,
+    });
 
     let response: Response;
     try {
@@ -535,7 +722,7 @@ export class KagentApiClient implements KagentApi {
       // reset it. Whether the message was dispatched is unknowable from here,
       // which is exactly what this name tells the caller to go and check.
       throw streamTransportError(
-        `The connection failed while sending the message: ${String(error)}`,
+        `The connection failed while ${wording.request}: ${String(error)}`,
       );
     }
 
@@ -544,9 +731,15 @@ export class KagentApiClient implements KagentApi {
         // A 502/504 is the shape a gateway cut takes when it fires before the
         // stream opens. The backend's own 5xx looks identical from here. Either
         // way the send may or may not have reached kagent — verify, don't
-        // report.
-        throw streamTransportError(
-          `The streaming send failed with status ${response.status}.`,
+        // report. The backend's own says why: `reason: "timeout"` is its wait
+        // for kagent's first event running out, and several of those in a
+        // row read as a runtime that cannot start (`useSendMessage`).
+        const { fields } = await readRequestError(response);
+        throw Object.assign(
+          streamTransportError(
+            `The ${wording.stream} failed with status ${response.status}.`,
+          ),
+          fields,
         );
       }
       // 4xx: a decision — a malformed message, a rejected token, an unknown
@@ -560,7 +753,7 @@ export class KagentApiClient implements KagentApi {
       // resumed turn outlived the wait for its first event. Resolved like a
       // stream that ended without one, so the caller follows the turn through
       // the poll.
-      return;
+      return {};
     }
 
     const contentType = response.headers.get('content-type') ?? '';
@@ -576,6 +769,7 @@ export class KagentApiClient implements KagentApi {
     const decoder = new TextDecoder();
     const sse = createSseDataDecoder();
     let sawEvent = false;
+    const end: StreamEnd = {};
 
     const consumeFrame = (data: string) => {
       const frame = readStreamFrame(data);
@@ -593,9 +787,10 @@ export class KagentApiClient implements KagentApi {
         // preview short.
         if (!sawEvent) {
           throw upstreamError(
-            `The agent on ${installation} did not accept the message: ${frame.message}`,
+            `The agent on ${installation} did not accept ${wording.what}: ${frame.message}`,
           );
         }
+        end.error = frame.message;
       }
       // 'unreadable' frames cost their own liveness and nothing else.
     };
@@ -615,7 +810,7 @@ export class KagentApiClient implements KagentApi {
         consumeFrame(data);
       }
     } catch (error) {
-      if ((error as Error)?.name === 'UpstreamError') {
+      if (isUpstreamError(error)) {
         throw error;
       }
       // The stream died mid-read — the gateway's request timeout is the routine
@@ -623,10 +818,11 @@ export class KagentApiClient implements KagentApi {
       // finishes the job; without any, the caller verifies.
       if (!sawEvent) {
         throw streamTransportError(
-          `The event stream ended before the agent produced anything: ${String(error)}`,
+          `The ${wording.stream} ended before the agent produced anything: ${String(error)}`,
         );
       }
     }
+    return end;
   }
 
   async answerConfirmation(
@@ -638,6 +834,7 @@ export class KagentApiClient implements KagentApi {
     const { url, headers } = await this.prepare(
       `/kagent/sessions/${encodeURIComponent(sessionId)}/answer`,
       installation,
+      { turn: true },
     );
     const response = await this.fetchApi.fetch(url, {
       method: 'POST',
@@ -673,7 +870,22 @@ export class KagentApiClient implements KagentApi {
       tokenRequired: false,
     });
     const parsed = kagentMeWireSchema.safeParse(body);
-    return { sub: parsed.success ? parsed.data.sub : undefined };
+    return parsed.success
+      ? { sub: parsed.data.sub, email: parsed.data.email }
+      : { sub: undefined };
+  }
+
+  async listAgentNamespaces(installation: string): Promise<string[]> {
+    const body = await this.get<{ namespaces?: unknown }>(
+      '/kagent/agent-namespaces',
+      installation,
+    );
+    return Array.isArray(body?.namespaces)
+      ? body.namespaces.filter(
+          (namespace): namespace is string =>
+            typeof namespace === 'string' && namespace !== '',
+        )
+      : [];
   }
 
   /** GET a backend route, forwarding the target installation's Dex token. */
@@ -682,11 +894,9 @@ export class KagentApiClient implements KagentApi {
     installation?: string,
     options: { tokenRequired?: boolean } = {},
   ): Promise<T> {
-    const { url, headers } = await this.prepare(
-      path,
-      installation,
-      options.tokenRequired ?? true,
-    );
+    const { url, headers } = await this.prepare(path, installation, {
+      tokenRequired: options.tokenRequired,
+    });
     const response = await this.fetchApi.fetch(url, { headers });
     return this.handleResponse<T>(response);
   }
@@ -702,11 +912,17 @@ export class KagentApiClient implements KagentApi {
    * `tokenRequired: false` mirrors the backend routes that read the token
    * optionally — the request still goes out without it rather than failing
    * before it is sent.
+   *
+   * `turn: true` for a request that starts or resumes an agent turn: its token
+   * has to last the turn, see {@link TURN_TOKEN_MIN_LIFETIME_LEFT}.
    */
   private async prepare(
     path: string,
     installation?: string,
-    tokenRequired: boolean = true,
+    {
+      tokenRequired = true,
+      turn = false,
+    }: { tokenRequired?: boolean; turn?: boolean } = {},
   ): Promise<{ url: string; headers: Record<string, string> }> {
     const baseUrl = await this.discoveryApi.getBaseUrl('agent-platform');
     const url = new URL(`${baseUrl}${path}`);
@@ -714,7 +930,7 @@ export class KagentApiClient implements KagentApi {
     const headers: Record<string, string> = {};
     if (installation) {
       url.searchParams.set('installation', installation);
-      const token = await this.mintToken(installation, tokenRequired);
+      const token = await this.mintToken(installation, tokenRequired, turn);
       if (token) {
         headers[KAGENT_AUTH_HEADER] = token;
       }
@@ -726,19 +942,26 @@ export class KagentApiClient implements KagentApi {
   private async mintToken(
     installation: string,
     required: boolean,
+    turn: boolean,
   ): Promise<string | undefined> {
     if (required) {
+      let token: string;
       try {
-        return await getInstallationOidcToken(
+        token = await getInstallationOidcToken(
           this.kubernetesApi,
           this.kubernetesAuthProvidersApi,
           installation,
+          turn ? { minLifetimeLeft: TURN_TOKEN_MIN_LIFETIME_LEFT } : {},
         );
       } catch (error) {
         // The request never left the browser: say so, rather than let the
         // failure read like one of the backend's.
         throw Object.assign(error as Error, { reason: 'token' });
       }
+      if (turn) {
+        checkTurnTokenLifetime(installation, token);
+      }
+      return token;
     }
     try {
       return await getInstallationOidcToken(
@@ -778,19 +1001,9 @@ export class KagentApiClient implements KagentApi {
   ): Promise<void> {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const { message: bodyMessage, reason } =
-        (errorData as { error?: { message?: string; reason?: string } })
-          ?.error ?? {};
+      const { message: bodyMessage, fields } = await readRequestError(response);
       const message =
         bodyMessage ?? `kagent request failed with status ${response.status}`;
-      // What `describeReadFailure` turns into the page's words: the status,
-      // the backend's failure reason and the request id it sent toward kagent.
-      const fields: KagentRequestErrorFields = {
-        status: response.status,
-        reason,
-        requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
-      };
       const error = Object.assign(new Error(message), fields);
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`

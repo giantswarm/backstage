@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import type { AgentRow } from '../components/AgentsDataProvider';
+import { isStartableAgent } from '../lib/startableAgent';
 
 /**
  * Same `gs-` prefix as `useTableColumns`, which is the repo's other piece of
@@ -37,11 +38,12 @@ export function useLastUsedAgent(agents: AgentRow[]) {
     { defaultValue: undefined },
   );
 
-  // Only a ready agent is offered as the default. A remembered one that has since
-  // stopped being ready is still listed in the picker (disabled, with the reason),
-  // so preselecting it would present a default that cannot be started.
+  // Only a startable agent is offered as the default, by the picker's own
+  // predicate. A remembered one that has since stopped being startable is still
+  // listed in the picker (disabled, with the reason), so preselecting it would
+  // present a default that cannot be started.
   const lastUsedAgent = agents.find(
-    agent => agent.id === lastUsedId && agent.readiness === 'ready',
+    agent => agent.id === lastUsedId && isStartableAgent(agent),
   );
 
   const rememberAgent = useCallback(

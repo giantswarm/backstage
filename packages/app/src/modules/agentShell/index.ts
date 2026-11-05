@@ -3,9 +3,11 @@ import { agentShellLayout } from './layoutExtension';
 import { agentShellThemeRoot } from './themeRootExtension';
 import { agentShellCustomizePage } from './customizePageExtension';
 import { agentShellFeatureFlagsApi } from './featureFlagsApiExtension';
+import { agentShellNotificationsApi } from './notificationsApiExtension';
 import { AGENT_SHELL_FLAG } from './predicates';
 
 export { AGENT_SHELL_FLAG, agentShellOff, agentShellOn } from './predicates';
+export { agentPlatformLegacyPages } from './legacyPagesModule';
 export {
   isAgentArea,
   useAgentShellArea,
@@ -24,6 +26,7 @@ export const agentShellModule = createFrontendModule({
   ],
   extensions: [
     agentShellFeatureFlagsApi,
+    agentShellNotificationsApi,
     agentShellLayout,
     agentShellThemeRoot,
     agentShellCustomizePage,

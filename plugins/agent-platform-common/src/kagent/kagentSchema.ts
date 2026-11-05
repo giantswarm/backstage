@@ -88,8 +88,11 @@ export const kagentSessionListSchema = z.union([
  *
  * Under `trusted-proxy` this reflects the forwarded token's claims; under
  * `unsecure` kagent ignores the token entirely and reports a shared default
- * user, which is what makes this probe worth having.
+ * user, which is what makes this probe worth having. kagent 1.19 answers the
+ * token's claims: `sub` is the IdP's subject (Dex's is opaque), `email` the
+ * person's email.
  */
 export const kagentMeWireSchema = z.looseObject({
   sub: wireString,
+  email: wireString,
 });

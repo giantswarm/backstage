@@ -6,6 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -34,8 +35,9 @@ import {
   PICK_A_ZONE,
 } from './PoolPlacementPicker';
 
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
@@ -137,6 +139,8 @@ type Scenario = {
   clusterCount?: number;
   /** The installations the page offers (default: inst-1 alone). */
   installations?: string[];
+  /** The person has not signed in to cluster-manager: its reads ask for it. */
+  notSignedIn?: boolean;
   /** The dry run judges this many presets: the two fixtures, then copies of the big one. */
   presetCount?: number;
 };
@@ -422,6 +426,14 @@ function makeMusterApi(scenario: Scenario = {}) {
             tools: [],
           };
         case 'x_cluster-manager_list_clusters':
+          if (scenario.notSignedIn) {
+            throw new MusterUnauthorizedError(
+              "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
+              'server_sign_in_required',
+              'cluster-manager',
+              'inst-1',
+            );
+          }
           if (scenario.noClusterApi) {
             return { clusters: [], clusterApi: NO_CLUSTER_API };
           }
@@ -506,7 +518,11 @@ function makeMusterApi(scenario: Scenario = {}) {
         }
       : { inputSchema: {} },
   );
-  return { api: { callTool, describeTool } as unknown as MusterApi, callTool };
+  const getAuthStatus = jest.fn(async () => ({ servers: [] }));
+  return {
+    api: { callTool, describeTool, getAuthStatus } as unknown as MusterApi,
+    callTool,
+  };
 }
 
 const analyticsApi = mockApis.analytics.mock();
@@ -536,7 +552,7 @@ async function renderPage(
         <PageHeaderActionsProvider>
           <AddGpuNodePoolPage
             installations={scenario.installations ?? ['inst-1']}
-            closeHref="/agent-platform/models/capacity"
+            closeHref="/customize/models/hosting/capacity"
             onDeployed={onDeployed}
           />
         </PageHeaderActionsProvider>
@@ -729,7 +745,7 @@ describe('AddGpuNodePoolPage', () => {
     );
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/capacity',
+      '/customize/models/hosting/capacity',
     );
     expect(
       screen.queryByRole('button', { name: 'Back' }),
@@ -1450,7 +1466,7 @@ describe('AddGpuNodePoolPage: the form stands in place (giantswarm/backstage#250
 });
 
 describe('AddGpuNodePoolPage: the selects at scale', () => {
-  it('offers three environments and three clusters without a search', async () => {
+  it('offers type-ahead over three environments and three clusters', async () => {
     const user = setupUser();
     await renderPage({
       clusterCount: 3,
@@ -1463,14 +1479,14 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /^wc3/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: /^inst-1/ }));
     expect(
       await screen.findByRole('option', { name: 'inst-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 clusters and 300 environments', async () => {
@@ -1491,7 +1507,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 
-  it('offers the two presets of I want to serve without a search', async () => {
+  it('offers type-ahead over the two presets and Any of I want to serve', async () => {
     const user = setupUser();
     await renderPage();
     await fillForm(user);
@@ -1501,7 +1517,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /Qwen3 Coder Next/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 presets in I want to serve', async () => {
@@ -1512,5 +1528,21 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
 
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});
+
+describe('AddGpuNodePoolPage without a cluster-manager sign-in', () => {
+  it('offers the sign-in in place of the cluster list, not an error', async () => {
+    await renderPage({ notSignedIn: true });
+
+    expect(
+      await screen.findByText(
+        'Sign in to cluster-manager to list the clusters on inst-1',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    expect(
+      screen.queryByText('Could not read the clusters'),
+    ).not.toBeInTheDocument();
   });
 });

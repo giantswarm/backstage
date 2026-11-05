@@ -10,6 +10,7 @@ function agent(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
     name,
     technicalName: name,
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready',
     ...overrides,
@@ -80,6 +81,22 @@ describe('recentAgentUses', () => {
       { agent: sre, lastUsedAt: '2026-10-04T10:00:00Z' },
       { agent: issues, lastUsedAt: '2026-10-03T10:00:00Z' },
     ]);
+  });
+
+  it('keeps an agent that cannot be started when asked to', () => {
+    const sessions = [
+      session('a', 'broken', '2026-10-04T10:00:00Z'),
+      session('b', 'sre', '2026-10-03T10:00:00Z'),
+    ];
+
+    expect(
+      recentAgentUses(sessions, [sre, broken]).map(use => use.agent),
+    ).toEqual([sre]);
+    expect(
+      recentAgentUses(sessions, [sre, broken], { startableOnly: false }).map(
+        use => use.agent,
+      ),
+    ).toEqual([broken, sre]);
   });
 
   it('stays at the limit over 300 sessions with 300 agents', () => {

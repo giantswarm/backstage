@@ -4,8 +4,8 @@ import {
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
-  AuthenticationError,
   InputError,
+  NotAllowedError,
   ServiceUnavailableError,
 } from '@backstage/errors';
 import express from 'express';
@@ -15,6 +15,12 @@ import {
   AUTH_LOGOUT_TOOL,
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
+  isTokenExpired,
+  MusterAuthRequiredError,
+  MusterToolError,
+  musterTokenExpiredError,
+  musterTokenMissingError,
+  toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
 } from '@giantswarm/backstage-plugin-gs-node';
@@ -28,6 +34,69 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
 
+/**
+ * muster's connector writes and their dry run, whose refusals answer 422
+ * ({@link isConnectorRefusal}). Reads (`get`, `list`, `detect`) and `delete`
+ * keep the 500 every other tool answers.
+ */
+const CONNECTOR_WRITE_TOOLS = new Set([
+  'core_mcpserver_create',
+  'core_mcpserver_update',
+  'core_mcpserver_validate',
+]);
+
+/**
+ * The status `/call` answers a connector write's refusal with: the person's
+ * request was refused, the portal did not fail. Below the `>= 500` at which
+ * `MiddlewareFactory.error()` logs the error and the root logger ships it to
+ * Sentry, where a refusal is noise and its message names the person's
+ * Secret. Every other tool's error keeps its 500: those tools are many, and
+ * their callers classify the status (agent-platform's read failures).
+ */
+const CONNECTOR_REFUSAL_STATUS = 422;
+
+/**
+ * The texts muster answers a refusal of a connector write with: a tool error
+ * carries no structured reason, and muster reports its own failures as tool
+ * errors too (a Kubernetes API error, a webhook that could not be called, a
+ * Secret it could not write), which must stay 500 and reach Sentry. So only
+ * these count, from muster's `internal/mcpserver` and `internal/callerwrite`:
+ *
+ * - the API server or the caller's RBAC refused the write (`Permission
+ *   denied: your user may not …`), also as the cause of a client Secret that
+ *   was not stored;
+ * - the definition is invalid (`Invalid MCP server definition: …`, and the
+ *   dry run's `Validation failed: …`);
+ * - the name is taken (`MCP server 'x' already exists`, or the generated
+ *   Secret name: `Secret "x" already exists …; retry …`);
+ * - muster's own rules (`Cannot create|update MCP server 'x': …`: another
+ *   server describes the issuer differently, the stored client belongs to
+ *   another authorization server, a server outside muster's namespace);
+ * - an admission policy denied the MCPServer (`ValidatingAdmissionPolicy …
+ *   denied request: …`, e.g. a Secret its writer may not get).
+ *
+ * A failure in the same breath as a refusal stays a failure: a server left
+ * behind because removing it failed too.
+ */
+const CONNECTOR_REFUSALS = [
+  /^Permission denied: your user may not /,
+  /^Invalid MCP server definition: /,
+  /^Validation failed: /,
+  /^MCP server '[^']*' already exists$/,
+  /^Cannot (create|update) MCP server '[^']*': /,
+  /^Cannot store the client credentials of MCP server '[^']*'(, so it was not (created|updated))?: (Permission denied: your user may not |Secret "[^"]*" already exists in namespace )/,
+  /ValidatingAdmissionPolicy '[^']*' with binding '[^']*' denied request: /,
+];
+const CONNECTOR_FAILURES = [/Removing the server failed too/];
+
+/** Whether a connector write's tool error is muster refusing the request. */
+function isConnectorRefusal(message: string): boolean {
+  return (
+    CONNECTOR_REFUSALS.some(refusal => refusal.test(message)) &&
+    !CONNECTOR_FAILURES.some(failure => failure.test(message))
+  );
+}
+
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
 /**
@@ -37,6 +106,19 @@ const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
  * installation per request, so no provider suffix is needed.
  */
 export const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
+
+/**
+ * The tools `/call` runs on an installation without a per-user session:
+ * muster's own core tools, except its per-user auth (`core_auth_*`, which
+ * `/auth/*` refuses there). Everything else -- an aggregated server's tools
+ * (`x_<server>_*`, under any server name or prefix), a workflow
+ * (`workflow_*`, whose steps call those tools) or a meta-tool wrapping
+ * another call (`call_tool`) -- acts for the caller and would run under
+ * muster's shared identity.
+ */
+function runsWithoutPerson(name: string): boolean {
+  return name.startsWith('core_') && !name.startsWith('core_auth_');
+}
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -128,6 +210,43 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /**
+ * How many connectors one `/usage` read may narrow to: a family's instances,
+ * one per management cluster, with room to spare.
+ */
+const MAX_USAGE_SERVERS = 256;
+
+/**
+ * A Kubernetes resource name (a DNS-1123 subdomain), which an MCPServer's is.
+ * Checked before it goes into a PromQL selector, which escapes it as well.
+ */
+function isResourceName(value: string): boolean {
+  return (
+    value.length <= 253 &&
+    /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/.test(
+      value,
+    )
+  );
+}
+
+/** How long a tool name `/usage` narrows to may be. */
+const MAX_USAGE_TOOL_LENGTH = 512;
+
+/**
+ * Whether a value can be the tool label muster records a call under: any
+ * name muster exposes, whatever characters its downstream server gave it, so
+ * only what cannot be one is refused (empty, overlong, control characters).
+ * The PromQL selector escapes the rest.
+ */
+function isToolLabel(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= MAX_USAGE_TOOL_LENGTH &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
+/**
  * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
  * in order, read from the raw query string. `req.query` is the root router's
  * `qs` parse, which turns more than 20 repeats into an index-keyed object and
@@ -143,6 +262,24 @@ function repeatedQueryValues(
     'http://localhost',
   ).searchParams.getAll(name);
   return values.length > 0 ? values : undefined;
+}
+
+/**
+ * What `core_auth_login` signs the person in to: one aggregated server, or
+ * one provider App muster keeps (`app`), never both.
+ */
+function loginTarget(
+  server: unknown,
+  app: unknown,
+): { server: string } | { app: string } {
+  const hasServer = typeof server === 'string' && server !== '';
+  const hasApp = typeof app === 'string' && app !== '';
+  if (hasServer === hasApp) {
+    throw new InputError(
+      'either server or app is required in the request body',
+    );
+  }
+  return hasServer ? { server: server as string } : { app: app as string };
 }
 
 export async function createRouter(
@@ -287,11 +424,28 @@ export async function createRouter(
   };
 
   /**
+   * Whether calls to the installation carry the person's token: a configured
+   * entry with an `authProvider`, or any derived entry. MusterMcpClient keys
+   * its session cache on that token, so without one every portal user shares
+   * a single muster session under muster's own identity -- one user's
+   * completed `core_auth_login` would connect a downstream server for
+   * everybody, and any tool would act for nobody in particular.
+   */
+  const hasPerUserSession = (installation: MusterInstallationConfig) =>
+    musterInstallationRequiresAuth(installation);
+
+  /** The token the request forwards for its installation, if any. */
+  const forwardedToken = (req: express.Request): string | undefined => {
+    const headerValue = req.headers[MUSTER_AUTH_HEADER];
+    return Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  };
+
+  /**
    * When the target installation requires per-user auth (a configured entry
    * with an `authProvider`, or any derived entry -- every muster gates), the
-   * frontend must forward the person's token; without it the muster server
-   * would reject the connection anyway, so fail fast with a 401 the frontend
-   * can act on.
+   * frontend must forward the person's token; without it, or with one whose
+   * `exp` has passed, the muster server would reject the connection anyway,
+   * so fail fast with a 401 whose reason the frontend can act on.
    */
   const readCallOptions = (
     req: express.Request,
@@ -300,17 +454,34 @@ export async function createRouter(
     if (!musterInstallationRequiresAuth(installation)) {
       return {};
     }
-    const headerValue = req.headers[MUSTER_AUTH_HEADER];
-    const authToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    const authToken = forwardedToken(req);
     if (!authToken) {
       const why = installation.authProvider
         ? `for auth provider '${installation.authProvider}'`
         : 'for its muster (the endpoint is derived from the installation base domain)';
-      throw new AuthenticationError(
-        `The muster installation '${installation.name}' requires a user token ${why}, but the request did not include one.`,
-      );
+      throw musterTokenMissingError(installation.name, why);
+    }
+    if (isTokenExpired(authToken)) {
+      throw musterTokenExpiredError(installation.name);
     }
     return { authToken };
+  };
+
+  /**
+   * Without per-user auth muster runs a call under its own identity, shared
+   * by every portal user. The discovery routes and muster's core tools
+   * tolerate that; every other tool is refused before muster is called.
+   */
+  const assertRunsAsPerson = (
+    name: string,
+    installation: MusterInstallationConfig,
+  ) => {
+    if (hasPerUserSession(installation) || runsWithoutPerson(name)) {
+      return;
+    }
+    throw new NotAllowedError(
+      `The muster installation '${installation.name}' is configured without an authProvider, so '${name}' would run under muster's shared identity instead of yours. A platform admin can give the installation's muster entry an authProvider.`,
+    );
   };
 
   // --- Tool discovery / execution (meta-tools) -----------------------------
@@ -470,12 +641,30 @@ export async function createRouter(
     ) {
       throw new InputError('arguments must be a JSON object when provided');
     }
+    assertRunsAsPerson(name, installation);
 
-    const result = await client.callTool(
-      name,
-      (toolArgs as Record<string, unknown>) ?? {},
-      readCallOptions(req, installation),
-    );
+    let result: unknown;
+    try {
+      result = await client.callTool(
+        name,
+        (toolArgs as Record<string, unknown>) ?? {},
+        readCallOptions(req, installation),
+      );
+    } catch (error) {
+      // A sign-in muster asks for stays a MusterAuthRequiredError, and an
+      // expired token's text keeps its 401 below: both are not refusals.
+      if (
+        CONNECTOR_WRITE_TOOLS.has(name) &&
+        error instanceof MusterToolError &&
+        !(error instanceof MusterAuthRequiredError) &&
+        isConnectorRefusal(error.message)
+      ) {
+        // The tool error holds muster's message and text blocks only, never
+        // the request's arguments (which may carry a client secret).
+        throw Object.assign(error, { statusCode: CONNECTOR_REFUSAL_STATUS });
+      }
+      throw error;
+    }
     res.json(result);
   });
 
@@ -502,6 +691,7 @@ export async function createRouter(
     ) {
       throw new InputError('arguments must be a JSON object when provided');
     }
+    assertRunsAsPerson(name, installation);
     const callOptions = readCallOptions(req, installation);
 
     const abort = new AbortController();
@@ -547,20 +737,9 @@ export async function createRouter(
 
   // --- Downstream server authentication ------------------------------------
 
-  /**
-   * Downstream, per-server auth state is scoped to one muster MCP session, and
-   * MusterMcpClient keys its session cache on the forwarded user token. An
-   * installation without `authProvider` therefore has no token to key on and
-   * every portal user shares a single session -- so one user's completed
-   * `core_auth_login` would connect a downstream server for everybody, letting
-   * the next user call it under the first user's OAuth grant.
-   *
-   * Read-only discovery tolerates that shared session; per-user auth cannot, so
-   * these two routes are inert unless the installation forwards a user token
-   * (a configured entry with an `authProvider`, or any derived entry).
-   */
-  const hasPerUserSession = (installation: MusterInstallationConfig) =>
-    musterInstallationRequiresAuth(installation);
+  // Downstream, per-server auth state is scoped to one muster MCP session (see
+  // hasPerUserSession), so these two routes are inert unless the installation
+  // forwards a user token.
 
   /**
    * Per-server authentication status for the calling user's muster session
@@ -602,7 +781,9 @@ export async function createRouter(
    * Start (or complete) the OAuth flow for one aggregated MCP server via
    * muster's `core_auth_login`. A challenge carries the sign-in URL as
    * `structuredContent.authUrl`; "already connected" outcomes are prose-only.
-   * The response is normalised here.
+   * The response is normalised here. `{ app }` in place of `{ server }`
+   * starts the person's grant of a provider App muster keeps
+   * (`core_auth_login app=<instance>`), which answers the same way.
    *
    * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
    * issuer) as MCP tool errors, which the client turns into a thrown Error.
@@ -614,11 +795,8 @@ export async function createRouter(
    */
   router.post('/auth/login', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const { server } = req.body ?? {};
-
-    if (typeof server !== 'string' || server === '') {
-      throw new InputError('server is required in the request body');
-    }
+    const { server, app } = req.body ?? {};
+    const target = loginTarget(server, app);
     if (!hasPerUserSession(installation)) {
       res.json({
         status: 'error',
@@ -633,7 +811,7 @@ export async function createRouter(
     try {
       payload = await client.callToolWithStructured(
         AUTH_LOGIN_TOOL,
-        { server },
+        target,
         callOptions,
       );
     } catch (error) {
@@ -643,7 +821,7 @@ export async function createRouter(
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`${AUTH_LOGIN_TOOL} declined to connect the server`, {
         installation: installation.name,
-        server,
+        ...target,
         message,
       });
       res.json({ status: 'error', message });
@@ -658,7 +836,8 @@ export async function createRouter(
    * session via `core_auth_logout` -- the inverse of /auth/login. Muster
    * revokes the session's auth state for the server (and clears its issuer's
    * tokens when no other server shares them), so the server's tools re-gate
-   * until the next sign-in.
+   * until the next sign-in. `{ app }` drops the person's grant of a provider
+   * App instead.
    *
    * Same error contract as /auth/login: muster's refusals (unknown server,
    * SSO-managed server) are MCP tool errors returned as structured 200s so
@@ -667,11 +846,8 @@ export async function createRouter(
    */
   router.post('/auth/logout', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const { server } = req.body ?? {};
-
-    if (typeof server !== 'string' || server === '') {
-      throw new InputError('server is required in the request body');
-    }
+    const { server, app } = req.body ?? {};
+    const target = loginTarget(server, app);
     if (!hasPerUserSession(installation)) {
       res.json({
         status: 'error',
@@ -682,11 +858,11 @@ export async function createRouter(
 
     const callOptions = readCallOptions(req, installation);
 
-    let payload: { text?: string };
+    let payload: { text?: string; structuredContent?: unknown };
     try {
       payload = await client.callToolWithStructured(
         AUTH_LOGOUT_TOOL,
-        { server },
+        target,
         callOptions,
       );
     } catch (error) {
@@ -696,7 +872,7 @@ export async function createRouter(
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`${AUTH_LOGOUT_TOOL} declined to sign out the server`, {
         installation: installation.name,
-        server,
+        ...target,
         message,
       });
       res.json({ status: 'error', message });
@@ -735,26 +911,45 @@ export async function createRouter(
    * behind the same muster (no separate Prometheus access path). Answers
    * `available: false` with a reason instead of erroring when the
    * installation has no queryable prometheus server.
+   *
+   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
+   * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const window = req.query.window;
-    if (window !== undefined && window !== 'month') {
-      throw new InputError('window must be month');
+    // Refused rather than ignored: a frontend loaded before `window=month`
+    // went would otherwise read 24 hours as the month.
+    if (req.query.window !== undefined) {
+      throw new InputError('window is no longer supported; use hours');
     }
     const hours = parseOptionalInt(req.query.hours, 'hours');
-    if (window !== undefined && hours !== undefined) {
-      throw new InputError('Give hours or window, not both');
-    }
     if (hours !== undefined && (hours < 1 || hours > 24 * 90)) {
       throw new InputError('hours must be between 1 and 2160');
+    }
+    const servers = repeatedQueryValues(req, 'server') ?? [];
+    if (servers.length > MAX_USAGE_SERVERS) {
+      throw new InputError(
+        `server may be given at most ${MAX_USAGE_SERVERS} times`,
+      );
+    }
+    for (const server of servers) {
+      if (!isResourceName(server)) {
+        throw new InputError('server must be an MCPServer name');
+      }
+    }
+    const tool = singleQueryValue(req.query.tool, 'tool');
+    if (tool !== undefined && !isToolLabel(tool)) {
+      throw new InputError('tool must be a tool name');
     }
     res.json(
       await getMcpUsage(
         client,
         installation,
         readCallOptions(req, installation),
-        window ?? hours ?? 24,
+        hours ?? 24,
+        servers,
+        tool,
       ),
     );
   });
@@ -766,16 +961,6 @@ export async function createRouter(
     const result = await client.callTool(
       'core_workflow_list',
       {},
-      readCallOptions(req, installation),
-    );
-    res.json(result);
-  });
-
-  router.get('/workflows/:name', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
-    const result = await client.callTool(
-      'core_workflow_get',
-      { name: req.params.name },
       readCallOptions(req, installation),
     );
     res.json(result);
@@ -917,6 +1102,53 @@ export async function createRouter(
     );
     res.json(result);
   });
+
+  /**
+   * Every 401 a route answers says why, in `error.reason` (and the server
+   * that needs the person's sign-in, in `error.server`), so the frontend can
+   * pick its action: offer the sign-in, or refresh the token and send the
+   * call once more. Logged at info: each is an expected state of the
+   * person's session that the page acts on, not a fault. Neither the body nor
+   * the log carries the token, the person's identity or muster's own text.
+   */
+  router.use(
+    (
+      error: unknown,
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      const requested = req.query.installation;
+      const installation =
+        typeof requested === 'string'
+          ? requested
+          : ([...installations.keys()][0] ?? '');
+      const unauthorized = toMusterUnauthorizedError(error, {
+        installation,
+        authToken: forwardedToken(req),
+      });
+      if (!unauthorized || res.headersSent) {
+        next(error);
+        return;
+      }
+      logger.info('Muster request answered 401', {
+        installation,
+        route: req.path,
+        reason: unauthorized.reason,
+        ...(unauthorized.server ? { server: unauthorized.server } : {}),
+      });
+      res.status(401).json({
+        error: {
+          name: unauthorized.name,
+          message: unauthorized.message,
+          reason: unauthorized.reason,
+          ...(unauthorized.server ? { server: unauthorized.server } : {}),
+        },
+        request: { method: req.method, url: req.url },
+        response: { statusCode: 401 },
+      });
+    },
+  );
 
   return router;
 }

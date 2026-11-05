@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  MCPServer,
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -20,6 +21,10 @@ import type {
   AgentUpdate,
 } from '../../lib/agentManager';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import {
+  musterAgentManagerAgentQueryKey,
+  musterCommitAgentUpdateDryRunQueryKey,
+} from '../../lib/queryKeys';
 import { agentsRouteRef } from '../../routes';
 import { EditAgentPage } from './EditAgentPage';
 
@@ -47,11 +52,22 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
         commit: '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b',
       },
     ],
+    plugins: [],
     isLoading: false,
     error: null,
     hasRepositories: true,
     failedRepositories: [],
     truncated: false,
+  }),
+}));
+
+/** The workspaces the person's Organizations have on the installation. */
+const mockWorkspaceNames = jest.fn<string[], []>(() => []);
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({
+    workspaces: mockWorkspaceNames().map(name => ({ name })),
+    isLoading: false,
   }),
 }));
 
@@ -114,9 +130,28 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
     status: 'resolved',
   }),
 }));
+/** The HelmRelease verbs the person may not use on the agent's release. */
+let mockDeniedVerbs = new Set<string>();
+/** The installation's MCPServer CRs; none unless a test says otherwise. */
+let mockServerCrs: unknown[] = [];
+/** Whether the MCPServer CRs are still being read. */
+let mockServersLoading = false;
+afterEach(() => {
+  mockDeniedVerbs = new Set();
+  mockServerCrs = [];
+  mockServersLoading = false;
+});
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
+    resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
+    isLoading: resourceClass?.kind === 'MCPServer' && mockServersLoading,
+    errors: [],
+  }),
+  useSelfSubjectAccessReview: (
+    _cluster: string,
+    attributes: { verb: string },
+  ) => ({ allowed: !mockDeniedVerbs.has(attributes.verb), isLoading: false }),
 }));
 // The review fold-out's targeted ModelConfig read: what the agent's model runs.
 jest.mock('../../hooks/useUnderlyingModel', () => ({
@@ -127,14 +162,11 @@ jest.mock('../../hooks/useUnderlyingModel', () => ({
     namespace: string | undefined,
   ) => (name && namespace ? `${name}-model · Anthropic` : undefined),
 }));
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({
-    content,
-    filename,
-  }: {
-    content: string;
-    filename?: string;
-  }) => <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>,
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
+  ),
 }));
 
 const PR_REVIEW: AgentSkillEntry = {
@@ -166,7 +198,7 @@ const AGENT: AgentManagerAgent = {
 const GITOPS_AGENT: AgentManagerAgent = { ...AGENT, managed: 'gitops' };
 
 const INFO: Partial<AgentManagerInfo> = {
-  capabilities: { create: true, validate: true, commit: false },
+  capabilities: { create: true, validate: true, commit: false, tags: true },
   harness: { name: 'kagent' },
 };
 
@@ -174,18 +206,50 @@ const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/42';
 
 type Scenario = {
   agent?: AgentManagerAgent;
+  /** What `get_agent` fails with, as agent-manager answers a refused read. */
+  getAgentError?: string;
+  /** muster's session is not connected to agent-manager: every tool fails. */
+  notConnected?: boolean;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
+  /** What `/installations` reports for gazelle; true unless said otherwise. */
+  requiresAuth?: boolean;
+  /** What the empty commit dry run fails with; it passes otherwise. */
+  commitDryRunError?: string;
+  /** What the pull request itself is refused with. */
+  commitError?: string;
+  /** `get_agent` never answers. */
+  getAgentPending?: boolean;
+  /** What muster's `auth://status` reports for agent-manager. */
+  agentManagerAuth?: 'auth_required' | 'connected';
 };
+
+// agent-manager's answers in mode `commit`, as they come over MCP (see
+// `missingReleaseFile`'s test for the first).
+const MISSING_RELEASE_FILE =
+  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
+const AUTH_REQUIRED =
+  'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
+const TOKEN_REFUSED =
+  'auth_required: GitHub refused your token on get contents (status 404): reconnect agent-manager in muster (core_auth_login server=agent-manager); the App must be installed on the repository and your account allowed to push to it';
 
 function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? AGENT;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
+      if (scenario.notConnected) {
+        throw new Error('server agent-manager not connected');
+      }
       switch (name) {
         case 'x_agent-manager_get_info':
           return { ...INFO, ...scenario.info };
         case 'x_agent-manager_get_agent':
+          if (scenario.getAgentPending) {
+            return new Promise(() => {});
+          }
+          if (scenario.getAgentError) {
+            throw new Error(scenario.getAgentError);
+          }
           return agent;
         case 'x_agent-manager_get_agent_status':
           return { agent: { generation: 3 } };
@@ -203,7 +267,16 @@ function makeMusterApi(scenario: Scenario = {}) {
             },
           };
         case 'x_agent-manager_update_agent':
+          if (args.mode === 'commit' && args.dryRun) {
+            if (scenario.commitDryRunError) {
+              throw new Error(scenario.commitDryRunError);
+            }
+            return { ...committedTo(), dryRun: true, after: {} };
+          }
           if (args.mode === 'commit') {
+            if (scenario.commitError) {
+              throw new Error(scenario.commitError);
+            }
             return committedTo(PULL_REQUEST);
           }
           return {
@@ -229,13 +302,31 @@ function makeMusterApi(scenario: Scenario = {}) {
     tools: [],
     presets: [],
   }));
+  const listInstallations = jest.fn(async () => ({
+    installations: [
+      { name: 'gazelle', requiresAuth: scenario.requiresAuth ?? true },
+    ],
+  }));
   return {
-    api: { callTool, listServers, filterTools } as unknown as MusterApi,
+    api: {
+      callTool,
+      listServers,
+      filterTools,
+      listInstallations,
+      getAuthStatus: jest.fn(async () => ({
+        servers: [
+          {
+            name: 'agent-manager',
+            status: scenario.agentManagerAuth ?? 'connected',
+          },
+        ],
+      })),
+    } as unknown as MusterApi,
     callTool,
   };
 }
 
-const BASE = '/agent-platform/agents/edit/gazelle/kagent/pr-reviewer';
+const BASE = '/customize/agents/gazelle/kagent/pr-reviewer/edit';
 
 function DetailProbe() {
   const location = useLocation();
@@ -253,22 +344,25 @@ function DetailProbe() {
   );
 }
 
-async function renderEdit(path: string, scenario: Scenario = {}) {
-  const { api, callTool } = makeMusterApi(scenario);
-  const queryClient = new QueryClient({
+async function renderEdit(
+  path: string,
+  scenario: Scenario = {},
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+) {
+  const { api, callTool } = makeMusterApi(scenario);
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/agent-platform/agents/edit/:installation/:namespace/:name/*"
+              path="/customize/agents/:installation/:namespace/:name/edit/*"
               element={<EditAgentPage />}
             />
             <Route
-              path="/agent-platform/agents/:installation/:namespace/:name"
+              path="/customize/agents/:installation/:namespace/:name"
               element={<DetailProbe />}
             />
           </Routes>
@@ -277,10 +371,10 @@ async function renderEdit(path: string, scenario: Scenario = {}) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: { '/customize/agents': agentsRouteRef },
     },
   );
-  return { callTool };
+  return { callTool, queryClient };
 }
 
 /** Changes what the agent is for, then walks Skills and Tools to Review. */
@@ -299,6 +393,23 @@ async function changeDescriptionAndReview(
 
 function callsOf(callTool: jest.Mock, tool: string) {
   return callTool.mock.calls.filter(([name]) => name === tool);
+}
+
+/** A connector muster signs in to per session, as `grafana-cloud` is. */
+function grafanaCloud() {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name: 'grafana-cloud',
+        namespace: 'muster',
+        annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
+      },
+      spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+    } as never,
+    'gazelle',
+  );
 }
 
 describe('EditAgentPage', () => {
@@ -366,7 +477,7 @@ describe('EditAgentPage', () => {
     expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'Choose what runs the agent. It cannot be changed once the agent exists.',
+        "What runs the agent. Change it with Change Harness in the Agent actions menu on the agent's page.",
       ),
     ).toBeInTheDocument();
   });
@@ -419,7 +530,7 @@ describe('EditAgentPage', () => {
     expect(harness?.closest('details')).not.toBeNull();
   });
 
-  it('calls the platform Harness the standard runtime', async () => {
+  it('calls the platform Harness by the runtime field’s mark', async () => {
     await renderEdit(`${BASE}/review`, {
       agent: { ...AGENT, harness: 'kagent' },
     });
@@ -427,7 +538,7 @@ describe('EditAgentPage', () => {
 
     expect(
       screen.getByText('Runtime', { selector: 'dt' }).nextElementSibling,
-    ).toHaveTextContent('Standard (platform default)');
+    ).toHaveTextContent('Platform default');
   });
 
   it('saves only what changed through update_agent and hands over to the agent’s page', async () => {
@@ -468,6 +579,301 @@ describe('EditAgentPage', () => {
       name: 'pr-reviewer',
       description: 'Reviews every pull request.',
     } satisfies AgentUpdate);
+  });
+
+  it('gives an agent whose connector needs a sign-in the tool to start it, shown in the review', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, toolset: ['server:grafana-cloud'] },
+    });
+
+    await changeDescriptionAndReview(user);
+
+    const changes = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(within(changes).getAllByRole('listitem')).toHaveLength(2);
+    const tools = within(changes).getByText('Tools').closest('li');
+    expect(tools).toHaveTextContent(
+      'Adds core_auth_login, which lets the agent start the sign-in to Grafana Cloud.',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    ).at(-1)!;
+    expect(dryRunArgs).toMatchObject({
+      toolset: ['server:grafana-cloud', 'tool:core_auth_login'],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(
+      await screen.findByText('agent detail after updated'),
+    ).toBeInTheDocument();
+    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+    expect(written).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      description: 'Reviews every pull request.',
+      toolset: ['server:grafana-cloud', 'tool:core_auth_login'],
+    } satisfies AgentUpdate);
+  });
+
+  it('reviews an agent that already has the sign-in tool its connector needs as no change', async () => {
+    mockServerCrs = [grafanaCloud()];
+    await renderEdit(`${BASE}/review`, {
+      agent: {
+        ...AGENT,
+        // Saved anywhere in the list, as another client may have put it.
+        toolset: ['tool:core_auth_login', 'server:grafana-cloud'],
+      },
+    });
+
+    expect(await screen.findByText('Nothing changed yet.')).toBeInTheDocument();
+  });
+
+  it('takes the sign-in tool away once no connector of the agent needs it', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const { callTool } = await renderEdit(`${BASE}/review`, {
+      agent: {
+        ...AGENT,
+        toolset: ['tool:x_docs_search', 'tool:core_auth_login'],
+      },
+    });
+
+    const changes = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(within(changes).getByText('Tools').closest('li')).toHaveTextContent(
+      'Removes core_auth_login: no connector in the toolset needs it any more.',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    ).at(-1)!;
+    expect(dryRunArgs).toMatchObject({ toolset: ['tool:x_docs_search'] });
+  });
+
+  it('holds Save while it is still read whether a connector needs the sign-in tool', async () => {
+    mockServerCrs = [grafanaCloud()];
+    mockServersLoading = true;
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, toolset: ['server:grafana-cloud'] },
+    });
+
+    await changeDescriptionAndReview(user);
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(callsOf(callTool, 'x_agent-manager_validate_agent')).toHaveLength(0);
+  });
+
+  it('opens an agent whose connector needs a sign-in without counting the added tool as the person’s change', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    await renderEdit(BASE, {
+      agent: { ...AGENT, toolset: ['server:grafana-cloud'] },
+    });
+
+    await screen.findByLabelText(/^What is it for\?/);
+    await user.click(screen.getByRole('link', { name: 'Cancel' }));
+
+    expect(await screen.findByText('agent detail')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  describe('the default workspace', () => {
+    afterEach(() => mockWorkspaceNames.mockReturnValue([]));
+
+    async function pickDefault(
+      user: ReturnType<typeof userEvent.setup>,
+      option: RegExp,
+    ) {
+      await screen.findByLabelText(/^What is it for\?/);
+      await user.click(screen.getByText('More options'));
+      await user.click(
+        await screen.findByRole('button', { name: /Default workspace/ }),
+      );
+      await user.click(await screen.findByRole('option', { name: option }));
+      await user.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByRole('checkbox', { name: 'Skill PR review' });
+      await user.click(screen.getByRole('button', { name: 'Continue' }));
+      await user.click(
+        await screen.findByRole('button', { name: 'To review' }),
+      );
+      await screen.findByRole('heading', { name: 'Check and save' });
+    }
+
+    it('sets one of the environment’s workspaces, in the agent’s namespace', async () => {
+      mockWorkspaceNames.mockReturnValue(['platform-mcp', 'platform-mix']);
+      const user = userEvent.setup();
+      const { callTool } = await renderEdit(BASE, {
+        info: { ...INFO, capabilities: { defaultWorkspace: true } },
+      });
+
+      await pickDefault(user, /^platform-mix$/);
+
+      const changes = await screen.findByRole('list', {
+        name: 'Changed fields',
+      });
+      expect(
+        within(changes).getByText('Default workspace'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Save changes' }),
+        ).toBeEnabled(),
+      );
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+      await screen.findByText('agent detail after updated');
+      const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+      expect(written).toEqual({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        defaultWorkspace: 'kagent/platform-mix',
+      } satisfies AgentUpdate);
+    });
+
+    it('removes the default, offered even when it is no longer listed', async () => {
+      mockWorkspaceNames.mockReturnValue(['platform-mcp']);
+      const user = userEvent.setup();
+      const { callTool } = await renderEdit(BASE, {
+        agent: { ...AGENT, defaultWorkspace: 'kagent/gone' },
+        info: { ...INFO, capabilities: { defaultWorkspace: true } },
+      });
+
+      await screen.findByLabelText(/^What is it for\?/);
+      expect(
+        screen.getByText('More options').closest('summary'),
+      ).toHaveTextContent(/default workspace gone/);
+      await pickDefault(user, /^No default workspace$/);
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Save changes' }),
+        ).toBeEnabled(),
+      );
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+      await screen.findByText('agent detail after updated');
+      const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+      expect(written).toEqual({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        defaultWorkspace: '',
+      } satisfies AgentUpdate);
+    });
+
+    it('is not offered where agent-manager does not start sessions in a default', async () => {
+      mockWorkspaceNames.mockReturnValue(['platform-mcp']);
+      await renderEdit(BASE);
+      await screen.findByLabelText(/^What is it for\?/);
+      expect(
+        screen.queryByRole('button', { name: /Default workspace/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps the agent’s tags and an added one on the review, through the dry run', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+    });
+
+    const tags = await screen.findByRole('textbox', { name: /^Tags/ });
+    await user.type(tags, 'go');
+    // Leaving the field with Continue adds what is typed.
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+
+    const tagsRow = () =>
+      within(screen.getByLabelText('Summary')).getByText('Tags', {
+        selector: 'dt',
+      }).nextElementSibling;
+    expect(tagsRow()).toHaveTextContent('review, go');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    expect(tagsRow()).toHaveTextContent('review, go');
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    )[0];
+    expect(dryRunArgs).toMatchObject({ tags: ['review', 'go'] });
+  });
+
+  it('says None for tags all removed, and sends the empty list', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+    });
+
+    const tags = await screen.findByRole('grid', { name: 'Tags' });
+    await user.click(
+      within(within(tags).getByRole('row', { name: /review/ })).getByRole(
+        'button',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+
+    expect(
+      within(screen.getByLabelText('Summary')).getByText('Tags', {
+        selector: 'dt',
+      }).nextElementSibling,
+    ).toHaveTextContent('None');
+    await waitFor(() =>
+      expect(
+        callsOf(callTool, 'x_agent-manager_validate_agent'),
+      ).not.toHaveLength(0),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    )[0];
+    expect(dryRunArgs).toMatchObject({ tags: [] });
+  });
+
+  it('offers no Tags field and sends no tags where agent-manager takes none', async () => {
+    await renderEdit(BASE, {
+      agent: { ...AGENT, tags: ['review'] },
+      info: { ...INFO, capabilities: { tags: false } },
+    });
+
+    await screen.findByRole('button', { name: 'Continue' });
+    expect(
+      screen.queryByRole('textbox', { name: /^Tags/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('goes on past step 1 with more than 50 tags written elsewhere, left as they are', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, {
+      agent: {
+        ...AGENT,
+        tags: Array.from({ length: 51 }, (_, index) => `tag-${index}`),
+      },
+      info: { ...INFO, capabilities: { tags: false } },
+    });
+
+    await changeDescriptionAndReview(user);
+
+    expect(
+      screen.getByRole('heading', { name: 'Check and save' }),
+    ).toBeInTheDocument();
   });
 
   it('leaves an untouched edit without asking', async () => {
@@ -559,8 +965,9 @@ describe('EditAgentPage', () => {
     await changeDescriptionAndReview(user);
 
     expect(
-      await screen.findByText('agent.description: too long'),
+      await screen.findByText('This change cannot be saved'),
     ).toBeInTheDocument();
+    expect(screen.getByText('agent.description: too long')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 
@@ -581,7 +988,9 @@ describe('EditAgentPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Proposed' }),
     ).toBeDisabled();
-    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent').find(
+      ([, args]) => !args.dryRun,
+    )!;
     expect(written).toMatchObject({
       mode: 'commit',
       description: 'Reviews every pull request.',
@@ -626,5 +1035,323 @@ describe('EditAgentPage', () => {
       await screen.findByText('This agent cannot be edited from here'),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('has no form for a person who may not update the agent’s release, and says whose role may', async () => {
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE);
+
+    expect(
+      await screen.findByText('You cannot change this agent'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/needs the agent-platform:editor role/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('refuses a person who may not update the agent’s release, rather than reporting the read their role does not allow', async () => {
+    // agent-platform:user may not get HelmReleases, so agent-manager's
+    // get_agent fails as them before the page knows the agent.
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE, {
+      getAgentError:
+        'get helmrelease kagent/pr-reviewer: helmreleases.helm.toolkit.fluxcd.io "pr-reviewer" is forbidden: User "oidc:alice@lab.local" cannot get resource "helmreleases"',
+    });
+
+    expect(
+      await screen.findByText('You cannot change this agent'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Changing the agents of the platform needs the agent-platform:editor role/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('agent-manager could not read this agent'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('asks to connect to agent-manager first where muster is not connected, whatever the access review says', async () => {
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE, { notConnected: true });
+
+    expect(
+      await screen.findByText(/server agent-manager not connected/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('You cannot change this agent'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('has no form, and says why, where muster runs under its shared identity', async () => {
+    const { callTool } = await renderEdit(BASE, { requiresAuth: false });
+
+    expect(
+      await screen.findByText('This agent cannot be edited from here'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /muster on gazelle has no per-user sign-in in this portal/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    // Nothing is asked of agent-manager: muster-backend would refuse it.
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
+  describe('an agent applied from git, before the form', () => {
+    const COMMIT: Scenario = {
+      agent: GITOPS_AGENT,
+      info: { ...INFO, capabilities: { commit: true } },
+    };
+    const commitDryRuns = (callTool: jest.Mock) =>
+      callsOf(callTool, 'x_agent-manager_update_agent').filter(
+        ([, args]) => args.dryRun,
+      );
+
+    it('opens the form once agent-manager says it can open the pull request', async () => {
+      const { callTool } = await renderEdit(BASE, COMMIT);
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      // The empty commit dry run: nothing to change, nothing written.
+      expect(commitDryRuns(callTool)).toEqual([
+        [
+          'x_agent-manager_update_agent',
+          {
+            namespace: 'kagent',
+            name: 'pr-reviewer',
+            mode: 'commit',
+            dryRun: true,
+          },
+          'gazelle',
+        ],
+      ]);
+    });
+
+    it('keeps reading the agent while agent-manager is asked', async () => {
+      // A cached reading says the agent is applied from git, so the check is
+      // asked while get_agent is still out.
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      queryClient.setQueryData(
+        musterAgentManagerAgentQueryKey('gazelle', 'kagent', 'pr-reviewer'),
+        GITOPS_AGENT,
+      );
+      const { callTool } = await renderEdit(
+        BASE,
+        { ...COMMIT, getAgentPending: true },
+        queryClient,
+      );
+
+      expect(await screen.findByText('Reading the agent…')).toBeInTheDocument();
+      await waitFor(() => expect(commitDryRuns(callTool)).toHaveLength(1));
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    });
+
+    it('does not open the form on an answer cached before the page', async () => {
+      // An earlier visit, or the Delete dialog, found the pull request
+      // possible; the repository has changed since.
+      // Trusted for a minute, as the plugin's client trusts an entry.
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+      });
+      queryClient.setQueryData(
+        musterCommitAgentUpdateDryRunQueryKey(
+          'gazelle',
+          JSON.stringify({ namespace: 'kagent', name: 'pr-reviewer' }),
+        ),
+        { skills: undefined },
+      );
+      await renderEdit(
+        BASE,
+        { ...COMMIT, commitDryRunError: MISSING_RELEASE_FILE },
+        queryClient,
+      );
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'This agent cannot be edited here',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    });
+
+    it('has no form for an agent defined outside agent-manager’s directory, and says where to change it', async () => {
+      const user = userEvent.setup();
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: MISSING_RELEASE_FILE,
+      });
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'This agent cannot be edited here',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /^This agent is defined in Git outside the directory the portal writes to\. Change it in the file that defines it in/,
+        ),
+      ).toHaveTextContent('in giantswarm/giantswarm-management-clusters.');
+      // Only what agent-manager reports is linked: the repository, never a
+      // guess at where the release is defined.
+      expect(
+        screen.getByRole('link', {
+          name: 'giantswarm/giantswarm-management-clusters',
+        }),
+      ).toHaveAttribute(
+        'href',
+        'https://github.com/giantswarm/giantswarm-management-clusters',
+      );
+      // What agent-manager checked is technical: folded away.
+      expect(
+        screen.getByText(
+          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+        ),
+      ).not.toBeVisible();
+      expect(
+        screen
+          .getAllByRole('link')
+          .map(link => link.getAttribute('href'))
+          .filter(href => href?.startsWith('https://github.com/')),
+      ).toEqual([
+        'https://github.com/giantswarm/giantswarm-management-clusters',
+      ]);
+      expect(
+        screen.getByRole('link', { name: 'Back to the agent' }),
+      ).toBeInTheDocument();
+      // Information, not a failure.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      await user.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+      expect(
+        await screen.findByText(/is not in agent-manager's directory/),
+      ).toBeVisible();
+      expect(
+        screen.getByText(
+          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+        ),
+      ).toBeVisible();
+    });
+
+    it('asks for the GitHub authorization first, and opens the form once it is given', async () => {
+      const scenario: Scenario = {
+        ...COMMIT,
+        commitDryRunError: AUTH_REQUIRED,
+        agentManagerAuth: 'auth_required',
+      };
+      const { queryClient } = await renderEdit(BASE, scenario);
+
+      expect(
+        await screen.findByText('Authorize GitHub for agent-manager'),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+
+      // A completed sign-in reads every muster query again.
+      scenario.commitDryRunError = undefined;
+      scenario.agentManagerAuth = 'connected';
+      await act(() => queryClient.invalidateQueries({ queryKey: ['muster'] }));
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Authorize GitHub for agent-manager'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps an open form when a later re-read of the check is refused', async () => {
+      const scenario: Scenario = { ...COMMIT };
+      const { callTool, queryClient } = await renderEdit(BASE, scenario);
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+
+      // A sign-in elsewhere reads every muster query again; this time the
+      // repository refuses.
+      scenario.commitDryRunError = MISSING_RELEASE_FILE;
+      await act(() => queryClient.invalidateQueries({ queryKey: ['muster'] }));
+      await waitFor(() => expect(commitDryRuns(callTool)).toHaveLength(2));
+
+      expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('This agent cannot be edited here'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens the form where a sign-in cannot give the authorization: agent-manager already connected', async () => {
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: AUTH_REQUIRED,
+        agentManagerAuth: 'connected',
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Authorize GitHub for agent-manager'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens the form where GitHub refused the token, which no sign-in fixes', async () => {
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: TOKEN_REFUSED,
+        agentManagerAuth: 'auth_required',
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+    });
+
+    it('opens the form when the check fails some other way, and leaves the answer to the save', async () => {
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: 'backend_error: GitHub answered 502',
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(screen.queryByText(/GitHub answered 502/)).not.toBeInTheDocument();
+    });
+
+    it('is not asked for an agent written live', async () => {
+      const { callTool } = await renderEdit(BASE, {
+        info: { ...INFO, capabilities: { commit: true } },
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(commitDryRuns(callTool)).toHaveLength(0);
+    });
+
+    it('still explains a pull request refused at the end for a release outside agent-manager’s directory', async () => {
+      // The check passed; the repository changed while the person edited.
+      const user = userEvent.setup();
+      await renderEdit(BASE, { ...COMMIT, commitError: MISSING_RELEASE_FILE });
+
+      await changeDescriptionAndReview(user);
+      const propose = await screen.findByRole('button', {
+        name: 'Propose changes as pull request',
+      });
+      await waitFor(() => expect(propose).toBeEnabled());
+      await user.click(propose);
+
+      expect(
+        await screen.findByText('This agent cannot be edited here'),
+      ).toBeInTheDocument();
+    });
+
+    it('asks for the GitHub authorization when the pull request at the end needs it', async () => {
+      const user = userEvent.setup();
+      await renderEdit(BASE, { ...COMMIT, commitError: AUTH_REQUIRED });
+
+      await changeDescriptionAndReview(user);
+      const propose = await screen.findByRole('button', {
+        name: 'Propose changes as pull request',
+      });
+      await waitFor(() => expect(propose).toBeEnabled());
+      await user.click(propose);
+
+      expect(
+        await screen.findByText('Authorize GitHub for agent-manager'),
+      ).toBeInTheDocument();
+    });
   });
 });

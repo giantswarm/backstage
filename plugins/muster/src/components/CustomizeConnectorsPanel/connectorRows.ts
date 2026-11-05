@@ -10,7 +10,16 @@ import { selectRepresentative } from '../../lib/serverGrouping';
 import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
-import type { StatusText } from '../shared';
+import {
+  type ExplainedStatusText,
+  isConnecting,
+  isSsoRefused,
+  needsSignIn,
+  PORTAL_ONLY_LABEL,
+  portalOnlyStatus,
+  SSO_REFUSED_STATUS,
+  type StatusText,
+} from '../shared';
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -60,13 +69,16 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 
 /**
  * A row's state: for one server, this person's sign-in when muster reports one
- * that asks something of them, else the server's own state; for a family, how
+ * that asks something of them or a connect with their portal sign-in still
+ * under way, "Cannot connect" for an SSO server that refused their sign-in,
+ * "Portal only" for a healthy one whose sign-in serves this muster session
+ * only (`portalOnlyStatus`), else the server's own state; for a family, how
  * many of its instances are healthy.
  */
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): StatusText {
+): ExplainedStatusText {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(
@@ -91,11 +103,20 @@ export function connectorStatus(
   if (server.getSuspended()) {
     return { label: 'Deactivated', tone: 'neutral' };
   }
-  if (authStatus?.status === 'reauth_required') {
-    return { label: 'Sign-in expired', tone: 'warning' };
+  if (authStatus && isSsoRefused(authStatus)) {
+    return SSO_REFUSED_STATUS;
   }
-  if (authStatus?.status === 'auth_required') {
-    return { label: 'Sign in needed', tone: 'warning' };
+  if (authStatus && needsSignIn(authStatus)) {
+    return authStatus.status === 'reauth_required'
+      ? { label: 'Sign-in expired', tone: 'warning' }
+      : { label: 'Sign in needed', tone: 'warning' };
+  }
+  if (authStatus && isConnecting(authStatus)) {
+    return { label: 'Connecting', tone: 'neutral' };
+  }
+  const portalOnly = portalOnlyStatus(server, entry.displayName, authStatus);
+  if (portalOnly) {
+    return portalOnly;
   }
   const state = server.getState();
   const severity = mcpServerStateSeverity(state);
@@ -107,10 +128,17 @@ export function connectorStatus(
 
 /** Whether a person can reach a connector's tools now, in a few buckets. */
 export type ConnectorReach =
-  'connected' | 'partial' | 'sign-in' | 'not-connected' | 'deactivated';
+  | 'connected'
+  | 'portal-only'
+  | 'partial'
+  | 'sign-in'
+  | 'not-connected'
+  | 'deactivated';
 
 export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
   connected: 'Connected',
+  // Named as the row's state, so the filter and the row agree.
+  'portal-only': PORTAL_ONLY_LABEL,
   partial: 'Partly connected',
   'sign-in': 'Sign-in needed',
   'not-connected': 'Not connected',
@@ -120,6 +148,7 @@ export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
 /** The order the Connection filter offers its buckets in. */
 export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
   'connected',
+  'portal-only',
   'partial',
   'sign-in',
   'not-connected',
@@ -128,8 +157,9 @@ export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
 
 /**
  * A row's {@link connectorStatus} as a filter bucket (T49): the many states
- * muster reports fold into whether the tools answer, answer for some of a
- * family, wait on this person's sign-in, do not answer, or are switched off.
+ * muster reports fold into whether the tools answer, answer in the portal
+ * only (a sign-in serving this session), answer for some of a family, wait on
+ * this person's sign-in, do not answer, or are switched off.
  */
 export function connectorReach(
   entry: ServerListEntry,
@@ -151,11 +181,17 @@ export function connectorReach(
   if (server.getSuspended()) {
     return 'deactivated';
   }
-  if (
-    authStatus?.status === 'reauth_required' ||
-    authStatus?.status === 'auth_required'
-  ) {
+  if (authStatus && isSsoRefused(authStatus)) {
+    return 'not-connected';
+  }
+  if (authStatus && needsSignIn(authStatus)) {
     return 'sign-in';
+  }
+  if (authStatus && isConnecting(authStatus)) {
+    return 'not-connected';
+  }
+  if (portalOnlyStatus(server, entry.displayName, authStatus)) {
+    return 'portal-only';
   }
   return mcpServerStateSeverity(server.getState()) === 'ok'
     ? 'connected'
@@ -338,7 +374,7 @@ export function unsearchedToolsNotes(
     ) {
       continue;
     }
-    byReason.set(reason, [...(byReason.get(reason) ?? []), entry.id]);
+    byReason.set(reason, [...(byReason.get(reason) ?? []), entry.displayName]);
   }
   return [
     ...(catalogueNote ? [catalogueNote] : []),

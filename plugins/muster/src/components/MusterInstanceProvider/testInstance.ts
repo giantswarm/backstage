@@ -20,6 +20,7 @@ export function makeTestMusterInstance(
     mcpServers: [],
     workflows: [],
     isLoading: false,
+    isLoadingWorkflows: false,
     retry: () => {},
     refreshInventory: () => {},
     ...overrides,

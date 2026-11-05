@@ -1,6 +1,5 @@
 import { ReactNode } from 'react';
-import { Box, Flex, Link as BuiLink, Text } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
+import { Box, Flex, Link, Text } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Agent,
@@ -11,7 +10,6 @@ import {
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  DateComponent,
   InfoCard,
   MONO,
   NotAvailable,
@@ -24,6 +22,7 @@ import type { ClientServingSummary } from '../../lib/serving';
 import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,
@@ -45,7 +44,8 @@ import {
  * The ModelConfig line opens the model's page, which says why a model is not
  * accepted, where the ModelConfig could be read: otherwise the page could only
  * say it cannot load it. Plain text too where the agent has no namespace to
- * resolve it in.
+ * resolve it in. It names the ModelConfig alone: the agent references one in
+ * its own namespace, which the Resource card states.
  */
 function ModelValue({
   modelConfigName,
@@ -96,18 +96,11 @@ function ModelValue({
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
         {href ? (
-          <BuiLink
-            href={href}
-            variant="body-small"
-            color="secondary"
-            style={MONO}
-          >
-            {`${namespace}/${modelConfigName}`}
-          </BuiLink>
+          <Link href={href} variant="body-small" color="secondary" style={MONO}>
+            {modelConfigName}
+          </Link>
         ) : (
-          <span style={MONO}>
-            {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
-          </span>
+          <span style={MONO}>{modelConfigName}</span>
         )}
       </Text>
       {modelServing && <ModelServingStatus serving={modelServing} />}
@@ -173,7 +166,11 @@ function GatewayToolsetSummary({
         <Text variant="body-medium">
           {isReading ? 'Reading the toolset…' : summary}
         </Text>
-        {toolsHref && <Link to={toolsHref}>See tools</Link>}
+        {toolsHref && (
+          <Link href={toolsHref} variant="body-medium">
+            See tools
+          </Link>
+        )}
       </Flex>
       {!isReading && detail && (
         <Text variant="body-small" color="secondary" style={MONO}>
@@ -233,17 +230,17 @@ function ToolsValue({
       ))}
 
       {agentRefs.map(ref => {
-        // A same-namespace AgentTemplate compiled into this agent's runtime.
+        // A same-namespace AgentTemplate compiled into this agent's runtime,
+        // so named alone, as the Resource card states the namespace.
         // `name` is what the agent calls the tool, `templateRef.name` the
         // template behind it; a template is not an agent, so there is no
         // detail page to link.
-        const namespace = agent.getNamespace() ?? '';
         const target = ref.templateRef.name;
 
         return (
           <Flex key={`agent/${ref.name}/${target}`} direction="column" gap="1">
             <Text variant="body-medium">
-              Sub-agent <span style={MONO}>{`${namespace}/${target}`}</span>
+              Sub-agent <span style={MONO}>{target}</span>
             </Text>
             <Text variant="body-small" color="secondary">
               Called as the tool <span style={MONO}>{ref.name}</span>, running
@@ -258,7 +255,11 @@ function ToolsValue({
   );
 }
 
-/** The owning HelmRelease, linked to its deployment page when gs is enabled. */
+/**
+ * The owning HelmRelease, linked to its deployment page when gs is enabled.
+ * Named alone, with its namespace on a line of its own where it is not the
+ * agent's, which the Resource card states.
+ */
 function DeployedByValue({ agent }: { agent: Agent }) {
   const deploymentDetailsRoute = useRouteRef(deploymentDetailsExternalRouteRef);
 
@@ -269,9 +270,9 @@ function DeployedByValue({ agent }: { agent: Agent }) {
     return <NotAvailable />;
   }
 
-  const namespace =
-    getHelmReleaseNamespace(agent) ?? agent.getNamespace() ?? '';
-  const label = namespace ? `${namespace}/${name}` : name;
+  const agentNamespace = agent.getNamespace();
+  const namespace = getHelmReleaseNamespace(agent) ?? agentNamespace ?? '';
+  const label = `HelmRelease ${name}`;
   const href = deploymentDetailsRoute?.({
     installationName: agent.cluster,
     kind: 'helmrelease',
@@ -282,9 +283,18 @@ function DeployedByValue({ agent }: { agent: Agent }) {
   return (
     <Flex direction="column" gap="1">
       {href ? (
-        <Link to={href}>{`HelmRelease ${label}`}</Link>
+        <Link href={href} variant="body-medium">
+          {label}
+        </Link>
       ) : (
-        <Text variant="body-medium" style={MONO}>{`HelmRelease ${label}`}</Text>
+        <Text variant="body-medium" style={MONO}>
+          {label}
+        </Text>
+      )}
+      {namespace && namespace !== agentNamespace && (
+        <Text variant="body-small" color="secondary">
+          Namespace <span style={MONO}>{namespace}</span>
+        </Text>
       )}
       <Text variant="body-small" color="secondary">
         Reconciling this agent's chart
@@ -308,8 +318,8 @@ export type AgentConfigurationCardProps = {
 
 /**
  * What the agent *is*, as its template defines it. Where it runs — the
- * installation, `namespace/name` — is in the page header and the Harness in
- * the Status card, so neither is repeated here.
+ * installation in the page header, its namespace and name in the Resource
+ * card, the Harness in the Status card — is not repeated here.
  *
  * Read-only here: the values behind it are changed through **Edit agent…** in
  * the header's actions, which goes through agent-manager as the person.
@@ -323,8 +333,8 @@ export function AgentConfigurationCard({
   toolsHref,
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
-  const created = agent.getCreatedTimestamp();
   const egress = agent.getEgress();
+  const egressPolicyRefs = agent.getEgressPolicyRefs();
 
   const metadata: Record<string, ReactNode> = {
     Model: (
@@ -344,6 +354,16 @@ export function AgentConfigurationCard({
         isFailing={failure?.field === 'tools'}
       />
     ),
+    ...(egressPolicyRefs.length > 0 && {
+      EgressPolicies: (
+        <PickedEgressPolicies
+          installation={installation}
+          namespace={namespace}
+          names={egressPolicyRefs}
+          variant="body-medium"
+        />
+      ),
+    }),
     ...(egress.length > 0 && {
       'Extra egress': (
         <Flex direction="column" gap="1">
@@ -355,11 +375,6 @@ export function AgentConfigurationCard({
         </Flex>
       ),
     }),
-    Created: created ? (
-      <DateComponent value={created} relative />
-    ) : (
-      <NotAvailable />
-    ),
     'Deployed by': <DeployedByValue agent={agent} />,
   };
 

@@ -122,6 +122,7 @@ export function SkillFileTree({
                 {group.files.map(file => (
                   <li key={file.path}>
                     <Link
+                      standalone
                       href={hrefFor(file.path)}
                       aria-label={file.path}
                       aria-current={file.path === selected ? 'page' : undefined}

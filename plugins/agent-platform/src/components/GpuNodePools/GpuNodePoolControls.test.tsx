@@ -16,7 +16,7 @@ let mockPools: {
 
 jest.mock('@backstage/frontend-plugin-api', () => ({
   ...jest.requireActual('@backstage/frontend-plugin-api'),
-  useRouteRef: () => () => '/agent-platform/models/capacity/add-pool',
+  useRouteRef: () => () => '/customize/models/hosting/capacity/add-pool',
   useApi: () => ({ post: jest.fn() }),
 }));
 jest.mock('../../hooks/useClusterManager', () => ({

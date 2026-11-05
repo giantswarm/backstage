@@ -10,7 +10,6 @@ import {
 } from '@backstage/ui';
 import {
   countNoun,
-  fieldErrorProps,
   MoreOptions,
   searchableIf,
   useFieldValidation,
@@ -45,6 +44,10 @@ import {
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
 import type { ServeChoice } from '../../lib/serveIntent';
+import {
+  ConnectorSignInAlert,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
@@ -118,7 +121,7 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
 }
 
 /**
- * Add GPU node pool (`/agent-platform/models/capacity/add-pool`) — the app's
+ * Add GPU node pool (`/customize/models/hosting/capacity/add-pool`) — the app's
  * multi-step create pattern, `WizardFrame` with its step strip like agent
  * creation: a **Pool** step (the form), then `create_node_pool` with `dryRun`
  * through muster as the signed-in person, the composed releases as manifests
@@ -190,6 +193,9 @@ export function AddGpuNodePoolPage({
     isLoading: clustersLoading,
     error: clustersError,
   } = useManagedClusters(installation, 'environment');
+  // The clusters are read with the person's own cluster-manager sign-in: a
+  // read that asks for it offers it, and the list fills in once it lands.
+  const clustersSignIn = musterSignInRequiredOf(clustersError);
   const { info } = useClusterManagerInfo(installation);
   const { schema, isLoading: schemaLoading } =
     useCreateNodePoolSchema(installation);
@@ -371,9 +377,11 @@ export function AddGpuNodePoolPage({
     name: poolNameError(name),
   };
   const installationError = useSelectFieldError(
-    validation.errorFor(errors.installation),
+    validation.errorFor('installation', errors.installation),
   );
-  const clusterError = useSelectFieldError(validation.errorFor(errors.cluster));
+  const clusterError = useSelectFieldError(
+    validation.errorFor('cluster', errors.cluster),
+  );
 
   // More options' one line of what it holds now.
   const moreOptionsSummary = [
@@ -618,7 +626,14 @@ export function AddGpuNodePoolPage({
                 data-testid="cluster-api-note"
               />
             )}
-            {clustersError && (
+            {clustersSignIn && installation && (
+              <ConnectorSignInAlert
+                server={clustersSignIn.server}
+                installations={[installation]}
+                purpose={`list the clusters on ${installation}`}
+              />
+            )}
+            {clustersError && !clustersSignIn && (
               <Alert
                 status="warning"
                 title="Could not read the clusters"
@@ -631,7 +646,7 @@ export function AddGpuNodePoolPage({
               description="Use five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
               value={name}
               onChange={setName}
-              {...fieldErrorProps(validation.errorFor(errors.name))}
+              {...validation.textFieldProps('name', errors.name)}
             />
             <Select
               label="Accelerator"

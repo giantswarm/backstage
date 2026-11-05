@@ -2,9 +2,12 @@ import type { ReactNode } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import type { SignInToolState } from '../../hooks/useSignInTool';
+import { SIGN_IN_TOOL } from '../../lib/signInTool';
 import { countNoun, parseSelector } from '../../lib/toolset';
 import { presetPhrase } from '../../lib/toolsetReach';
 
@@ -100,11 +103,13 @@ export const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 /**
  * The one-line Tools summary in words (QA R2-2): the loud labels, else each
  * preset and whole connector by name, and the rest counted, the way the Tools
- * step's grid names them. The selectors as written are in Technical details.
+ * step's grid names them (`labelOf` gives a connector's display name). The
+ * selectors as written are in Technical details.
  */
 export function toolsetSummaryLabel(
   shape: 'none' | 'full' | 'composed',
   declared: string[],
+  labelOf: (connector: string) => string = connector => connector,
 ): string {
   if (shape === 'none') {
     return 'No tools';
@@ -120,7 +125,7 @@ export function toolsetSummaryLabel(
       // Preset phrases are shared with the composer's reach line.
       parts.push(presetPhrase(parsed.name));
     } else if (parsed?.kind === 'server') {
-      parts.push(`all ${parsed.name} tools`);
+      parts.push(`all ${labelOf(parsed.name)} tools`);
     } else if (parsed?.kind === 'tool' || parsed?.kind === 'workflow') {
       counts[parsed.kind] += 1;
     } else {
@@ -138,6 +143,52 @@ export function toolsetSummaryLabel(
   }
   const text = parts.filter(Boolean).join('; ');
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'No tools';
+}
+
+/**
+ * Under the toolset, when the save adds muster's sign-in tool or takes it
+ * away (`lib/signInTool`): why. `signIn` is what the Tools step decided.
+ */
+export function SignInToolChange({
+  change,
+  signIn,
+}: {
+  change: 'added' | 'removed';
+  signIn: Pick<SignInToolState, 'status' | 'labels'>;
+}) {
+  const classes = useReviewStyles();
+  const tool = <span className={classes.code}>{SIGN_IN_TOOL}</span>;
+  const connectors = joinNames(signIn.labels);
+  let text: ReactNode;
+  if (change === 'added') {
+    text = (
+      <>
+        Adds {tool}, which lets the agent start the sign-in to {connectors}.
+      </>
+    );
+  } else if (signIn.status === 'removed') {
+    text = (
+      <>
+        Removes {tool}, so the agent won't be able to sign in to {connectors}.
+      </>
+    );
+  } else if (signIn.status === 'covered') {
+    text = <>Removes {tool}: a preset in the toolset includes it.</>;
+  } else if (signIn.status === 'no-room') {
+    text = (
+      <>
+        Removes {tool}: the toolset has no room left for it, so the agent won't
+        be able to sign in to {connectors}.
+      </>
+    );
+  } else {
+    text = <>Removes {tool}: no connector in the toolset needs it any more.</>;
+  }
+  return (
+    <Text as="p" variant="body-x-small" color="secondary">
+      {text}
+    </Text>
+  );
 }
 
 export function SummaryItem({
@@ -222,27 +273,6 @@ export function SectionTitle({
         {description}
       </Text>
     </>
-  );
-}
-
-/**
- * agent-manager's refusal for the whole configuration: every schema violation
- * and precondition failure of the dry run, verbatim.
- */
-export function Violations({ errors }: { errors: string[] }) {
-  const classes = useReviewStyles();
-  return (
-    <Alert
-      status="danger"
-      title="agent-manager refuses this configuration"
-      description={
-        <ul className={classes.violations} aria-label="Violations">
-          {errors.map(error => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      }
-    />
   );
 }
 

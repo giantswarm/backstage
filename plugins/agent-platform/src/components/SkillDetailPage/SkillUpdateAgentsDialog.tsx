@@ -1,11 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Checkbox, Flex, Link, Text } from '@backstage/ui';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Checkbox, Flex, Link, Text, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   HelmRelease,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  useFieldValidation,
+  useGroupFieldError,
+  CommitSha,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useAgentManagerAvailability,
@@ -21,8 +33,7 @@ import {
   type UpdateAgentState,
 } from '../../hooks/useUpdateAgent';
 import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
-import type { AgentUpdate } from '../../lib/agentManager';
-import { shortCommit } from '../../lib/skills';
+import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
@@ -57,6 +68,46 @@ export type UpdateOutcome =
 const CONCURRENCY = 3;
 
 /**
+ * The verdict that needs no read of the agent: whether agent-manager is
+ * reachable at all on its installation. `undefined` once it is, when the
+ * agent's own reads decide. Known on the dialog's first render, so a row
+ * blocked for this reason shows its reason from the start rather than the
+ * checking layout for a frame.
+ */
+export function availabilityVerdictOf({
+  installation,
+  isUnavailable,
+  presence,
+  isPresenceLoading,
+}: {
+  installation: string;
+  isUnavailable: boolean;
+  presence: MusterServerPresence;
+  isPresenceLoading: boolean;
+}): UpdateVerdict | undefined {
+  if (isUnavailable) {
+    return {
+      kind: 'blocked',
+      reason:
+        'Updates go through agent-manager over muster, and this portal has no muster plugin.',
+    };
+  }
+  const blocker = agentManagerBlocker(presence, installation);
+  if (blocker) {
+    return { kind: 'blocked', reason: blocker };
+  }
+  if (presence === 'unknown') {
+    return isPresenceLoading
+      ? { kind: 'checking' }
+      : {
+          kind: 'blocked',
+          reason: `Could not read which connectors ${installation} offers.`,
+        };
+  }
+  return undefined;
+}
+
+/**
  * One agent's verdict from what was read about it. Pure, so the order of the
  * checks is testable on its own: whether agent-manager is reachable at all,
  * whether the person's muster session is connected to it, whether the agent
@@ -87,26 +138,14 @@ export function updateVerdictOf({
   mayUpdate: boolean;
   isCheckingPermission: boolean;
 }): UpdateVerdict {
-  if (isUnavailable) {
-    return {
-      kind: 'blocked',
-      reason:
-        'Updates go through agent-manager over muster, and this portal has no muster plugin.',
-    };
-  }
-  if (presence === 'missing') {
-    return {
-      kind: 'blocked',
-      reason: `Muster on ${installation} lists no agent-manager.`,
-    };
-  }
-  if (presence === 'unknown') {
-    return isPresenceLoading
-      ? { kind: 'checking' }
-      : {
-          kind: 'blocked',
-          reason: `Could not read which connectors ${installation} offers.`,
-        };
+  const unreachable = availabilityVerdictOf({
+    installation,
+    isUnavailable,
+    presence,
+    isPresenceLoading,
+  });
+  if (unreachable) {
+    return unreachable;
   }
   if (read.isLoading) {
     return { kind: 'checking' };
@@ -248,6 +287,13 @@ async function inPool<T>(
 }
 
 const useStyles = makeStyles({
+  // The select-all box and the rows: one field for validation, laid out as
+  // the dialog's column.
+  selection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--bui-space-3)',
+  },
   rows: {
     display: 'flex',
     flexDirection: 'column',
@@ -269,6 +315,10 @@ const useStyles = makeStyles({
   },
   code: {
     fontFamily: 'monospace',
+  },
+  // One line of its own text even when empty.
+  status: {
+    minHeight: '1lh',
   },
 });
 
@@ -331,10 +381,13 @@ function AgentLine({
   const { row, pinned } = behind;
   const updatable = verdict.kind === 'apply' || verdict.kind === 'commit';
 
+  const noteId = useId();
+  // A row still being checked is laid out as the updatable row it most often
+  // becomes — the box, unticked and disabled, over its commits, with no note
+  // under them — so the list holds its height as the verdicts arrive. Its
+  // note is there for screen readers only, as the box's description.
   let note: string | undefined;
-  if (verdict.kind === 'checking') {
-    note = 'Checking whether you can update it…';
-  } else if (verdict.kind === 'blocked') {
+  if (verdict.kind === 'blocked') {
     note = verdict.reason;
   } else if (verdict.kind === 'commit') {
     note =
@@ -347,24 +400,28 @@ function AgentLine({
         isSelected={isSelected}
         isDisabled={!updatable || isLocked || outcome !== undefined}
         onChange={selected => onToggle(row.id, selected)}
+        aria-describedby={
+          note || verdict.kind === 'checking' ? noteId : undefined
+        }
       >
         {row.name}
       </Checkbox>
       <Flex direction="column" gap="1" className={classes.detail}>
         <Text variant="body-small" color="secondary">
           {row.installation} · {row.namespace} ·{' '}
-          <span className={classes.code} title={pinned}>
-            {shortCommit(pinned)}
-          </span>
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' → '}
-          <span className={classes.code} title={head}>
-            {shortCommit(head)}
-          </span>
+          <CommitSha value={head} copy={false} className={classes.code} />
         </Text>
         {note && (
-          <Text variant="body-small" color="secondary">
+          <Text id={noteId} variant="body-small" color="secondary">
             {note}
           </Text>
+        )}
+        {verdict.kind === 'checking' && (
+          <VisuallyHidden id={noteId}>
+            Checking whether you can update it…
+          </VisuallyHidden>
         )}
         {outcome && outcomeLine(outcome)}
       </Flex>
@@ -411,6 +468,9 @@ export function SkillUpdateAgentsDialog({
     [behind],
   );
   const availability = useAgentManagerAvailability(installations);
+  // Confirm with nothing selected says so under the list and focuses it.
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
 
   const [verdicts, setVerdicts] = useState<Record<string, UpdateVerdict>>({});
   const onVerdict = useCallback((id: string, verdict: UpdateVerdict) => {
@@ -435,8 +495,18 @@ export function SkillUpdateAgentsDialog({
   const [isRunning, setRunning] = useState(false);
   const [isDone, setDone] = useState(false);
 
-  const verdictOf = (id: string): UpdateVerdict =>
-    verdicts[id] ?? { kind: 'checking' };
+  const verdictOf = (id: string): UpdateVerdict => {
+    const agent = behind.find(({ row }) => row.id === id)?.row;
+    const unreachable =
+      agent &&
+      availabilityVerdictOf({
+        installation: agent.installation,
+        isUnavailable: availability.isUnavailable,
+        presence: availability.presenceOf(agent.installation),
+        isPresenceLoading: availability.isLoading,
+      });
+    return unreachable ?? verdicts[id] ?? { kind: 'checking' };
+  };
   const isUpdatable = (id: string) => {
     const kind = verdictOf(id).kind;
     return kind === 'apply' || kind === 'commit';
@@ -478,7 +548,11 @@ export function SkillUpdateAgentsDialog({
   };
 
   const onConfirm = async () => {
-    if (selected.length === 0 || isRunning) {
+    if (isRunning) {
+      return;
+    }
+    if (selected.length === 0) {
+      validation.reveal();
       return;
     }
     setRunning(true);
@@ -533,10 +607,29 @@ export function SkillUpdateAgentsDialog({
   ]
     .filter(Boolean)
     .join(', ');
+  let statusLine: string | undefined;
+  if (isDone) {
+    statusLine = summary ? `${summary}.` : undefined;
+  } else if (isChecking) {
+    statusLine = 'Checking which agents you can update…';
+  }
 
   const allSelected =
     updatable.length > 0 && selected.length === updatable.length;
+  // Shown while checks run, and kept once shown: taking it away when the
+  // checks leave one updatable agent or none would move the list up.
+  const hasSelectAll = useRef(false);
+  if (behind.length > 1 && (isChecking || updatable.length > 1)) {
+    hasSelectAll.current = true;
+  }
+  const showsSelectAll = hasSelectAll.current && !isDone;
   const count = selected.length;
+  const selection = useGroupFieldError(
+    validation.errorFor(
+      'agents',
+      count === 0 ? 'Choose at least one agent to update.' : undefined,
+    ),
+  );
 
   return (
     <ConfirmDialog
@@ -550,7 +643,10 @@ export function SkillUpdateAgentsDialog({
       }
       busyLabel="Updating…"
       isBusy={isRunning}
-      isConfirmDisabled={count === 0 || isChecking}
+      // Waits for the checks in flight, and stays off only when no agent can
+      // be updated at all (each row says why); an empty selection is said
+      // under the list instead.
+      isConfirmDisabled={isChecking || updatable.length === 0}
       isDone={isDone}
       onConfirm={onConfirm}
       width="min(90vw, 640px)"
@@ -572,16 +668,14 @@ export function SkillUpdateAgentsDialog({
           onVerdict={onVerdict}
         />
       ))}
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="3" ref={scope}>
         <Text as="p" variant="body-medium" style={{ margin: 0 }}>
           {behind.length === 1 ? 'This agent pins' : 'These agents pin'} the
           skill at an older commit than the newest one,{' '}
-          <span className={classes.code} title={head}>
-            {shortCommit(head)}
-          </span>
-          . Updating an agent re-pins every git skill it mounts — this one and
-          any others — to the head of its repository's default branch; nothing
-          else about the agent changes.
+          <CommitSha value={head} className={classes.code} />. Updating an agent
+          re-pins every git skill it mounts — this one and any others — to the
+          head of its repository's default branch; nothing else about the agent
+          changes.
         </Text>
         {proposing > 0 && !isDone && (
           <Text as="p" variant="body-small" color="secondary">
@@ -598,46 +692,59 @@ export function SkillUpdateAgentsDialog({
             action="Agents are updated"
           />
         ))}
-        {updatable.length > 1 && !isDone && (
-          <Checkbox
-            isSelected={allSelected}
-            isIndeterminate={!allSelected && selected.length > 0}
-            isDisabled={isRunning}
-            onChange={toggleAll}
-          >
-            {`All agents you can update (${updatable.length})`}
-          </Checkbox>
-        )}
-        <ShowMore items={behind} initial={USED_BY_ROWS} noun="agent">
-          {shown => (
-            <ul className={classes.rows} aria-label="Agents to update">
-              {shown.map(item => (
-                <AgentLine
-                  key={item.row.id}
-                  behind={item}
-                  head={head}
-                  verdict={verdictOf(item.row.id)}
-                  outcome={outcomes[item.row.id]}
-                  isSelected={
-                    isUpdatable(item.row.id) && !deselected.has(item.row.id)
-                  }
-                  isLocked={isRunning || isDone}
-                  onToggle={toggle}
-                />
-              ))}
-            </ul>
+        <div
+          aria-label="Agents"
+          className={classes.selection}
+          {...selection.groupProps}
+        >
+          {/* There from the start while the checks run, so it does not push
+              the list down when the second updatable agent comes in; off
+              until they are done, as unticking it can only clear the agents
+              known to be updatable by then. */}
+          {showsSelectAll && (
+            <Checkbox
+              isSelected={allSelected}
+              isIndeterminate={!allSelected && selected.length > 0}
+              isDisabled={isRunning || isChecking || updatable.length === 0}
+              onChange={toggleAll}
+            >
+              {`All agents you can update (${updatable.length})`}
+            </Checkbox>
           )}
-        </ShowMore>
-        {isChecking && !isDone && (
-          <Text as="p" variant="body-small" color="secondary">
-            Checking which agents you can update…
-          </Text>
-        )}
-        {isDone && summary && (
-          <Text as="p" variant="body-small" weight="bold">
-            {summary}.
-          </Text>
-        )}
+          <ShowMore items={behind} initial={USED_BY_ROWS} noun="agent">
+            {shown => (
+              <ul className={classes.rows} aria-label="Agents to update">
+                {shown.map(item => (
+                  <AgentLine
+                    key={item.row.id}
+                    behind={item}
+                    head={head}
+                    verdict={verdictOf(item.row.id)}
+                    outcome={outcomes[item.row.id]}
+                    isSelected={
+                      isUpdatable(item.row.id) && !deselected.has(item.row.id)
+                    }
+                    isLocked={isRunning || isDone}
+                    onToggle={toggle}
+                  />
+                ))}
+              </ul>
+            )}
+          </ShowMore>
+        </div>
+        {selection.message}
+        {/* Holds one line under the list in every state — the checks running,
+            nothing, the summary after confirming — so the list does not move
+            when the checks finish. */}
+        <Text
+          as="p"
+          variant="body-small"
+          color={isDone ? 'primary' : 'secondary'}
+          weight={isDone ? 'bold' : 'regular'}
+          className={classes.status}
+        >
+          {statusLine}
+        </Text>
       </Flex>
     </ConfirmDialog>
   );

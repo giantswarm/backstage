@@ -53,7 +53,8 @@ test('the sidebar carries the Agent Platform only as a link into the shell', asy
     ).toHaveCount(0);
     return;
   }
-  await expect(agentPlatform).toHaveAttribute('href', '/agent-platform');
+  // The Agent Platform's address: the shell's home, the new-session screen.
+  await expect(agentPlatform).toHaveAttribute('href', '/');
   await expect(agentPlatform, 'opens the shell in a new tab').toHaveAttribute(
     'target',
     '_blank',
@@ -63,16 +64,19 @@ test('the sidebar carries the Agent Platform only as a link into the shell', asy
 test('the classic portal routes no Agent Platform page', async ({ admin }) => {
   test.skip(
     lab.portalMode !== 'classic',
-    'with the shell served, `/agent-platform/**` is the shell (agent-platform-navigation.spec.ts)',
+    'with the shell served, its routes are the shell (agent-platform-navigation.spec.ts)',
   );
   for (const path of [
+    '/sessions',
+    '/usage',
+    '/profile',
+    '/customize',
+    '/customize/agents/new',
+    // The old addresses redirect only where the shell is served.
     '/agent-platform',
     '/agent-platform/agents',
-    '/agent-platform/connectors',
     '/agent-platform/mcp-servers',
-    '/agent-platform/skills',
-    '/agent-platform/profile',
-    '/customize',
+    '/agents',
   ]) {
     await open(admin, path);
     await expect(

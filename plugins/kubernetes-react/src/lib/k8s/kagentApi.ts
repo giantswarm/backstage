@@ -70,17 +70,10 @@ export type HarnessSubstratePolicy = {
   egress?: string[];
 };
 
-/** Bounds of one turn on a Claude Code Harness. */
-export type ClaudeHarnessLimits = {
-  budgetUSD?: string;
-  maxTurns?: number;
-};
-
 export type HarnessSpec = Omit<
   GeneratedHarnessSpec,
-  'allowedAgentTemplates' | 'claude' | 'env' | 'substrate'
+  'allowedAgentTemplates' | 'env' | 'substrate'
 > & {
-  claude?: { limits?: ClaudeHarnessLimits };
   env?: HarnessEnvVar[];
   substrate: HarnessSubstratePolicy;
 };
@@ -109,6 +102,8 @@ export interface AgentInterface {
     harnessRef?: { name: string };
     /** HTTP(S) origins the agent may reach besides what its revision compiles. */
     egress?: string[];
+    /** EgressPolicies of the agent's namespace whose origins it may also reach. */
+    egressPolicyRefs?: { name: string }[];
   };
   status?: AgentStatus;
 }

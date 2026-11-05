@@ -5,6 +5,7 @@ import type { LlmUsage } from '../../lib/llmUsage';
 import { formatDayWithYear } from '../../lib/formatDay';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageOverviewPage } from './UsageOverviewPage';
+import { SHELL_CONTENT_MAX_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Enough of an `LlmUsage` for the tiles, the token trend, the top-agents card
@@ -70,6 +71,7 @@ function usage(overrides: Partial<LlmUsage['totals']> = {}): LlmUsage {
         { day: '2026-10-11', calls: 12 },
       ],
     },
+    partialDay: '2026-10-11',
     reliability: {
       totalRequests: 1_234,
       errorRequests: 5,
@@ -91,8 +93,14 @@ const view: LlmUsageViewModel & { usage: LlmUsage | undefined } = {
   notReachable: [],
 };
 
+/** What the page last asked the usage view for: the window and the scope. */
+let viewOptions: Record<string, unknown> | undefined;
+
 jest.mock('../../hooks/useLlmUsageView', () => ({
-  useLlmUsageView: () => view,
+  useLlmUsageView: (options: Record<string, unknown>) => {
+    viewOptions = options;
+    return view;
+  },
 }));
 
 /** Enough of a `SessionUsageResponse` for the sessions tile and the fallback. */
@@ -147,12 +155,40 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 
-function renderPage(path = '/agent-platform/usage/overview') {
+function renderPage(path = '/usage') {
   return renderInTestApp(<UsageOverviewPage />, {
     initialRouteEntries: [path],
-    mountedRoutes: { '/agent-platform/usage': usageRouteRef },
+    mountedRoutes: { '/usage': usageRouteRef },
   });
 }
+
+// The formatters read the reader's locale; the assertions below are English,
+// so the default locale is pinned rather than left to the machine's LANG.
+const pinnedLocale = 'en-US';
+let localeSpies: jest.SpyInstance[] = [];
+
+beforeAll(() => {
+  const pin = (proto: any, method: string) => {
+    const original = proto[method];
+    localeSpies.push(
+      jest.spyOn(proto, method).mockImplementation(function pinned(
+        this: unknown,
+        locale?: any,
+        ...rest: any[]
+      ) {
+        return original.call(this, locale ?? pinnedLocale, ...rest);
+      }),
+    );
+  };
+  pin(Date.prototype, 'toLocaleDateString');
+  pin(Date.prototype, 'toLocaleString');
+  pin(Number.prototype, 'toLocaleString');
+});
+
+afterAll(() => {
+  localeSpies.forEach(spy => spy.mockRestore());
+  localeSpies = [];
+});
 
 describe('UsageOverviewPage', () => {
   beforeEach(() => {
@@ -162,6 +198,32 @@ describe('UsageOverviewPage', () => {
     sessionUsageState.usage = sessionUsage();
     sessionUsageState.isNotDeployed = false;
     sessionUsageState.isError = false;
+  });
+
+  it('narrows to the organization the URL names, says so, and keeps the scope on the Cost link', async () => {
+    renderPage('/usage?organization=org-acme&window=7d');
+
+    expect(
+      await screen.findByText(
+        /Shows the model use of the acme organization on/,
+      ),
+    ).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ days: 7, org: 'org-acme' });
+    expect(screen.getByRole('link', { name: 'see Cost' })).toHaveAttribute(
+      'href',
+      '/usage/cost?organization=org-acme&window=7d',
+    );
+    // The request metric carries no organization: the two figures from it
+    // say they are every organization's.
+    expect(screen.getAllByText('all organizations')).toHaveLength(2);
+  });
+
+  it('asks for every organization by default, with nothing of the kind on the strip', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Spend')).toBeInTheDocument();
+    expect(viewOptions).toMatchObject({ days: 30, org: undefined });
+    expect(screen.queryByText('all organizations')).toBeNull();
   });
 
   it('renders the KPI tiles from the gateway totals', async () => {
@@ -198,7 +260,7 @@ describe('UsageOverviewPage', () => {
     expect(screen.queryByText(/vs previous/)).toBeNull();
     expect(screen.getByRole('link', { name: 'see Cost' })).toHaveAttribute(
       'href',
-      '/agent-platform/usage/cost',
+      '/usage/cost',
     );
     // No other money on the page: not the per-agent or per-model spend.
     expect(screen.queryByText('$8.00')).toBeNull();
@@ -257,7 +319,7 @@ describe('UsageOverviewPage', () => {
       ],
     });
 
-    renderPage('/agent-platform/usage/overview?window=7d');
+    renderPage('/usage?window=7d');
 
     expect(await screen.findByText('Your sessions')).toBeInTheDocument();
     expect(screen.getByText('6')).toBeInTheDocument();
@@ -343,6 +405,29 @@ describe('UsageOverviewPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('calls no day partial in a window that has ended', async () => {
+    // A past month: its last day is whole, and nothing is "so far".
+    const ended = usage();
+    delete ended.partialDay;
+    view.usage = ended;
+
+    renderPage();
+
+    const grid = await screen.findByRole('group', {
+      name: /^Model calls per day:/,
+    });
+    expect(
+      within(grid).getByRole('button', {
+        name: /^Sun, .*11.*: 12 model calls$/,
+      }),
+    ).toBeInTheDocument();
+    expect(within(grid).queryByRole('button', { name: /so far/ })).toBeNull();
+    expect(screen.queryByText(/today's so far/)).toBeNull();
+    expect(
+      screen.getByText("Every user's calls through the gateway, by UTC day."),
+    ).toBeInTheDocument();
+  });
+
   it('says the daily figures failed rather than drawing idle days', async () => {
     view.usage = { ...usage(), callsPerDay: null } as unknown as LlmUsage;
 
@@ -365,7 +450,7 @@ describe('UsageOverviewPage', () => {
       dataStart: { day: '2026-09-09', coveredDays: 36 },
     };
 
-    renderPage('/agent-platform/usage/overview?window=90d');
+    renderPage('/usage?window=90d');
 
     expect(
       await screen.findByText(
@@ -382,7 +467,7 @@ describe('UsageOverviewPage', () => {
   });
 
   it('reads the window from the URL', async () => {
-    renderPage('/agent-platform/usage/overview?window=7d');
+    renderPage('/usage?window=7d');
 
     // The caption and the sessions tile both follow it.
     expect(await screen.findAllByText(/over the last 7 days/)).toHaveLength(2);
@@ -396,7 +481,9 @@ describe('UsageOverviewPage', () => {
 
     expect(await screen.findByText('Spend')).toBeInTheDocument();
     expect(
-      container.querySelector('[style*="max-width: 1080px"]'),
+      container.querySelector(
+        `[style*="max-width: ${SHELL_CONTENT_MAX_WIDTH}px"]`,
+      ),
     ).not.toBeNull();
   });
 

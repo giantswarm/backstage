@@ -1,16 +1,38 @@
 import type { TokenRateTier } from '../hooks/useTokenRates';
-import { formatCount } from './formatNumbers';
+import { pricedTokenCount } from './costEstimate';
+import { formatTokens } from './formatNumbers';
+import { lastDaysNoun } from './usageWindow';
 
 export type CostBasis = {
   tier: TokenRateTier;
   /** The model the session's agent runs on, when it could be resolved. */
   model: string | undefined;
   installation: string;
-  /** The window the rate was averaged over, e.g. `7d`. */
-  window: string;
-  /** The session's total tokens, which the rate is applied to. */
-  tokens: number;
+  /** The days the rate was averaged over, named in words (`the last 7 days`). */
+  windowDays: number;
+  /** The input tokens the estimate priced, as the stats beside it count them. */
+  inputTokens: number;
+  /** The output tokens the estimate priced, as the stats beside it count them. */
+  outputTokens: number;
+  /**
+   * Tokens kagent counted in its reported total but in neither part, which
+   * the estimate therefore does not price: a model that reports thinking
+   * separately (Gemini's `thoughtsTokenCount`) counts it there. Left out, or
+   * zero, when there are none or the total is not known.
+   */
+  unpricedTokens?: number;
 };
+
+/**
+ * What every priced estimate says about itself: it is an average over the
+ * window, and which sessions it undercharges. Most of a window's input is
+ * cache reads, priced at a fraction of fresh input, so a session that reads
+ * little from cache — a short one most of all — costs more per token than
+ * the average (giantswarm/giantswarm#38457: a one-turn session came out at a
+ * fifth of its bill).
+ */
+export const AVERAGE_RATE_CAVEAT =
+  'An average can be low for short sessions that read little from cache.';
 
 /**
  * The one line behind the session's estimated cost: what it was multiplied by,
@@ -26,24 +48,46 @@ export type CostBasis = {
  * made about an installation with no Mimir, or a query that failed — a cause
  * stated about a measurement that never ran is worse than no cause at all.
  *
- * Kept to a sentence. Earlier drafts explained *why* borrowing another model's
+ * Kept short. Earlier drafts explained *why* borrowing another model's
  * rate would be wrong, and closed with "Not a billed figure" — the first is
  * the code's job to know rather than the reader's to be told, and the second
- * is what the stat's own "Est." prefix already says.
+ * is what the stat's own "Est." prefix already says. The one caveat it does
+ * carry, {@link AVERAGE_RATE_CAVEAT}, is there because the figure is most
+ * wrong exactly where a reader has the least reason to doubt it: a short
+ * session.
+ *
+ * **It names the input and output counts `estimateCost` priced, formatted as
+ * the stats beside it show them.** A single total in exact digits ("the 48,478
+ * tokens beside it") named a figure no stat shows, so it read as the input
+ * stat's own count (48.0k) badly rounded. Tokens the total holds beyond the
+ * two parts, thinking for one, are not priced, and a second sentence says how
+ * many rather than leaving them out of sight.
  */
 export function describeCostBasis(basis: CostBasis): string {
-  const { tier, model, installation, window, tokens } = basis;
-  const applied = `applied to the ${formatCount(tokens)} tokens beside it`;
+  const { tier, model, installation } = basis;
+  const windowNoun = lastDaysNoun(basis.windowDays);
+  const applied = `applied to the ${formatTokens(
+    pricedTokenCount(basis.inputTokens),
+  )} input and ${formatTokens(
+    pricedTokenCount(basis.outputTokens),
+  )} output tokens`;
+  const unpriced = pricedTokenCount(basis.unpricedTokens ?? 0);
+  const leftOut =
+    unpriced > 0
+      ? ` kagent also counted ${formatTokens(
+          unpriced,
+        )} other tokens, such as thinking, which the estimate does not price.`
+      : '';
 
   switch (tier) {
     case 'model':
-      return `Estimated: ${model}'s observed cost per token on ${installation} over the last ${window}, ${applied}.`;
+      return `Estimated: ${model}'s average cost per token on ${installation} over ${windowNoun}, ${applied}. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'agent':
-      return `Estimated: this agent's observed cost per token on ${installation} over the last ${window}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved.`;
+      return `Estimated: this agent's average cost per token on ${installation} over ${windowNoun}, ${applied} — a blend across whatever models it ran, because its own model could not be resolved. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'installation':
-      return `Estimated: ${installation}'s observed cost per token over the last ${window}, ${applied} — a fleet-wide blend across every model.`;
+      return `Estimated: ${installation}'s average cost per token over ${windowNoun}, ${applied} — a fleet-wide blend across every model. ${AVERAGE_RATE_CAVEAT}${leftOut}`;
 
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
@@ -62,7 +106,7 @@ export function describeCostBasis(basis: CostBasis): string {
       // Two different reasons, and the fix differs: point the agent at the LLM
       // gateway, versus wait for traffic or fix the price catalogue.
       return model
-        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in the last ${window}, so there is no rate to apply.`
-        : `No estimate: nothing on ${installation} in the last ${window} could be priced. The token counts are unaffected.`;
+        ? `No estimate: the gateway has not priced a ${model} call on ${installation} in ${windowNoun}, so there is no rate to apply.`
+        : `No estimate: nothing on ${installation} in ${windowNoun} could be priced. The token counts are unaffected.`;
   }
 }

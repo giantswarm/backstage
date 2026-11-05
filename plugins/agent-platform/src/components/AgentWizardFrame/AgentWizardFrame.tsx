@@ -1,12 +1,16 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
+  DraftRestoredAlert,
   WizardFrame,
   type WizardStep,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import {
   agentEditRouteRef,
+  agentsRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
@@ -14,17 +18,19 @@ import {
 } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 
 /** The create-agent wizard's steps, in order (Skills only with repositories). */
 export type AgentWizardStepId = 'details' | 'skills' | 'tools' | 'review';
 
 /**
  * Where leaving the create-agent wizard lands: the shell's Customize screen's
- * Agents tab.
+ * Agents tab. Where the app binds no Customize page, the plugin's own Agents
+ * address, which says the list is not available.
  */
 export function useAgentWizardCloseHref(): string {
-  return `${SHELL_CUSTOMIZE_PATH}/agents`;
+  const { agents } = useCustomizePaths();
+  const agentsRoute = useRouteRef(agentsRouteRef);
+  return useCloseHref(agents, agentsRoute?.());
 }
 
 /** Where each step of the agent wizard lives, as route-ref-shaped functions. */
@@ -37,8 +43,8 @@ export type AgentWizardLinks = {
 
 /**
  * The steps' addresses for the wizard as it is running: the create flow's
- * `/agent-platform/agents/new[/skills|/tools|/review]`, or, while editing,
- * `/agent-platform/agents/edit/<installation>/<namespace>/<name>[/…]`. Every
+ * `/customize/agents/new[/skills|/tools|/review]`, or, while editing,
+ * `/customize/agents/<installation>/<namespace>/<name>/edit[/…]`. Every
  * step navigates through these, so the same pages serve both.
  */
 export function useAgentWizardLinks(): AgentWizardLinks {
@@ -87,9 +93,13 @@ export function useAgentWizardLinks(): AgentWizardLinks {
  * Editing an agent is the same wizard, titled "Edit agent" and closing to the
  * agent's page. Close and Cancel ask before discarding a dirty form
  * (`isDirty`), on every step, and so does the browser on a reload or a closed
- * tab. Leaving through the shell's nav, rail or palette, or the browser's
- * Back, discards it without asking: blocking in-app navigation needs a router
- * blocker, which the app does not have (R2-6).
+ * tab. Leaving through the shell's nav, rail or palette, the browser's Back,
+ * or a link followed in the same tab is not asked about (blocking in-app
+ * navigation needs a router blocker, which the app does not have, R2-6):
+ * creating keeps a draft instead (`NewAgentFormProvider`'s `persistDraft`),
+ * and the form comes back with it, saying so on the step it reopens on (the
+ * note closes once the person moves to another step), with a way to start
+ * over. Discarding drops the draft.
  */
 export function AgentWizardFrame({
   step,
@@ -111,7 +121,34 @@ export function AgentWizardFrame({
   children: ReactNode;
 }) {
   const links = useAgentWizardLinks();
-  const { edit, isDirty } = useNewAgentForm();
+  const {
+    edit,
+    isDirty,
+    isDraftRestored,
+    draftNoticeStep,
+    claimDraftNotice,
+    dismissDraftNotice,
+    discardDraft,
+  } = useNewAgentForm();
+  // The note about a restored draft belongs to the step the form reopened on:
+  // moving on to another one closes it.
+  useEffect(() => {
+    if (!isDraftRestored) {
+      return;
+    }
+    if (draftNoticeStep === undefined) {
+      claimDraftNotice(step);
+    } else if (draftNoticeStep !== step) {
+      dismissDraftNotice();
+    }
+  }, [
+    isDraftRestored,
+    draftNoticeStep,
+    step,
+    claimDraftNotice,
+    dismissDraftNotice,
+  ]);
+  const showDraftNotice = isDraftRestored && (draftNoticeStep ?? step) === step;
   const createCloseHref = useAgentWizardCloseHref();
   const closeHref = edit
     ? (edit.detailHref ?? createCloseHref)
@@ -144,10 +181,18 @@ export function AgentWizardFrame({
       currentStep={step}
       closeHref={closeHref}
       confirmDiscard={isDirty && !isProposed}
+      onDiscard={edit ? undefined : discardDraft}
       onBack={onBack}
       width="wide"
       rail={rail}
     >
+      {showDraftNotice && (
+        <DraftRestoredAlert
+          keptUntil="It is kept in this browser tab until you create the agent, propose it as a pull request, or discard it."
+          onStartOver={discardDraft}
+          onDismiss={dismissDraftNotice}
+        />
+      )}
       {children}
     </WizardFrame>
   );

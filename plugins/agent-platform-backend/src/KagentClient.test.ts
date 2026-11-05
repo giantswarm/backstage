@@ -200,6 +200,29 @@ describe('KagentClient against a fake controller', () => {
     });
   });
 
+  describe('agent namespaces', () => {
+    it('answers the namespaces of the Agents the caller may list, once each and sorted', async () => {
+      const { client } = build({
+        agents: [
+          { namespace: 'org-b', name: 'sales', ready: true },
+          { namespace: 'kagent', name: 'sre-agent', ready: true },
+          { namespace: 'org-a', name: 'triage', ready: true },
+          { namespace: 'org-a', name: 'review', ready: true },
+        ],
+        listableNamespaces: { 'dev@lab.local': ['kagent', 'org-a'] },
+      });
+
+      await expect(client.listAgentNamespaces(USER)).resolves.toEqual({
+        namespaces: ['kagent', 'org-a'],
+      });
+      // A person the authorizer does not narrow lists every namespace, as
+      // `noop` mode answers.
+      await expect(client.listAgentNamespaces(OTHER)).resolves.toEqual({
+        namespaces: ['kagent', 'org-a', 'org-b'],
+      });
+    });
+  });
+
   describe('sessions are Session records', () => {
     it('lists only the caller’s sessions, walking every page', async () => {
       const { fake, client } = build();
@@ -220,6 +243,42 @@ describe('KagentClient against a fake controller', () => {
         true,
       );
       expect(theirs.sessions).toHaveLength(1);
+    });
+
+    it('says a listing cut at the page limit is truncated', async () => {
+      const { SessionService } =
+        require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb');
+      let calls = 0;
+      const client = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(router => {
+          router.service(SessionService, {
+            listSessions() {
+              calls += 1;
+              // Always another page: a listing longer than the limit.
+              return { sessions: [], page: { nextPageToken: `p${calls}` } };
+            },
+          });
+        }),
+        500,
+        500,
+      );
+
+      expect(await client.listSessions(USER)).toEqual({ truncated: true });
+      expect(calls).toBe(20);
+    });
+
+    it('says nothing of truncation when the listing ends', async () => {
+      const { fake, client } = build();
+      created(fake, 'only');
+
+      const listing = (await client.listSessions(USER)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(listing).not.toHaveProperty('truncated');
     });
 
     it('narrows the listing to one Agent on request', async () => {
@@ -293,6 +352,156 @@ describe('KagentClient against a fake controller', () => {
       expect(send.headers['x-kagent-agent-instance-id']).toBeUndefined();
       expect(fake.sessions.size).toBe(1);
       expect(fake.tasks.get(id)?.[0]?.task.contextId).toBe(id);
+    });
+
+    it('sends the images of a message as raw parts after its text', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+
+      const response = await client.streamMessage(
+        id,
+        AGENT,
+        {
+          messageId: 'm0',
+          text: 'what is wrong here?',
+          images: [{ mediaType: 'image/png', bytes, name: 'shot.png' }],
+        },
+        USER,
+        new AbortController().signal,
+      );
+      await response.text();
+
+      const [user] = fake.tasks.get(id)![0].task.history;
+      expect(user.parts).toHaveLength(2);
+      expect(user.parts[0].content).toEqual({
+        case: 'text',
+        value: 'what is wrong here?',
+      });
+      expect(user.parts[1].content).toEqual({ case: 'raw', value: bytes });
+      expect(user.parts[1].mediaType).toBe('image/png');
+      expect(user.parts[1].filename).toBe('shot.png');
+    });
+
+    it('keeps the token it did not follow when a task read is cut short', async () => {
+      const { SessionService } =
+        require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb');
+      const { A2AService } =
+        require('./kagent/gen/a2a_pb') as typeof import('./kagent/gen/a2a_pb');
+      let pages = 0;
+      const client = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(router => {
+          router.service(SessionService, {
+            getSession: request => ({
+              session: { id: request.sessionId, agent: AGENT },
+            }),
+          });
+          router.service(A2AService, {
+            listTasks() {
+              pages += 1;
+              // Always another page, and no `total_size`: the count alone
+              // would claim the read is complete.
+              return { tasks: [], nextPageToken: `p${pages}` };
+            },
+          });
+        }),
+        500,
+        500,
+      );
+
+      const listed = (await client.listSessionTasks('s1', USER)) as {
+        totalSize?: number;
+        nextPageToken?: string;
+      };
+
+      expect(pages).toBe(10);
+      expect(listed.nextPageToken).toBe('p10');
+      expect(listed.totalSize).toBeUndefined();
+    });
+
+    it('sends no page token once a task read has reached the end', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'one' },
+        USER,
+      );
+
+      const listed = (await client.listSessionTasks(id, USER)) as {
+        nextPageToken?: string;
+      };
+
+      expect(listed.nextPageToken).toBeUndefined();
+    });
+
+    it('reads a conversation too large for one answer in smaller pages', async () => {
+      // A task with an image is large: two of these overflow the cap, one fits.
+      const { fake, client } = build({ maxListTasksBytes: 2_500 });
+      const id = created(fake);
+      for (let turn = 0; turn < 5; turn += 1) {
+        await client.sendMessage(
+          id,
+          AGENT,
+          {
+            messageId: `m${turn}`,
+            text: 'look',
+            images: [{ mediaType: 'image/png', bytes: new Uint8Array(1_000) }],
+          },
+          USER,
+        );
+      }
+
+      const before = fake.calls.length;
+      const listed = (await client.listSessionTasks(id, USER)) as {
+        tasks: unknown[];
+        totalSize: number;
+      };
+
+      expect(listed.tasks).toHaveLength(5);
+      expect(listed.totalSize).toBe(5);
+      // Refused at 100, 50, 25, 13, 7, 4 and 2; then read one task at a time.
+      const listCalls = (from: number) =>
+        fake.calls.slice(from).filter(call => call.method === 'ListTasks');
+      expect(listCalls(before)).toHaveLength(12);
+
+      // The next read of the session — the next poll — starts at the size
+      // that fitted instead of being refused all over again.
+      const next = fake.calls.length;
+      await client.listSessionTasks(id, USER);
+      expect(listCalls(next)).toHaveLength(5);
+    });
+
+    it('counts the images the person’s messages in a session carry', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      await client.sendMessage(
+        id,
+        AGENT,
+        {
+          messageId: 'm0',
+          text: 'look',
+          images: [
+            { mediaType: 'image/png', bytes: new Uint8Array(100) },
+            { mediaType: 'image/jpeg', bytes: new Uint8Array(50) },
+          ],
+        },
+        USER,
+      );
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'and now?' },
+        USER,
+      );
+
+      expect(await client.readSessionImageUsage(id, AGENT, USER)).toEqual({
+        bytes: 150,
+        count: 2,
+      });
     });
 
     it('reads a session’s tasks through the Agent it remembers, and through a fresh read otherwise', async () => {
@@ -560,6 +769,207 @@ describe('KagentClient against a fake controller', () => {
           new AbortController().signal,
         ),
       ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+  });
+
+  describe('following a running turn again', () => {
+    /** Start a long turn and return its task id once the controller has it. */
+    async function longTurn(fake: FakeController, client: KagentClient) {
+      const id = created(fake);
+      const streaming = client.streamMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'take your time' },
+        USER,
+        new AbortController().signal,
+      );
+      let taskId: string | undefined;
+      for (let attempt = 0; attempt < 50 && !taskId; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        taskId = fake.tasks.get(id)?.[0]?.task.id;
+      }
+      expect(taskId).toBeDefined();
+      return { id, taskId: taskId!, streaming };
+    }
+
+    it('relays the task’s snapshot and then its events, as the person, routed and typed like the stream', async () => {
+      const { fake, client } = build({ turn: () => ({ kind: 'long' }) });
+      const { id, taskId, streaming } = await longTurn(fake, client);
+
+      // Not awaited, for the same reason as the stream: the in-memory
+      // transport hands it over once the handler returns, on the cancel.
+      const following = client.subscribeToTask(
+        id,
+        AGENT,
+        taskId,
+        USER,
+        new AbortController().signal,
+      );
+      await new Promise(resolve => setTimeout(resolve, 10));
+      await client.cancelTask(id, taskId, USER);
+
+      const events = (await frames(await following)) as Record<
+        string,
+        unknown
+      >[];
+      expect(events[0]).toEqual({
+        task: expect.objectContaining({
+          id: taskId,
+          status: expect.objectContaining({ state: 'TASK_STATE_WORKING' }),
+        }),
+      });
+      expect(JSON.stringify(events.at(-1))).toContain('TASK_STATE_CANCELED');
+      const call = fake.calls.find(c => c.method === 'SubscribeToTask')!;
+      expect(call.tenant).toBe('kagent/sre-agent');
+      expect(call.headers.authorization).toBe('Bearer user-token');
+      expect(call.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
+      await streaming;
+    });
+
+    it('answers the final event of a turn already over', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      const events = await frames(
+        await client.subscribeToTask(
+          id,
+          AGENT,
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        ),
+      );
+
+      expect(events).toEqual([
+        {
+          statusUpdate: expect.objectContaining({
+            status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
+          }),
+        },
+      ]);
+    });
+
+    it('never takes the Agent the caller names as the session’s', async () => {
+      // A subscription carries no context the gateway checks; remembering the
+      // body's Agent would send every later agent-less call on the session to
+      // whatever tenant the last subscribe named.
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await client
+        .subscribeToTask(
+          id,
+          { namespace: 'kagent', name: 'orphan' },
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        )
+        .catch(() => undefined);
+      await client.listSessionTasks(id, USER);
+
+      expect(fake.calls.at(-1)?.method).toBe('ListTasks');
+      expect(fake.calls.at(-1)?.tenant).toBe('kagent/sre-agent');
+    });
+
+    it('refuses a turn of another session as one this session does not have', async () => {
+      const { fake, client } = build();
+      const mine = created(fake, 'req-1');
+      const other = created(fake, 'req-2');
+      const sent = (await client.sendMessage(
+        other,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await expect(
+        client.subscribeToTask(
+          mine,
+          AGENT,
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
+    it('refuses somebody else’s turn as a 404 decision', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await expect(
+        client.subscribeToTask(
+          id,
+          AGENT,
+          sent.task.id,
+          OTHER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
+    it('answers a controller that is not there yet in-band, for the page to retry, without a warning', async () => {
+      // Mid-rollout: a 5xx here would reach Sentry once per running turn.
+      const { client } = build({
+        subscribeError: new ConnectError(
+          'no healthy upstream',
+          Code.Unavailable,
+        ),
+      });
+      logger.warn.mockClear();
+      logger.error.mockClear();
+
+      const response = await client.subscribeToTask(
+        'any-session',
+        AGENT,
+        'task-1',
+        USER,
+        new AbortController().signal,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await frames(response)).toEqual([
+        { error: { code: 'Unavailable', message: 'no healthy upstream' } },
+      ]);
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('throws a turn kagent will not follow any more as a 409', async () => {
+      const { client } = build({
+        subscribeError: new ConnectError(
+          'unsupported operation: task is in a terminal state',
+          Code.Unknown,
+        ),
+      });
+
+      await expect(
+        client.subscribeToTask(
+          'any-session',
+          AGENT,
+          'task-1',
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'ConflictError' });
     });
   });
 
@@ -831,6 +1241,49 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
+    it('refuses an answer to a request the task no longer asks, as a 409', async () => {
+      const { fake, client } = build({ turn: () => approval });
+      const id = created(fake);
+      const paused = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'delete it' },
+        USER,
+      )) as {
+        task: { id: string; status: { message: { messageId: string } } };
+      };
+
+      await expect(
+        client.answerConfirmation(
+          id,
+          AGENT,
+          {
+            messageId: 'm2',
+            taskId: paused.task.id,
+            decision: 'approve',
+            askedIn: 'an-earlier-status-message',
+          },
+          USER,
+        ),
+      ).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining('already answered'),
+      });
+
+      const resumed = (await client.answerConfirmation(
+        id,
+        AGENT,
+        {
+          messageId: 'm3',
+          taskId: paused.task.id,
+          decision: 'approve',
+          askedIn: paused.task.status.message.messageId,
+        },
+        USER,
+      )) as { task: { status: { state: string } } };
+      expect(resumed.task.status.state).toBe('TASK_STATE_COMPLETED');
+    });
+
     it('refuses to answer a task that is not waiting, as a 409', async () => {
       const { fake, client } = build();
       const id = created(fake);
@@ -850,6 +1303,76 @@ describe('KagentClient against a fake controller', () => {
           USER,
         ),
       ).rejects.toMatchObject({ name: 'ConflictError' });
+    });
+  });
+
+  describe('a delete right after a turn', () => {
+    const NOT_SETTLED =
+      'begin Session operation: runtime cleanup or lifecycle work is not yet settled: precondition failed';
+
+    /** A client whose controller refuses the delete with `refusals` in turn, then deletes. */
+    function refusing(refusals: string[], delaysMs = [0, 0, 0]) {
+      let attempts = 0;
+      const client = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(router => {
+          router.service(
+            (
+              require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb')
+            ).SessionService,
+            {
+              deleteSession(request) {
+                const refusal = refusals[attempts];
+                attempts += 1;
+                if (refusal !== undefined) {
+                  throw new ConnectError(refusal, Code.FailedPrecondition);
+                }
+                return { session: { id: request.sessionId } };
+              },
+            },
+          );
+        }),
+        500,
+        500,
+        delaysMs,
+      );
+      return { client, attempts: () => attempts };
+    }
+
+    it('retries while the last turn settles, and answers the delete', async () => {
+      const { client, attempts } = refusing([NOT_SETTLED, NOT_SETTLED]);
+      await expect(client.deleteSession('s1', USER)).resolves.toEqual({
+        session: { id: 's1' },
+      });
+      expect(attempts()).toBe(3);
+    });
+
+    it('answers a 409 with kagent’s reason once the retries are spent', async () => {
+      const { client, attempts } = refusing(
+        [NOT_SETTLED, NOT_SETTLED, NOT_SETTLED, NOT_SETTLED],
+        [0, 0],
+      );
+      await expect(client.deleteSession('s1', USER)).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining(
+          'is still settling its last turn; try deleting it again in a moment. (begin Session operation: runtime cleanup or lifecycle work is not yet settled',
+        ),
+      });
+      expect(attempts()).toBe(3);
+    });
+
+    it('does not retry any other precondition', async () => {
+      const { client, attempts } = refusing([
+        'the Agent has no ready revision',
+      ]);
+      await expect(client.deleteSession('s1', USER)).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining(
+          'reported a conflict: the Agent has no ready revision',
+        ),
+      });
+      expect(attempts()).toBe(1);
     });
   });
 

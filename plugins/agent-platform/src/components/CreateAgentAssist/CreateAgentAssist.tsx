@@ -50,7 +50,10 @@ function CreateAgentAssistControl() {
     wasOpen.current = isOpen;
   }, [isOpen]);
 
-  if (!assistant) {
+  // An assistant no session can start with from this portal (its
+  // installation's agent-manager is out of reach as the person) offers
+  // nothing to open.
+  if (!assistant || assistant.sessionBlocker) {
     return null;
   }
   return (

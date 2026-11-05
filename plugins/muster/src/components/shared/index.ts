@@ -4,6 +4,10 @@ export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
 export { EffectBadge } from './EffectBadge';
 export type { EffectBadgeProps } from './EffectBadge';
+export { WorkflowEffectBadge } from './WorkflowEffectBadge';
+export type { WorkflowEffectBadgeProps } from './WorkflowEffectBadge';
+export { MarkerBadge } from './MarkerBadge';
+export type { MarkerBadgeProps } from './MarkerBadge';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.
 // Re-exported from here so muster's own call sites and its public
 // `src/index.ts` surface stay unchanged.
@@ -29,33 +33,56 @@ export {
   deactivatedSignInGate,
   ServerAuthActions,
   ServerSignIn,
+  SSO_REFUSED_STATUS,
+  ssoRefusedText,
 } from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
 export {
   ServerSignInStatus,
   SignInStatusActions,
   SignInStatusText,
+  StatusWithHint,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
-export { useConnectorGroupPaths, useServerSignInStatus } from './hooks';
-export type { ConnectorGroupPaths } from './hooks';
+export {
+  useConnectorListPaths,
+  useServerSignInStatus,
+  useWorkflowPageLinks,
+} from './hooks';
+export type { ConnectorListPaths, WorkflowPageLinks } from './hooks';
 export type {
+  ExplainedStatusText,
   ServerSignInStatusState,
   StatusText,
   UseServerSignInStatusOptions,
 } from './hooks';
 export {
   authStatusQueryKey,
+  connectingPollInterval,
+  isConnecting,
+  isSsoRefused,
+  isSsoServer,
   needsSignIn,
+  useServerNeedsSignIn,
   useServerSignIn,
 } from './useServerSignIn';
-export type { ServerSignInState, SignInNoun } from './useServerSignIn';
+export type {
+  DeviceCode,
+  ServerSignInState,
+  SignInNoun,
+} from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
-export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
+export type {
+  ServerPageLinks,
+  ServerPageTab,
+  ToolPageTab,
+  ToolsListView,
+} from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { familyHealthLabel } from './familyHealth';
+export { PORTAL_ONLY_LABEL, portalOnlyStatus } from './portalOnlyStatus';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
 export { useToolDescription } from './useToolDescription';
 export { DefinitionEditorDialog } from './DefinitionEditorDialog';

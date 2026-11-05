@@ -158,7 +158,7 @@ export function LlmByModelTable({
             label={
               row.avgTokensPerCall === undefined
                 ? '—'
-                : formatTokens(Math.round(row.avgTokensPerCall))
+                : formatTokens(row.avgTokensPerCall)
             }
             value={row.avgTokensPerCall}
             max={max.avgTokensPerCall}

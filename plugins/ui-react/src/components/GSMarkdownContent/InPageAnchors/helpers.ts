@@ -39,8 +39,8 @@ export function getInPageFragment(
  * sanitizer's prefix, or else the heading whose GitHub slug it is. Headings
  * are matched by slug first, since `MarkdownContent` gives them ids of its
  * own; a link written against those ids still finds its heading.
- * Links lose their ids and names in `MarkdownContent`, so `<a name>` anchors
- * and footnote back-references have nothing to land on.
+ * Links lose their names in `MarkdownContent`, so `<a name>` anchors have
+ * nothing to land on; their ids stay, so a footnote's back-reference does.
  * Returns `'top'` for `#` and `#top` when nothing else matches.
  */
 export function findAnchorTarget(

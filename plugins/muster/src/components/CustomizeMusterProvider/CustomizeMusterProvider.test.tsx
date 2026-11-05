@@ -27,7 +27,7 @@ function server(name: string, family?: string) {
 }
 
 describe('useMusterCustomizeCounts', () => {
-  it('counts a family once, muster itself, each sub-tab, and the workflows', () => {
+  it('counts a family once, muster itself, and the workflows', () => {
     mockInstance = makeTestMusterInstance({
       mcpServers: [
         server('a-kubernetes', 'kubernetes'),
@@ -49,8 +49,20 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 3,
-      connectorGroups: { yours: 2, infrastructure: 0, internal: 1 },
       workflows: 1,
+    });
+  });
+
+  it('holds the workflows count while their own read is pending, the servers counted', () => {
+    mockInstance = makeTestMusterInstance({
+      mcpServers: [server('github')],
+      isLoadingWorkflows: true,
+    });
+    const { result } = renderHook(() => useMusterCustomizeCounts());
+    // github, and muster itself among the internal ones.
+    expect(result.current).toEqual({
+      connectors: 2,
+      workflows: 'loading',
     });
   });
 
@@ -62,14 +74,16 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 0,
-      connectorGroups: { yours: 0, infrastructure: 0, internal: 0 },
       workflows: 0,
     });
   });
 
-  it('counts nothing while loading', () => {
+  it('says every count is still loading while muster is read', () => {
     mockInstance = makeTestMusterInstance({ isLoading: true });
     const { result } = renderHook(() => useMusterCustomizeCounts());
-    expect(result.current).toEqual({});
+    expect(result.current).toEqual({
+      connectors: 'loading',
+      workflows: 'loading',
+    });
   });
 });
