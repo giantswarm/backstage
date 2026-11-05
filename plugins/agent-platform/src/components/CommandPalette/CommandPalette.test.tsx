@@ -762,6 +762,23 @@ describe('CommandPalette', () => {
       ).toBeInTheDocument();
     });
 
+    it('opens the Sessions list without the query when the palette matched more forgivingly than the list does', async () => {
+      mockSessions = {
+        ...mockSessions,
+        rows: Array.from({ length: 7 }, (_, i) =>
+          session(`s-${i}`, `Swarm Operator rollout ${i}`),
+        ),
+      };
+      const input = await openPalette();
+      await userEvent.type(input, 'swarm-operator');
+
+      // The list searches for "swarm-operator" as typed and would find
+      // none of the seven.
+      expect(
+        screen.getByRole('link', { name: 'Show 2 more sessions' }),
+      ).toHaveAttribute('href', '/sessions');
+    });
+
     it('links an agent overflow to Customize → Agents with the query', async () => {
       mockAgents = {
         ...mockAgents,
@@ -782,6 +799,246 @@ describe('CommandPalette', () => {
       expect(
         screen.getByRole('link', { name: 'Show 295 more agents' }),
       ).toHaveAttribute('href', '/customize/agents?q=ops');
+    });
+  });
+
+  describe('while kinds are read (T11)', () => {
+    const chipGroup = () =>
+      screen.getByRole('group', { name: 'Filter results' });
+    const chipStates = () =>
+      within(chipGroup())
+        .getAllByRole('button')
+        .map(
+          chip =>
+            `${chip.textContent}${chip.hasAttribute('disabled') ? ' (disabled)' : ''}`,
+        );
+
+    it('holds every chip in place, disabling what is not read yet, and drops the empty kinds once all is read', async () => {
+      mockSessions = { rows: [], isLoading: true, isLoadingMore: false };
+      mockCatalog = { skills: [], isLoading: false };
+      await openPalette();
+
+      // Sessions are still read and skills came back empty: both keep their
+      // place, disabled, so no chip moves when sessions land.
+      expect(chipStates()).toEqual([
+        'All',
+        'Sessions (disabled)',
+        'Agents',
+        'Skills (disabled)',
+        'Connectors',
+        'Models',
+        'Workflows',
+      ]);
+
+      act(() => {
+        mockSessions = {
+          rows: [session('s-sso', 'Which customers asked about SSO?')],
+          isLoading: false,
+          isLoadingMore: false,
+        };
+        mockSessionsListeners.forEach(listener => listener());
+      });
+
+      // Everything is read: the empty kind is gone, the rest unmoved.
+      expect(chipStates()).toEqual([
+        'All',
+        'Sessions',
+        'Agents',
+        'Connectors',
+        'Models',
+        'Workflows',
+      ]);
+    });
+
+    it('leaves out a disabled chip when tabbing', async () => {
+      mockSessions = { rows: [], isLoading: true, isLoadingMore: false };
+      const input = await openPalette();
+      expect(input).toHaveFocus();
+
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'All' })).toHaveFocus();
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'Agents' })).toHaveFocus();
+    });
+  });
+
+  describe('forgiving search (T15, U17)', () => {
+    beforeEach(() => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [
+          agent,
+          {
+            ...agent,
+            id: 'gazelle/kagent/swarm-operator',
+            name: 'Swarm Operator',
+            technicalName: 'swarm-operator',
+            description: 'Operates the fleet',
+          } as AgentRow,
+        ],
+      };
+    });
+
+    it.each([
+      'swarmoperator',
+      'Swarmoperator',
+      'swarm-operator',
+      'Swarm Operator',
+      'swarm_operator',
+      'swarm oprator',
+    ])('finds the Swarm Operator agent for “%s”', async query => {
+      const input = await openPalette();
+      await userEvent.type(input, query);
+
+      const listbox = screen.getByRole('listbox', { name: 'Results' });
+      expect(within(listbox).getByText('Swarm Operator')).toBeVisible();
+      expect(
+        within(listbox).queryByText('Support Triage'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('placement (finding 4)', () => {
+    let layout: MockedLayout | undefined;
+    afterEach(() => {
+      layout?.restore();
+      layout = undefined;
+      window.localStorage.clear();
+    });
+
+    const container = () => document.querySelector<HTMLElement>('.bui-Dialog')!;
+    const header = () =>
+      screen.getByRole('heading', { name: 'Search' }).parentElement!;
+
+    async function dragBy(dx: number, dy: number) {
+      const box = container();
+      // Laid out at 200, 100 and 600 × 400 …
+      for (const [key, value] of Object.entries({
+        offsetLeft: 200,
+        offsetTop: 100,
+        offsetWidth: 600,
+        offsetHeight: 400,
+      })) {
+        Object.defineProperty(box, key, { value, configurable: true });
+      }
+      // … but drawn 90% of that while it opens, as bui's enter animation
+      // scales it: a drag measured from this would jump.
+      jest.spyOn(box, 'getBoundingClientRect').mockReturnValue({
+        left: 230,
+        top: 120,
+        width: 540,
+        height: 360,
+        right: 770,
+        bottom: 480,
+        x: 230,
+        y: 120,
+        toJSON: () => ({}),
+      });
+      fireEvent.pointerDown(header(), {
+        button: 0,
+        pointerId: 1,
+        clientX: 300,
+        clientY: 120,
+      });
+      fireEvent.pointerMove(header(), {
+        pointerId: 1,
+        clientX: 300 + dx,
+        clientY: 120 + dy,
+      });
+      fireEvent.pointerUp(header(), { pointerId: 1 });
+    }
+
+    it('dims nothing behind it, so the page stays in view', async () => {
+      // jsdom does not apply bui's layered stylesheet, so a stand-in for its
+      // backdrop: the palette's own rule must win over it.
+      const backdrop = document.createElement('style');
+      backdrop.textContent =
+        '.bui-DialogOverlay { background-color: rgb(1, 2, 3); }';
+      document.head.appendChild(backdrop);
+      await openPalette();
+      const overlay = document.querySelector<HTMLElement>(
+        '.bui-DialogOverlay[data-command-palette]',
+      );
+      expect(overlay).toBeInTheDocument();
+      expect(window.getComputedStyle(overlay!).backgroundColor).not.toBe(
+        'rgb(1, 2, 3)',
+      );
+      backdrop.remove();
+    });
+
+    it('moves by its header, stays in the window, and is remembered per browser', async () => {
+      layout = mockDesktopLayout();
+      // jsdom's window is 1024 × 768. Its size is left alone: react-aria
+      // reads a change of it as an on-screen keyboard and holds later
+      // dialogs hidden.
+      const input = await openPalette();
+      expect(container().style.position).toBe('');
+
+      await dragBy(-120, 40);
+      expect(container().style.left).toBe('80px');
+      expect(container().style.top).toBe('140px');
+      // Focus never left the field.
+      expect(input).toHaveFocus();
+      expect(
+        JSON.parse(
+          window.localStorage.getItem('gs-agent-platform-search-position')!,
+        ),
+      ).toEqual({ x: 80, y: 140 });
+
+      // Past the edge: held 8px inside the window.
+      await dragBy(-1000, -1000);
+      expect(container().style.left).toBe('8px');
+      expect(container().style.top).toBe('8px');
+
+      // Escape still closes it; it opens where it was left.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('combobox')).not.toBeInTheDocument(),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Open search' }),
+      );
+      await screen.findByRole('combobox');
+      expect(container().style.left).toBe('8px');
+    });
+
+    it('goes back to the middle on a double-click of its header', async () => {
+      layout = mockDesktopLayout();
+      await openPalette();
+      await dragBy(50, 50);
+      expect(container().style.position).toBe('fixed');
+
+      fireEvent.doubleClick(header());
+      expect(container().style.position).toBe('');
+      expect(
+        window.localStorage.getItem('gs-agent-platform-search-position'),
+      ).toBeNull();
+    });
+
+    it('does not drag from the close button', async () => {
+      layout = mockDesktopLayout();
+      await openPalette();
+      const close = within(header()).getByRole('button', { name: 'Close' });
+      fireEvent.pointerDown(close, { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(header(), { clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(header());
+      expect(container().style.position).toBe('');
+    });
+
+    it('stays the whole screen on a phone, with nothing to drag', async () => {
+      layout = mockPhoneLayout();
+      window.localStorage.setItem(
+        'gs-agent-platform-search-position',
+        JSON.stringify({ x: 40, y: 40 }),
+      );
+      await openPalette();
+      expect(container().style.position).toBe('');
+      expect(screen.getByText('Search')).not.toHaveAttribute('title');
+
+      fireEvent.pointerDown(header(), { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(header(), { clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(header());
+      expect(container().style.position).toBe('');
     });
   });
 
