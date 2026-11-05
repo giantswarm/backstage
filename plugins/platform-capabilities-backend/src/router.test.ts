@@ -5,6 +5,7 @@ import {
   McpContentItem,
   MusterServerGateway,
   MusterServerNotConnectedError,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
@@ -221,6 +222,21 @@ describe('createRouter', () => {
     expect(res.body.error).toMatchObject({
       name: 'MusterServerNotConnectedError',
       authUrl: AUTH_URL,
+    });
+  });
+
+  it("answers a muster that cannot be reached 503 with muster's text, not as GitHub's 404", async () => {
+    manager.failNextCallWith = new MusterUnreachableError(
+      'gazelle',
+      'the muster endpoint answered HTTP 404',
+    );
+
+    const res = await request(app).get('/installations');
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toEqual({
+      name: 'ServiceUnavailableError',
+      message: 'gazelle did not answer: the muster endpoint answered HTTP 404',
     });
   });
 
