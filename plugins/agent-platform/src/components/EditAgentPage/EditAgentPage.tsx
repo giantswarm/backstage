@@ -40,6 +40,7 @@ import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
 import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * The wizard, seeded once from agent-manager's reading of the agent — one read
@@ -111,6 +112,7 @@ function EditAgentWizard({
  * opens the form, and the review reports the save's own answer.
  */
 export function EditAgentPage() {
+  const { directory } = useOrganizationDirectory();
   const { installation = '', namespace = '', name = '' } = useParams();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
   const detailHref = agentDetailLink?.({ installation, namespace, name });
@@ -248,6 +250,7 @@ export function EditAgentPage() {
         title="You cannot change this agent"
         description={`Changing the agents of ${tenantInSentence(
           namespace,
+          directory,
         )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         actions={backLink}
       />

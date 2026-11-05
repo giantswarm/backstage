@@ -759,7 +759,12 @@ export function agentFacts({
     { label: 'Environment', value: installation },
     {
       label: OWNER_LABEL,
-      value: <OwnerValue namespace={agent.getNamespace() ?? ''} />,
+      value: (
+        <OwnerValue
+          namespace={agent.getNamespace() ?? ''}
+          installation={installation}
+        />
+      ),
     },
   ];
   const defaultWorkspace = defaultWorkspaceName(

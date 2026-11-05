@@ -32,6 +32,15 @@ import {
 import type { ServerInfo } from '../../lib/toolset';
 import { AgentDetailPage } from './AgentDetailPage';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
 // is mocked — so the page is exercised against the actual getters, readiness
 // derivation and provenance helpers rather than a duck-typed stand-in.

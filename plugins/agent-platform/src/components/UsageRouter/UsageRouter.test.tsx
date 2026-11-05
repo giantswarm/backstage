@@ -14,6 +14,15 @@ import {
 import { UsageRouter } from './UsageRouter';
 import { USAGE_WINDOW_SELECT_CLASS_NAME } from './UsageWindowSelect';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 // The views are irrelevant here — this is about the tab's routing, which
 // second-level tabs it offers and the scope controls above them — and stubbing
 // them keeps the tree free of the Mimir and kagent reads they do.

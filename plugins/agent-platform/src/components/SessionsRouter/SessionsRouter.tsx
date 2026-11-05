@@ -8,6 +8,7 @@ import { SessionsIndexPage } from '../SessionsIndexPage';
 import { SessionDetailRoute } from './SessionDetailRoute';
 import { RouteRefRedirect } from '../RouteRefRedirect';
 import { sessionsRouteRef } from '../../routes';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 /**
  * Content of the Sessions page (`/sessions`): the fleet-wide list, and one
@@ -29,30 +30,32 @@ import { sessionsRouteRef } from '../../routes';
 export const SessionsRouter = () => {
   return (
     <QueryClientProvider>
-      <ModelConfigsProvider>
-        {/* The serving snapshot (shared with the Models and Agents tabs through
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          {/* The serving snapshot (shared with the Models and Agents tabs through
             the query cache) is what the composer's warning about an agent whose
             model is not serving reads. */}
-        <ServingProvider>
-          <AgentsDataProvider>
-            <Routes>
-              <Route index element={<SessionsIndexPage />} />
-              {/* Both parameters are needed to resolve a session: kagent ids
+          <ServingProvider>
+            <AgentsDataProvider>
+              <Routes>
+                <Route index element={<SessionsIndexPage />} />
+                {/* Both parameters are needed to resolve a session: kagent ids
                   are only unique within an installation. One page instance
                   per session, see `SessionDetailRoute`. */}
-              <Route
-                path=":installation/:sessionId"
-                element={<SessionDetailRoute />}
-              />
-              {/* An address that names no session: the list. */}
-              <Route
-                path="*"
-                element={<RouteRefRedirect routeRef={sessionsRouteRef} />}
-              />
-            </Routes>
-          </AgentsDataProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
+                <Route
+                  path=":installation/:sessionId"
+                  element={<SessionDetailRoute />}
+                />
+                {/* An address that names no session: the list. */}
+                <Route
+                  path="*"
+                  element={<RouteRefRedirect routeRef={sessionsRouteRef} />}
+                />
+              </Routes>
+            </AgentsDataProvider>
+          </ServingProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 };

@@ -48,6 +48,10 @@ import {
   defaultToolchainsOf,
   type ToolchainPick,
 } from '../../lib/toolchainManager';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -372,6 +376,8 @@ function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
  * toolset read off the agent's own carrier; without them it does not. With
  * `harnesses`, the installation's Harnesses, it carries its Harness's title.
+ * Its owner is named by `organizations`, which namespace is which
+ * organization as agent-manager answered it.
  */
 export function toAgentRow(
   agent: Agent,
@@ -379,6 +385,7 @@ export function toAgentRow(
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
   harnesses?: readonly Harness[],
+  organizations: OrganizationDirectory = EMPTY_ORGANIZATION_DIRECTORY,
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -440,7 +447,7 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
-    tenant: ownerOf(namespace),
+    tenant: ownerOf(namespace, organizations),
     ...(createdBy ? { createdBy } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),

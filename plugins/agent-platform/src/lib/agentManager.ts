@@ -60,6 +60,12 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
+  listMyOrganizations: 'list_my_organizations',
+  getOrganization: 'get_organization',
+  listOrganizationMembers: 'list_organization_members',
+  addOrganizationMember: 'add_organization_member',
+  removeOrganizationMember: 'remove_organization_member',
+  listOrganizationConnectors: 'list_organization_connectors',
 } as const;
 
 export type AgentManagerTool =
@@ -670,9 +676,10 @@ export type AgentManagerModelConfig = {
   message?: string;
   managedBy?: string;
   /**
-   * The namespace default a create without `modelConfig` writes: the one
-   * ModelConfig annotated as the default. None or several annotated is no
-   * default.
+   * The namespace's default model, as agent-manager resolves it (in an
+   * organization namespace, the organization's default): the one ModelConfig
+   * marked as the default; none or several marked is no default. The portal
+   * reads this field and never the annotation, whose key agent-manager owns.
    */
   default?: boolean;
 };

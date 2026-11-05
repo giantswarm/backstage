@@ -59,6 +59,7 @@ import {
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -145,6 +146,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
   const { save, isSaving, error, reset } = useSaveModelConfig();
+  const { directory } = useOrganizationDirectory();
 
   // Where the model goes: an existing one stays where it is; a new one goes
   // to the platform unless the person picks an Organization they administer.
@@ -160,13 +162,13 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   } else {
     namespace = namespaces[0] ?? MODEL_CONFIG_NAMESPACE;
   }
-  const routed = isListenerRouted(namespace);
+  const routed = isListenerRouted(namespace, directory);
   const providers = useMemo<readonly ModelProvider[]>(() => {
-    const offered = providersFor(namespace);
+    const offered = providersFor(namespace, directory);
     return offered.includes(initialValues.provider) || !edit
       ? offered
       : [...offered, initialValues.provider];
-  }, [namespace, edit, initialValues.provider]);
+  }, [namespace, edit, initialValues.provider, directory]);
   // A provider the new place does not offer gives way to its first one.
   // The listener is a routed model's endpoint, so a typed one goes too.
   useEffect(() => {
@@ -202,8 +204,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     [installation, modelConfigsFor, namespace],
   );
   const marks = useMemo(
-    () => defaultClaimsIn(namespaceModels, namespace),
-    [namespaceModels, namespace],
+    () => defaultClaimsIn(namespaceModels, namespace, directory),
+    [namespaceModels, namespace, directory],
   );
   const markOwner = namespaceModels
     .filter(isMarkedDefault)
@@ -453,7 +455,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
               isRequired
               options={namespaces.map(choice => ({
                 id: choice,
-                label: ownerOf(choice),
+                label: ownerOf(choice, directory),
               }))}
               selectedKey={namespace}
               onSelectionChange={key => {
@@ -483,7 +485,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
 
       {!edit && installation && (
         <DefaultModelChoice
-          where={tenantInSentence(namespace)}
+          where={tenantInSentence(namespace, directory)}
           marks={marks.map(
             name =>
               namespaceModels

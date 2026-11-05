@@ -73,6 +73,7 @@ import {
   modelConfigIdOf,
 } from './modelUsage';
 import { useModelUsage } from './useModelUsage';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * The page's outer frame: the platform-standard page frame (`ShellPage`) —
@@ -305,6 +306,7 @@ function ModelDetailPageContent() {
   // answered.
   const toastApi = useApi(toastApiRef);
   const { modelConfigsFor, isLoading: isLoadingModels } = useModelConfigs();
+  const { directory } = useOrganizationDirectory();
   const defaultState = useMemo<ModelDefaultState | undefined>(() => {
     if (!modelConfig || isLoadingModels) {
       return undefined;
@@ -316,11 +318,11 @@ function ModelDetailPageContent() {
       modelConfig,
     ];
     return {
-      isDefault: defaultIn(namespaceModels, namespace) === name,
-      otherMarks: defaultClaimsIn(namespaceModels, namespace).filter(
+      isDefault: defaultIn(namespaceModels, namespace, directory) === name,
+      otherMarks: defaultClaimsIn(namespaceModels, namespace, directory).filter(
         mark => mark !== name,
       ),
-      where: tenantInSentence(namespace),
+      where: tenantInSentence(namespace, directory),
     };
   }, [
     modelConfig,
@@ -328,6 +330,7 @@ function ModelDetailPageContent() {
     modelConfigsFor,
     installation,
     namespace,
+    directory,
     name,
   ]);
   const settingDefault = useSetDefaultModelConfig();

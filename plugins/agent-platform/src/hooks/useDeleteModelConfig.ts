@@ -12,7 +12,12 @@ import {
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { keySecretName, modelConfigOwner } from '../lib/modelConfigs';
+import {
+  keySecretName,
+  MODEL_CONFIG_NAMESPACE,
+  modelConfigOwner,
+} from '../lib/modelConfigs';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 
 const SECRET_GVK: CustomResourceMatcher = {
   group: '',
@@ -47,6 +52,7 @@ const SECRET_GVK: CustomResourceMatcher = {
 export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
+  const { directory } = useOrganizationDirectory();
 
   const cluster = modelConfig?.cluster ?? '';
   const name = modelConfig?.getName();
@@ -161,13 +167,20 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       // the CR referenced (hand-provisioned, possibly shared) stays. Best
       // effort — the model is gone by now, and an orphaned key Secret is
       // inert, so a failure here must not report the deletion as failed.
-      if (modelConfig.getApiKeySecret() === keySecretName(name, namespace)) {
+      if (
+        modelConfig.getApiKeySecret() ===
+        keySecretName(name, namespace ?? MODEL_CONFIG_NAMESPACE, directory)
+      ) {
         try {
           await deleteResource({
             kubernetesApi,
             cluster,
             gvk: SECRET_GVK,
-            name: keySecretName(name, namespace),
+            name: keySecretName(
+              name,
+              namespace ?? MODEL_CONFIG_NAMESPACE,
+              directory,
+            ),
             namespace,
           });
           invalidated.push(SECRET_GVK);

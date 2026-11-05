@@ -50,6 +50,11 @@ import {
   toggleSelector,
   toolsetProblems,
 } from '../../lib/toolset';
+import {
+  ORGANIZATIONS_CAPABILITY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Why a form has no tenant choices: see `NewAgentFormState.tenantChoicesUnread`. */
 export type TenantChoicesUnread = 'failed' | 'unlisted';
@@ -463,6 +468,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
 function withOwnTenant(
   state: NewAgentFormState,
   tenant: string,
+  directory: OrganizationDirectory,
 ): NewAgentFormState {
   return withTenant(
     {
@@ -470,7 +476,7 @@ function withOwnTenant(
       ownTenant: tenant,
       ownTenantByKind: {
         ...state.ownTenantByKind,
-        [tenantKindOf(tenant)]: tenant,
+        [tenantKindOf(tenant, directory)]: tenant,
       },
     },
     tenant,
@@ -568,6 +574,11 @@ export function NewAgentFormProvider({
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
   const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const { directory } = useOrganizationDirectory();
+  // Where agent-manager serves the organization tools, the choices are the
+  // organizations the person belongs to.
+  const byOrganization =
+    agentManagerInfo?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
   const tagsOffered = supportsTags(agentManagerInfo);
 
   // Text left in a Tags field the installation does not offer is out of
@@ -658,7 +669,9 @@ export function NewAgentFormProvider({
       state.tenantChoicesUnread !== 'unlisted'
     ) {
       if (state.tenantChoices?.length === 0) {
-        fieldErrors.tenant = `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
+        fieldErrors.tenant = byOrganization
+          ? `You belong to no organization on ${state.installation}. Choose another environment, or ask to be added to an organization.`
+          : `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
       } else if (state.tenantChoices) {
         // A guard only: a choice is always picked once there are choices
         // (`setTenantChoices`).
@@ -755,7 +768,9 @@ export function NewAgentFormProvider({
           if (!tenant || !choices.includes(tenant)) {
             const own = prev.ownTenant;
             tenant =
-              own && choices.includes(own) ? own : defaultTenant(choices);
+              own && choices.includes(own)
+                ? own
+                : defaultTenant(choices, directory);
           }
           return withTenant(
             { ...prev, tenantChoices: choices, tenantChoicesUnread: undefined },
@@ -768,16 +783,18 @@ export function NewAgentFormProvider({
             ? prev
             : { ...prev, tenantChoicesUnread: unread },
         ),
-      selectTenant: tenant => setState(prev => withOwnTenant(prev, tenant)),
+      selectTenant: tenant =>
+        setState(prev => withOwnTenant(prev, tenant, directory)),
       selectTenantKind: kind =>
         setState(prev => {
-          if (prev.tenant && tenantKindOf(prev.tenant) === kind) {
+          if (prev.tenant && tenantKindOf(prev.tenant, directory) === kind) {
             return prev;
           }
-          const members = tenantGroups(prev.tenantChoices ?? []).byKind[kind];
+          const members = tenantGroups(prev.tenantChoices ?? [], directory)
+            .byKind[kind];
           const own = prev.ownTenantByKind?.[kind];
           const tenant = own && members.includes(own) ? own : members[0];
-          return tenant ? withOwnTenant(prev, tenant) : prev;
+          return tenant ? withOwnTenant(prev, tenant, directory) : prev;
         }),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
@@ -969,6 +986,8 @@ export function NewAgentFormProvider({
     tagUpdaters,
     tagsOffered,
     storedTags,
+    directory,
+    byOrganization,
   ]);
 
   return (

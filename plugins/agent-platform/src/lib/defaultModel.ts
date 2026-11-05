@@ -12,7 +12,7 @@
  * model's own page and what it writes.
  */
 
-import { organizationOf } from './tenants';
+import type { OrganizationDirectory } from './organizations';
 
 /** The marker annotation. */
 export const DEFAULT_MODEL_ANNOTATION =
@@ -53,15 +53,17 @@ export const FALLBACK_DEFAULT_MODEL_CONFIG = 'default-model-config';
 
 /**
  * The models that claim the default of `namespace`: the marked ones, else
- * `FALLBACK_DEFAULT_MODEL_CONFIG` outside an Organization when it exists.
+ * `FALLBACK_DEFAULT_MODEL_CONFIG` outside an organization (as agent-manager
+ * names them in `directory`) when it exists.
  * One claim is the default; none or several is no default.
  */
 export function defaultClaimsIn(
   modelConfigs: readonly MarkableModelConfig[],
   namespace: string,
+  directory: OrganizationDirectory,
 ): string[] {
   const marked = markedIn(modelConfigs, namespace);
-  if (marked.length > 0 || organizationOf(namespace) !== undefined) {
+  if (marked.length > 0 || directory.has(namespace)) {
     return marked;
   }
   const hasFallback = modelConfigs.some(
@@ -79,8 +81,9 @@ export function defaultClaimsIn(
 export function defaultIn(
   modelConfigs: readonly MarkableModelConfig[],
   namespace: string,
+  directory: OrganizationDirectory,
 ): string | undefined {
-  const claims = defaultClaimsIn(modelConfigs, namespace);
+  const claims = defaultClaimsIn(modelConfigs, namespace, directory);
   return claims.length === 1 ? claims[0] : undefined;
 }
 
@@ -90,6 +93,7 @@ export function defaultIn(
  */
 export function defaultModelIds(
   modelConfigs: readonly (MarkableModelConfig & { cluster: string })[],
+  directory: OrganizationDirectory,
 ): Set<string> {
   const byNamespace = new Map<string, MarkableModelConfig[]>();
   for (const mc of modelConfigs) {
@@ -98,7 +102,7 @@ export function defaultModelIds(
   }
   const ids = new Set<string>();
   for (const [key, models] of byNamespace) {
-    const name = defaultIn(models, models[0].getNamespace() ?? '');
+    const name = defaultIn(models, models[0].getNamespace() ?? '', directory);
     if (name) {
       ids.add(`${key}/${name}`);
     }

@@ -52,6 +52,7 @@ import {
   sortAgentRows,
   toAgentRow,
 } from './helpers';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 export type AgentsContextValue = {
   /**
@@ -151,6 +152,7 @@ function agentsRefetchInterval(query: Query<KubeObjectInterface[]>): number {
 
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
+  const { directory: organizations } = useOrganizationDirectory();
   const allInstallations = installations.map(installation => installation.name);
 
   // Only query installations whose inventory has the `api.kagent.dev` API group and
@@ -550,6 +552,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
             harnessesByInstallation[cluster],
+            organizations,
           ),
           ...sessionGate,
         }));
@@ -653,6 +656,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     unknownPin,
     inventoryFailuresKey,
     retry,
+    organizations,
   ]);
 
   return (

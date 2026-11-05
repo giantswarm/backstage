@@ -1,6 +1,7 @@
 import type { MimirMetricSample } from '@giantswarm/backstage-plugin-gs';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { buildLlmUsage, reduceByOrganization } from './llmUsage';
+import { organizationDirectory } from './organizations';
 
 function sample(
   metric: Record<string, string>,
@@ -15,7 +16,11 @@ const platform = { agent_namespace: 'kagent', agent: 'sre-agent' };
 const elsewhere = { agent_namespace: 'team-x', agent: 'bot' };
 const unknown = { agent_namespace: 'unknown', agent: 'unknown' };
 
-const options = { unknownLabel: 'Unattributed' };
+// The organization agent-manager names the namespace as.
+const organizations = organizationDirectory([
+  { namespace: 'org-alpha', organization: 'alpha', parent: 'org-parent' },
+]);
+const options = { unknownLabel: 'Unattributed', organizations };
 
 describe('reduceByOrganization', () => {
   it('rolls every agent of a namespace into one row, named as the Agents list names it', () => {
@@ -165,6 +170,7 @@ describe('buildLlmUsage', () => {
     ];
     const usage = buildLlmUsage({
       agents,
+      organizations,
       installation: 'gazelle',
       hrefFor: () => undefined,
       unknownAgentLabel: 'Unattributed',

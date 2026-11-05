@@ -42,6 +42,7 @@ import {
   runtimeLabel,
 } from '../../lib/harnesses';
 import { MAX_SYSTEM_MESSAGE_LENGTH } from '../../lib/systemMessage';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles({
   // The info button sits in the line of text, on its baseline.
@@ -64,6 +65,7 @@ export function NewAgentPage() {
 }
 
 function NewAgentPageContent() {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const navigate = useNavigate();
   const links = useAgentWizardLinks();
@@ -216,7 +218,7 @@ function NewAgentPageContent() {
         : state.harness.name;
   }
   const defaultsSummary = `${runtimeName} runtime${
-    !pairInMain && owner.sole ? `, owner ${ownerOf(owner.sole)}` : ''
+    !pairInMain && owner.sole ? `, owner ${ownerOf(owner.sole, directory)}` : ''
   }${
     state.defaultWorkspace
       ? `, default workspace ${state.defaultWorkspace}`

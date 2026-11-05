@@ -15,6 +15,15 @@ import {
 } from '../lib/modelConfigs';
 import { useSaveModelConfig } from './useSaveModelConfig';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../components/OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../components/OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 // The composition helpers are the real ones (covered by modelConfigs.test.ts);
 // only the write verbs are mocked, so what's under test here is the order and
 // routing of the writes.

@@ -106,6 +106,7 @@ import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
 import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
 import { AgentUsageTab } from './AgentUsageTab';
 import { AgentAvatar } from '../AgentAvatar';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 8000;
@@ -204,6 +205,7 @@ function ReadinessBadge({ readiness }: { readiness: ReadinessPresentation }) {
 }
 
 function AgentDetailPageContent() {
+  const { directory } = useOrganizationDirectory();
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
 
@@ -301,11 +303,14 @@ function AgentDetailPageContent() {
               agent,
               modelConfig ? [modelConfig] : [],
               resolveServing,
+              undefined,
+              undefined,
+              directory,
             ),
             ...agentManagerSessionGate(availability, installation),
           }
         : undefined,
-    [agent, modelConfig, resolveServing, availability, installation],
+    [agent, modelConfig, resolveServing, availability, installation, directory],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -917,6 +922,7 @@ function AgentDetailPageContent() {
               : refusedWrites[0].replace(/^./, c => c.toUpperCase())
           } the agents of ${tenantInSentence(
             namespace,
+            directory,
           )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         />
       )}
