@@ -4,6 +4,7 @@ export * from './AsyncValue';
 export * from './Breadcrumbs';
 export * from './BusyDialog';
 export * from './CatalogFilters';
+export * from './CellSkeleton';
 export * from './Autocomplete';
 export * from './CodeBlock';
 export * from './CommitSha';

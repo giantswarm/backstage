@@ -105,7 +105,8 @@ import {
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
-import { addedAt, callsLine, healthLine, signInLabel } from './connectorFacts';
+import { addedAt, healthLine, signInLabel } from './connectorFacts';
+import { CallsFactValue } from './CallsFactValue';
 import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
@@ -291,7 +292,9 @@ function ConnectorPageContent({
   // none for muster itself, whose own tools no connector counts. Only on
   // those two tabs: Tools, where a connector opens, shows no usage, and
   // each connector's read repeats the installation-wide `data_start` query.
-  const { '*': tabPath = '' } = useParams();
+  const { '*': splat = '' } = useParams();
+  // A trailing slash names the same tab, which the nested routes render.
+  const tabPath = splat.replace(/\/+$/, '');
   // The Usage tab's window follows the `?window=` Usage → Connectors links
   // with, so a row's figures and the tab it opens agree. Details keeps its 30
   // days, which its label names.
@@ -304,7 +307,6 @@ function ConnectorPageContent({
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
   });
-  const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
   // The person's own sign-in to the connector. Signing in is offered where its
   // absence shows — the Tools tab's gate, in place of the hidden tools — so
@@ -554,10 +556,12 @@ function ConnectorPageContent({
   if (members.length > 0) {
     facts.push({ label: 'Health', value: healthLine(members) });
   }
-  if (calls !== undefined) {
+  // From the first paint, with a skeleton while the session and the read are
+  // pending, so the facts below it do not move when the figure lands.
+  if (hasUsage) {
     facts.push({
       label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
-      value: calls,
+      value: <CallsFactValue usage={usage} session={session} />,
     });
   }
   const added = addedAt(members);
