@@ -59,16 +59,39 @@ import {
   type PaletteEntry,
   type PaletteFilter,
   type PaletteGroupId,
+  type PaletteKindStatus,
   visiblePaletteFilters,
 } from './helpers';
 import { usePaletteConnectors } from './usePaletteConnectors';
 import { usePaletteModels } from './usePaletteModels';
+import { usePalettePosition } from './usePalettePosition';
 import { usePaletteWorkflows } from './usePaletteWorkflows';
 
 const useStyles = makeStyles({
+  '@global': {
+    // No backdrop (issue #39049, finding 4): the page stays in full view
+    // around the palette, so a running session can be watched while
+    // searching. The overlay still catches the page's clicks, which close the
+    // palette, and keeps focus inside it.
+    '.bui-DialogOverlay[data-command-palette]': {
+      background: 'transparent',
+    },
+  },
   // The Modal container. On a phone the palette is the screen: a floating
   // card at 375px leaves no room for results under the keyboard.
   dialog: PHONE_FULL_SCREEN_DIALOG,
+  // The header the palette is dragged by, away from a phone.
+  handle: {
+    cursor: 'grab',
+    touchAction: 'none',
+    userSelect: 'none',
+    '& button': {
+      cursor: 'pointer',
+    },
+  },
+  dragging: {
+    cursor: 'grabbing',
+  },
   body: {
     display: 'flex',
     flexDirection: 'column',
@@ -117,6 +140,11 @@ const useStyles = makeStyles({
       background: 'var(--agent-shell-avatar-bg, #002645)',
       borderColor: 'var(--agent-shell-avatar-bg, #002645)',
       color: 'var(--agent-shell-avatar-fg, #ffffff)',
+    },
+    // A kind still being read holds its place, greyed (T11).
+    '&:disabled': {
+      color: 'var(--bui-fg-disabled)',
+      cursor: 'default',
     },
   },
   results: {
@@ -438,7 +466,8 @@ function PaletteDialog({
           })
         : '',
       // Titles and metadata only: session content is not searchable (G6).
-      haystack: [row.title, row.agentName],
+      names: [row.title],
+      details: [row.agentName],
     }));
 
     const agentCandidates: PaletteCandidate[] = agents.rows.map(row => ({
@@ -454,7 +483,8 @@ function PaletteDialog({
           })
         : '',
       agent: row,
-      haystack: [row.name, row.description],
+      names: [row.name, row.technicalName],
+      details: [row.description],
     }));
 
     const skillCandidates: PaletteCandidate[] = uniqueSkills(
@@ -472,7 +502,8 @@ function PaletteDialog({
           description: skill.description || undefined,
           meta: skillSource(skill),
           href,
-          haystack: [skill.name, skill.description],
+          names: [skill.name],
+          details: [skill.description],
         },
       ];
     });
@@ -486,7 +517,7 @@ function PaletteDialog({
             installation: connector.installation,
             server: connector.page,
           }),
-          haystack: [connector.displayName, connector.page],
+          names: [connector.displayName, connector.page],
         }))
       : [];
 
@@ -501,7 +532,8 @@ function PaletteDialog({
             namespace: model.namespace,
             name: model.name,
           }),
-          haystack: [model.displayName, model.name, model.description],
+          names: [model.displayName, model.name],
+          details: [model.description],
         }))
       : [];
 
@@ -515,7 +547,8 @@ function PaletteDialog({
             installation: workflow.installation,
             name: workflow.name,
           }),
-          haystack: [workflow.name, workflow.description],
+          names: [workflow.name],
+          details: [workflow.description],
         }))
       : [];
 
@@ -546,7 +579,44 @@ function PaletteDialog({
     () => buildPaletteGroups(candidates, trimmedQuery, filter),
     [candidates, trimmedQuery, filter],
   );
-  const chips = visiblePaletteFilters(candidates, filter);
+  // What the chip row knows of each kind. A kind whose page is not routed
+  // cannot be searched, so it is left out and never gets a chip.
+  const kinds: Partial<Record<PaletteGroupId, PaletteKindStatus>> = {
+    sessions: {
+      count: candidates.sessions?.length ?? 0,
+      isLoading: sessions.isLoading || sessions.isLoadingMore,
+    },
+    ...(agentDetailRoute && {
+      agents: {
+        count: candidates.agents?.length ?? 0,
+        isLoading: agents.isLoading || agents.isLoadingMore,
+      },
+    }),
+    skills: {
+      count: candidates.skills?.length ?? 0,
+      isLoading: skillCatalog.isLoading,
+    },
+    ...(serverRoute && {
+      connectors: {
+        count: candidates.connectors?.length ?? 0,
+        isLoading: connectors.isLoading,
+      },
+    }),
+    ...(modelDetailRoute && {
+      models: {
+        count: candidates.models?.length ?? 0,
+        isLoading: models.isLoading,
+      },
+    }),
+    ...(workflowDetailRoute && {
+      workflows: {
+        count: candidates.workflows?.length ?? 0,
+        isLoading: workflows.isLoading,
+      },
+    }),
+  };
+  const chips = visiblePaletteFilters(kinds, filter);
+  const position = usePalettePosition(!isPhone);
 
   // Where a group's "+N more" goes: that kind's own list, searching for the
   // same thing. The shell lists every other kind on its Customize tab.
@@ -719,10 +789,34 @@ function PaletteDialog({
       }}
       width="min(92vw, 660px)"
       className={classes.dialog}
+      ref={position.containerRef}
+      style={position.style}
+      data-command-palette=""
     >
       {/* Titles the dialog (react-aria's Heading slot) and carries the close
-          button; the search field itself cannot label a modal. */}
-      <DialogHeader>Search</DialogHeader>
+          button; the search field itself cannot label a modal. Away from a
+          phone the palette is dragged by it, to keep a running session in
+          view beside it. */}
+      <DialogHeader
+        className={
+          isPhone
+            ? undefined
+            : `${classes.handle} ${position.isDragging ? classes.dragging : ''}`
+        }
+        {...position.handleProps}
+      >
+        {/* The hint sits on the title, not the header: on the header it
+            would be the close button's tooltip too. */}
+        <span
+          title={
+            isPhone
+              ? undefined
+              : 'Drag to move the search. Double-click to put it back in the middle.'
+          }
+        >
+          Search
+        </span>
+      </DialogHeader>
       <div className={classes.body}>
         <div className={classes.searchRow}>
           <SearchIcon fontSize="small" />
@@ -747,7 +841,8 @@ function PaletteDialog({
             autoFocus
           />
         </div>
-        {/* Only the kinds there is something of, and none for a single kind
+        {/* Every kind holds its place while kinds are read (T11); then only
+            the kinds there is something of, and none for a single kind
             (T39): a chip that filters down to nothing is noise. */}
         {chips.length > 0 && (
           <div
@@ -761,6 +856,7 @@ function PaletteDialog({
                 type="button"
                 className={classes.chip}
                 aria-pressed={filter === chip.id}
+                disabled={chip.isDisabled}
                 onClick={() => onFilterChange(chip.id)}
               >
                 {chip.label}
@@ -786,7 +882,7 @@ function PaletteDialog({
             {groups.map(group => (
               <li key={group.id} role="presentation">
                 <div className={classes.groupLabel}>
-                  <Text variant="body-x-small" weight="bold" color="secondary">
+                  <Text variant="body-small" weight="bold" color="secondary">
                     {group.label}
                   </Text>
                   {group.moreCount > 0 && (
@@ -834,14 +930,14 @@ function PaletteDialog({
           <div className={classes.footer}>
             {!touch && (
               <>
-                <Text variant="body-x-small" color="secondary">
+                <Text variant="body-small" color="secondary">
                   <Kbd>↑</Kbd> <Kbd>↓</Kbd> move
                 </Text>
-                <Text variant="body-x-small" color="secondary">
+                <Text variant="body-small" color="secondary">
                   <EnterKey /> open
                 </Text>
                 {activeEntry?.agent && (
-                  <Text variant="body-x-small" color="secondary">
+                  <Text variant="body-small" color="secondary">
                     <Kbd>{mod}</Kbd> <EnterKey /> start a session with this
                     agent
                   </Text>
@@ -849,7 +945,7 @@ function PaletteDialog({
               </>
             )}
             {isLoadingAny && (
-              <Text variant="body-x-small" color="secondary">
+              <Text variant="body-small" color="secondary">
                 Some results are still loading…
               </Text>
             )}
@@ -894,7 +990,7 @@ function MoreLink({
 }) {
   if (!href) {
     return (
-      <Text variant="body-x-small" color="secondary">
+      <Text variant="body-small" color="secondary">
         +{count} more
       </Text>
     );
@@ -902,7 +998,7 @@ function MoreLink({
   return (
     <Link
       href={href}
-      variant="body-x-small"
+      variant="body-small"
       aria-label={`Show ${count} more ${label}`}
       onPress={onOpen}
     >
@@ -951,7 +1047,7 @@ function PaletteOption({
         </Text>
         {entry.description && (
           <Text
-            variant="body-x-small"
+            variant="body-small"
             color="secondary"
             className={classes.truncated}
           >
@@ -960,7 +1056,7 @@ function PaletteOption({
         )}
       </span>
       {entry.meta && (
-        <Text variant="body-x-small" color="secondary" className={classes.meta}>
+        <Text variant="body-small" color="secondary" className={classes.meta}>
           {entry.meta}
         </Text>
       )}

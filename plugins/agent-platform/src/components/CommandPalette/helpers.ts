@@ -1,4 +1,5 @@
 import type { AgentRow } from '../AgentsDataProvider';
+import { matchRank } from './matching';
 
 /** What the palette's filter chips narrow the results to. */
 export type PaletteFilter =
@@ -53,7 +54,13 @@ export type PaletteEntry = {
 
 /** A {@link PaletteEntry} plus the text the query is matched against. */
 export type PaletteCandidate = PaletteEntry & {
-  haystack: (string | undefined)[];
+  /**
+   * What the entry is called (its title, a technical name): ranked first, and
+   * matched with one typo too (`matchRank`).
+   */
+  names: (string | undefined)[];
+  /** Other text it is found by (a description), matched as written. */
+  details?: (string | undefined)[];
 };
 
 export type PaletteGroup = {
@@ -79,19 +86,64 @@ export function paletteGroupCap(filter: PaletteFilter): number {
   return filter === 'all' ? PALETTE_GROUP_CAP : PALETTE_SINGLE_GROUP_CAP;
 }
 
+/** One chip of the row. */
+export type PaletteChip = {
+  id: PaletteFilter;
+  label: string;
+  /**
+   * Shown but not yet usable: its kind is still being read, or turned out
+   * empty while others are still being read.
+   */
+  isDisabled: boolean;
+};
+
+/** What the chip row needs to know of one kind. */
+export type PaletteKindStatus = {
+  /** Entries of the kind, whatever the query. */
+  count: number;
+  /** Whether the kind is still being read. */
+  isLoading: boolean;
+};
+
 /**
- * The chips worth offering: one per group that has anything in it at all
- * (whatever the query), led by All — and none when at most one group does,
- * since a chip row over a single kind narrows nothing. The active chip stays
- * even if its group emptied, so it can be switched off.
+ * The chip row (T11, T39). A kind missing from `kinds` cannot be searched at
+ * all (its page is not routed) and never gets a chip.
+ *
+ * While any kind is still being read with nothing in it yet, the row holds
+ * every kind's place: the chips do not appear one by one, and nothing moves
+ * as kinds arrive. A kind with nothing (yet) is disabled.
+ *
+ * Once every kind is read, the row offers the kinds that have anything at
+ * all, led by All, and none when at most one kind does: a chip that filters
+ * down to nothing is noise, and so is a row over a single kind. The active
+ * chip stays even if its kind emptied, so it can be switched off.
  */
 export function visiblePaletteFilters(
-  candidates: Partial<Record<PaletteGroupId, unknown[]>>,
+  kinds: Partial<Record<PaletteGroupId, PaletteKindStatus>>,
   active: PaletteFilter,
-): typeof PALETTE_FILTERS {
-  const filled = PALETTE_GROUPS.filter(
-    group => (candidates[group.id]?.length ?? 0) > 0,
-  ).map(group => group.id);
+): PaletteChip[] {
+  const available = PALETTE_GROUPS.flatMap(group => {
+    const status = kinds[group.id];
+    return status ? [{ id: group.id, ...status }] : [];
+  });
+  const isReading = available.some(kind => kind.count === 0 && kind.isLoading);
+
+  if (isReading) {
+    if (available.length < 2) {
+      return [];
+    }
+    return PALETTE_FILTERS.filter(
+      chip => chip.id === 'all' || available.some(kind => kind.id === chip.id),
+    ).map(chip => ({
+      ...chip,
+      isDisabled:
+        chip.id !== 'all' &&
+        chip.id !== active &&
+        available.find(kind => kind.id === chip.id)?.count === 0,
+    }));
+  }
+
+  const filled = available.filter(kind => kind.count > 0).map(kind => kind.id);
   if (filled.length < 2 && active === 'all') {
     return [];
   }
@@ -100,24 +152,14 @@ export function visiblePaletteFilters(
       chip.id === 'all' ||
       chip.id === active ||
       filled.includes(chip.id as PaletteGroupId),
-  );
-}
-
-/** Case-insensitive substring match over the candidate's text fields. */
-export function matchesQuery(
-  query: string,
-  haystack: (string | undefined)[],
-): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) {
-    return true;
-  }
-  return haystack.some(text => (text ?? '').toLowerCase().includes(needle));
+  ).map(chip => ({ ...chip, isDisabled: false }));
 }
 
 /**
  * The groups the palette shows for a query and a chip: fixed group order,
- * matches capped per group with the overflow counted, empty groups dropped.
+ * matches ranked within each group (`matchRank`: exact and prefix matches
+ * first, the list's own order among equals), capped per group with the
+ * overflow counted, empty groups dropped.
  */
 export function buildPaletteGroups(
   candidates: Partial<Record<PaletteGroupId, PaletteCandidate[]>>,
@@ -128,9 +170,7 @@ export function buildPaletteGroups(
   return PALETTE_GROUPS.filter(
     group => filter === 'all' || group.id === filter,
   ).flatMap(group => {
-    const matches = (candidates[group.id] ?? []).filter(candidate =>
-      matchesQuery(query, candidate.haystack),
-    );
+    const matches = rankMatches(candidates[group.id] ?? [], query);
     if (matches.length === 0) {
       return [];
     }
@@ -138,11 +178,36 @@ export function buildPaletteGroups(
       {
         id: group.id,
         label: group.label,
-        entries: matches.slice(0, cap).map(({ haystack, ...entry }) => entry),
+        entries: matches
+          .slice(0, cap)
+          .map(({ names, details, ...entry }) => entry),
         moreCount: Math.max(0, matches.length - cap),
       },
     ];
   });
+}
+
+/**
+ * The candidates that match `query`, best match first. A blank query matches
+ * all of them, in the list's own order.
+ */
+function rankMatches(
+  candidates: PaletteCandidate[],
+  query: string,
+): PaletteCandidate[] {
+  if (!query.trim()) {
+    return candidates;
+  }
+  return (
+    candidates
+      .flatMap(candidate => {
+        const rank = matchRank(query, candidate.names, candidate.details);
+        return rank === undefined ? [] : [{ candidate, rank }];
+      })
+      // Array.prototype.sort is stable, so equals keep the list's order.
+      .sort((a, b) => a.rank - b.rank)
+      .map(({ candidate }) => candidate)
+  );
 }
 
 /** ⌘K / Ctrl+K and nothing else — no Shift/Alt chords, no plain K. */
