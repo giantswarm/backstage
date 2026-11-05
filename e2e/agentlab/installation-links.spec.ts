@@ -1,22 +1,48 @@
-import { expect, test } from './fixtures';
+import type { Locator, Page, Response } from '@playwright/test';
+import { expect, open, test } from './fixtures';
 import { lab } from './lab';
 
 /**
  * The Installation column of the Deployments table links to the
- * installation's catalog page where the portal has an Installations page
- * (giantswarm/roadmap#3830), and stays plain text where it has none, as in a
- * customer portal. The default lab enables no Installations page; set
- * AGENTLAB_INSTALLATIONS_PAGE=1 against a lab whose Backstage enables
- * `page:gs/installations` and lists the installation as a catalog Resource
- * of type `installation`.
+ * installation's catalog page where the catalog has the installation's
+ * entity (a `Resource` of type `installation` in `default`), and stays plain
+ * text where it has none (giantswarm/roadmap#3830).
+ *
+ * The lab's catalog has no installation entities, so each test stages the
+ * catalog's answer to the one query the links share at the browser: once with
+ * the lab's installation, once as the lab answers it, empty. The rest of the
+ * page is the lab's.
  */
-const INSTALLATIONS_PAGE = Boolean(process.env.AGENTLAB_INSTALLATIONS_PAGE);
+const INSTALLATION_NAMES = '**/api/catalog/entities?*';
 
-test('the Deployments table names the installation of each deployment', async ({
-  admin,
-}) => {
-  await admin.goto('/deployments');
+const isInstallationNamesQuery = (url: string) => {
+  const decoded = decodeURIComponent(url);
+  return (
+    decoded.includes('/api/catalog/entities?') &&
+    decoded.includes('spec.type=installation') &&
+    decoded.includes('fields=metadata.name')
+  );
+};
 
+const installationEntity = (name: string) => ({
+  apiVersion: 'backstage.io/v1alpha1',
+  kind: 'Resource',
+  metadata: { name, namespace: 'default' },
+  spec: { type: 'installation', owner: 'group:default/platform-admins' },
+});
+
+async function stageInstallationNames(admin: Page, names: string[]) {
+  await admin.route(INSTALLATION_NAMES, async route => {
+    if (!isInstallationNamesQuery(route.request().url())) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: names.map(installationEntity) });
+  });
+}
+
+/** The Installation cell of the valkey row of the Deployments table. */
+async function valkeyInstallationCell(admin: Page): Promise<Locator> {
   const table = admin.locator('table').filter({
     has: admin.getByRole('columnheader', { name: 'Installation' }),
   });
@@ -34,25 +60,57 @@ test('the Deployments table names the installation of each deployment', async ({
   await expect(cell, 'the row names its installation').toHaveText(
     lab.installation,
   );
+  return cell;
+}
 
-  if (INSTALLATIONS_PAGE) {
+test.describe('installation links', () => {
+  test.afterEach(async ({ admin }) => {
+    await admin.unroute(INSTALLATION_NAMES);
+  });
+
+  test('links the installation to its catalog page where the catalog has its entity', async ({
+    admin,
+  }) => {
+    await stageInstallationNames(admin, [lab.installation]);
+    await open(admin, '/deployments');
+
+    const cell = await valkeyInstallationCell(admin);
     const link = cell.getByRole('link', { name: lab.installation });
     await expect(
       link,
       'the name links to the installation catalog page',
     ).toHaveAttribute('href', `/catalog/default/resource/${lab.installation}`);
+    await expect(link, 'the link is underlined').toHaveCSS(
+      'text-decoration-line',
+      'underline',
+    );
+
+    // The entity itself is staged only in the shared query's answer, so the
+    // catalog page it opens finds nothing to show: the address is the proof.
     await link.click();
     await expect(admin).toHaveURL(
       new RegExp(`/catalog/default/resource/${lab.installation}$`),
     );
-    await expect(
-      admin.getByRole('heading', { level: 2, name: lab.installation }),
-      'one click reaches the installation page',
-    ).toBeVisible();
-  } else {
+  });
+
+  test('shows the plain name where the catalog has no entity for it', async ({
+    admin,
+  }) => {
+    await stageInstallationNames(admin, []);
+    const answered = admin.waitForResponse((response: Response) =>
+      isInstallationNamesQuery(response.url()),
+    );
+    await open(admin, '/deployments');
+
+    const cell = await valkeyInstallationCell(admin);
+    // Without a link before the answer too: wait for the catalog's answer,
+    // and give the page a moment to render it, before checking the steady
+    // state.
+    await answered;
+    await admin.waitForTimeout(1_000);
     await expect(
       cell.getByRole('link'),
-      'without an Installations page the name is plain text',
+      'without a catalog entity the name is plain text',
     ).toHaveCount(0);
-  }
+  });
 });

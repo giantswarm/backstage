@@ -1,26 +1,22 @@
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import { installationsRouteRef } from '../../../routes';
 import { useInstallationEntityNames } from '../../hooks/useInstallationEntityNames';
 
 type InstallationLinkProps = {
   installationName: string;
 };
 
+/**
+ * An installation's name, linked to its catalog page where the catalog has
+ * the installation's entity, and plain text where it has none or has not
+ * answered yet. The link is the bare name, with no entity icon, so the text
+ * keeps its place when the catalog's answer turns it into a link.
+ */
 export const InstallationLink = ({
   installationName,
 }: InstallationLinkProps) => {
-  // The installations page can be disabled (a customer portal); and where it
-  // is enabled, not every configured installation has a catalog entity.
-  const installationsRouteLink = useRouteRef(installationsRouteRef);
-  const { installationEntityNames } = useInstallationEntityNames({
-    enabled: Boolean(installationsRouteLink),
-  });
+  const { installationEntityNames } = useInstallationEntityNames();
 
-  if (
-    !installationsRouteLink ||
-    !installationEntityNames?.has(installationName)
-  ) {
+  if (!installationEntityNames?.has(installationName)) {
     return <>{installationName}</>;
   }
 
@@ -32,6 +28,7 @@ export const InstallationLink = ({
         name: installationName,
       }}
       title={installationName}
+      underline="always"
     />
   );
 };
