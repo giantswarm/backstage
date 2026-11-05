@@ -1197,7 +1197,7 @@ describe('shell connector wizard', () => {
 
       it("shows muster's refusal, stays on the step and keeps the values for the retry", async () => {
         const refusal =
-          'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
+          'Permission denied: your user may not create Secret jira-muster-client-ab12c3d4e5 in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
         callTool.mockImplementation((tool: string) =>
           tool === 'core_mcpserver_create'
             ? Promise.reject(new Error(refusal))
@@ -1755,7 +1755,7 @@ describe('shell connector wizard', () => {
     });
 
     describe('with a client muster stored', () => {
-      const STORED_REF = { name: 'jira-oauth-client-x7k2p' };
+      const STORED_REF = { name: 'jira-muster-client-x7k2p9m4qa' };
       const withClient = (ref: { name: string }) =>
         new MCPServer(
           {
