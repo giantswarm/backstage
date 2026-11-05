@@ -23,7 +23,7 @@ import {
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
-  musterUnreachableErrorHandler,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   MusterInstallationConfig,
@@ -1152,7 +1152,7 @@ export async function createRouter(
   );
 
   // Last, so that the handlers above see the error first.
-  router.use(musterUnreachableErrorHandler());
+  router.use(reportedErrorHandler());
 
   return router;
 }

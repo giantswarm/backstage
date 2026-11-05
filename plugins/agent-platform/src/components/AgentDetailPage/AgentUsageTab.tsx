@@ -4,6 +4,7 @@ import { Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
   LoadingIndicator,
+  MetricsUnavailableAlert,
   Stat,
   StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -134,13 +135,24 @@ function AgentUsageContent({
         )}
       </StatGrid>
 
-      {!hasGateway && (
-        <Text as="p" variant="body-small" color="secondary">
-          {gateway.isAvailable === false
-            ? `Cost and token figures for every user need the gateway's metrics, which ${installation} does not publish to a store this portal can read.`
-            : 'Cost and token figures for every user could not be read right now.'}
-        </Text>
-      )}
+      {!hasGateway &&
+        (gateway.isAvailable === false ? (
+          <Text as="p" variant="body-small" color="secondary">
+            Cost and token figures for every user need the gateway's metrics,
+            which {installation} does not publish to a store this portal can
+            read.
+          </Text>
+        ) : (
+          <MetricsUnavailableAlert
+            error={gateway.error}
+            fallback={
+              <Text as="p" variant="body-small" color="secondary">
+                Cost and token figures for every user could not be read right
+                now.
+              </Text>
+            }
+          />
+        ))}
       {!hasSessions && (
         <Text as="p" variant="body-small" color="secondary">
           Your sessions with this agent could not be counted here.

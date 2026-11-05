@@ -1,5 +1,6 @@
 import { Progress } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
+import { MetricsUnavailableAlert } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmUsageViewModel } from '../../../hooks/useLlmUsageView';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
 import { lastDaysNoun, usageWindowPhrase } from '../../../lib/usageWindow';
@@ -60,10 +61,17 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       );
 
     case 'error':
+      // Mimir said why (it cannot read older data just now): say that, in
+      // the words every Mimir figure uses, rather than guess at reachability.
       return (
-        <UnreachableInstallationsAlert
-          installations={installation ? [installation] : []}
-          resourceName="LLM metrics"
+        <MetricsUnavailableAlert
+          error={view.error}
+          fallback={
+            <UnreachableInstallationsAlert
+              installations={installation ? [installation] : []}
+              resourceName="LLM metrics"
+            />
+          }
         />
       );
 

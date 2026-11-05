@@ -9,7 +9,7 @@ import { InputError } from '@backstage/errors';
 import {
   MusterServerGateway,
   MusterUnreachableError,
-  musterUnreachableErrorHandler,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 
@@ -334,7 +334,7 @@ export function createGithubTokenRouter(
     res.json({ signedOut: true, message });
   });
 
-  router.use(musterUnreachableErrorHandler());
+  router.use(reportedErrorHandler());
 
   return router;
 }
