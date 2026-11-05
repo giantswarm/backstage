@@ -581,6 +581,49 @@ describe('NewSessionComposer', () => {
     expect(onPromptChange).toHaveBeenLastCalledWith('Hi');
   });
 
+  it('shows the prompt a caller holds, and hands it every edit', async () => {
+    const onPromptChange = jest.fn();
+    const view = renderComposer({ prompt: 'Kept', onPromptChange });
+    expect(field()).toHaveValue('Kept');
+
+    await userEvent.type(field(), '!');
+    expect(onPromptChange).toHaveBeenLastCalledWith('Kept!');
+    // Held by the caller, which has not taken the edit.
+    expect(field()).toHaveValue('Kept');
+
+    view.rerender(
+      <NewSessionComposer
+        agents={[sre]}
+        isStarting={false}
+        onStart={onStart}
+        prompt="Restored"
+        onPromptChange={onPromptChange}
+      />,
+    );
+    expect(field()).toHaveValue('Restored');
+  });
+
+  it('says whether the person picked the agent or it was preselected', async () => {
+    const onSelectedAgentChange = jest.fn();
+    renderComposer({
+      agents: [sre, issues],
+      defaultAgent: sre,
+      onSelectedAgentChange,
+    });
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(sre, {
+      byPerson: false,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Issue Tracker/ }),
+    );
+
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
+  });
+
   it('says the fleet is still being read while installations respond', () => {
     renderComposer({ isLoadingAgents: true });
 
@@ -1269,7 +1312,9 @@ describe('opt-in picker options', () => {
     );
 
     expect(agentPicker()).toHaveTextContent('Issue Tracker');
-    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues);
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
   });
 });
 

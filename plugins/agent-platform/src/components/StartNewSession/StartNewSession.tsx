@@ -80,7 +80,8 @@ export type StartNewSessionProps = {
    * (`useSessionDraft`: the tab's `sessionStorage`, per person), so a reload,
    * a sign-in that leaves the page or a link followed in the same tab does not
    * lose them; the draft goes once the session starts. Without it nothing is
-   * stored.
+   * stored. A stored draft replaces `composerProps.initialPrompt`, unless the
+   * person has typed or picked an agent before it was read.
    */
   draftName?: string;
 };
@@ -140,33 +141,41 @@ export function StartNewSession({
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
 
-  // The composer's prompt as it is now, here rather than only in the
-  // composer: kept as the draft, and what a composer mounted again starts
-  // with. The agent is the composer's latest pick, or the restored one until
-  // there is a pick: the composer reports none while its agent is not on
-  // offer (not read yet, say), and that keeps what was stored.
+  // The prompt is held here and the composer shows it (`prompt`), so the
+  // draft is this state and restoring it is setting it. The agent stored is
+  // the one the person picked, else the restored one, else the one the
+  // composer preselected: a preselection (the last agent used, a sole agent)
+  // never replaces a restored agent, which may only be read later.
   const [draftPrompt, setDraftPrompt] = useState(
     composerProps?.initialPrompt ?? '',
   );
-  const draftPromptRef = useRef(draftPrompt);
-  draftPromptRef.current = draftPrompt;
   const [restoredAgentId, setRestoredAgentId] = useState<string>();
   const [pickedAgentId, setPickedAgentId] = useState<string>();
-  // The composer renders at once and is mounted again with the draft once it
-  // is read (a moment later: the person's identity is asked first), unless
-  // the person has typed meanwhile; their words then win and replace it.
-  const [restoredCount, setRestoredCount] = useState(0);
+  const [preselectedAgentId, setPreselectedAgentId] = useState<string>();
+  // What the person did since the page opened: a draft read after that (the
+  // person's identity is asked first, so a moment later) gives back only
+  // what they have not set themselves, and their input replaces the rest.
+  const typedRef = useRef(false);
+  const pickedRef = useRef(false);
+  const onPromptChange = useCallback((next: string) => {
+    typedRef.current = true;
+    setDraftPrompt(next);
+  }, []);
+  // A stored draft wins over `initialPrompt`: it is the person's own.
   const onRestore = useCallback((stored: NewSessionDraft) => {
-    if (draftPromptRef.current.trim() !== '') {
-      return;
+    if (!typedRef.current) {
+      setDraftPrompt(stored.prompt);
     }
-    setDraftPrompt(stored.prompt);
-    setRestoredAgentId(stored.agentId);
-    setRestoredCount(count => count + 1);
+    if (!pickedRef.current) {
+      setRestoredAgentId(stored.agentId);
+    }
   }, []);
   const draft = useSessionDraft<NewSessionDraft>({
     name: draftName,
-    value: { prompt: draftPrompt, agentId: pickedAgentId ?? restoredAgentId },
+    value: {
+      prompt: draftPrompt,
+      agentId: pickedAgentId ?? restoredAgentId ?? preselectedAgentId,
+    },
     isDirty: draftPrompt.trim() !== '',
     version: DRAFT_VERSION,
     onRestore,
@@ -179,12 +188,18 @@ export function StartNewSession({
   // The caller's own handler, read through a ref so the composer's stays put.
   const onSelectedAgentChangeRef = useRef(composerProps?.onSelectedAgentChange);
   onSelectedAgentChangeRef.current = composerProps?.onSelectedAgentChange;
-  const onSelectedAgentChange = useCallback((agent: AgentRow | undefined) => {
-    if (agent) {
-      setPickedAgentId(agent.id);
-    }
-    onSelectedAgentChangeRef.current?.(agent);
-  }, []);
+  const onSelectedAgentChange = useCallback(
+    (agent: AgentRow | undefined, selection: { byPerson: boolean }) => {
+      if (agent && selection.byPerson) {
+        pickedRef.current = true;
+        setPickedAgentId(agent.id);
+      } else if (agent) {
+        setPreselectedAgentId(agent.id);
+      }
+      onSelectedAgentChangeRef.current?.(agent, selection);
+    },
+    [],
+  );
 
   const { createSession } = creation;
   const onStart = useCallback(
@@ -390,16 +405,17 @@ export function StartNewSession({
 
   const composer = (
     <NewSessionComposer
-      key={restoredCount}
       {...composerProps}
-      initialPrompt={draftPrompt}
-      onPromptChange={setDraftPrompt}
+      prompt={draftPrompt}
+      onPromptChange={onPromptChange}
       onSelectedAgentChange={onSelectedAgentChange}
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
-      // The restored draft's agent first: it was the person's own pick.
+      // The caller's agent (a `?agent=` link, the person's latest explicit
+      // choice) first, then the restored draft's, then the last one used. The
+      // composer adopts a default that changes until the person picks one.
       defaultAgent={
-        restoredAgent ?? composerProps?.defaultAgent ?? lastUsedAgent
+        composerProps?.defaultAgent ?? restoredAgent ?? lastUsedAgent
       }
       // Collapsed only when it sits above a list of sessions. Elsewhere it opens
       // showing the agent picker and the Start button: there is nothing for it

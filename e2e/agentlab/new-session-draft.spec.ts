@@ -14,6 +14,13 @@ import { lab } from './lab';
 const PROMPT = 'Kept across the sign-in; never sent.';
 
 const prompt = (page: Page) => page.getByRole('textbox', { name: 'Prompt' });
+/** The keys of the New session drafts the page's tab keeps. */
+const storedDrafts = (page: Page) =>
+  page.evaluate(() =>
+    Object.keys(window.sessionStorage).filter(key =>
+      key.startsWith('gs-draft:agent-platform-new-session:'),
+    ),
+  );
 const agentPicker = (page: Page) =>
   page.locator('button[aria-haspopup="listbox"]').first();
 
@@ -67,10 +74,17 @@ test('a sign-in from the inbox and a reload keep the unsent prompt on New sessio
     timeout: 60_000,
   });
 
-  // Emptied by hand, nothing is kept.
+  // Emptied by hand, nothing is kept: the tab's storage says so, since an
+  // empty box after a reload could also be one the draft is not read into
+  // yet.
+  await expect.poll(() => storedDrafts(admin)).toHaveLength(1);
   await prompt(admin).fill('');
+  await expect
+    .poll(() => storedDrafts(admin), { message: 'the emptied draft is gone' })
+    .toEqual([]);
   await admin.reload();
   await expect(prompt(admin)).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => storedDrafts(admin)).toEqual([]);
   await expect(prompt(admin)).toHaveValue('');
 
   // Leave the fixture as the lab ships it, for the inbox's own spec.

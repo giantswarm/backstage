@@ -1,4 +1,5 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { identityApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { useState } from 'react';
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -332,6 +333,14 @@ describe('StartNewSession', () => {
       mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [sre, docs] });
     });
 
+    /** A draft the tab kept; the test app signs in as the guest. */
+    function storeDraft(value: { prompt: string; agentId?: string }) {
+      window.sessionStorage.setItem(
+        `gs-draft:${NEW_SESSION_DRAFT_NAME}:user:default/guest`,
+        JSON.stringify({ version: 1, value }),
+      );
+    }
+
     async function writeDraft() {
       await userEvent.click(agentPicker());
       await userEvent.click(
@@ -366,15 +375,9 @@ describe('StartNewSession', () => {
     });
 
     it('restores the agent once it is read, over the one preselected meanwhile', async () => {
-      // The test app signs in as the guest.
-      window.sessionStorage.setItem(
-        `gs-draft:${NEW_SESSION_DRAFT_NAME}:user:default/guest`,
-        JSON.stringify({
-          version: 1,
-          value: { prompt: 'Summarise the runbook', agentId: docs.id },
-        }),
-      );
-      // Only the SRE agent is read so far.
+      storeDraft({ prompt: 'Summarise the runbook', agentId: docs.id });
+      // Only the SRE agent is read so far, which the composer preselects as
+      // the sole one.
       mockUseAgents.mockReturnValue({
         ...loadedAgents,
         rows: [sre],
@@ -392,12 +395,118 @@ describe('StartNewSession', () => {
       await waitFor(() =>
         expect(prompt()).toHaveValue('Summarise the runbook'),
       );
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
+      // The preselection is not the person's: the restored agent stays kept,
+      // for a reload before it is read.
+      expect(storedDrafts()).toEqual([
+        { prompt: 'Summarise the runbook', agentId: docs.id },
+      ]);
 
       mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [sre, docs] });
       act(() => readMore());
 
       await waitFor(() =>
         expect(agentPicker()).toHaveTextContent('Docs Agent'),
+      );
+      expect(storedDrafts()).toEqual([
+        { prompt: 'Summarise the runbook', agentId: docs.id },
+      ]);
+    });
+
+    it("keeps the person's pick and restores the prompt when the draft is read after it", async () => {
+      storeDraft({ prompt: 'Summarise the runbook', agentId: docs.id });
+      let identify: () => void = () => {};
+      const identityRead = new Promise<void>(resolve => {
+        identify = resolve;
+      });
+      await renderInTestApp(<StartNewSession {...props} />, {
+        apis: [
+          [
+            identityApiRef,
+            mockApis.identity.mock({
+              getBackstageIdentity: async () => {
+                await identityRead;
+                return {
+                  type: 'user',
+                  userEntityRef: 'user:default/guest',
+                  ownershipEntityRefs: [],
+                };
+              },
+            }),
+          ],
+        ],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+
+      await userEvent.click(agentPicker());
+      await userEvent.click(
+        await screen.findByRole('option', { name: /SRE Agent/ }),
+      );
+      await act(async () => identify());
+
+      await waitFor(() =>
+        expect(storedDrafts()).toEqual([
+          { prompt: 'Summarise the runbook', agentId: sre.id },
+        ]),
+      );
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
+      expect(prompt()).toHaveValue('Summarise the runbook');
+    });
+
+    it('keeps what the person typed when the draft is read after it', async () => {
+      storeDraft({ prompt: 'Summarise the runbook', agentId: docs.id });
+      let identify: () => void = () => {};
+      const identityRead = new Promise<void>(resolve => {
+        identify = resolve;
+      });
+      // A sole agent: the field takes text before any pick.
+      mockUseAgents.mockReturnValue(loadedAgents);
+      await renderInTestApp(<StartNewSession {...props} />, {
+        apis: [
+          [
+            identityApiRef,
+            mockApis.identity.mock({
+              getBackstageIdentity: async () => {
+                await identityRead;
+                return {
+                  type: 'user',
+                  userEntityRef: 'user:default/guest',
+                  ownershipEntityRefs: [],
+                };
+              },
+            }),
+          ],
+        ],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+
+      await userEvent.type(prompt(), 'Something new');
+      await act(async () => identify());
+
+      await waitFor(() =>
+        expect(storedDrafts()).toEqual([
+          { prompt: 'Something new', agentId: docs.id },
+        ]),
+      );
+      expect(prompt()).toHaveValue('Something new');
+    });
+
+    it("prefers the caller's agent, a ?agent= link, over the restored one", async () => {
+      storeDraft({ prompt: 'Summarise the runbook', agentId: docs.id });
+      await render({ ...props, composerProps: { defaultAgent: sre } });
+
+      await waitFor(() =>
+        expect(prompt()).toHaveValue('Summarise the runbook'),
+      );
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
+    });
+
+    it('restores a stored draft over the initial prompt', async () => {
+      storeDraft({ prompt: 'Summarise the runbook', agentId: docs.id });
+      await render({ ...props, composerProps: { initialPrompt: 'Hello' } });
+
+      await waitFor(() =>
+        expect(prompt()).toHaveValue('Summarise the runbook'),
       );
       expect(storedDrafts()).toEqual([
         { prompt: 'Summarise the runbook', agentId: docs.id },
