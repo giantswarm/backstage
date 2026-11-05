@@ -32,6 +32,7 @@ import {
 } from '../../hooks/useNewSessionHandoff';
 import type { ComposerImage } from '../../lib/messageImages';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import {
@@ -58,14 +59,21 @@ import {
   type PaletteCandidate,
   type PaletteEntry,
   type PaletteFilter,
+  type PaletteGroup,
   type PaletteGroupId,
   type PaletteKindStatus,
+  PALETTE_GROUPS,
   visiblePaletteFilters,
 } from './helpers';
 import { usePaletteConnectors } from './usePaletteConnectors';
 import { usePaletteModels } from './usePaletteModels';
-import { usePalettePosition } from './usePalettePosition';
 import { usePaletteWorkflows } from './usePaletteWorkflows';
+
+/**
+ * Where the person last put the palette, per browser: the same `gs-` prefix
+ * as the plugin's other remembered UI state (`useLastUsedAgent`).
+ */
+export const PALETTE_POSITION_STORAGE_KEY = 'gs-agent-platform-search-position';
 
 const useStyles = makeStyles({
   '@global': {
@@ -451,6 +459,9 @@ function PaletteDialog({
 
   const trimmedQuery = query.trim();
 
+  // One list per kind that can be searched. A kind whose page is not routed
+  // has nowhere to go, so it is left out (undefined): no results and no
+  // chip.
   const candidates = useMemo<
     Partial<Record<PaletteGroupId, PaletteCandidate[]>>
   >(() => {
@@ -553,12 +564,12 @@ function PaletteDialog({
       : [];
 
     return {
-      sessions: sessionCandidates.filter(candidate => candidate.href),
-      agents: agentCandidates.filter(candidate => candidate.href),
+      sessions: sessionDetailRoute ? sessionCandidates : undefined,
+      agents: agentDetailRoute ? agentCandidates : undefined,
       skills: skillCandidates,
-      connectors: connectorCandidates.filter(candidate => candidate.href),
-      models: modelCandidates,
-      workflows: workflowCandidates.filter(candidate => candidate.href),
+      connectors: serverRoute ? connectorCandidates : undefined,
+      models: modelDetailRoute ? modelCandidates : undefined,
+      workflows: workflowDetailRoute ? workflowCandidates : undefined,
     };
   }, [
     sessions.rows,
@@ -579,58 +590,43 @@ function PaletteDialog({
     () => buildPaletteGroups(candidates, trimmedQuery, filter),
     [candidates, trimmedQuery, filter],
   );
-  // What the chip row knows of each kind. A kind whose page is not routed
-  // cannot be searched, so it is left out and never gets a chip.
-  const kinds: Partial<Record<PaletteGroupId, PaletteKindStatus>> = {
-    sessions: {
-      count: candidates.sessions?.length ?? 0,
-      isLoading: sessions.isLoading || sessions.isLoadingMore,
-    },
-    ...(agentDetailRoute && {
-      agents: {
-        count: candidates.agents?.length ?? 0,
-        isLoading: agents.isLoading || agents.isLoadingMore,
-      },
-    }),
-    skills: {
-      count: candidates.skills?.length ?? 0,
-      isLoading: skillCatalog.isLoading,
-    },
-    ...(serverRoute && {
-      connectors: {
-        count: candidates.connectors?.length ?? 0,
-        isLoading: connectors.isLoading,
-      },
-    }),
-    ...(modelDetailRoute && {
-      models: {
-        count: candidates.models?.length ?? 0,
-        isLoading: models.isLoading,
-      },
-    }),
-    ...(workflowDetailRoute && {
-      workflows: {
-        count: candidates.workflows?.length ?? 0,
-        isLoading: workflows.isLoading,
-      },
-    }),
+  // What the chip row knows of each kind that can be searched.
+  const isLoadingKind: Record<PaletteGroupId, boolean> = {
+    sessions: sessions.isLoading || sessions.isLoadingMore,
+    agents: agents.isLoading || agents.isLoadingMore,
+    skills: skillCatalog.isLoading,
+    connectors: connectors.isLoading,
+    models: models.isLoading,
+    workflows: workflows.isLoading,
   };
+  const kinds: Partial<Record<PaletteGroupId, PaletteKindStatus>> =
+    Object.fromEntries(
+      PALETTE_GROUPS.flatMap(({ id }) => {
+        const list = candidates[id];
+        return list
+          ? [[id, { count: list.length, isLoading: isLoadingKind[id] }]]
+          : [];
+      }),
+    );
   const chips = visiblePaletteFilters(kinds, filter);
-  const position = usePalettePosition(!isPhone);
+  const position = useDraggablePosition(PALETTE_POSITION_STORAGE_KEY, !isPhone);
 
   // Where a group's "+N more" goes: that kind's own list, searching for the
-  // same thing. The shell lists every other kind on its Customize tab.
-  const moreHref = (group: PaletteGroupId): string | undefined => {
-    if (group === 'sessions') {
+  // same thing. The shell lists every other kind on its Customize tab. The
+  // lists search for the query as typed, so a group the palette matched more
+  // forgivingly opens its list without it, rather than on an empty search.
+  const moreHref = (group: PaletteGroup): string | undefined => {
+    const listQuery = group.matchesAsTyped ? trimmedQuery : '';
+    if (group.id === 'sessions') {
       return sessionsRoute
-        ? `${sessionsRoute()}${sessionsListSearch({ query: trimmedQuery })}`
+        ? `${sessionsRoute()}${sessionsListSearch({ query: listQuery })}`
         : undefined;
     }
-    const list = customizePaths[group];
+    const list = customizePaths[group.id];
     if (!list) {
       return undefined;
     }
-    const search = trimmedQuery ? `?q=${encodeURIComponent(trimmedQuery)}` : '';
+    const search = listQuery ? `?q=${encodeURIComponent(listQuery)}` : '';
     return `${list}${search}`;
   };
 
@@ -887,7 +883,7 @@ function PaletteDialog({
                   </Text>
                   {group.moreCount > 0 && (
                     <MoreLink
-                      href={moreHref(group.id)}
+                      href={moreHref(group)}
                       count={group.moreCount}
                       label={group.label.toLocaleLowerCase()}
                       onOpen={onClose}

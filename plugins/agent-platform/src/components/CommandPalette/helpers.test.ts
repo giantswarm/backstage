@@ -125,6 +125,20 @@ describe('buildPaletteGroups', () => {
     expect(ids('')).toEqual(['newer', 'older']);
   });
 
+  it('says whether every match contains the query as typed', () => {
+    const sessions = [
+      candidate('s1', 'Swarm Operator rollout'),
+      candidate('s2', 'Swarm-operator rollback'),
+    ];
+    const [asTyped] = buildPaletteGroups({ sessions }, 'Swarm-operator', 'all');
+    expect(asTyped.entries).toHaveLength(2);
+    // "swarm operator rollout" does not contain "swarm-operator".
+    expect(asTyped.matchesAsTyped).toBe(false);
+
+    const [all] = buildPaletteGroups({ sessions }, 'ROLL', 'all');
+    expect(all.matchesAsTyped).toBe(true);
+  });
+
   it('caps the ranked list, so the best matches are the ones shown', () => {
     const agents = [
       ...Array.from({ length: 6 }, (_, i) =>

@@ -762,6 +762,23 @@ describe('CommandPalette', () => {
       ).toBeInTheDocument();
     });
 
+    it('opens the Sessions list without the query when the palette matched more forgivingly than the list does', async () => {
+      mockSessions = {
+        ...mockSessions,
+        rows: Array.from({ length: 7 }, (_, i) =>
+          session(`s-${i}`, `Swarm Operator rollout ${i}`),
+        ),
+      };
+      const input = await openPalette();
+      await userEvent.type(input, 'swarm-operator');
+
+      // The list searches for "swarm-operator" as typed and would find
+      // none of the seven.
+      expect(
+        screen.getByRole('link', { name: 'Show 2 more sessions' }),
+      ).toHaveAttribute('href', '/sessions');
+    });
+
     it('links an agent overflow to Customize → Agents with the query', async () => {
       mockAgents = {
         ...mockAgents,
@@ -894,15 +911,27 @@ describe('CommandPalette', () => {
       screen.getByRole('heading', { name: 'Search' }).parentElement!;
 
     async function dragBy(dx: number, dy: number) {
-      jest.spyOn(container(), 'getBoundingClientRect').mockReturnValue({
-        left: 200,
-        top: 100,
-        width: 600,
-        height: 400,
-        right: 800,
-        bottom: 500,
-        x: 200,
-        y: 100,
+      const box = container();
+      // Laid out at 200, 100 and 600 × 400 …
+      for (const [key, value] of Object.entries({
+        offsetLeft: 200,
+        offsetTop: 100,
+        offsetWidth: 600,
+        offsetHeight: 400,
+      })) {
+        Object.defineProperty(box, key, { value, configurable: true });
+      }
+      // … but drawn 90% of that while it opens, as bui's enter animation
+      // scales it: a drag measured from this would jump.
+      jest.spyOn(box, 'getBoundingClientRect').mockReturnValue({
+        left: 230,
+        top: 120,
+        width: 540,
+        height: 360,
+        right: 770,
+        bottom: 480,
+        x: 230,
+        y: 120,
         toJSON: () => ({}),
       });
       fireEvent.pointerDown(header(), {
@@ -920,10 +949,21 @@ describe('CommandPalette', () => {
     }
 
     it('dims nothing behind it, so the page stays in view', async () => {
+      // jsdom does not apply bui's layered stylesheet, so a stand-in for its
+      // backdrop: the palette's own rule must win over it.
+      const backdrop = document.createElement('style');
+      backdrop.textContent =
+        '.bui-DialogOverlay { background-color: rgb(1, 2, 3); }';
+      document.head.appendChild(backdrop);
       await openPalette();
-      expect(
-        document.querySelector('.bui-DialogOverlay[data-command-palette]'),
-      ).toBeInTheDocument();
+      const overlay = document.querySelector<HTMLElement>(
+        '.bui-DialogOverlay[data-command-palette]',
+      );
+      expect(overlay).toBeInTheDocument();
+      expect(window.getComputedStyle(overlay!).backgroundColor).not.toBe(
+        'rgb(1, 2, 3)',
+      );
+      backdrop.remove();
     });
 
     it('moves by its header, stays in the window, and is remembered per browser', async () => {

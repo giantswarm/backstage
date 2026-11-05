@@ -1,5 +1,10 @@
 import type { AgentRow } from '../AgentsDataProvider';
-import { matchRank } from './matching';
+import {
+  foldQuery,
+  indexForMatch,
+  matchRankIn,
+  type MatchIndex,
+} from './matching';
 
 /** What the palette's filter chips narrow the results to. */
 export type PaletteFilter =
@@ -59,7 +64,7 @@ export type PaletteCandidate = PaletteEntry & {
    * matched with one typo too (`matchRank`).
    */
   names: (string | undefined)[];
-  /** Other text it is found by (a description), matched as written. */
+  /** Other text it is found by (a description), where a word starts. */
   details?: (string | undefined)[];
 };
 
@@ -69,6 +74,13 @@ export type PaletteGroup = {
   entries: PaletteEntry[];
   /** Matches beyond the cap, said as "+N more" rather than listed. */
   moreCount: number;
+  /**
+   * Whether every match contains the query as typed. Only then may "+N more"
+   * hand the query to the kind's own list: that list searches for it as
+   * typed, so it would not find what the palette matched more forgivingly
+   * ("swarm-operator" in "Swarm Operator rollout").
+   */
+  matchesAsTyped: boolean;
 };
 
 /** Most rows one group lists; the rest becomes the group's "+N more". */
@@ -117,6 +129,12 @@ export type PaletteKindStatus = {
  * all, led by All, and none when at most one kind does: a chip that filters
  * down to nothing is noise, and so is a row over a single kind. The active
  * chip stays even if its kind emptied, so it can be switched off.
+ *
+ * So the row still goes in one step when every kind but one comes back
+ * empty. That is accepted: it takes a person with entries of a single kind,
+ * on a first read (a read served from the cache settles at once),
+ * and the alternatives are a row over one kind or a blank band where the
+ * row was.
  */
 export function visiblePaletteFilters(
   kinds: Partial<Record<PaletteGroupId, PaletteKindStatus>>,
@@ -174,6 +192,7 @@ export function buildPaletteGroups(
     if (matches.length === 0) {
       return [];
     }
+    const typed = query.trim().toLocaleLowerCase();
     return [
       {
         id: group.id,
@@ -182,9 +201,29 @@ export function buildPaletteGroups(
           .slice(0, cap)
           .map(({ names, details, ...entry }) => entry),
         moreCount: Math.max(0, matches.length - cap),
+        matchesAsTyped: matches.every(match =>
+          [...match.names, ...(match.details ?? [])].some(text =>
+            text?.toLocaleLowerCase().includes(typed),
+          ),
+        ),
       },
     ];
   });
+}
+
+/**
+ * Each candidate's text, folded once: candidates are rebuilt only when their
+ * data changes, so a keystroke reuses the index of every candidate.
+ */
+const matchIndexes = new WeakMap<PaletteCandidate, MatchIndex>();
+
+function matchIndexOf(candidate: PaletteCandidate): MatchIndex {
+  let index = matchIndexes.get(candidate);
+  if (!index) {
+    index = indexForMatch(candidate.names, candidate.details);
+    matchIndexes.set(candidate, index);
+  }
+  return index;
 }
 
 /**
@@ -195,13 +234,14 @@ function rankMatches(
   candidates: PaletteCandidate[],
   query: string,
 ): PaletteCandidate[] {
-  if (!query.trim()) {
+  const folded = foldQuery(query);
+  if (!folded) {
     return candidates;
   }
   return (
     candidates
       .flatMap(candidate => {
-        const rank = matchRank(query, candidate.names, candidate.details);
+        const rank = matchRankIn(folded, matchIndexOf(candidate));
         return rank === undefined ? [] : [{ candidate, rank }];
       })
       // Array.prototype.sort is stable, so equals keep the list's order.

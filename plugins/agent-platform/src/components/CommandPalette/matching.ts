@@ -1,8 +1,14 @@
+import { tokenize } from '@giantswarm/backstage-plugin-ui-react';
+
 /**
  * The palette's forgiving match (T15, U17): "swarmoperator", "swarm-operator",
  * "Swarm Operator" and "swarm_operator" all find the Swarm Operator agent, and
  * a name still matches with one typo. Results are ranked so the forgiving
  * matches never push an exact one down.
+ *
+ * Text is folded with ui-react's `tokenize`, as the shell's other searches
+ * fold it: lowercase, without accents, split on anything that is not a
+ * letter or a digit.
  */
 
 /**
@@ -19,9 +25,9 @@ export const MATCH_RANK = {
   wordPrefix: 2,
   /** The query is somewhere inside a name. */
   name: 3,
-  /** The query is somewhere in a description or other detail. */
+  /** A word of a description, or the words from it on, start with the query. */
   detail: 4,
-  /** A name matches the query with one typo. */
+  /** A word, or a run of words, of a name is the query with one typo. */
   fuzzy: 5,
 } as const;
 
@@ -29,143 +35,178 @@ export type MatchRank = (typeof MATCH_RANK)[keyof typeof MATCH_RANK];
 
 /**
  * The shortest query that may match with a typo. Below it, one edit away is
- * most of the word, and "test" would find "best", "text" and "rest".
+ * most of the word.
  */
 export const FUZZY_MIN_LENGTH = 5;
 
-/** What separates the words of a name: ignored when matching. */
-const SEPARATORS = /[\s_-]+/g;
+/** A name, folded once for every query matched against it. */
+type IndexedName = {
+  /** All its words run together: "Swarm Operator" is "swarmoperator". */
+  joined: string;
+  /** The words from each word on, run together: "swarmoperator", "operator". */
+  starts: string[];
+  /** Every run of whole words, run together: "swarm", "swarmoperator", "operator". */
+  runs: string[];
+};
+
+/** A candidate's text, folded once (see {@link indexForMatch}). */
+export type MatchIndex = {
+  names: IndexedName[];
+  /** Each detail's words, space-separated and led by a space. */
+  details: string[];
+};
+
+/** A query, folded once for every candidate it is matched against. */
+export type MatchQuery = {
+  /** The words run together, as names are compared. */
+  joined: string;
+  /** The words space-separated and led by a space, as details are compared. */
+  spaced: string;
+};
 
 /**
- * Lowercase, without accents ("Café" reads as "cafe") and without spaces,
- * hyphens and underscores, so the ways of writing a name compare equal.
+ * Folds a candidate's text for {@link matchRankIn}. Called once per
+ * candidate, not per keystroke.
  */
-export function normalizeForMatch(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(SEPARATORS, '');
+export function indexForMatch(
+  names: (string | undefined)[],
+  details: (string | undefined)[] = [],
+): MatchIndex {
+  return {
+    names: names.flatMap(name => {
+      const words = tokenize(name ?? '');
+      if (words.length === 0) {
+        return [];
+      }
+      const runs: string[] = [];
+      for (let from = 0; from < words.length; from += 1) {
+        for (let to = from + 1; to <= words.length; to += 1) {
+          runs.push(words.slice(from, to).join(''));
+        }
+      }
+      return [
+        {
+          joined: words.join(''),
+          starts: words.map((_, from) => words.slice(from).join('')),
+          runs,
+        },
+      ];
+    }),
+    details: details.flatMap(detail => {
+      const words = tokenize(detail ?? '');
+      return words.length > 0 ? [` ${words.join(' ')}`] : [];
+    }),
+  };
 }
 
-/**
- * The normalised name from each word on: "Swarm Operator" gives
- * "swarmoperator" and "operator".
- */
-function wordStarts(name: string): string[] {
-  const words = name
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .split(SEPARATORS)
-    .filter(Boolean);
-  return words.map((_, index) => words.slice(index).join(''));
+/** Folds a query for {@link matchRankIn}; undefined when it is blank. */
+export function foldQuery(query: string): MatchQuery | undefined {
+  const words = tokenize(query);
+  if (words.length === 0) {
+    return undefined;
+  }
+  return { joined: words.join(''), spaced: ` ${words.join(' ')}` };
 }
 
 /**
  * The fewest edits (insert, delete, substitute, or swap two neighbours) that
- * turn `needle` into some prefix of `target`. Capped: past `max` it returns
- * `max + 1`, as only "within max or not" matters.
+ * turn `a` into `b`. Capped: past `max` it returns `max + 1`, as only "within
+ * max or not" matters, and it stops as soon as that is certain.
  */
-export function prefixEditDistance(
-  needle: string,
-  target: string,
-  max: number,
-): number {
-  const n = needle.length;
-  // A prefix longer than the needle plus the allowed edits can never be
-  // within reach, so the target is cut there.
-  const m = Math.min(target.length, n + max);
-  // rows[i][j]: edits from needle[0, i) to target[0, j).
-  const rows: number[][] = [];
-  for (let i = 0; i <= n; i += 1) {
-    rows.push([i]);
+export function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) {
+    return max + 1;
   }
-  for (let j = 1; j <= m; j += 1) {
-    rows[0][j] = j;
-  }
-  for (let i = 1; i <= n; i += 1) {
-    for (let j = 1; j <= m; j += 1) {
-      const cost = needle[i - 1] === target[j - 1] ? 0 : 1;
+  let before: number[] = [];
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       let best = Math.min(
-        rows[i - 1][j] + 1,
-        rows[i][j - 1] + 1,
-        rows[i - 1][j - 1] + cost,
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost,
       );
-      if (
-        i > 1 &&
-        j > 1 &&
-        needle[i - 1] === target[j - 2] &&
-        needle[i - 2] === target[j - 1]
-      ) {
-        best = Math.min(best, rows[i - 2][j - 2] + 1);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, before[j - 2] + 1);
       }
-      rows[i][j] = best;
+      current[j] = best;
+      rowMin = Math.min(rowMin, best);
     }
+    if (rowMin > max) {
+      return max + 1;
+    }
+    before = previous;
+    previous = current;
   }
-  return Math.min(max + 1, ...rows[n]);
+  return Math.min(max + 1, previous[b.length]);
 }
 
 /**
- * How well `query` matches a candidate, or undefined when it does not.
- * `names` are what the candidate is called (title, technical name): matched
- * by exact, prefix, word and substring, and with one typo. `details` (a
- * description, a session's agent) match as a substring only: a typo
- * tolerance over prose would match nearly anything.
+ * How well a folded query matches an indexed candidate, or undefined when it
+ * does not. Names (title, technical name) match by exact, prefix, word and
+ * substring, and with one typo against a whole word or run of words: never
+ * against part of a word, where a dropped or changed last letter would make
+ * any query a shorter prefix ("model" finding "Modern"). Details (a
+ * description, a session's agent) match where a word starts, as the shell's
+ * other searches do, without a typo: a typo tolerance over prose would match
+ * nearly anything.
  */
-export function matchRank(
-  query: string,
-  names: (string | undefined)[],
-  details: (string | undefined)[] = [],
+export function matchRankIn(
+  query: MatchQuery,
+  index: MatchIndex,
 ): MatchRank | undefined {
-  const needle = normalizeForMatch(query);
-  if (!needle) {
-    return MATCH_RANK.exact;
-  }
+  const needle = query.joined;
   let best: MatchRank | undefined;
-  const consider = (rank: MatchRank) => {
-    if (best === undefined || rank < best) {
-      best = rank;
-    }
-  };
-
-  const presentNames = names.filter((name): name is string => !!name);
-  for (const name of presentNames) {
-    const normalized = normalizeForMatch(name);
-    if (normalized === needle) {
+  for (const name of index.names) {
+    if (name.joined === needle) {
       return MATCH_RANK.exact;
     }
-    if (normalized.startsWith(needle)) {
-      consider(MATCH_RANK.prefix);
-    } else if (
-      wordStarts(name)
-        .slice(1)
-        .some(start => start.startsWith(needle))
-    ) {
-      consider(MATCH_RANK.wordPrefix);
-    } else if (normalized.includes(needle)) {
-      consider(MATCH_RANK.name);
+    let rank: MatchRank | undefined;
+    if (name.joined.startsWith(needle)) {
+      rank = MATCH_RANK.prefix;
+    } else if (name.starts.some(start => start.startsWith(needle))) {
+      rank = MATCH_RANK.wordPrefix;
+    } else if (name.joined.includes(needle)) {
+      rank = MATCH_RANK.name;
+    }
+    if (rank !== undefined && (best === undefined || rank < best)) {
+      best = rank;
     }
   }
   if (best !== undefined) {
     return best;
   }
 
-  if (
-    details.some(
-      detail => !!detail && normalizeForMatch(detail).includes(needle),
-    )
-  ) {
+  if (index.details.some(detail => detail.includes(query.spaced))) {
     return MATCH_RANK.detail;
   }
 
-  if (needle.length >= FUZZY_MIN_LENGTH) {
-    const nearly = presentNames.some(name =>
-      wordStarts(name).some(start => prefixEditDistance(needle, start, 1) <= 1),
-    );
-    if (nearly) {
-      return MATCH_RANK.fuzzy;
-    }
+  if (
+    needle.length >= FUZZY_MIN_LENGTH &&
+    index.names.some(name =>
+      name.runs.some(run => editDistance(needle, run, 1) <= 1),
+    )
+  ) {
+    return MATCH_RANK.fuzzy;
   }
   return undefined;
+}
+
+/**
+ * {@link matchRankIn} for a one-off match: folds the query and the text on
+ * every call. A blank query matches, as exact.
+ */
+export function matchRank(
+  query: string,
+  names: (string | undefined)[],
+  details: (string | undefined)[] = [],
+): MatchRank | undefined {
+  const folded = foldQuery(query);
+  if (!folded) {
+    return MATCH_RANK.exact;
+  }
+  return matchRankIn(folded, indexForMatch(names, details));
 }
