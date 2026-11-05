@@ -1,4 +1,5 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
+import { MimirQueryError } from './MimirQueryError';
 import { MimirApi, MimirQueryResponse, MimirRangeQueryResponse } from './types';
 
 export class MimirClient implements MimirApi {
@@ -68,7 +69,10 @@ export class MimirClient implements MimirApi {
       const message =
         (errorData as any)?.error?.message ??
         `Mimir query failed with status ${response.status}`;
-      const error = new Error(message);
+      const error = new MimirQueryError(message, {
+        status: response.status,
+        reason: (errorData as any)?.error?.reason,
+      });
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';

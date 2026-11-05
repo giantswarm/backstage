@@ -12,7 +12,7 @@ import {
   MUSTER_AUTH_HEADER,
   MusterServerGateway,
   MusterServerNotConnectedError,
-  musterUnreachableErrorHandler,
+  reportedErrorHandler,
   MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
@@ -938,7 +938,7 @@ export async function createRouter(
   );
 
   // Last, so that the handlers above see the error first.
-  router.use(musterUnreachableErrorHandler());
+  router.use(reportedErrorHandler());
 
   return router;
 }

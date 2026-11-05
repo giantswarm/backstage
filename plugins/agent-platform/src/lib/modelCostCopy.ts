@@ -1,3 +1,4 @@
+import { OLDER_METRICS_UNAVAILABLE } from '@giantswarm/backstage-plugin-ui-react';
 import type { ModelCostFallbackReason } from '../hooks/useModelCost';
 import { lastDaysNoun } from './usageWindow';
 
@@ -28,6 +29,8 @@ export function describeModelCostFallback(
       return `No actual cost: the gateway priced none of your model calls on ${installation} in ${lastDaysNoun(days)}.`;
     case 'unreadable':
       return `No actual cost: ${installation}’s gateway metrics could not be read just now.`;
+    case 'older-data-unavailable':
+      return `No actual cost. ${OLDER_METRICS_UNAVAILABLE.title}. ${OLDER_METRICS_UNAVAILABLE.description}`;
     case 'no-mimir':
       return undefined;
     case 'error':

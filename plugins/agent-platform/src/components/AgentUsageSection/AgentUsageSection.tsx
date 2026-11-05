@@ -183,6 +183,7 @@ export function AgentUsageSection() {
     windowDays: rateWindowDays,
     isLoading: isRateLoading,
     tier: rateTier,
+    error: rateError,
   } = useTokenRates(installation);
   // Only `installation` is a rate this table can claim was applied. Every
   // other tier here means no cost cell has a figure, and the note below has to
@@ -389,6 +390,7 @@ export function AgentUsageSection() {
             appliedDays,
             describeCostBasis({
               tier: rateTier,
+              error: rateError,
               model: undefined,
               installation: installation ?? '',
               windowDays: rateWindowDays,

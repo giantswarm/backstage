@@ -649,6 +649,7 @@ export function SessionDetailPage() {
     rates,
     tier: rateTier,
     windowDays: rateWindowDays,
+    error: rateError,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -1353,6 +1354,7 @@ export function SessionDetailPage() {
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({
         tier: rateTier,
+        error: rateError,
         model: row.agentModel,
         installation: row.installation,
         windowDays: rateWindowDays,

@@ -1,3 +1,4 @@
+import { OLDER_METRICS_UNAVAILABLE } from '@giantswarm/backstage-plugin-ui-react';
 import { describeActualCost, describeModelCostFallback } from './modelCostCopy';
 
 describe('describeModelCostFallback', () => {
@@ -16,6 +17,14 @@ describe('describeModelCostFallback', () => {
       );
     },
   );
+
+  it('says older data is temporarily unavailable in the shared words', () => {
+    expect(
+      describeModelCostFallback('older-data-unavailable', 'gazelle', 30),
+    ).toBe(
+      `No actual cost. ${OLDER_METRICS_UNAVAILABLE.title}. ${OLDER_METRICS_UNAVAILABLE.description}`,
+    );
+  });
 
   it('leaves no-mimir to the estimate’s own line, which already says it', () => {
     expect(

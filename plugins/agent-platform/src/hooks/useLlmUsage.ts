@@ -31,6 +31,16 @@ export type LlmUsageView = {
   isLoading: boolean;
   isError: boolean;
   /**
+   * The failure behind `isError`, the first of the page's queries that
+   * failed: `describeMimirFailure` reads why from it.
+   */
+  error?: Error | null;
+  /**
+   * The failure of the daily-calls query (`usage.callsPerDay: null`), which
+   * is not one of the page's: its card says so on its own.
+   */
+  callsPerDayError?: Error | null;
+  /**
    * `false` when the installation is opted out of Mimir
    * (`mimirEnabled: false`), `undefined` while the installations config loads.
    */
@@ -412,9 +422,9 @@ export function useLlmUsage(
   // The daily-calls query is *not* among them: it feeds one card, which says
   // so itself when the query failed (`callsPerDay: null`), and the rest of
   // the Overview is still true without it.
-  const isError = Boolean(
-    cost.error || tokens.error || costPerDay.error || tokensPerDay.error,
-  );
+  const error =
+    cost.error ?? tokens.error ?? costPerDay.error ?? tokensPerDay.error;
+  const isError = Boolean(error);
   const isAvailable = cost.isAvailable;
 
   // Booleans, not the query results, so the memo below keys on the answer.
@@ -509,5 +519,12 @@ export function useLlmUsage(
     callsToday.data,
   ]);
 
-  return { usage, isLoading, isError, isAvailable };
+  return {
+    usage,
+    isLoading,
+    isError,
+    error: error ?? null,
+    callsPerDayError: callsPerDay.error ?? null,
+    isAvailable,
+  };
 }

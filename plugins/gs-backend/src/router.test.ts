@@ -54,6 +54,7 @@ import {
 } from './agentSkills/discoverAgentSkillsFromGit';
 import {
   containerRegistryServiceRef,
+  MimirUnavailableError,
   mimirServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
@@ -303,6 +304,56 @@ describe('GET /mimir/query_range', () => {
 
     expect(response.body.error.name).toBe('NotFoundError');
   });
+});
+
+describe('a Mimir that could not answer', () => {
+  const failure = () =>
+    new MimirUnavailableError(
+      'Mimir could not answer the query for installation "golem" (HTTP 500)',
+      {
+        reason: 'older_data_unavailable',
+        mimirError: 'failed to get store-gateway replication set',
+      },
+    );
+
+  it.each([
+    ['/mimir/query', { query: 'up', installationName: 'golem' }],
+    [
+      '/mimir/query_range',
+      {
+        query: 'up',
+        installationName: 'golem',
+        start: '1',
+        end: '2',
+        step: '1d',
+      },
+    ],
+  ])(
+    '%s answers the 503 itself, with the reason, so the error middleware does not report it again',
+    async (path, params) => {
+      const app = await buildAppWithErrors({
+        query: jest.fn().mockRejectedValue(failure()),
+        queryRange: jest.fn().mockRejectedValue(failure()),
+      });
+
+      const response = await request(app)
+        .get(path)
+        .query(params)
+        .set('X-Mimir-Token', 'tok');
+
+      // The test app's own error handler stands in for the middleware and
+      // would answer 500: a 503 here was answered by the router.
+      expect(response.status).toBe(503);
+      expect(response.body.error).toEqual({
+        name: 'ServiceUnavailableError',
+        message:
+          'Mimir could not answer the query for installation "golem" (HTTP 500)',
+        reason: 'older_data_unavailable',
+        mimirError: 'failed to get store-gateway replication set',
+      });
+      expect(response.body.response).toEqual({ statusCode: 503 });
+    },
+  );
 });
 
 describe('GET /installations/versions', () => {

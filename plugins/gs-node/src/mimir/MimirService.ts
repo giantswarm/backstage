@@ -5,13 +5,14 @@ import {
   LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
-import {
-  AuthenticationError,
-  NotFoundError,
-  ServiceUnavailableError,
-} from '@backstage/errors';
+import { AuthenticationError, NotFoundError } from '@backstage/errors';
 import { Expand } from '@backstage/types';
 import fetch from 'node-fetch';
+import {
+  MimirUnavailableError,
+  mimirErrorText,
+  mimirUnavailableReason,
+} from './MimirUnavailableError';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -95,7 +96,7 @@ export class MimirService {
    * (`60s`, `1d`) or a number of seconds — both are passed through to Mimir
    * verbatim, so the caller owns the alignment. Mimir refuses a range that
    * would exceed its point limit (11k per series by default), which surfaces
-   * here as `ServiceUnavailableError` carrying its message.
+   * here as a `MimirUnavailableError` carrying its text in `mimirError`.
    */
   async queryRange(options: {
     installationName: string;
@@ -118,7 +119,9 @@ export class MimirService {
   /**
    * The shared leg of both queries: resolve the installation's Mimir, call it
    * with the user's OIDC token, and turn every failure into the error class
-   * that describes it.
+   * that describes it: a refused token into `AuthenticationError` (401), which
+   * the person can act on by signing in again, and anything else into a
+   * `MimirUnavailableError` (503), logged here once.
    *
    * Both endpoints have identical auth, tenancy and failure behaviour, so this
    * is the one place either can be got wrong.
@@ -171,6 +174,13 @@ export class MimirService {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+    // Every failure below is logged here, once, as a warning with a fixed
+    // message: Sentry groups on the message, so the installation and Mimir's
+    // own text (a block ID, a pod address) go in the metadata. The error
+    // thrown is already reported, and the routes answer it without the error
+    // middleware logging it again.
+    const metadata = { installation: installationName, endpoint: path };
+
     let response;
     try {
       response = await fetch(url.toString(), {
@@ -183,12 +193,24 @@ export class MimirService {
       });
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        throw new ServiceUnavailableError(
-          `Mimir request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+        this.logger.warn(
+          `Mimir did not answer a query within ${REQUEST_TIMEOUT_MS / 1000}s`,
+          metadata,
+        );
+        throw new MimirUnavailableError(
+          `Mimir did not answer within ${
+            REQUEST_TIMEOUT_MS / 1000
+          } seconds for installation "${installationName}"`,
         );
       }
-      throw new ServiceUnavailableError(
-        `Mimir unreachable for installation "${installationName}": ${err.message}`,
+      const mimirError = String(err?.message ?? err);
+      this.logger.warn('Mimir could not be reached', {
+        ...metadata,
+        mimirError,
+      });
+      throw new MimirUnavailableError(
+        `Mimir could not be reached for installation "${installationName}"`,
+        { mimirError },
       );
     } finally {
       clearTimeout(timeoutId);
@@ -203,7 +225,6 @@ export class MimirService {
     if (!response.ok) {
       const contentType = response.headers.get('content-type') ?? '';
       const body = await response.text().catch(() => '');
-      const truncated = body.length > 300 ? `${body.slice(0, 300)}…` : body;
 
       if (response.status === 400 && contentType.includes('text/html')) {
         throw new AuthenticationError(
@@ -211,8 +232,18 @@ export class MimirService {
         );
       }
 
-      throw new ServiceUnavailableError(
-        `Mimir returned HTTP ${response.status} for installation "${installationName}": ${truncated}`,
+      const { status } = response;
+      const mimirError = mimirErrorText(body);
+      const reason = mimirUnavailableReason(mimirError);
+      this.logger.warn(
+        reason === 'older_data_unavailable'
+          ? 'Mimir could not read older data: no healthy store-gateway'
+          : `Mimir answered a query with HTTP ${status}`,
+        { ...metadata, status, mimirError },
+      );
+      throw new MimirUnavailableError(
+        `Mimir could not answer the query for installation "${installationName}" (HTTP ${status})`,
+        { reason, mimirError },
       );
     }
 

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { makeStyles, Theme, useTheme } from '@material-ui/core';
 import { Text } from '@backstage/ui';
 import {
+  describeMimirFailure,
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -407,13 +408,25 @@ export function ActivityHeatmap({
   );
 }
 
-/** The card's body when its query failed: said, not drawn as idle days. */
-export function ActivityHeatmapUnavailable({ title }: { title: string }) {
+/**
+ * The card's body when its query failed: said, not drawn as idle days. With
+ * the query's `error`, a failure Mimir said the reason for (it cannot read
+ * older data just now) reads in the words every Mimir figure uses.
+ */
+export function ActivityHeatmapUnavailable({
+  title,
+  error,
+}: {
+  title: string;
+  error?: unknown;
+}) {
+  const known = describeMimirFailure(error);
   return (
     <UsageCard title={title}>
       <Text variant="body-medium" color="secondary">
-        The day-by-day figures could not be loaded from the metrics store. The
-        totals above are unaffected.
+        {known
+          ? `${known.title}. ${known.description} The totals above are unaffected.`
+          : 'The day-by-day figures could not be loaded from the metrics store. The totals above are unaffected.'}
       </Text>
     </UsageCard>
   );

@@ -3,7 +3,9 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
+  describeMimirFailure,
   LoadingIndicator,
+  MetricsUnavailableAlert,
   Stat,
   StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -134,13 +136,17 @@ function AgentUsageContent({
         )}
       </StatGrid>
 
-      {!hasGateway && (
-        <Text as="p" variant="body-small" color="secondary">
-          {gateway.isAvailable === false
-            ? `Cost and token figures for every user need the gateway's metrics, which ${installation} does not publish to a store this portal can read.`
-            : 'Cost and token figures for every user could not be read right now.'}
-        </Text>
-      )}
+      {!hasGateway &&
+        (gateway.isAvailable !== false &&
+        describeMimirFailure(gateway.error) ? (
+          <MetricsUnavailableAlert error={gateway.error} />
+        ) : (
+          <Text as="p" variant="body-small" color="secondary">
+            {gateway.isAvailable === false
+              ? `Cost and token figures for every user need the gateway's metrics, which ${installation} does not publish to a store this portal can read.`
+              : 'Cost and token figures for every user could not be read right now.'}
+          </Text>
+        ))}
       {!hasSessions && (
         <Text as="p" variant="body-small" color="secondary">
           Your sessions with this agent could not be counted here.

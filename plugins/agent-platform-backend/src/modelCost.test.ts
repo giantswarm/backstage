@@ -4,7 +4,10 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import type { MimirQueryResponse } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  MimirUnavailableError,
+  type MimirQueryResponse,
+} from '@giantswarm/backstage-plugin-gs-node';
 import {
   callerEmail,
   MimirQuerier,
@@ -249,6 +252,37 @@ describe('readModelCost', () => {
     });
     expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('answers older-data-unavailable when Mimir has no healthy store-gateway', async () => {
+    const logger = mockServices.logger.mock();
+    const mimir = {
+      query: jest.fn().mockRejectedValue(
+        new MimirUnavailableError('Mimir could not answer the query', {
+          reason: 'older_data_unavailable',
+        }),
+      ),
+    };
+    await expect(read({ mimir, logger })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'older-data-unavailable',
+    });
+    // `MimirService` has warned already; this one is handled.
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('answers unreadable for any other Mimir failure', async () => {
+    const mimir = {
+      query: jest
+        .fn()
+        .mockRejectedValue(
+          new MimirUnavailableError('Mimir could not answer the query'),
+        ),
+    };
+    await expect(read({ mimir })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'unreadable',
+    });
   });
 
   it('answers no-mimir, not an error, where the installation has none', async () => {

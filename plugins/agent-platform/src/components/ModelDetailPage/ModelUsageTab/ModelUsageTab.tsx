@@ -1,6 +1,8 @@
 import { Flex, Text } from '@backstage/ui';
 import {
+  describeMimirFailure,
   LoadingIndicator,
+  MetricsUnavailableAlert,
   Stat,
   StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -30,7 +32,7 @@ export type ModelUsageTabProps = {
 export function ModelUsageTab({
   installation,
   model,
-  usage: { slice, state },
+  usage: { slice, state, error },
 }: ModelUsageTabProps) {
   const currency = useCurrency(installation);
 
@@ -52,6 +54,9 @@ export function ModelUsageTab({
         does not publish to a store this portal can read.
       </Text>
     );
+  }
+  if (state === 'error' && describeMimirFailure(error)) {
+    return <MetricsUnavailableAlert error={error} />;
   }
   if (state === 'error' || !slice) {
     return (
