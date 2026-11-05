@@ -81,7 +81,10 @@ export function MarkBlockedDialog({
       onConfirm={onConfirm}
     >
       {notConnected && mark.error ? (
-        <ConnectMargeAlert installation={installation} />
+        <ConnectMargeAlert
+          installation={installation}
+          message={mark.error.message}
+        />
       ) : null}
       {applied && mark.result ? (
         <Alert

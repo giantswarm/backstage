@@ -9,6 +9,7 @@ export {
   MusterAuthProviders,
   MusterTokenMintError,
   MusterUnauthorizedError,
+  isMusterSignInRequiredText,
   musterSignInRequiredOf,
   musterUnauthorizedInfoOf,
   toolErrorDetails,

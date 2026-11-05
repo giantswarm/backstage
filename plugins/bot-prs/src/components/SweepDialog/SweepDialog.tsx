@@ -223,7 +223,12 @@ export function SweepDialog({
       {sweeps.isPending ? (
         <SweepProgress progress={sweeps.progress} showTeam={teams.length > 1} />
       ) : null}
-      {notConnected ? <ConnectMargeAlert installation={installation} /> : null}
+      {notConnected ? (
+        <ConnectMargeAlert
+          installation={installation}
+          message={notConnected.message}
+        />
+      ) : null}
       {sweeps.rateLimitReset ? (
         <RateLimitAlert
           resetAt={sweeps.rateLimitReset}

@@ -197,6 +197,20 @@ export interface MusterInstallationsResponse {
 export interface McpServerRuntime {
   name: string;
   /**
+   * What muster registers a server outside its own namespace under (a
+   * tenant's), `<namespace>/<name>`, and names it by in `auth://status` and
+   * the `core_auth_*` tools; absent for a server of muster's namespace
+   * (muster#1508, v5.53.1).
+   */
+  key?: string;
+  /** The `metadata.namespace`; absent in filesystem mode. */
+  namespace?: string;
+  /**
+   * The `ui.giantswarm.io/display-name` annotation, when set (muster#1518,
+   * v5.53.1).
+   */
+  displayName?: string;
+  /**
    * `spec.toolPrefix`: the segment muster puts in this server's exposed tool
    * names, which is not its name. A server named `mcp-marge` with
    * prefix `marge` exposes `x_marge_<tool>`.

@@ -400,7 +400,7 @@ describe('CreateClusterDialog', () => {
     await renderDialog({ notConnected: true });
     await fillAndReview(user);
     expect(
-      await screen.findByText('Sign in to cluster-manager'),
+      await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });

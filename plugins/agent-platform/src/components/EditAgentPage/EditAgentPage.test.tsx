@@ -1076,15 +1076,11 @@ describe('EditAgentPage', () => {
     mockDeniedVerbs = new Set(['update']);
     await renderEdit(BASE, { notConnected: true });
 
+    // Not muster's request for a sign-in: its answer stays in sight.
     expect(
-      await screen.findByText(
-        'Agents are edited through the agent-manager connector, which acts as you. You have not signed in to it on gazelle yet.',
-      ),
+      await screen.findByText(/server agent-manager not connected/),
     ).toBeInTheDocument();
-    // In the portal's words, not muster's.
-    expect(
-      screen.queryByText(/server agent-manager not connected/),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
     expect(
       screen.queryByText('You cannot change this agent'),
     ).not.toBeInTheDocument();

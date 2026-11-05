@@ -45,6 +45,9 @@ export {
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
 export {
+  connectorNamesQueryKey,
+  useConnectorLabel,
+  useConnectorLabels,
   useConnectorListPaths,
   useServerSignInStatus,
   useWorkflowPageLinks,
@@ -71,11 +74,6 @@ export type {
   ServerSignInState,
   SignInNoun,
 } from './useServerSignIn';
-export {
-  connectorNamesQueryKey,
-  useConnectorLabel,
-  useConnectorLabels,
-} from './useConnectorLabels';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';

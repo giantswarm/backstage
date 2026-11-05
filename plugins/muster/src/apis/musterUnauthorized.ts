@@ -96,6 +96,19 @@ export function musterSignInRequiredOf(
 }
 
 /**
+ * Whether a message is muster's request for the person's sign-in to a server,
+ * `auth_required: server '<name>' requires authentication…`: muster-backend's
+ * 401 for it keeps that wording for the frontends that match on it (gs-node's
+ * `toMusterUnauthorizedError`), and muster answers in the same words. For a
+ * page that has the message of a failure only, not the error.
+ */
+export function isMusterSignInRequiredText(message: string): boolean {
+  return /^auth_required: server '[^']+' requires authentication\b/.test(
+    message,
+  );
+}
+
+/**
  * Whether a failed muster read must not be retried: a 401, or a portal
  * session that is gone. Neither is transient. A retry only delays the sign-in
  * the page offers (the client already sent the call once more after

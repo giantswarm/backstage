@@ -233,8 +233,13 @@ function nonEmptyString(value: unknown): string | undefined {
 
 /**
  * The name, family and display name of each server in a `core_mcpserver_list`
- * answer (`{ mcpServers: [...] }`), and nothing else of it. A muster from
- * before `displayName` answers none, and an entry without a name is left out.
+ * answer (`{ mcpServers: [...] }`), and nothing else of it. A server is named
+ * by muster's key for it: `key`, `<namespace>/<name>`, for a server outside
+ * muster's namespace (a tenant's, muster#1508), as `auth://status`, the
+ * `core_auth_*` tools and `server:` selectors name it; its `name` otherwise.
+ * `displayName` is the `ui.giantswarm.io/display-name` annotation (muster
+ * #1518, v5.53.1); an older muster answers none. An entry without a name is
+ * left out.
  */
 export function connectorNamesOf(result: unknown): ConnectorName[] {
   const servers = (result as { mcpServers?: unknown } | null)?.mcpServers;
@@ -244,10 +249,11 @@ export function connectorNamesOf(result: unknown): ConnectorName[] {
   return servers.flatMap((server): ConnectorName[] => {
     const entry = server as {
       name?: unknown;
+      key?: unknown;
       family?: { name?: unknown };
       displayName?: unknown;
     } | null;
-    const name = nonEmptyString(entry?.name);
+    const name = nonEmptyString(entry?.key) ?? nonEmptyString(entry?.name);
     if (!name) {
       return [];
     }
@@ -879,10 +885,10 @@ export async function createRouter(
    * prompts can name every connector they list, for people without
    * Kubernetes access to the MCPServer objects too.
    *
-   * Read by background readers (the notification inbox), so every failure
+   * Read by background readers (the notification inbox), so a failure
    * answers 200 with `unavailable: true` and the prompts keep the servers'
-   * own names, as `/auth/status` does. A missing or expired token is still
-   * the 401 the frontend refreshes on.
+   * own names, as `/auth/status` does. A token that is missing, expired or
+   * refused by muster is still the 401 the frontend refreshes on.
    */
   router.get('/servers/names', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -895,6 +901,16 @@ export async function createRouter(
         callOptions,
       );
     } catch (error) {
+      // muster refusing the bearer, or reporting it expired, is the 401 the
+      // frontend refreshes the token on and reads again.
+      if (
+        toMusterUnauthorizedError(error, {
+          installation: installation.name,
+          authToken: callOptions.authToken,
+        })
+      ) {
+        throw error;
+      }
       logger.info('Muster could not list the connectors to name them', {
         installation: installation.name,
         message: error instanceof Error ? error.message : String(error),

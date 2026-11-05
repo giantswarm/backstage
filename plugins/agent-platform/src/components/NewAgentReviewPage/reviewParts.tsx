@@ -305,7 +305,7 @@ export function ConnectAgentManager({
   message,
 }: {
   installation: string;
-  message?: string;
+  message: string;
 }) {
   return (
     <ConnectAgentManagerAlert

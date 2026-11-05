@@ -16,6 +16,7 @@ import { MusterAuthProviders } from './MusterAuthProviders';
 import { MusterTokenMintError } from './installationToken';
 import {
   isMusterAuthFailure,
+  isMusterSignInRequiredText,
   musterSignInRequiredOf,
   MusterUnauthorizedError,
 } from './musterUnauthorized';
@@ -1145,5 +1146,36 @@ describe('isMusterAuthFailure', () => {
     expect(
       musterSignInRequiredOf(new MusterUnauthorizedError('x', 'token_expired')),
     ).toBeUndefined();
+  });
+});
+
+describe('isMusterSignInRequiredText', () => {
+  it("recognises muster's request for a sign-in, as muster-backend and muster word it", () => {
+    expect(
+      isMusterSignInRequiredText(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+      ),
+    ).toBe(true);
+    expect(
+      isMusterSignInRequiredText(
+        "auth_required: server 'agent-manager' requires authentication before its tools can be called (call core_auth_login)",
+      ),
+    ).toBe(true);
+  });
+
+  it('is not any other not-connected answer, which a sign-in may not fix', () => {
+    expect(
+      isMusterSignInRequiredText(
+        'tool not found: x_agent-manager_start_session',
+      ),
+    ).toBe(false);
+    expect(
+      isMusterSignInRequiredText('server agent-manager not connected'),
+    ).toBe(false);
+    expect(
+      isMusterSignInRequiredText(
+        'auth_required: commit mode needs the person to sign in to GitHub',
+      ),
+    ).toBe(false);
   });
 });

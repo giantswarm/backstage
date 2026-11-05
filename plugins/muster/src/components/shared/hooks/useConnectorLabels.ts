@@ -1,8 +1,22 @@
 import { useMemo } from 'react';
 import { useApiHolder } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { musterApiRef } from '../../apis';
-import { connectorLabels } from '../../lib/connectorName';
+import { musterApiRef } from '../../../apis';
+import { connectorLabels } from '../../../lib/connectorName';
+
+/**
+ * How often a failed read of the names is tried again while a prompt stays
+ * open (the inbox's reader stays mounted): as often as the status is re-read.
+ */
+const RETRY_FAILED_READ_MS = 5 * 60 * 1_000;
+
+/**
+ * muster could not list the connectors (`unavailable`): a failed read, not
+ * an answer to keep, so the next mount, focus or retry reads again.
+ */
+class ConnectorNamesUnavailableError extends Error {
+  readonly name = 'ConnectorNamesUnavailableError';
+}
 
 /** The query of an installation's connector names, shared by every prompt. */
 export function connectorNamesQueryKey(installation?: string) {
@@ -19,8 +33,8 @@ export function connectorNamesQueryKey(installation?: string) {
  * is under way or after it failed, keeps its own name.
  *
  * The read is silent, as a reader in the background must be: it never asks
- * for the sign-in. `enabled: false` (a background reader once the portal
- * session is gone) skips it.
+ * for the sign-in. `enabled: false` skips it: a background reader once the
+ * portal session is gone, a caller that knows the names already.
  */
 export function useConnectorLabels(
   installation: string | undefined,
@@ -33,10 +47,23 @@ export function useConnectorLabels(
     (options.enabled ?? true) && Boolean(musterApi) && names.length > 0;
   const { data } = useQuery({
     queryKey: connectorNamesQueryKey(installation),
-    queryFn: () => musterApi!.listConnectorNames(installation),
+    queryFn: async () => {
+      const answer = await musterApi!.listConnectorNames(installation);
+      if (answer.unavailable) {
+        throw new ConnectorNamesUnavailableError(
+          `muster on ${installation} could not list its connectors`,
+        );
+      }
+      return answer;
+    },
     enabled,
+    // An answer is kept; a failure is read again on the next mount, on
+    // focus and every few minutes, so a short outage does not leave the
+    // prompts on technical names for the rest of the tab.
     staleTime: Infinity,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: query => query.state.status === 'error',
+    refetchInterval: query =>
+      query.state.status === 'error' ? RETRY_FAILED_READ_MS : false,
     retry: false,
   });
   const sources = data?.servers;
@@ -54,6 +81,7 @@ export function useConnectorLabels(
 export function useConnectorLabel(
   installation: string | undefined,
   name: string,
+  options: { enabled?: boolean } = {},
 ): string {
-  return useConnectorLabels(installation, [name])(name);
+  return useConnectorLabels(installation, [name], options)(name);
 }

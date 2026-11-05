@@ -6,7 +6,7 @@ import {
   SignInNoun,
   useServerSignIn,
 } from './useServerSignIn';
-import { useConnectorLabel } from './useConnectorLabels';
+import { useConnectorLabel } from './hooks/useConnectorLabels';
 
 /**
  * The gate reason for a deactivated server (`spec.suspended`): muster keeps it
@@ -423,7 +423,11 @@ export interface ServerSignInProps {
    */
   displayName?: string;
   installation?: string;
-  /** Show the display name next to the action (a list of several servers). */
+  /**
+   * Show the display name next to the action, with the server's own name
+   * where it differs (a list of several servers, the members of one family
+   * among them).
+   */
   showName?: boolean;
   /**
    * What the copy calls the server: main's "server" by default (the classic
@@ -452,7 +456,10 @@ export function ServerSignIn({
 }: ServerSignInProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
-  const known = useConnectorLabel(installation, serverName);
+  // Read only where the caller names no display name of its own.
+  const known = useConnectorLabel(installation, serverName, {
+    enabled: displayName === undefined,
+  });
   const label = displayName ?? known;
   const parts = authActionParts(label, state, {
     noun,
@@ -473,7 +480,19 @@ export function ServerSignIn({
 
   return (
     <div className={classes.root}>
-      {showName ? <span className={classes.name}>{label}</span> : null}
+      {showName ? (
+        <span className={classes.name}>
+          {label}
+          {/* A display name may be shared, by the members of one family: the
+              server's own name keeps the rows of a list apart. */}
+          {label !== serverName ? (
+            <>
+              {' '}
+              <code>{serverName}</code>
+            </>
+          ) : null}
+        </span>
+      ) : null}
       <SignInFlow
         state={state}
         wait={parts.kind === 'sign-in' ? parts.wait : undefined}

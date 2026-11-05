@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { useMcpServersAwaitingSignIn } from '../McpAuthDialog/useMcpServersAwaitingSignIn';
-import { useConnectorLabels } from '../shared/useConnectorLabels';
+import { useConnectorLabels } from '../shared/hooks/useConnectorLabels';
 import { useSignInInstallation } from './useSignInInstallation';
 import { useSettledWaiting } from './hooks';
 

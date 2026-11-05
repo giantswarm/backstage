@@ -319,7 +319,10 @@ function Queue({
   if (queue.notConnected) {
     return (
       <Box pt={2}>
-        <ConnectMargeAlert installation={installation} />
+        <ConnectMargeAlert
+          installation={installation}
+          message={queue.notConnected.message}
+        />
       </Box>
     );
   }

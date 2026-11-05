@@ -15,7 +15,7 @@ import {
   isSsoServer,
   useServerSignIn,
 } from '../shared/useServerSignIn';
-import { useConnectorLabel } from '../shared/useConnectorLabels';
+import { useConnectorLabel } from '../shared/hooks/useConnectorLabels';
 
 export type ConnectorSignInAlertProps = {
   /** The connector (muster server) the data is read through. */

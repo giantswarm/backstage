@@ -588,7 +588,42 @@ describe('ServerSignIn', () => {
     await renderSignIn(api);
 
     expect(await screen.findByText('Pro Search')).toBeInTheDocument();
-    expect(screen.queryByText('pro')).not.toBeInTheDocument();
+    // Its own name beside it keeps the rows of a list apart.
+    expect(screen.getByText('pro').tagName).toBe('CODE');
+  });
+
+  // Two members of one family share the family's display name.
+  it('keeps two servers with one display name apart', async () => {
+    const api = makeApi({
+      status: {
+        name: 'gazelle-mcp-kubernetes',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+    });
+    await renderInTestApp(
+      <TestApiProvider apis={[[musterApiRef, api]]}>
+        <QueryClientProvider client={newQueryClient()}>
+          <ServerSignIn
+            serverName="gazelle-mcp-kubernetes"
+            displayName="Kubernetes"
+            installation="gazelle"
+            showName
+          />
+          <ServerSignIn
+            serverName="grizzly-mcp-kubernetes"
+            displayName="Kubernetes"
+            installation="gazelle"
+            showName
+          />
+        </QueryClientProvider>
+      </TestApiProvider>,
+    );
+
+    expect(screen.getByText('gazelle-mcp-kubernetes')).toBeInTheDocument();
+    expect(screen.getByText('grizzly-mcp-kubernetes')).toBeInTheDocument();
+    // The caller named them: nothing to read.
+    expect(api.listConnectorNames).not.toHaveBeenCalled();
   });
 
   it('explains a connected SSO server without a failure muster kept from another session', async () => {

@@ -594,7 +594,9 @@ describe('NewSessionComposer', () => {
       error: new AgentManagerNotConnectedError('tool not found'),
     });
 
-    expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    // Not muster's request for a sign-in: its answer stays in sight.
+    expect(screen.getByText('Connect to Agent Manager')).toBeInTheDocument();
+    expect(screen.getByText('tool not found')).toBeInTheDocument();
     expect(screen.getByTestId('server-sign-in')).toBeInTheDocument();
     expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
   });

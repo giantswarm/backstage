@@ -1155,6 +1155,12 @@ describe('createRouter', () => {
             name: 'gazelle-mcp-kubernetes',
             family: { name: 'kubernetes', instanceArg: 'management_cluster' },
           },
+          {
+            name: 'search',
+            namespace: 'org-acme',
+            key: 'org-acme/search',
+            displayName: 'Acme Search',
+          },
           { name: 'blank', displayName: '  ' },
           { displayName: 'Nameless' },
         ],
@@ -1168,6 +1174,8 @@ describe('createRouter', () => {
         servers: [
           { name: 'agent-manager', displayName: 'Agent Manager' },
           { name: 'gazelle-mcp-kubernetes', family: 'kubernetes' },
+          // A tenant's server by muster's key, as auth://status names it.
+          { name: 'org-acme/search', displayName: 'Acme Search' },
           { name: 'blank' },
         ],
       });
@@ -1187,6 +1195,20 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ servers: [], unavailable: true });
+    });
+
+    // The token refresh only follows a 401: muster refusing the bearer
+    // must not read as "cannot name them" for the rest of the tab.
+    it('answers 401 when muster refuses the forwarded token', async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError('Your token has expired. Please re-authenticate.'),
+      );
+
+      const response = await request(await personApp())
+        .get('/servers/names?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(401);
     });
 
     it('refuses a read without the person token with a 401', async () => {

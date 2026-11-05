@@ -1,5 +1,6 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
+  isMusterSignInRequiredText,
   ServerSignIn,
   useConnectorLabel,
 } from '@giantswarm/backstage-plugin-muster';
@@ -7,14 +8,18 @@ import {
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 
 /**
- * The person has not signed in to the connector a write or a dry run goes
- * through (agent-manager unless said otherwise): says so in the portal's own
- * words, naming the connector by its display name, and offers the muster
- * plugin's sign-in for it. The same affordance wherever such a call needs the
- * sign-in — the create review, the edit page, the delete and update-skills
- * dialogs, the session start. muster's own answer (`auth_required: server
- * '…' requires authentication`, a tool not found) is not shown: it names the
- * server by its technical name and says nothing the alert does not.
+ * The person's muster session cannot use the connector a write or a dry run
+ * goes through (agent-manager unless said otherwise): names the connector by
+ * its display name and offers the muster plugin's sign-in for it. The same
+ * affordance wherever such a call needs the connector — the create review,
+ * the edit page, the delete and update-skills dialogs, the session start.
+ *
+ * Where muster asked for the person's sign-in (`auth_required: server '…'
+ * requires authentication`), the alert says so in the portal's own words and
+ * leaves muster's out: they name the server by its technical name and say
+ * nothing more. Any other not-connected answer (a tool not found, a server
+ * not connected) may have a cause a sign-in does not fix, a server that is
+ * down or not registered, so muster's answer stays in sight there.
  *
  * With `needsGitHub`, agent-manager answered `auth_required` to a write in
  * mode `commit`: the pull request is opened with the person's GitHub
@@ -30,11 +35,8 @@ export function ConnectAgentManagerAlert({
   needsGitHub = false,
 }: {
   installation: string;
-  /**
-   * The answer the call got. Shown with `needsGitHub` only, where it is
-   * agent-manager's and may name what GitHub refused.
-   */
-  message?: string;
+  /** The answer the call got, muster's or agent-manager's. */
+  message: string;
   /** What the person was about to do, as the sentence's subject. */
   action?: string;
   /** The muster server to connect to; agent-manager unless said otherwise. */
@@ -43,32 +45,47 @@ export function ConnectAgentManagerAlert({
   needsGitHub?: boolean;
 }) {
   const label = useConnectorLabel(installation, server);
+  const signInRequired = !needsGitHub && isMusterSignInRequiredText(message);
+  let title = `Connect to ${label}`;
+  if (needsGitHub) {
+    title = `Authorize GitHub for ${label}`;
+  } else if (signInRequired) {
+    title = `Sign in to ${label}`;
+  }
   return (
     <Alert
       status="warning"
-      title={
-        needsGitHub ? `Authorize GitHub for ${label}` : `Sign in to ${label}`
-      }
+      title={title}
       description={
         <Flex direction="column" gap="2">
-          {needsGitHub ? (
+          {needsGitHub && (
             <>
               <Text variant="body-small">
                 {action} through pull requests that the {label} connector opens
                 as you, with your GitHub authorization. Sign in to {label} on{' '}
                 {installation} to give it.
               </Text>
-              {message && (
-                <Text variant="body-small" color="secondary">
-                  {message}
-                </Text>
-              )}
+              <Text variant="body-small" color="secondary">
+                {message}
+              </Text>
             </>
-          ) : (
+          )}
+          {signInRequired && (
             <Text variant="body-small">
               {action} through the {label} connector, which acts as you. You
               have not signed in to it on {installation} yet.
             </Text>
+          )}
+          {!needsGitHub && !signInRequired && (
+            <>
+              <Text variant="body-small">
+                {action} through the {label} connector, which acts as you. Your
+                session on {installation} is not connected to it.
+              </Text>
+              <Text variant="body-small" color="secondary">
+                {message}
+              </Text>
+            </>
           )}
           <ServerSignIn
             noun="connector"

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
-import { ConnectorNamesResponse, MusterApi, musterApiRef } from '../../apis';
+import { ConnectorNamesResponse, MusterApi, musterApiRef } from '../../../apis';
 import { useConnectorLabel, useConnectorLabels } from './useConnectorLabels';
 
 function setup(answer: () => Promise<ConnectorNamesResponse>) {
@@ -63,19 +63,28 @@ describe('useConnectorLabels', () => {
     await waitFor(() => expect(result.current).toBe('agent-manager'));
   });
 
-  it('keeps the technical name when muster could not list the connectors', async () => {
-    const { api, wrapper } = setup(async () => ({
-      servers: [],
-      unavailable: true,
-    }));
+  it('keeps the technical name when muster could not list the connectors, and reads again on the next mount', async () => {
+    let answer: ConnectorNamesResponse = { servers: [], unavailable: true };
+    const { api, wrapper } = setup(async () => answer);
 
-    const { result } = renderHook(
+    const first = renderHook(
       () => useConnectorLabel('gazelle', 'agent-manager'),
       { wrapper },
     );
-
     await waitFor(() => expect(api.listConnectorNames).toHaveBeenCalled());
-    expect(result.current).toBe('agent-manager');
+    expect(first.result.current).toBe('agent-manager');
+    first.unmount();
+
+    // Not kept as an answer: muster is back, and the next prompt names it.
+    answer = {
+      servers: [{ name: 'agent-manager', displayName: 'Agent Manager' }],
+    };
+    const second = renderHook(
+      () => useConnectorLabel('gazelle', 'agent-manager'),
+      { wrapper },
+    );
+    await waitFor(() => expect(second.result.current).toBe('Agent Manager'));
+    expect(api.listConnectorNames).toHaveBeenCalledTimes(2);
   });
 
   it('reads once per installation for every caller', async () => {
