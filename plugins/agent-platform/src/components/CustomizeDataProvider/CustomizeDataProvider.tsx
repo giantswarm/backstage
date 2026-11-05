@@ -5,6 +5,7 @@ import {
   type SkillCatalog,
 } from '../../hooks/useSkillCatalog';
 import { useScopedToolchainInstallations } from '../../hooks/useToolchainManager';
+import { defaultModelIds } from '../../lib/defaultModel';
 import { clientLookupOf } from '../../lib/serving';
 import { uniqueSkills } from '../../lib/customize';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -17,6 +18,7 @@ import {
   WorkspacesDataProvider,
 } from '../WorkspacesDataProvider';
 import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * What the Customize screen's tab strip counts: `'loading'` while still being
@@ -112,19 +114,24 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     failures: workspaceFailures,
   } = useWorkspacesData();
   const { hasToolchains } = useScopedToolchainInstallations();
+  const { directory: organizations } = useOrganizationDirectory();
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
   const workspacesUnread =
     workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
-      modelInstallations.flatMap(installation =>
-        modelConfigsFor(installation).map(modelConfig => {
+      modelInstallations.flatMap(installation => {
+        const defaults = defaultModelIds(
+          modelConfigsFor(installation),
+          organizations,
+        );
+        return modelConfigsFor(installation).map(modelConfig => {
           const state = servingStateFor(
             installation,
             clientLookupOf(modelConfig),
           );
-          return toModelRow(
+          const row = toModelRow(
             modelConfig,
             state
               ? toModelServedBy(
@@ -134,8 +141,9 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
                 )
               : undefined,
           );
-        }),
-      ),
+          return defaults.has(row.id) ? { ...row, isDefault: true } : row;
+        });
+      }),
     [
       modelInstallations,
       modelConfigsFor,

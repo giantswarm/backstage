@@ -18,6 +18,7 @@ import {
   isVertexAIProvider,
   MODEL_PROVIDER_OPTIONS,
   ModelConfigFieldErrors,
+  type ModelProvider,
   ModelConfigFormValues,
   PROVIDER_SECRET_KEYS,
   providerHasEndpoint,
@@ -50,6 +51,13 @@ export type ModelConfigFormFieldsProps = {
   originalProvider?: string;
   /** Edit only: the Vertex AI project the model has on the cluster. */
   originalProjectID?: string;
+  /** The providers to offer; every one the form speaks when absent. */
+  providers?: readonly ModelProvider[];
+  /**
+   * The model goes through the platform's LLM listener (an Organization's
+   * model): the listener is its endpoint, so the form asks for none.
+   */
+  routed?: boolean;
 };
 
 function providerLabel(provider: string): string {
@@ -161,11 +169,16 @@ export function ModelConfigFormFields({
   onMoreOptionsOpenChange,
   originalProvider,
   originalProjectID,
+  providers,
+  routed = false,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
   );
-  const hasEndpoint = providerHasEndpoint(values.provider);
+  const providerOptions = providers
+    ? MODEL_PROVIDER_OPTIONS.filter(option => providers.includes(option.id))
+    : MODEL_PROVIDER_OPTIONS;
+  const hasEndpoint = providerHasEndpoint(values.provider) && !routed;
   const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
   const isOllama = values.provider === 'Ollama';
   const { textFieldProps, errorFor } = validation;
@@ -235,7 +248,7 @@ export function ModelConfigFormFields({
             <Select
               label="Provider"
               isRequired
-              options={MODEL_PROVIDER_OPTIONS.map(option => ({
+              options={providerOptions.map(option => ({
                 id: option.id,
                 label: option.label,
               }))}
@@ -247,7 +260,11 @@ export function ModelConfigFormFields({
                   });
                 }
               }}
-              description={providerOption?.description}
+              description={
+                routed
+                  ? 'Calls go through the platform’s LLM gateway, which passes your key on and counts the usage for your organization.'
+                  : providerOption?.description
+              }
             />
             {hasEndpoint && (
               <TextField

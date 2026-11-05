@@ -92,11 +92,7 @@ jest.mock('../ModelConfigPicker', () => ({
         state.installation &&
         !state.modelConfigName
       ) {
-        selectModelConfig(
-          'default-model-config',
-          'kagent',
-          mockPreselectedModel,
-        );
+        selectModelConfig('anthropic-main', 'kagent', mockPreselectedModel);
       }
     }, [state.installation, state.modelConfigName, selectModelConfig]);
     return <p>model picker{error && `: ${error}`}</p>;
@@ -796,7 +792,7 @@ describe('NewAgentPage', () => {
         ready: true,
         managed: 'helmrelease',
         displayName: 'Coder',
-        modelConfig: 'default-model-config',
+        modelConfig: 'anthropic-main',
         harness: 'claude',
         egress: ['https://github.com'],
       };
@@ -831,7 +827,7 @@ describe('NewAgentPage', () => {
         exists: true,
         ready: true,
         managed: 'helmrelease',
-        modelConfig: 'default-model-config',
+        modelConfig: 'anthropic-main',
         harness: 'unread',
       };
       await renderPage({
@@ -885,7 +881,7 @@ describe('NewAgentPage', () => {
         ready: true,
         managed: 'helmrelease',
         displayName: 'Coder',
-        modelConfig: 'default-model-config',
+        modelConfig: 'anthropic-main',
         harness: 'claude',
         // Not an origin the form would take: unseen, it must not block.
         egress: ['github.com/x'],

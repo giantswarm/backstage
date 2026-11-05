@@ -754,12 +754,12 @@ describe('toAgentRow model fields', () => {
 
   it('labels the model by spec.model when the ModelConfig has no display name', () => {
     // Without the annotation `getDisplayName()` is the resource name
-    // (`default-model-config`), which says nothing about the model.
+    // (`anthropic-main`), which says nothing about the model.
     const row = toAgentRow(
-      makeAgent({ name: 'chef', modelConfig: 'default-model-config' }),
+      makeAgent({ name: 'chef', modelConfig: 'anthropic-main' }),
       [
         makeModelConfig({
-          name: 'default-model-config',
+          name: 'anthropic-main',
           namespace: 'team-a',
           model: 'claude-sonnet-4-6',
         }),

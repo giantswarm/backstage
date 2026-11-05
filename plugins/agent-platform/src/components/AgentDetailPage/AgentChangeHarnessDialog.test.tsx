@@ -57,7 +57,7 @@ const AGENT: AgentManagerAgent = {
 };
 
 const CODEX_REFUSAL =
-  'modelConfig default-model-config (provider Anthropic, model claude-sonnet-4-6): Harness codex runs Codex, which speaks the OpenAI Responses API only: pick an OpenAI ModelConfig with openAI.apiFormat responses, or a Bedrock gpt-* one';
+  'modelConfig anthropic-main (provider Anthropic, model claude-sonnet-4-6): Harness codex runs Codex, which speaks the OpenAI Responses API only: pick an OpenAI ModelConfig with openAI.apiFormat responses, or a Bedrock gpt-* one';
 
 type Scenario = {
   /** validate_agent's violations, per Harness. */

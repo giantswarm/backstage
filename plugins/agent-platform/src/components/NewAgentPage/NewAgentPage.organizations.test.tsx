@@ -22,20 +22,31 @@ import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider'
 import { useOwnerField } from './hooks/useOwnerField';
 
 // The environment's ModelConfigs as the cluster lists them: the platform's
-// default model, which an organization's agent must not be offered.
+// default model, which an organization's agent must not be offered, and each
+// organization's own (the scenario's). Which one is the default is
+// agent-manager's answer (`list_model_configs`' `default`).
+let mockListed: AgentManagerModelConfig[] = [];
 jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
     isLoading: false,
     unreachableInstallations: [],
-    modelConfigsFor: () => [
-      {
-        getName: () => 'default-model-config',
-        getNamespace: () => 'kagent',
-        getDisplayName: () => 'Platform Sonnet',
-        getModel: () => 'claude-sonnet',
-        getProvider: () => 'Anthropic',
-      },
-    ],
+    modelConfigsFor: () =>
+      [
+        {
+          name: 'default-model-config',
+          namespace: 'kagent',
+          model: 'claude-sonnet',
+          provider: 'Anthropic',
+        },
+        ...mockListed,
+      ].map(mc => ({
+        getName: () => mc.name,
+        getNamespace: () => mc.namespace,
+        getDisplayName: () =>
+          mc.namespace === 'kagent' ? 'Platform Sonnet' : mc.name,
+        getModel: () => mc.model,
+        getProvider: () => mc.provider,
+      })),
   }),
 }));
 
@@ -85,6 +96,7 @@ function Step() {
 }
 
 async function renderStep(scenario: OrganizationsScenario) {
+  mockListed = Object.values(scenario.models ?? {}).flat();
   const { api, callTool } = fakeOrganizationsMuster(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -120,7 +132,7 @@ describe('New agent: the organization picker', () => {
     ).toHaveTextContent(/^Organization: payments,/);
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model sonnet, organization default',
+        name: 'Select model sonnet, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
     // The platform's own default is never offered to an organization's agent.
@@ -140,7 +152,7 @@ describe('New agent: the organization picker', () => {
 
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model sonnet, organization default',
+        name: 'Select model sonnet, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
     await user.click(screen.getByRole('button', { name: /Organization$/ }));
@@ -151,7 +163,7 @@ describe('New agent: the organization picker', () => {
 
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model opus, organization default',
+        name: 'Select model opus, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByText('sonnet')).toBeNull();
@@ -169,11 +181,11 @@ describe('New agent: the organization picker', () => {
       models: { [PAYMENTS.namespace]: [] },
     });
 
+    expect(await screen.findByText('No models found')).toBeInTheDocument();
     expect(
-      await screen.findByText('payments has no default model'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Ask an admin of payments to add one/),
+      screen.getByText(
+        /No models for the payments organization on gazelle\. An admin must add one/,
+      ),
     ).toBeInTheDocument();
   });
 

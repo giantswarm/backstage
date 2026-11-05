@@ -16,14 +16,13 @@
  * "Organization" instead (`tenantOf`).
  */
 
-import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
 import type {
   OrganizationDirectory,
   OrganizationNamespace,
 } from './organizations';
 
 /** The platform tenant's namespace: the installation's `kagent` namespace. */
-export const PLATFORM_TENANT_NAMESPACE = DEFAULT_MODEL_CONFIG_NAMESPACE;
+export const PLATFORM_TENANT_NAMESPACE = 'kagent';
 
 /**
  * Records who created an agent, on its HelmRelease and its `Agent`: written

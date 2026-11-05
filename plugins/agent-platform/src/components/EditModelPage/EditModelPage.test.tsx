@@ -38,6 +38,14 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 }));
 
 const mockSave = jest.fn();
+jest.mock('../ModelConfigsProvider', () => ({
+  useModelConfigs: () => ({ modelConfigsFor: () => [], isLoading: false }),
+}));
+
+jest.mock('../../hooks/useModelNamespaces', () => ({
+  useModelNamespaces: () => ({ namespaces: ['kagent'], isLoading: false }),
+}));
+
 jest.mock('../../hooks/useSaveModelConfig', () => ({
   useSaveModelConfig: () => ({
     save: mockSave,

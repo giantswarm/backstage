@@ -670,12 +670,16 @@ export type AgentManagerModelConfig = {
   provider?: string;
   model?: string;
   accepted: boolean | null;
+  /** The ResolvedRefs condition (its key Secret found, say); null while unreported. */
+  resolvedRefs?: boolean | null;
+  /** The Accepted condition's message. */
   message?: string;
   managedBy?: string;
   /**
-   * In an organization namespace: whether this is the organization's default
-   * model. agent-manager resolves the mark (its annotation is its own), so
-   * the portal reads this field and never the annotation.
+   * The namespace's default model, as agent-manager resolves it (in an
+   * organization namespace, the organization's default): the one ModelConfig
+   * marked as the default; none or several marked is no default. The portal
+   * reads this field and never the annotation, whose key agent-manager owns.
    */
   default?: boolean;
 };
