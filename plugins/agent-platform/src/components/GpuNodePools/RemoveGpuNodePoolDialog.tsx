@@ -300,6 +300,9 @@ export function RemoveGpuNodePoolDialog({
             message={failure.message}
             action="GPU node pools are removed"
             server={CLUSTER_MANAGER_SERVER}
+            // Signed in: the refusal is cleared, and the person removes the
+            // pool again; a removal never goes again by itself.
+            onSignedIn={write.reset}
           />
         )}
         <TextField

@@ -11,6 +11,7 @@ import {
 import type { AgentDeletionState } from '../../hooks/useAgentDeletion';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import { musterCommitAgentUpdateDryRunQueryKey } from '../../lib/queryKeys';
 import { AgentDeleteDialog } from './AgentDeleteDialog';
 
@@ -20,6 +21,12 @@ const MISSING_RELEASE_FILE =
   "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
 const AUTH_REQUIRED =
   'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 
 const DELETION: AgentDeletionState = {
   deleteAgent: jest.fn(),
@@ -254,6 +261,34 @@ describe('AgentDeleteDialog', () => {
     expect(
       screen.getByRole('button', { name: 'Open pull request' }),
     ).toBeDisabled();
+  });
+
+  // A delete is never sent again by itself: the sign-in clears the refusal,
+  // and the person confirms once more.
+  it('clears a delete refused for want of the sign-in once it lands, without deleting again', async () => {
+    const reset = jest.fn();
+    const deleteAgent = jest.fn();
+    await renderDialog({
+      mode: 'apply',
+      deletion: {
+        reset,
+        deleteAgent,
+        failure: {
+          kind: 'not-connected',
+          message:
+            "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        },
+      },
+    });
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(deleteAgent).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('leaves confirm to the delete where a sign-in cannot give the authorization', async () => {

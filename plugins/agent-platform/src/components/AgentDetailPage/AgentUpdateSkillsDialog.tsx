@@ -434,11 +434,19 @@ export function AgentUpdateSkillsDialog({
           </Text>
         )}
 
-        {failure?.kind === 'not-connected' && (
+        {/* The dry run's or the write's: a write refused for want of the
+            sign-in says so here too, not in the dialog's error. Signed in,
+            the write's refusal is cleared and the dry run re-reads by
+            itself, with every muster query; the person confirms again. */}
+        {notConnected && (
           <ConnectAgentManagerAlert
             installation={installation}
-            message={failure.message}
+            message={
+              (failure?.kind === 'not-connected' ? failure : updating.failure)!
+                .message
+            }
             action="Skills are updated"
+            onSignedIn={updating.reset}
           />
         )}
         {failure && failure.kind !== 'not-connected' && (

@@ -168,6 +168,10 @@ export function AgentDeleteDialog({
             message={connect.message}
             action="Agents are deleted"
             needsGitHub={connect.github}
+            // Signed in: the delete's refusal is cleared and the check
+            // re-reads by itself, with every muster query. Never deleted
+            // again by itself: the person confirms once more.
+            onSignedIn={deletion.reset}
           />
         )}
         {isChecking && (

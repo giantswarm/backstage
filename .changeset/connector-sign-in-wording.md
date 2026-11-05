@@ -34,6 +34,13 @@ Sign-in prompts say "connector" and name each connector by its display name.
   stayed, and its Sign in then answered "already authenticated". The connect
   alert names the connector by its display name
   and, for muster's request for a sign-in, writes its own sentence instead of
-  muster's; any other not-connected answer stays in sight.
+  muster's; any other not-connected answer stays in sight. Once the sign-in
+  lands, every alert of the kind clears: on the create and edit reviews, the
+  agent's delete, skills and Harness dialogs, the skill's update dialog, the
+  GPU node pool, model cache, model backend and cluster pages and dialogs,
+  a dry run behind it asks again and a refused write is cleared for the
+  person to press again; nothing that deletes or removes goes again by
+  itself. The skills and Harness dialogs now show the alert for a write
+  refused for want of the sign-in, which they used to swallow.
 - bot-prs: the marge sign-in alert does the same.
 - app: the inbox's sign-in row says "connector".

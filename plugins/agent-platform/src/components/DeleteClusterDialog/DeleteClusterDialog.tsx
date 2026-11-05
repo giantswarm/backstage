@@ -483,6 +483,15 @@ export function DeleteClusterDialog({
                   message={notConnected.message}
                   action="Clusters are deleted"
                   server={CLUSTER_MANAGER_SERVER}
+                  // Signed in: the refusal is cleared, and dry runs that
+                  // were refused ask again. A deletion never goes again by
+                  // itself: the person presses Delete once more.
+                  onSignedIn={() => {
+                    write.reset();
+                    if (notConnectedOf(verdicts)) {
+                      void check();
+                    }
+                  }}
                 />
               )}
               {passes.map((pass, index) =>

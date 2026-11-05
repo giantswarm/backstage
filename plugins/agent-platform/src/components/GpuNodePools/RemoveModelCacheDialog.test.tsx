@@ -14,6 +14,7 @@ import {
 } from '../../hooks/useClusterManager';
 import type { CacheClaim, ManagedCluster } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import {
   ACKNOWLEDGE_LOSS,
   RemoveModelCacheDialog,
@@ -97,6 +98,12 @@ const REMOVED = {
   cache: { enabled: false, note: 'the model cache of wc1 is removed' },
 };
 
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
+
 function Harness({
   onOpenChange,
   onRemoved,
@@ -157,6 +164,31 @@ async function renderDialog(answers: (Error | 'complete')[]) {
 }
 
 describe('RemoveModelCacheDialog', () => {
+  // A removal is never sent again by itself: the sign-in clears the refusal,
+  // and the person removes the cache once more.
+  it('clears a removal refused for want of the sign-in once it lands, without removing again', async () => {
+    const user = userEvent.setup();
+    const { callTool, onRemoved } = await renderDialog([
+      new Error('tool not found: x_cluster-manager_remove_model_cache'),
+    ]);
+    await user.click(screen.getByRole('checkbox', { name: ACKNOWLEDGE_LOSS }));
+    await user.click(screen.getByRole('button', { name: 'Remove cache' }));
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands(user);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Connect to cluster-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(callTool).toHaveBeenCalledTimes(1);
+    expect(onRemoved).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Remove cache' })).toBeEnabled();
+  });
+
   it('names what goes, what stops and what follows, and removes the one claim as the person once the loss is acknowledged', async () => {
     const user = userEvent.setup();
     const { callTool, onOpenChange, onRemoved } = await renderDialog([]);

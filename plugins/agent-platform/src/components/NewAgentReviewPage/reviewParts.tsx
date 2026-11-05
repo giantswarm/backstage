@@ -303,15 +303,19 @@ export function Notes({ notes }: { notes: string[] }) {
 export function ConnectAgentManager({
   installation,
   message,
+  onSignedIn,
 }: {
   installation: string;
   message: string;
+  /** See {@link ConnectAgentManagerAlert}'s `onSignedIn`. */
+  onSignedIn?: () => void;
 }) {
   return (
     <ConnectAgentManagerAlert
       installation={installation}
       message={message}
       action="Agents are created"
+      onSignedIn={onSignedIn}
     />
   );
 }

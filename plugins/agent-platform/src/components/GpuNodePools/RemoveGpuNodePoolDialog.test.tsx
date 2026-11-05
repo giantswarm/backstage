@@ -14,10 +14,17 @@ import {
 } from '../../hooks/useClusterManager';
 import type { NodePoolWriteResult } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import {
   RemoveGpuNodePoolDialog,
   servedModelsOnCluster,
 } from './RemoveGpuNodePoolDialog';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 
 const ROW: GpuNodePoolRow = {
   id: 'inst-1/wc1/wc1-gpu-l4',
@@ -183,6 +190,32 @@ async function confirmRemove(user: ReturnType<typeof userEvent.setup>) {
   );
   await user.click(screen.getByRole('button', { name: 'Remove pool' }));
 }
+
+describe('RemoveGpuNodePoolDialog without the sign-in to cluster-manager', () => {
+  // A removal is never sent again by itself: the sign-in clears the refusal,
+  // and the person removes the pool once more.
+  it('clears the refusal once the sign-in lands, without removing again', async () => {
+    const user = userEvent.setup();
+    const { callTool, onRemoved } = await renderDialog([
+      new Error('tool not found: x_cluster-manager_delete_node_pool'),
+    ]);
+    await confirmRemove(user);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands(user);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Connect to cluster-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(callTool).toHaveBeenCalledTimes(1);
+    expect(onRemoved).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Remove pool' })).toBeEnabled();
+  });
+});
 
 describe('servedModelsOnCluster', () => {
   it('keeps the kserve models of the installation whose hosts name the cluster', () => {

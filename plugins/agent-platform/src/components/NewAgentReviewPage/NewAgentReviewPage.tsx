@@ -429,6 +429,10 @@ function CreateAgentReview() {
           <ConnectAgentManager
             installation={state.installation!}
             message={creation.failure.message}
+            // The create's refusal is the mutation's, kept until the next
+            // write: cleared once signed in, so the person creates again
+            // (the dry run re-reads by itself, with every muster query).
+            onSignedIn={creation.reset}
           />
         )}
         {creation.failure?.kind === 'refused' && (

@@ -468,6 +468,15 @@ export function AddGpuNodePoolPage({
     }
   };
 
+  /**
+   * Signed in to cluster-manager: the refusal is cleared and the dry run asks
+   * again, so the review is current; Deploy is the person's to press again.
+   */
+  const onSignedIn = () => {
+    write.reset();
+    void judge(++rerun.current);
+  };
+
   const onForm = step === 'form';
   const groups = review ? groupManifestsByRelease(review) : [];
   const shapeList = shapes?.sizes ?? [];
@@ -792,6 +801,7 @@ export function AddGpuNodePoolPage({
             message={write.failure!.message}
             action="GPU node pools are created"
             server={CLUSTER_MANAGER_SERVER}
+            onSignedIn={onSignedIn}
           />
         )}
         {applied && applied.partial && (

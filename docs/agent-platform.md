@@ -2895,6 +2895,20 @@ finished in another tab and this one is focused again, or a click on Sign in
 finds agent-manager connected already), the alert goes and the start goes
 again with the prompt in the box, as after a workspace's provider sign-in.
 
+Every other page and dialog that shows `ConnectAgentManagerAlert` (for
+agent-manager, cluster-manager or model-manager) follows one rule once the
+sign-in lands:
+
+- A read or a dry run behind the alert is read again. A query under
+  `['muster', …]` is, by itself: the sign-in invalidates every muster query.
+  A dry run made through a write hook (the node pool, model backend and
+  cluster forms and dialogs) is asked again from the alert's `onSignedIn`.
+- A write's refusal (the hook's or the mutation's failure) is cleared from
+  `onSignedIn` (`reset`), so the alert goes; the write itself is the
+  person's to press again, on the dry run they see. Nothing that deletes or
+  removes is ever sent again by itself. Only the session start goes again by
+  itself.
+
 #### Create, navigate, then send — in that order
 
 1. **agent-manager's `start_session`**, through muster as the person

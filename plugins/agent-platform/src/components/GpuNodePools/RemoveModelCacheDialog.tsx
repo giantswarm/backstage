@@ -260,6 +260,9 @@ export function RemoveModelCacheDialog({
             message={failure.message}
             action="The model cache is removed"
             server={CLUSTER_MANAGER_SERVER}
+            // Signed in: the refusal is cleared, and the person removes the
+            // cache again; a removal never goes again by itself.
+            onSignedIn={write.reset}
           />
         )}
         <Flex direction="column" gap="1">

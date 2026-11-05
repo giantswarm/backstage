@@ -240,6 +240,28 @@ export function CreateClusterDialog({
         }
       : undefined;
 
+  /** The dry runs of the form as it stands, one per mode offered. */
+  const judge = async (judged: CreateClusterInput) => {
+    setJudging(true);
+    const isCurrent = startAnswer();
+    try {
+      const answers = await judgeModes(
+        dryRunMode => write.create(judged, { mode: dryRunMode, dryRun: true }),
+        offersCommit(info, CLUSTER_MANAGER_TOOLS.createCluster),
+      );
+      if (!isCurrent()) {
+        return;
+      }
+      write.reset();
+      setVerdicts(answers);
+      setMode(preferredMode(answers));
+    } finally {
+      if (isCurrent()) {
+        setJudging(false);
+      }
+    }
+  };
+
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
     if (judging) {
@@ -249,24 +271,7 @@ export function CreateClusterDialog({
       validation.reveal();
       return;
     }
-    setJudging(true);
-    const isCurrent = startAnswer();
-    try {
-      const judged = await judgeModes(
-        dryRunMode => write.create(input, { mode: dryRunMode, dryRun: true }),
-        offersCommit(info, CLUSTER_MANAGER_TOOLS.createCluster),
-      );
-      if (!isCurrent()) {
-        return;
-      }
-      write.reset();
-      setVerdicts(judged);
-      setMode(preferredMode(judged));
-    } finally {
-      if (isCurrent()) {
-        setJudging(false);
-      }
-    }
+    await judge(input);
   };
 
   /** Deploy or Commit, and Continue after a partial Deploy: the same call. */
@@ -529,6 +534,15 @@ export function CreateClusterDialog({
                     message={notConnected.message}
                     action="Clusters are created"
                     server={CLUSTER_MANAGER_SERVER}
+                    // Signed in: the refusal is cleared, and dry runs that
+                    // were refused ask again. Deploy and Commit are the
+                    // person's to press again, on the review they see.
+                    onSignedIn={() => {
+                      write.reset();
+                      if (input && notConnectedOf(verdicts)) {
+                        void judge(input);
+                      }
+                    }}
                   />
                 )}
                 {applied?.partial && (

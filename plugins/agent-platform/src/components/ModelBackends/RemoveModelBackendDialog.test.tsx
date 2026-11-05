@@ -40,6 +40,28 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
   },
 }));
 
+jest.mock('../ConnectAgentManagerAlert', () => ({
+  ConnectAgentManagerAlert: ({
+    server,
+    message,
+    onSignedIn,
+  }: {
+    server: string;
+    message: string;
+    onSignedIn?: () => void;
+  }) => (
+    <div>
+      connect {server}: {message}
+      {/* What the alert's sign-in calls once it lands. */}
+      {onSignedIn && (
+        <button type="button" onClick={onSignedIn}>
+          Sign-in lands
+        </button>
+      )}
+    </div>
+  ),
+}));
+
 const onRemoved = jest.fn();
 const onOpenChange = jest.fn();
 
@@ -138,5 +160,75 @@ describe('RemoveModelBackendDialog', () => {
       screen.getByRole('button', { name: 'Remove backend' }),
     ).toBeDisabled();
     expect(write.remove).not.toHaveBeenCalled();
+  });
+
+  // The dry run that opens the dialog asks again once the sign-in lands; the
+  // removal itself is never sent again by itself.
+  it('asks the dry run again once the sign-in lands, and never removes by itself', async () => {
+    const notConnected = () => {
+      write.failure = {
+        kind: 'not-connected',
+        message: 'tool not found: x_model-manager_remove_backend',
+      };
+      return Promise.reject(new Error(write.failure.message));
+    };
+    write.dryRunRemove.mockImplementationOnce(notConnected).mockResolvedValue({
+      dryRun: true,
+      configMap: { namespace: 'agent-platform', name: 'model-backend-ollama' },
+      modelConfigs: [],
+    });
+    write.reset.mockImplementation(() => {
+      write.failure = undefined;
+    });
+    renderDialog();
+    expect(
+      await screen.findByText(/connect model-manager: tool not found/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Sign-in lands' }),
+    );
+
+    expect(write.reset).toHaveBeenCalled();
+    await waitFor(() => expect(write.dryRunRemove).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByLabelText(/Type ollama to confirm/),
+    ).toBeInTheDocument();
+    expect(write.remove).not.toHaveBeenCalled();
+  });
+
+  it('clears a removal refused for want of the sign-in once it lands, without removing again', async () => {
+    write.dryRunRemove.mockResolvedValue({
+      dryRun: true,
+      configMap: { namespace: 'agent-platform', name: 'model-backend-ollama' },
+      modelConfigs: [],
+    });
+    write.remove.mockImplementationOnce(() => {
+      write.failure = {
+        kind: 'not-connected',
+        message: 'tool not found: x_model-manager_remove_backend',
+      };
+      return Promise.reject(new Error(write.failure.message));
+    });
+    write.reset.mockImplementation(() => {
+      write.failure = undefined;
+    });
+    renderDialog();
+    await userEvent.type(
+      await screen.findByLabelText(/Type ollama to confirm/),
+      'ollama',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Remove/ }));
+    await screen.findByText(/connect model-manager: tool not found/);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Sign-in lands' }),
+    );
+
+    expect(write.reset).toHaveBeenCalled();
+    expect(write.remove).toHaveBeenCalledTimes(1);
+    // The plan stands: nothing to ask again.
+    expect(write.dryRunRemove).toHaveBeenCalledTimes(1);
+    expect(onRemoved).not.toHaveBeenCalled();
   });
 });
