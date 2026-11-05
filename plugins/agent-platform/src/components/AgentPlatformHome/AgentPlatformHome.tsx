@@ -42,9 +42,10 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { ServingProvider } from '../ServingProvider';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SlackPromoBanner } from '../SlackPromoBanner';
-import { StartNewSession } from '../StartNewSession';
+import { NEW_SESSION_DRAFT_NAME, StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { greeting } from './helpers';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles({
   /**
@@ -238,6 +239,9 @@ function AgentPlatformHomeContent({
           <StartNewSession
             entryPoint="home"
             layout="standalone"
+            // An unsent prompt outlives a reload or a sign-in that leaves the
+            // page (giantswarm/giantswarm#39043).
+            draftName={NEW_SESSION_DRAFT_NAME}
             // The rename dialog's bound, less the ellipsis a clipped title
             // ends in.
             titleMaxLength={SESSION_NAME_MAX_LENGTH - 1}
@@ -320,15 +324,19 @@ export function AgentPlatformHome({
           page never keeps that page's title (live round 2, R5). */}
       <ShellDocumentTitle title="New session" />
       <QueryClientProvider>
-        <ModelConfigsProvider>
-          <ServingProvider>
-            <AgentsDataProvider>
-              <SessionsDataProvider>
-                <AgentPlatformHomeContent manageAgentsHref={manageAgentsHref} />
-              </SessionsDataProvider>
-            </AgentsDataProvider>
-          </ServingProvider>
-        </ModelConfigsProvider>
+        <OrganizationDirectoryProvider>
+          <ModelConfigsProvider>
+            <ServingProvider>
+              <AgentsDataProvider>
+                <SessionsDataProvider>
+                  <AgentPlatformHomeContent
+                    manageAgentsHref={manageAgentsHref}
+                  />
+                </SessionsDataProvider>
+              </AgentsDataProvider>
+            </ServingProvider>
+          </ModelConfigsProvider>
+        </OrganizationDirectoryProvider>
       </QueryClientProvider>
     </AgentPlatformCookieAuth>
   );

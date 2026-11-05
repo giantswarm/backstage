@@ -2869,6 +2869,23 @@ hand-offs ("<verb> with <agent>", `useMetaAgentHandoff`) and
 `CreateAgentAssist`. The composer grows with its content and never shrinks back.
 Enter starts.
 
+The home screen's composer keeps its unsent prompt and the chosen agent as a
+draft (`StartNewSession`'s `draftName`, through `useSessionDraft`):
+`sessionStorage` under `gs-draft:agent-platform-new-session:<userEntityRef>`,
+so each tab keeps its own and a reload, a sign-in that leaves the page or a
+link followed in the tab gives them back. `StartNewSession` holds the prompt
+and the composer shows it (`prompt`), so a restore sets it without remounting
+the composer. The draft is read a moment after the page renders (the person's
+identity first): what the person typed or picked meanwhile stays, the rest is
+restored. The agent kept is the one the person picked, else the restored one,
+else the composer's preselection, which never replaces a restored agent that is
+not read yet. A `?agent=` link goes ahead of the restored agent, which goes
+ahead of the last agent used. The images, the workspace and the toolchains are
+not kept. The draft is removed once the session is created; a failed start
+keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
+never leaves the page: it opens the provider in a new tab
+(`useServerSignIn`).
+
 #### Create, navigate, then send — in that order
 
 1. **agent-manager's `start_session`**, through muster as the person

@@ -7,6 +7,15 @@ import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageOverviewPage } from './UsageOverviewPage';
 import { SHELL_CONTENT_MAX_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 /**
  * Enough of an `LlmUsage` for the tiles, the token trend, the top-agents card
  * and the health card.

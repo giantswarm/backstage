@@ -220,6 +220,7 @@ describe('createRouter', () => {
           addStartupHook: hook => {
             hooks.push(hook);
           },
+          addShutdownHook: () => undefined,
         },
       });
 

@@ -1,8 +1,19 @@
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 
+import { organizationsRouteRef } from '../../routes';
 import { OwnerValue } from './OwnerValue';
+
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
 
 describe('OwnerValue', () => {
   it('names an organization by its plain name, with no hint', () => {
@@ -10,6 +21,18 @@ describe('OwnerValue', () => {
 
     expect(screen.getByText('acme')).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it("links an agent's organization to the organization's page", async () => {
+    await renderInTestApp(
+      <OwnerValue namespace="org-acme" installation="gazelle" />,
+      { mountedRoutes: { '/organizations': organizationsRouteRef } },
+    );
+
+    expect(screen.getByRole('link', { name: 'acme' })).toHaveAttribute(
+      'href',
+      '/organizations/gazelle/org-parent/acme',
+    );
   });
 
   it('says Platform for the platform, with a hint the keyboard reaches', async () => {

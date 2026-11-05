@@ -17,6 +17,8 @@ import {
   useWorkspacesData,
   WorkspacesDataProvider,
 } from '../WorkspacesDataProvider';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * What the Customize screen's tab strip counts: `'loading'` while still being
@@ -112,6 +114,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     failures: workspaceFailures,
   } = useWorkspacesData();
   const { hasToolchains } = useScopedToolchainInstallations();
+  const { directory: organizations } = useOrganizationDirectory();
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
   const workspacesUnread =
     workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
@@ -119,7 +122,10 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
   const modelRows = useMemo<ModelRow[]>(
     () =>
       modelInstallations.flatMap(installation => {
-        const defaults = defaultModelIds(modelConfigsFor(installation));
+        const defaults = defaultModelIds(
+          modelConfigsFor(installation),
+          organizations,
+        );
         return modelConfigsFor(installation).map(modelConfig => {
           const state = servingStateFor(
             installation,
@@ -141,6 +147,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     [
       modelInstallations,
       modelConfigsFor,
+      organizations,
       servingStateFor,
       capabilitiesFor,
       backends,
@@ -217,17 +224,19 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 export function CustomizeDataProvider({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider>
-      <ModelConfigsProvider>
-        <ServingProvider>
-          <AgentsDataProvider>
-            <WorkspacesDataProvider>
-              <CustomizeDataContextProvider>
-                {children}
-              </CustomizeDataContextProvider>
-            </WorkspacesDataProvider>
-          </AgentsDataProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          <ServingProvider>
+            <AgentsDataProvider>
+              <WorkspacesDataProvider>
+                <CustomizeDataContextProvider>
+                  {children}
+                </CustomizeDataContextProvider>
+              </WorkspacesDataProvider>
+            </AgentsDataProvider>
+          </ServingProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 }

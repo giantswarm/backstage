@@ -12,6 +12,15 @@ import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageCostPage } from './UsageCostPage';
 import { SHELL_CONTENT_MAX_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 // The chart and the two tables have their own tests; this file is about which
 // figures the Cost tab carries, so they stand in as markers.
 jest.mock('../LlmUsage', () => ({

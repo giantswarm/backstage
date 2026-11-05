@@ -102,6 +102,13 @@ describe('NewSessionComposer', () => {
       expect(agentPicker()).toBeInTheDocument();
     });
 
+    it('shows a prompt it starts with whole', () => {
+      renderComposer({ collapsible: true, initialPrompt: 'Kept from before' });
+
+      expect(field()).toHaveValue('Kept from before');
+      expect(field()).toHaveAttribute('rows', '3');
+    });
+
     it('shows a single line until focused, then grows', async () => {
       renderComposer({ collapsible: true });
       expect(field()).toHaveAttribute('rows', '1');
@@ -562,6 +569,58 @@ describe('NewSessionComposer', () => {
         undefined,
         undefined,
       );
+    });
+  });
+
+  it('reports the prompt as it is typed, for a caller that keeps a draft', async () => {
+    const onPromptChange = jest.fn();
+    renderComposer({ onPromptChange });
+
+    await userEvent.type(field(), 'Hi');
+
+    expect(onPromptChange).toHaveBeenLastCalledWith('Hi');
+  });
+
+  it('shows the prompt a caller holds, and hands it every edit', async () => {
+    const onPromptChange = jest.fn();
+    const view = renderComposer({ prompt: 'Kept', onPromptChange });
+    expect(field()).toHaveValue('Kept');
+
+    await userEvent.type(field(), '!');
+    expect(onPromptChange).toHaveBeenLastCalledWith('Kept!');
+    // Held by the caller, which has not taken the edit.
+    expect(field()).toHaveValue('Kept');
+
+    view.rerender(
+      <NewSessionComposer
+        agents={[sre]}
+        isStarting={false}
+        onStart={onStart}
+        prompt="Restored"
+        onPromptChange={onPromptChange}
+      />,
+    );
+    expect(field()).toHaveValue('Restored');
+  });
+
+  it('says whether the person picked the agent or it was preselected', async () => {
+    const onSelectedAgentChange = jest.fn();
+    renderComposer({
+      agents: [sre, issues],
+      defaultAgent: sre,
+      onSelectedAgentChange,
+    });
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(sre, {
+      byPerson: false,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Issue Tracker/ }),
+    );
+
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
     });
   });
 
@@ -1253,7 +1312,9 @@ describe('opt-in picker options', () => {
     );
 
     expect(agentPicker()).toHaveTextContent('Issue Tracker');
-    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues);
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
   });
 });
 

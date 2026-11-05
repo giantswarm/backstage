@@ -2,6 +2,15 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OrganizationSelect } from './OrganizationSelect';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 function trigger() {
   return screen.getByRole('button', { name: /Organization/ });
 }

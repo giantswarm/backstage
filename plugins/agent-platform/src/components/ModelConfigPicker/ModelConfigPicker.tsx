@@ -10,6 +10,7 @@ import { newModelRouteRef } from '../../routes';
 import { useAgentManagerModelConfigs } from '../../hooks/useAgentManagerModelConfigs';
 import { tenantInSentence } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 import {
   isReportedDefault,
   preselectedModelConfig,
@@ -44,6 +45,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const classes = useSelectableCardStyles();
   const errorId = `${useId()}-error`;
   const { state, edit, selectModelConfig } = useNewAgentForm();
+  const { directory } = useOrganizationDirectory();
   const { isLoading, modelConfigsFor, unreachableInstallations } =
     useModelConfigs();
   const newModelLink = useRouteRef(newModelRouteRef);
@@ -107,7 +109,9 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
     preselected !== undefined &&
     state.modelConfigName === preselected.getName() &&
     state.modelConfigNamespace === (preselected.getNamespace() ?? '');
-  const where = namespace ? tenantInSentence(namespace) : (installation ?? '');
+  const where = namespace
+    ? tenantInSentence(namespace, directory)
+    : (installation ?? '');
 
   if (!installation) {
     return (

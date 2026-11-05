@@ -22,6 +22,13 @@ import {
   serviceAccountKeySummary,
   validateModelConfigForm,
 } from './modelConfigs';
+import { organizationDirectory } from './organizations';
+
+// The organization agent-manager names `org-acme` as; the namespace's name
+// says nothing.
+const directory = organizationDirectory([
+  { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
+]);
 
 const CLUSTER = 'gazelle';
 
@@ -264,6 +271,7 @@ describe('buildModelConfigManifest', () => {
       form,
       planKeySecret(form),
       'kagent',
+      { directory },
     );
 
     expect(manifest).toEqual({
@@ -299,6 +307,7 @@ describe('buildModelConfigManifest', () => {
       form,
       planKeySecret(form),
       'kagent',
+      { directory },
     ) as { metadata: Record<string, unknown>; spec: Record<string, unknown> };
 
     expect(manifest.metadata.annotations).toBeUndefined();
@@ -313,7 +322,9 @@ describe('buildModelConfigManifest', () => {
   it('puts the endpoint in the provider-specific block', () => {
     const spec = (form: ModelConfigFormValues) =>
       (
-        buildModelConfigManifest(form, planKeySecret(form), 'kagent') as {
+        buildModelConfigManifest(form, planKeySecret(form), 'kagent', {
+          directory,
+        }) as {
           spec: Record<string, unknown>;
         }
       ).spec;
@@ -339,6 +350,7 @@ describe('buildModelConfigPatch', () => {
       form,
       planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       makeModelConfig(),
+      directory,
     );
 
     expect(patch).toEqual({
@@ -376,6 +388,7 @@ describe('buildModelConfigPatch', () => {
       form,
       planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       original,
+      directory,
     ) as { spec: Record<string, unknown> };
 
     expect(patch.spec.apiKeySecret).toBe('my-shared-key');
@@ -391,6 +404,7 @@ describe('buildModelConfigPatch', () => {
       form,
       planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       makeModelConfig(),
+      directory,
     ) as { spec: Record<string, unknown> };
 
     expect(patch.spec).toMatchObject({
@@ -408,6 +422,7 @@ describe('buildModelConfigPatch', () => {
       form,
       planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       makeModelConfig(),
+      directory,
     ) as { spec: Record<string, unknown> };
 
     expect(patch.spec.openAI).toEqual({ baseUrl: null });
@@ -523,25 +538,30 @@ describe('modelConfigOwner', () => {
 
 describe('keySecretName', () => {
   it('follows the agentlab convention', () => {
-    expect(keySecretName('qwen3')).toBe('kagent-qwen3');
+    expect(keySecretName('qwen3', 'kagent', directory)).toBe('kagent-qwen3');
   });
 
   it("takes the tenant credential prefix in an Organization's namespace", () => {
-    expect(keySecretName('qwen3', 'org-acme')).toBe('tenant-credential-qwen3');
-    expect(keySecretName('qwen3', 'team-a')).toBe('kagent-qwen3');
+    expect(keySecretName('qwen3', 'org-acme', directory)).toBe(
+      'tenant-credential-qwen3',
+    );
+    expect(keySecretName('qwen3', 'team-a', directory)).toBe('kagent-qwen3');
   });
 });
 
 describe("an Organization's model", () => {
   it('goes through the listener in org-* namespaces only', () => {
-    expect(isListenerRouted('org-acme')).toBe(true);
-    expect(isListenerRouted('kagent')).toBe(false);
-    expect(isListenerRouted('org-')).toBe(false);
+    expect(isListenerRouted('org-acme', directory)).toBe(true);
+    expect(isListenerRouted('kagent', directory)).toBe(false);
+    expect(isListenerRouted('org-', directory)).toBe(false);
   });
 
   it('is offered the providers the listener can serve', () => {
-    expect(providersFor('org-acme')).toEqual(['Anthropic', 'OpenAI']);
-    expect(providersFor('kagent')).toContain('AnthropicVertexAI');
+    expect(providersFor('org-acme', directory)).toEqual([
+      'Anthropic',
+      'OpenAI',
+    ]);
+    expect(providersFor('kagent', directory)).toContain('AnthropicVertexAI');
   });
 
   it('is created without a base URL or TLS setting, keyed by its tenant credential', () => {
@@ -550,9 +570,15 @@ describe("an Organization's model", () => {
       endpoint: 'https://api.example.test',
       insecureSkipTlsVerify: true,
     });
-    const plan = planKeySecret(form, { isEdit: false, namespace: 'org-acme' });
+    const plan = planKeySecret(form, {
+      isEdit: false,
+      namespace: 'org-acme',
+      directory,
+    });
 
-    expect(buildModelConfigManifest(form, plan, 'org-acme')).toMatchObject({
+    expect(
+      buildModelConfigManifest(form, plan, 'org-acme', { directory }),
+    ).toMatchObject({
       metadata: { namespace: 'org-acme' },
       spec: {
         provider: 'Anthropic',
@@ -562,12 +588,18 @@ describe("an Organization's model", () => {
       },
     });
     expect(
-      (buildModelConfigManifest(form, plan, 'org-acme') as { spec: object })
-        .spec,
+      (
+        buildModelConfigManifest(form, plan, 'org-acme', { directory }) as {
+          spec: object;
+        }
+      ).spec,
     ).not.toHaveProperty('anthropic');
     expect(
-      (buildModelConfigManifest(form, plan, 'org-acme') as { spec: object })
-        .spec,
+      (
+        buildModelConfigManifest(form, plan, 'org-acme', { directory }) as {
+          spec: object;
+        }
+      ).spec,
     ).not.toHaveProperty('tls');
   });
 
@@ -593,8 +625,10 @@ describe("an Organization's model", () => {
         isEdit: true,
         originalProvider: 'Anthropic',
         namespace: 'org-acme',
+        directory,
       }),
       original,
+      directory,
     ) as { spec: Record<string, unknown> };
 
     expect(patch.spec).not.toHaveProperty('anthropic');
@@ -610,7 +644,7 @@ describe('the default mark on create', () => {
       form,
       planKeySecret(form),
       'kagent',
-      { markDefault: true },
+      { markDefault: true, directory },
     ) as { metadata: { annotations: Record<string, string> } };
 
     expect(manifest.metadata.annotations).toEqual({
@@ -824,6 +858,7 @@ describe('Vertex AI', () => {
         vertex({ insecureSkipTlsVerify: true, endpoint: 'https://ignored' }),
         plan,
         'kagent',
+        { directory },
       ).spec,
     ).toEqual({
       provider: 'AnthropicVertexAI',
@@ -840,6 +875,7 @@ describe('Vertex AI', () => {
         vertex({ provider: 'GeminiVertexAI', model: 'gemini-2.5-pro' }),
         plan,
         'kagent',
+        { directory },
       ).spec,
     ).toMatchObject({
       provider: 'GeminiVertexAI',
@@ -866,7 +902,7 @@ describe('Vertex AI', () => {
       isEdit: true,
       originalProvider: 'AnthropicVertexAI',
     });
-    const patch = buildModelConfigPatch(next, plan, original) as {
+    const patch = buildModelConfigPatch(next, plan, original, directory) as {
       spec: Record<string, unknown>;
     };
     expect(patch.spec).toMatchObject({
@@ -885,6 +921,7 @@ describe('Vertex AI', () => {
       vertex({ apiKey: '', location: 'global' }),
       { action: 'keep' },
       original,
+      directory,
     ) as { spec: Record<string, unknown> };
     // A merge patch: maxTokens, which the form does not manage, survives.
     expect(sameProvider.spec.anthropicVertexAI).toEqual({

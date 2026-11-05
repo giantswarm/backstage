@@ -39,7 +39,8 @@
     "@giantswarm/backstage-plugin-gs-common": "workspace:^",
     "@giantswarm/backstage-plugin-gs-node": "workspace:^",
     "express": "^5.0.0",
-    "express-promise-router": "^4.1.0"
+    "express-promise-router": "^4.1.0",
+    "undici": "^8.10.2"
   },
   "devDependencies": {
     "@backstage/backend-defaults": "backstage:^",

@@ -7,8 +7,8 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { MODEL_CONFIG_NAMESPACE } from '../lib/modelConfigs';
-import { organizationOf } from '../lib/tenants';
 import { useAgentManagerInfo } from './useAgentManager';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 
 export type ModelNamespaces = {
   /** Where the person may add a model, the platform first. */
@@ -28,8 +28,10 @@ export function useModelNamespaces(
 ): ModelNamespaces {
   const kubernetesApi = useApi(kubernetesApiRef);
   const { info, isLoading: isLoadingInfo } = useAgentManagerInfo(installation);
-  const organizations = (info?.namespaces?.managed ?? []).filter(
-    namespace => organizationOf(namespace) !== undefined,
+  // The organization namespaces among them, as agent-manager names them.
+  const { directory } = useOrganizationDirectory();
+  const organizations = (info?.namespaces?.managed ?? []).filter(namespace =>
+    directory.has(namespace),
   );
   const candidates = [MODEL_CONFIG_NAMESPACE, ...organizations];
 

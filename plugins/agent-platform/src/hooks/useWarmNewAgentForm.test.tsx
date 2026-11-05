@@ -19,6 +19,15 @@ import {
 import { useOwnerField } from '../components/NewAgentPage/hooks/useOwnerField';
 import { useWarmNewAgentForm } from './useWarmNewAgentForm';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../components/OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../components/OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 let mockInstallations: { name: string }[];
 let mockHome: string | undefined;
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({

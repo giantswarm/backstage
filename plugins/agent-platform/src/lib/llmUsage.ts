@@ -5,6 +5,10 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { deriveTokenRates, type TokenRates } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from './organizations';
 import { tenantKindOf, tenantOf, type TenantKind } from './tenants';
 import {
   usageDataStart,
@@ -520,7 +524,8 @@ function organizationKey(labels: Record<string, string>): string {
 /**
  * Roll the same three vectors up by the namespace the agents run in: the
  * organization's tenant, which is the cost centre (giantswarm/giantswarm#36698,
- * D8). An Organization's `org-<name>` namespace reads as the organization,
+ * D8). An organization namespace reads as the organization, by the labels
+ * agent-manager answered for it (`organizations`),
  * the `kagent` namespace as the platform (no organization), any other
  * namespace by its name, and traffic in no namespace as `unknownLabel`. No
  * join is needed: the namespace is the identity.
@@ -530,8 +535,16 @@ export function reduceByOrganization(options: {
   tokens: MimirMetricSample[] | undefined;
   calls: MimirMetricSample[] | undefined;
   unknownLabel: string;
+  /** Which namespace is which organization, as agent-manager answered. */
+  organizations?: OrganizationDirectory;
 }): LlmOrganizationRow[] {
-  const { cost, tokens, calls, unknownLabel } = options;
+  const {
+    cost,
+    tokens,
+    calls,
+    unknownLabel,
+    organizations: directory = EMPTY_ORGANIZATION_DIRECTORY,
+  } = options;
 
   const costByNamespace = sumBy(cost, organizationKey);
   const tokensByNamespace = sumBy(tokens, organizationKey);
@@ -550,7 +563,7 @@ export function reduceByOrganization(options: {
     rows.push({
       id: namespace || 'unattributed',
       namespace,
-      ...identifyOrganization(namespace, unknownLabel),
+      ...identifyOrganization(namespace, unknownLabel, directory),
       tokens: tokensByNamespace.get(namespace) ?? 0,
       calls: callsByNamespace.get(namespace) ?? 0,
       costUsd,
@@ -570,14 +583,15 @@ export function reduceByOrganization(options: {
 function identifyOrganization(
   namespace: string,
   unknownLabel: string,
+  directory: OrganizationDirectory,
 ): Pick<LlmOrganizationRow, 'kind' | 'label' | 'description'> {
   if (namespace === '') {
     return { kind: 'unattributed', label: unknownLabel };
   }
-  const kind = tenantKindOf(namespace);
+  const kind = tenantKindOf(namespace, directory);
   return {
     kind,
-    label: tenantOf(namespace),
+    label: tenantOf(namespace, directory),
     // The organization's name is not its namespace, so the namespace goes
     // under it; for the platform and another namespace the label says it.
     description: kind === 'organization' ? namespace : undefined,
@@ -1015,6 +1029,8 @@ export function buildLlmUsage(options: {
    * baseline for a change, and an unchecked one is no better.
    */
   dataBeforePreviousWindow?: boolean;
+  /** Which namespace is which organization, as agent-manager answered. */
+  organizations?: OrganizationDirectory;
 }): LlmUsage {
   const { cost, tokens, calls } = options;
 
@@ -1046,6 +1062,7 @@ export function buildLlmUsage(options: {
     tokens,
     calls,
     unknownLabel: options.unknownAgentLabel,
+    organizations: options.organizations,
   });
 
   const modelLabel = (labels: Record<string, string>) =>
