@@ -1,4 +1,4 @@
-import { Box, Link } from '@material-ui/core';
+import { Box, Link, makeStyles } from '@material-ui/core';
 import { NewTabHint } from './NewTabHint';
 
 type ExternalLinkProps = {
@@ -15,6 +15,17 @@ type ExternalLinkProps = {
   display?: 'flex' | 'inline-flex' | 'inline';
 };
 
+const useStyles = makeStyles({
+  // The design system's focus ring, as bui's `Link` draws it, so a keyboard
+  // user sees the same ring on this link as on the bui links around it.
+  root: {
+    '&:focus-visible': {
+      outline: '2px solid var(--bui-ring)',
+      outlineOffset: 2,
+    },
+  },
+});
+
 /**
  * A link that opens in a new tab: for a link leaving the app, and for any
  * link inside a form with input to keep, so following it leaves the form
@@ -26,8 +37,14 @@ export const ExternalLink = ({
   children,
   display = 'inline-flex',
 }: ExternalLinkProps) => {
+  const classes = useStyles();
   return (
-    <Link href={href} target="_blank" rel="noopener noreferrer">
+    <Link
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={classes.root}
+    >
       {/* An underline does not reach into an inline-flex box, so the box
           takes its link's own (the agent shell's solid one, MUI's on
           hover). */}
