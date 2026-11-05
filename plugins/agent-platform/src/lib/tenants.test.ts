@@ -1,8 +1,9 @@
 import {
+  defaultTenant,
   organizationOf,
+  ownerOf,
   tenantGroups,
   tenantInSentence,
-  tenantKindProblem,
   tenantOf,
 } from './tenants';
 
@@ -19,6 +20,21 @@ describe('tenantOf', () => {
     ['org-platform', 'platform'],
   ])('names namespace %s as %s', (namespace, tenant) => {
     expect(tenantOf(namespace)).toBe(tenant);
+  });
+});
+
+describe('ownerOf', () => {
+  it.each([
+    ['kagent', 'Platform'],
+    ['org-acme', 'acme'],
+    ['team-a', 'namespace team-a'],
+    ['org-', 'namespace org-'],
+    // An organization called platform never reads as the platform.
+    ['org-platform', 'organization platform'],
+    ['org-Platform', 'organization Platform'],
+    ['org-none', 'none'],
+  ])('names namespace %s as %s', (namespace, owner) => {
+    expect(ownerOf(namespace)).toBe(owner);
   });
 });
 
@@ -65,14 +81,13 @@ describe('tenantGroups', () => {
   });
 });
 
-describe('tenantKindProblem', () => {
+describe('defaultTenant', () => {
   it.each([
-    [['platform', 'organization'] as const, 'Choose Platform or Organization.'],
-    [
-      ['platform', 'organization', 'namespace'] as const,
-      'Choose Platform, Organization or Other namespace.',
-    ],
-  ])('asks for one of %j', (kinds, problem) => {
-    expect(tenantKindProblem(kinds)).toBe(problem);
+    [['org-acme', 'kagent', 'team-a'], 'kagent'],
+    [['team-a', 'org-beta', 'org-acme'], 'org-beta'],
+    [['team-b', 'team-a'], 'team-b'],
+    [[], undefined],
+  ])('picks the first offered of %j', (choices, expected) => {
+    expect(defaultTenant(choices)).toBe(expected);
   });
 });

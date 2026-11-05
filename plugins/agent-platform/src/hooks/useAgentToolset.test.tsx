@@ -104,6 +104,7 @@ describe('useAgentToolset', () => {
       },
       isReading: false,
       isUnreadable: false,
+      servers: [expect.any(RemoteMCPServer)],
     });
   });
 
@@ -119,6 +120,7 @@ describe('useAgentToolset', () => {
       isReading: true,
       isUnreadable: false,
     });
+    expect(result.current.servers).toBeUndefined();
   });
 
   // The window `isLoading` misses: an enabled query reports fetchStatus 'idle'
@@ -164,6 +166,7 @@ describe('useAgentToolset', () => {
       isReading: false,
       isUnreadable: true,
     });
+    expect(result.current.servers).toBeUndefined();
   });
 
   // `useResources` filters a RejectedError — an installation the person has
@@ -226,6 +229,7 @@ describe('useAgentToolset', () => {
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
+      servers: [],
     });
   });
 
@@ -241,6 +245,7 @@ describe('useAgentToolset', () => {
       declared: { state: 'implicit-full', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
+      servers: [expect.any(RemoteMCPServer)],
     });
   });
 

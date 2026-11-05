@@ -34,8 +34,8 @@ export const newMcpServerVerifyRouteRef = createSubRouteRef({
 // runs them: identity lives in the path, never in the query. `:server` is
 // the family name for a server family, the CR name for a singular server and
 // `muster` for muster's own tools; `:tool` is the full muster tool name. Two
-// segments, so a connector page never reads as the list's sub-tabs
-// (`infrastructure`, `internal`), which are one.
+// segments, so a connector page never reads as the list's retired sub-tabs
+// (`infrastructure`, `internal`, `families`), which are one.
 export const mcpServerRouteRef = createSubRouteRef({
   path: '/:installation/:server',
   parent: mcpServersRouteRef,

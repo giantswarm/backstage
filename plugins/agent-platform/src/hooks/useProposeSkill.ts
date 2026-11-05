@@ -25,6 +25,11 @@ export type ProposedSkill = {
   /** The SKILL.md body under the frontmatter. */
   instructions: string;
   /**
+   * Frontmatter `metadata.tags`: replaces the skill's tags (`[]` removes
+   * them). Absent keeps an edited skill's tags as they are.
+   */
+  tags?: string[];
+  /**
    * `update` rewrites an existing skill's SKILL.md (on
    * `update-skill/<directory as a slug>`; the repo name for a root skill)
    * instead of adding `<name>/SKILL.md`; absent means a new skill.

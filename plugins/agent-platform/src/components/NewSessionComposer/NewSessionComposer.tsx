@@ -21,7 +21,7 @@ import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import {
   ComposerFrame,
   matchesQuery,
-  SEARCH_MIN,
+  searchableIf,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -464,7 +464,7 @@ export function NewSessionComposer({
    * A dropdown with a single item is not a choice, so it is preselected and the
    * control disabled. It still *names* the agent, which is worth keeping: the dialog
    * on an agent's page is about that agent, and seeing it named confirms the target
-   * before you commit a paid turn to it. `InstallationSelect` makes the same call
+   * before you commit a paid turn to it. `useEnvironmentField` makes the same call
    * for a one-installation fleet.
    */
   const soleAgent = offered.length === 1 ? offered[0] : undefined;
@@ -589,7 +589,7 @@ export function NewSessionComposer({
   // installation too (`agentOptionLabel`): the group heading is only visible
   // in the open list, and the selected value must still tell an "SRE Agent"
   // on one installation from its namesake on another.
-  const isSearchable = searchable ?? listed.length > SEARCH_MIN;
+  const isSearchable = searchable ?? searchableIf(listed);
   const isSearching = searchText.trim() !== '';
   const installations = useMemo(
     () => [...new Set(listed.map(agent => agent.installation))],

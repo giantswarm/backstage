@@ -1,9 +1,14 @@
 import { Flex, Link, Text } from '@backstage/ui';
 import LinkIcon from '@material-ui/icons/Link';
 
+import { useMusterServers } from '../../hooks/useMusterServers';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { type DeclaredToolset, toolsetShape } from '../../lib/toolset';
-import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import {
+  describeReach,
+  reachedConnectors,
+  reachNeedsCatalogue,
+} from '../../lib/toolsetReach';
 
 export type AgentReachLineProps = {
   toolset?: DeclaredToolset;
@@ -24,7 +29,11 @@ export function AgentReachLine({
   toolsHref,
 }: AgentReachLineProps) {
   const groups = useReachCatalogue(installation, reachNeedsCatalogue(toolset));
-  const reach = describeReach(toolset, groups);
+  // Connectors by their display names: read only when a selector names one.
+  const { labels } = useMusterServers(
+    reachedConnectors(toolset).length > 0 ? installation : undefined,
+  );
+  const reach = describeReach(toolset, groups, labels);
   if (!reach) {
     return null;
   }

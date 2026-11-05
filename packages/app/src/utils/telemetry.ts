@@ -5,7 +5,6 @@ import {
   WORKSPACE_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import {
-  CONNECTOR_GROUPS,
   CONNECTOR_PAGE_TAB_PATHS,
   toolPageTabs,
   WORKFLOW_PAGE_TABS,
@@ -14,15 +13,6 @@ import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
-
-/**
- * The Connectors tab's sub-tabs below its own address (muster's
- * `CONNECTOR_GROUPS`, the default at the tab's own address left out), a fixed
- * set too.
- */
-const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
-  CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
-);
 
 /**
  * A workflow page's tabs below its own address (Overview, the index, left
@@ -473,7 +463,7 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // A connector's page, `/customize/connectors/<installation>/<server>`,
     // with its tab as the view: Tools, the index, by name. Two segments, so
-    // the list's sub-tabs (one) never reach it.
+    // the list's retired sub-tabs (one) never reach it.
     case /^\/customize\/connectors\/(?!new\/)[^/]+\/[^/]+(\/.*)?$/.test(
       pathname,
     ): {
@@ -634,20 +624,13 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
-    // The Connectors tab's sub-tabs below its own address add a `subview`; the
-    // tab's own address is its default sub-tab, the customer's connectors.
+    // The Connectors tab's retired sub-tabs (`/customize/connectors/<group>`)
+    // only redirect to its list, so they report as `/customize/connectors/*`.
     case pathname.startsWith('/customize/'): {
-      const [, tab, sub, ...deeper] = segments;
+      const [, tab] = segments;
       if (!CUSTOMIZE_TABS.has(tab)) {
         payload = { page: 'Customize' };
         route = '/customize/*';
-      } else if (
-        tab === 'connectors' &&
-        CONNECTOR_SUBTABS.has(sub) &&
-        deeper.length === 0
-      ) {
-        payload = { page: 'Customize', view: tab, subview: sub };
-        route = `/customize/connectors/${sub}`;
       } else {
         payload = { page: 'Customize', view: tab };
         route =

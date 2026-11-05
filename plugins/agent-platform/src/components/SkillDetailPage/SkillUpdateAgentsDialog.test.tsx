@@ -55,6 +55,7 @@ function row(technicalName: string, namespace = 'kagent'): AgentRow {
     name: technicalName,
     technicalName,
     description: '',
+    tags: [],
     skillCount: 1,
     readiness: 'ready',
   };
