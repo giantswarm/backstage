@@ -397,9 +397,15 @@ describe('useSaveModelConfig', () => {
       mockFetchResourceList.mockResolvedValue([listed('other')]);
       const { result } = setup();
 
+      let saved: Awaited<ReturnType<typeof result.current.save>> | undefined;
       await act(async () => {
-        await result.current.save({ installation: CLUSTER, values: values() });
+        saved = await result.current.save({
+          installation: CLUSTER,
+          values: values(),
+        });
       });
+
+      expect(saved).toEqual({ isDefault: true });
 
       expect(mockFetchResourceList).toHaveBeenCalledWith(
         expect.objectContaining({ cluster: CLUSTER, namespace: 'kagent' }),
@@ -407,6 +413,22 @@ describe('useSaveModelConfig', () => {
       expect(createdManifest().metadata.annotations).toEqual({
         [MARK]: 'true',
       });
+    });
+
+    it('leaves default-model-config the default while nothing is marked', async () => {
+      mockFetchResourceList.mockResolvedValue([listed('default-model-config')]);
+      const { result } = setup();
+
+      let saved: Awaited<ReturnType<typeof result.current.save>> | undefined;
+      await act(async () => {
+        saved = await result.current.save({
+          installation: CLUSTER,
+          values: values(),
+        });
+      });
+
+      expect(saved).toEqual({ isDefault: false });
+      expect(createdManifest().metadata.annotations).toBeUndefined();
     });
 
     it('leaves a namespace with a default as it is', async () => {

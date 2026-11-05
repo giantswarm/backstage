@@ -3,12 +3,16 @@
  * `agent-platform.giantswarm.io/is-default-model-config: "true"`. As with the
  * default IngressClass, none annotated or more than one is no default. Nothing
  * enforces a single mark, so every write here refuses to create a second one.
+ * Outside an Organization, a namespace without a mark falls back to the
+ * kagent chart's `default-model-config`, as agent-manager resolves it.
  *
  * Where agents are created, agent-manager's `list_model_configs` answers which
  * model is the default (`default`); the portal reads that field there rather
  * than resolving it again. The annotation itself is what the portal shows on a
  * model's own page and what it writes.
  */
+
+import { organizationOf } from './tenants';
 
 /** The marker annotation. */
 export const DEFAULT_MODEL_ANNOTATION =
@@ -42,15 +46,42 @@ export function markedIn(
 }
 
 /**
- * The default of `namespace`: the name of its one marked ModelConfig, or
- * undefined when none or several carry the marker.
+ * The kagent chart's own ModelConfig: the default of a namespace outside an
+ * Organization while no ModelConfig there carries the marker.
+ */
+export const FALLBACK_DEFAULT_MODEL_CONFIG = 'default-model-config';
+
+/**
+ * The models that claim the default of `namespace`: the marked ones, else
+ * `FALLBACK_DEFAULT_MODEL_CONFIG` outside an Organization when it exists.
+ * One claim is the default; none or several is no default.
+ */
+export function defaultClaimsIn(
+  modelConfigs: readonly MarkableModelConfig[],
+  namespace: string,
+): string[] {
+  const marked = markedIn(modelConfigs, namespace);
+  if (marked.length > 0 || organizationOf(namespace) !== undefined) {
+    return marked;
+  }
+  const hasFallback = modelConfigs.some(
+    mc =>
+      (mc.getNamespace() ?? '') === namespace &&
+      mc.getName() === FALLBACK_DEFAULT_MODEL_CONFIG,
+  );
+  return hasFallback ? [FALLBACK_DEFAULT_MODEL_CONFIG] : [];
+}
+
+/**
+ * The default of `namespace`: the name of its one claim
+ * (`defaultClaimsIn`), or undefined when there is none or several.
  */
 export function defaultIn(
   modelConfigs: readonly MarkableModelConfig[],
   namespace: string,
 ): string | undefined {
-  const marked = markedIn(modelConfigs, namespace);
-  return marked.length === 1 ? marked[0] : undefined;
+  const claims = defaultClaimsIn(modelConfigs, namespace);
+  return claims.length === 1 ? claims[0] : undefined;
 }
 
 /**
@@ -60,18 +91,16 @@ export function defaultIn(
 export function defaultModelIds(
   modelConfigs: readonly (MarkableModelConfig & { cluster: string })[],
 ): Set<string> {
-  const marked = new Map<string, string[]>();
+  const byNamespace = new Map<string, MarkableModelConfig[]>();
   for (const mc of modelConfigs) {
-    if (!isMarkedDefault(mc)) {
-      continue;
-    }
     const key = `${mc.cluster}/${mc.getNamespace() ?? ''}`;
-    marked.set(key, [...(marked.get(key) ?? []), mc.getName()]);
+    byNamespace.set(key, [...(byNamespace.get(key) ?? []), mc]);
   }
   const ids = new Set<string>();
-  for (const [key, names] of marked) {
-    if (names.length === 1) {
-      ids.add(`${key}/${names[0]}`);
+  for (const [key, models] of byNamespace) {
+    const name = defaultIn(models, models[0].getNamespace() ?? '');
+    if (name) {
+      ids.add(`${key}/${name}`);
     }
   }
   return ids;

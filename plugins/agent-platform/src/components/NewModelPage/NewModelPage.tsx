@@ -48,11 +48,14 @@ import {
   type ModelProvider,
   providersFor,
 } from '../../lib/modelConfigs';
-import { markedIn } from '../../lib/defaultModel';
+import { defaultClaimsIn, isMarkedDefault } from '../../lib/defaultModel';
 import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
-import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
+import {
+  type SaveModelConfigResult,
+  useSaveModelConfig,
+} from '../../hooks/useSaveModelConfig';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
@@ -199,11 +202,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     [installation, modelConfigsFor, namespace],
   );
   const marks = useMemo(
-    () => markedIn(namespaceModels, namespace),
+    () => defaultClaimsIn(namespaceModels, namespace),
     [namespaceModels, namespace],
   );
   const markOwner = namespaceModels
-    .filter(mc => marks.includes(mc.getName()))
+    .filter(isMarkedDefault)
     .map(mc => modelConfigOwner(mc))
     .find(Boolean);
   const [makeDefault, setMakeDefault] = useState(false);
@@ -286,8 +289,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return;
     }
     reset();
+    let saved: SaveModelConfigResult;
     try {
-      await save({
+      saved = await save({
         installation: installation!,
         values,
         original: edit?.modelConfig,
@@ -307,9 +311,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       navigate(edit.detailHref);
       return;
     }
-    const becameDefault = makeDefault || marks.length === 0;
     toastApi.post({
-      title: becameDefault
+      title: saved.isDefault
         ? `Model "${label}" connected as the default`
         : `Model "${label}" connected`,
       // The controller still has to accept it (it resolves the key Secret

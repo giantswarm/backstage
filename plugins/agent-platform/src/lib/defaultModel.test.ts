@@ -1,5 +1,6 @@
 import {
   DEFAULT_MODEL_ANNOTATION,
+  defaultClaimsIn,
   defaultIn,
   defaultMarkPatch,
   defaultModelIds,
@@ -42,10 +43,35 @@ describe('defaultIn', () => {
     ).toBeUndefined();
   });
 
-  it('gives default-model-config no special meaning', () => {
+  it('falls back to default-model-config outside an Organization while nothing is marked', () => {
+    expect(defaultIn([model('default-model-config')], 'kagent')).toBe(
+      'default-model-config',
+    );
     expect(
-      defaultIn([model('default-model-config')], 'kagent'),
+      defaultIn(
+        [model('default-model-config'), model('sonnet', { marked: true })],
+        'kagent',
+      ),
+    ).toBe('sonnet');
+    expect(
+      defaultIn(
+        [model('default-model-config', { namespace: 'org-acme' })],
+        'org-acme',
+      ),
     ).toBeUndefined();
+  });
+
+  it('claims with every mark, so several stay no default', () => {
+    expect(
+      defaultClaimsIn(
+        [
+          model('default-model-config'),
+          model('haiku', { marked: true }),
+          model('sonnet', { marked: true }),
+        ],
+        'kagent',
+      ),
+    ).toEqual(['haiku', 'sonnet']);
   });
 
   it('reads only "true" as a mark', () => {

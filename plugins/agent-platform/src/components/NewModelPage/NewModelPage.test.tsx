@@ -120,7 +120,7 @@ beforeEach(() => {
   mockModelConfigs = [];
   mockNamespaces = ['kagent'];
   mockSave.mockReset();
-  mockSave.mockResolvedValue(undefined);
+  mockSave.mockResolvedValue({ isDefault: false });
 });
 
 describe('NewModelPage', () => {
@@ -243,6 +243,22 @@ describe('NewModelPage', () => {
       makeDefault: true,
       expectedMarks: ['sonnet'],
     });
+  });
+
+  it('offers to take over the Helm-rendered default-model-config while nothing is marked', async () => {
+    mockModelConfigs = [
+      mockModel('kagent', 'default-model-config', { helm: true }),
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        'The default now is default-model-config. Agents that run on it keep it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: 'Make this the default model' }),
+    ).toBeEnabled();
   });
 
   it('cannot move a default Helm values set, and names the values key', async () => {

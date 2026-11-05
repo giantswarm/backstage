@@ -21,7 +21,7 @@ import {
   modelConfigOwner,
   planKeySecret,
 } from '../lib/modelConfigs';
-import { markedIn, planDefaultMove } from '../lib/defaultModel';
+import { defaultClaimsIn, planDefaultMove } from '../lib/defaultModel';
 import {
   invalidateModelReads,
   readNamespaceModelConfigs,
@@ -56,6 +56,11 @@ export type SaveModelConfigInput = {
   expectedMarks?: readonly string[];
 };
 
+export type SaveModelConfigResult = {
+  /** Whether the save put the default mark on the model. */
+  isDefault: boolean;
+};
+
 /**
  * Creates or updates a ModelConfig, including its key Secret.
  *
@@ -70,8 +75,9 @@ export type SaveModelConfigInput = {
  * referenced Secret into the ModelConfig's status, so the reference should
  * resolve on its first look.
  *
- * A create carries the namespace's default mark when no model there has it,
- * read fresh, or when `makeDefault` asks for it; then the mark comes off the
+ * A create carries the namespace's default mark when no model there claims
+ * the default (`defaultClaimsIn`), read fresh, or when `makeDefault` asks
+ * for it; then the mark comes off the
  * model that had it (`planDefaultMove`, which refuses a mark the form did not
  * show). An edit leaves the mark as it is.
  */
@@ -93,7 +99,7 @@ export function useSaveModelConfig() {
       namespace: requestedNamespace,
       makeDefault = false,
       expectedMarks = [],
-    }: SaveModelConfigInput) => {
+    }: SaveModelConfigInput): Promise<SaveModelConfigResult> => {
       const isEdit = Boolean(original);
       const namespace =
         original?.getNamespace() ??
@@ -122,7 +128,7 @@ export function useSaveModelConfig() {
           });
           markDefault = true;
         } else {
-          markDefault = markedIn(items, namespace).length === 0;
+          markDefault = defaultClaimsIn(items, namespace).length === 0;
         }
       }
       let createdSecret = false;
@@ -201,8 +207,9 @@ export function useSaveModelConfig() {
             target: values.name.trim(),
             previous: previousDefaults,
           });
-        } finally {
+        } catch (error) {
           await invalidateModelReads(queryClient, installation, namespace);
+          throw error;
         }
       }
 
@@ -230,21 +237,8 @@ export function useSaveModelConfig() {
 
       // Invalidate rather than editing the cache: the QueryClient is persisted
       // to localStorage, so a stale object could be rehydrated on reload.
-      const gvk = original?.getResolvedGVK() ?? ModelConfig.getGVK();
-      await Promise.all(
-        ['list', 'get'].map(operation =>
-          queryClient.invalidateQueries({
-            queryKey: [
-              'cluster',
-              installation,
-              operation,
-              gvk.group,
-              gvk.apiVersion,
-              gvk.plural,
-            ].filter(Boolean),
-          }),
-        ),
-      );
+      await invalidateModelReads(queryClient, installation, namespace);
+      return { isDefault: markDefault };
     },
   });
 

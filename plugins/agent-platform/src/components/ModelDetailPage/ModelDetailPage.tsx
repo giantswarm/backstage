@@ -46,9 +46,9 @@ import {
 import { modelStatus } from '../../lib/customize';
 import {
   DEFAULT_MODEL_VALUES_KEY,
+  defaultClaimsIn,
   defaultIn,
   listed,
-  markedIn,
 } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
@@ -141,7 +141,7 @@ function ManagedByValue({ owner }: { owner: string }) {
 /** Whether the model is its namespace's default, and how it would become it. */
 export type ModelDefaultState = {
   isDefault: boolean;
-  /** The other models marked as the default there. */
+  /** The other models that claim the default there (`defaultClaimsIn`). */
   otherMarks: string[];
   /** The owner inside a sentence (`tenantInSentence`). */
   where: string;
@@ -300,8 +300,9 @@ function ModelDetailPageContent() {
 
   const deletion = useDeleteModelConfig(modelConfig);
 
-  // The default as the annotation says it: this model as just read, the
-  // namespace's others as listed. Unknown until the list has answered.
+  // The default as the marks say it (`defaultClaimsIn`): this model as just
+  // read, the namespace's others as listed. Unknown until the list has
+  // answered.
   const toastApi = useApi(toastApiRef);
   const { modelConfigsFor, isLoading: isLoadingModels } = useModelConfigs();
   const defaultState = useMemo<ModelDefaultState | undefined>(() => {
@@ -316,7 +317,7 @@ function ModelDetailPageContent() {
     ];
     return {
       isDefault: defaultIn(namespaceModels, namespace) === name,
-      otherMarks: markedIn(namespaceModels, namespace).filter(
+      otherMarks: defaultClaimsIn(namespaceModels, namespace).filter(
         mark => mark !== name,
       ),
       where: tenantInSentence(namespace),
