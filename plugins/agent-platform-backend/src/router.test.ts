@@ -341,6 +341,25 @@ describe('createRouter', () => {
     });
   });
 
+  describe('kagent call metrics', () => {
+    it('creates one call duration histogram for every installation', async () => {
+      const histogram = { record: jest.fn() };
+      const metrics = { createHistogram: jest.fn(() => histogram) };
+      await createRouter({
+        logger: mockServices.logger.mock(),
+        config: mockServices.rootConfig({ data: twoInstallations }),
+        reachability: reachableEverywhere(),
+        metrics: metrics as unknown as RouterOptions['metrics'],
+      });
+
+      expect(metrics.createHistogram).toHaveBeenCalledTimes(1);
+      expect(metrics.createHistogram).toHaveBeenCalledWith(
+        'kagent.client.call.duration',
+        expect.objectContaining({ unit: 's' }),
+      );
+    });
+  });
+
   describe('Sentry noise', () => {
     // MiddlewareFactory.error() logs at `error` for any status >= 500, and the
     // root logger forwards warn/error to Sentry. So the expected outcome on a

@@ -29,3 +29,40 @@ Frontend equivalent: `SentryErrorReporter`
 reach Sentry.
 
 Triage of what arrives in Sentry: the `sentry-triage` skill.
+
+## Backend metrics
+
+With the Helm value `observability.metrics.enabled`, the backend exports
+OpenTelemetry metrics in the Prometheus format on its `metrics` port
+(`OTEL_METRICS_EXPORTER=prometheus`, started in
+`packages/backend/src/instrumentation.js`): the Node.js runtime's, such as
+`nodejs_eventloop_delay_max`, and the plugins' own.
+
+A backend plugin records its own through Backstage's metrics service,
+`metricsServiceRef` from `@backstage/backend-plugin-api/alpha`, which
+`createBackend()` registers by default: a thin wrapper around the OpenTelemetry
+meter, with the plugin as the instrumentation scope (the `otel_scope_name`
+label, `backstage-plugin-<pluginId>`). Create each instrument once, not per
+request, and keep its attributes low-cardinality: an installation, a method, an
+outcome, never a session id, an entity ref or a person. Without an exporter the
+instruments record nothing.
+
+| Metric (Prometheus)                                | Attributes                          | Recorded by                                                            |
+| -------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| `kagent_client_call_duration` (histogram, seconds) | `installation`, `method`, `outcome` | `agent-platform-backend`, `kagent/metrics.ts`: every unary kagent call |
+
+`kagent_client_call_duration` is scraped as `_bucket`, `_sum` and `_count`.
+`method` is the RPC as `Service/Method`, for example
+`SessionService/ListSessions`. `outcome` is `ok`; `timeout` for the portal's own
+deadline (10 s by default); `unreachable` when nothing answered at the socket
+level (kagent not deployed there); otherwise the Connect code in snake case:
+`unavailable` (a gateway's 5xx, or a connection whose keepalive ping went
+unanswered), `unauthenticated`, `permission_denied`, `not_found`, `internal`,
+`canceled` and so on. Each call on the wire is one observation, a retry
+included; streams (a turn's events, a task subscription) are not recorded. For
+example, the share of an installation's session lists that timed out:
+
+```promql
+sum(rate(kagent_client_call_duration_count{method="SessionService/ListSessions", outcome="timeout"}[5m])) by (installation)
+  / sum(rate(kagent_client_call_duration_count{method="SessionService/ListSessions"}[5m])) by (installation)
+```

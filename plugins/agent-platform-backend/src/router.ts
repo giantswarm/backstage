@@ -2,6 +2,7 @@ import {
   LoggerService,
   RootLifecycleService,
 } from '@backstage/backend-plugin-api';
+import type { MetricsService } from '@backstage/backend-plugin-api/alpha';
 import { Config } from '@backstage/config';
 import {
   AuthenticationError,
@@ -45,6 +46,8 @@ import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
 import { kagentErrorHandler } from './kagentErrorHandler';
+import { createKagentCallHistogram } from './kagent/metrics';
+import { createKagentTransport } from './kagent/transport';
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -73,6 +76,11 @@ export interface RouterOptions {
    * as for an installation without one.
    */
   mimir?: MimirQuerier;
+  /**
+   * The plugin's metrics, for the duration of every kagent call
+   * (`kagent/metrics.ts`). The plugin always passes it; tests leave it out.
+   */
+  metrics?: MetricsService;
 }
 
 /**
@@ -478,6 +486,12 @@ export async function createRouter(
     config.getOptionalNumber('agentPlatform.kagent.turnTimeoutMs') ??
     DEFAULT_KAGENT_TURN_TIMEOUT_MS;
 
+  // One histogram for every installation's calls, the installation an
+  // attribute: an instrument is created once per name.
+  const callDuration = options.metrics
+    ? createKagentCallHistogram(options.metrics)
+    : undefined;
+
   // One client per installation. When a client is injected (tests), reuse it
   // for every installation, synthesizing one if none is configured so routing
   // still resolves.
@@ -499,7 +513,7 @@ export async function createRouter(
         new KagentClient(
           installation,
           logger,
-          undefined,
+          createKagentTransport(installation, { callDuration }),
           timeoutMs,
           turnTimeoutMs,
         ),

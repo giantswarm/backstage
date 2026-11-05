@@ -14,3 +14,14 @@ every kagent call, not only the session list. A session list refused with
 another 4xx is still logged at `warn`, now as
 `kagent SessionService/ListSessions failed with status <status>`, without the
 installation in the message. The error text the person sees is unchanged.
+
+The kagent transport now pings its HTTP/2 connection every 5 s, open or idle,
+and takes it for dead when a ping goes unanswered for 2 s. A connection that
+died silently is replaced within 7 s, before the 10 s request timeout, rather
+than holding every call on it until the timeout. `@connectrpc/connect` and
+`@connectrpc/connect-node` move to 2.3.0, which no longer drops the session's
+error listener when a dead session is replaced.
+
+A new histogram, `kagent_client_call_duration` (seconds), records every unary
+kagent call with the attributes `installation`, `method` and `outcome`; see
+`docs/logging.md`, "Backend metrics".

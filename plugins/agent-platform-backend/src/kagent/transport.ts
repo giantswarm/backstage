@@ -3,6 +3,10 @@ import {
   createGrpcTransport,
   type Http2SessionManager,
 } from '@connectrpc/connect-node';
+import {
+  kagentCallDurationInterceptor,
+  type KagentCallHistogram,
+} from './metrics';
 
 /** One installation's kagent controller. */
 export interface KagentInstallationConfig {
@@ -54,6 +58,46 @@ export function isAbsoluteHttpUrl(url: string): boolean {
 }
 
 /**
+ * How often an HTTP/2 connection to a controller is pinged, open or idle,
+ * unless a response arrived in the meantime. Also the age past which an idle
+ * connection is pinged before a request is sent on it.
+ */
+export const KAGENT_PING_INTERVAL_MS = 5_000;
+
+/**
+ * How long a ping may go unanswered before the connection is taken for dead:
+ * destroyed, its streams failed as `Unavailable`, and a new one opened for the
+ * next call. Generous for a round trip to any installation.
+ */
+export const KAGENT_PING_TIMEOUT_MS = 2_000;
+
+/**
+ * The keepalive of a transport's HTTP/2 connection.
+ *
+ * Without it (connect-node's default, no ping at all) a connection that dies
+ * silently, with no FIN or RST reaching this process (a load balancer or NAT
+ * dropping the flow, a gateway pod gone with its node), is never noticed.
+ * Every call on it waits out its own deadline, and since the calls keep the
+ * connection from going idle, nothing replaces it: the installation's reads
+ * time out for as long as people keep reading it (giantswarm/giantswarm#39003,
+ * where kagent and the gateways answered in milliseconds throughout).
+ *
+ * With it, a dead connection is found within interval + timeout, 7 s, which is
+ * under the 10 s `DEFAULT_KAGENT_TIMEOUT_MS` of the call waiting on it: that
+ * call fails as `Unavailable`, and the next one opens a new connection rather
+ * than timing out on the same one. An idle connection is pinged too, which
+ * finds it dead before a person's request does and keeps a flow alive through
+ * whatever drops idle ones. A ping every 5 s on a handful of connections is
+ * nothing to the peer; a peer that refused it (`too_many_pings`) would have
+ * connect-node double the interval.
+ */
+const KEEPALIVE = {
+  pingIntervalMs: KAGENT_PING_INTERVAL_MS,
+  pingTimeoutMs: KAGENT_PING_TIMEOUT_MS,
+  pingIdleConnection: true,
+} as const;
+
+/**
  * The native gRPC transport toward one installation's controller.
  *
  * **HTTP/2 end to end**, deliberately: the controller serves gRPC, gRPC-Web and
@@ -65,18 +109,30 @@ export function isAbsoluteHttpUrl(url: string): boolean {
  * plaintext h2c, which only an in-cluster Service URL should ever be.
  *
  * One transport per installation, shared by every call: connect-node keeps the
- * HTTP/2 session alive between calls and reopens it when it drops. A caller
- * that wants to close the session itself (the reachability probe, one call
- * every few minutes) passes its own `sessionManager` and aborts it afterwards.
+ * HTTP/2 session alive between calls, pings it ({@link KEEPALIVE}) and reopens
+ * it when it drops. A caller that wants to close the session itself (the
+ * reachability probe, one call every few minutes) passes its own
+ * `sessionManager` and aborts it afterwards; the session manager carries the
+ * ping options, so such a session is not pinged unless its manager says so.
  */
 export function createKagentTransport(
   installation: KagentInstallationConfig,
-  options: { sessionManager?: Http2SessionManager } = {},
+  options: {
+    sessionManager?: Http2SessionManager;
+    /** Records the duration of every unary call (`kagent/metrics.ts`). */
+    callDuration?: KagentCallHistogram;
+  } = {},
 ): Transport {
   // connect-node's gRPC transport is HTTP/2 only — gRPC has no HTTP/1.1 form —
   // so nothing here can fall back to gRPC-Web.
   return createGrpcTransport({
     baseUrl: installation.apiBaseUrl,
+    ...KEEPALIVE,
     ...(options.sessionManager && { sessionManager: options.sessionManager }),
+    ...(options.callDuration && {
+      interceptors: [
+        kagentCallDurationInterceptor(installation.name, options.callDuration),
+      ],
+    }),
   });
 }
