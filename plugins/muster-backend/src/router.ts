@@ -23,6 +23,7 @@ import {
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   MusterInstallationConfig,
@@ -1144,11 +1145,14 @@ export async function createRouter(
           reason: unauthorized.reason,
           ...(unauthorized.server ? { server: unauthorized.server } : {}),
         },
-        request: { method: req.method, url: req.url },
+        request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
     },
   );
+
+  // Last, so that the handlers above see the error first.
+  router.use(reportedErrorHandler());
 
   return router;
 }

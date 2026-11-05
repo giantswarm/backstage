@@ -63,7 +63,7 @@ export const AgentsRouter = () => {
           <Route
             path="new"
             element={
-              <NewAgentStep>
+              <NewAgentStep details>
                 <NewAgentPage />
               </NewAgentStep>
             }

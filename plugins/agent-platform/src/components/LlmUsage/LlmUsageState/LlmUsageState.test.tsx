@@ -21,4 +21,45 @@ describe('LlmUsageState', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  describe('when a query failed', () => {
+    const errorView = (error: Error): LlmUsageViewModel => ({
+      state: 'error',
+      usage: undefined,
+      installation: 'alpha',
+      isResolvedFromAll: false,
+      notReachable: [],
+      error,
+    });
+
+    it('says older data is temporarily unavailable when Mimir said so', () => {
+      render(
+        <LlmUsageState
+          view={errorView(
+            Object.assign(new Error('Mimir could not answer'), {
+              reason: 'older_data_unavailable',
+            }),
+          )}
+        />,
+      );
+
+      expect(
+        screen.getByText('Older data is temporarily unavailable'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Could not read 1 environment/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('names the environment it could not read otherwise', () => {
+      render(<LlmUsageState view={errorView(new Error('boom'))} />);
+
+      expect(
+        screen.getByText(/Could not read 1 environment/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Older data is temporarily unavailable'),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

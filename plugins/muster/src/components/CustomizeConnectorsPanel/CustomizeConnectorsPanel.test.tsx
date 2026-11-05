@@ -401,7 +401,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('says "Signing in…" while the sign-in page is open, the wait in a tooltip', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
     } as unknown as Window);
     api.signInServer.mockResolvedValueOnce({
       status: 'auth_required',
@@ -440,6 +440,68 @@ describe('CustomizeConnectorsPanel', () => {
     expect(tooltip).toHaveTextContent('Waiting for you to finish signing in…');
     expect(tooltip).toHaveTextContent(/Dynamic Client Registration/);
     expect(mockNavigate).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  /**
+   * muster can take a while to answer the sign-in, and the tab the click
+   * opened has nothing to show until then. A person who closes it is back on
+   * this page, where the sign-in must be on offer at once -- not behind the
+   * Sign in button's spinner until muster answers.
+   */
+  it('offers the sign-in page here once the blank tab is closed before muster answered', async () => {
+    const tab = {
+      closed: false,
+      opener: window,
+      close: jest.fn(),
+      location: { href: 'about:blank' },
+    };
+    const open = jest
+      .spyOn(window, 'open')
+      .mockReturnValue(tab as unknown as Window);
+    let answer: (value: unknown) => void = () => {};
+    api.signInServer.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          answer = resolve;
+        }) as never,
+    );
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+    await waitFor(() => expect(api.signInServer).toHaveBeenCalled());
+
+    tab.closed = true;
+
+    expect(
+      await within(github).findByRole(
+        'button',
+        { name: 'Opening…' },
+        { timeout: 3_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(within(github).getByText('Signing in…')).toBeInTheDocument();
+
+    await act(async () =>
+      answer({
+        status: 'auth_required',
+        authUrl: 'https://github.example.test/login/oauth/authorize',
+        message: 'Sign in to github.',
+      }),
+    );
+
+    const link = await within(github).findByRole('link', {
+      name: /Open sign-in page/,
+    });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://github.example.test/login/oauth/authorize',
+    );
+    expect(tab.location.href).toBe('about:blank');
     open.mockRestore();
   });
 
@@ -482,7 +544,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('names an error during a sign-in over "Signing in…": a refused reopen', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
     } as unknown as Window);
     const user = userEvent.setup();
     await renderPanel();
@@ -611,7 +673,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('says "Status unavailable", not a failed sign-in, when the status cannot be read during one', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
       close: jest.fn(),
     } as unknown as Window);
     const user = userEvent.setup();
@@ -1294,7 +1356,7 @@ describe('CustomizeConnectorsPanel', () => {
     it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
       const open = jest.spyOn(window, 'open').mockReturnValue({
         closed: false,
-        location: { href: '' },
+        location: { href: 'about:blank' },
       } as unknown as Window);
       await renderPanel();
 
