@@ -8,6 +8,7 @@ export type {
 export { useConnectorListPaths } from './useConnectorListPaths';
 export {
   toolArgumentsQuery,
+  useToolArgumentSupport,
   useToolTakesArgument,
 } from './useToolTakesArgument';
 export type { ConnectorListPaths } from './useConnectorListPaths';

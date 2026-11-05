@@ -28,6 +28,7 @@ import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
 import type { EgressRefusal } from '../../lib/egressRefusals';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   formatBytes,
@@ -454,7 +455,11 @@ describe('SessionDetailPage', () => {
     mockPricedRate = undefined;
     mockEgressRefusals = [];
     mockUseEgressRemedy.mockReset();
-    mockUseEgressRemedy.mockReturnValue({ kind: 'pending' });
+    // As the hook does before it reads the agent: the `tcp` remedy needs
+    // none of it, the rest wait.
+    mockUseEgressRemedy.mockReturnValue((scheme: string) =>
+      remedyNeedsAgent(scheme) ? { kind: 'pending' } : { kind: 'tcp' },
+    );
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
@@ -733,6 +738,31 @@ describe('SessionDetailPage', () => {
     expect(screen.queryByTestId('timeline-egress-refused')).toBeNull();
   });
 
+  it('reads no remedy for raw TCP refusals alone, which need none of the agent', async () => {
+    mockEgressRefusals = [
+      {
+        scheme: 'tcp',
+        host: 'github.com',
+        port: 22,
+        at: new Date().toISOString(),
+        count: 1,
+      },
+    ];
+
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If github.com offers HTTPS, have Issue tracker use that instead.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).toBeNull();
+  });
+
   it('shows the remedy for the session’s agent under its egress refusal', async () => {
     mockEgressRefusals = [
       {
@@ -743,10 +773,10 @@ describe('SessionDetailPage', () => {
         count: 2,
       },
     ];
-    mockUseEgressRemedy.mockReturnValue({
+    mockUseEgressRemedy.mockReturnValue(() => ({
       kind: 'platform',
       runtime: 'Claude Code',
-    });
+    }));
 
     await render();
 

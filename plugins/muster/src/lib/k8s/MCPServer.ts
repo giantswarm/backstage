@@ -208,6 +208,8 @@ export interface MCPServerAuthorizationServer {
   authorizationEndpoint?: string;
   tokenEndpoint?: string;
   expectedIssuer?: string;
+  /** RFC 7009 token revocation endpoint; muster discovers it when unset. */
+  revocationEndpoint?: string;
   clientCredentialsSecretRef?: MCPServerClientCredentialsSecretRef;
   grantScope?: 'session' | 'subject';
 }

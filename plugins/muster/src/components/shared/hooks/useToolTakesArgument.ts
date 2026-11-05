@@ -25,20 +25,34 @@ export function toolArgumentsQuery(
 
 /**
  * Whether the installation's muster `tool` takes `argument` (`displayName`
- * from v5.43.0, `tags` later). False until its schema is read, and when it
+ * from v5.43.0, `tags` and `clientCredentials` later). False until its schema is read, and when it
  * cannot be read: an older muster refuses an argument it does not know.
  */
 export function useToolTakesArgument(
   tool: string,
   installation: string | undefined,
   argument: Parameters<typeof takesArgument>[1],
-  { enabled = true }: { enabled?: boolean } = {},
+  options: { enabled?: boolean } = {},
 ): boolean {
+  return useToolArgumentSupport(tool, installation, argument, options) ?? false;
+}
+
+/**
+ * {@link useToolTakesArgument} that tells "not yet known" apart: undefined
+ * while the schema is read or when it cannot be, for a page that hides a
+ * control only once muster says no (the save asks again, and says so).
+ */
+export function useToolArgumentSupport(
+  tool: string,
+  installation: string | undefined,
+  argument: Parameters<typeof takesArgument>[1],
+  { enabled = true }: { enabled?: boolean } = {},
+): boolean | undefined {
   const musterApi = useApi(musterApiRef);
   const { data } = useQuery({
     ...toolArgumentsQuery(musterApi, tool, installation),
     enabled: enabled && Boolean(installation),
     select: detail => takesArgument(detail.inputSchema, argument),
   });
-  return data ?? false;
+  return data;
 }
