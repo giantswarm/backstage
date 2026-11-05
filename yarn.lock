@@ -10237,6 +10237,8 @@ __metadata:
     "@backstage/config-loader": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/integration": "backstage:^"
+    "@backstage/plugin-search-backend-module-pg": "backstage:^"
+    "@backstage/plugin-search-backend-node": "backstage:^"
     knex: "npm:^3.1.0"
     undici: "npm:^8.10.2"
     winston: "npm:^3.17.0"

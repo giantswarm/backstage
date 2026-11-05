@@ -41,8 +41,8 @@ const mockCreate = {
 jest.mock('../../hooks/useToolchainWrites', () => ({
   useCreateToolchain: () => mockCreate,
 }));
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: (props: { content: string }) => <pre>{props.content}</pre>,
+jest.mock('../FileView', () => ({
+  FileView: (props: { content: string }) => <pre>{props.content}</pre>,
 }));
 
 function renderPage() {

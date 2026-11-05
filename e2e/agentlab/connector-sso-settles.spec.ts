@@ -14,7 +14,7 @@ test('Connectors: a company-login connector settles to Connected without a reloa
 }) => {
   await open(
     admin,
-    `/customize/connectors/internal?installation=${lab.installation}`,
+    `/customize/connectors?installation=${lab.installation}&tags=agent-platform`,
   );
   await connectToMuster(admin, admin.getByRole('grid'));
 

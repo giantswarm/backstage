@@ -11,7 +11,11 @@ import {
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { StatusDot, TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PinIcon,
+  StatusDot,
+  TOUCH_MEDIA,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -25,7 +29,6 @@ import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
-import { PinIcon } from '../PinIcon';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';

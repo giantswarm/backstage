@@ -16,7 +16,11 @@ test('a person with only namespaced agent-platform:user grants sees the connecto
   signInAs,
 }) => {
   const dev = await signInAs(lab.users.dev);
-  await open(dev, `/customize/connectors/internal${scope}`, lab.users.dev);
+  await open(
+    dev,
+    `/customize/connectors${scope}&tags=agent-platform`,
+    lab.users.dev,
+  );
   await connectToMuster(dev, dev.getByRole('grid'));
   await expect(
     dev.getByRole('row', { name: /^muster( |$)/ }),

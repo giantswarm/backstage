@@ -2,12 +2,14 @@ import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
 import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import SecurityIcon from '@material-ui/icons/Security';
 import {
   Agent,
   AgentSkill,
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
   DateComponent,
@@ -17,6 +19,8 @@ import {
   PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
+  TagList,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -38,7 +42,12 @@ import {
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { bindsGateway } from '../../lib/toolset';
-import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import {
+  describeReach,
+  reachedConnectors,
+  reachNeedsCatalogue,
+} from '../../lib/toolsetReach';
+import { useMusterServers } from '../../hooks/useMusterServers';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
@@ -53,8 +62,11 @@ import {
   defaultWorkspaceName,
 } from '../../lib/defaultWorkspace';
 import {
+  connectorIcons,
   describeToolScope,
+  directServerName,
   isGatewayServerBinding,
+  mcpBindingId,
   skillLabel,
 } from './helpers';
 
@@ -96,6 +108,35 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+  },
+  logos: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  logo: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
+  // The approval request's shield, small on the logo's corner.
+  approvalMark: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    backgroundColor: 'var(--bui-warning-bg-subdued, #fff3e8)',
+    color: 'var(--bui-warning-fg-subdued, #7d3900)',
+    boxShadow: '0 0 0 2px var(--bui-bg-surface-1, #fff)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    '& svg': { width: 11, height: 11 },
   },
 }));
 
@@ -251,11 +292,22 @@ function SkillsSection({
   );
 }
 
+/** One logo in the Connectors section's row. */
+type ConnectorMark = {
+  key: string;
+  name: string;
+  icon?: string;
+  detail?: string;
+  /** The binding pauses for the person's approval before every call. */
+  approval?: boolean;
+};
+
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares; the exact tools are the Tools tab.
- * Servers bound directly rather than through the gateway, and agents it calls
- * as tools, follow by name.
+ * read from the toolset it declares; the exact tools are the Tools tab. The
+ * connectors it names, and the servers it binds directly rather than through
+ * the gateway, follow as a row of logos, each named on hover or focus; agents
+ * it calls as tools follow by name.
  */
 function ConnectorsSection({
   agent,
@@ -265,7 +317,7 @@ function ConnectorsSection({
   isFailing: boolean;
 }) {
   const classes = useStyles();
-  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  const { declared, isReading, isUnreadable, servers } = useAgentToolset(agent);
   const groups = useReachCatalogue(
     agent.cluster,
     reachNeedsCatalogue(declared),
@@ -274,7 +326,36 @@ function ConnectorsSection({
     .getMcpBindings()
     .filter(binding => !isGatewayServerBinding(agent, binding));
   const hasGateway = bindsGateway(agent);
+  const reached = hasGateway ? reachedConnectors(declared, groups) : [];
+  // Labels and icons: read only when the toolset names a connector, as the
+  // composer's reach line does.
+  const muster = useMusterServers(
+    reached.length > 0 ? agent.cluster : undefined,
+  );
   const subAgents = agent.getSubAgentBindings();
+
+  const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
+
+  const marks: ConnectorMark[] = [
+    ...reached.map(name => ({
+      key: `server:${name}`,
+      name: muster.labels.get(name) ?? name,
+      icon: icons.get(name),
+    })),
+    ...direct.map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      name: directServerName(binding, servers),
+      detail: `${describeToolScope(binding)}${
+        binding.requireApproval ? ' · asks you before every call' : ''
+      }`,
+      approval: Boolean(binding.requireApproval),
+    })),
+  ];
+  const asksFirst = [
+    ...new Set(marks.filter(mark => mark.approval).map(mark => mark.name)),
+  ];
 
   let reach: string;
   if (!hasGateway) {
@@ -286,7 +367,7 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared, groups) ??
+      describeReach(declared, groups, muster.labels) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
@@ -295,21 +376,36 @@ function ConnectorsSection({
   return (
     <PageSection title="Connectors">
       <Text variant="body-medium">{reach}</Text>
-      {(direct.length > 0 || subAgents.length > 0) && (
-        <div className={classes.rows}>
-          {direct.map((binding, index) => (
-            <Flex
-              key={`${binding.server.name}#${index}`}
-              direction="column"
-              gap="1"
-            >
-              <Text variant="body-medium">{binding.server.name}</Text>
-              <Text variant="body-small" color="secondary">
-                {describeToolScope(binding)}
-                {binding.requireApproval ? ' · asks you before every call' : ''}
-              </Text>
-            </Flex>
+      {marks.length > 0 && (
+        <ul className={classes.logos} aria-label="Connectors">
+          {marks.map(mark => (
+            <li key={mark.key} className={classes.logo}>
+              <ConnectorLogo
+                name={mark.name}
+                icon={mark.icon}
+                detail={mark.detail}
+                tooltip
+              />
+              {mark.approval && (
+                <span
+                  className={classes.approvalMark}
+                  data-testid="approval-mark"
+                  aria-hidden
+                >
+                  <SecurityIcon />
+                </span>
+              )}
+            </li>
           ))}
+        </ul>
+      )}
+      {asksFirst.length > 0 && (
+        <Text variant="body-small" color="secondary">
+          Asks before every call: {asksFirst.join(', ')}
+        </Text>
+      )}
+      {subAgents.length > 0 && (
+        <div className={classes.rows}>
           {subAgents.map(ref => (
             <Flex
               key={`agent/${ref.name}/${ref.templateRef.name}`}
@@ -410,6 +506,8 @@ export function AgentPlainOverview({
   const classes = useStyles();
   const failure = agent.getFailure();
   const description = agent.getDescription();
+  const tags = agent.getTags();
+  const { agents: agentsPath } = useCustomizePaths();
 
   return (
     <div className={classes.sections}>
@@ -423,6 +521,10 @@ export function AgentPlainOverview({
             No description yet.
           </Text>
         )}
+        <TagList
+          tags={tags}
+          getHref={agentsPath ? tag => tagHref(agentsPath, tag) : undefined}
+        />
       </PageSection>
 
       <InstructionsSection
@@ -604,7 +706,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to, who created it and since when.
+ * the organization it belongs to, who created it and how long ago.
  */
 export function agentFacts({
   agent,
@@ -675,7 +777,7 @@ export function agentFacts({
       label: 'Created',
       value: (
         <Text variant="body-small">
-          <DateComponent value={created} />
+          <DateComponent value={created} relative />
         </Text>
       ),
     });

@@ -1,0 +1,21 @@
+export {
+  TAGS_ANNOTATION,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  MAX_TAGS_PROBLEM,
+  exceedsMaxTags,
+  TAG_PATTERN,
+  normalizeTag,
+  tagProblem,
+  parseTags,
+  draftProblem,
+  splitDraft,
+  addTags,
+  commitTagDraft,
+  tagsFieldUpdaters,
+  sameTags,
+  tagCounts,
+  suggestTags,
+  similarExistingTag,
+} from './tags';
+export type { TagsFieldUpdaters } from './tags';
