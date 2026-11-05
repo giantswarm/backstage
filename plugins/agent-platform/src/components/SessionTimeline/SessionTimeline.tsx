@@ -26,7 +26,7 @@ import {
   segmentTurn,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
-import type { EgressRemedy } from '../../lib/egressRemedy';
+import type { EgressRemedyFor } from '../../lib/egressRemedy';
 
 const useStyles = makeStyles(theme => ({
   turnMarker: {
@@ -175,8 +175,11 @@ export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
-  /** What an egress refusal's alert offers for this agent (`useEgressRemedy`). */
-  egressRemedy?: EgressRemedy;
+  /**
+   * What an egress refusal's alert offers for this agent, by the refused
+   * destination's scheme (`useEgressRemedy`).
+   */
+  egressRemedyFor?: EgressRemedyFor;
   /** The agent's avatar, shown where its side of a turn begins. */
   agentAvatarUrl?: string;
   /**
@@ -240,7 +243,7 @@ export type SessionTimelineProps = {
 export function SessionTimeline({
   timeline,
   agentName,
-  egressRemedy,
+  egressRemedyFor,
   agentAvatarUrl,
   isAgentWorking = false,
   streamLost,
@@ -402,7 +405,7 @@ export function SessionTimeline({
   const firstUserMessageId = firstMessageCaption
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
-  const egressSettings = { agentName, remedy: egressRemedy };
+  const egressSettings = { agentName, remedyFor: egressRemedyFor };
   const renderEntry = (item: TimelineItem, technical = false) => {
     const messageKey =
       item.kind === 'user-message' ? (item.messageId ?? item.id) : undefined;
