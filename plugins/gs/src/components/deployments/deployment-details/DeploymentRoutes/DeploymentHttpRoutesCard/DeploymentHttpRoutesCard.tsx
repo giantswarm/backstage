@@ -1,7 +1,9 @@
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  MetricsUnavailableAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Cell, CellText, ColumnConfig, Link, Table } from '@backstage/ui';
 import { Typography, makeStyles } from '@material-ui/core';
-import Alert from '@material-ui/lab/Alert';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { findTargetClusterName } from '../../../utils/findTargetCluster';
 import { getWorkloadNamespace } from '../../../utils/getWorkloadIdentifiers';
@@ -92,7 +94,7 @@ export function DeploymentHttpRoutesCard() {
   if (error) {
     return (
       <InfoCard title={title}>
-        <Alert severity="warning">Metrics unavailable</Alert>
+        <MetricsUnavailableAlert error={error} />
       </InfoCard>
     );
   }
