@@ -128,6 +128,22 @@ describe('<ClusterGatewaysContent />', () => {
     expect(screen.getByText('broken')).toBeInTheDocument();
   });
 
+  it('says no route matches, not that the cluster has none', async () => {
+    await render([healthy]);
+    fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+      target: { value: 'nothing-matches' },
+    });
+    expect(
+      await screen.findByText('No HTTPRoutes match the search.'),
+    ).toBeInTheDocument();
+    // Clearing the field updates its value before the debounced filter.
+    fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+      target: { value: '' },
+    });
+    expect(screen.queryByText(/No HTTPRoutes found/)).not.toBeInTheDocument();
+    expect(await screen.findByText('healthy')).toBeInTheDocument();
+  });
+
   it('lists broken routes first', async () => {
     await render([healthy, broken]);
     const rows = screen
