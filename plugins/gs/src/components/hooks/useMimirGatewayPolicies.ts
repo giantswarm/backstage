@@ -25,8 +25,9 @@ const ancestorAcceptedNames = policyMetrics.map(m => m.ancestorAccepted);
  * targets and the Accepted condition per ancestor.
  *
  * The policy list (`created`, one series per policy) is required; a failure
- * there is the hook's `error`. Targets and status only enrich it: if their queries fail, status is reported as not
- * available instead of blocking the view.
+ * there is the hook's `error`. Targets and status only enrich it: if their
+ * queries fail, status is reported as not available instead of blocking the
+ * view.
  */
 export function useMimirGatewayPolicies(options: {
   installationName: string;

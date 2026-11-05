@@ -305,12 +305,13 @@ export const GatewayApiHttprouteStatusParentResolvedRefs = {
 
 /**
  * Envoy Gateway policy metrics. `created` has one series per policy on every
- * observability-bundle. `info` only reads the deprecated `spec.targetRef`, and
- * a policy without it has no `info` series. `target_info` (from
- * `spec.targetRefs`) and `status_ancestor_accepted` were added in 3.6.0
- * (giantswarm/observability-bundle#467); `spec.targetSelectors` is not
- * exported. Envoy Gateway writes no ancestor status when a policy's target
- * doesn't exist, isn't managed by it, or before reconciling.
+ * observability-bundle with the Envoy Gateway config (since #366). `info` only
+ * reads the deprecated `spec.targetRef`, and a policy without it has no `info`
+ * series. `target_info` (from `spec.targetRefs`) and `status_ancestor_accepted`
+ * were added in 3.6.0 (giantswarm/observability-bundle#467);
+ * `spec.targetSelectors` is not exported. Envoy Gateway writes no ancestor
+ * status when a policy's target doesn't exist, isn't managed by it, or before
+ * reconciling.
  */
 
 export const EnvoyGatewaySecurityPolicyCreated = {

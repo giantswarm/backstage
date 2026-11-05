@@ -145,11 +145,7 @@ export function toCondition(
   const value = finiteValue(sample);
   if (value === undefined) return undefined;
   const reason = sample.metric.reason || undefined;
-  if (value === 1) return { status: 'true', reason };
-  // The gauge is 0 for False and for Unknown alike. Gateway API reports an
-  // Unknown condition that is still being reconciled with reason Pending.
-  if (reason === 'Pending') return { status: 'not-reported' };
-  return { status: 'false', reason };
+  return value === 1 ? { status: 'true', reason } : { status: 'false', reason };
 }
 
 /**

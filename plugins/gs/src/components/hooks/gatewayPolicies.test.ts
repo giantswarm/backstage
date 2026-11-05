@@ -240,20 +240,27 @@ describe('buildGatewayPolicies', () => {
     expect(policies.map(p => p.id)).toEqual(['SecurityPolicy/team-a/auth']);
   });
 
-  it('shows a pending ancestor as not reported, not as rejected', () => {
+  it('reports a failed targetRef query as a load failure', () => {
+    const [policy] = buildGatewayPolicies(inputs({ info: undefined }));
+    expect(policy.targetsLoaded).toBe(false);
+    expect(policy.status).toEqual({
+      status: 'not-available',
+      cause: 'load-failed',
+    });
+  });
+
+  it('sorts ancestors field by field', () => {
+    const named = (name: string) =>
+      sample(EnvoyGatewaySecurityPolicyStatusAncestorAccepted.name, {
+        ...auth,
+        ...ancestor,
+        ancestor_name: name,
+        reason: 'Accepted',
+      });
     const [policy] = buildGatewayPolicies(
-      inputs({
-        ancestorAccepted: [
-          sample(
-            EnvoyGatewaySecurityPolicyStatusAncestorAccepted.name,
-            { ...auth, ...ancestor, reason: 'Pending' },
-            '0',
-          ),
-        ],
-      }),
+      inputs({ ancestorAccepted: [named('gw-2'), named('gw')] }),
     );
-    expect(policy.ancestors[0].accepted).toEqual({ status: 'not-reported' });
-    expect(isPolicyBroken(policy)).toBe(false);
+    expect(policy.ancestors.map(a => a.name)).toEqual(['gw', 'gw-2']);
   });
 
   it('keeps ancestors that differ only by port apart, in a stable order', () => {

@@ -135,11 +135,23 @@ function policyKey(kind: PolicyKind, namespace: string, name: string) {
   return `${kind}/${namespace}/${name}`;
 }
 
+/** Compares field by field, so `gw` sorts before `gw-2`. */
+function compareFields(
+  a: (string | undefined)[],
+  b: (string | undefined)[],
+): number {
+  for (let i = 0; i < a.length; i++) {
+    const order = (a[i] ?? '').localeCompare(b[i] ?? '');
+    if (order !== 0) return order;
+  }
+  return 0;
+}
+
 /**
- * Identifies an ancestor reference and orders ancestors by namespace and name
- * first. Every field is in it, so a refetch never reorders equal rows.
+ * Identifies an ancestor reference. Every field is in it, so two ancestors
+ * that differ only by port or group stay apart.
  */
-function ancestorSortKey(ref: Omit<PolicyAncestor, 'id' | 'accepted'>) {
+function ancestorKey(ref: Omit<PolicyAncestor, 'id' | 'accepted'>) {
   return [
     ref.namespace ?? '',
     ref.name,
@@ -229,7 +241,7 @@ export function buildGatewayPolicies(
       sectionName: sample.metric.ancestor_section_name || undefined,
       port: sample.metric.ancestor_port || undefined,
     };
-    const key = ancestorSortKey(fields);
+    const key = ancestorKey(fields);
     entry.ancestorRefs.set(key, { id: key, ...fields });
     setWorst(entry.ancestors, key, condition);
   }
@@ -238,7 +250,12 @@ export function buildGatewayPolicies(
     .map(({ policy, targets, ancestors, ancestorRefs }) => {
       const ancestorList = Array.from(ancestorRefs.entries())
         .map(([key, ref]) => ({ ...ref, accepted: ancestors.get(key)! }))
-        .sort((a, b) => a.id.localeCompare(b.id));
+        .sort((a, b) =>
+          compareFields(
+            [a.namespace, a.name, a.sectionName, a.port, a.kind, a.group],
+            [b.namespace, b.name, b.sectionName, b.port, b.kind, b.group],
+          ),
+        );
       let status: ConditionState = { status: 'not-reported' };
       if (!statusExported) {
         status = {
@@ -254,9 +271,12 @@ export function buildGatewayPolicies(
       return {
         ...policy,
         // Every field in the sort, so a refetch never reorders equal rows.
-        targets: Array.from(targets.entries())
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([, target]) => target),
+        targets: Array.from(targets.values()).sort((a, b) =>
+          compareFields(
+            [a.kind, a.name, a.sectionName],
+            [b.kind, b.name, b.sectionName],
+          ),
+        ),
         targetsLoaded:
           inputs.targetInfo !== undefined && inputs.info !== undefined,
         ancestors: ancestorList,
