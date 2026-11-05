@@ -45,6 +45,7 @@ import { SlackPromoBanner } from '../SlackPromoBanner';
 import { StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { greeting } from './helpers';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles({
   /**
@@ -320,15 +321,19 @@ export function AgentPlatformHome({
           page never keeps that page's title (live round 2, R5). */}
       <ShellDocumentTitle title="New session" />
       <QueryClientProvider>
-        <ModelConfigsProvider>
-          <ServingProvider>
-            <AgentsDataProvider>
-              <SessionsDataProvider>
-                <AgentPlatformHomeContent manageAgentsHref={manageAgentsHref} />
-              </SessionsDataProvider>
-            </AgentsDataProvider>
-          </ServingProvider>
-        </ModelConfigsProvider>
+        <OrganizationDirectoryProvider>
+          <ModelConfigsProvider>
+            <ServingProvider>
+              <AgentsDataProvider>
+                <SessionsDataProvider>
+                  <AgentPlatformHomeContent
+                    manageAgentsHref={manageAgentsHref}
+                  />
+                </SessionsDataProvider>
+              </AgentsDataProvider>
+            </ServingProvider>
+          </ModelConfigsProvider>
+        </OrganizationDirectoryProvider>
       </QueryClientProvider>
     </AgentPlatformCookieAuth>
   );

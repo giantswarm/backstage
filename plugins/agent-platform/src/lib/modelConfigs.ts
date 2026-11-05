@@ -15,7 +15,10 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { DEFAULT_MODEL_ANNOTATION } from './defaultModel';
-import { organizationOf } from './tenants';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from './organizations';
 
 /**
  * Where portal-created ModelConfigs (and their key Secrets) go: the namespace
@@ -27,12 +30,15 @@ export const MODEL_CONFIG_NAMESPACE = 'kagent';
 
 /**
  * Whether a ModelConfig in `namespace` goes through the platform's LLM
- * listener: an Organization's `org-<name>` namespace, where admission fills
- * in the listener as the base URL and refuses any other, and refuses a
- * provider the listener does not serve.
+ * listener: an organization's namespace (as agent-manager names it in
+ * `directory`), where admission fills in the listener as the base URL and
+ * refuses any other, and refuses a provider the listener does not serve.
  */
-export function isListenerRouted(namespace: string): boolean {
-  return organizationOf(namespace) !== undefined;
+export function isListenerRouted(
+  namespace: string,
+  directory: OrganizationDirectory,
+): boolean {
+  return directory.has(namespace);
 }
 
 /** Providers the create/edit form speaks. A subset of the CRD's enum: the
@@ -104,8 +110,11 @@ export const LISTENER_PROVIDERS: readonly ModelProvider[] = [
 ];
 
 /** The providers the form offers for a model in `namespace`. */
-export function providersFor(namespace: string): readonly ModelProvider[] {
-  return isListenerRouted(namespace)
+export function providersFor(
+  namespace: string,
+  directory: OrganizationDirectory,
+): readonly ModelProvider[] {
+  return isListenerRouted(namespace, directory)
     ? LISTENER_PROVIDERS
     : MODEL_PROVIDER_OPTIONS.map(option => option.id);
 }
@@ -166,9 +175,10 @@ export const PLACEHOLDER_API_KEY = 'giantswarm-backstage-placeholder';
  */
 export function keySecretName(
   modelName: string,
-  namespace: string = MODEL_CONFIG_NAMESPACE,
+  namespace: string,
+  directory: OrganizationDirectory,
 ): string {
-  return isListenerRouted(namespace)
+  return isListenerRouted(namespace, directory)
     ? `tenant-credential-${modelName}`
     : `kagent-${modelName}`;
 }
@@ -476,9 +486,15 @@ export function planKeySecret(
   options: {
     isEdit: boolean;
     originalProvider?: string;
-    /** Where the model lives; the platform namespace when absent. */
-    namespace?: string;
-  } = { isEdit: false },
+  } & (
+    | { namespace?: undefined; directory?: undefined }
+    | {
+        /** Where the model lives. */
+        namespace: string;
+        /** Which namespace is which organization, as agent-manager answered. */
+        directory: OrganizationDirectory;
+      }
+  ) = { isEdit: false },
 ): KeySecretPlan {
   const canonicalKey = PROVIDER_SECRET_KEYS[values.provider];
   if (!canonicalKey) {
@@ -500,7 +516,13 @@ export function planKeySecret(
 
   return {
     action: 'write',
-    name: keySecretName(values.name, options.namespace),
+    name: options.namespace
+      ? keySecretName(values.name, options.namespace, options.directory)
+      : keySecretName(
+          values.name,
+          MODEL_CONFIG_NAMESPACE,
+          EMPTY_ORGANIZATION_DIRECTORY,
+        ),
     key: canonicalKey,
     value: apiKey || PLACEHOLDER_API_KEY,
   };
@@ -538,6 +560,7 @@ type ProviderBlockField =
 function providerBlock(
   values: ModelConfigFormValues,
   namespace: string,
+  directory: OrganizationDirectory,
 ): { field: ProviderBlockField; block: object } | undefined {
   if (isVertexAIProvider(values.provider)) {
     return {
@@ -552,7 +575,7 @@ function providerBlock(
   if (values.provider === 'Ollama') {
     return { field: 'ollama', block: { host: endpoint } };
   }
-  if (!endpoint || isListenerRouted(namespace)) {
+  if (!endpoint || isListenerRouted(namespace, directory)) {
     return undefined;
   }
   if (values.provider === 'Anthropic') {
@@ -601,8 +624,9 @@ export function buildModelConfigManifest(
   values: ModelConfigFormValues,
   plan: KeySecretPlan,
   namespace: string,
-  options: { markDefault?: boolean } = {},
+  options: { markDefault?: boolean; directory: OrganizationDirectory },
 ): Record<string, unknown> {
+  const { directory } = options;
   const spec: Record<string, unknown> = {
     provider: values.provider,
     model: values.model.trim(),
@@ -613,7 +637,7 @@ export function buildModelConfigManifest(
     spec.apiKeySecretKey = plan.key;
   }
 
-  const block = providerBlock(values, namespace);
+  const block = providerBlock(values, namespace, directory);
   if (block) {
     spec[block.field] = block.block;
   }
@@ -621,7 +645,7 @@ export function buildModelConfigManifest(
   if (
     values.insecureSkipTlsVerify &&
     !isVertexAIProvider(values.provider) &&
-    !isListenerRouted(namespace)
+    !isListenerRouted(namespace, directory)
   ) {
     spec.tls = { disableVerify: true };
   }
@@ -661,10 +685,11 @@ export function buildModelConfigPatch(
   values: ModelConfigFormValues,
   plan: KeySecretPlan,
   original: ModelConfig,
+  directory: OrganizationDirectory,
 ): Record<string, unknown> {
   const namespace = original.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
-  const routed = isListenerRouted(namespace);
-  const block = providerBlock(values, namespace);
+  const routed = isListenerRouted(namespace, directory);
+  const block = providerBlock(values, namespace, directory);
 
   const providerBlocks: Partial<Record<ProviderBlockField, unknown>> = {
     openAI: null,

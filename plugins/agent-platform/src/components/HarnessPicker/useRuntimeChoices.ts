@@ -4,9 +4,9 @@ import { useNewAgentForm } from '../NewAgentFormProvider';
 
 /**
  * The runtimes the agent wizard offers, read where the runtime field reads
- * them: the chosen model's namespace, or a tenant other than the platform's
- * (an Organization's namespace), which runs its agents on the platform
- * Harness alone. The review steps and the Details step's summary read the
+ * them: the chosen model's namespace, or a tenant other than the platform's,
+ * whose own Harnesses an organization's agents pick from (another tenant
+ * runs its agents on the platform Harness alone, `HarnessPicker`). The review steps and the Details step's summary read the
  * same query, so they name the Harness the field shows.
  */
 export function useRuntimeChoices() {

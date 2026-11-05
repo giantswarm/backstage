@@ -68,6 +68,9 @@ import {
   newToolchainRouteRef,
   toolchainDetailRouteRef,
   newWorkspaceRouteRef,
+  organizationCredentialsRouteRef,
+  organizationDetailRouteRef,
+  organizationsRouteRef,
 } from './routes';
 
 /**
@@ -297,6 +300,33 @@ const profilePage = PageBlueprint.make({
   },
 });
 
+// The shell's Organizations (`/organizations`): the Agent Platform
+// organizations the signed-in person belongs to, and one organization's page
+// with its Members, Models, Connectors and Egress, all read and written
+// through agent-manager's organization tools as the person. Shell only and
+// enabled by default, like `profilePage`.
+const organizationsPage = PageBlueprint.make({
+  name: 'organizations',
+  if: AGENT_SHELL_ON,
+  params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the organizations page's route definition
+    path: '/organizations',
+    routeRef: organizationsRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const [{ OrganizationsRouter }, { ShellPageRoot }] = await Promise.all([
+        import('./components/OrganizationsRouter'),
+        import('./components/ShellPageRoot'),
+      ]);
+      return (
+        <ShellPageRoot title="Organizations">
+          <OrganizationsRouter />
+        </ShellPageRoot>
+      );
+    },
+  },
+});
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -445,6 +475,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessionsPage,
     usagePage,
     profilePage,
+    organizationsPage,
     agentsSubPage,
     skillsSubPage,
     modelsSubPage,
@@ -471,6 +502,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     skills: skillsRouteRef,
     newSkill: newSkillRouteRef,
     profile: profileRouteRef,
+    organizations: organizationsRouteRef,
+    organizationDetail: organizationDetailRouteRef,
+    organizationCredentials: organizationCredentialsRouteRef,
     usage: usageRouteRef,
     usageCost: usageCostRouteRef,
     usageConversations: usageConversationsRouteRef,

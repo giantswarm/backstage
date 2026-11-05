@@ -27,6 +27,7 @@ import {
   readNamespaceModelConfigs,
   unmarkPrevious,
 } from './defaultModelWrites';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 
 /**
  * Spelled out rather than `Secret.getGVK()`: the Secret class sets no `group`
@@ -84,6 +85,7 @@ export type SaveModelConfigResult = {
 export function useSaveModelConfig() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
+  const { directory } = useOrganizationDirectory();
 
   const mutation = useTrackedMutation({
     event: (_data, { original }) => ({
@@ -109,6 +111,7 @@ export function useSaveModelConfig() {
         isEdit,
         originalProvider: original?.getProvider(),
         namespace,
+        directory,
       });
 
       let markDefault = false;
@@ -128,7 +131,8 @@ export function useSaveModelConfig() {
           });
           markDefault = true;
         } else {
-          markDefault = defaultClaimsIn(items, namespace).length === 0;
+          markDefault =
+            defaultClaimsIn(items, namespace, directory).length === 0;
         }
       }
       let createdSecret = false;
@@ -169,7 +173,7 @@ export function useSaveModelConfig() {
           gvk: original.getResolvedGVK(),
           name: original.getName(),
           namespace,
-          patch: buildModelConfigPatch(values, plan, original),
+          patch: buildModelConfigPatch(values, plan, original, directory),
         });
       } else {
         try {
@@ -180,6 +184,7 @@ export function useSaveModelConfig() {
             namespace,
             manifest: buildModelConfigManifest(values, plan, namespace, {
               markDefault,
+              directory,
             }),
           });
         } catch (error) {
@@ -220,14 +225,15 @@ export function useSaveModelConfig() {
       // save has succeeded, and an orphaned placeholder Secret is inert.
       if (
         plan.action === 'none' &&
-        original?.getApiKeySecret() === keySecretName(values.name, namespace)
+        original?.getApiKeySecret() ===
+          keySecretName(values.name, namespace, directory)
       ) {
         try {
           await deleteResource({
             kubernetesApi,
             cluster: installation,
             gvk: SECRET_GVK,
-            name: keySecretName(values.name, namespace),
+            name: keySecretName(values.name, namespace, directory),
             namespace,
           });
         } catch {

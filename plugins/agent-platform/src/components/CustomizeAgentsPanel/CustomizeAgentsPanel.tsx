@@ -36,6 +36,7 @@ import {
   OWNER_LABEL,
   tenantKindOf,
 } from '../../lib/tenants';
+import type { OrganizationDirectory } from '../../lib/organizations';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
@@ -57,6 +58,7 @@ import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Twice the rendered 32px (bui's medium avatar), for sharp 2x displays. */
 const ROW_AVATAR_SIZE: AvatarSize = 96;
@@ -335,14 +337,17 @@ type AgentFact = {
  * and what that means). Another namespace already says what it is
  * (`namespace sre-team`).
  */
-function ownerText(namespace: string): string {
-  const kind = tenantKindOf(namespace);
+function ownerText(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string {
+  const kind = tenantKindOf(namespace, directory);
   if (kind === 'platform') {
     return '';
   }
   return kind === 'organization'
-    ? `${OWNER_LABEL}: ${ownerOf(namespace)}`
-    : ownerOf(namespace);
+    ? `${OWNER_LABEL}: ${ownerOf(namespace, directory)}`
+    : ownerOf(namespace, directory);
 }
 
 /**
@@ -375,13 +380,14 @@ function AgentListItem({
   isFavorite: boolean;
   onToggleFavorite: () => void;
 }) {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const owner = showTenant ? ownerText(row.namespace) : '';
+  const owner = showTenant ? ownerText(row.namespace, directory) : '';
   const ownerId = useId();
   const tagsId = useId();
   // The name's tooltip, with the owner beside it on a line of its own:

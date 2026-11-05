@@ -125,6 +125,31 @@ export const toolchainDetailRouteRef = createSubRouteRef({
   parent: toolchainsRouteRef,
 });
 
+// The organizations the signed-in person belongs to (`/organizations`), one
+// list per installation whose agent-manager serves the organization tools,
+// and who can add them when they belong to none.
+export const organizationsRouteRef = createRouteRef();
+
+// One organization (`/organizations/<installation>/<parent>/<name>`), its
+// tabs below it (Members, Models, Connectors, Egress). An
+// AgentPlatformOrganization is unique by its parent namespace and name on one
+// installation, so all three are in the path; its organization namespace
+// (`agents-<name>-<random>`) is agent-manager's answer, never part of a link.
+export const organizationDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:parent/:name',
+  parent: organizationsRouteRef,
+});
+
+// The Dev Portal's credential form of one organization
+// (`/organizations/<installation>/<parent>/<name>/credentials`), where a model
+// key or a connector or egress credential is entered and never shown back.
+// The organization page's Models tab links here to add a model with the
+// organization's own key; the form itself is giantswarm/backstage#3364's.
+export const organizationCredentialsRouteRef = createSubRouteRef({
+  path: '/:installation/:parent/:name/credentials',
+  parent: organizationsRouteRef,
+});
+
 // The shell's minimal "Profile and settings" page (`/profile`): who is signed
 // in, the installations the portal talks to, and Sign out. Linked from the
 // shell rail's profile menu.

@@ -3,6 +3,7 @@ import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import BarChartIcon from '@material-ui/icons/BarChart';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
+import GroupIcon from '@material-ui/icons/Group';
 import LaunchIcon from '@material-ui/icons/Launch';
 import SettingsIcon from '@material-ui/icons/Settings';
 import TuneIcon from '@material-ui/icons/Tune';
@@ -73,6 +74,16 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     routeRef: agentPlatformPlugin.routes.usage,
     position: 'top',
     // The least-used destination on a phone (T22 D1).
+    phone: 'profileMenu',
+  },
+  {
+    // The Agent Platform organizations the person belongs to, and each
+    // one's members, models, connectors and egress.
+    id: 'organizations',
+    title: 'Organizations',
+    icon: GroupIcon,
+    routeRef: agentPlatformPlugin.routes.organizations,
+    position: 'top',
     phone: 'profileMenu',
   },
   {

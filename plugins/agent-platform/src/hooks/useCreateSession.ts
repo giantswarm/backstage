@@ -17,6 +17,8 @@ import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import { usePortalStartedRecorder } from './useSessionNotificationRecord';
+import type { OrganizationDirectory } from '../lib/organizations';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 
 /** What the composer submits: an agent, and the prompt to open the session with. */
 export type NewSession = {
@@ -67,7 +69,11 @@ export type UseCreateSessionOptions = {
  * that tenant's agents. Any other error as it is, a `forbidden` of another
  * origin (muster refusing the sandbox bind) included.
  */
-function refusalNamingTenant(error: unknown, agent: AgentRow): unknown {
+function refusalNamingTenant(
+  error: unknown,
+  agent: AgentRow,
+  directory: OrganizationDirectory,
+): unknown {
   if (
     !(error instanceof AgentManagerError) ||
     error.code !== 'forbidden' ||
@@ -79,6 +85,7 @@ function refusalNamingTenant(error: unknown, agent: AgentRow): unknown {
     'forbidden',
     `You may not start a session with ${agent.name}: it belongs to ${tenantInSentence(
       agent.namespace,
+      directory,
     )}, and you have no access to its agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace. (${error.message})`,
   );
 }
@@ -116,6 +123,7 @@ export function useCreateSession(
   const musterApi = useMusterPluginApi();
   const queryClient = useQueryClient();
   const markPortalStarted = usePortalStartedRecorder();
+  const { directory } = useOrganizationDirectory();
 
   const mutation = useTrackedMutation({
     event: (_result, { workspace }: NewSessionRequest) => ({
@@ -175,7 +183,7 @@ export function useCreateSession(
         });
         return { sessionId };
       } catch (error) {
-        throw refusalNamingTenant(error, agent);
+        throw refusalNamingTenant(error, agent, directory);
       }
     },
     onSuccess: ({ sessionId }, { agent }) => {

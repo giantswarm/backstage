@@ -23,6 +23,15 @@ import {
   type UseCreateSessionOptions,
 } from './useCreateSession';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../components/OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../components/OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 /**
  * agent-manager's `start_session` behind muster, as the controller keys it: a
  * repeated `requestId` answers the session the first call created.
