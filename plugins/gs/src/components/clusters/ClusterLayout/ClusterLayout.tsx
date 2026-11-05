@@ -12,6 +12,7 @@ import Alert from '@material-ui/lab/Alert';
 import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { useCurrentUser, useLayoutTabs } from '../../hooks';
+import { useMimirAvailable } from '../../hooks/useMimirAvailable';
 import { ClusterAppStatus } from './ClusterAppStatus';
 import { ClusterDeletingNotice } from './ClusterDeletingNotice';
 import {
@@ -31,6 +32,8 @@ export type ClusterLayoutRouteProps = {
     cluster: Cluster;
     installationName: string;
     isGSUser: boolean;
+    /** `false` when the installation has no Mimir; `undefined` while unknown. */
+    mimirAvailable: boolean | undefined;
   }) => boolean;
   tabProps?: TabProps<React.ElementType, { component?: React.ElementType }>;
 };
@@ -158,6 +161,10 @@ export const ClusterLayout = ({
 
   const isLoading = clusterIsLoading || currentUserIsLoading;
 
+  // Not part of isLoading: the page shouldn't wait for it. A route gated on it
+  // decides itself how to treat "unknown".
+  const mimirAvailable = useMimirAvailable(installationName);
+
   const routes = useElementFilter(
     children,
     elements =>
@@ -177,6 +184,7 @@ export const ClusterLayout = ({
               cluster,
               installationName,
               isGSUser: Boolean(isGSUser),
+              mimirAvailable,
             })
           ) {
             return [];
@@ -190,7 +198,7 @@ export const ClusterLayout = ({
             },
           ];
         }),
-    [cluster, isLoading, isGSUser],
+    [cluster, installationName, isLoading, isGSUser, mimirAvailable],
   );
 
   const { tabs, element } = useLayoutTabs(routes);

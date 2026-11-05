@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
-import { sanitizePromQLValue } from './promql';
+import { clusterMetricsSelector } from './promql';
 import {
   GatewayApiGatewayInfo,
   GatewayApiGatewayListenerInfo,
@@ -12,7 +12,7 @@ import {
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentResolvedRefs,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { buildGatewayTopology } from './gatewayTopology';
+import { buildGatewayTopology } from '../utils/gatewayTopology';
 import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
 
 /**
@@ -24,6 +24,10 @@ import { blockingError, optionalSamplesOf, samplesOf } from './mimirSamples';
  * fails, what it would have shown is reported as not available instead of
  * blocking the page. All queries count towards `isLoading`, so a half-loaded
  * result is never rendered.
+ *
+ * One query per metric rather than one for all of them: on a busy cluster a
+ * single metric can exceed Mimir's per-query limits, and then only what it
+ * enriches is lost.
  */
 export function useMimirGatewayTopology(options: {
   installationName: string;
@@ -33,44 +37,45 @@ export function useMimirGatewayTopology(options: {
   const { installationName, clusterName, refetchInterval } = options;
 
   const enabled = Boolean(clusterName);
-  const selector = `{cluster_id="${sanitizePromQLValue(clusterName ?? '')}"}`;
   const common = { installationName, enabled, refetchInterval };
+  const queryOf = (metric: { name: string }) =>
+    clusterMetricsSelector([metric.name], clusterName ?? '');
 
   const gatewayInfo = useMimirQuery({
     ...common,
-    query: `${GatewayApiGatewayInfo.name}${selector}`,
+    query: queryOf(GatewayApiGatewayInfo),
   });
   const gatewayStatus = useMimirQuery({
     ...common,
-    query: `${GatewayApiGatewayStatus.name}${selector}`,
+    query: queryOf(GatewayApiGatewayStatus),
   });
   const listenerInfo = useMimirQuery({
     ...common,
-    query: `${GatewayApiGatewayListenerInfo.name}${selector}`,
+    query: queryOf(GatewayApiGatewayListenerInfo),
   });
   const listenerAttachedRoutes = useMimirQuery({
     ...common,
-    query: `${GatewayApiGatewayStatusListenerAttachedRoutes.name}${selector}`,
+    query: queryOf(GatewayApiGatewayStatusListenerAttachedRoutes),
   });
   const routeParentInfo = useMimirQuery({
     ...common,
-    query: `${GatewayApiHttprouteParentInfo.name}${selector}`,
+    query: queryOf(GatewayApiHttprouteParentInfo),
   });
   const routeHostnameInfo = useMimirQuery({
     ...common,
-    query: `${GatewayApiHttprouteHostnameInfo.name}${selector}`,
+    query: queryOf(GatewayApiHttprouteHostnameInfo),
   });
   const routeStatusParentInfo = useMimirQuery({
     ...common,
-    query: `${GatewayApiHttprouteStatusParentInfo.name}${selector}`,
+    query: queryOf(GatewayApiHttprouteStatusParentInfo),
   });
   const routeAccepted = useMimirQuery({
     ...common,
-    query: `${GatewayApiHttprouteStatusParentAccepted.name}${selector}`,
+    query: queryOf(GatewayApiHttprouteStatusParentAccepted),
   });
   const routeResolvedRefs = useMimirQuery({
     ...common,
-    query: `${GatewayApiHttprouteStatusParentResolvedRefs.name}${selector}`,
+    query: queryOf(GatewayApiHttprouteStatusParentResolvedRefs),
   });
 
   const isLoading =
