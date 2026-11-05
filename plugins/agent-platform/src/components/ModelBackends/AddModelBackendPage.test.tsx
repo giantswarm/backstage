@@ -46,15 +46,10 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
   },
 }));
 
-jest.mock('../CodeBlock', () => ({
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   // The editor does not lay text out in jsdom; the document as plain text.
-  CodeBlock: ({
-    filename,
-    content,
-  }: {
-    filename?: string;
-    content: string;
-  }) => (
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid="code-block" data-filename={filename}>
       {content}
     </pre>
@@ -450,14 +445,14 @@ describe('AddModelBackendPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
 
-  it('offers three environments without a search', async () => {
+  it('offers type-ahead over three environments', async () => {
     renderPage([], ['inst-1', 'inst-2', 'inst-3']);
 
     await openEnvironments();
     expect(
       await screen.findByRole('option', { name: 'inst-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 environments', async () => {

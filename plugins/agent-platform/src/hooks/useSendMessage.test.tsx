@@ -6,6 +6,7 @@ import {
   InvalidateQueryFilters,
   QueryClient,
   QueryClientProvider,
+  useQuery,
 } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
@@ -179,7 +180,8 @@ describe('useSendMessage', () => {
       expect.any(Function),
       expect.any(AbortSignal),
     );
-    // Reported without the text.
+    // Reported without the text; the session's turns were never read here,
+    // so they are left out.
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -187,6 +189,107 @@ describe('useSendMessage', () => {
         attributes: {},
       }),
     );
+  });
+
+  describe('the turns it reports', () => {
+    it('counts the conversation the page reads back after the turn, the turn included', async () => {
+      listSessionTasks.mockResolvedValueOnce([]);
+      const queryClient = new QueryClient({
+        defaultOptions: { mutations: { retry: false } },
+      });
+      const wrapper = ({ children }: PropsWithChildren<{}>) => (
+        <TestApiProvider
+          apis={[
+            [kagentApiRef, kagentApi],
+            [analyticsApiRef, analyticsApi],
+          ]}
+        >
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </TestApiProvider>
+      );
+      // The page's conversation read, which the turn's end re-reads.
+      const { result } = renderHook(
+        () => ({
+          tasks: useQuery({
+            queryKey: TASKS_KEY,
+            queryFn: () => listSessionTasks('gazelle', 'abc'),
+          }),
+          send: useSendMessage('gazelle', 'abc', AGENT),
+        }),
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.tasks.data).toEqual([]));
+      listSessionTasks.mockImplementation(async () => [
+        taskHolding(sentMessageId(), 'completed'),
+      ]);
+
+      await act(async () => {
+        await result.current.send.sendMessage('hello');
+      });
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.messageSent',
+          attributes: { turns: 1 },
+        }),
+      );
+    });
+
+    it('adds the turn to a conversation the page left behind during it', async () => {
+      const { result, queryClient } = renderWith();
+      queryClient.setQueryData(TASKS_KEY, [
+        settledTask('task-1'),
+        settledTask('task-2'),
+        settledTask('task-3'),
+        settledTask('task-4'),
+      ]);
+
+      await act(async () => {
+        await result.current.sendMessage('hello');
+      });
+
+      // Four read before the turn, and the turn: five.
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.messageSent',
+          attributes: { turns: 5 },
+        }),
+      );
+    });
+
+    it('does not count the turn twice when a poll read it before the page was left', async () => {
+      const { result, queryClient } = renderWith();
+      const earlier = [
+        settledTask('task-1'),
+        settledTask('task-2'),
+        settledTask('task-3'),
+      ];
+      queryClient.setQueryData(TASKS_KEY, earlier);
+      // A poll mid-turn reads the turn's task; nothing re-reads after it.
+      // Three turns before it and this one: four, not five.
+      streamMessage.mockImplementation(
+        async (_installation, _session, _agent, message) => {
+          queryClient.setQueryData(TASKS_KEY, [
+            ...earlier,
+            taskHolding(message.messageId, 'working'),
+          ]);
+        },
+      );
+
+      await act(async () => {
+        await result.current.sendMessage('hello');
+      });
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.messageSent',
+          attributes: { turns: 4 },
+        }),
+      );
+      expect(queryClient.getQueryData<unknown[]>(TASKS_KEY)).toHaveLength(4);
+    });
   });
 
   it('sends the images as the API takes them, and keeps them on the pending message', async () => {

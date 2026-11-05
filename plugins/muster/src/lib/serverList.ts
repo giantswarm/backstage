@@ -1,5 +1,6 @@
 import { ToolSummary } from '../apis';
 import { MCPServer } from './k8s';
+import { rowTags } from './connectorTags';
 import {
   MUSTER_SERVER_KEY,
   ServerPageRow,
@@ -34,6 +35,12 @@ export interface ServerListRow {
    */
   displayName: string;
   row: ServerPageRow;
+  /**
+   * The row's tags (`rowTags`): the one its tool-group label reads as, then
+   * a server's own or every tag of a family's members; muster's is
+   * `agent-platform`.
+   */
+  tags: string[];
   /** The row's tools; undefined until the catalogue is read. */
   tools?: NamedTool[];
   /**
@@ -96,6 +103,7 @@ export function serverListRows(
       // keeps its own name so the two read apart.
       displayName: shadowed ? id : serverRowDisplayName(row, names),
       row,
+      tags: rowTags(row),
       tools: tools
         ? (tools.get(key) ?? []).map(tool => ({
             tool,
@@ -109,10 +117,11 @@ export function serverListRows(
 
 /**
  * The servers list for a search, sorted by the name it shows. A row stays
- * when its name -- the display name or the one its page uses -- matches or
- * one of its tools does (by the rule the Tools tab filters with);
- * without a catalogue -- no muster session -- only names are searched. A row
- * its name matches is a name match, whatever its tools say.
+ * when its name -- the display name or the one its page uses -- or one of its
+ * tags matches, or one of its tools does (by the rule the Tools tab filters with);
+ * without a catalogue -- no muster session -- only names and tags are
+ * searched. A row its name or a tag matches is a name match, whatever its
+ * tools say.
  */
 export function serverListEntries(
   rows: ServerListRow[],
@@ -124,7 +133,8 @@ export function serverListEntries(
       const nameMatch =
         !q ||
         row.id.toLowerCase().includes(q) ||
-        row.displayName.toLowerCase().includes(q);
+        row.displayName.toLowerCase().includes(q) ||
+        row.tags.some(tag => tag.includes(q));
       return {
         ...row,
         toolCount: tools?.length,

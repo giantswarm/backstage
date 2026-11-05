@@ -5,16 +5,11 @@ import {
   McpContentItem,
   MusterServerGateway,
   MusterServerNotConnectedError,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import {
-  actionsArguments,
-  createRouter,
-  listArguments,
-  RouterOptions,
-  writeArguments,
-} from './router';
+import { createRouter, RouterOptions } from './router';
 
 const TOKEN_HEADER = 'backstage-muster-authorization';
 const AUTH_URL = 'https://muster/oauth/proxy/start?state=abc';
@@ -230,6 +225,21 @@ describe('createRouter', () => {
     });
   });
 
+  it("answers a muster that cannot be reached 503 with muster's text, not as GitHub's 404", async () => {
+    manager.failNextCallWith = new MusterUnreachableError(
+      'gazelle',
+      'the muster endpoint answered HTTP 404',
+    );
+
+    const res = await request(app).get('/installations');
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toEqual({
+      name: 'ServiceUnavailableError',
+      message: 'gazelle did not answer: the muster endpoint answered HTTP 404',
+    });
+  });
+
   it("shows the manager's refusal as 403 and an unknown installation as 404", async () => {
     manager.failNextCallWith = new Error(
       'mode "commit" is not implemented for enable_capability',
@@ -305,38 +315,40 @@ describe('createRouter', () => {
     });
   });
 
-  describe('arguments', () => {
-    it('reads the list filters', () => {
-      expect(listArguments({})).toEqual({});
-      expect(listArguments({ installations: 'a,b', customer: 'c' })).toEqual({
-        installations: ['a', 'b'],
-        customer: 'c',
-      });
-      expect(() => listArguments({ installations: ['a', 'b'] })).toThrow(
-        /at most once/,
-      );
-      // The overview's summary is a boolean argument, from `true`/`false`.
-      expect(listArguments({ summary: 'true' })).toEqual({ summary: true });
-      expect(listArguments({ summary: 'false' })).toEqual({ summary: false });
-      expect(() => listArguments({ summary: 'yes' })).toThrow(/true or false/);
-    });
+  it('reads the list and action filters as the tools take them, and refuses what it cannot read', async () => {
+    manager.answers.set('list_installations', { installations: [] });
+    await request(app).get('/installations').expect(200);
+    // The overview's summary is a boolean argument, from `true`/`false`.
+    await request(app).get('/installations?summary=true').expect(200);
+    await request(app).get('/installations?summary=false').expect(200);
+    expect(manager.calls.map(c => c.args)).toEqual([
+      {},
+      { summary: true },
+      { summary: false },
+    ]);
+    await request(app).get('/installations?summary=yes').expect(400);
+    await request(app)
+      .get('/installations?installations=a&installations=b')
+      .expect(400);
+    await request(app).get('/actions?capability=a%20b').expect(400);
+    expect(manager.calls).toHaveLength(3);
+  });
 
-    it('reads the action filters', () => {
-      expect(actionsArguments({ installation: 'rowan' })).toEqual({
-        installation: 'rowan',
-      });
-      expect(() => actionsArguments({ capability: 'a b' })).toThrow(/not a/);
+  it('types the write arguments, drops nulls and refuses a body that is not an object', async () => {
+    manager.answers.set('enable_capability', { dryRun: true });
+    const enable = '/installations/rowan/capabilities/agent-platform/enable';
+    await request(app)
+      .post(enable)
+      .send({ inputs: {}, content: null, dryRun: true })
+      .expect(200);
+    expect(manager.calls[0].args).toEqual({
+      installation: 'rowan',
+      capability: 'agent-platform',
+      inputs: {},
+      dryRun: true,
     });
-
-    it('types the write arguments and drops nulls', () => {
-      expect(
-        writeArguments({ inputs: {}, content: null, dryRun: true }),
-      ).toEqual({
-        inputs: {},
-        dryRun: true,
-      });
-      expect(() => writeArguments({ inputs: 'x' })).toThrow(/must be a object/);
-      expect(() => writeArguments([])).toThrow(/JSON object/);
-    });
+    await request(app).post(enable).send({ inputs: 'x' }).expect(400);
+    await request(app).post(enable).send([]).expect(400);
+    expect(manager.calls).toHaveLength(1);
   });
 });

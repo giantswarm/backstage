@@ -21,6 +21,7 @@ import MoreVertIcon from '@material-ui/icons/MoreVert';
 import NotificationsNoneOutlinedIcon from '@material-ui/icons/NotificationsNoneOutlined';
 import {
   MENU_WIDTH,
+  PinIcon,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -28,7 +29,6 @@ import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common'
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import { sessionsRouteRef } from '../../routes';
 import type { NotificationLevel } from '../../lib/notificationRecord';
-import { PinIcon } from '../PinIcon';
 import {
   describeSessionDeleteFailure,
   SessionDeleteDialog,

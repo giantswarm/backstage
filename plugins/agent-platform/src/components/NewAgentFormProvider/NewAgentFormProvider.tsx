@@ -6,25 +6,32 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSessionDraft } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  tagsFieldUpdaters,
+  type TagsFieldUpdaters,
+  draftProblem,
+  useSessionDraft,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import type {
-  AgentManagerAgent,
-  AgentPluginEntry,
-  AgentSkillEntry,
-  WriteMode,
+import {
+  supportsTags,
+  type AgentManagerAgent,
+  type AgentPluginEntry,
+  type AgentSkillEntry,
+  type WriteMode,
 } from '../../lib/agentManager';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
   changedFields,
+  editStateOf,
   editStateOfForm,
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
 import {
+  defaultTenant,
   tenantGroups,
   tenantKindOf,
-  tenantKindProblem,
-  tenantPickProblem,
   type TenantKind,
 } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
@@ -44,29 +51,53 @@ import {
   toolsetProblems,
 } from '../../lib/toolset';
 
+/** Why a form has no tenant choices: see `NewAgentFormState.tenantChoicesUnread`. */
+export type TenantChoicesUnread = 'failed' | 'unlisted';
+
 export type NewAgentFormState = {
   name: string;
   slug: string;
   description: string;
+  /** Keywords to find the agent by, normalized and unique, as added. */
+  tags: string[];
+  /**
+   * What the Tags field holds but has not added yet. Not part of the agent;
+   * kept here so a draft that cannot be a tag blocks Continue like any other
+   * invalid field.
+   */
+  tagDraft?: string;
   installation: string | undefined;
   /**
    * Creating only: the tenants (namespaces) on the installation in which the
    * person may create an agent, as agent-manager's `get_info` answers them
    * for the caller (`namespaces.managed`, a `SelfSubjectAccessReview` per
-   * namespace). `undefined` until it has answered: then nothing is required.
+   * namespace). `undefined` until it has answered.
    */
   tenantChoices?: string[];
+  /**
+   * Creating only: why there are no {@link tenantChoices} to pick from:
+   * agent-manager's `get_info` could not be read on the installation
+   * (`failed`), or it answered without a `managed` list (`unlisted`, an
+   * agent-manager that does not say: no owner is required, and the create
+   * call gets its own answer). Not kept in the draft.
+   */
+  tenantChoicesUnread?: TenantChoicesUnread;
   /**
    * Creating only: the tenant, one of {@link tenantChoices}, the agent is
    * created in -- the namespace its model, Harness and release live in.
    */
   tenant?: string;
   /**
-   * Creating only: the kind of place chosen where several are offered
-   * (Platform, Organization, Other namespace), set before {@link tenant} when
-   * the kind's dropdown has nothing picked yet. Cleared with the environment.
+   * Creating only: the tenant the person last picked themselves, so another
+   * environment that offers it too picks it again instead of its default.
+   * Part of the draft, cleared by Start over.
    */
-  tenantKind?: TenantKind;
+  ownTenant?: string;
+  /**
+   * Creating only: the person's own last pick of each kind, so choosing
+   * Organization again brings back theirs.
+   */
+  ownTenantByKind?: Partial<Record<TenantKind, string>>;
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
@@ -189,7 +220,7 @@ export type AgentWizardEdit = {
   detailHref: string | undefined;
 };
 
-export type NewAgentFormContextValue = {
+export type NewAgentFormContextValue = TagsFieldUpdaters & {
   state: NewAgentFormState;
   /** Set when the wizard edits an existing agent rather than creating one. */
   edit: AgentWizardEdit | undefined;
@@ -198,15 +229,21 @@ export type NewAgentFormContextValue = {
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
   /**
-   * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
-   * stays when it is still a choice; otherwise the only choice is picked.
+   * Sets {@link NewAgentFormState.tenantChoices}. The tenant held stays when
+   * it is still a choice; else the person's own last pick, when it is one
+   * (it survives an environment change); else the platform, or the first
+   * choice offered where the platform is none.
    */
   setTenantChoices: (choices: string[]) => void;
-  /** Picks the tenant, and its kind; a model of another namespace is dropped. */
+  /** Sets {@link NewAgentFormState.tenantChoicesUnread}. */
+  setTenantChoicesUnread: (unread: TenantChoicesUnread | undefined) => void;
+  /** Picks the tenant; a model of another namespace is dropped. */
   selectTenant: (tenant: string) => void;
   /**
-   * Chooses the kind of place (Platform, Organization, Other namespace): the
-   * kind's only namespace is picked with it, a tenant of another kind goes.
+   * Chooses the kind of owner (Platform, Organization, Other namespace) and
+   * picks a tenant of it at once, so the kind's dropdown always has a value:
+   * the person's own last pick of that kind where it is still a choice, else
+   * the kind's first.
    */
   selectTenantKind: (kind: TenantKind) => void;
   selectModelConfig: (
@@ -306,6 +343,14 @@ export type NewAgentFormContextValue = {
    * and model are left out, since the form picks those itself.
    */
   isDirty: boolean;
+  /**
+   * Whether the installation's agent-manager keeps tags. False until its
+   * `get_info` is read: the Tags field is shown, and its problems count, only
+   * while true.
+   */
+  tagsOffered: boolean;
+  /** An edited agent's tags as read, for the Tags field; none on create. */
+  storedTags: readonly string[];
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -323,10 +368,10 @@ export type NewAgentFormContextValue = {
 /** The step-1 fields a validation problem can belong to. */
 export type NewAgentField =
   | 'name'
+  | 'tags'
   | 'systemMessage'
   | 'installation'
   | 'tenant'
-  | 'tenantPick'
   | 'model'
   | 'slug'
   | 'egress';
@@ -337,6 +382,7 @@ const initialState: NewAgentFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
@@ -397,10 +443,12 @@ function hasCreateInput(state: NewAgentFormState): boolean {
       state.description,
       state.systemMessage,
       state.egressText,
+      state.tagDraft ?? '',
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.egressPolicyRefs.length > 0 ||
     state.defaultWorkspace !== '' ||
+    state.tags.length > 0 ||
     state.selectedSkills.length > 0 ||
     state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
@@ -409,23 +457,24 @@ function hasCreateInput(state: NewAgentFormState): boolean {
 }
 
 /**
- * The state with its {@link NewAgentFormState.tenantKind} settled: `tenant`
- * kept where it is of that kind, else the kind's only namespace picked, else
- * none. No kind keeps `tenant` as it is.
+ * The state with `tenant` picked by the person themselves ({@link withTenant}),
+ * remembered as their own pick, overall and of its kind.
  */
-function withTenantKind(
+function withOwnTenant(
   state: NewAgentFormState,
-  tenant: string | undefined,
+  tenant: string,
 ): NewAgentFormState {
-  const kind = state.tenantKind;
-  if (!kind) {
-    return withTenant(state, tenant);
-  }
-  if (tenant && tenantKindOf(tenant) === kind) {
-    return withTenant(state, tenant);
-  }
-  const members = tenantGroups(state.tenantChoices ?? []).byKind[kind];
-  return withTenant(state, members.length === 1 ? members[0] : undefined);
+  return withTenant(
+    {
+      ...state,
+      ownTenant: tenant,
+      ownTenantByKind: {
+        ...state.ownTenantByKind,
+        [tenantKindOf(tenant)]: tenant,
+      },
+    },
+    tenant,
+  );
 }
 
 /**
@@ -485,6 +534,8 @@ function baselineOf(agent: AgentManagerAgent): AgentManagerAgent {
     : agent;
 }
 
+const NO_TAGS: readonly string[] = [];
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
@@ -516,12 +567,20 @@ export function NewAgentFormProvider({
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
-  const isDirtyCreate = !edit && hasCreateInput(state);
+  const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const tagsOffered = supportsTags(agentManagerInfo);
+
+  // Text left in a Tags field the installation does not offer is out of
+  // sight, so it does not make the form one to keep.
+  const isDirtyCreate =
+    !edit &&
+    hasCreateInput(tagsOffered ? state : { ...state, tagDraft: undefined });
   const draftValue = useMemo<NewAgentDraft>(() => {
     // The notice of a removal is said once, and whether the platform sets the
     // egress is read again, like the tenant choices.
     const {
       tenantChoices: _choices,
+      tenantChoicesUnread: _unread,
       droppedEgress: _dropped,
       egressSetByPlatform: _setByPlatform,
       ...kept
@@ -546,6 +605,16 @@ export function NewAgentFormProvider({
     dismissRestored: dismissDraftNotice,
   } = draft;
 
+  // An edited agent's tags as read: past the limit they may stay.
+  const storedTags = useMemo(
+    () => (edit ? editStateOf(edit.agent).tags : NO_TAGS),
+    [edit],
+  );
+  const tagUpdaters = useMemo(
+    () => tagsFieldUpdaters<NewAgentFormState>(setState, storedTags),
+    [storedTags],
+  );
+
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
     // agent.systemMessage, so an empty field means "use the chart default"
@@ -556,6 +625,10 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
+    // Not offered where agent-manager keeps no tags, so not checked there.
+    fieldErrors.tags = tagsOffered
+      ? draftProblem(state.tagDraft ?? '', state.tags, storedTags)
+      : undefined;
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -573,19 +646,27 @@ export function NewAgentFormProvider({
     if (!state.installation) {
       fieldErrors.installation = 'Choose an environment.';
     }
-    if (!edit && state.installation && state.tenantChoices) {
-      if (state.tenantChoices.length === 0) {
+    // No agent is created without its place: Continue waits for agent-manager
+    // to say where the person may create, and stops where it could not. An
+    // agent-manager that answers without a list says nothing either way
+    // (`useCreatesAgentsNowhere` counts it as one the person may create on):
+    // the create call gets its own answer.
+    if (
+      !edit &&
+      state.installation &&
+      !state.tenant &&
+      state.tenantChoicesUnread !== 'unlisted'
+    ) {
+      if (state.tenantChoices?.length === 0) {
         fieldErrors.tenant = `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
-      } else if (!state.tenant) {
-        // Several kinds: the kind first (`tenant`), then the kind's dropdown
-        // (`tenantPick`), each its own field.
-        const { kinds } = tenantGroups(state.tenantChoices);
-        const kind = kinds.length === 1 ? kinds[0] : state.tenantKind;
-        if (kind) {
-          fieldErrors.tenantPick = tenantPickProblem(kind);
-        } else {
-          fieldErrors.tenant = tenantKindProblem(kinds);
-        }
+      } else if (state.tenantChoices) {
+        // A guard only: a choice is always picked once there are choices
+        // (`setTenantChoices`).
+        fieldErrors.tenant = 'Choose an owner.';
+      } else if (state.tenantChoicesUnread === 'failed') {
+        fieldErrors.tenant = 'Could not read where you may create agents.';
+      } else {
+        fieldErrors.tenant = 'Still reading where you may create agents.';
       }
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
@@ -597,10 +678,10 @@ export function NewAgentFormProvider({
         'systemMessage',
         'egress',
         'name',
+        'tags',
         'slug',
         'installation',
         'tenant',
-        'tenantPick',
         'model',
       ] as const
     )
@@ -641,6 +722,7 @@ export function NewAgentFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
+      ...tagUpdaters,
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
       // here.
@@ -649,8 +731,8 @@ export function NewAgentFormProvider({
           ...prev,
           installation,
           tenantChoices: undefined,
+          tenantChoicesUnread: undefined,
           tenant: undefined,
-          tenantKind: undefined,
           defaultWorkspace: '',
           egressPolicyRefs: [],
           modelConfigName: undefined,
@@ -663,40 +745,40 @@ export function NewAgentFormProvider({
         setState(prev => {
           if (
             prev.tenantChoices?.join(',') === choices.join(',') &&
-            (prev.tenant === undefined || choices.includes(prev.tenant))
+            (prev.tenant === undefined
+              ? choices.length === 0
+              : choices.includes(prev.tenant))
           ) {
             return prev;
           }
           let tenant = prev.tenant;
           if (!tenant || !choices.includes(tenant)) {
-            tenant = choices.length === 1 ? choices[0] : undefined;
+            const own = prev.ownTenant;
+            tenant =
+              own && choices.includes(own) ? own : defaultTenant(choices);
           }
-          // A kind chosen without a pick (a restored draft) stays only where
-          // these choices still offer it as a choice among several.
-          const { kinds } = tenantGroups(choices);
-          let tenantKind: TenantKind | undefined;
-          if (tenant) {
-            tenantKind = tenantKindOf(tenant);
-          } else if (
-            prev.tenantKind &&
-            kinds.length > 1 &&
-            kinds.includes(prev.tenantKind)
-          ) {
-            tenantKind = prev.tenantKind;
-          }
-          return withTenantKind(
-            { ...prev, tenantChoices: choices, tenantKind },
+          return withTenant(
+            { ...prev, tenantChoices: choices, tenantChoicesUnread: undefined },
             tenant,
           );
         }),
-      selectTenant: tenant =>
+      setTenantChoicesUnread: unread =>
         setState(prev =>
-          withTenant({ ...prev, tenantKind: tenantKindOf(tenant) }, tenant),
+          prev.tenantChoicesUnread === unread
+            ? prev
+            : { ...prev, tenantChoicesUnread: unread },
         ),
+      selectTenant: tenant => setState(prev => withOwnTenant(prev, tenant)),
       selectTenantKind: kind =>
-        setState(prev =>
-          withTenantKind({ ...prev, tenantKind: kind }, prev.tenant),
-        ),
+        setState(prev => {
+          if (prev.tenant && tenantKindOf(prev.tenant) === kind) {
+            return prev;
+          }
+          const members = tenantGroups(prev.tenantChoices ?? []).byKind[kind];
+          const own = prev.ownTenantByKind?.[kind];
+          const tenant = own && members.includes(own) ? own : members[0];
+          return tenant ? withOwnTenant(prev, tenant) : prev;
+        }),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick. A model outside the picked tenant is not taken: a
@@ -867,6 +949,8 @@ export function NewAgentFormProvider({
       },
       clearSavedDraft: clearDraft,
       isDirty,
+      tagsOffered,
+      storedTags,
       isComplete,
       validationErrors,
       fieldErrors,
@@ -882,6 +966,9 @@ export function NewAgentFormProvider({
     draftNoticeStep,
     dismissDraftNotice,
     clearDraft,
+    tagUpdaters,
+    tagsOffered,
+    storedTags,
   ]);
 
   return (

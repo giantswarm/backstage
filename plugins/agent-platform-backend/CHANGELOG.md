@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-agent-platform-backend
 
+## 1.1.0
+
+### Minor Changes
+
+- 689b152: A session that waits on an MCP server's sign-in link (kagent's HITL `url_elicitation_request`, sent by runtimes that relay MCP URL elicitations, such as muster's sign-in link from 5.53.0 on) shows a sign-in card instead of the composer's question card: the server that asked, its message, _Sign in_ and _Not now_. Muster returns the sign-in's tab to the session and the agent continues on its own (`url_elicitation_response` `accept`); _Not now_ declines. `readUrlElicitationRequest` reads the request off a status message.
+
+### Patch Changes
+
+- Updated dependencies [689b152]
+- Updated dependencies [97c84d4]
+  - @giantswarm/backstage-plugin-agent-platform-common@1.1.0
+
 ## 1.0.0
 
 ### Major Changes

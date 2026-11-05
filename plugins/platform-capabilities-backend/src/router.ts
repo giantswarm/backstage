@@ -13,6 +13,8 @@ import {
   MUSTER_AUTH_HEADER,
   MusterServerGateway,
   MusterServerNotConnectedError,
+  reportedErrorHandler,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -79,7 +81,7 @@ function isKind(value: unknown, kind: ArgumentKind): boolean {
  * tool does not take or a value of the wrong type is refused; `null` and
  * `undefined` are dropped. The values themselves are handed on unchanged.
  */
-export function writeArguments(
+function writeArguments(
   body: unknown,
   takes: Record<string, ArgumentKind> = WRITE_ARGUMENTS,
 ): Record<string, unknown> {
@@ -125,7 +127,7 @@ function singleQueryValue(value: unknown, key: string): string | undefined {
  * (comma-separated), `customer`, and `summary` (`true` for the states and
  * the last actions alone, what the Installations page's columns ask for).
  */
-export function listArguments(
+function listArguments(
   query: Record<string, unknown>,
 ): Record<string, unknown> {
   const args: Record<string, unknown> = {};
@@ -150,7 +152,7 @@ export function listArguments(
 }
 
 /** `list_actions`' arguments out of a query string: `installation` and `capability`. */
-export function actionsArguments(
+function actionsArguments(
   query: Record<string, unknown>,
 ): Record<string, unknown> {
   const args: Record<string, unknown> = {};
@@ -339,6 +341,12 @@ export async function createRouter(
       res: express.Response,
       next: express.NextFunction,
     ) => {
+      // Muster could not be reached at all: a 503 with muster's text, never
+      // one of GitHub's refusals that the texts below are matched against.
+      if (error instanceof MusterUnreachableError) {
+        next(error);
+        return;
+      }
       if (error instanceof MusterServerNotConnectedError) {
         res.status(401).json({
           error: {
@@ -373,6 +381,9 @@ export async function createRouter(
       next(error);
     },
   );
+
+  // Last, so that the handlers above see the error first.
+  router.use(reportedErrorHandler());
 
   return router;
 }

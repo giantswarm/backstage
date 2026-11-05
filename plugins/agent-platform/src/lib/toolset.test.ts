@@ -493,6 +493,21 @@ describe('connector display names', () => {
 });
 
 describe('buildCatalogue', () => {
+  it('gives a bucket its server’s tags, a family every member’s', () => {
+    const [infra, , registered] = buildCatalogue(
+      [],
+      [
+        { ...SERVERS[0], tags: ['clusters'] },
+        { ...SERVERS[1], tags: ['ops', 'clusters'] },
+        SERVERS[2],
+        { ...SERVERS[3], tags: ['projects'] },
+      ],
+      [],
+    );
+    expect(infra.servers[0].tags).toEqual(['clusters', 'ops']);
+    expect(registered.servers[0].tags).toEqual(['projects']);
+  });
+
   it('groups by the tool-group label, with core tools and workflows set apart', () => {
     const groups = buildCatalogue(
       [

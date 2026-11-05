@@ -26,7 +26,7 @@ import {
   segmentTurn,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
-import type { EgressRemedy } from '../../lib/egressRemedy';
+import type { EgressRemedyFor } from '../../lib/egressRemedy';
 
 const useStyles = makeStyles(theme => ({
   turnMarker: {
@@ -143,14 +143,6 @@ function findTurn(
   );
 }
 
-/** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
-function formatClockTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 /**
  * Who is speaking, at the start of the agent's side of a turn.
  *
@@ -183,8 +175,11 @@ export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
-  /** What an egress refusal's alert offers for this agent (`useEgressRemedy`). */
-  egressRemedy?: EgressRemedy;
+  /**
+   * What an egress refusal's alert offers for this agent, by the refused
+   * destination's scheme (`useEgressRemedy`).
+   */
+  egressRemedyFor?: EgressRemedyFor;
   /** The agent's avatar, shown where its side of a turn begins. */
   agentAvatarUrl?: string;
   /**
@@ -248,7 +243,7 @@ export type SessionTimelineProps = {
 export function SessionTimeline({
   timeline,
   agentName,
-  egressRemedy,
+  egressRemedyFor,
   agentAvatarUrl,
   isAgentWorking = false,
   streamLost,
@@ -345,8 +340,15 @@ export function SessionTimeline({
     workingRow = (
       <div className={classes.stalled} role="status">
         <span className={classes.stalledText}>
-          The agent has not reported progress since{' '}
-          {formatClockTime(stalledSince)}.
+          The agent last reported progress{' '}
+          {/* The relative time ticks every minute: kept out of the live
+              region's announcements, so the stall is announced once. */}
+          <DateComponent
+            value={new Date(stalledSince).toISOString()}
+            relative
+            aria-live="off"
+          />
+          .
         </span>
         {onCancelTurn && (
           <Button
@@ -403,7 +405,7 @@ export function SessionTimeline({
   const firstUserMessageId = firstMessageCaption
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
-  const egressSettings = { agentName, remedy: egressRemedy };
+  const egressSettings = { agentName, remedyFor: egressRemedyFor };
   const renderEntry = (item: TimelineItem, technical = false) => {
     const messageKey =
       item.kind === 'user-message' ? (item.messageId ?? item.id) : undefined;

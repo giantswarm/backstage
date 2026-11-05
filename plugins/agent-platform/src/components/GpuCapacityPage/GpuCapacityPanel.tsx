@@ -20,12 +20,13 @@ import {
   NAMED_IN_SENTENCE,
   ShowMore,
   SimpleAccordion,
+  formatLocalDateFull,
+  getRelativeDate,
   StatusHint,
   usePhoneColumns,
   usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatTime } from '../../lib/modelManagerServing';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
   gpuFree,
@@ -97,10 +98,10 @@ const HOST_NO_GPU_FIGURES =
  * several servers on one machine lists one row per backend for the same
  * address, and the description is what tells them apart.
  */
-export const HOST_NODE_DESCRIPTION = 'Backend host';
+const HOST_NODE_DESCRIPTION = 'Backend host';
 
 /** The description of a backend host row: the server's name when known. */
-export function hostNodeDescription(node: GpuNode): string {
+function hostNodeDescription(node: GpuNode): string {
   return node.backend
     ? `${backendServerName(node.backend)} host`
     : HOST_NODE_DESCRIPTION;
@@ -452,11 +453,21 @@ function CacheCell({
       <CellText title="—" />
     );
   }
+  // Relative, so a scan yesterday does not read as today; the date and time
+  // after it, the detail being a hover already (the browser's zone: this page
+  // lives in the shell, where every time is local).
+  const scannedAt = cache.scannedAt ? new Date(cache.scannedAt) : undefined;
+  const scanned =
+    scannedAt && !Number.isNaN(scannedAt.getTime())
+      ? `scanned ${getRelativeDate(scannedAt, new Date())} (${formatLocalDateFull(
+          scannedAt,
+        )})`
+      : undefined;
   const detail = [
     cache.claim ? `Claim ${cache.claim}` : undefined,
     cache.mountPath ? `mounted at ${cache.mountPath}` : undefined,
     cache.shared ? 'shared storage, visible from every node' : undefined,
-    cache.scannedAt ? `scanned at ${formatTime(cache.scannedAt)}` : undefined,
+    scanned,
   ]
     .filter(Boolean)
     .join(', ');

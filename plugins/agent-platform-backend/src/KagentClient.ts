@@ -1042,6 +1042,11 @@ export class KagentClient {
         `The agent on installation '${this.installation.name}' is not waiting for a decision on this turn; it may already have been answered.`,
       );
     }
+    if (answer.askedIn && task.status?.message?.messageId !== answer.askedIn) {
+      throw new ConflictError(
+        `The agent on installation '${this.installation.name}' is waiting on another decision now; the one this answers was already answered.`,
+      );
+    }
     const payload = buildHitlResponse(request, answer);
 
     return {

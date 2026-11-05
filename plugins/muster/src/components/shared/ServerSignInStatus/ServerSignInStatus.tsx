@@ -2,6 +2,7 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { StatusDot, StatusHint } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type ServerSignInStatusState,
+  type StatusText,
   type UseServerSignInStatusOptions,
   useServerSignInStatus,
 } from '../hooks';
@@ -25,6 +26,35 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
+/**
+ * A state as a list or a header shows it: a dot and a few words that never
+ * shrink, with the sentences that say why in a {@link StatusHint} beside them
+ * where there are any.
+ */
+export function StatusWithHint({
+  tone,
+  label,
+  subject,
+  explanation,
+  title,
+}: StatusText & {
+  /** What the hint calls the state's owner: its display name, where it has one. */
+  subject: string;
+  explanation?: string | readonly string[];
+  /** A native tooltip on the dot and its words, apart from the hint's. */
+  title?: string;
+}) {
+  const classes = useStyles();
+  return (
+    <span className={classes.status}>
+      <span title={title}>
+        <StatusDot tone={tone} label={label} />
+      </span>
+      <StatusHint subject={subject} explanation={explanation} />
+    </span>
+  );
+}
+
 /** The state in a few words, with the sentences in a {@link StatusHint}. */
 export function SignInStatusText({
   serverName,
@@ -34,12 +64,13 @@ export function SignInStatusText({
   serverName: string;
   signInStatus: ServerSignInStatusState;
 }) {
-  const classes = useStyles();
   return (
-    <span className={classes.status}>
-      <StatusDot tone={shown.tone} label={shown.label} />
-      <StatusHint subject={serverName} explanation={details} />
-    </span>
+    <StatusWithHint
+      tone={shown.tone}
+      label={shown.label}
+      subject={serverName}
+      explanation={details}
+    />
   );
 }
 

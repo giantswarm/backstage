@@ -27,7 +27,6 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   type BreadcrumbItem,
-  DateComponent,
   EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
@@ -39,6 +38,7 @@ import {
   StatusDot,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
@@ -50,6 +50,7 @@ import {
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useAgentViewEvent } from '../../hooks/useAgentViewEvent';
 import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
@@ -512,6 +513,10 @@ function AgentDetailPageContent() {
   // carrier read is shared with the Overview's Connectors section and the
   // toolset card, so it runs once.
   const toolset = useAgentToolset(agent);
+  // How many skills and tools the agents people open have: once per opening,
+  // when both are known, and not again as the agent polls or the tabs change.
+  const viewEvent = useAgentViewEvent(agent, toolset);
+  useTrackedView(viewEvent, `${installation}/${namespace}/${name}`);
 
   const openEdit = useCallback(() => {
     const href = agentEditRoute?.({ installation, namespace, name });
@@ -995,7 +1000,6 @@ function AgentDetailPageContent() {
   );
 
   const displayName = agent.getDisplayName();
-  const created = agent.getCreatedTimestamp();
 
   return (
     <AgentFrame
@@ -1012,13 +1016,6 @@ function AgentDetailPageContent() {
         <ReadinessBadge
           readiness={READINESS_PRESENTATION[agent.getReadiness()]}
         />
-      }
-      meta={
-        created ? (
-          <>
-            Created <DateComponent value={created} />
-          </>
-        ) : undefined
       }
       actions={shellActions}
       menu={menu}

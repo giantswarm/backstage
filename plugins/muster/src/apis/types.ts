@@ -469,6 +469,12 @@ export interface ServerAuthStatus {
    * through the two flags below.
    */
   kind?: 'grant' | 'sso' | 'none';
+  /**
+   * Whom a `grant` server's grant belongs to: the person, so every session of
+   * theirs reuses it (`subject`), or the one session that completed it
+   * (`session`). Absent for other kinds and from older musters.
+   */
+  grant_scope?: 'session' | 'subject';
   token_forwarding_enabled?: boolean;
   token_exchange_enabled?: boolean;
   /**

@@ -305,8 +305,8 @@ function makeApi() {
       failed: 1,
       inprogress: 0,
       success_rate: 0.5,
-      avg_duration_ms: 10000,
-      max_duration_ms: 18000,
+      avg_duration_ms: 300_000,
+      max_duration_ms: 330_000,
       per_day: [],
     })),
   };
@@ -484,6 +484,29 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
     expect(section).toHaveTextContent('Deploys an app and tells the team.');
     expect(within(section).getByText(/^Created/)).toBeInTheDocument();
+  });
+
+  it('shows its tags under what it is for', async () => {
+    mockWorkflows = [
+      deployWith({}, { 'ui.giantswarm.io/tags': 'release,ops' }),
+    ];
+    await renderAt(`${BASE}/deploy`);
+
+    const section = await screen.findByRole('region', {
+      name: 'What it’s for',
+    });
+    expect(
+      within(within(section).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['release', 'ops']);
+    // Each opens Customize → Workflows with that tag picked.
+    expect(
+      within(section).getByRole('link', { name: 'release' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/workflows?installation=gazelle&tags=release',
+    );
   });
 
   it('says so where the definition gives no description', async () => {
@@ -1000,6 +1023,9 @@ describe('WorkflowPage', () => {
     expect(
       screen.getByText(/about three weeks, at most 10,000/),
     ).toBeInTheDocument();
+    // Minutes past a minute, not "300 s".
+    expect(screen.getByText('5 min')).toBeInTheDocument();
+    expect(screen.getByText('5 min 30 s')).toBeInTheDocument();
   });
 
   it('names a failed last run’s error on Usage', async () => {
@@ -1021,7 +1047,7 @@ describe('WorkflowPage', () => {
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Failed');
     expect(lastRun).toHaveTextContent('apply refused');
-    expect(lastRun).toHaveTextContent('took 2.0 s');
+    expect(lastRun).toHaveTextContent('took 2 s');
   });
 
   it('lists the plain facts on Details, then the CR’s bookkeeping in a Technical details fold-out', async () => {
