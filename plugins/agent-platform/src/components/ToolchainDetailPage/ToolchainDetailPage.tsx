@@ -12,6 +12,7 @@ import {
 import {
   type BreadcrumbItem,
   EmptyStateCard,
+  ExternalLink,
   type Fact,
   FactList,
   FileView,
@@ -139,9 +140,9 @@ function Described({
     {
       label: 'Source',
       value: sourceURL ? (
-        <Link href={sourceURL} target="_blank" rel="noopener">
+        <ExternalLink href={sourceURL} display="inline">
           {toolchain.repository}
-        </Link>
+        </ExternalLink>
       ) : (
         toolchain.repository
       ),
