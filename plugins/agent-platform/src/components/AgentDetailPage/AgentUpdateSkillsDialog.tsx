@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  CellSkeleton,
   ConfirmDialog,
   CopyButton,
   LoadingIndicator,
@@ -26,7 +27,6 @@ import {
   skillRefreshPlan,
   type SkillRefreshEntry,
 } from '../../lib/skillRefresh';
-import { CellSkeleton } from './CellSkeleton';
 import { SkillRefreshSkeletonRow } from './SkillRefreshSkeletonRow';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';

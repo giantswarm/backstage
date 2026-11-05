@@ -9,6 +9,7 @@ import {
   codingEgressRefusal,
   missingGitHubAuthorization,
   missingReleaseFile,
+  supportsTags,
 } from './agentManager';
 
 describe('agentManagerToolName', () => {
@@ -214,5 +215,13 @@ describe('missingGitHubAuthorization', () => {
         message: failureOf(NO_TOKEN).message,
       }),
     ).toBe(false);
+  });
+});
+
+describe('supportsTags', () => {
+  it("reads agent-manager's tags capability", () => {
+    expect(supportsTags({ capabilities: { tags: true } })).toBe(true);
+    expect(supportsTags({ capabilities: {} })).toBe(false);
+    expect(supportsTags(undefined)).toBe(false);
   });
 });

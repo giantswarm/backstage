@@ -25,6 +25,7 @@ export const SHELL_SPECS = [
   'agents.spec.ts',
   'chatgpt-chat-gate.spec.ts',
   'chatgpt-connect.spec.ts',
+  'connector-client-credentials.spec.ts',
   'connector-display-name.spec.ts',
   'default-workspace.spec.ts',
   'definition-editor.spec.ts',

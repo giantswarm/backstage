@@ -9,6 +9,7 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  FileView,
   MoreOptions,
   searchableIf,
   useFieldValidation,
@@ -29,7 +30,6 @@ import {
   type AddBackendResult,
   type BackendKind,
 } from '../../lib/modelManagerBackends';
-import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';

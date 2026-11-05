@@ -18,8 +18,15 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import {
+  Alert,
+  Button,
+  ButtonIcon,
+  Flex,
+  Link,
+  Skeleton,
+  Text,
+} from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
@@ -37,6 +44,7 @@ import {
   ShellPageBadgeSkeleton,
   StatusDot,
   type StatusDotTone,
+  TagList,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -46,12 +54,18 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef } from '../../routes';
-import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
+import {
+  INFRASTRUCTURE_FAMILY_NOTE,
+  MUSTER_PAGE_DESCRIPTION,
+  rowTags,
+} from '../../lib/connectorTags';
 import {
   familyGroups,
+  familyToolGroup,
   findServerRow,
   fleetManagementClusters,
   partitionServers,
@@ -86,12 +100,13 @@ import {
   serverStateLabel,
   StatusWithHint,
   SessionGate,
-  useConnectorGroupPaths,
+  useConnectorListPaths,
   useServerSignIn,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
-import { addedAt, callsLine, healthLine, signInLabel } from './connectorFacts';
+import { addedAt, healthLine, signInLabel } from './connectorFacts';
+import { CallsFactValue } from './CallsFactValue';
 import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
@@ -99,6 +114,7 @@ import {
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 import { ConnectorCannotConnect } from './ConnectorCannotConnect';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
+import { ConnectorLogo } from '../ConnectorLogo';
 import { ConnectorUsageTab } from './ConnectorUsageTab';
 import { useConnectorUsage } from './hooks/useConnectorUsage';
 import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
@@ -106,23 +122,6 @@ import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
-
-const useStyles = makeStyles({
-  tile: {
-    flex: 'none',
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    border: '1px solid var(--bui-border-1)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 20,
-    fontWeight: 700,
-    color: 'var(--bui-fg-secondary)',
-    textTransform: 'uppercase',
-  },
-});
 
 /**
  * muster's endpoint, the address an MCP client connects to, with its copy
@@ -149,15 +148,6 @@ function MusterEndpoint({ endpoint }: { endpoint: string }) {
   );
 }
 
-function ConnectorTile({ name }: { name: string }) {
-  const classes = useStyles();
-  return (
-    <span className={classes.tile} aria-hidden>
-      {name.charAt(0)}
-    </span>
-  );
-}
-
 /** The page's dot tones for muster's severities, as the list's dots read. */
 const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
   ok: 'success',
@@ -165,6 +155,33 @@ const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
   error: 'danger',
   unknown: 'neutral',
 };
+
+/**
+ * The line under the connector's name: its description; for muster, what it
+ * is and that it is fixed; for an infrastructure family, that it has an
+ * instance per management cluster.
+ */
+function connectorMeta(
+  row: ServerPageRow,
+  description: string | undefined,
+): string | undefined {
+  if (row.kind === 'core') {
+    return MUSTER_PAGE_DESCRIPTION;
+  }
+  if (
+    row.kind === 'family' &&
+    familyToolGroup(row.servers) === 'infrastructure'
+  ) {
+    if (!description) {
+      return INFRASTRUCTURE_FAMILY_NOTE;
+    }
+    const sentence = /[.!?]$/.test(description.trim())
+      ? description.trim()
+      : `${description.trim()}.`;
+    return `${sentence} ${INFRASTRUCTURE_FAMILY_NOTE}`;
+  }
+  return description;
+}
 
 /**
  * The connector's state beside its name: a dot and its words, as the
@@ -239,9 +256,9 @@ function ConnectorPageContent({
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
-  const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector, where its crumb and a removal lead.
-  const listPath = paths.listOf(serverRowKey(row), row);
+  const paths = useConnectorListPaths();
+  // The list, where its crumb, its tags and a removal lead.
+  const listPath = paths.connectors;
   const { activeInstallationInfo } = useMusterInstance();
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
@@ -275,7 +292,9 @@ function ConnectorPageContent({
   // none for muster itself, whose own tools no connector counts. Only on
   // those two tabs: Tools, where a connector opens, shows no usage, and
   // each connector's read repeats the installation-wide `data_start` query.
-  const { '*': tabPath = '' } = useParams();
+  const { '*': splat = '' } = useParams();
+  // A trailing slash names the same tab, which the nested routes render.
+  const tabPath = splat.replace(/\/+$/, '');
   // The Usage tab's window follows the `?window=` Usage → Connectors links
   // with, so a row's figures and the tab it opens agree. Details keeps its 30
   // days, which its label names.
@@ -288,7 +307,6 @@ function ConnectorPageContent({
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
   });
-  const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
   // The person's own sign-in to the connector. Signing in is offered where its
   // absence shows — the Tools tab's gate, in place of the hidden tools — so
@@ -513,16 +531,37 @@ function ConnectorPageContent({
   // The Details tab's plain facts; the address and the rest of the MCPServer
   // are in its Technical details.
   const facts: Fact[] = [];
+  const tags = rowTags(row);
+  if (tags.length > 0) {
+    facts.push({
+      label: 'Tags',
+      value: (
+        <TagList
+          tags={tags}
+          getHref={
+            // On the connector's own installation: the list's scope may be
+            // another one, which does not list it.
+            listPath
+              ? tag =>
+                  withInstallationQuery(listPath, installation, { tags: tag })
+              : undefined
+          }
+        />
+      ),
+    });
+  }
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });
   }
   if (members.length > 0) {
     facts.push({ label: 'Health', value: healthLine(members) });
   }
-  if (calls !== undefined) {
+  // From the first paint, with a skeleton while the session and the read are
+  // pending, so the facts below it do not move when the figure lands.
+  if (hasUsage) {
     facts.push({
       label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
-      value: calls,
+      value: <CallsFactValue usage={usage} session={session} />,
     });
   }
   const added = addedAt(members);
@@ -597,7 +636,14 @@ function ConnectorPageContent({
       <ShellPage
         title={displayName}
         breadcrumbs={breadcrumbs}
-        leading={<ConnectorTile name={displayName} />}
+        leading={
+          <ConnectorLogo
+            name={displayName}
+            icon={representative?.getStatusIcon()}
+            size={56}
+            decorative
+          />
+        }
         badges={
           <StatusBadge
             row={row}
@@ -605,11 +651,7 @@ function ConnectorPageContent({
             portalOnly={portalOnly}
           />
         }
-        meta={
-          row.kind === 'core'
-            ? MUSTER_PAGE_DESCRIPTION
-            : representative?.getDescription()
-        }
+        meta={connectorMeta(row, representative?.getDescription())}
         description={
           endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined
         }
@@ -816,11 +858,8 @@ function ConnectorPageBody({
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const { installation = '' } = useParams();
-  const paths = useConnectorGroupPaths();
-  // The sub-tab that lists the connector: known from a cached row (or for
-  // muster) even while loading; otherwise the crumb has no link rather than
-  // one to a sub-tab that does not list it.
-  const listPath = paths.listOf(key, row);
+  const paths = useConnectorListPaths();
+  const listPath = paths.connectors;
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
@@ -834,7 +873,8 @@ function ConnectorPageBody({
           { label: 'Connectors', href: listPath },
           { label: shownName },
         ]}
-        leading={<ConnectorTile name={shownName} />}
+        // The logo's place held: the letter, then the icon, would flicker.
+        leading={<Skeleton width={56} height={56} />}
         badges={<ShellPageBadgeSkeleton />}
         // Tools with its count's place held, so the tab keeps its width as
         // the page and then the tools land.
