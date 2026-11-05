@@ -16,6 +16,8 @@ import type {
 export type OrganizationsScenario = {
   /** `list_my_organizations`. */
   mine?: MyOrganizations;
+  /** How many `list_my_organizations` calls fail first, as a timeout would. */
+  mineFailures?: number;
   /** `list_organization_members`. */
   members?: OrganizationMember[];
   /** `list_model_configs`, per namespace. */
@@ -34,6 +36,7 @@ export type OrganizationsScenario = {
 
 /** muster's `/installations` and server list with agent-manager on gazelle. */
 export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
+  let mineFailures = scenario.mineFailures ?? 0;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>): Promise<unknown> => {
       switch (name) {
@@ -43,6 +46,12 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
             capabilities: { organizations: true, egressPolicies: true },
           };
         case 'x_agent-manager_list_my_organizations':
+          if (mineFailures > 0) {
+            mineFailures -= 1;
+            throw new Error(
+              'backend_error: the API server did not answer in time',
+            );
+          }
           return scenario.mine ?? { organizations: [] };
         case 'x_agent-manager_get_organization':
           // A member may not read the AgentPlatformOrganization itself.

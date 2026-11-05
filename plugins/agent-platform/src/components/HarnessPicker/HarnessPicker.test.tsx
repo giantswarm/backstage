@@ -162,7 +162,7 @@ describe('HarnessPicker', () => {
   });
 
   it.each([
-    ["an Organization's editor (no read of the platform namespace)", {}],
+    ['an editor (no read of the platform namespace)', {}],
     [
       'an admin (who reads more runtimes there)',
       {
@@ -174,12 +174,12 @@ describe('HarnessPicker', () => {
       },
     ],
   ])(
-    'offers %s the platform Harness only when creating in the Organization, with no warning',
+    'offers %s the platform Harness only when creating in a tenant that is no organization, with no warning',
     async (_who, readable: Record<string, Harness[]>) => {
-      probeTenant = 'org-acme';
-      // The tenant's first agent: agent-manager has not copied the platform
-      // Harness there yet.
-      listingByNamespace({ ...readable, 'org-acme': [] });
+      // A tenant agent-manager names no organization for: an older
+      // agent-manager's tenant, whose agents run on the platform Harness.
+      probeTenant = 'team-legacy';
+      listingByNamespace({ ...readable, 'team-legacy': [] });
       await render();
 
       expect(
@@ -192,50 +192,48 @@ describe('HarnessPicker', () => {
       expect(cards[0]).toHaveTextContent('Harness kagent');
       expect(
         screen.getByText(
-          'The agents of the acme organization run on the platform Harness.',
+          'The agents of namespace team-legacy run on the platform Harness.',
         ),
       ).toBeInTheDocument();
     },
   );
 
-  it("titles a card by the Harness's display name when an admin set one", async () => {
-    mockUseResources.mockReturnValue(
-      listing([
-        harness('kagent', 'kagent'),
-        harness('go', 'claude', { displayName: 'Claude Code with Go' }),
-      ]),
-    );
-    await render();
+  it.each([
+    [
+      'org-acme',
+      [
+        harness('kagent', 'kagent', { namespace: 'org-acme' }),
+        harness('codex', 'codex', { namespace: 'org-acme' }),
+      ],
+      ['Harness kagent', 'Harness codex'],
+    ],
+    [
+      'org-beta',
+      [
+        harness('kagent', 'kagent', { namespace: 'org-beta' }),
+        harness('claude', 'claude', { namespace: 'org-beta' }),
+      ],
+      ['Harness kagent', 'Harness claude'],
+    ],
+  ])(
+    "offers an organization's agent the Harnesses of %s, and records a pick of its own",
+    async (organization, harnesses, offered) => {
+      probeTenant = organization;
+      listingByNamespace({ [organization]: harnesses });
+      const user = userEvent.setup();
+      await render();
 
-    expect(
-      screen.getByRole('radio', {
-        name: 'Claude Code with Go, Harness go',
-      }),
-    ).toBeInTheDocument();
-  });
-
-  it('tells the person when a model in another namespace drops their pick', async () => {
-    mockUseResources.mockReturnValue(
-      listing([harness('claude', 'claude'), harness('kagent', 'kagent')]),
-    );
-    const user = userEvent.setup();
-    await render();
-
-    await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
-    expect(formHarness).toBe('claude');
-
-    mockUseResources.mockReturnValue(
-      listing([harness('kagent', 'kagent', { namespace: 'demo' })]),
-    );
-    await user.click(
-      screen.getByRole('button', { name: 'Pick a model in demo' }),
-    );
-
-    expect(formHarness).toBeUndefined();
-    expect(screen.getByRole('status')).toHaveTextContent(
-      "The Harness claude does not serve this model's namespace",
-    );
-  });
+      const cards = screen.getAllByRole('radio');
+      expect(
+        cards.map(
+          card =>
+            (card.getAttribute('aria-label') ?? '').match(/Harness \w+/)?.[0],
+        ),
+      ).toEqual(offered);
+      await user.click(cards[1]);
+      expect(formHarness).toBe(offered[1].replace('Harness ', ''));
+    },
+  );
 
   it("lists the model's namespace's Harnesses, the platform one picked, and records another pick", async () => {
     mockUseResources.mockReturnValue(

@@ -54,6 +54,12 @@ export function HarnessPicker() {
     tenant,
     inOtherTenant,
   } = useRuntimeChoices();
+  // An organization's agents run on any Harness of its namespace (the
+  // operator copies the curated ones there), as agent-manager accepts; only
+  // another tenant (no organization) runs its agents on the platform Harness
+  // alone.
+  const platformOnly =
+    inOtherTenant && !(tenant !== undefined && directory.has(tenant));
 
   if (!installation || !namespace) {
     return null;
@@ -96,7 +102,7 @@ export function HarnessPicker() {
     );
   }
 
-  const hasChoice = !inOtherTenant && choices.length > 1;
+  const hasChoice = !platformOnly && choices.length > 1;
   const couldNotRead = !isLoading && choices.length === 0 && errors.length > 0;
 
   const dropNotice = droppedHarness ? (
@@ -112,7 +118,7 @@ export function HarnessPicker() {
   ) : null;
 
   // Known by its name alone until (or unless) the tenant's copy is read.
-  if (inOtherTenant && tenant) {
+  if (platformOnly && tenant) {
     const platform = platformChoice ?? {
       name: platformHarness,
       displayName: platformHarness,

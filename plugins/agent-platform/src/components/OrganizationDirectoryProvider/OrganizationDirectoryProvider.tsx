@@ -3,6 +3,7 @@ import {
   QueryClientContext,
   useQueries,
   useQuery,
+  useQueryClient,
 } from '@tanstack/react-query';
 import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
@@ -35,6 +36,8 @@ export type OrganizationDirectoryValue = {
   organizationsOf: (installation: string) => MyOrganizations | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
   failureOf: (installation: string) => string | undefined;
+  /** Reads an installation's organizations again (Check again). */
+  recheck: (installation: string) => Promise<void>;
   /** True while an installation's answer is still to come. */
   isLoading: boolean;
 };
@@ -44,6 +47,7 @@ const EMPTY: OrganizationDirectoryValue = {
   installations: [],
   organizationsOf: () => undefined,
   failureOf: () => undefined,
+  recheck: async () => {},
   isLoading: false,
 };
 
@@ -80,6 +84,7 @@ export function OrganizationDirectoryProvider({
 
 function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   const musterApi = useMusterPluginApi();
+  const queryClient = useQueryClient();
   // agent-manager is reached through muster only, so the installations are
   // muster's: the muster plugin's own read of `/installations`, under its
   // key, shared with the page header's installation selector.
@@ -158,9 +163,13 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       installations: [...answers.keys()],
       organizationsOf: installation => answers.get(installation) ?? undefined,
       failureOf: installation => failures.get(installation) ?? undefined,
+      recheck: installation =>
+        queryClient.refetchQueries({
+          queryKey: musterMyOrganizationsQueryKey(installation),
+        }),
       isLoading,
     };
-  }, [signature, isLoading]);
+  }, [signature, isLoading, queryClient]);
 
   return (
     <OrganizationDirectoryContext.Provider value={value}>

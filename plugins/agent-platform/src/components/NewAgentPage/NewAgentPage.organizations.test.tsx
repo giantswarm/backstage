@@ -69,7 +69,8 @@ function model(
 function Step() {
   const { state, setInstallation } = useNewAgentForm();
   useTenantChoicesSync();
-  const owner = useOwnerField();
+  // Every problem shows at once, as after a blocked Continue.
+  const owner = useOwnerField({ errorFor: (_field, problem) => problem });
   useEffect(() => {
     if (!state.installation) {
       setInstallation('gazelle');
@@ -192,5 +193,25 @@ describe('New agent: the organization picker', () => {
         /^You belong to no organization: an admin of an organization adds you/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("reads the person's organizations again on Check again after that read failed", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderStep({
+      mine: { organizations: [PAYMENTS] },
+      mineFailures: 1,
+      models: {
+        [PAYMENTS.namespace]: [model('sonnet', PAYMENTS.namespace, true)],
+      },
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Check again' }),
+    );
+
+    expect(
+      await screen.findByText(/the only organization you belong to on gazelle/),
+    ).toHaveTextContent(/^Organization: payments,/);
+    expect(toolCalls(callTool, 'list_my_organizations')).toHaveLength(2);
   });
 });

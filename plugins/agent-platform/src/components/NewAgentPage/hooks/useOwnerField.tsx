@@ -106,7 +106,8 @@ export function useOwnerField({
   // For Check again only: the form takes the answer itself
   // (`useTenantChoicesSync`, mounted by every step).
   const { info, canRead, refetch } = useAgentManagerInfo(installation);
-  const { directory, organizationsOf } = useOrganizationDirectory();
+  const { directory, organizationsOf, failureOf, recheck } =
+    useOrganizationDirectory();
   // Where agent-manager serves the organization tools, the choices are the
   // organizations the person belongs to (`useTenantChoicesSync`), and the
   // field is named for them.
@@ -173,7 +174,13 @@ export function useOwnerField({
                 <Button
                   size="small"
                   variant="secondary"
-                  onPress={() => refetch()}
+                  onPress={() =>
+                    // The read that failed: the organizations the person
+                    // belongs to, or `get_info` itself.
+                    byOrganization && installation && failureOf(installation)
+                      ? recheck(installation)
+                      : refetch()
+                  }
                 >
                   Check again
                 </Button>
