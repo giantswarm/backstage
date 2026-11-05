@@ -8,7 +8,7 @@
  */
 export const DEFAULT_SIGN_IN_TAB_WAIT_MS = 10_000;
 
-/** How often the waiting tab is checked for having been closed. */
+/** How often the waiting tab is checked for having been closed or left. */
 const TAB_CLOSED_CHECK_MS = 250;
 
 /** What the waiting tab says, in place of a bare about:blank. */
@@ -23,10 +23,13 @@ export interface SignInTab {
   /**
    * Stops waiting and hands over the tab for muster's sign-in page, or `null`
    * when there is none to navigate: popups were blocked, the person closed
-   * it, or it was closed for outlasting the wait.
+   * it or took it elsewhere, or it was closed for outlasting the wait.
    */
   take(): Window | null;
-  /** Stops waiting and closes the tab, when muster has no page for it. */
+  /**
+   * Stops waiting and closes the tab, when muster has no page for it. A tab
+   * the person took elsewhere is theirs and stays.
+   */
   close(): void;
 }
 
@@ -41,10 +44,13 @@ export const NO_SIGN_IN_TAB: SignInTab = {
  * window opened later, outside the user gesture, is what popup blockers
  * block. The tab shows {@link SIGN_IN_TAB_PLACEHOLDER} until it is taken.
  *
- * Once the tab is gone before muster answered, `onGiveUp` is called: either
- * the person closed it, or it outlasted `waitMs` and was closed here, since
- * a blank tab left open reads as a broken sign-in. The caller then offers the
- * sign-in in the portal, where the URL becomes a link once it arrives.
+ * Once the tab is gone before muster answered, `onGiveUp` is called: the
+ * person closed it or took it elsewhere (typed an address into it), or it
+ * outlasted `waitMs` and was closed here, since a blank tab left open reads
+ * as a broken sign-in. The caller then offers the sign-in in the portal,
+ * where the URL becomes a link once it arrives. Only a tab still showing the
+ * placeholder is ever closed or navigated: one the person took elsewhere is
+ * left alone.
  */
 export function openSignInTab(options: {
   waitMs: number;
@@ -73,7 +79,7 @@ export function openSignInTab(options: {
     if (!tab) {
       return;
     }
-    if (!tab.closed) {
+    if (isWaiting(tab)) {
       tab.close();
     }
     tab = null;
@@ -81,7 +87,7 @@ export function openSignInTab(options: {
   };
   timers.deadline = setTimeout(giveUp, options.waitMs);
   timers.check = setInterval(() => {
-    if (tab?.closed) {
+    if (tab && !isWaiting(tab)) {
       giveUp();
     }
   }, TAB_CLOSED_CHECK_MS);
@@ -89,16 +95,33 @@ export function openSignInTab(options: {
   return {
     take: () => {
       stop();
-      const taken = tab && !tab.closed ? tab : null;
+      const taken = tab && isWaiting(tab) ? tab : null;
       tab = null;
       return taken;
     },
     close: () => {
       stop();
-      tab?.close();
+      if (tab && isWaiting(tab)) {
+        tab.close();
+      }
       tab = null;
     },
   };
+}
+
+/**
+ * Whether the tab is still open on the placeholder this opened it with.
+ * Reading another origin's location throws: the person took it elsewhere.
+ */
+function isWaiting(tab: Window): boolean {
+  if (tab.closed) {
+    return false;
+  }
+  try {
+    return tab.location.href === 'about:blank';
+  } catch {
+    return false;
+  }
 }
 
 /**

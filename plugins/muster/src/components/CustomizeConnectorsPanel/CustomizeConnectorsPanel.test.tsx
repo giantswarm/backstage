@@ -401,7 +401,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('says "Signing in…" while the sign-in page is open, the wait in a tooltip', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
     } as unknown as Window);
     api.signInServer.mockResolvedValueOnce({
       status: 'auth_required',
@@ -544,7 +544,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('names an error during a sign-in over "Signing in…": a refused reopen', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
     } as unknown as Window);
     const user = userEvent.setup();
     await renderPanel();
@@ -673,7 +673,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('says "Status unavailable", not a failed sign-in, when the status cannot be read during one', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
       close: jest.fn(),
     } as unknown as Window);
     const user = userEvent.setup();
@@ -1356,7 +1356,7 @@ describe('CustomizeConnectorsPanel', () => {
     it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
       const open = jest.spyOn(window, 'open').mockReturnValue({
         closed: false,
-        location: { href: '' },
+        location: { href: 'about:blank' },
       } as unknown as Window);
       await renderPanel();
 
