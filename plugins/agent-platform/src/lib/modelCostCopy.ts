@@ -1,4 +1,11 @@
-import type { ModelCostFallbackReason } from '../hooks/useModelCost';
+import {
+  describeMimirFailure,
+  OLDER_METRICS_UNAVAILABLE,
+} from '@giantswarm/backstage-plugin-ui-react';
+import type {
+  ModelCostFallbackReason,
+  ModelCostView,
+} from '../hooks/useModelCost';
 import { lastDaysNoun } from './usageWindow';
 
 /**
@@ -28,6 +35,8 @@ export function describeModelCostFallback(
       return `No actual cost: the gateway priced none of your model calls on ${installation} in ${lastDaysNoun(days)}.`;
     case 'unreadable':
       return `No actual cost: ${installation}’s gateway metrics could not be read just now.`;
+    case 'older-data-unavailable':
+      return `No actual cost. ${OLDER_METRICS_UNAVAILABLE.sentence}`;
     case 'no-mimir':
       return undefined;
     case 'error':
@@ -94,4 +103,39 @@ export function describeActualCostByAgent({
     parts.push('Converted from USD at this environment’s configured rate.');
   }
   return parts.join(' ');
+}
+
+/**
+ * The estimate's basis line, led by why there is no actual cost when the
+ * fallback has a reason of its own to give.
+ *
+ * `rateFailure` is the rate queries' error when the estimate has no rate
+ * because they failed. When it and the actual cost failed for the same reason
+ * Mimir gave (older data unavailable), the line says it once rather than once
+ * for each.
+ */
+export function withFallbackReason({
+  cost,
+  installation,
+  days,
+  basis,
+  rateFailure,
+}: {
+  cost: ModelCostView;
+  installation: string;
+  days: number;
+  basis: string;
+  rateFailure?: unknown;
+}): string {
+  if (cost.state !== 'fallback') {
+    return basis;
+  }
+  if (
+    cost.reason === 'older-data-unavailable' &&
+    describeMimirFailure(rateFailure) === OLDER_METRICS_UNAVAILABLE
+  ) {
+    return `No actual cost and no estimate. ${OLDER_METRICS_UNAVAILABLE.sentence}`;
+  }
+  const reason = describeModelCostFallback(cost.reason, installation, days);
+  return reason ? `${reason} ${basis}` : basis;
 }

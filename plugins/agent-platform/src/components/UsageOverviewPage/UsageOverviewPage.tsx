@@ -246,7 +246,10 @@ export function UsageOverviewPage() {
             {/* The headline trend beside who drives it. */}
             <div className={classes.row}>
               {usage.callsPerDay === null ? (
-                <ActivityHeatmapUnavailable title={HEATMAP_TITLE} />
+                <ActivityHeatmapUnavailable
+                  title={HEATMAP_TITLE}
+                  error={view.callsPerDayError}
+                />
               ) : (
                 callDays && (
                   <ActivityHeatmap

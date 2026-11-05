@@ -45,6 +45,7 @@ export * from './LoadingIndicator';
 export * from './ManifestDialog';
 export * from './MenuArrowIcons';
 export * from './MermaidDiagram';
+export * from './MetricsUnavailableAlert';
 export * from './Mono';
 export * from './MoreActionsMenu';
 export * from './MoreOptions';

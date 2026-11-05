@@ -21,8 +21,15 @@ Backstage's error middleware (`MiddlewareFactory.error()`) logs every 5xx a
 route throws at `error`, with the error's message. A failure your code has
 already logged, or whose message names an installation because a person reads
 it, is answered by the router instead of thrown: `avatarRouter.ts` in
-`agent-platform-backend`, and `musterUnreachableErrorHandler()` from `gs-node`
-for an installation's muster that cannot be reached.
+`agent-platform-backend`, and, for a 503, `gs-node`'s
+`ReportedServiceUnavailableError` with `reportedErrorHandler()` mounted last on
+the router. Throw a subclass of the error after logging the failure once, as a
+warning with a fixed message; the handler answers it with the body the
+middleware would send. `MusterUnreachableError` (an installation's muster
+cannot be reached) and `MimirUnavailableError` (an installation's Mimir could
+not answer a query) are two. A router that answers some other error itself
+builds the body with `errorResponseBody()` from `gs-node`, so the frontend
+reads it as it reads the middleware's.
 
 Frontend equivalent: `SentryErrorReporter`
 (`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
