@@ -17,6 +17,12 @@ values (installation name, entity id, raw response bodies) out of the _message_
 of a `warn`/`error`: Sentry fingerprints on the message, so one root cause fans
 out into one issue per value. Put those in structured metadata instead.
 
+Metadata lands in Sentry too, as the event's extra data. An upstream's own error
+message can quote a user, a session or a prompt, so it does not go into the
+metadata of a `warn`/`error` unless the transport or a gateway wrote it: the
+kagent handler below keeps the message of an `Unavailable` or
+`DeadlineExceeded` call and leaves out every other code's.
+
 Backstage's error middleware (`MiddlewareFactory.error()`) logs every 5xx a
 route throws at `error`, with the error's message. A failure your code has
 already logged, or whose message names an installation because a person reads
@@ -29,10 +35,50 @@ middleware would send. `MusterUnreachableError` (an installation's muster
 cannot be reached) and `MimirUnavailableError` (an installation's Mimir could
 not answer a query) are two. A router that answers some other error itself
 builds the body with `errorResponseBody()` from `gs-node`, so the frontend
-reads it as it reads the middleware's.
+reads it as it reads the middleware's: `kagentErrorHandler.ts` in
+`agent-platform-backend` does, for a kagent call that failed with a 500, which
+it logs once as `kagent <call> <cause>`.
 
 Frontend equivalent: `SentryErrorReporter`
 (`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
 reach Sentry.
 
 Triage of what arrives in Sentry: the `sentry-triage` skill.
+
+## Backend metrics
+
+With the Helm value `observability.metrics.enabled`, the backend exports
+OpenTelemetry metrics in the Prometheus format on its `metrics` port
+(`OTEL_METRICS_EXPORTER=prometheus`, started in
+`packages/backend/src/instrumentation.js`): the Node.js runtime's, such as
+`nodejs_eventloop_delay_max`, and the plugins' own.
+
+A backend plugin records its own through Backstage's metrics service,
+`metricsServiceRef` from `@backstage/backend-plugin-api/alpha`, which
+`createBackend()` registers by default: a thin wrapper around the OpenTelemetry
+meter, with the plugin as the instrumentation scope (the `otel_scope_name`
+label, `backstage-plugin-<pluginId>`). Create each instrument once, not per
+request, and keep its attributes low-cardinality: an installation, a method, an
+outcome, never a session id, an entity ref or a person. Without an exporter the
+instruments record nothing.
+
+| Metric (Prometheus)                                | Attributes                          | Recorded by                                                            |
+| -------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| `kagent_client_call_duration` (histogram, seconds) | `installation`, `method`, `outcome` | `agent-platform-backend`, `kagent/metrics.ts`: every unary kagent call |
+
+`kagent_client_call_duration` is scraped as `_bucket`, `_sum` and `_count`.
+`method` is the RPC as `Service/Method`, for example
+`SessionService/ListSessions`. `outcome` is `ok`; `unreachable` when nothing
+answered at the socket level (kagent not deployed there); `timeout` when the
+portal's own deadline ran out (10 s by default); otherwise the Connect code in
+snake case: `deadline_exceeded` (a deadline the controller or the gateway ran
+out of), `unavailable` (a gateway's 5xx, or a connection whose keepalive ping
+went unanswered), `unauthenticated`, `permission_denied`, `not_found`,
+`internal`, `canceled` and so on. Each call on the wire is one observation, a retry
+included; streams (a turn's events, a task subscription) are not recorded. For
+example, the share of an installation's session lists that timed out:
+
+```promql
+sum(rate(kagent_client_call_duration_count{method="SessionService/ListSessions", outcome="timeout"}[5m])) by (installation)
+  / sum(rate(kagent_client_call_duration_count{method="SessionService/ListSessions"}[5m])) by (installation)
+```

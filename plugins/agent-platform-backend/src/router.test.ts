@@ -16,7 +16,11 @@ import {
   KagentClient,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
-import { turnPendingError, upstreamError } from './kagent/errors';
+import {
+  turnPendingError,
+  upstreamError,
+  withKagentFailure,
+} from './kagent/errors';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -337,6 +341,54 @@ describe('createRouter', () => {
     });
   });
 
+  describe('the request timeout and the keepalive', () => {
+    it.each([
+      [8000, true],
+      [7000, true],
+      [8001, false],
+      [undefined, false],
+    ])('timeoutMs %s warns: %s', async (timeoutMs, warns) => {
+      const logger = mockServices.logger.mock();
+      await createRouter({
+        logger,
+        config: mockServices.rootConfig({
+          data: {
+            ...twoInstallations,
+            ...(timeoutMs && { agentPlatform: { kagent: { timeoutMs } } }),
+          },
+        }),
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+
+      const warned = logger.warn.mock.calls.filter(([message]) =>
+        String(message).includes('too short for the kagent keepalive'),
+      );
+      expect(warned.map(([, meta]) => meta)).toEqual(
+        warns ? [{ timeoutMs, keepaliveMs: 8000 }] : [],
+      );
+    });
+  });
+
+  describe('kagent call metrics', () => {
+    it('creates one call duration histogram for every installation', async () => {
+      const histogram = { record: jest.fn() };
+      const metrics = { createHistogram: jest.fn(() => histogram) };
+      await createRouter({
+        logger: mockServices.logger.mock(),
+        config: mockServices.rootConfig({ data: twoInstallations }),
+        reachability: reachableEverywhere(),
+        metrics: metrics as unknown as RouterOptions['metrics'],
+      });
+
+      expect(metrics.createHistogram).toHaveBeenCalledTimes(1);
+      expect(metrics.createHistogram).toHaveBeenCalledWith(
+        'kagent.client.call.duration',
+        expect.objectContaining({ unit: 's' }),
+      );
+    });
+  });
+
   describe('Sentry noise', () => {
     // MiddlewareFactory.error() logs at `error` for any status >= 500, and the
     // root logger forwards warn/error to Sentry. So the expected outcome on a
@@ -371,6 +423,71 @@ describe('createRouter', () => {
         .set(KAGENT_AUTH_HEADER, 'user-token');
 
       expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+
+    describe('reports a degraded kagent once, grouped by call and cause', () => {
+      const timedOut = (call: string) =>
+        withKagentFailure(
+          upstreamError(
+            "The kagent API for installation 'gazelle' did not respond in time.",
+            'timeout',
+          ),
+          {
+            installation: 'gazelle',
+            call,
+            code: 'DeadlineExceeded',
+            error: 'context deadline exceeded',
+          },
+        );
+
+      it.each([
+        ['/kagent/sessions', listSessions, 'SessionService/ListSessions'],
+        ['/kagent/sessions/abc', getSession, 'SessionService/GetSession'],
+        [
+          '/kagent/sessions/abc/tasks',
+          listSessionTasks,
+          'A2AService/ListTasks',
+        ],
+      ])('GET %s', async (path, method, call) => {
+        const logger = mockServices.logger.mock();
+        // The error middleware logs through a child: the same mock, so that
+        // a second report would show here.
+        logger.child.mockReturnValue(logger);
+        const config = mockServices.rootConfig({ data: twoInstallations });
+        const router = await createRouter({
+          logger,
+          config,
+          client: mockClient,
+          reachability: reachableEverywhere(),
+        });
+        const reporting = express();
+        reporting.use(router);
+        reporting.use(MiddlewareFactory.create({ logger, config }).error());
+        method.mockRejectedValue(timedOut(call));
+
+        const response = await request(reporting)
+          .get(path)
+          .query({ installation: 'gazelle' })
+          .set(KAGENT_AUTH_HEADER, 'user-token');
+
+        // The browser's answer is unchanged, the installation's name included.
+        expect(response.status).toBe(500);
+        expect(response.body).toMatchObject({
+          error: {
+            name: 'UpstreamError',
+            message:
+              "The kagent API for installation 'gazelle' did not respond in time.",
+            reason: 'timeout',
+          },
+          response: { statusCode: 500 },
+        });
+        expect(logger.warn).toHaveBeenCalledTimes(1);
+        expect(logger.warn).toHaveBeenCalledWith(
+          `kagent ${call} timed out`,
+          expect.objectContaining({ installation: 'gazelle', call }),
+        );
+        expect(logger.error).not.toHaveBeenCalled();
+      });
     });
   });
 
