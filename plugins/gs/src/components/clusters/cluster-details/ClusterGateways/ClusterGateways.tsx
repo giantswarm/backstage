@@ -5,7 +5,6 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Alert, Flex, SearchField, Table, Text, useTable } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
-import { useMimirAvailable } from '../../../hooks/useMimirAvailable';
 import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology';
 import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
 import { GatewayPolicy } from '../../../utils/gatewayPolicies';
@@ -97,8 +96,6 @@ export type ClusterGatewaysContentProps = {
   routes: HttpRoute[];
   isLoading: boolean;
   error?: unknown;
-  /** `false` when the installation has no Mimir; `undefined` while unknown. */
-  mimirAvailable: boolean | undefined;
   policies: GatewayPolicy[];
   policiesLoading: boolean;
   policiesError?: unknown;
@@ -111,7 +108,6 @@ export const ClusterGatewaysContent = ({
   routes,
   isLoading,
   error,
-  mimirAvailable,
   policies,
   policiesLoading,
   policiesError,
@@ -128,74 +124,69 @@ export const ClusterGatewaysContent = ({
     paginationOptions: { type: 'none' },
   });
 
-  if (mimirAvailable === false) {
-    return (
-      <Alert
-        status="info"
-        icon
-        title="Gateway API information is based on metrics, which are not available on this installation."
-      />
-    );
-  }
-
-  if (error) {
-    return (
-      <MetricsUnavailableAlert
-        error={error}
-        title="Gateway API metrics could not be loaded."
-        description={error instanceof Error ? error.message : undefined}
-      />
-    );
-  }
-
   return (
     <Flex direction="column" gap="4">
       <Text variant="body-medium" color="secondary">
         Based on Gateway API metrics. Changes can take a minute or two to
         appear.
       </Text>
-      <InfoCard title="Gateways">
-        <Table<GatewayRow>
-          columnConfig={gatewayColumns}
-          data={isLoading ? undefined : gatewayRows}
-          isPending={isLoading}
-          pagination={{ type: 'none' }}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              No Gateways found on cluster <code>{clusterName}</code>.
-            </Text>
-          }
+      {/* The policies load on their own, so a topology error leaves them shown. */}
+      {error ? (
+        <MetricsUnavailableAlert
+          error={error}
+          title="Gateway API metrics could not be loaded."
+          description={error instanceof Error ? error.message : undefined}
         />
-      </InfoCard>
-      <InfoCard title="HTTPRoutes">
-        {!isLoading && unavailable ? (
-          <Alert status="info" icon title={unavailableNotice[unavailable]} />
-        ) : null}
-        <SearchField
-          aria-label="Search HTTPRoutes"
-          placeholder="Search by name, namespace, hostname or parent"
-          value={search.value}
-          onChange={search.onChange}
-          style={{ maxWidth: 420 }}
-        />
-        <Table<RouteParentRow>
-          {...routeTableProps}
-          columnConfig={routeColumns}
-          isPending={isLoading}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              {/* Not search.value: the rows filter on the debounced value. */}
-              {routeRows.length ? (
-                'No HTTPRoutes match the search.'
-              ) : (
-                <>
-                  No HTTPRoutes found on cluster <code>{clusterName}</code>.
-                </>
-              )}
-            </Text>
-          }
-        />
-      </InfoCard>
+      ) : (
+        <>
+          <InfoCard title="Gateways">
+            <Table<GatewayRow>
+              columnConfig={gatewayColumns}
+              data={isLoading ? undefined : gatewayRows}
+              isPending={isLoading}
+              pagination={{ type: 'none' }}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  No Gateways found on cluster <code>{clusterName}</code>.
+                </Text>
+              }
+            />
+          </InfoCard>
+          <InfoCard title="HTTPRoutes">
+            {!isLoading && unavailable ? (
+              <Alert
+                status="info"
+                icon
+                title={unavailableNotice[unavailable]}
+              />
+            ) : null}
+            <SearchField
+              aria-label="Search HTTPRoutes"
+              placeholder="Search by name, namespace, hostname or parent"
+              value={search.value}
+              onChange={search.onChange}
+              style={{ maxWidth: 420 }}
+            />
+            <Table<RouteParentRow>
+              {...routeTableProps}
+              columnConfig={routeColumns}
+              isPending={isLoading}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {/* Not search.value: the rows filter on the debounced value. */}
+                  {routeRows.length ? (
+                    'No HTTPRoutes match the search.'
+                  ) : (
+                    <>
+                      No HTTPRoutes found on cluster <code>{clusterName}</code>.
+                    </>
+                  )}
+                </Text>
+              }
+            />
+          </InfoCard>
+        </>
+      )}
       <InfoCard title="Envoy Gateway policies">
         <PoliciesTable
           clusterName={clusterName}
@@ -226,7 +217,6 @@ export const ClusterGateways = () => {
     clusterName,
     refetchInterval: 30_000,
   });
-  const mimirAvailable = useMimirAvailable(installationName);
 
   return (
     <ClusterGatewaysContent
@@ -235,7 +225,6 @@ export const ClusterGateways = () => {
       routes={routes}
       isLoading={isLoading}
       error={error}
-      mimirAvailable={mimirAvailable}
       policies={policies}
       policiesLoading={policiesLoading}
       policiesError={policiesError}

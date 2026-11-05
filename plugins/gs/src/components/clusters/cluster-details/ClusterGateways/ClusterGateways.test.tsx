@@ -58,7 +58,6 @@ function render(routes: HttpRoute[], gateways: Gateway[] = []) {
       isLoading={false}
       policies={[]}
       policiesLoading={false}
-      mimirAvailable
     />,
   );
 }
@@ -244,21 +243,22 @@ describe('<ClusterGatewaysContent />', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows a notice instead of tables without Mimir', async () => {
+  it('keeps the policies when the topology could not be loaded', async () => {
     await renderInTestApp(
       <ClusterGatewaysContent
         clusterName="demo"
         gateways={[]}
         routes={[]}
         isLoading={false}
+        error={new Error('query failed')}
         policies={[]}
         policiesLoading={false}
-        mimirAvailable={false}
       />,
     );
     expect(
-      screen.getByText(/not available on this installation/),
+      screen.getByText('Gateway API metrics could not be loaded.'),
     ).toBeInTheDocument();
     expect(screen.queryByText('HTTPRoutes')).not.toBeInTheDocument();
+    expect(screen.getByText('Envoy Gateway policies')).toBeInTheDocument();
   });
 });
