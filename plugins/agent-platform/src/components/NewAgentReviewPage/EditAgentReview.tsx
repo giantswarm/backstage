@@ -3,10 +3,11 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  CommitSha,
+  FileView,
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
-  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -43,7 +44,6 @@ import {
 } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';

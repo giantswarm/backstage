@@ -76,9 +76,10 @@ jest.mock('../../hooks/useAgentIconUrl', () => ({
 
 // CodeMirror does not lay out in jsdom; a plain block exposes the YAML the
 // page hands it, which is what the assertions read.
-jest.mock('../FileView', () => ({
-  FileView: ({ content, filename }: { content: string; filename?: string }) => (
-    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
 
@@ -269,6 +270,7 @@ function Seed({
     setSystemMessage,
     setEgressText,
     setInstallation,
+    setTenantChoices,
     selectModelConfig,
     selectHarness,
     toggleSkill,
@@ -284,6 +286,7 @@ function Seed({
       setEgressText(egressText);
     }
     setInstallation('gazelle');
+    setTenantChoices(['kagent']);
     selectModelConfig('opus-4-7', 'kagent');
     selectHarness(harness);
     if (withSkill) {
@@ -985,7 +988,8 @@ describe('NewAgentReviewPage', () => {
     expect(values).toHaveTextContent('name: go-service-reviewer');
     expect(values).toHaveTextContent('harness: kagent');
     expect(values).not.toHaveTextContent('skills');
-    const command = screen.getByTestId('code-command').textContent ?? '';
+    const command =
+      screen.getByText(/^helm install /, { selector: 'pre' }).textContent ?? '';
     expect(command).toContain('helm install go-service-reviewer');
     expect(command).toContain('oci://gsoci.azurecr.io/charts/giantswarm/agent');
     expect(command).toContain('--version 1.0.0');

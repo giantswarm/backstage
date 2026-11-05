@@ -20,6 +20,13 @@ import {
   parseAuthLoginResult,
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
+import { MusterUnreachableError } from './musterUnreachable';
+import {
+  FREQUENT_LOST_SESSIONS,
+  FREQUENT_LOST_SESSIONS_WINDOW_MS,
+  LostSessionTracker,
+  sharedLostSessionTracker,
+} from './lostSessions';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -416,7 +423,8 @@ export class MusterMcpClient {
       headers: Record<string, string> | undefined,
     ) => Promise<ProgressCallClient> = headers =>
       connectProgressClient(installation.url, headers),
-    now: () => number = Date.now,
+    private readonly now: () => number = Date.now,
+    private readonly lostSessions: LostSessionTracker = sharedLostSessionTracker,
   ) {
     this.cache = new McpClientCache(logger);
     this.signIns = new PendingSignIns(now);
@@ -675,10 +683,14 @@ export class MusterMcpClient {
         throw this.explain(error);
       }
       this.cache.markDead(first.cacheKey, first.client);
-      this.logger.warn(
-        `Muster MCP session for '${this.installation.name}' was lost; re-initializing and retrying once`,
-        { cause: messageOf(error) },
+      // Expected and usually recovered by the retry below, so not a warning:
+      // only a second failure is actionable, and explain() reports that. A
+      // loss on most requests is, though; noteLostSession() warns about that.
+      this.logger.info(
+        'Muster MCP session was lost; re-initializing and retrying once',
+        { installation: this.installation.name, cause: messageOf(error) },
       );
+      this.noteLostSession(first.client);
     }
 
     const second = await this.connectOrExplain(options);
@@ -690,6 +702,29 @@ export class MusterMcpClient {
       }
       throw this.explain(error);
     }
+  }
+
+  /**
+   * Warn when this installation lost {@link FREQUENT_LOST_SESSIONS} sessions
+   * within {@link FREQUENT_LOST_SESSIONS_WINDOW_MS}, at most once per window
+   * (see {@link LostSessionTracker}). Each loss is logged at `info`, so a
+   * gateway that drops sessions on nearly every request (a TTL shorter than the
+   * request interval, a session-key rotation) would otherwise only show as
+   * slower requests. A loss whose retry fails too is counted as well; that
+   * failure is reported on its own by {@link explain}.
+   */
+  private noteLostSession(client: MCPClient): void {
+    if (!this.lostSessions.note(this.installation.name, client, this.now())) {
+      return;
+    }
+    this.logger.warn(
+      'Muster MCP sessions are lost often; requests re-initialize before they run',
+      {
+        installation: this.installation.name,
+        lostSessions: FREQUENT_LOST_SESSIONS,
+        windowMinutes: FREQUENT_LOST_SESSIONS_WINDOW_MS / 60_000,
+      },
+    );
   }
 
   private async connectOrExplain(options?: { authToken?: string }) {
@@ -713,13 +748,14 @@ export class MusterMcpClient {
     if (reason === undefined) {
       return error;
     }
-    this.logger.warn(
-      `Muster MCP request to '${this.installation.name}' failed: ${reason}`,
-      { cause: messageOf(error) },
-    );
-    return new ServiceUnavailableError(
-      `${this.installation.name} did not answer: ${reason}`,
-    );
+    // The installation goes in the metadata, not the message: Sentry groups
+    // on the message, and `reason` is one of a few fixed texts, so this is one
+    // issue per kind of failure rather than one per installation.
+    this.logger.warn(`Muster MCP request failed: ${reason}`, {
+      installation: this.installation.name,
+      cause: messageOf(error),
+    });
+    return new MusterUnreachableError(this.installation.name, reason);
   }
 
   /**
@@ -866,7 +902,9 @@ export class MusterMcpClient {
       }
     }
     throw new ServiceUnavailableError(
-      `Muster's list_tools on '${this.installation.name}' was still truncated after ${LIST_TOOLS_MAX_PAGES} pages`,
+      // No installation in the text: the error middleware's Sentry event would
+      // be one issue per installation. Pages print it under the installation.
+      `Muster's list_tools was still truncated after ${LIST_TOOLS_MAX_PAGES} pages`,
     );
   }
 

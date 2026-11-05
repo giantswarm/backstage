@@ -489,6 +489,68 @@ describe('ConnectorPage', () => {
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
   });
 
+  it('holds the Calls line in place with a skeleton while the usage is read', async () => {
+    const api = makeApi();
+    let answer: (usage: unknown) => void = () => {};
+    api.getMcpUsage.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          answer = resolve as typeof answer;
+        }),
+    );
+    await renderAt(`${BASE}/jira/details`, { api });
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    const labels = () =>
+      Array.from(facts.querySelectorAll('dt')).map(dt => dt.textContent);
+    // Every line from the first paint, Calls in the place it keeps.
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+    expect(within(facts).getByTestId('cell-skeleton')).toBeInTheDocument();
+
+    answer(await makeApi().getMcpUsage());
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(within(facts).queryByTestId('cell-skeleton')).toBeNull();
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+  });
+
+  it('reads the calls on the Details tab addressed with a trailing slash', async () => {
+    const api = await renderAt(`${BASE}/jira/details/`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+  });
+
+  it('keeps the Calls line without a muster session, saying why', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/jira/details`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(within(facts).getByText('Calls, last 30 days')).toBeInTheDocument();
+    expect(
+      within(facts).getByText('Needs a muster session'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+
   it('keeps the tools search across a visit to another tab', async () => {
     await renderAt(`${BASE}/jira?q=search`);
 

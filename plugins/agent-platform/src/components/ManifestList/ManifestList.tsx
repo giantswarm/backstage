@@ -1,9 +1,8 @@
 import { Button, Flex } from '@backstage/ui';
-import { saveFile } from '@giantswarm/backstage-plugin-ui-react';
+import { FileView, saveFile } from '@giantswarm/backstage-plugin-ui-react';
 import { dump } from 'js-yaml';
 
 import { manifestFilename, type Manifest } from '../../lib/clusterManager';
-import { FileView } from '../FileView';
 
 /**
  * cluster-manager's rendered manifests as the review shows them: each as YAML

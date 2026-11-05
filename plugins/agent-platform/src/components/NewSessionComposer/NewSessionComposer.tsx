@@ -464,7 +464,7 @@ export function NewSessionComposer({
    * A dropdown with a single item is not a choice, so it is preselected and the
    * control disabled. It still *names* the agent, which is worth keeping: the dialog
    * on an agent's page is about that agent, and seeing it named confirms the target
-   * before you commit a paid turn to it. `InstallationSelect` makes the same call
+   * before you commit a paid turn to it. `useEnvironmentField` makes the same call
    * for a one-installation fleet.
    */
   const soleAgent = offered.length === 1 ? offered[0] : undefined;
