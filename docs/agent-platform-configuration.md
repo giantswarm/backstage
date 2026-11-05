@@ -63,8 +63,13 @@ A lab works without these; production needs them:
   [Meta-agents](#meta-agents-agentplatformmetaagents)).
 - **The avatar service.** Avatars come from the chart's DiceBear service
   (`dicebear`, on by default) at `avatars.<baseDomain>`, through
-  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it every avatar
-  fails, the backend logs a warning per image, and the UI shows initials.
+  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it, or when
+  the backend cannot connect to that host (no route to it, a refused
+  connection, no connection within 3 s), the UI shows initials and the backend
+  logs the finding once at info, then answers from it for a minute (no
+  service) or five minutes (no connection). A service that is reached but
+  answers slowly, with an error or with something other than an image logs a
+  warning per image.
 
 ## Portals: `app.portals`
 

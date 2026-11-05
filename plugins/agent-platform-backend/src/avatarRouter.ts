@@ -3,6 +3,7 @@ import { Config } from '@backstage/config';
 import { InputError, NotFoundError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
+import { Agent, fetch as undiciFetch, getGlobalDispatcher } from 'undici';
 import {
   errorCode,
   isDnsErrorCode,
@@ -37,9 +38,13 @@ import { readInstallationBaseDomain } from './installationDomain';
  * An installation that serves no avatars (its avatars host has no address,
  * or a route that is not the renderer answers 406 because DiceBear is off)
  * answers 404, the answer for an agent without an avatar, for a minute without
- * asking again: the browser shows the initials. A 502 is left for a renderer
- * or gateway in trouble (another 4xx, a 5xx, a timeout, something other than
- * a raster image).
+ * asking again: the browser shows the initials. So does an installation whose
+ * avatars host this backend cannot connect to (no route to its address, a
+ * refused connection, no connection within {@link UPSTREAM_CONNECT_TIMEOUT_MS}),
+ * for {@link UNREACHABLE_TTL_MS}: the network between the two, not a renderer.
+ * Each finding is logged once per period at info. A 502 is left for a renderer
+ * or gateway in trouble (another 4xx, a 5xx, no answer in time once connected,
+ * something other than a raster image).
  *
  * Authentication is the plugin's cookie policy for this path — an `<img>`
  * carries no bearer token — see plugin.ts.
@@ -47,7 +52,7 @@ import { readInstallationBaseDomain } from './installationDomain';
 export interface AvatarRouterOptions {
   config: Config;
   logger: LoggerService;
-  /** Overridable for tests. */
+  /** Overridable for tests; defaults to {@link createAvatarFetch}. */
   fetchFn?: typeof fetch;
   /** Overridable clock for tests. */
   now?: () => number;
@@ -61,7 +66,17 @@ export type AvatarSize = (typeof AVATAR_SIZES)[number];
 /** An agent's technical name, a DNS-1123 label: the avatar is seeded by it. */
 const NAME_PATTERN = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 
+/** The whole fetch, from connecting to the last byte of the image. */
 const UPSTREAM_TIMEOUT_MS = 10_000;
+
+/**
+ * Connecting to the avatars host, TCP and TLS: what tells a host this backend
+ * cannot reach from one that is reachable but slow. A reachable host connects
+ * in milliseconds, across a continent in well under one; 3 s leaves room for
+ * one lost SYN (retransmitted after 1 s). The same budget as the reachability
+ * probes of gs-node (`DEFAULT_PROBE_TIMEOUT_MS`).
+ */
+const UPSTREAM_CONNECT_TIMEOUT_MS = 3_000;
 
 /** Far above any avatar the renderer produces: a bound, not a budget. */
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -171,6 +186,16 @@ type UpstreamAnswer =
       details?: Record<string, string | number>;
     }
   | {
+      /**
+       * No connection to the avatars host could be made
+       * ({@link CONNECT_FAILURE_CODES}): this backend cannot reach the
+       * installation, whatever its renderer would answer.
+       */
+      kind: 'unreachable';
+      reason: string;
+      details?: Record<string, string | number>;
+    }
+  | {
       kind: 'failed';
       /** Fixed wording for the log message (Sentry fingerprints on it). */
       problem: string;
@@ -191,6 +216,59 @@ const NOT_SERVED_STATUS = 406;
 
 /** How long an installation that serves no avatars is not asked again. */
 const NOT_SERVED_TTL_MS = 60_000;
+
+/**
+ * How long an installation whose avatars host cannot be connected to is not
+ * asked again. Longer than {@link NOT_SERVED_TTL_MS}: a finding costs a wait of
+ * up to {@link UPSTREAM_CONNECT_TIMEOUT_MS}, and a network path changes rarely.
+ * Short enough that an installation that comes back shows its avatars again
+ * within minutes, without a restart.
+ */
+const UNREACHABLE_TTL_MS = 5 * 60_000;
+
+/**
+ * Error codes that say no connection to the avatars host could be made: the
+ * connect timeout of undici (TCP and TLS, see
+ * {@link UPSTREAM_CONNECT_TIMEOUT_MS}) and the kernel's answers for an address
+ * that refuses or that no route leads to. A reset, a TLS failure or a timeout
+ * once connected are not among them: something answered there.
+ */
+const CONNECT_FAILURE_CODES = new Set([
+  'UND_ERR_CONNECT_TIMEOUT',
+  'ECONNREFUSED',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EHOSTDOWN',
+  'ENETDOWN',
+  'ETIMEDOUT',
+]);
+
+/**
+ * The fetch of the avatars: undici's own, with a dispatcher whose connect
+ * timeout is {@link UPSTREAM_CONNECT_TIMEOUT_MS}, so a host that cannot be
+ * connected to fails as such in 3 s, rather than as no answer within
+ * {@link UPSTREAM_TIMEOUT_MS}. (Node's built-in `fetch` bundles an older
+ * undici, which refuses a dispatcher of the undici package.)
+ *
+ * When the backend's global dispatcher is not undici's plain `Agent` (an
+ * egress proxy, installed by `configureFetchProxy` of `backend-common`), the
+ * avatars go through it: a dispatcher of this module's own would go around the
+ * proxy. The connection is then to the proxy, and a host the proxy cannot
+ * reach fails as the proxy answers it, as before.
+ */
+export function createAvatarFetch(
+  connectTimeoutMs: number = UPSTREAM_CONNECT_TIMEOUT_MS,
+): typeof fetch {
+  const direct = new Agent({ connect: { timeout: connectTimeoutMs } });
+  const avatarFetch = (url: string, init: RequestInit) => {
+    const shared = getGlobalDispatcher();
+    return undiciFetch(url, {
+      ...(init as Parameters<typeof undiciFetch>[1]),
+      dispatcher: shared instanceof Agent ? direct : shared,
+    });
+  };
+  return avatarFetch as unknown as typeof fetch;
+}
 
 /** Lets an unread answer's connection go back to the pool. */
 async function discard(upstream: Response): Promise<void> {
@@ -268,7 +346,11 @@ async function fetchAvatar(
     }
     return { kind: 'ok', headers: upstream.headers, body };
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    // By name: the fetch rejects with a `DOMException`, which is an `Error`
+    // only in Node's own realm.
+    if ((error as { name?: unknown } | null)?.name === 'AbortError') {
+      // Connected, or the shorter connect timeout would have fired first (a
+      // proxy aside): a renderer or a gateway that is slow.
       return {
         kind: 'failed',
         problem: 'did not answer in time',
@@ -282,6 +364,14 @@ async function fetchAvatar(
         kind: 'not-served',
         reason: `has no address (${code})`,
         details: { error: message },
+      };
+    }
+    if (code && CONNECT_FAILURE_CODES.has(code)) {
+      // The code only: undici's and the kernel's messages name the address.
+      return {
+        kind: 'unreachable',
+        reason: `cannot be connected to (${code})`,
+        details: { code, error: message },
       };
     }
     return {
@@ -308,28 +398,40 @@ export function createAvatarRouter(
   options: AvatarRouterOptions,
 ): express.Router {
   const { config, logger } = options;
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = options.fetchFn ?? createAvatarFetch();
   const now = options.now ?? Date.now;
   const router = Router();
-  /** Installations found to serve no avatars, until when, and why. */
-  const notServed = new Map<string, { until: number; reason: string }>();
+  /**
+   * Installations found to serve no avatars or to be unreachable, until when,
+   * and the message of the answer.
+   */
+  const withoutAvatars = new Map<string, { until: number; message: string }>();
 
   // A 404 with the reason, cached as long as the finding is: the browser does
-  // not ask again for a minute, and this backend does not ask the upstream.
-  const answerNotServed = (
+  // not ask again until it expires, and this backend does not ask the
+  // upstream.
+  const answerWithoutAvatars = (
     res: express.Response,
-    installation: string,
-    reason: string,
-    until: number,
+    finding: { until: number; message: string },
   ) => {
-    const maxAge = Math.max(0, Math.ceil((until - now()) / 1000));
+    const maxAge = Math.max(0, Math.ceil((finding.until - now()) / 1000));
     res.setHeader('Cache-Control', `private, max-age=${maxAge}`);
     res.status(404).json({
-      error: {
-        name: 'NotFoundError',
-        message: `The installation '${installation}' serves no avatars: its avatars host ${reason}.`,
-      },
+      error: { name: 'NotFoundError', message: finding.message },
     });
+  };
+
+  /**
+   * Records a finding for its period, and whether it is new: the avatars of a
+   * page are asked for at once, and the answers that come back after the first
+   * one's are the same finding, not another one to log.
+   */
+  const record = (installation: string, message: string, ttlMs: number) => {
+    const previous = withoutAvatars.get(installation);
+    const isNew = !previous || previous.until <= now();
+    const finding = { until: now() + ttlMs, message };
+    withoutAvatars.set(installation, finding);
+    return { finding, isNew };
   };
 
   router.get('/avatars/:installation/v1/*rest', async (req, res) => {
@@ -348,9 +450,9 @@ export function createAvatarRouter(
     }
     const url = `https://avatars.${baseDomain}/${avatarPath(target)}`;
 
-    const known = notServed.get(installation);
+    const known = withoutAvatars.get(installation);
     if (known && known.until > now()) {
-      answerNotServed(res, installation, known.reason, known.until);
+      answerWithoutAvatars(res, known);
       return;
     }
 
@@ -383,14 +485,41 @@ export function createAvatarRouter(
         // for any agent without an avatar. Logged once per finding at info,
         // so an installation that should serve avatars (a wrong base domain,
         // a renderer switched off by mistake) still shows in the logs.
-        const until = now() + NOT_SERVED_TTL_MS;
-        notServed.set(installation, { until, reason: answer.reason });
-        logger.info('The installation serves no avatars', {
-          url,
+        const { finding, isNew } = record(
           installation,
-          ...answer.details,
-        });
-        answerNotServed(res, installation, answer.reason, until);
+          `The installation '${installation}' serves no avatars: its avatars host ${answer.reason}.`,
+          NOT_SERVED_TTL_MS,
+        );
+        if (isNew) {
+          logger.info('The installation serves no avatars', {
+            url,
+            installation,
+            ...answer.details,
+          });
+        }
+        answerWithoutAvatars(res, finding);
+        return;
+      }
+      case 'unreachable': {
+        // The network between this backend and the installation, not its
+        // renderer: an installation the portal has no route to (a gateway
+        // with a private address only) would otherwise cost a wait and a
+        // warning per avatar on every page. Answered as an agent without an
+        // avatar, at info once per period, so a path that should exist still
+        // shows in the logs.
+        const { finding, isNew } = record(
+          installation,
+          `The avatar service of '${installation}' ${answer.reason}.`,
+          UNREACHABLE_TTL_MS,
+        );
+        if (isNew) {
+          logger.info('The avatar service cannot be connected to', {
+            url,
+            installation,
+            ...answer.details,
+          });
+        }
+        answerWithoutAvatars(res, finding);
         return;
       }
       case 'failed':

@@ -8952,6 +8952,7 @@ __metadata:
     express: "npm:^5.0.0"
     express-promise-router: "npm:^4.1.0"
     supertest: "npm:^7.0.0"
+    undici: "npm:^8.10.2"
   languageName: unknown
   linkType: soft
 

@@ -2,8 +2,16 @@ import { ConfigReader } from '@backstage/config';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
 import express from 'express';
+import { createServer as createHttpServer, type Server } from 'node:http';
+import { createServer as createTcpServer, type AddressInfo } from 'node:net';
 import request from 'supertest';
-import { AVATAR_SIZES, createAvatarRouter } from './avatarRouter';
+import { getGlobalDispatcher, MockAgent, setGlobalDispatcher } from 'undici';
+import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  AVATAR_SIZES,
+  createAvatarFetch,
+  createAvatarRouter,
+} from './avatarRouter';
 
 const config = new ConfigReader({
   gs: {
@@ -241,6 +249,165 @@ describe('GET /avatars/:installation/v1/...', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
+  /** undici's way of saying the connection could not be made. */
+  const connectFailure = (code: string, message: string) => () =>
+    Promise.reject(
+      new TypeError('fetch failed', {
+        cause: Object.assign(new Error(message), { code }),
+      }),
+    );
+
+  it.each([
+    [
+      'no connection within the connect timeout',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'Connect Timeout Error (attempted address: 10.0.0.1:443, timeout: 3000ms)',
+    ],
+    [
+      'a refused connection',
+      'ECONNREFUSED',
+      'connect ECONNREFUSED 10.0.0.1:443',
+    ],
+    [
+      'no route to the host',
+      'EHOSTUNREACH',
+      'connect EHOSTUNREACH 10.0.0.1:443',
+    ],
+    [
+      'no route to the network',
+      'ENETUNREACH',
+      'connect ENETUNREACH 10.0.0.1:443',
+    ],
+  ])(
+    'answers 404 at once, for five minutes, when its avatars host cannot be connected to: %s',
+    async (_, code, message) => {
+      const logger = mockServices.logger.mock();
+      const fetchFn = upstream(connectFailure(code, message));
+
+      const response = await request(app(fetchFn, logger)).get(
+        '/avatars/gazelle/v1/48/e2e-agent.png',
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.headers['cache-control']).toBe('private, max-age=300');
+      expect(response.body.error.name).toBe('NotFoundError');
+      expect(response.body.error.message).toBe(
+        `The avatar service of 'gazelle' cannot be connected to (${code}).`,
+      );
+      // The code reaches the browser, the address does not.
+      expect(response.body.error.message).not.toContain('10.0.0.1');
+      // The network, not a renderer in trouble: in the logs, not in Sentry.
+      expect(logger.info).toHaveBeenCalledWith(
+        'The avatar service cannot be connected to',
+        expect.objectContaining({
+          installation: 'gazelle',
+          url: 'https://avatars.gazelle.example/v1/48/e2e-agent.png',
+          code,
+        }),
+      );
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it('asks an unreachable installation again after five minutes, and forwards its avatars once it is back', async () => {
+    const logger = mockServices.logger.mock();
+    let reachable = false;
+    const fetchFn = upstream(() =>
+      reachable
+        ? new Response(png, { status: 200, headers: imageHeaders })
+        : connectFailure('UND_ERR_CONNECT_TIMEOUT', 'Connect Timeout Error')(),
+    );
+    let clock = 1_000_000;
+    const server = app(fetchFn, logger, () => clock);
+
+    await request(server).get('/avatars/gazelle/v1/48/a.png');
+    clock += 4 * 60_000;
+    reachable = true;
+    const cached = await request(server).get('/avatars/gazelle/v1/96/b.png');
+
+    // Within the period: answered from the finding, nothing fetched, nothing
+    // logged again.
+    expect(cached.status).toBe(404);
+    expect(cached.headers['cache-control']).toBe('private, max-age=60');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+
+    clock += 60_000;
+    const back = await request(server).get('/avatars/gazelle/v1/48/a.png');
+
+    expect(back.status).toBe(200);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs the avatars of one page that all find an installation unreachable once', async () => {
+    const logger = mockServices.logger.mock();
+    let fail: () => void = () => undefined;
+    const failed = new Promise<void>(resolve => {
+      fail = resolve;
+    });
+    // Every fetch waits until the last one has started, as when a page asks
+    // for its avatars at once.
+    const fetchFn = upstream(async () => {
+      if (fetchFn.mock.calls.length === 3) {
+        fail();
+      }
+      await failed;
+      return connectFailure('ECONNREFUSED', 'connect ECONNREFUSED')();
+    });
+    const server = app(fetchFn, logger);
+
+    const responses = await Promise.all(
+      ['a', 'b', 'c'].map(name =>
+        request(server).get(`/avatars/gazelle/v1/48/${name}.png`),
+      ),
+    );
+
+    expect(responses.map(response => response.status)).toEqual([404, 404, 404]);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps asking another installation while one is unreachable', async () => {
+    const fetchFn = upstream(async () => {
+      const url = String(fetchFn.mock.calls[fetchFn.mock.calls.length - 1][0]);
+      return url.includes('gazelle')
+        ? connectFailure('ECONNREFUSED', 'connect ECONNREFUSED')()
+        : new Response(png, { status: 200, headers: imageHeaders });
+    });
+    const twoInstallations = new ConfigReader({
+      gs: {
+        installations: {
+          gazelle: { baseDomain: 'gazelle.example' },
+          other: { baseDomain: 'other.example' },
+        },
+      },
+    });
+    const logger = mockServices.logger.mock();
+    const server = express()
+      .use(
+        createAvatarRouter({
+          config: twoInstallations,
+          logger,
+          fetchFn: fetchFn as unknown as typeof fetch,
+        }),
+      )
+      .use(
+        MiddlewareFactory.create({
+          logger,
+          config: new ConfigReader({}),
+        }).error(),
+      );
+
+    expect(
+      (await request(server).get('/avatars/gazelle/v1/48/a.png')).status,
+    ).toBe(404);
+    expect(
+      (await request(server).get('/avatars/other/v1/48/a.png')).status,
+    ).toBe(200);
+  });
+
   it('releases the connection of an answer it does not forward', async () => {
     const cancel = jest.fn(async () => undefined);
     const fetchFn = upstream(() => {
@@ -305,6 +472,20 @@ describe('GET /avatars/:installation/v1/...', () => {
       () => Promise.reject(new TypeError('fetch failed')),
       /fetch failed/,
     ],
+    [
+      // Connected: something answered there and hung up.
+      'resets the connection',
+      connectFailure('ECONNRESET', 'read ECONNRESET'),
+      /fetch failed/,
+    ],
+    [
+      'presents a certificate this backend does not trust',
+      connectFailure(
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        'unable to verify the first certificate',
+      ),
+      /fetch failed/,
+    ],
   ])(
     'answers 502 with the reason when the avatar service %s',
     async (_, answer, reason) => {
@@ -362,7 +543,115 @@ describe('GET /avatars/:installation/v1/...', () => {
     );
   });
 
+  it('warns, and keeps asking, when a connected avatar service does not answer in time', async () => {
+    const logger = mockServices.logger.mock();
+    // What the fetch does when the deadline aborts it: the connect timeout is
+    // shorter, so the connection was made.
+    const fetchFn = upstream(() =>
+      Promise.reject(
+        new DOMException('This operation was aborted', 'AbortError'),
+      ),
+    );
+    const server = app(fetchFn, logger);
+
+    const response = await request(server).get('/avatars/gazelle/v1/48/a.png');
+    await request(server).get('/avatars/gazelle/v1/48/a.png');
+
+    expect(response.status).toBe(502);
+    expect(response.body.error.message).toMatch(/no answer within 10 s/);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'The avatar service did not answer in time',
+      expect.objectContaining({ installation: 'gazelle' }),
+    );
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
   it('exposes the endpoint size allowlist, the same as the frontend’s', () => {
     expect(AVATAR_SIZES).toEqual([48, 96, 128, 512]);
+  });
+});
+
+describe('createAvatarFetch', () => {
+  const servers: Array<{ close: () => void }> = [];
+
+  afterEach(() => {
+    for (const server of servers.splice(0)) {
+      server.close();
+    }
+  });
+
+  async function listen<T extends Server | ReturnType<typeof createTcpServer>>(
+    server: T,
+  ): Promise<number> {
+    servers.push(server);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    return (server.address() as AddressInfo).port;
+  }
+
+  it('fails a host that takes no TLS handshake within the connect timeout as a connect timeout', async () => {
+    // Accepts the TCP connection and never says a word: the TLS handshake,
+    // part of connecting, does not finish.
+    const sockets: Array<{ destroy: () => void }> = [];
+    const silent = createTcpServer(socket => sockets.push(socket));
+    servers.push({ close: () => sockets.forEach(socket => socket.destroy()) });
+    const port = await listen(silent);
+
+    const error = await createAvatarFetch(100)(
+      `https://127.0.0.1:${port}/v1/a.png`,
+      {},
+    ).catch((e: unknown) => e);
+
+    expect(errorCode(error)).toBe('UND_ERR_CONNECT_TIMEOUT');
+  });
+
+  it('fails a closed port as a refused connection', async () => {
+    const closed = createTcpServer();
+    const port = await listen(closed);
+    await new Promise(resolve => closed.close(resolve));
+
+    const error = await createAvatarFetch(100)(
+      `http://127.0.0.1:${port}/v1/a.png`,
+      {},
+    ).catch((e: unknown) => e);
+
+    expect(errorCode(error)).toBe('ECONNREFUSED');
+  });
+
+  it('waits past the connect timeout for a host that connected and answers slowly', async () => {
+    const slow = createHttpServer((_req, res) => {
+      setTimeout(() => res.end('late'), 300);
+    });
+    const port = await listen(slow);
+
+    const response = await createAvatarFetch(100)(
+      `http://127.0.0.1:${port}/v1/a.png`,
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('late');
+  });
+
+  it('goes through the global dispatcher when it is not the plain agent, as an egress proxy is', async () => {
+    const previous = getGlobalDispatcher();
+    const proxy = new MockAgent();
+    proxy.disableNetConnect();
+    proxy
+      .get('https://avatars.gazelle.example')
+      .intercept({ path: '/v1/a.png' })
+      .reply(200, 'through the proxy');
+    setGlobalDispatcher(proxy);
+    try {
+      const response = await createAvatarFetch()(
+        'https://avatars.gazelle.example/v1/a.png',
+        {},
+      );
+
+      expect(await response.text()).toBe('through the proxy');
+    } finally {
+      setGlobalDispatcher(previous);
+      await proxy.close();
+    }
   });
 });
