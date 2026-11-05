@@ -434,6 +434,14 @@ export interface ServerSignInProps {
    * portal, e.g. Bot PRs), "connector" in the agent platform's own sections.
    */
   noun?: SignInNoun;
+  /**
+   * Called once the person is signed in to the server: a sign-in that lands,
+   * here or in another tab, or a click that finds it connected already (see
+   * `UseServerSignInOptions.onSignedIn`). For a surface that shows the
+   * sign-in in place of a refused call, to clear the refusal and run it
+   * again.
+   */
+  onSignedIn?: () => void;
 }
 
 /**
@@ -453,9 +461,13 @@ export function ServerSignIn({
   installation,
   showName,
   noun = 'server',
+  onSignedIn,
 }: ServerSignInProps) {
   const classes = useStyles();
-  const state = useServerSignIn(serverName, installation, { noun });
+  const state = useServerSignIn(serverName, installation, {
+    noun,
+    onSignedIn,
+  });
   // Read only where the caller names no display name of its own.
   const known = useConnectorLabel(installation, serverName, {
     enabled: displayName === undefined,

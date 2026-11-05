@@ -367,6 +367,16 @@ export interface UseServerSignInOptions {
   /** What the hook's own notes call the server; main's "server" by default. */
   noun?: SignInNoun;
   /**
+   * Called once the person is signed in to the server, for a surface that
+   * waits on it (a refused call to run again): when muster's status moves
+   * from waiting for the sign-in to connected while it is mounted, whether
+   * the sign-in finished in the tab this opened or in another one (read on
+   * the return to this tab), and when a sign-in click finds the server
+   * connected already. Not on first sight of a server that is connected: a
+   * status read before the refusal says nothing about it.
+   */
+  onSignedIn?: () => void;
+  /**
    * The name is a provider App muster keeps, not a server: the sign-in is
    * `core_auth_login app=<name>` and the state its `providerApps` entry in
    * `auth://status`.
@@ -448,6 +458,10 @@ export function useServerSignIn(
 ): ServerSignInState {
   const musterApi = useApi(musterApiRef);
   const queryClient = useQueryClient();
+  // The caller's latest callback, so a sign-in that lands runs what the
+  // caller would run now.
+  const onSignedInRef = useRef(options.onSignedIn);
+  onSignedInRef.current = options.onSignedIn;
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const authUrlLifetimeMs =
@@ -593,6 +607,10 @@ export function useServerSignIn(
         tab?.close();
         setPending(null);
         queryClient.invalidateQueries({ queryKey: ['muster'] });
+        // Signed in already: what waits on the sign-in goes ahead, rather
+        // than the person reading muster's "already connected" beside a
+        // refusal that no longer holds.
+        onSignedInRef.current?.();
         return;
       }
       const hasPage =
@@ -756,6 +774,7 @@ export function useServerSignIn(
       setPending(null);
     }
     queryClient.invalidateQueries({ queryKey: ['muster'] });
+    onSignedInRef.current?.();
   }, [pending, status, queryClient, setPending]);
 
   // A provider App's code that muster gave up (expired, refused by the

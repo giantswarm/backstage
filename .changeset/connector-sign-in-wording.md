@@ -21,13 +21,18 @@ Sign-in prompts say "connector" and name each connector by its display name.
   showed technical names to people without cluster access. `ServerSignIn`
   names the connector by it when the caller passes no `displayName`, and shows
   the display name with `showName`, with the server's own name beside it where
-  they differ. `isMusterSignInRequiredText` tells muster's request for a
+  they differ, and takes `onSignedIn`, called once the sign-in lands (also
+  from another tab, or a click that finds the server connected already).
+  `isMusterSignInRequiredText` tells muster's request for a
   sign-in from other not-connected answers. The sign-in dialog says
   "connector".
 - agent-platform: muster's request for the person's sign-in to agent-manager
   is a sign-in, not agent-manager's own `auth_required` refusal: starting a
   session without it offers the sign-in instead of "Session not started" with
-  muster's text. The connect alert names the connector by its display name
+  muster's text. Once that sign-in lands, here or in another tab, the alert
+  goes and the session starts with the prompt as it is; before, the alert
+  stayed, and its Sign in then answered "already authenticated". The connect
+  alert names the connector by its display name
   and, for muster's request for a sign-in, writes its own sentence instead of
   muster's; any other not-connected answer stays in sight.
 - bot-prs: the marge sign-in alert does the same.

@@ -94,7 +94,17 @@ beforeEach(() => {
 
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
-  ServerSignIn: () => <div data-testid="server-sign-in" />,
+  // Its `onSignedIn` stands for muster reporting the sign-in landed (here,
+  // in another tab, or a click that found it connected already).
+  ServerSignIn: ({ onSignedIn }: { onSignedIn?: () => void }) => (
+    <div data-testid="server-sign-in">
+      {onSignedIn && (
+        <button type="button" onClick={onSignedIn}>
+          Sign-in lands
+        </button>
+      )}
+    </div>
+  ),
   useConnectorLabel: (_installation: string, name: string) =>
     name === 'agent-manager' ? 'Agent Manager' : name,
 }));
@@ -683,6 +693,81 @@ describe('NewSessionComposer', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/requires authentication/)).toBeNull();
     expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+
+  // The start's error belongs to the caller (`useCreateSession`'s mutation),
+  // which keeps it until the next start: the alert used to stay up after the
+  // sign-in, and a second click on its Sign in read muster's "already
+  // authenticated".
+  describe('once the sign-in to agent-manager lands', () => {
+    const signInRequired = () =>
+      classifyAgentManagerError(
+        new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        ),
+      );
+
+    it('takes the alert away and starts the session again, with the prompt as it is', async () => {
+      const error = signInRequired();
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      // The start was refused: the caller hands its error back.
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={error}
+        />,
+      );
+      expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).toHaveBeenCalledTimes(1);
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the ingress',
+        [],
+        undefined,
+        undefined,
+      );
+      expect(field()).toHaveValue('check the ingress');
+    });
+
+    it('asks again when the start that followed is refused again', async () => {
+      const { rerender } = renderComposer({
+        defaultAgent: sre,
+        error: signInRequired(),
+      });
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={signInRequired()}
+        />,
+      );
+
+      expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    });
   });
 });
 

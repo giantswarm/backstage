@@ -584,6 +584,10 @@ export function NewSessionComposer({
   // The workspace the last Start asked for: what the notice above the box
   // speaks of, whatever is picked since.
   const [startedIn, setStartedIn] = useState<Workspace>();
+  // The refusal a sign-in to agent-manager has answered since: the caller
+  // keeps the start's error until the next start, so the alert that asked for
+  // the sign-in would otherwise stay up after it landed.
+  const [signedInPast, setSignedInPast] = useState<unknown>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -1024,22 +1028,30 @@ export function NewSessionComposer({
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
         {workspaceNotice}
-        {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
-          <ConnectAgentManagerAlert
-            installation={selectedAgent.installation}
-            message={error.message}
-            action="Sessions are started"
-          />
-        ) : (
-          error &&
-          !workspaceSaysError && (
-            <Alert
-              status="danger"
-              title="Session not started"
-              description={typeof error === 'string' ? error : error.message}
-            />
-          )
-        )}
+        {error instanceof AgentManagerNotConnectedError && selectedAgent
+          ? error !== signedInPast && (
+              <ConnectAgentManagerAlert
+                installation={selectedAgent.installation}
+                message={error.message}
+                action="Sessions are started"
+                // Signed in, here or in another tab: the alert goes, and the
+                // start goes again with the prompt as it is, as after a
+                // workspace's sign-in. Should it not get under way (the prompt
+                // emptied meanwhile), Start is there.
+                onSignedIn={() => {
+                  setSignedInPast(error);
+                  submit({ workspace: startedIn });
+                }}
+              />
+            )
+          : error &&
+            !workspaceSaysError && (
+              <Alert
+                status="danger"
+                title="Session not started"
+                description={typeof error === 'string' ? error : error.message}
+              />
+            )}
         {modelWarning && selectedAgent && (
           <Alert
             status="warning"

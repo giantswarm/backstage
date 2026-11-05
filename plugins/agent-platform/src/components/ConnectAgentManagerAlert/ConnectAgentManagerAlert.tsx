@@ -33,6 +33,7 @@ export function ConnectAgentManagerAlert({
   action = 'Agents are changed',
   server = AGENT_MANAGER_SERVER,
   needsGitHub = false,
+  onSignedIn,
 }: {
   installation: string;
   /** The answer the call got, muster's or agent-manager's. */
@@ -43,6 +44,11 @@ export function ConnectAgentManagerAlert({
   server?: string;
   /** The write needs the person's GitHub authorization (`auth_required`). */
   needsGitHub?: boolean;
+  /**
+   * Called once the person is signed in to the connector, here or in another
+   * tab: the caller clears the refusal and runs the call again.
+   */
+  onSignedIn?: () => void;
 }) {
   const label = useConnectorLabel(installation, server);
   const signInRequired = !needsGitHub && isMusterSignInRequiredText(message);
@@ -92,6 +98,7 @@ export function ConnectAgentManagerAlert({
             serverName={server}
             displayName={label}
             installation={installation}
+            onSignedIn={onSignedIn}
           />
         </Flex>
       }
