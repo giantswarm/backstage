@@ -559,6 +559,8 @@ const NO_SESSIONS: AgentSessionsView = {
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
+  retry: () => {},
+  isRetrying: false,
 };
 
 const ONE_SESSION: AgentSessionsView = {
@@ -1943,6 +1945,9 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('Sessions could not be read from this environment.'),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/You have no sessions with this agent/),
+      ).not.toBeInTheDocument();
     });
   });
 

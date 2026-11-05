@@ -45,9 +45,11 @@ test('an unreadable installation names the reason and the request id', async ({
 
   await open(admin, '/sessions');
 
-  await expect(admin.getByText('Could not read 1 environment')).toBeVisible({
-    timeout: 60_000,
-  });
+  // The lab's one environment failed, so the failure is the page's answer.
+  // Exact: the rail says "Could not read your sessions." too.
+  await expect(
+    admin.getByText('Could not read your sessions', { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
   const reason = admin.getByText(
     new RegExp(
       `${lab.installation} \\(authentication failed, request id [0-9a-f-]{36}\\)`,

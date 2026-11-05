@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -23,7 +24,12 @@ import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { useNotificationRecordPruning } from '../../hooks/useSessionNotificationRecord';
-import { describeReadFailure, type ReadFailure } from '../../lib/readFailure';
+import {
+  describeReadFailure,
+  isKagentNotDeployed,
+  type ReadFailure,
+} from '../../lib/readFailure';
+import { readSessionsOnce } from '../../lib/readSessionsOnce';
 import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
 export type SessionsContextValue = {
@@ -64,6 +70,20 @@ export type SessionsContextValue = {
    */
   readFailures: Record<string, ReadFailure>;
   /**
+   * No installation answered: at least one read failed and none returned a
+   * list, not even an empty one. The failure is then the list's whole answer,
+   * where with an installation that answered empty it is a partial one.
+   */
+  nothingRead: boolean;
+  /**
+   * Read the sessions of `unreachableInstallations` again, once each: the
+   * page's "Try again" after a failed read, as when kagent was down for a
+   * moment.
+   */
+  retry: () => void;
+  /** A {@link retry} is under way: a failed read is being read again. */
+  isRetrying: boolean;
+  /**
    * Installations that reported a session list which is **not** scoped to the
    * signed-in user, because their kagent runs in `unsecure` mode. Rows are still
    * shown; the UI must stop describing them as the user's own.
@@ -85,6 +105,21 @@ export type SessionsContextValue = {
  * list does not; a list whose read stays incomplete would ask on every change.
  */
 const PRUNE_READ_INTERVAL_MS = 10 * 60 * 1000;
+
+/**
+ * A session read that failed and is reported: an error with no list to show,
+ * that is not kagent being absent ({@link isKagentNotDeployed}).
+ */
+function isFailedRead(
+  query: { status: string; data?: unknown; error: unknown } | undefined,
+): boolean {
+  return (
+    query !== undefined &&
+    query.status === 'error' &&
+    query.data === undefined &&
+    !isKagentNotDeployed(query.error)
+  );
+}
 
 const SessionsContext = createContext<SessionsContextValue | undefined>(
   undefined,
@@ -226,14 +261,31 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       const query = sessionQueries[index];
       // `errorUpdatedAt` too: a later failure with another reason or request
       // id keeps the error's name.
-      return `${installation}:${query?.status}:${query?.dataUpdatedAt}:${
-        query?.errorUpdatedAt
-      }:${(query?.error as Error | null)?.name ?? ''}`;
+      // A failed read's fetch status says whether a retry is under way; a
+      // healthy installation's is left out, so its background refetches do
+      // not rebuild the rows.
+      const fetching = query?.status === 'error' ? `:${query.fetchStatus}` : '';
+      return `${installation}:${query?.status}${fetching}:${
+        query?.dataUpdatedAt
+      }:${query?.errorUpdatedAt}:${(query?.error as Error | null)?.name ?? ''}`;
     })
     .join('|');
 
+  // The installations whose read failed and is reported (see `isFailedRead`):
+  // what Try again reads again, once each. The ones that answered keep their
+  // rows; the ones without kagent are not asked again.
+  const failedKey = targets
+    .filter((_, index) => isFailedRead(sessionQueries[index]))
+    .join(',');
+  const retry = useCallback(() => {
+    for (const installation of failedKey ? failedKey.split(',') : []) {
+      void readSessionsOnce(queryClient, kagentApi, installation);
+    }
+  }, [queryClient, kagentApi, failedKey]);
+
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
+    let isRetrying = false;
     const unreachable: string[] = [];
     const readFailures: Record<string, ReadFailure> = {};
 
@@ -272,13 +324,11 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       //
       // Anything else — including UpstreamError for a 5xx, a timeout or an
       // unreadable body — means kagent answered and failed, which is worth saying.
-      const errorName = (query.error as Error | null)?.name;
-      const notDeployed =
-        errorName === 'NotFoundError' ||
-        errorName === 'ServiceUnavailableError';
-      if (!notDeployed) {
+      if (isFailedRead(query)) {
         unreachable.push(installation);
         readFailures[installation] = describeReadFailure(query.error);
+        // A failed query read again keeps its error until it answers.
+        isRetrying ||= query.fetchStatus === 'fetching';
       }
     });
 
@@ -325,6 +375,11 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       hasInstallations,
       unreachableInstallations: unreachable,
       readFailures,
+      nothingRead:
+        unreachable.length > 0 &&
+        !sessionQueries.some(query => query?.data !== undefined),
+      retry,
+      isRetrying,
       notUserScopedInstallations,
       notReachableInstallations,
     };
@@ -341,6 +396,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     kagentKey,
     allInstallations.length,
     notReachableInstallations,
+    retry,
   ]);
 
   // The person's notification record keeps entries per session (its origin,

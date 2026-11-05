@@ -1,11 +1,17 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey } from '../lib/queryKeys';
+import {
+  describeReadFailure,
+  isKagentNotDeployed,
+  type ReadFailure,
+} from '../lib/readFailure';
+import { readSessionsOnce } from '../lib/readSessionsOnce';
 import {
   buildAgentIndex,
   SessionRow,
@@ -36,6 +42,17 @@ export type AgentSessionsView = {
    * out which failure it was — the sessions list already reports those in detail.
    */
   isUnavailable: boolean;
+  /**
+   * Why the read failed, when {@link isUnavailable} and kagent answered and
+   * failed: the failure is worth reporting and a retry may fix it. Absent
+   * when kagent is not deployed or not reachable here (the backend's 404),
+   * which no retry changes.
+   */
+  failure?: ReadFailure;
+  /** Read the sessions again, once, after a {@link failure}. */
+  retry: () => void;
+  /** A {@link retry} is under way. */
+  isRetrying: boolean;
 };
 
 /**
@@ -57,10 +74,12 @@ export function useAgentSessions(
   agentRow?: AgentRow,
 ): AgentSessionsView {
   const kagentApi = useApi(kagentApiRef);
+  const queryClient = useQueryClient();
   const capabilities = useKagentCapabilities(installation);
 
   const {
     data: sessions,
+    error,
     isError,
     isPending,
     fetchStatus,
@@ -99,16 +118,25 @@ export function useAgentSessions(
     );
   }, [sessions, agentId, agentIndex]);
 
+  // Only unavailable when there is genuinely nothing to show. react-query keeps
+  // `data` and sets `error` on a failed *refetch*, and this query is shared with
+  // the Sessions tab — so arriving from that tab after its entry went stale
+  // triggers a background refetch whose failure would otherwise hide sessions
+  // that were already read and are still correct.
+  const isUnavailable = isError && !sessions;
+  const isRetryable = isUnavailable && !isKagentNotDeployed(error);
+  const retry = useCallback(() => {
+    void readSessionsOnce(queryClient, kagentApi, installation);
+  }, [queryClient, kagentApi, installation]);
+
   return {
     rows,
     installation,
     isLoading,
     isNotUserScoped: capabilities.isUserScoped === false,
-    // Only unavailable when there is genuinely nothing to show. react-query keeps
-    // `data` and sets `error` on a failed *refetch*, and this query is shared with
-    // the Sessions tab — so arriving from that tab after its entry went stale
-    // triggers a background refetch whose failure would otherwise hide sessions
-    // that were already read and are still correct.
-    isUnavailable: isError && !sessions,
+    isUnavailable,
+    failure: isRetryable ? describeReadFailure(error) : undefined,
+    retry,
+    isRetrying: isRetryable && fetchStatus === 'fetching',
   };
 }
