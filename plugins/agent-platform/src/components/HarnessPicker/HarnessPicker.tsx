@@ -17,6 +17,7 @@ import {
 } from '../SelectableCard';
 import { HarnessSummary } from '../HarnessSummary';
 import { useRuntimeChoices } from './useRuntimeChoices';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * The runtime an agent runs on: the Harnesses of the chosen model's namespace,
@@ -37,6 +38,7 @@ import { useRuntimeChoices } from './useRuntimeChoices';
  * warning.
  */
 export function HarnessPicker() {
+  const { directory } = useOrganizationDirectory();
   const { state, edit, selectHarness } = useNewAgentForm();
   const {
     installation,
@@ -122,6 +124,7 @@ export function HarnessPicker() {
           secondaryLabel={RUNTIME_TERM}
           description={`The agents of ${tenantInSentence(
             tenant,
+            directory,
           )} run on the platform Harness.`}
         />
         {dropNotice}

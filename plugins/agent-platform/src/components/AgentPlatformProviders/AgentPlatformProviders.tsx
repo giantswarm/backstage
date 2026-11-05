@@ -3,6 +3,7 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider } from '../AgentsDataProvider';
 import { SessionsDataProvider } from '../SessionsDataProvider';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 /**
  * The plugin's query client and fleet-wide data providers, for rendering the
@@ -14,11 +15,13 @@ import { SessionsDataProvider } from '../SessionsDataProvider';
 export function AgentPlatformProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider>
-      <ModelConfigsProvider>
-        <AgentsDataProvider>
-          <SessionsDataProvider>{children}</SessionsDataProvider>
-        </AgentsDataProvider>
-      </ModelConfigsProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          <AgentsDataProvider>
+            <SessionsDataProvider>{children}</SessionsDataProvider>
+          </AgentsDataProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 }

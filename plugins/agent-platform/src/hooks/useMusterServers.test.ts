@@ -1,7 +1,10 @@
-import { MCPServer } from '@giantswarm/backstage-plugin-muster';
+import {
+  MCPServer,
+  type ToolSummary,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { buildCatalogue, connectorOfTool } from '../lib/toolset';
-import { serverInfoOf } from './useMusterServers';
+import { connectorsForTenant, serverInfoOf } from './useMusterServers';
 
 function mcpServer(namespace: string, name: string, state = 'Connected') {
   return new MCPServer(
@@ -139,6 +142,38 @@ describe('serverInfoOf tags', () => {
     expect(serverInfoOf(tagged).tags).toEqual(['ticketing', 'ops']);
     expect(serverInfoOf(mcpServer('muster', 'github'))).not.toHaveProperty(
       'tags',
+    );
+  });
+});
+
+describe('connectorsForTenant', () => {
+  const servers = [
+    serverInfoOf(mcpServer('muster', 'github')),
+    serverInfoOf(mcpServer('org-acme', 'jira')),
+    serverInfoOf(mcpServer('org-beta', 'jira')),
+  ];
+  const tools = [
+    { name: 'x_github_list_issues' },
+    { name: 'x_org-acme_jira_search' },
+    { name: 'x_org-beta_jira_search' },
+  ] as ToolSummary[];
+
+  it("offers an agent the shared connectors and its own namespace's, never another's", () => {
+    const offered = connectorsForTenant(servers, tools, 'org-acme');
+
+    expect(offered.servers.map(server => server.name)).toEqual([
+      'github',
+      'org-acme/jira',
+    ]);
+    expect(offered.tools.map(tool => tool.name)).toEqual([
+      'x_github_list_issues',
+      'x_org-acme_jira_search',
+    ]);
+  });
+
+  it('offers every connector while the agent has no namespace yet', () => {
+    expect(connectorsForTenant(servers, tools, undefined).servers).toHaveLength(
+      3,
     );
   });
 });

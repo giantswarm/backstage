@@ -13,6 +13,7 @@ import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
 import { UsageConnectorsPage } from '../UsageConnectorsPage';
 import { UsageScopeBar } from './UsageScopeBar';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 // The Usage screen's views: Overview · Cost · Your sessions · Connectors.
 // Each answers one question and every metric has one home among them (see
@@ -162,12 +163,14 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  */
 export const UsageRouter = ({ sections }: { sections?: ReactNode[] }) => (
   <QueryClientProvider>
-    <ModelConfigsProvider>
-      <AgentsDataProvider>
-        <Routes>
-          <Route path="*" element={<UsageViews sections={sections} />} />
-        </Routes>
-      </AgentsDataProvider>
-    </ModelConfigsProvider>
+    <OrganizationDirectoryProvider>
+      <ModelConfigsProvider>
+        <AgentsDataProvider>
+          <Routes>
+            <Route path="*" element={<UsageViews sections={sections} />} />
+          </Routes>
+        </AgentsDataProvider>
+      </ModelConfigsProvider>
+    </OrganizationDirectoryProvider>
   </QueryClientProvider>
 );

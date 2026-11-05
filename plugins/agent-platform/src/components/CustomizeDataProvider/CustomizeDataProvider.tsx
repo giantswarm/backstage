@@ -16,6 +16,7 @@ import {
   useWorkspacesData,
   WorkspacesDataProvider,
 } from '../WorkspacesDataProvider';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 /**
  * What the Customize screen's tab strip counts: `'loading'` while still being
@@ -214,17 +215,19 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 export function CustomizeDataProvider({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider>
-      <ModelConfigsProvider>
-        <ServingProvider>
-          <AgentsDataProvider>
-            <WorkspacesDataProvider>
-              <CustomizeDataContextProvider>
-                {children}
-              </CustomizeDataContextProvider>
-            </WorkspacesDataProvider>
-          </AgentsDataProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          <ServingProvider>
+            <AgentsDataProvider>
+              <WorkspacesDataProvider>
+                <CustomizeDataContextProvider>
+                  {children}
+                </CustomizeDataContextProvider>
+              </WorkspacesDataProvider>
+            </AgentsDataProvider>
+          </ServingProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 }

@@ -26,6 +26,7 @@ import {
   type LlmUsageQueryOptions,
 } from '../lib/llmUsageQueries';
 import type { UsageWindow } from '../lib/usageWindow';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 
 export type LlmUsageView = {
   usage: LlmUsage | undefined;
@@ -130,6 +131,7 @@ export function useLlmUsage(
     dailyCalls = false,
     byPerson = false,
   } = options;
+  const { directory } = useOrganizationDirectory();
   // The clock, snapped: a month still being written grows its range with it,
   // and the query keys must hold still across a render (see
   // `todayPartialRange`). A days window and a past month never read it.
@@ -488,8 +490,10 @@ export function useLlmUsage(
           : undefined,
       dataBeforeWindow: hasDataBeforeWindow,
       dataBeforePreviousWindow: hasDataBeforePreviousWindow,
+      organizations: directory,
     });
   }, [
+    directory,
     enabled,
     isLoading,
     isError,

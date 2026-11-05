@@ -4,6 +4,15 @@ import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import { OwnerValue } from './OwnerValue';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 describe('OwnerValue', () => {
   it('names an organization by its plain name, with no hint', () => {
     render(<OwnerValue namespace="org-acme" />);

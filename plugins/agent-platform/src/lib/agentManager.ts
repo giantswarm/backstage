@@ -54,6 +54,12 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
+  listMyOrganizations: 'list_my_organizations',
+  getOrganization: 'get_organization',
+  listOrganizationMembers: 'list_organization_members',
+  addOrganizationMember: 'add_organization_member',
+  removeOrganizationMember: 'remove_organization_member',
+  listOrganizationConnectors: 'list_organization_connectors',
 } as const;
 
 export type AgentManagerTool =
@@ -671,6 +677,12 @@ export type AgentManagerModelConfig = {
   accepted: boolean | null;
   message?: string;
   managedBy?: string;
+  /**
+   * In an organization namespace: whether this is the organization's default
+   * model. agent-manager resolves the mark (its annotation is its own), so
+   * the portal reads this field and never the annotation.
+   */
+  default?: boolean;
 };
 
 /**

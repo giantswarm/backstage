@@ -7,6 +7,15 @@ import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { HarnessPicker } from './HarnessPicker';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 const mockUseResources = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),

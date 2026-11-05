@@ -22,6 +22,7 @@ import {
   selectKagentMissing,
   selectUnknownPin,
 } from './helpers';
+import { organizationDirectory } from '../../lib/organizations';
 
 function makeAgent(
   partial: {
@@ -259,7 +260,13 @@ describe('toAgentRow', () => {
       'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
     };
 
-    expect(toAgentRow(agent, [])).toMatchObject({
+    // The organization as agent-manager names the namespace.
+    const organizations = organizationDirectory([
+      { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
+    ]);
+    expect(
+      toAgentRow(agent, [], undefined, undefined, undefined, organizations),
+    ).toMatchObject({
       tenant: 'acme',
       createdBy: 'ana@acme.example',
     });
