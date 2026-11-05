@@ -241,6 +241,27 @@ export interface McpServerListResponse {
 }
 
 /**
+ * A connector as muster-backend names it (`/servers/names`): the server's
+ * name, its family and its `ui.giantswarm.io/display-name`.
+ */
+export interface ConnectorName {
+  name: string;
+  /** `spec.family.name`, for a family member. */
+  family?: string;
+  displayName?: string;
+}
+
+/**
+ * The connectors of one installation the person may see, by name. `unavailable`
+ * when muster could not list them: the sign-in prompts keep the servers' own
+ * names then.
+ */
+export interface ConnectorNamesResponse {
+  servers: ConnectorName[];
+  unavailable?: boolean;
+}
+
+/**
  * One entry from the `filter_tools` discovery tier. In discovery mode only
  * `summary` (a one-line excerpt) is populated; `description`/`inputSchema`
  * arrive with `include_schema=true` or via `describe_tool`. `score` is set
@@ -598,6 +619,11 @@ export interface MusterApi {
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
+  /**
+   * What people call the installation's connectors, for everyone who sees a
+   * sign-in prompt. A background read: it never asks the person to sign in.
+   */
+  listConnectorNames(installation?: string): Promise<ConnectorNamesResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
   filterResources(

@@ -218,6 +218,51 @@ function loginTarget(
   return hasServer ? { server: server as string } : { app: app as string };
 }
 
+/** A connector as `/servers/names` answers it. */
+export type ConnectorName = {
+  name: string;
+  family?: string;
+  displayName?: string;
+};
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== ''
+    ? value.trim()
+    : undefined;
+}
+
+/**
+ * The name, family and display name of each server in a `core_mcpserver_list`
+ * answer (`{ mcpServers: [...] }`), and nothing else of it. A muster from
+ * before `displayName` answers none, and an entry without a name is left out.
+ */
+export function connectorNamesOf(result: unknown): ConnectorName[] {
+  const servers = (result as { mcpServers?: unknown } | null)?.mcpServers;
+  if (!Array.isArray(servers)) {
+    return [];
+  }
+  return servers.flatMap((server): ConnectorName[] => {
+    const entry = server as {
+      name?: unknown;
+      family?: { name?: unknown };
+      displayName?: unknown;
+    } | null;
+    const name = nonEmptyString(entry?.name);
+    if (!name) {
+      return [];
+    }
+    const family = nonEmptyString(entry?.family?.name);
+    const displayName = nonEmptyString(entry?.displayName);
+    return [
+      {
+        name,
+        ...(family ? { family } : {}),
+        ...(displayName ? { displayName } : {}),
+      },
+    ];
+  });
+}
+
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
@@ -824,6 +869,40 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  /**
+   * What people call the installation's connectors: each server's name, its
+   * family and its `ui.giantswarm.io/display-name` (`displayName`), from
+   * `core_mcpserver_list` as the person. muster lists exactly the servers the
+   * person may see, the ones `auth://status` reports for them, so the sign-in
+   * prompts can name every connector they list, for people without
+   * Kubernetes access to the MCPServer objects too.
+   *
+   * Read by background readers (the notification inbox), so every failure
+   * answers 200 with `unavailable: true` and the prompts keep the servers'
+   * own names, as `/auth/status` does. A missing or expired token is still
+   * the 401 the frontend refreshes on.
+   */
+  router.get('/servers/names', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const callOptions = readCallOptions(req, installation);
+    let result: unknown;
+    try {
+      result = await client.callTool(
+        'core_mcpserver_list',
+        { showAll: true },
+        callOptions,
+      );
+    } catch (error) {
+      logger.info('Muster could not list the connectors to name them', {
+        installation: installation.name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      res.json({ servers: [], unavailable: true });
+      return;
+    }
+    res.json({ servers: connectorNamesOf(result) });
   });
 
   // --- MCP usage (derived from muster's own Prometheus metrics) ------------

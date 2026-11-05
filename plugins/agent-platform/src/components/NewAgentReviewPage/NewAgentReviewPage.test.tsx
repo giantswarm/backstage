@@ -876,7 +876,7 @@ describe('NewAgentReviewPage', () => {
     });
 
     expect(
-      await screen.findByText('Connect to agent-manager'),
+      await screen.findByText('Sign in to agent-manager'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
     expect(deployButton()).toBeDisabled();

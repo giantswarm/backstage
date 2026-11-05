@@ -1077,8 +1077,14 @@ describe('EditAgentPage', () => {
     await renderEdit(BASE, { notConnected: true });
 
     expect(
-      await screen.findByText(/server agent-manager not connected/),
+      await screen.findByText(
+        'Agents are edited through the agent-manager connector, which acts as you. You have not signed in to it on gazelle yet.',
+      ),
     ).toBeInTheDocument();
+    // In the portal's words, not muster's.
+    expect(
+      screen.queryByText(/server agent-manager not connected/),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText('You cannot change this agent'),
     ).not.toBeInTheDocument();

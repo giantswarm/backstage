@@ -6,6 +6,7 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   serverPageResolver,
   ServerSignIn,
+  useConnectorLabels,
   withInstallationQuery,
 } from '@giantswarm/backstage-plugin-muster';
 import {
@@ -186,7 +187,6 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const {
     servers,
     resources: serverResources,
-    labels,
     isLoading: isLoadingServers,
   } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
@@ -207,6 +207,18 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       ),
     [selectors, catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
+  const unsignedNames = useMemo(
+    () =>
+      unsignedServers.map(
+        selector => parseSelector(selector)?.name ?? selector,
+      ),
+    [unsignedServers],
+  );
+  // The display names muster-backend reads for everyone, as every sign-in
+  // prompt names connectors.
+  const connectorLabel = useConnectorLabels(installation, unsignedNames);
+  const labelOfSelector = (selector: string) =>
+    connectorLabel(parseSelector(selector)?.name ?? selector);
 
   // Each tool links to its page beneath the server offering it, by muster's
   // own rule, so the page lists the tool; a tool nothing attributes lands on
@@ -289,9 +301,11 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
             <Alert
               status="info"
               title="Sign in to see these connectors' tools"
-              description={`${unsignedServers.join(
-                ', ',
-              )} — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.`}
+              description={`${unsignedServers
+                .map(labelOfSelector)
+                .join(
+                  ', ',
+                )} — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.`}
             />
             {unsignedServers.map(selector => {
               const name = parseSelector(selector)?.name ?? selector;
@@ -300,7 +314,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
                   noun="connector"
                   key={selector}
                   serverName={name}
-                  displayName={labels.get(name)}
+                  displayName={labelOfSelector(selector)}
                   installation={installation}
                   showName
                 />

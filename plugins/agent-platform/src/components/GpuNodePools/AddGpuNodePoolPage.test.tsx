@@ -793,7 +793,7 @@ describe('AddGpuNodePoolPage', () => {
     await fillForm(user);
     // The form's own dry run meets the answer; no Review needed.
     expect(
-      await screen.findByText('Connect to cluster-manager'),
+      await screen.findByText('Sign in to cluster-manager'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('node-size-picker')).not.toBeInTheDocument();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();

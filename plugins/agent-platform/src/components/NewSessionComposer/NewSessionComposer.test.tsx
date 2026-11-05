@@ -8,7 +8,11 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
-import { AgentManagerNotConnectedError } from '../../lib/agentManager';
+import {
+  AgentManagerNotConnectedError,
+  classifyAgentManagerError,
+} from '../../lib/agentManager';
+import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { mockImageEncoding, pngFile } from '../../lib/__fixtures__/images';
 import {
@@ -91,6 +95,8 @@ beforeEach(() => {
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
   ServerSignIn: () => <div data-testid="server-sign-in" />,
+  useConnectorLabel: (_installation: string, name: string) =>
+    name === 'agent-manager' ? 'Agent Manager' : name,
 }));
 
 describe('NewSessionComposer', () => {
@@ -588,8 +594,33 @@ describe('NewSessionComposer', () => {
       error: new AgentManagerNotConnectedError('tool not found'),
     });
 
-    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
     expect(screen.getByTestId('server-sign-in')).toBeInTheDocument();
+    expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+
+  // giantswarm/giantswarm#39050: muster's own text names the server by its
+  // technical name; the composer says it in the portal's words.
+  it("says muster's sign-in request in its own words, with the connector's display name", () => {
+    renderComposer({
+      defaultAgent: sre,
+      error: classifyAgentManagerError(
+        new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        ),
+      ),
+    });
+
+    expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Sessions are started through the Agent Manager connector, which acts as you. You have not signed in to it on gazelle yet.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/requires authentication/)).toBeNull();
     expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
   });
 });

@@ -258,7 +258,7 @@ export function RemoveModelCacheDialog({
           <ConnectAgentManagerAlert
             installation={installation}
             message={failure.message}
-            action="the model cache is removed"
+            action="The model cache is removed"
             server={CLUSTER_MANAGER_SERVER}
           />
         )}

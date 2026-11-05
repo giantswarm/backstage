@@ -174,6 +174,9 @@ function makeApi(
           },
         ],
       }),
+      listConnectorNames: async () => ({
+        servers: [{ name: 'pro', displayName: 'Pro Search' }],
+      }),
       signInServer: jest.fn(),
       signOutServer: jest.fn(),
     } as unknown as MusterApi,
@@ -473,6 +476,12 @@ describe('AgentToolsetCard', () => {
       await screen.findByText("Sign in to see these connectors' tools"),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    // By its display name, for a viewer who cannot read the MCPServer too.
+    expect(
+      await screen.findByText(
+        'Pro Search — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows muster's error when the toolset names a preset the installation does not define", async () => {

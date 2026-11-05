@@ -64,7 +64,7 @@ async function openInbox(page: Page): Promise<Locator> {
 function fixtureRow(overlay: Locator, label: string): Locator {
   return overlay
     .getByRole('listitem')
-    .filter({ hasText: /MCP servers? needs? your sign-in/ })
+    .filter({ hasText: /connectors? needs? your sign-in/ })
     .filter({ hasText: label });
 }
 
@@ -82,10 +82,10 @@ test('the inbox names a server waiting for the sign-in, and its Sign in signs in
     timeout: 60_000,
   });
 
-  await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
+  await row.getByRole('button', { name: 'Sign in to connectors' }).click();
   await expect(overlay, 'Sign in closes the overlay').toBeHidden();
   await expect(admin, 'the page stays where it was').toHaveURL(/\/sessions$/);
-  const dialog = admin.getByRole('dialog', { name: 'Sign in to MCP servers' });
+  const dialog = admin.getByRole('dialog', { name: 'Sign in to connectors' });
   await expect(dialog).toBeVisible();
   const server = dialog.getByRole('listitem').filter({ hasText: label });
   await expect(server).toBeVisible();
@@ -103,7 +103,7 @@ test('the inbox names a server waiting for the sign-in, and its Sign in signs in
   // footer's button carries its label as text; the header's × only as
   // aria-label.
   const stillWaiting = await dialog
-    .getByRole('list', { name: 'MCP servers' })
+    .getByRole('list', { name: 'Connectors' })
     .getByRole('listitem')
     .filter({ hasNotText: 'Connected' })
     .count();
@@ -268,8 +268,8 @@ test('the sign-in status read never asks for the sign-in once the portal session
     await touch(page);
     const row = fixtureRow(await openInbox(page), label);
     await expect(row, 'the row stays as it was').toBeVisible();
-    await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Sign in to MCP servers' });
+    await row.getByRole('button', { name: 'Sign in to connectors' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Sign in to connectors' });
     await expect(dialog).toBeVisible();
     await dialog
       .getByRole('listitem')

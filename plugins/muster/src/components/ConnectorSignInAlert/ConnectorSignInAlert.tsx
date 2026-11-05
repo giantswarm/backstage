@@ -15,6 +15,7 @@ import {
   isSsoServer,
   useServerSignIn,
 } from '../shared/useServerSignIn';
+import { useConnectorLabel } from '../shared/useConnectorLabels';
 
 export type ConnectorSignInAlertProps = {
   /** The connector (muster server) the data is read through. */
@@ -70,21 +71,23 @@ export function ConnectorSignInAlert({
     entries.length > 0 &&
     entries.every(entry => entry !== undefined && isSsoServer(entry));
   const where = joinNames(installations);
+  // One connector by one name: the first environment's display name.
+  const label = useConnectorLabel(installations[0], server);
   return (
     <Alert
       status="info"
       title={
         isSso
-          ? `Could not connect to ${server}`
-          : `Sign in to ${server} to ${purpose}`
+          ? `Could not connect to ${label}`
+          : `Sign in to ${label} to ${purpose}`
       }
       data-testid="connector-sign-in"
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
             {isSso
-              ? `${server} reads this with your portal sign-in, and it has not connected on ${where} yet. This fills in once it does.`
-              : `${server} reads this with your own sign-in, and you have not signed in to it on ${where} yet. Sign in once; this fills in by itself.`}
+              ? `The ${label} connector reads this with your portal sign-in, and it has not connected on ${where} yet. This fills in once it does.`
+              : `The ${label} connector reads this with your own sign-in, and you have not signed in to it on ${where} yet. Sign in once; this fills in by itself.`}
           </Text>
           <ShowMore
             items={installations}
@@ -97,6 +100,7 @@ export function ConnectorSignInAlert({
                   <InstallationSignIn
                     key={installation}
                     server={server}
+                    label={label}
                     installation={installation}
                     showInstallation={several}
                     onSignedIn={onSignedIn}
@@ -113,11 +117,13 @@ export function ConnectorSignInAlert({
 
 function InstallationSignIn({
   server,
+  label,
   installation,
   showInstallation,
   onSignedIn,
 }: {
   server: string;
+  label: string;
   installation: string;
   showInstallation: boolean;
   onSignedIn?: () => void;
@@ -155,6 +161,7 @@ function InstallationSignIn({
     <ServerSignIn
       noun="connector"
       serverName={server}
+      displayName={label}
       installation={installation}
     />
   );

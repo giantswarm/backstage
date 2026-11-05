@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { useMcpServersAwaitingSignIn } from '../McpAuthDialog/useMcpServersAwaitingSignIn';
-import { useServerLabels } from '../McpAuthDialog/useServerLabels';
+import { useConnectorLabels } from '../shared/useConnectorLabels';
 import { useSignInInstallation } from './useSignInInstallation';
 import { useSettledWaiting } from './hooks';
 
@@ -126,7 +126,7 @@ function StatusReader({
     sessionExpired,
     refetch,
   });
-  const labelOf = useServerLabels(installation, waiting, {
+  const labelOf = useConnectorLabels(installation, waiting, {
     enabled: !sessionExpired,
   });
 

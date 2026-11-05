@@ -6,6 +6,7 @@ import {
   SignInNoun,
   useServerSignIn,
 } from './useServerSignIn';
+import { useConnectorLabel } from './useConnectorLabels';
 
 /**
  * The gate reason for a deactivated server (`spec.suspended`): muster keeps it
@@ -416,12 +417,13 @@ export interface ServerSignInProps {
   /** The muster server name, as reported by `list_tools` / `auth://status`. */
   serverName: string;
   /**
-   * What the sentences call the server for people (its display name); the
-   * server name by default.
+   * What the sentences call the server for people (its display name); by
+   * default the name muster-backend reads for everyone
+   * (`useConnectorLabel`), the server name until it is known.
    */
   displayName?: string;
   installation?: string;
-  /** Show the server name next to the action (a list of several servers). */
+  /** Show the display name next to the action (a list of several servers). */
   showName?: boolean;
   /**
    * What the copy calls the server: main's "server" by default (the classic
@@ -450,7 +452,9 @@ export function ServerSignIn({
 }: ServerSignInProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(displayName ?? serverName, state, {
+  const known = useConnectorLabel(installation, serverName);
+  const label = displayName ?? known;
+  const parts = authActionParts(label, state, {
     noun,
     alwaysOffer: true,
   });
@@ -469,7 +473,7 @@ export function ServerSignIn({
 
   return (
     <div className={classes.root}>
-      {showName ? <code className={classes.name}>{serverName}</code> : null}
+      {showName ? <span className={classes.name}>{label}</span> : null}
       <SignInFlow
         state={state}
         wait={parts.kind === 'sign-in' ? parts.wait : undefined}

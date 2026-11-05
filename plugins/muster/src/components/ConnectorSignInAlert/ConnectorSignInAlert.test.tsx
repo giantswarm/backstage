@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import {
   AuthStatusResponse,
+  ConnectorNamesResponse,
   MusterApi,
   musterApiRef,
   MusterUnauthorizedError,
@@ -13,7 +14,10 @@ import {
   splitConnectorSignIns,
 } from './ConnectorSignInAlert';
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
+type Api = Pick<
+  MusterApi,
+  'getAuthStatus' | 'listConnectorNames' | 'signInServer' | 'signOutServer'
+>;
 
 function status(value: 'auth_required' | 'connected'): AuthStatusResponse {
   return {
@@ -26,10 +30,12 @@ function status(value: 'auth_required' | 'connected'): AuthStatusResponse {
 async function renderAlert(
   props: Partial<Parameters<typeof ConnectorSignInAlert>[0]> = {},
   initial: AuthStatusResponse = status('auth_required'),
+  names: ConnectorNamesResponse = { servers: [] },
 ) {
   let current = initial;
   const api: Api = {
     getAuthStatus: jest.fn(async () => current),
+    listConnectorNames: jest.fn(async () => names),
     signInServer: jest.fn(async () => ({
       status: 'auth_required' as const,
       authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
@@ -88,6 +94,23 @@ describe('ConnectorSignInAlert', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(api.signInServer).toHaveBeenCalledWith('cluster-manager', 'gazelle');
+  });
+
+  it('names the connector by its display name', async () => {
+    await renderAlert({}, status('auth_required'), {
+      servers: [{ name: 'cluster-manager', displayName: 'Cluster Manager' }],
+    });
+
+    expect(
+      await screen.findByText(
+        'Sign in to Cluster Manager to see GPU node pools',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The Cluster Manager connector reads this with your own sign-in, and you have not signed in to it on gazelle yet. Sign in once; this fills in by itself.',
+      ),
+    ).toBeVisible();
   });
 
   it('reads the page again once the sign-in lands', async () => {

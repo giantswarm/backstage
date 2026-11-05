@@ -1141,6 +1141,64 @@ describe('createRouter', () => {
     ]);
   const asPerson = { authToken: 'user-token' };
 
+  describe('/servers/names', () => {
+    it("answers each connector's name, family and display name, as the person", async () => {
+      callTool.mockResolvedValue({
+        mcpServers: [
+          {
+            name: 'agent-manager',
+            displayName: ' Agent Manager ',
+            url: 'https://example.com/mcp',
+            statusMessage: 'Connected',
+          },
+          {
+            name: 'gazelle-mcp-kubernetes',
+            family: { name: 'kubernetes', instanceArg: 'management_cluster' },
+          },
+          { name: 'blank', displayName: '  ' },
+          { displayName: 'Nameless' },
+        ],
+      });
+      const response = await request(await personApp())
+        .get('/servers/names?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        servers: [
+          { name: 'agent-manager', displayName: 'Agent Manager' },
+          { name: 'gazelle-mcp-kubernetes', family: 'kubernetes' },
+          { name: 'blank' },
+        ],
+      });
+      expect(callTool).toHaveBeenCalledWith(
+        'core_mcpserver_list',
+        { showAll: true },
+        { authToken: 'user-token' },
+      );
+    });
+
+    // A background reader names the connectors: a failure is no Sentry
+    // issue, and the prompts keep the servers' own names.
+    it('answers a failed list as unavailable, not a 5xx', async () => {
+      callTool.mockRejectedValue(new Error('fetch failed'));
+
+      const response = await request(app).get('/servers/names');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ servers: [], unavailable: true });
+    });
+
+    it('refuses a read without the person token with a 401', async () => {
+      const response = await request(await personApp()).get(
+        '/servers/names?installation=gazelle',
+      );
+
+      expect(response.status).toBe(401);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+  });
+
   describe('/call', () => {
     it('executes a core tool on an installation without per-user auth', async () => {
       callTool.mockResolvedValue({ ok: true });

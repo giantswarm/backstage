@@ -88,8 +88,8 @@ export function toMcpSignInRow({
   const id = mcpSignInMark(installation, names);
   const title =
     waiting.length === 1
-      ? '1 MCP server needs your sign-in'
-      : `${waiting.length} MCP servers need your sign-in`;
+      ? '1 connector needs your sign-in'
+      : `${waiting.length} connectors need your sign-in`;
   const servers = namedList(waiting.map(server => server.label));
   const seenMark: SeenMarkTarget = {
     kind: 'mcpSignIn',
@@ -107,7 +107,7 @@ export function toMcpSignInRow({
     icon: 'signIn',
     action: {
       label: 'Sign in',
-      accessibleLabel: 'Sign in to MCP servers',
+      accessibleLabel: 'Sign in to connectors',
       onAction: openSignIn,
     },
     announce: {
