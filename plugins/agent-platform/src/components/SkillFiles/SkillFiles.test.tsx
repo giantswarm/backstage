@@ -176,11 +176,25 @@ describe('SkillFiles', () => {
     expect(
       within(tree()).getByRole('link', { name: 'references/setup.md' }),
     ).toHaveAttribute('aria-current', 'page');
-    expect(
-      within(shown).getByRole('link', { name: /View on GitHub/ }),
-    ).toHaveAttribute(
+    // GitHub opens in a new tab, which the link says with its icon and to a
+    // screen reader, at the size of the line beside it.
+    const onGitHub = within(shown).getByRole('link', {
+      name: 'View on GitHub (opens in a new tab)',
+    });
+    expect(onGitHub).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/blob/${COMMIT}/ticket-triage/references/setup.md`,
+    );
+    expect(onGitHub).toHaveAttribute('target', '_blank');
+    expect(onGitHub).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(onGitHub).not.toHaveTextContent('↗');
+    expect(onGitHub.querySelector('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    expect(onGitHub.parentElement).toHaveAttribute(
+      'data-variant',
+      'body-small',
     );
 
     // A relative link back resolves against the file's own folder.

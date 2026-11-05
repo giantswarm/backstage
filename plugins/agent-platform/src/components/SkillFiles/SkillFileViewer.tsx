@@ -1,9 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
-import { Alert, ButtonLink, Flex, Link, Text } from '@backstage/ui';
+import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
-  LoadingIndicator,
   CommitSha,
+  ExternalLink,
+  LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillFile } from '../../hooks/useSkillFile';
@@ -340,16 +341,14 @@ export function SkillFileViewer({
             {repoPath} at <CommitSha value={commit} /> ·{' '}
             {formatBytes(file.size)}
           </Text>
-          {/* Not shown inline: the body offers the link instead. */}
+          {/* Not shown inline: the body offers the link instead. At the size
+              of the line beside it, which the link takes from its parent. */}
           {url && !notShown && (
-            <Link
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="body-small"
-            >
-              View on GitHub ↗
-            </Link>
+            <Text as="span" variant="body-small">
+              <ExternalLink href={url} display="inline">
+                View on GitHub
+              </ExternalLink>
+            </Text>
           )}
         </div>
         {body}
