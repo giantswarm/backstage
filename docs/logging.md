@@ -21,8 +21,10 @@ Backstage's error middleware (`MiddlewareFactory.error()`) logs every 5xx a
 route throws at `error`, with the error's message. A failure your code has
 already logged, or whose message names an installation because a person reads
 it, is answered by the router instead of thrown: `avatarRouter.ts` in
-`agent-platform-backend`, and `kagentErrorHandler.ts` there for a kagent call
-that failed, which logs it once as `kagent <call> <cause>`.
+`agent-platform-backend`; `musterUnreachableErrorHandler()` from `gs-node`
+for an installation's muster that cannot be reached; and `kagentErrorHandler.ts`
+in `agent-platform-backend` for a kagent call that failed, which logs it once
+as `kagent <call> <cause>`.
 
 Frontend equivalent: `SentryErrorReporter`
 (`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
