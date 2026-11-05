@@ -1,9 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
-import { Alert, ButtonLink, Flex, Link, Text } from '@backstage/ui';
+import { Alert, ButtonLink, Flex, Text, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
-  LoadingIndicator,
   CommitSha,
+  ExternalLink,
+  LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillFile } from '../../hooks/useSkillFile';
@@ -181,7 +182,9 @@ function NotShown({
           rel="noopener noreferrer"
           variant="secondary"
         >
-          View on GitHub ↗
+          {/* A button keeps its arrow; a screen reader hears what it means. */}
+          View on GitHub <span aria-hidden>↗</span>
+          <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
         </ButtonLink>
       ) : (
         <Text as="p" variant="body-small" color="secondary">
@@ -340,16 +343,16 @@ export function SkillFileViewer({
             {repoPath} at <CommitSha value={commit} /> ·{' '}
             {formatBytes(file.size)}
           </Text>
-          {/* Not shown inline: the body offers the link instead. */}
-          {url && !notShown && (
-            <Link
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="body-small"
-            >
-              View on GitHub ↗
-            </Link>
+          {/* Not shown inline: the body offers the link instead. Not while
+              the file is read either, which may turn out not shown inline.
+              At the size of the line beside it, which the link takes from
+              its parent. */}
+          {url && !isLoading && !notShown && (
+            <Text as="span" variant="body-small">
+              <ExternalLink href={url} display="inline">
+                View on GitHub
+              </ExternalLink>
+            </Text>
           )}
         </div>
         {body}
