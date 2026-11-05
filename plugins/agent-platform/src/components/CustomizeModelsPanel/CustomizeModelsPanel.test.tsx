@@ -128,6 +128,15 @@ describe('CustomizeModelsPanel', () => {
     ]);
   });
 
+  it('says which model is its namespace default', async () => {
+    mockModelRows = [{ ...sonnet, isDefault: true }, qwen];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(/Default · Anthropic/);
+    expect(rows[1]).not.toHaveTextContent('Default');
+  });
+
   it('makes each name a link to the model (M21)', async () => {
     await renderPanel();
 

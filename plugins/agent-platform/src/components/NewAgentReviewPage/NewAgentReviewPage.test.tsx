@@ -669,7 +669,7 @@ describe('NewAgentReviewPage', () => {
   it("leads a refusal it does not recognise plainly, with the dry run's violations folded, and withholds Deploy", async () => {
     await renderReview({
       violations: [
-        'modelConfig "opus-4-7" not found in namespace kagent; valid: default-model-config',
+        'modelConfig "opus-4-7" not found in namespace kagent; valid: anthropic-main',
         'skills[0].git.commit: must be a full commit id',
       ],
     });
@@ -685,7 +685,7 @@ describe('NewAgentReviewPage', () => {
     );
     const list = within(alert).getByRole('list', { name: 'Violations' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
-    expect(list).toHaveTextContent('valid: default-model-config');
+    expect(list).toHaveTextContent('valid: anthropic-main');
     expect(deployButton()).toBeDisabled();
   });
 

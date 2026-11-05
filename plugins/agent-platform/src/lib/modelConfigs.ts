@@ -14,6 +14,9 @@ import {
   readProvenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import { DEFAULT_MODEL_ANNOTATION } from './defaultModel';
+import { organizationOf } from './tenants';
+
 /**
  * Where portal-created ModelConfigs (and their key Secrets) go: the namespace
  * the kagent chart installs its runtime and default ModelConfig into. Agents
@@ -21,6 +24,16 @@ import {
  * namespace, so this is also where portal-created agents land.
  */
 export const MODEL_CONFIG_NAMESPACE = 'kagent';
+
+/**
+ * Whether a ModelConfig in `namespace` goes through the platform's LLM
+ * listener: an Organization's `org-<name>` namespace, where admission fills
+ * in the listener as the base URL and refuses any other, and refuses a
+ * provider the listener does not serve.
+ */
+export function isListenerRouted(namespace: string): boolean {
+  return organizationOf(namespace) !== undefined;
+}
 
 /** Providers the create/edit form speaks. A subset of the CRD's enum: the
  * others (AzureOpenAI, Bedrock, SAPAICore, Foundry, Mistral) carry provider
@@ -79,6 +92,24 @@ export const MODEL_PROVIDER_OPTIONS: {
   },
 ];
 
+/**
+ * The providers the form offers for an Organization's model: the ones the
+ * LLM listener can serve and the form speaks. Which of them an installation's
+ * listener serves is its `llmRouting.models`; admission names them when it
+ * refuses another.
+ */
+export const LISTENER_PROVIDERS: readonly ModelProvider[] = [
+  'Anthropic',
+  'OpenAI',
+];
+
+/** The providers the form offers for a model in `namespace`. */
+export function providersFor(namespace: string): readonly ModelProvider[] {
+  return isListenerRouted(namespace)
+    ? LISTENER_PROVIDERS
+    : MODEL_PROVIDER_OPTIONS.map(option => option.id);
+}
+
 export function isSupportedProvider(
   provider: string | undefined,
 ): provider is ModelProvider {
@@ -127,9 +158,19 @@ export const PROVIDER_SECRET_KEYS: Record<ModelProvider, string | undefined> = {
  */
 export const PLACEHOLDER_API_KEY = 'giantswarm-backstage-placeholder';
 
-/** The Secret a portal-created model's key lives in (agentlab convention). */
-export function keySecretName(modelName: string): string {
-  return `kagent-${modelName}`;
+/**
+ * The Secret a portal-created model's key lives in: `kagent-<model>` (the
+ * agentlab convention), or in an Organization's namespace
+ * `tenant-credential-<model>`, the only Secret name admission lets a person who
+ * may not read the namespace's Secrets create there.
+ */
+export function keySecretName(
+  modelName: string,
+  namespace: string = MODEL_CONFIG_NAMESPACE,
+): string {
+  return isListenerRouted(namespace)
+    ? `tenant-credential-${modelName}`
+    : `kagent-${modelName}`;
 }
 
 /** The annotation `ModelConfig.getDisplayName()` prefers. */
@@ -432,7 +473,12 @@ export type KeySecretPlan =
 
 export function planKeySecret(
   values: ModelConfigFormValues,
-  options: { isEdit: boolean; originalProvider?: string } = { isEdit: false },
+  options: {
+    isEdit: boolean;
+    originalProvider?: string;
+    /** Where the model lives; the platform namespace when absent. */
+    namespace?: string;
+  } = { isEdit: false },
 ): KeySecretPlan {
   const canonicalKey = PROVIDER_SECRET_KEYS[values.provider];
   if (!canonicalKey) {
@@ -454,7 +500,7 @@ export function planKeySecret(
 
   return {
     action: 'write',
-    name: keySecretName(values.name),
+    name: keySecretName(values.name, options.namespace),
     key: canonicalKey,
     value: apiKey || PLACEHOLDER_API_KEY,
   };
@@ -491,6 +537,7 @@ type ProviderBlockField =
  */
 function providerBlock(
   values: ModelConfigFormValues,
+  namespace: string,
 ): { field: ProviderBlockField; block: object } | undefined {
   if (isVertexAIProvider(values.provider)) {
     return {
@@ -505,7 +552,7 @@ function providerBlock(
   if (values.provider === 'Ollama') {
     return { field: 'ollama', block: { host: endpoint } };
   }
-  if (!endpoint) {
+  if (!endpoint || isListenerRouted(namespace)) {
     return undefined;
   }
   if (values.provider === 'Anthropic') {
@@ -554,6 +601,7 @@ export function buildModelConfigManifest(
   values: ModelConfigFormValues,
   plan: KeySecretPlan,
   namespace: string,
+  options: { markDefault?: boolean } = {},
 ): Record<string, unknown> {
   const spec: Record<string, unknown> = {
     provider: values.provider,
@@ -565,16 +613,24 @@ export function buildModelConfigManifest(
     spec.apiKeySecretKey = plan.key;
   }
 
-  const block = providerBlock(values);
+  const block = providerBlock(values, namespace);
   if (block) {
     spec[block.field] = block.block;
   }
 
-  if (values.insecureSkipTlsVerify && !isVertexAIProvider(values.provider)) {
+  if (
+    values.insecureSkipTlsVerify &&
+    !isVertexAIProvider(values.provider) &&
+    !isListenerRouted(namespace)
+  ) {
     spec.tls = { disableVerify: true };
   }
 
   const displayName = values.displayName.trim();
+  const annotations: Record<string, string> = {
+    ...(displayName ? { [DISPLAY_NAME_ANNOTATION]: displayName } : {}),
+    ...(options.markDefault ? { [DEFAULT_MODEL_ANNOTATION]: 'true' } : {}),
+  };
 
   return {
     apiVersion: `${ModelConfig.group}/${ModelConfig.apiVersion}`,
@@ -585,9 +641,7 @@ export function buildModelConfigManifest(
       // Marks portal-created models as ours, which is what keeps them editable
       // here — see modelConfigOwner.
       labels: { [MANAGED_BY_LABEL]: BACKSTAGE_FIELD_MANAGER },
-      ...(displayName
-        ? { annotations: { [DISPLAY_NAME_ANNOTATION]: displayName } }
-        : {}),
+      ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
     },
     spec,
   };
@@ -608,9 +662,11 @@ export function buildModelConfigPatch(
   plan: KeySecretPlan,
   original: ModelConfig,
 ): Record<string, unknown> {
-  const block = providerBlock(values);
+  const namespace = original.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
+  const routed = isListenerRouted(namespace);
+  const block = providerBlock(values, namespace);
 
-  const providerBlocks: Record<ProviderBlockField, unknown> = {
+  const providerBlocks: Partial<Record<ProviderBlockField, unknown>> = {
     openAI: null,
     anthropic: null,
     ollama: null,
@@ -619,6 +675,14 @@ export function buildModelConfigPatch(
   };
   if (block) {
     providerBlocks[block.field] = block.block;
+  } else if (
+    routed &&
+    (values.provider === 'OpenAI' || values.provider === 'Anthropic')
+  ) {
+    // The listener's base URL, which admission put there, stays.
+    delete providerBlocks[
+      values.provider === 'OpenAI' ? 'openAI' : 'anthropic'
+    ];
   } else if (values.provider === 'OpenAI') {
     // Provider unchanged but the custom base URL was cleared: drop only the
     // managed field rather than the whole block.
@@ -657,7 +721,9 @@ export function buildModelConfigPatch(
       // Only the managed field: a hand-set custom CA bundle survives.
       tls: {
         disableVerify:
-          values.insecureSkipTlsVerify && !isVertexAIProvider(values.provider)
+          values.insecureSkipTlsVerify &&
+          !isVertexAIProvider(values.provider) &&
+          !routed
             ? true
             : null,
       },

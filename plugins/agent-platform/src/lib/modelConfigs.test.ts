@@ -9,6 +9,7 @@ import {
   buildModelConfigPatch,
   INITIAL_MODEL_CONFIG_FORM,
   keySecretName,
+  isListenerRouted,
   modelConfigFieldErrors,
   modelConfigFormChanged,
   modelConfigFormValues,
@@ -16,6 +17,7 @@ import {
   ModelConfigFormValues,
   PLACEHOLDER_API_KEY,
   planKeySecret,
+  providersFor,
   serviceAccountKeyError,
   serviceAccountKeySummary,
   validateModelConfigForm,
@@ -522,6 +524,99 @@ describe('modelConfigOwner', () => {
 describe('keySecretName', () => {
   it('follows the agentlab convention', () => {
     expect(keySecretName('qwen3')).toBe('kagent-qwen3');
+  });
+
+  it("takes the tenant credential prefix in an Organization's namespace", () => {
+    expect(keySecretName('qwen3', 'org-acme')).toBe('tenant-credential-qwen3');
+    expect(keySecretName('qwen3', 'team-a')).toBe('kagent-qwen3');
+  });
+});
+
+describe("an Organization's model", () => {
+  it('goes through the listener in org-* namespaces only', () => {
+    expect(isListenerRouted('org-acme')).toBe(true);
+    expect(isListenerRouted('kagent')).toBe(false);
+    expect(isListenerRouted('org-')).toBe(false);
+  });
+
+  it('is offered the providers the listener can serve', () => {
+    expect(providersFor('org-acme')).toEqual(['Anthropic', 'OpenAI']);
+    expect(providersFor('kagent')).toContain('AnthropicVertexAI');
+  });
+
+  it('is created without a base URL or TLS setting, keyed by its tenant credential', () => {
+    const form = values({
+      provider: 'Anthropic',
+      endpoint: 'https://api.example.test',
+      insecureSkipTlsVerify: true,
+    });
+    const plan = planKeySecret(form, { isEdit: false, namespace: 'org-acme' });
+
+    expect(buildModelConfigManifest(form, plan, 'org-acme')).toMatchObject({
+      metadata: { namespace: 'org-acme' },
+      spec: {
+        provider: 'Anthropic',
+        model: 'qwen3-8-27b',
+        apiKeySecret: 'tenant-credential-qwen3',
+        apiKeySecretKey: 'ANTHROPIC_API_KEY',
+      },
+    });
+    expect(
+      (buildModelConfigManifest(form, plan, 'org-acme') as { spec: object })
+        .spec,
+    ).not.toHaveProperty('anthropic');
+    expect(
+      (buildModelConfigManifest(form, plan, 'org-acme') as { spec: object })
+        .spec,
+    ).not.toHaveProperty('tls');
+  });
+
+  it('keeps the listener base URL admission set on an edit', () => {
+    const original = makeModelConfig({
+      metadata: { namespace: 'org-acme' },
+      spec: {
+        provider: 'Anthropic',
+        model: 'claude',
+        apiKeySecret: 'tenant-credential-qwen3',
+        apiKeySecretKey: 'ANTHROPIC_API_KEY',
+        anthropic: { baseUrl: 'http://llm-listener/anthropic' },
+      },
+    });
+    const form = values({
+      provider: 'Anthropic',
+      model: 'claude-2',
+      apiKey: '',
+    });
+    const patch = buildModelConfigPatch(
+      form,
+      planKeySecret(form, {
+        isEdit: true,
+        originalProvider: 'Anthropic',
+        namespace: 'org-acme',
+      }),
+      original,
+    ) as { spec: Record<string, unknown> };
+
+    expect(patch.spec).not.toHaveProperty('anthropic');
+    expect(patch.spec.openAI).toBeNull();
+    expect(patch.spec.apiKeySecret).toBe('tenant-credential-qwen3');
+  });
+});
+
+describe('the default mark on create', () => {
+  it('stamps the annotation beside the display name when asked', () => {
+    const form = values({ displayName: 'Qwen' });
+    const manifest = buildModelConfigManifest(
+      form,
+      planKeySecret(form),
+      'kagent',
+      { markDefault: true },
+    ) as { metadata: { annotations: Record<string, string> } };
+
+    expect(manifest.metadata.annotations).toEqual({
+      'ui.giantswarm.io/display-name': 'Qwen',
+      'agent-platform.giantswarm.io/is-default-model-config': 'true',
+    });
   });
 });
 

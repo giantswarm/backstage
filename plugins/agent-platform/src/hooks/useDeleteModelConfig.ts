@@ -161,13 +161,13 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       // the CR referenced (hand-provisioned, possibly shared) stays. Best
       // effort — the model is gone by now, and an orphaned key Secret is
       // inert, so a failure here must not report the deletion as failed.
-      if (modelConfig.getApiKeySecret() === keySecretName(name)) {
+      if (modelConfig.getApiKeySecret() === keySecretName(name, namespace)) {
         try {
           await deleteResource({
             kubernetesApi,
             cluster,
             gvk: SECRET_GVK,
-            name: keySecretName(name),
+            name: keySecretName(name, namespace),
             namespace,
           });
           invalidated.push(SECRET_GVK);

@@ -38,14 +38,27 @@ import { useCloseHref } from '../../hooks/useCloseHref';
 import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
   INITIAL_MODEL_CONFIG_FORM,
+  isListenerRouted,
+  MODEL_CONFIG_NAMESPACE,
   modelConfigFieldErrors,
   modelConfigFormChanged,
   modelConfigFormValues,
   ModelConfigFormValues,
+  modelConfigOwner,
+  type ModelProvider,
+  providersFor,
 } from '../../lib/modelConfigs';
+import { defaultClaimsIn, isMarkedDefault } from '../../lib/defaultModel';
 import { slugify } from '../../lib/slugify';
-import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
+import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
+import { useModelNamespaces } from '../../hooks/useModelNamespaces';
+import {
+  type SaveModelConfigResult,
+  useSaveModelConfig,
+} from '../../hooks/useSaveModelConfig';
 import { ModelConfigFormFields } from '../ModelConfigForm';
+import { useModelConfigs } from '../ModelConfigsProvider';
+import { DefaultModelChoice } from './DefaultModelChoice';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -133,6 +146,71 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
 
   const { save, isSaving, error, reset } = useSaveModelConfig();
 
+  // Where the model goes: an existing one stays where it is; a new one goes
+  // to the platform unless the person picks an Organization they administer.
+  const { namespaces, isLoading: isLoadingNamespaces } = useModelNamespaces(
+    edit ? undefined : installation,
+  );
+  const [chosenNamespace, setChosenNamespace] = useState<string>();
+  let namespace: string;
+  if (edit) {
+    namespace = edit.modelConfig.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
+  } else if (chosenNamespace && namespaces.includes(chosenNamespace)) {
+    namespace = chosenNamespace;
+  } else {
+    namespace = namespaces[0] ?? MODEL_CONFIG_NAMESPACE;
+  }
+  const routed = isListenerRouted(namespace);
+  const providers = useMemo<readonly ModelProvider[]>(() => {
+    const offered = providersFor(namespace);
+    return offered.includes(initialValues.provider) || !edit
+      ? offered
+      : [...offered, initialValues.provider];
+  }, [namespace, edit, initialValues.provider]);
+  // A provider the new place does not offer gives way to its first one.
+  // The listener is a routed model's endpoint, so a typed one goes too.
+  useEffect(() => {
+    if (!providers.includes(values.provider)) {
+      setValues(prev => ({ ...prev, provider: providers[0] }));
+    }
+    if (!edit && routed && (values.endpoint || values.insecureSkipTlsVerify)) {
+      setValues(prev => ({
+        ...prev,
+        endpoint: '',
+        insecureSkipTlsVerify: false,
+      }));
+    }
+  }, [
+    providers,
+    values.provider,
+    edit,
+    routed,
+    values.endpoint,
+    values.insecureSkipTlsVerify,
+  ]);
+
+  // The namespace's default marks as listed, for the default choice. The save
+  // reads them again before it writes.
+  const { modelConfigsFor, isLoading: isLoadingModels } = useModelConfigs();
+  const namespaceModels = useMemo(
+    () =>
+      installation
+        ? modelConfigsFor(installation).filter(
+            mc => (mc.getNamespace() ?? '') === namespace,
+          )
+        : [],
+    [installation, modelConfigsFor, namespace],
+  );
+  const marks = useMemo(
+    () => defaultClaimsIn(namespaceModels, namespace),
+    [namespaceModels, namespace],
+  );
+  const markOwner = namespaceModels
+    .filter(isMarkedDefault)
+    .map(mc => modelConfigOwner(mc))
+    .find(Boolean);
+  const [makeDefault, setMakeDefault] = useState(false);
+
   // The sole installation on a single-management-cluster instance: nothing to
   // choose, so pick it instead of offering a one-option dropdown.
   const singleInstallation =
@@ -211,11 +289,13 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return;
     }
     reset();
+    let saved: SaveModelConfigResult;
     try {
-      await save({
+      saved = await save({
         installation: installation!,
         values,
         original: edit?.modelConfig,
+        ...(edit ? {} : { namespace, makeDefault, expectedMarks: marks }),
       });
     } catch {
       // Left on the page: the mutation error renders in the alert below.
@@ -232,7 +312,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return;
     }
     toastApi.post({
-      title: `Model "${label}" connected`,
+      title: saved.isDefault
+        ? `Model "${label}" connected as the default`
+        : `Model "${label}" connected`,
       // The controller still has to accept it (it resolves the key Secret
       // first), which the list's status column reports.
       description:
@@ -247,6 +329,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     edit,
     installation,
     values,
+    namespace,
+    makeDefault,
+    marks,
     save,
     reset,
     toastApi,
@@ -355,7 +440,36 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         </Card>
       )}
 
+      {!edit && installation && namespaces.length > 1 && (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              variant="title-x-small"
+              title={OWNER_LABEL}
+              description="A model serves the agents of its owner: the platform’s, or one organization’s."
+            />
+            <Select
+              aria-label={OWNER_LABEL}
+              isRequired
+              options={namespaces.map(choice => ({
+                id: choice,
+                label: ownerOf(choice),
+              }))}
+              selectedKey={namespace}
+              onSelectionChange={key => {
+                if (key) {
+                  setChosenNamespace(String(key));
+                  setMakeDefault(false);
+                }
+              }}
+            />
+          </CardBody>
+        </Card>
+      )}
+
       <ModelConfigFormFields
+        providers={providers}
+        routed={routed}
         values={values}
         onChange={onChange}
         mode={edit ? 'edit' : 'create'}
@@ -366,6 +480,22 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         originalProvider={edit?.modelConfig.getProvider()}
         originalProjectID={edit ? initialValues.projectID : undefined}
       />
+
+      {!edit && installation && (
+        <DefaultModelChoice
+          where={tenantInSentence(namespace)}
+          marks={marks.map(
+            name =>
+              namespaceModels
+                .find(mc => mc.getName() === name)
+                ?.getDisplayName() ?? name,
+          )}
+          markOwner={markOwner}
+          isLoading={isLoadingModels || isLoadingNamespaces}
+          isSelected={makeDefault}
+          onChange={setMakeDefault}
+        />
+      )}
 
       {error && (
         <Alert

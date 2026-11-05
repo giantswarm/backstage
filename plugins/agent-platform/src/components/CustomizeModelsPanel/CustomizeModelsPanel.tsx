@@ -171,6 +171,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
           title={row.displayName}
           href={hrefOf(row)}
           description={[
+            row.isDefault ? 'Default' : undefined,
             row.provider,
             row.model,
             ...(showInstallation ? [row.installation] : []),

@@ -1,97 +1,135 @@
-import { preselectedModelConfig, tenantModelConfigs } from './helpers';
+import type { AgentManagerModelConfig } from '../../lib/agentManager';
+import {
+  isReportedDefault,
+  preselectedModelConfig,
+  tenantModelConfigs,
+  unresolvedReason,
+} from './helpers';
 
-function modelConfig(namespace: string, name: string) {
-  return { getName: () => name, getNamespace: () => namespace };
+function model(
+  namespace: string,
+  name: string,
+  readiness: 'accepted' | 'notAccepted' | 'pending' = 'accepted',
+) {
+  return {
+    getName: () => name,
+    getNamespace: () => namespace,
+    getDisplayName: () => name,
+    getModel: () => 'claude',
+    getProvider: () => 'Anthropic',
+    getReadiness: () => readiness,
+    getReadinessMessage: () =>
+      readiness === 'notAccepted' ? 'Secret kagent-x not found' : undefined,
+  };
+}
+
+function reported(
+  namespace: string,
+  name: string,
+  fields: Partial<AgentManagerModelConfig> = {},
+): AgentManagerModelConfig {
+  return { name, namespace, accepted: true, resolvedRefs: true, ...fields };
 }
 
 describe('preselectedModelConfig', () => {
-  it('has nothing to preselect without models', () => {
-    expect(preselectedModelConfig([])).toBeUndefined();
-  });
-
-  it('picks the only model', () => {
-    const only = modelConfig('team', 'sonnet');
-
-    expect(preselectedModelConfig([only])).toEqual({
-      modelConfig: only,
-      reason: 'only',
-    });
-  });
-
-  it("picks the installation's default model among several", () => {
-    const fallback = modelConfig('kagent', 'default-model-config');
+  it('picks the model agent-manager reports as the default', () => {
+    const sonnet = model('kagent', 'sonnet');
 
     expect(
-      preselectedModelConfig([
-        modelConfig('kagent', 'haiku'),
-        fallback,
-        modelConfig('kagent', 'opus'),
+      preselectedModelConfig(
+        [model('kagent', 'haiku'), sonnet],
+        [
+          reported('kagent', 'haiku'),
+          reported('kagent', 'sonnet', { default: true }),
+        ],
+      ),
+    ).toBe(sonnet);
+  });
+
+  it('picks nothing without a default, even for the only model', () => {
+    expect(
+      preselectedModelConfig(
+        [model('kagent', 'sonnet')],
+        [reported('kagent', 'sonnet')],
+      ),
+    ).toBeUndefined();
+  });
+
+  it('picks nothing by name: default-model-config is not special here', () => {
+    expect(
+      preselectedModelConfig(
+        [model('kagent', 'default-model-config'), model('kagent', 'opus')],
+        [],
+      ),
+    ).toBeUndefined();
+  });
+
+  it('picks nothing when the default is not among the choices', () => {
+    expect(
+      preselectedModelConfig(
+        [model('org-acme', 'sonnet')],
+        [reported('kagent', 'sonnet', { default: true })],
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('isReportedDefault', () => {
+  it('matches name and namespace', () => {
+    const list = [reported('kagent', 'sonnet', { default: true })];
+
+    expect(isReportedDefault(model('kagent', 'sonnet'), list)).toBe(true);
+    expect(isReportedDefault(model('org-acme', 'sonnet'), list)).toBe(false);
+  });
+});
+
+describe('unresolvedReason', () => {
+  it("reads agent-manager's ResolvedRefs when it reported the model", () => {
+    expect(
+      unresolvedReason(model('kagent', 'sonnet', 'notAccepted'), [
+        reported('kagent', 'sonnet', { resolvedRefs: false }),
       ]),
-    ).toEqual({ modelConfig: fallback, reason: 'default' });
-  });
-
-  it("prefers the kagent namespace's default when several namespaces hold one", () => {
-    const platform = modelConfig('kagent', 'default-model-config');
-
+    ).toEqual({ message: 'Secret kagent-x not found' });
     expect(
-      preselectedModelConfig([
-        modelConfig('team', 'default-model-config'),
-        platform,
+      unresolvedReason(model('kagent', 'sonnet', 'notAccepted'), [
+        reported('kagent', 'sonnet', { resolvedRefs: true }),
       ]),
-    ).toEqual({ modelConfig: platform, reason: 'default' });
+    ).toBeUndefined();
   });
 
-  it('falls back to the first model when none is the default', () => {
-    const first = modelConfig('kagent', 'haiku');
-
+  it("falls back to the controller's verdict without an answer", () => {
     expect(
-      preselectedModelConfig([first, modelConfig('kagent', 'opus')]),
-    ).toEqual({ modelConfig: first, reason: 'first' });
+      unresolvedReason(model('kagent', 'sonnet', 'notAccepted'), []),
+    ).toEqual({ message: 'Secret kagent-x not found' });
+    expect(
+      unresolvedReason(model('kagent', 'sonnet', 'pending'), []),
+    ).toBeUndefined();
   });
 });
 
 describe('tenantModelConfigs', () => {
-  const model = (name: string, namespace: string) => ({
-    getName: () => name,
-    getNamespace: () => namespace,
-    getDisplayName: () => `${name} (${namespace})`,
-    getModel: () => 'claude',
-    getProvider: () => 'Anthropic',
-  });
-  const where = (choices: ReturnType<typeof tenantModelConfigs>) =>
+  const where = (choices: { getName(): string; getNamespace(): string }[]) =>
     choices.map(mc => `${mc.getNamespace()}/${mc.getName()}`);
-  const platformDefault = model('default-model-config', 'kagent');
 
-  it('offers a tenant without its copy yet the platform default, in the tenant', () => {
-    const choices = tenantModelConfigs(
-      [platformDefault, model('own-key', 'org-acme'), model('x', 'org-b')],
-      'org-acme',
-    );
-
-    expect(where(choices)).toEqual([
-      'org-acme/default-model-config',
-      'org-acme/own-key',
-    ]);
-    expect(choices[0].getDisplayName()).toBe(platformDefault.getDisplayName());
-  });
-
-  it('offers a tenant its own copy once it exists, and nothing twice', () => {
+  it("offers a tenant only its own models, the platform's not copied in", () => {
     expect(
       where(
         tenantModelConfigs(
-          [platformDefault, model('default-model-config', 'org-acme')],
+          [model('kagent', 'sonnet'), model('org-acme', 'own-key')],
           'org-acme',
         ),
       ),
-    ).toEqual(['org-acme/default-model-config']);
+    ).toEqual(['org-acme/own-key']);
   });
 
-  it('offers no stand-in in a namespace that is not an Organization’s', () => {
-    // agent-manager accepts a model before its copy exists in a tenant only.
+  it('offers every model without a tenant', () => {
     expect(
       where(
-        tenantModelConfigs([platformDefault, model('x', 'team-a')], 'team-a'),
+        tenantModelConfigs(
+          [model('kagent', 'sonnet'), model('org-acme', 'own-key')],
+          undefined,
+        ),
       ),
-    ).toEqual(['team-a/x']);
+    ).toEqual(['kagent/sonnet', 'org-acme/own-key']);
   });
 });

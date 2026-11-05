@@ -36,6 +36,53 @@ jest.mock('../../hooks/useSaveModelConfig', () => ({
   }),
 }));
 
+type MockModel = {
+  getName(): string;
+  getNamespace(): string;
+  getDisplayName(): string;
+  getAnnotations(): Record<string, string | undefined>;
+  getLabels(): Record<string, string | undefined>;
+  getOwnerReferences(): never[];
+};
+let mockModelConfigs: MockModel[] = [];
+jest.mock('../ModelConfigsProvider', () => ({
+  useModelConfigs: () => ({
+    modelConfigsFor: () => mockModelConfigs,
+    isLoading: false,
+  }),
+}));
+
+let mockNamespaces = ['kagent'];
+jest.mock('../../hooks/useModelNamespaces', () => ({
+  useModelNamespaces: () => ({ namespaces: mockNamespaces, isLoading: false }),
+}));
+
+jest.mock('../../lib/modelConfigs', () => ({
+  ...jest.requireActual('../../lib/modelConfigs'),
+  modelConfigOwner: (mc: MockModel) =>
+    mc.getLabels()['app.kubernetes.io/managed-by'] === 'Helm'
+      ? 'Helm'
+      : undefined,
+}));
+
+function mockModel(
+  namespace: string,
+  name: string,
+  { marked = false, helm = false } = {},
+): MockModel {
+  return {
+    getName: () => name,
+    getNamespace: () => namespace,
+    getDisplayName: () => name,
+    getAnnotations: () =>
+      marked
+        ? { 'agent-platform.giantswarm.io/is-default-model-config': 'true' }
+        : {},
+    getLabels: () => (helm ? { 'app.kubernetes.io/managed-by': 'Helm' } : {}),
+    getOwnerReferences: () => [],
+  };
+}
+
 let mockServingInstallations: string[] | undefined;
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: { installations: string[] }) =>
@@ -70,8 +117,10 @@ const moreOptions = () =>
 beforeEach(() => {
   mockServingInstallations = undefined;
   mockInstallationNames = ['golem'];
+  mockModelConfigs = [];
+  mockNamespaces = ['kagent'];
   mockSave.mockReset();
-  mockSave.mockResolvedValue(undefined);
+  mockSave.mockResolvedValue({ isDefault: false });
 });
 
 describe('NewModelPage', () => {
@@ -147,8 +196,120 @@ describe('NewModelPage', () => {
         apiKey: '',
       }),
       original: undefined,
+      namespace: 'kagent',
+      makeDefault: false,
+      expectedMarks: [],
     });
     expect(mockSave.mock.calls[0][0].values).not.toHaveProperty('keyless');
+  });
+
+  it('says a first model becomes the default, with nothing to decide', async () => {
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        'The platform has no default model yet, so this one becomes it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: 'Make this the default model' }),
+    ).toBeNull();
+  });
+
+  it('offers to move the default, and saves the move with the mark it showed', async () => {
+    mockModelConfigs = [mockModel('kagent', 'sonnet', { marked: true })];
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        'The default now is sonnet. Agents that run on it keep it.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Make this the default model' }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Opus');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'opus',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Connect model' }),
+    );
+
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0][0]).toMatchObject({
+      namespace: 'kagent',
+      makeDefault: true,
+      expectedMarks: ['sonnet'],
+    });
+  });
+
+  it('offers to take over the Helm-rendered default-model-config while nothing is marked', async () => {
+    mockModelConfigs = [
+      mockModel('kagent', 'default-model-config', { helm: true }),
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        'The default now is default-model-config. Agents that run on it keep it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: 'Make this the default model' }),
+    ).toBeEnabled();
+  });
+
+  it('cannot move a default Helm values set, and names the values key', async () => {
+    mockModelConfigs = [
+      mockModel('kagent', 'sonnet', { marked: true, helm: true }),
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByRole('checkbox', { name: 'Make this the default model' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        /set in Helm values\. Move it there \(kagent\.modelConfigs\[\]\.default\)/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("creates an Organization's model in its namespace, through the gateway only", async () => {
+    mockNamespaces = ['kagent', 'org-acme'];
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /Owner/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'acme' }));
+
+    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
+    const providers = (await screen.findAllByRole('option')).map(
+      option => option.textContent,
+    );
+    expect(providers).toEqual(['OpenAI (or compatible)', 'Anthropic']);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByLabelText(/^Base URL/)).toBeNull();
+    expect(
+      screen.queryByRole('switch', {
+        name: /Skip TLS certificate verification/,
+      }),
+    ).toBeNull();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Acme Sonnet');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'claude',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Connect model' }),
+    );
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0][0]).toMatchObject({
+      namespace: 'org-acme',
+      values: expect.objectContaining({ endpoint: '' }),
+    });
   });
 
   it('marks each missing field itself on a blocked submit and focuses the first', async () => {
