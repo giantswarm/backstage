@@ -225,16 +225,31 @@ export type NewSessionComposerProps = {
    * choosing it runs the action and selects nothing.
    */
   pickerFooterAction?: NewSessionComposerPickerAction;
-  /** The prompt the field starts with. */
+  /** The prompt the field starts with, while {@link prompt} is not given. */
   initialPrompt?: string;
+  /**
+   * The prompt, held by the caller (`StartNewSession`, which keeps it as a
+   * draft); {@link onPromptChange} then receives every edit. Without it the
+   * composer holds the prompt itself, starting from {@link initialPrompt}.
+   */
+  prompt?: string;
   /** The field's placeholder for the selected agent, or for none. */
   promptPlaceholder?: (agent: AgentRow | undefined) => string;
   /** Rendered beside the agent picker. */
   renderPickerAccessory?: (agent: AgentRow | undefined) => ReactNode;
   /** Rendered under the composer. */
   renderFooter?: (context: NewSessionComposerFooterContext) => ReactNode;
-  /** Called with the selected agent whenever it changes. */
-  onSelectedAgentChange?: (agent: AgentRow | undefined) => void;
+  /**
+   * Called with the selected agent whenever it changes, and whether the person
+   * picked it (`byPerson`) or the composer preselected it (a default, a sole
+   * agent).
+   */
+  onSelectedAgentChange?: (
+    agent: AgentRow | undefined,
+    selection: { byPerson: boolean },
+  ) => void;
+  /** Called with the prompt on every edit the person makes. */
+  onPromptChange?: (prompt: string) => void;
   /** Some installations are still being queried, so more agents may appear. */
   isLoadingAgents?: boolean;
   /**
@@ -426,10 +441,12 @@ export function NewSessionComposer({
   pickerLabel,
   pickerFooterAction,
   initialPrompt,
+  prompt: controlledPrompt,
   promptPlaceholder,
   renderPickerAccessory,
   renderFooter,
   onSelectedAgentChange,
+  onPromptChange,
   isLoadingAgents = false,
   agentFirst = false,
   defaultAgent,
@@ -444,9 +461,19 @@ export function NewSessionComposer({
   const classes = useStyles();
   const touch = useTouchInput();
   const buildAvatarUrl = useAgentAvatarUrl();
-  const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
+  const prompt = controlledPrompt ?? ownPrompt;
+  const setPrompt = (next: string) => {
+    if (controlledPrompt === undefined) {
+      setOwnPrompt(next);
+    }
+    onPromptChange?.(next);
+  };
   const [searchText, setSearchText] = useState('');
-  const [expanded, setExpanded] = useState(!collapsible);
+  const [isFocusExpanded, setExpanded] = useState(!collapsible);
+  // A box with a prompt in it (one it starts with, a kept draft) shows it
+  // whole, focused or not.
+  const expanded = isFocusExpanded || prompt !== '';
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
   // bui's field forwards its ref to the wrapper, not the textarea.
@@ -727,8 +754,9 @@ export function NewSessionComposer({
       : selectedId;
   }, [options, pickedOptionId, selectedId]);
 
+  // `touched` is set before the pick's state update, so it is current here.
   useEffect(() => {
-    onSelectedAgentChange?.(selectedAgent);
+    onSelectedAgentChange?.(selectedAgent, { byPerson: touched.current });
   }, [onSelectedAgentChange, selectedAgent]);
 
   const selectAgent = useCallback((agent: AgentRow) => {
