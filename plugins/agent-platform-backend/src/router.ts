@@ -70,9 +70,10 @@ export interface RouterOptions {
    * once every plugin has initialised -- rather than while they all are. The
    * probes measure the network with a wall-clock budget, and a backend
    * initialising under a CPU quota is exactly the process too busy to notice
-   * an answer in time. Tests leave it out and get an immediate warm-up.
+   * an answer in time. Tests leave it out and get an immediate warm-up. Its
+   * shutdown hook closes the avatar router's connections.
    */
-  lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  lifecycle?: Pick<RootLifecycleService, 'addStartupHook' | 'addShutdownHook'>;
   /**
    * The installations' Mimir, queried with the person's token, for their own
    * model cost. The plugin always passes the shared `mimirServiceRef`; tests
@@ -1333,7 +1334,9 @@ export async function createRouter(
   // The agents' avatars, fetched from each installation's avatars host and
   // served same-origin (avatarRouter.ts), so the page's Content-Security-Policy
   // names no installation. Cookie-authenticated: see plugin.ts.
-  router.use(createAvatarRouter({ config, logger }));
+  router.use(
+    createAvatarRouter({ config, logger, lifecycle: options.lifecycle }),
+  );
 
   // Last, so that every kagent route above hands it its failures: a degraded
   // kagent is answered here and logged once, not reported again by
