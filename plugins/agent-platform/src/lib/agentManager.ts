@@ -541,6 +541,16 @@ export function codingEgressRefusal(
  */
 export class AgentManagerNotConnectedError extends Error {
   readonly name = 'AgentManagerNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to the server (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way (a tool not found, a server down), which
+   * a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**

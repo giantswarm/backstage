@@ -142,9 +142,11 @@ export function AgentChangeHarnessDialog({
   );
   const missing = missingReleaseFile(missingFailure);
 
-  const notConnected =
-    failure?.kind === 'not-connected' ||
-    updating.failure?.kind === 'not-connected';
+  // The dry run's, else the write's.
+  const notConnectedFailure = [failure, updating.failure].find(
+    candidate => candidate?.kind === 'not-connected',
+  );
+  const notConnected = Boolean(notConnectedFailure);
   const isChecking = validated.isLoading || commitDryRun.isLoading;
   const isRefused = Boolean(failure) || violations.length > 0;
 
@@ -284,10 +286,8 @@ export function AgentChangeHarnessDialog({
         {notConnected && (
           <ConnectAgentManagerAlert
             installation={installation}
-            message={
-              (failure?.kind === 'not-connected' ? failure : updating.failure)!
-                .message
-            }
+            message={notConnectedFailure!.message}
+            signInRequired={notConnectedFailure!.signInRequired}
             action="The Harness is changed"
             onSignedIn={updating.reset}
           />

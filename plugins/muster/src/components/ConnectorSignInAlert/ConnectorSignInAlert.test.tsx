@@ -30,12 +30,16 @@ function status(value: 'auth_required' | 'connected'): AuthStatusResponse {
 async function renderAlert(
   props: Partial<Parameters<typeof ConnectorSignInAlert>[0]> = {},
   initial: AuthStatusResponse = status('auth_required'),
-  names: ConnectorNamesResponse = { servers: [] },
+  names:
+    | ConnectorNamesResponse
+    | ((installation?: string) => ConnectorNamesResponse) = { servers: [] },
 ) {
   let current = initial;
   const api: Api = {
     getAuthStatus: jest.fn(async () => current),
-    listConnectorNames: jest.fn(async () => names),
+    listConnectorNames: jest.fn(async (installation?: string) =>
+      typeof names === 'function' ? names(installation) : names,
+    ),
     signInServer: jest.fn(async () => ({
       status: 'auth_required' as const,
       authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
@@ -111,6 +115,42 @@ describe('ConnectorSignInAlert', () => {
         'The Cluster Manager connector reads this with your own sign-in, and you have not signed in to it on gazelle yet. Sign in once; this fills in by itself.',
       ),
     ).toBeVisible();
+  });
+
+  // Each environment's muster names its own connectors: its row's
+  // explanation names it so (an SSO connector's row says, in a sentence that
+  // names it, that there is nothing to sign in to).
+  it("names the connector in each environment's row as that environment does", async () => {
+    const { api } = await renderAlert(
+      { installations: ['gazelle', 'golem'] },
+      {
+        servers: [
+          {
+            name: 'cluster-manager',
+            status: 'failed',
+            token_exchange_enabled: true,
+          },
+        ],
+      },
+      installation => ({
+        servers: [
+          {
+            name: 'cluster-manager',
+            displayName:
+              installation === 'gazelle' ? 'Cluster Manager' : 'Clusters',
+          },
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByText(/^Cluster Manager authenticates through SSO/),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/^Clusters authenticates through SSO/),
+    ).toBeInTheDocument();
+    expect(api.listConnectorNames).toHaveBeenCalledWith('gazelle');
+    expect(api.listConnectorNames).toHaveBeenCalledWith('golem');
   });
 
   it('reads the page again once the sign-in lands', async () => {

@@ -303,10 +303,13 @@ export function Notes({ notes }: { notes: string[] }) {
 export function ConnectAgentManager({
   installation,
   message,
+  signInRequired,
   onSignedIn,
 }: {
   installation: string;
   message: string;
+  /** See {@link ConnectAgentManagerAlert}'s `signInRequired`. */
+  signInRequired?: boolean;
   /** See {@link ConnectAgentManagerAlert}'s `onSignedIn`. */
   onSignedIn?: () => void;
 }) {
@@ -314,6 +317,7 @@ export function ConnectAgentManager({
     <ConnectAgentManagerAlert
       installation={installation}
       message={message}
+      signInRequired={signInRequired}
       action="Agents are created"
       onSignedIn={onSignedIn}
     />

@@ -1188,13 +1188,23 @@ describe('createRouter', () => {
 
     // A background reader names the connectors: a failure is no Sentry
     // issue, and the prompts keep the servers' own names.
-    it('answers a failed list as unavailable, not a 5xx', async () => {
-      callTool.mockRejectedValue(new Error('fetch failed'));
+    it('answers a refused list as unavailable, not a 5xx', async () => {
+      callTool.mockRejectedValue(new Error('Failed to list MCP servers'));
 
       const response = await request(app).get('/servers/names');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ servers: [], unavailable: true });
+    });
+
+    // Read once per installation, not polled: an outage is reported, as on
+    // `/auth/login`, not hidden behind an empty answer.
+    it('answers muster being unreachable with a 5xx', async () => {
+      callTool.mockRejectedValue(new TypeError('fetch failed'));
+
+      const response = await request(app).get('/servers/names');
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
     });
 
     // The token refresh only follows a 401: muster refusing the bearer

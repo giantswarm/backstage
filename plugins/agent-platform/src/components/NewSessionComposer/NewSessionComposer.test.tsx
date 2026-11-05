@@ -94,14 +94,23 @@ beforeEach(() => {
 
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
-  // Its `onSignedIn` stands for muster reporting the sign-in landed (here,
-  // in another tab, or a click that found it connected already).
-  ServerSignIn: ({ onSignedIn }: { onSignedIn?: () => void }) => (
+  // Its `onSignedIn` stands for muster reporting the sign-in landed: made
+  // in this tab, or in another one.
+  ServerSignIn: ({
+    onSignedIn,
+  }: {
+    onSignedIn?: (signedIn: { here: boolean }) => void;
+  }) => (
     <div data-testid="server-sign-in">
       {onSignedIn && (
-        <button type="button" onClick={onSignedIn}>
-          Sign-in lands
-        </button>
+        <>
+          <button type="button" onClick={() => onSignedIn({ here: true })}>
+            Sign-in lands
+          </button>
+          <button type="button" onClick={() => onSignedIn({ here: false })}>
+            Sign-in lands in another tab
+          </button>
+        </>
       )}
     </div>
   ),
@@ -710,10 +719,12 @@ describe('NewSessionComposer', () => {
         ),
       );
 
-    it('takes the alert away and starts the session again, with the prompt as it is', async () => {
+    it('takes the alert away and starts the refused session again, for a sign-in made in this tab', async () => {
       const error = signInRequired();
       const { rerender } = renderComposer({ defaultAgent: sre });
       await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      onStart.mockClear();
       // The start was refused: the caller hands its error back.
       rerender(
         <NewSessionComposer
@@ -742,6 +753,62 @@ describe('NewSessionComposer', () => {
         undefined,
       );
       expect(field()).toHaveValue('check the ingress');
+    });
+
+    // Only the tab the person pressed Start in starts again: a sign-in made
+    // in another tab clears the alert here and leaves Start to the person.
+    it('only clears the alert for a sign-in made in another tab', async () => {
+      const error = signInRequired();
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={error}
+        />,
+      );
+      onStart.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands in another tab' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).not.toHaveBeenCalled();
+      expect(field()).toHaveValue('check the ingress');
+    });
+
+    // The start that was refused, not whatever the box holds by then.
+    it('only clears the alert once the prompt changed since the refused start', async () => {
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={signInRequired()}
+        />,
+      );
+      await userEvent.type(field(), ' and the egress');
+      onStart.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).not.toHaveBeenCalled();
     });
 
     it('asks again when the start that followed is refused again', async () => {

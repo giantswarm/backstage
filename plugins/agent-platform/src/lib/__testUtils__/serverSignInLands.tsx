@@ -3,10 +3,11 @@ import userEvent from '@testing-library/user-event';
 import type { ServerSignInProps } from '@giantswarm/backstage-plugin-muster';
 
 const SIGN_IN_LANDS = 'Sign-in lands';
+const SIGN_IN_LANDS_ELSEWHERE = 'Sign-in lands in another tab';
 
 /**
- * The muster plugin with its real `ServerSignIn`, plus a button beside it
- * that calls its `onSignedIn`: what muster's status moving to connected (a
+ * The muster plugin with its real `ServerSignIn`, plus two buttons beside it
+ * that call its `onSignedIn`, for a sign-in made here and in another tab: what muster's status moving to connected (a
  * sign-in here or in another tab, or a click that finds the server connected
  * already) does, which `useServerSignIn`'s own tests cover. For a test of
  * what a page does once the sign-in lands:
@@ -25,10 +26,21 @@ export function musterWithSignInLands() {
       <>
         <RealServerSignIn {...props} />
         {props.onSignedIn && (
-          // Not a submit: the alerts sit inside forms.
-          <button type="button" onClick={props.onSignedIn}>
-            {SIGN_IN_LANDS}
-          </button>
+          // Not submits: the alerts sit inside forms.
+          <>
+            <button
+              type="button"
+              onClick={() => props.onSignedIn!({ here: true })}
+            >
+              {SIGN_IN_LANDS}
+            </button>
+            <button
+              type="button"
+              onClick={() => props.onSignedIn!({ here: false })}
+            >
+              {SIGN_IN_LANDS_ELSEWHERE}
+            </button>
+          </>
         )}
       </>
     ),
@@ -36,11 +48,17 @@ export function musterWithSignInLands() {
 }
 
 /**
- * The sign-in lands, as `musterWithSignInLands` stands it in. `user` is the
- * test's own, where it sets one up (fake timers).
+ * The sign-in lands, as `musterWithSignInLands` stands it in: made in this
+ * tab, or with `elsewhere` in another one. `user` is the test's own, where it
+ * sets one up (fake timers).
  */
 export async function signInLands(
   user: Pick<ReturnType<typeof userEvent.setup>, 'click'> = userEvent,
+  { elsewhere = false }: { elsewhere?: boolean } = {},
 ) {
-  await user.click(screen.getByRole('button', { name: SIGN_IN_LANDS }));
+  await user.click(
+    screen.getByRole('button', {
+      name: elsewhere ? SIGN_IN_LANDS_ELSEWHERE : SIGN_IN_LANDS,
+    }),
+  );
 }

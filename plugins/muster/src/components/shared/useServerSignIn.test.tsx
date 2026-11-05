@@ -451,6 +451,8 @@ describe('useServerSignIn', () => {
       });
 
       await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      // Made in another tab: nothing this tab started.
+      expect(onSignedIn).toHaveBeenCalledWith({ here: false });
     });
 
     it('is called when the sign-in started here lands', async () => {
@@ -473,6 +475,7 @@ describe('useServerSignIn', () => {
 
       await waitFor(() => expect(result.current.isWaiting).toBe(false));
       expect(onSignedIn).toHaveBeenCalledTimes(1);
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
     });
 
     // muster's "already authenticated and connected": the sign-in holds, so
@@ -499,7 +502,36 @@ describe('useServerSignIn', () => {
       await act(async () => result.current.signIn());
 
       await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
       expect(result.current.error).toBeUndefined();
+    });
+
+    // The click reports the landing; the status read it causes, moving from
+    // waiting to connected, is the same landing, not a second one.
+    it('is called once when a click finds the server connected while the status still waits', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockImplementation(async () => {
+        api.getAuthStatus.mockResolvedValue({
+          servers: [{ name: 'pro', status: 'connected' }],
+        });
+        return {
+          status: 'connected',
+          message: "Server 'pro' is already authenticated and connected.",
+        };
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
     });
 
     it('is not called while the sign-in is refused', async () => {

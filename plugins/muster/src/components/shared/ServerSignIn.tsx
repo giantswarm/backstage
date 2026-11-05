@@ -3,6 +3,7 @@ import { Button, ButtonLink, Text } from '@backstage/ui';
 import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
+  SignedIn,
   SignInNoun,
   useServerSignIn,
 } from './useServerSignIn';
@@ -430,8 +431,9 @@ export interface ServerSignInProps {
    */
   showName?: boolean;
   /**
-   * What the copy calls the server: main's "server" by default (the classic
-   * portal, e.g. Bot PRs), "connector" in the agent platform's own sections.
+   * What the copy calls the server: "server" by default (the muster plugin's
+   * own MCP servers page), "connector" wherever people meet it as one (the
+   * agent platform, the sign-in dialog, Bot PRs).
    */
   noun?: SignInNoun;
   /**
@@ -441,7 +443,7 @@ export interface ServerSignInProps {
    * sign-in in place of a refused call, to clear the refusal and run it
    * again.
    */
-  onSignedIn?: () => void;
+  onSignedIn?: (signedIn: SignedIn) => void;
 }
 
 /**

@@ -92,6 +92,7 @@ function WriteFailure({
       <ConnectAgentManagerAlert
         installation={installation}
         message={refused.message}
+        signInRequired={refused.signInRequired}
         action="Agents are edited"
         needsGitHub={refused.github}
         onSignedIn={onSignedIn}

@@ -340,9 +340,11 @@ export function AgentUpdateSkillsDialog({
   const missing = missingReleaseFile(missingFailure);
 
   const gitSkills = plan.filter(entry => entry.kind === 'git');
-  const notConnected =
-    failure?.kind === 'not-connected' ||
-    updating.failure?.kind === 'not-connected';
+  // The dry run's, else the write's.
+  const notConnectedFailure = [failure, updating.failure].find(
+    candidate => candidate?.kind === 'not-connected',
+  );
+  const notConnected = Boolean(notConnectedFailure);
   const isReadingPlan = isLoadingAgent || validated.isLoading;
   const isLoading = isReadingPlan || commitDryRun.isLoading;
   // No skills to list yet: the table shows placeholder rows, as many as the
@@ -441,10 +443,8 @@ export function AgentUpdateSkillsDialog({
         {notConnected && (
           <ConnectAgentManagerAlert
             installation={installation}
-            message={
-              (failure?.kind === 'not-connected' ? failure : updating.failure)!
-                .message
-            }
+            message={notConnectedFailure!.message}
+            signInRequired={notConnectedFailure!.signInRequired}
             action="Skills are updated"
             onSignedIn={updating.reset}
           />

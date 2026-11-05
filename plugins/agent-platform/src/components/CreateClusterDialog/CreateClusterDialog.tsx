@@ -532,6 +532,7 @@ export function CreateClusterDialog({
                   <ConnectAgentManagerAlert
                     installation={target}
                     message={notConnected.message}
+                    signInRequired={notConnected.signInRequired}
                     action="Clusters are created"
                     server={CLUSTER_MANAGER_SERVER}
                     // Signed in: the refusal is cleared, and dry runs that

@@ -1,7 +1,7 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
-  isMusterSignInRequiredText,
   ServerSignIn,
+  type SignedIn,
   useConnectorLabel,
 } from '@giantswarm/backstage-plugin-muster';
 
@@ -14,10 +14,10 @@ import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
  * affordance wherever such a call needs the connector — the create review,
  * the edit page, the delete and update-skills dialogs, the session start.
  *
- * Where muster asked for the person's sign-in (`auth_required: server '…'
- * requires authentication`), the alert says so in the portal's own words and
- * leaves muster's out: they name the server by its technical name and say
- * nothing more. Any other not-connected answer (a tool not found, a server
+ * Where muster asked for the person's sign-in (`signInRequired`, read from
+ * its 401 where the error is classified), the alert says so in the portal's
+ * own words and leaves muster's out: they name the server by its technical
+ * name and say nothing more. Any other not-connected answer (a tool not found, a server
  * not connected) may have a cause a sign-in does not fix, a server that is
  * down or not registered, so muster's answer stays in sight there.
  *
@@ -33,6 +33,7 @@ export function ConnectAgentManagerAlert({
   action = 'Agents are changed',
   server = AGENT_MANAGER_SERVER,
   needsGitHub = false,
+  signInRequired: asksSignIn = false,
   onSignedIn,
 }: {
   installation: string;
@@ -45,13 +46,21 @@ export function ConnectAgentManagerAlert({
   /** The write needs the person's GitHub authorization (`auth_required`). */
   needsGitHub?: boolean;
   /**
-   * Called once the person is signed in to the connector, here or in another
-   * tab: the caller clears the refusal and runs the call again.
+   * muster asked for the person's sign-in to the connector (its 401, kept on
+   * the failure as `signInRequired`), rather than answering "not connected"
+   * some other way, which a sign-in may not fix.
    */
-  onSignedIn?: () => void;
+  signInRequired?: boolean;
+  /**
+   * Called once the person is signed in to the connector (see `SignedIn`
+   * for where): the caller clears the refusal, and may run the call again.
+   * Not for `needsGitHub`: agent-manager is connected already there, so a
+   * click answers "connected" without the GitHub authorization being given.
+   */
+  onSignedIn?: (signedIn: SignedIn) => void;
 }) {
   const label = useConnectorLabel(installation, server);
-  const signInRequired = !needsGitHub && isMusterSignInRequiredText(message);
+  const signInRequired = !needsGitHub && asksSignIn;
   let title = `Connect to ${label}`;
   if (needsGitHub) {
     title = `Authorize GitHub for ${label}`;
@@ -98,7 +107,7 @@ export function ConnectAgentManagerAlert({
             serverName={server}
             displayName={label}
             installation={installation}
-            onSignedIn={onSignedIn}
+            onSignedIn={needsGitHub ? undefined : onSignedIn}
           />
         </Flex>
       }

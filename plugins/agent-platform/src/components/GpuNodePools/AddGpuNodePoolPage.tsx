@@ -799,6 +799,7 @@ export function AddGpuNodePoolPage({
           <ConnectAgentManagerAlert
             installation={installation}
             message={write.failure!.message}
+            signInRequired={write.failure!.signInRequired}
             action="GPU node pools are created"
             server={CLUSTER_MANAGER_SERVER}
             onSignedIn={onSignedIn}

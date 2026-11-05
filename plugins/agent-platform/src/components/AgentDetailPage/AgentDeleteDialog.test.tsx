@@ -261,6 +261,11 @@ describe('AgentDeleteDialog', () => {
     expect(
       screen.getByRole('button', { name: 'Open pull request' }),
     ).toBeDisabled();
+    // agent-manager is connected there: a click finds it so without the
+    // GitHub authorization being given, which must not clear the alert.
+    expect(
+      screen.queryByRole('button', { name: 'Sign-in lands' }),
+    ).not.toBeInTheDocument();
   });
 
   // A delete is never sent again by itself: the sign-in clears the refusal,
@@ -277,6 +282,7 @@ describe('AgentDeleteDialog', () => {
           kind: 'not-connected',
           message:
             "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          signInRequired: true,
         },
       },
     });

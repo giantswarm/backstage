@@ -1,11 +1,11 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
-  isMusterSignInRequiredText,
   ServerSignIn,
   useConnectorLabel,
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useMargeServerName } from '../../hooks/useMarge';
+import type { MargeNotConnectedError } from '../../lib/marge';
 
 /**
  * The person's muster session cannot reach marge yet: names the connector by
@@ -19,15 +19,15 @@ import { useMargeServerName } from '../../hooks/useMarge';
  */
 export function ConnectMargeAlert({
   installation,
-  message,
+  error,
 }: {
   installation: string;
-  /** The answer the call got, muster's or marge's. */
-  message: string;
+  /** What the call got: muster's or marge's answer, and whether it asks for the sign-in. */
+  error: Pick<MargeNotConnectedError, 'message' | 'signInRequired'>;
 }) {
   const serverName = useMargeServerName(installation);
   const label = useConnectorLabel(installation, serverName);
-  const signInRequired = isMusterSignInRequiredText(message);
+  const { message, signInRequired } = error;
   return (
     <Alert
       status="warning"

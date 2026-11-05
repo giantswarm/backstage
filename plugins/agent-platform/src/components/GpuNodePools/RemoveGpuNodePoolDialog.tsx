@@ -298,6 +298,7 @@ export function RemoveGpuNodePoolDialog({
           <ConnectAgentManagerAlert
             installation={row.installation}
             message={failure.message}
+            signInRequired={failure.signInRequired}
             action="GPU node pools are removed"
             server={CLUSTER_MANAGER_SERVER}
             // Signed in: the refusal is cleared, and the person removes the

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
 import { ConnectorNamesResponse, MusterApi, musterApiRef } from '../../../apis';
@@ -15,7 +15,7 @@ function setup(answer: () => Promise<ConnectorNamesResponse>) {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  return { api, wrapper };
+  return { api, wrapper, queryClient };
 }
 
 describe('useConnectorLabels', () => {
@@ -103,6 +103,35 @@ describe('useConnectorLabels', () => {
     await waitFor(() =>
       expect(result.current).toEqual(['Agent Manager', 'workspace-manager']),
     );
+    expect(api.listConnectorNames).toHaveBeenCalledTimes(1);
+  });
+
+  // An undefined installation would read the backend's default one.
+  it('reads nothing without an installation', () => {
+    const { api, wrapper } = setup(async () => ({ servers: [] }));
+
+    const { result } = renderHook(
+      () => useConnectorLabel(undefined, 'agent-manager'),
+      { wrapper },
+    );
+
+    expect(result.current).toBe('agent-manager');
+    expect(api.listConnectorNames).not.toHaveBeenCalled();
+  });
+
+  // A sign-in reads every `['muster', …]` query again; it changes no name.
+  it('is not read again when a sign-in reads every muster query again', async () => {
+    const { api, wrapper, queryClient } = setup(async () => ({
+      servers: [{ name: 'agent-manager', displayName: 'Agent Manager' }],
+    }));
+    const { result } = renderHook(
+      () => useConnectorLabel('gazelle', 'agent-manager'),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).toBe('Agent Manager'));
+
+    await act(() => queryClient.invalidateQueries({ queryKey: ['muster'] }));
+
     expect(api.listConnectorNames).toHaveBeenCalledTimes(1);
   });
 

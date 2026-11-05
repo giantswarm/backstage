@@ -72,6 +72,7 @@ export {
 export type {
   DeviceCode,
   ServerSignInState,
+  SignedIn,
   SignInNoun,
 } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';

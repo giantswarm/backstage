@@ -481,6 +481,7 @@ export function DeleteClusterDialog({
                 <ConnectAgentManagerAlert
                   installation={installation}
                   message={notConnected.message}
+                  signInRequired={notConnected.signInRequired}
                   action="Clusters are deleted"
                   server={CLUSTER_MANAGER_SERVER}
                   // Signed in: the refusal is cleared, and dry runs that

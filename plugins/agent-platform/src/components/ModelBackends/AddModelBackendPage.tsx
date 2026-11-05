@@ -640,6 +640,7 @@ export function AddModelBackendPage({
           <ConnectAgentManagerAlert
             installation={installation}
             message={write.failure!.message}
+            signInRequired={write.failure!.signInRequired}
             action="Model backends are registered"
             server={MODEL_MANAGER_SERVER}
             // Signed in: the refusal is cleared. A Review refused before it

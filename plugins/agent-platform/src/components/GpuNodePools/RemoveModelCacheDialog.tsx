@@ -258,6 +258,7 @@ export function RemoveModelCacheDialog({
           <ConnectAgentManagerAlert
             installation={installation}
             message={failure.message}
+            signInRequired={failure.signInRequired}
             action="The model cache is removed"
             server={CLUSTER_MANAGER_SERVER}
             // Signed in: the refusal is cleared, and the person removes the

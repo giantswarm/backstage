@@ -588,6 +588,9 @@ export function NewSessionComposer({
   // keeps the start's error until the next start, so the alert that asked for
   // the sign-in would otherwise stay up after it landed.
   const [signedInPast, setSignedInPast] = useState<unknown>();
+  // What the last Start sent, so a sign-in runs again exactly the start it
+  // answered, never one the person did not press.
+  const lastStart = useRef<{ agentId: string; text: string }>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -815,6 +818,7 @@ export function NewSessionComposer({
       return;
     }
     setStartedIn(inWorkspace);
+    lastStart.current = { agentId: selectedAgent.id, text };
     onStart(
       selectedAgent,
       text,
@@ -1033,14 +1037,24 @@ export function NewSessionComposer({
               <ConnectAgentManagerAlert
                 installation={selectedAgent.installation}
                 message={error.message}
+                signInRequired={error.signInRequired}
                 action="Sessions are started"
-                // Signed in, here or in another tab: the alert goes, and the
-                // start goes again with the prompt as it is, as after a
-                // workspace's sign-in. Should it not get under way (the prompt
-                // emptied meanwhile), Start is there.
-                onSignedIn={() => {
+                // Signed in: the alert goes. Where the sign-in was made in
+                // this tab, the start it answered goes again, as after a
+                // workspace's sign-in, while the agent and the prompt are
+                // the ones refused. A sign-in made in another tab only clears
+                // the alert here: Start is the person's to press.
+                onSignedIn={({ here }) => {
                   setSignedInPast(error);
-                  submit({ workspace: startedIn });
+                  const refused = lastStart.current;
+                  if (
+                    here &&
+                    refused &&
+                    refused.agentId === selectedAgent.id &&
+                    refused.text === text
+                  ) {
+                    submit({ workspace: startedIn });
+                  }
                 }}
               />
             )

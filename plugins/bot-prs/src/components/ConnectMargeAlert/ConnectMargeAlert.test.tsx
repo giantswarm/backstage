@@ -16,7 +16,11 @@ describe('ConnectMargeAlert', () => {
     render(
       <ConnectMargeAlert
         installation="gazelle"
-        message="auth_required: server 'mcp-marge' requires authentication; sign in to it to use its tools."
+        error={{
+          message:
+            "auth_required: server 'mcp-marge' requires authentication; sign in to it to use its tools.",
+          signInRequired: true,
+        }}
       />,
     );
 
@@ -34,7 +38,10 @@ describe('ConnectMargeAlert', () => {
     render(
       <ConnectMargeAlert
         installation="gazelle"
-        message="tool not found: x_marge_list_queue"
+        error={{
+          message: 'tool not found: x_marge_list_queue',
+          signInRequired: false,
+        }}
       />,
     );
 

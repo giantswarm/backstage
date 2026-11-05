@@ -259,6 +259,7 @@ export function McpAuthDialog({
                       </span>
                       {waiting.includes(name) ? (
                         <ServerSignIn
+                          noun="connector"
                           serverName={name}
                           displayName={labelOf(name)}
                           installation={installation}

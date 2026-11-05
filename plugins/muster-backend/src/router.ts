@@ -16,6 +16,7 @@ import {
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
   isTokenExpired,
+  type ConnectorName,
   musterTokenExpiredError,
   musterTokenMissingError,
   toMusterUnauthorizedError,
@@ -217,13 +218,6 @@ function loginTarget(
   }
   return hasServer ? { server: server as string } : { app: app as string };
 }
-
-/** A connector as `/servers/names` answers it. */
-export type ConnectorName = {
-  name: string;
-  family?: string;
-  displayName?: string;
-};
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== ''
@@ -885,10 +879,11 @@ export async function createRouter(
    * prompts can name every connector they list, for people without
    * Kubernetes access to the MCPServer objects too.
    *
-   * Read by background readers (the notification inbox), so a failure
-   * answers 200 with `unavailable: true` and the prompts keep the servers'
-   * own names, as `/auth/status` does. A token that is missing, expired or
-   * refused by muster is still the 401 the frontend refreshes on.
+   * A refusal of the list answers 200 with `unavailable: true`, and the
+   * prompts keep the servers' own names. A token that is missing, expired or
+   * refused by muster is still the 401 the frontend refreshes on, and an
+   * infrastructure fault (muster unreachable) its 5xx, as on `/auth/login`:
+   * the names are read once per installation, not polled.
    */
   router.get('/servers/names', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -909,6 +904,11 @@ export async function createRouter(
           authToken: callOptions.authToken,
         })
       ) {
+        throw error;
+      }
+      // An outage is not hidden behind an answer: read once per installation
+      // (not polled like `/auth/status`), so a 5xx is what reports it.
+      if (isInfrastructureError(error)) {
         throw error;
       }
       logger.info('Muster could not list the connectors to name them', {

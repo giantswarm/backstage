@@ -1,3 +1,5 @@
+import type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
+
 /**
  * Types mirroring the muster workflow data model
  * (giantswarm/muster internal/api), as returned by the muster-backend
@@ -254,16 +256,8 @@ export interface McpServerListResponse {
   mcpServers: McpServerRuntime[] | null;
 }
 
-/**
- * A connector as muster-backend names it (`/servers/names`): the server's
- * name, its family and its `ui.giantswarm.io/display-name`.
- */
-export interface ConnectorName {
-  name: string;
-  /** `spec.family.name`, for a family member. */
-  family?: string;
-  displayName?: string;
-}
+/** A connector as muster-backend names it (`/servers/names`). */
+export type { ConnectorName };
 
 /**
  * The connectors of one installation the person may see, by name. `unavailable`

@@ -187,6 +187,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const {
     servers,
     resources: serverResources,
+    labels,
     isLoading: isLoadingServers,
   } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
@@ -214,11 +215,19 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       ),
     [unsignedServers],
   );
-  // The display names muster-backend reads for everyone, as every sign-in
-  // prompt names connectors.
-  const connectorLabel = useConnectorLabels(installation, unsignedNames);
-  const labelOfSelector = (selector: string) =>
-    connectorLabel(parseSelector(selector)?.name ?? selector);
+  // One source for the card: the MCPServers' labels it names every connector
+  // by. Only a connector the person cannot read the MCPServer of (no access to
+  // its namespace) is named as muster-backend names it for everyone, rather
+  // than by its key.
+  const unlabelled = useMemo(
+    () => unsignedNames.filter(name => !labels.has(name)),
+    [unsignedNames, labels],
+  );
+  const connectorLabel = useConnectorLabels(installation, unlabelled);
+  const labelOfSelector = (selector: string) => {
+    const name = parseSelector(selector)?.name ?? selector;
+    return labels.get(name) ?? connectorLabel(name);
+  };
 
   // Each tool links to its page beneath the server offering it, by muster's
   // own rule, so the page lists the tool; a tool nothing attributes lands on

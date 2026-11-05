@@ -321,7 +321,7 @@ function Queue({
       <Box pt={2}>
         <ConnectMargeAlert
           installation={installation}
-          message={queue.notConnected.message}
+          error={queue.notConnected}
         />
       </Box>
     );

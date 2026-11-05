@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApiHolder } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { NON_PERSISTED_QUERY_META } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { musterApiRef } from '../../../apis';
 import { connectorLabels } from '../../../lib/connectorName';
 
@@ -18,9 +19,15 @@ class ConnectorNamesUnavailableError extends Error {
   readonly name = 'ConnectorNamesUnavailableError';
 }
 
-/** The query of an installation's connector names, shared by every prompt. */
-export function connectorNamesQueryKey(installation?: string) {
-  return ['muster', 'connector-names', installation] as const;
+/**
+ * The query of an installation's connector names, shared by every prompt.
+ * Outside the `['muster', …]` prefix on purpose: a sign-in reads every query
+ * under it again, and a sign-in changes no display name. The person's view
+ * all the same (muster lists what they may see), so never persisted
+ * (`NON_PERSISTED_QUERY_META`), whichever client holds it.
+ */
+export function connectorNamesQueryKey(installation: string) {
+  return ['muster-connector-names', installation] as const;
 }
 
 /**
@@ -33,8 +40,10 @@ export function connectorNamesQueryKey(installation?: string) {
  * is under way or after it failed, keeps its own name.
  *
  * The read is silent, as a reader in the background must be: it never asks
- * for the sign-in. `enabled: false` skips it: a background reader once the
- * portal session is gone, a caller that knows the names already.
+ * for the sign-in. Nothing is read without an installation (an undefined one
+ * would name the backend's default installation's connectors), and
+ * `enabled: false` skips it: a background reader once the portal session is
+ * gone, a caller that knows the names already.
  */
 export function useConnectorLabels(
   installation: string | undefined,
@@ -44,9 +53,13 @@ export function useConnectorLabels(
   // Absent from a portal without the muster plugin: every name stays.
   const musterApi = useApiHolder().get(musterApiRef);
   const enabled =
-    (options.enabled ?? true) && Boolean(musterApi) && names.length > 0;
+    (options.enabled ?? true) &&
+    Boolean(musterApi) &&
+    Boolean(installation) &&
+    names.length > 0;
   const { data } = useQuery({
-    queryKey: connectorNamesQueryKey(installation),
+    queryKey: connectorNamesQueryKey(installation ?? ''),
+    meta: NON_PERSISTED_QUERY_META,
     queryFn: async () => {
       const answer = await musterApi!.listConnectorNames(installation);
       if (answer.unavailable) {

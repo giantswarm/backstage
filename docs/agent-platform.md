@@ -2889,11 +2889,14 @@ never leaves the page: it opens the provider in a new tab
 A start that muster refuses for want of the person's sign-in to agent-manager
 shows `ConnectAgentManagerAlert` above the box. The refusal is the error of
 `useCreateSession`'s mutation, which the caller keeps until the next start, so
-the composer clears it itself: once the sign-in lands (`ServerSignIn`'s
-`onSignedIn`: muster's status moves to connected, also when the sign-in
-finished in another tab and this one is focused again, or a click on Sign in
-finds agent-manager connected already), the alert goes and the start goes
-again with the prompt in the box, as after a workspace's provider sign-in.
+the composer clears it itself once the sign-in lands (`ServerSignIn`'s
+`onSignedIn`, once per landing: muster's status moves to connected, or a click
+on Sign in finds agent-manager connected already). Where the sign-in was made
+in this tab (`SignedIn.here`: a sign-in page this tab opened, or that click),
+the refused start goes again, as after a workspace's provider sign-in, while
+the agent and the prompt are the ones refused. A sign-in made in another tab,
+read when this one is focused again, only clears the alert: two tabs with the
+same refused prompt never start two sessions.
 
 Every other page and dialog that shows `ConnectAgentManagerAlert` (for
 agent-manager, cluster-manager or model-manager) follows one rule once the
@@ -2907,7 +2910,13 @@ sign-in lands:
   `onSignedIn` (`reset`), so the alert goes; the write itself is the
   person's to press again, on the dry run they see. Nothing that deletes or
   removes is ever sent again by itself. Only the session start goes again by
-  itself.
+  itself, and only in the tab the sign-in was made in.
+- The alert words a missing sign-in as one only where muster asked for it:
+  its 401 with `server_sign_in_required`, read where the error is classified
+  and kept on the failure as `signInRequired`. Any other not-connected answer
+  (a tool not found, a server down) keeps muster's answer in sight. The
+  `needsGitHub` variant takes no `onSignedIn`: agent-manager is connected
+  there, and a click finds it so without the GitHub authorization.
 
 #### Create, navigate, then send — in that order
 

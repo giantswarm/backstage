@@ -71,6 +71,15 @@ export function isSsoServer(status: ServerAuthStatus): boolean {
  * `reauth_required` once the server refused the person's sign-in, and neither
  * is fixed by signing in to it.
  */
+/**
+ * Whether a status is one a sign-in moves to connected (`auth_required`,
+ * `reauth_required`), the move `onSignedIn` reports; any other move to
+ * connected (an SSO connector that connected) is not a sign-in.
+ */
+export function isSignInStatus(status: ServerAuthStatus['status']): boolean {
+  return NEEDS_LOGIN.includes(status);
+}
+
 export function needsSignIn(status: ServerAuthStatus): boolean {
   return NEEDS_LOGIN.includes(status.status) && !isSsoServer(status);
 }
@@ -167,10 +176,10 @@ export function signedOutNote(noun: SignInNoun = 'server'): string {
 }
 
 /**
- * What the sign-in copy calls the thing signed in to: main's "server" (the
- * default, for the classic portal's surfaces such as Bot PRs' marge sign-in),
- * "connector" in the agent platform's own sections (muster's Connectors tab,
- * the agent wizard and detail pages).
+ * What the sign-in copy calls the thing signed in to: "server" (the default,
+ * for the muster plugin's own MCP servers page), "connector" wherever people
+ * meet it as one (muster's Connectors tab, the sign-in dialog, the agent
+ * wizard and detail pages, Bot PRs' marge sign-in).
  */
 export type SignInNoun = 'server' | 'connector';
 
@@ -352,6 +361,19 @@ export interface ServerSignInState {
   signOut: () => void;
 }
 
+/** A sign-in that landed, as `onSignedIn` is told of it. */
+export type SignedIn = {
+  /**
+   * The sign-in was made in this tab: a sign-in page this tab opened (from
+   * any of its surfaces, which share the wait), or a click here that found
+   * the server connected. False when muster's status moved without one, a
+   * sign-in finished in another tab and read on the return to this one: a
+   * surface clears what the sign-in answers there, and leaves running a call
+   * again to the tab the person acted in.
+   */
+  here: boolean;
+};
+
 export interface UseServerSignInOptions {
   /** Overridable so tests can drive the poll without real wall-clock waits. */
   pollIntervalMs?: number;
@@ -367,15 +389,14 @@ export interface UseServerSignInOptions {
   /** What the hook's own notes call the server; main's "server" by default. */
   noun?: SignInNoun;
   /**
-   * Called once the person is signed in to the server, for a surface that
-   * waits on it (a refused call to run again): when muster's status moves
-   * from waiting for the sign-in to connected while it is mounted, whether
-   * the sign-in finished in the tab this opened or in another one (read on
-   * the return to this tab), and when a sign-in click finds the server
-   * connected already. Not on first sight of a server that is connected: a
-   * status read before the refusal says nothing about it.
+   * Called once per sign-in that lands, for a surface that waits on it (a
+   * refused call to clear, or to run again): when muster's status moves
+   * from waiting for the sign-in to connected while it is mounted, and when
+   * a sign-in click finds the server connected already. Not on first sight
+   * of a server that is connected: a status read before the refusal says
+   * nothing about it. See {@link SignedIn} for where the sign-in was made.
    */
-  onSignedIn?: () => void;
+  onSignedIn?: (signedIn: SignedIn) => void;
   /**
    * The name is a provider App muster keeps, not a server: the sign-in is
    * `core_auth_login app=<name>` and the state its `providerApps` entry in
@@ -462,6 +483,13 @@ export function useServerSignIn(
   // caller would run now.
   const onSignedInRef = useRef(options.onSignedIn);
   onSignedInRef.current = options.onSignedIn;
+  // The last status muster reported for the server, and whether a click
+  // reported the landing a status read is still to show (see the transition
+  // effect below).
+  const lastKnownStatusRef = useRef<ServerAuthStatus['status'] | undefined>(
+    undefined,
+  );
+  const landedByClickRef = useRef(false);
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const authUrlLifetimeMs =
@@ -609,8 +637,12 @@ export function useServerSignIn(
         queryClient.invalidateQueries({ queryKey: ['muster'] });
         // Signed in already: what waits on the sign-in goes ahead, rather
         // than the person reading muster's "already connected" beside a
-        // refusal that no longer holds.
-        onSignedInRef.current?.();
+        // refusal that no longer holds. The status read that follows may
+        // move to connected: that is this landing, not another.
+        if (lastKnownStatusRef.current !== 'connected') {
+          landedByClickRef.current = true;
+        }
+        onSignedInRef.current?.({ here: true });
         return;
       }
       const hasPage =
@@ -752,9 +784,6 @@ export function useServerSignIn(
   // the last KNOWN status so an `unavailable` gap between reads cannot fake a
   // transition, and NOT on first sight of an already-connected server, which
   // would invalidate every muster query on every page load.
-  const lastKnownStatusRef = useRef<ServerAuthStatus['status'] | undefined>(
-    undefined,
-  );
   useEffect(() => {
     const current = status?.status;
     if (current === undefined) {
@@ -773,8 +802,14 @@ export function useServerSignIn(
     if (pending) {
       setPending(null);
     }
+    if (landedByClickRef.current) {
+      // The landing a click already reported (and read everything again
+      // for): once per landing.
+      landedByClickRef.current = false;
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ['muster'] });
-    onSignedInRef.current?.();
+    onSignedInRef.current?.({ here: Boolean(pending) });
   }, [pending, status, queryClient, setPending]);
 
   // A provider App's code that muster gave up (expired, refused by the
@@ -873,6 +908,9 @@ export function useServerSignIn(
     // just happened (and vice versa) -- only the latest action gets to speak.
     signIn: () => {
       signOut.reset();
+      // A new click answers for itself: a landing an earlier click reported
+      // and no status read has shown yet is no longer waited for.
+      landedByClickRef.current = false;
       // Opened now, while still inside the user gesture (see the mutation);
       // it says it is opening the sign-in page until muster's challenge
       // navigates it.

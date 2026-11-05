@@ -178,6 +178,7 @@ export function RemoveModelBackendDialog({
                   <ConnectAgentManagerAlert
                     installation={installation}
                     message={write.failure!.message}
+                    signInRequired={write.failure!.signInRequired}
                     action="Model backends are removed"
                     server={MODEL_MANAGER_SERVER}
                     // Signed in: the refusal is cleared, and a dry run that

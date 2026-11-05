@@ -12,6 +12,7 @@ import { musterSignInRequiredOf } from '../../apis/musterUnauthorized';
 import { ServerSignIn } from '../shared/ServerSignIn';
 import {
   authStatusQueryKey,
+  isSignInStatus,
   isSsoServer,
   useServerSignIn,
 } from '../shared/useServerSignIn';
@@ -71,7 +72,8 @@ export function ConnectorSignInAlert({
     entries.length > 0 &&
     entries.every(entry => entry !== undefined && isSsoServer(entry));
   const where = joinNames(installations);
-  // One connector by one name: the first environment's display name.
+  // The title and the sentence name it once, as the first environment's
+  // muster does; each environment's row, as its own does.
   const label = useConnectorLabel(installations[0], server);
   return (
     <Alert
@@ -100,7 +102,6 @@ export function ConnectorSignInAlert({
                   <InstallationSignIn
                     key={installation}
                     server={server}
-                    label={label}
                     installation={installation}
                     showInstallation={several}
                     onSignedIn={onSignedIn}
@@ -117,29 +118,30 @@ export function ConnectorSignInAlert({
 
 function InstallationSignIn({
   server,
-  label,
   installation,
   showInstallation,
   onSignedIn,
 }: {
   server: string;
-  label: string;
   installation: string;
   showInstallation: boolean;
   onSignedIn?: () => void;
 }) {
+  // Each environment's own muster names the connector.
+  const label = useConnectorLabel(installation, server);
   const { status } = useServerSignIn(server, installation, {
     noun: 'connector',
   });
   const queryClient = useQueryClient();
-  // A sign-in landed, or an SSO connector connected: muster's status moved
-  // to connected from a status it had read before. Not on first sight of
-  // `connected`, which may be stale next to the read that just asked for the
-  // sign-in. `useServerSignIn` reads its own reads again only after a
-  // sign-in, so the alert reads the page's.
-  const lastKnown = useRef(status?.status);
   const onSignedInRef = useRef(onSignedIn);
   onSignedInRef.current = onSignedIn;
+  // A sign-in that lands is the sign-in's own to report (`onSignedIn` below,
+  // after it read every muster query again). What it does not report is an
+  // SSO connector that connects: its status moves to connected from
+  // `sso_pending`, `failed` or the like, never from one a sign-in moves, and
+  // the alert says the page fills in once it does. Not on first sight of
+  // `connected`, which may be stale next to the read that asked for it.
+  const lastKnown = useRef(status?.status);
   useEffect(() => {
     const current = status?.status;
     if (current === undefined) {
@@ -150,6 +152,7 @@ function InstallationSignIn({
     if (
       previous !== undefined &&
       previous !== 'connected' &&
+      !isSignInStatus(previous) &&
       current === 'connected'
     ) {
       void queryClient.invalidateQueries({ queryKey: ['muster'] });
@@ -163,6 +166,7 @@ function InstallationSignIn({
       serverName={server}
       displayName={label}
       installation={installation}
+      onSignedIn={() => onSignedInRef.current?.()}
     />
   );
   if (!showInstallation) {
