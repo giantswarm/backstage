@@ -12,6 +12,7 @@ const accepted: GatewayPolicy = {
   targetsLoaded: true,
   ancestors: [
     {
+      id: 'envoy-gateway-system/giantswarm-default/https///',
       kind: 'Gateway',
       namespace: 'envoy-gateway-system',
       name: 'giantswarm-default',
@@ -101,7 +102,7 @@ describe('<PoliciesTable />', () => {
     expect(screen.getAllByText('Not available')).toHaveLength(2);
     expect(
       screen.getByText(
-        'Policy targets and status need observability-bundle 3.6.0 or newer on this cluster. Policies using the deprecated targetRef still show their target.',
+        'No policy targets or status found on this cluster. They need observability-bundle 3.6.0 or newer. On a newer bundle, Envoy Gateway has reported no status for these policies yet.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('No status reported')).not.toBeInTheDocument();
@@ -121,5 +122,36 @@ describe('<PoliciesTable />', () => {
         'Some policy targets or status could not be loaded. They are retried automatically.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('names the ancestor with its namespace and port', async () => {
+    await renderInTestApp(
+      <PoliciesTable
+        clusterName="demo"
+        isLoading={false}
+        policies={[
+          {
+            ...accepted,
+            ancestors: [{ ...accepted.ancestors[0], port: '443' }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'envoy-gateway-system/giantswarm-default · https · port 443',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says a policy without targetRef or targetRefs selects by labels', async () => {
+    await renderInTestApp(
+      <PoliciesTable
+        clusterName="demo"
+        isLoading={false}
+        policies={[{ ...accepted, targets: [] }]}
+      />,
+    );
+    expect(screen.getByText('Selected by labels')).toBeInTheDocument();
   });
 });

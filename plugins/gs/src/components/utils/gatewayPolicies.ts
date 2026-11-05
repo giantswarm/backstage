@@ -1,14 +1,18 @@
 import { MimirMetricSample } from '../../apis/mimir/types';
 import {
+  EnvoyGatewayBackendTrafficPolicyCreated,
   EnvoyGatewayBackendTrafficPolicyInfo,
   EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted,
   EnvoyGatewayBackendTrafficPolicyTargetInfo,
+  EnvoyGatewayClientTrafficPolicyCreated,
   EnvoyGatewayClientTrafficPolicyInfo,
   EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted,
   EnvoyGatewayClientTrafficPolicyTargetInfo,
+  EnvoyGatewayEnvoyExtensionPolicyCreated,
   EnvoyGatewayEnvoyExtensionPolicyInfo,
   EnvoyGatewayEnvoyExtensionPolicyStatusAncestorAccepted,
   EnvoyGatewayEnvoyExtensionPolicyTargetInfo,
+  EnvoyGatewaySecurityPolicyCreated,
   EnvoyGatewaySecurityPolicyInfo,
   EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
   EnvoyGatewaySecurityPolicyTargetInfo,
@@ -24,18 +28,21 @@ export type PolicyKind =
 /** The metrics of each policy kind, in a fixed order. */
 export const policyMetrics: {
   kind: PolicyKind;
+  created: string;
   info: string;
   targetInfo: string;
   ancestorAccepted: string;
 }[] = [
   {
     kind: 'SecurityPolicy',
+    created: EnvoyGatewaySecurityPolicyCreated.name,
     info: EnvoyGatewaySecurityPolicyInfo.name,
     targetInfo: EnvoyGatewaySecurityPolicyTargetInfo.name,
     ancestorAccepted: EnvoyGatewaySecurityPolicyStatusAncestorAccepted.name,
   },
   {
     kind: 'BackendTrafficPolicy',
+    created: EnvoyGatewayBackendTrafficPolicyCreated.name,
     info: EnvoyGatewayBackendTrafficPolicyInfo.name,
     targetInfo: EnvoyGatewayBackendTrafficPolicyTargetInfo.name,
     ancestorAccepted:
@@ -43,6 +50,7 @@ export const policyMetrics: {
   },
   {
     kind: 'ClientTrafficPolicy',
+    created: EnvoyGatewayClientTrafficPolicyCreated.name,
     info: EnvoyGatewayClientTrafficPolicyInfo.name,
     targetInfo: EnvoyGatewayClientTrafficPolicyTargetInfo.name,
     ancestorAccepted:
@@ -50,6 +58,7 @@ export const policyMetrics: {
   },
   {
     kind: 'EnvoyExtensionPolicy',
+    created: EnvoyGatewayEnvoyExtensionPolicyCreated.name,
     info: EnvoyGatewayEnvoyExtensionPolicyInfo.name,
     targetInfo: EnvoyGatewayEnvoyExtensionPolicyTargetInfo.name,
     ancestorAccepted:
@@ -59,6 +68,7 @@ export const policyMetrics: {
 
 const kindByMetricName = new Map<string, PolicyKind>(
   policyMetrics.flatMap(m => [
+    [m.created, m.kind],
     [m.info, m.kind],
     [m.targetInfo, m.kind],
     [m.ancestorAccepted, m.kind],
@@ -74,10 +84,14 @@ export interface PolicyTarget {
 }
 
 export interface PolicyAncestor {
+  /** Unique per policy: every field of the ancestor reference. */
+  id: string;
+  group?: string;
   kind?: string;
   namespace?: string;
   name: string;
   sectionName?: string;
+  port?: string;
   accepted: ConditionState;
 }
 
@@ -88,8 +102,8 @@ export interface GatewayPolicy {
   name: string;
   targets: PolicyTarget[];
   /**
-   * False when the `spec.targetRefs` query failed, so an empty `targets` means
-   * unknown rather than none.
+   * False when a targets query failed, so an empty `targets` means unknown
+   * rather than none.
    */
   targetsLoaded: boolean;
   ancestors: PolicyAncestor[];
@@ -103,7 +117,10 @@ export interface GatewayPolicy {
 }
 
 export interface GatewayPoliciesInputs {
-  info: MimirMetricSample[];
+  /** One series per policy: the policy list. */
+  created: MimirMetricSample[];
+  /** Deprecated `spec.targetRef`. Undefined when the query failed. */
+  info: MimirMetricSample[] | undefined;
   /** Undefined when the query failed. */
   targetInfo: MimirMetricSample[] | undefined;
   /** Undefined when the query failed. */
@@ -116,6 +133,21 @@ function kindOf(sample: MimirMetricSample): PolicyKind | undefined {
 
 function policyKey(kind: PolicyKind, namespace: string, name: string) {
   return `${kind}/${namespace}/${name}`;
+}
+
+/**
+ * Identifies an ancestor reference and orders ancestors by namespace and name
+ * first. Every field is in it, so a refetch never reorders equal rows.
+ */
+function ancestorSortKey(ref: Omit<PolicyAncestor, 'id' | 'accepted'>) {
+  return [
+    ref.namespace ?? '',
+    ref.name,
+    ref.sectionName ?? '',
+    ref.port ?? '',
+    ref.kind ?? '',
+    ref.group ?? '',
+  ].join('/');
 }
 
 /**
@@ -180,29 +212,25 @@ export function buildGatewayPolicies(
     }
   };
 
+  for (const sample of inputs.created) ensure(sample);
   for (const sample of inputs.targetInfo ?? []) addTarget(sample, 'targetRefs');
-  for (const sample of inputs.info) addTarget(sample, 'targetRef');
+  for (const sample of inputs.info ?? []) addTarget(sample, 'targetRef');
 
   for (const sample of inputs.ancestorAccepted ?? []) {
     const entry = ensure(sample);
     const name = sample.metric.ancestor_name;
     const condition = toCondition(sample);
     if (!entry || !name || !condition) continue;
-    const ref = {
+    const fields = {
+      group: sample.metric.ancestor_group || undefined,
       kind: sample.metric.ancestor_kind || undefined,
       namespace: sample.metric.ancestor_namespace || undefined,
       name,
       sectionName: sample.metric.ancestor_section_name || undefined,
+      port: sample.metric.ancestor_port || undefined,
     };
-    const key = [
-      sample.metric.ancestor_group ?? '',
-      ref.kind,
-      ref.namespace,
-      ref.name,
-      ref.sectionName,
-      sample.metric.ancestor_port ?? '',
-    ].join('/');
-    entry.ancestorRefs.set(key, ref);
+    const key = ancestorSortKey(fields);
+    entry.ancestorRefs.set(key, { id: key, ...fields });
     setWorst(entry.ancestors, key, condition);
   }
 
@@ -210,28 +238,27 @@ export function buildGatewayPolicies(
     .map(({ policy, targets, ancestors, ancestorRefs }) => {
       const ancestorList = Array.from(ancestorRefs.entries())
         .map(([key, ref]) => ({ ...ref, accepted: ancestors.get(key)! }))
-        .sort((a, b) =>
-          `${a.namespace}/${a.name}/${a.sectionName ?? ''}`.localeCompare(
-            `${b.namespace}/${b.name}/${b.sectionName ?? ''}`,
-          ),
-        );
+        .sort((a, b) => a.id.localeCompare(b.id));
       let status: ConditionState = { status: 'not-reported' };
       if (!statusExported) {
         status = {
           status: 'not-available',
           cause:
             inputs.ancestorAccepted === undefined ||
-            inputs.targetInfo === undefined
+            inputs.targetInfo === undefined ||
+            inputs.info === undefined
               ? 'load-failed'
               : 'not-exported',
         };
       }
       return {
         ...policy,
-        targets: Array.from(targets.values()).sort((a, b) =>
-          `${a.kind}/${a.name}`.localeCompare(`${b.kind}/${b.name}`),
-        ),
-        targetsLoaded: inputs.targetInfo !== undefined,
+        // Every field in the sort, so a refetch never reorders equal rows.
+        targets: Array.from(targets.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, target]) => target),
+        targetsLoaded:
+          inputs.targetInfo !== undefined && inputs.info !== undefined,
         ancestors: ancestorList,
         status,
       };

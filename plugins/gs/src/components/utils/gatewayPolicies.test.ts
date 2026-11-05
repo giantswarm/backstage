@@ -1,6 +1,7 @@
 import { MimirMetricSample } from '../../apis/mimir/types';
 import {
   EnvoyGatewayBackendTrafficPolicyInfo,
+  EnvoyGatewaySecurityPolicyCreated,
   EnvoyGatewaySecurityPolicyInfo,
   EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
   EnvoyGatewaySecurityPolicyTargetInfo,
@@ -37,7 +38,8 @@ function inputs(
   overrides: Partial<GatewayPoliciesInputs> = {},
 ): GatewayPoliciesInputs {
   return {
-    info: [sample(EnvoyGatewaySecurityPolicyInfo.name, auth)],
+    created: [sample(EnvoyGatewaySecurityPolicyCreated.name, auth)],
+    info: [],
     targetInfo: [],
     ancestorAccepted: [],
     ...overrides,
@@ -229,5 +231,46 @@ describe('buildGatewayPolicies', () => {
       'BackendTrafficPolicy',
       'SecurityPolicy',
     ]);
+  });
+
+  it('lists a policy from created alone, without info or status', () => {
+    const policies = buildGatewayPolicies(
+      inputs({ info: [], targetInfo: [], ancestorAccepted: [] }),
+    );
+    expect(policies.map(p => p.id)).toEqual(['SecurityPolicy/team-a/auth']);
+  });
+
+  it('shows a pending ancestor as not reported, not as rejected', () => {
+    const [policy] = buildGatewayPolicies(
+      inputs({
+        ancestorAccepted: [
+          sample(
+            EnvoyGatewaySecurityPolicyStatusAncestorAccepted.name,
+            { ...auth, ...ancestor, reason: 'Pending' },
+            '0',
+          ),
+        ],
+      }),
+    );
+    expect(policy.ancestors[0].accepted).toEqual({ status: 'not-reported' });
+    expect(isPolicyBroken(policy)).toBe(false);
+  });
+
+  it('keeps ancestors that differ only by port apart, in a stable order', () => {
+    const at = (port: string) =>
+      sample(EnvoyGatewaySecurityPolicyStatusAncestorAccepted.name, {
+        ...auth,
+        ...ancestor,
+        ancestor_port: port,
+        reason: 'Accepted',
+      });
+    const ports = (samples: MimirMetricSample[]) =>
+      buildGatewayPolicies(
+        inputs({ ancestorAccepted: samples }),
+      )[0].ancestors.map(a => a.port);
+    expect(ports([at('8443'), at('443')])).toEqual(
+      ports([at('443'), at('8443')]),
+    );
+    expect(ports([at('443'), at('8443')])).toHaveLength(2);
   });
 });
