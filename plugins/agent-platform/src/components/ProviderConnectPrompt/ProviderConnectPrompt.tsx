@@ -173,6 +173,22 @@ function MusterGrant({
     );
   }
 
+  if (signIn.isPreparing) {
+    // The tab the click opened is gone (closed, or closed for taking too
+    // long) and muster has not issued the page yet: there is no other tab to
+    // finish in, and the link appears here once there is a page.
+    return (
+      <Flex direction="column" gap="2">
+        <Text variant="body-small" weight="bold">
+          Preparing the {kind} sign-in…
+        </Text>
+        <Text variant="body-small" color="secondary">
+          The sign-in page opens from here once it is ready.
+        </Text>
+      </Flex>
+    );
+  }
+
   if (signIn.isWaiting) {
     return (
       <Flex direction="column" gap="2">

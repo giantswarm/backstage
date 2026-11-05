@@ -31,6 +31,7 @@ import {
   type CatalogFacet,
   DateComponent,
   EmptyStateCard,
+  ExternalCellText,
   type Fact,
   FactList,
   formatLocalDateFull,
@@ -668,8 +669,10 @@ function RepositoriesTab({
       isRowHeader: true,
       defaultWidth: '3fr',
       minWidth: 200,
+      // The repository lives at its provider, outside the portal: it opens
+      // in a new tab, the page staying where it is.
       cell: mirror => (
-        <CellText
+        <ExternalCellText
           title={mirror.repository}
           href={
             hosts.has(mirror.provider)

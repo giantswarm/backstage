@@ -129,6 +129,17 @@ describe('CustomizeToolchainsPanel', () => {
       name: /^giantswarm\/agent-toolchains/,
     });
     expect(within(source).getByText('Offered')).toBeInTheDocument();
+    // The repository is on GitHub: it opens in a new tab, and says so.
+    const repository = within(source).getByRole('link', {
+      name: 'giantswarm/agent-toolchains (opens in a new tab)',
+    });
+    expect(repository).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/agent-toolchains',
+    );
+    expect(repository).toHaveAttribute('target', '_blank');
+    expect(repository).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(within(source).getByText(SOURCE.registry)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Add source' }),
     ).toBeInTheDocument();

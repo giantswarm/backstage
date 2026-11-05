@@ -242,23 +242,38 @@ describe('SkillDetailPage', () => {
     expect(within(facts).getByText('main')).toBeInTheDocument();
     // The latest commit opens the skill's folder at that commit; there is no
     // View source button besides.
-    expect(
-      within(facts).getByRole('link', { name: 'a1b2c3d' }),
-    ).toHaveAttribute(
+    const commit = within(facts).getByRole('link', {
+      name: 'a1b2c3d (opens in a new tab)',
+    });
+    expect(commit).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
+    // GitHub opens in a new tab, and both links out say so.
+    const source = within(facts).getByRole('link', {
+      name: 'giantswarm/skills (opens in a new tab)',
+    });
+    expect(source).toHaveAttribute('href', REPO);
+    for (const link of [commit, source]) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
-    // Labels, values and links read at the shell's body size.
+    // Labels and values read at the shell's body size. A link sets no size
+    // of its own: it takes its value's, which the list sets.
     for (const text of ['Branch', 'main']) {
       expect(within(facts).getByText(text)).toHaveAttribute(
         'data-variant',
         'body-medium',
       );
     }
-    expect(
-      within(facts).getByRole('link', { name: 'a1b2c3d' }),
-    ).toHaveAttribute('data-variant', 'body-medium');
+    for (const link of [commit, source]) {
+      expect(link).not.toHaveAttribute('data-variant');
+      expect(link.className).not.toMatch(/MuiTypography-(body|caption|h\d)/);
+      expect(link.closest('dd')).toHaveStyle({
+        fontSize: 'var(--bui-font-size-3)',
+      });
+    }
     // The full commit on hover.
     expect(within(facts).getByText('a1b2c3d')).toHaveAttribute(
       'title',
@@ -298,7 +313,9 @@ describe('SkillDetailPage', () => {
     mockCatalog = { ...loaded, skills: [{ ...skill, path: '' }] };
     await renderPage('giantswarm/skills');
 
-    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
+    expect(
+      screen.getByRole('link', { name: 'a1b2c3d (opens in a new tab)' }),
+    ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}`,
     );
@@ -672,7 +689,9 @@ describe('SkillDetailPage', () => {
       screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).toBeInTheDocument();
     // The source is still a link away, from the latest commit.
-    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
+    expect(
+      screen.getByRole('link', { name: 'a1b2c3d (opens in a new tab)' }),
+    ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
@@ -720,7 +739,7 @@ describe('SkillDetailPage', () => {
     // The latest commit is plain text: there is no github.com tree to open.
     // Short, as in the header's line, the full commit in its title.
     expect(screen.getAllByTitle(skill.commit)).toHaveLength(2);
-    expect(screen.queryByRole('link', { name: 'a1b2c3d' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^a1b2c3d/ })).toBeNull();
     // Readable all the same: its instructions are a tab away.
     expect(screen.getByRole('tab', { name: 'Instructions' })).toHaveAttribute(
       'href',

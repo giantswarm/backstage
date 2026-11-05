@@ -80,7 +80,7 @@ describe('ProviderAppSignIn', () => {
   let tab: { closed: boolean; opener: unknown; location: { href: string } };
 
   beforeEach(() => {
-    tab = { closed: false, opener: {}, location: { href: '' } };
+    tab = { closed: false, opener: {}, location: { href: 'about:blank' } };
     windowOpen = jest
       .spyOn(window, 'open')
       .mockReturnValue(tab as unknown as Window);

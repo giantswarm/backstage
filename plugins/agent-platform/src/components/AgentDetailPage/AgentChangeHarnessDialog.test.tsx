@@ -366,7 +366,7 @@ describe('AgentChangeHarnessDialog', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', {
-        name: 'giantswarm/giantswarm-management-clusters',
+        name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
       }),
     ).toHaveAttribute(
       'href',

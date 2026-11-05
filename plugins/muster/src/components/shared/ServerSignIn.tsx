@@ -114,6 +114,19 @@ function ssoExplanationText(
 /** What a row says while the sign-in page is open somewhere. */
 export const WAITING_FOR_SIGN_IN = 'Waiting for you to finish signing in…';
 
+/**
+ * What a row says while muster is still preparing the sign-in page, its tab
+ * given up (closed by the person, or for taking too long): the page opens
+ * from here once it is ready.
+ */
+export const PREPARING_SIGN_IN_PAGE =
+  'Preparing the sign-in page. It opens from here once it is ready.';
+
+/** The sentence for an outstanding sign-in, as the state has it. */
+export function signInWaitText(state: Pick<ServerSignInState, 'isPreparing'>) {
+  return state.isPreparing ? PREPARING_SIGN_IN_PAGE : WAITING_FOR_SIGN_IN;
+}
+
 /** A word on how muster identifies itself to the authorization server. */
 export type ClientIdNote = { text: string; color: 'warning' | 'secondary' };
 
@@ -309,7 +322,7 @@ export function SignInFlow({
 
   const waiting = compact ? null : (
     <Text variant="body-small" color="secondary">
-      {WAITING_FOR_SIGN_IN}
+      {signInWaitText(state)}
     </Text>
   );
 

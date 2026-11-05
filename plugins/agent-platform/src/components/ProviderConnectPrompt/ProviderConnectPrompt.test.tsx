@@ -268,6 +268,67 @@ describe('ProviderConnectPrompt', () => {
     );
   });
 
+  it('says the sign-in is being prepared once its tab is closed before muster answered', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [
+        {
+          ...GITHUB,
+          signIn:
+            'grant the App of provider github once in muster: core_auth_login server=workspace-manager',
+        },
+      ],
+      repositories: [],
+      managerSignIn: 'auth_required',
+    });
+    const tab = {
+      closed: false,
+      opener: window,
+      close: jest.fn(),
+      location: { href: 'about:blank' },
+    };
+    open.mockReturnValue(tab as unknown as Window);
+    let answer: (value: unknown) => void = () => {};
+    fake.signInServer.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          answer = resolve;
+        }) as never,
+    );
+    renderHost(fake);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Continue with GitHub/ }),
+    );
+    await waitFor(() => expect(fake.signInServer).toHaveBeenCalled());
+
+    tab.closed = true;
+
+    // Not "finish in the other tab": there is none, and no page yet.
+    expect(
+      await screen.findByText(
+        'Preparing the GitHub sign-in…',
+        {},
+        { timeout: 3_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Finish in the other tab/)).toBeNull();
+
+    await act(async () =>
+      answer({
+        status: 'auth_required',
+        authUrl: 'https://muster.lab.example.io/oauth/proxy/start?state=abc',
+        message: 'Sign in to workspace-manager.',
+      }),
+    );
+
+    expect(
+      await screen.findByRole('link', { name: 'Open the GitHub sign-in' }),
+    ).toHaveAttribute(
+      'href',
+      'https://muster.lab.example.io/oauth/proxy/start?state=abc',
+    );
+  });
+
   it('starts a grant through the server the manager is pinned to', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [
