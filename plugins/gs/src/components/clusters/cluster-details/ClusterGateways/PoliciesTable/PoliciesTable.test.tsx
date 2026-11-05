@@ -12,7 +12,7 @@ const accepted: GatewayPolicy = {
   targetsLoaded: true,
   ancestors: [
     {
-      id: 'envoy-gateway-system/giantswarm-default/https///',
+      id: 'envoy-gateway-system/giantswarm-default/https//Gateway/',
       kind: 'Gateway',
       namespace: 'envoy-gateway-system',
       name: 'giantswarm-default',
@@ -102,7 +102,7 @@ describe('<PoliciesTable />', () => {
     expect(screen.getAllByText('Not available')).toHaveLength(2);
     expect(
       screen.getByText(
-        'No policy targets or status found on this cluster. They need observability-bundle 3.6.0 or newer. On a newer bundle, Envoy Gateway has reported no status for these policies yet.',
+        'Policy status is not available on this cluster. It needs observability-bundle 3.6.0 or newer, as do targets set with targetRefs. If the bundle is newer, Envoy Gateway has reported no status for these policies yet.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('No status reported')).not.toBeInTheDocument();

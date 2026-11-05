@@ -50,13 +50,13 @@ const unavailableNotice = {
   // A cluster on 3.6.0 whose policies all use targetRef or targetSelectors and
   // resolved no ancestor looks the same, so the notice names both.
   'not-exported':
-    'No policy targets or status found on this cluster. They need observability-bundle 3.6.0 or newer. On a newer bundle, Envoy Gateway has reported no status for these policies yet.',
+    'Policy status is not available on this cluster. It needs observability-bundle 3.6.0 or newer, as do targets set with targetRefs. If the bundle is newer, Envoy Gateway has reported no status for these policies yet.',
 };
 
 function targetsLabel(policy: GatewayPolicy): string {
   if (policy.targets.length === 0) {
-    // Without targetRef and targetRefs a policy must use targetSelectors,
-    // which aren't exported.
+    // Inferred, not read: without targetRef and targetRefs a policy must use
+    // targetSelectors, which aren't exported.
     return !policy.targetsLoaded || statusUnavailable(policy)
       ? 'Not available'
       : 'Selected by labels';
