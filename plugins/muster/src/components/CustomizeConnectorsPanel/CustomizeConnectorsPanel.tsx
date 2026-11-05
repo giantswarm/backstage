@@ -12,7 +12,6 @@ import {
   Table,
   Text,
 } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import {
   applyCatalogFilters,
   type CatalogFacet,
@@ -35,6 +34,7 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
+import { ConnectorLogo } from '../ConnectorLogo';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { isRegisteredRow, MUSTER_DESCRIPTION } from '../../lib/connectorTags';
@@ -74,21 +74,6 @@ import {
   unsearchedToolsNotes,
 } from './connectorRows';
 
-const useStyles = makeStyles({
-  tile: {
-    flex: 'none',
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    border: '1px solid var(--bui-border-1)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 700,
-    color: 'var(--bui-fg-secondary)',
-  },
-});
-
 export type CustomizeConnectorsPanelProps = {
   search: string;
 };
@@ -107,6 +92,8 @@ type Row = {
   signInGate?: string;
   reach?: ConnectorReach;
   tags: string[];
+  /** The MCPServer's `.status.icon`, for the connector's logo. */
+  icon?: string;
 };
 
 /** A row muster asks this person to sign in to. */
@@ -145,13 +132,14 @@ function registeredFirst(entries: ServerListEntry[]): ServerListEntry[] {
 }
 
 function ConnectorName({ row, href }: { row: Row; href?: string }) {
-  const classes = useStyles();
   return (
     <Cell>
       <Flex align="center" gap="3" style={{ minWidth: 0 }}>
-        <span className={classes.tile} aria-hidden>
-          {row.entry.displayName.charAt(0).toUpperCase()}
-        </span>
+        <ConnectorLogo
+          name={row.entry.displayName}
+          icon={row.icon}
+          decorative
+        />
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
           {/* The name is the row's link (M21): reachable by keyboard and
               opens in a new tab on cmd/middle-click; the row stays clickable. */}
@@ -300,15 +288,12 @@ function ConnectorStackedRow({
   href?: string;
   toolsPending: boolean;
 }) {
-  const classes = useStyles();
   const props: StackedRowProps = {
     title: row.entry.displayName,
     ...(row.description ? { description: row.description } : {}),
     ...(href ? { href } : {}),
     leading: (
-      <span className={classes.tile} aria-hidden>
-        {row.entry.displayName.charAt(0).toUpperCase()}
-      </span>
+      <ConnectorLogo name={row.entry.displayName} icon={row.icon} decorative />
     ),
     facts: [
       row.tags.length > 0 ? (
@@ -343,7 +328,7 @@ function ConnectorStackedRow({
  * Sign in button was clipped out of reach inside the Status cell. A stacked
  * row per connector instead:
  *
- * - line 1: the letter tile, the connector's name (the row's link), its
+ * - line 1: the connector's logo, its name (the row's link), its
  *   state, and Sign in at the end as the row's action;
  * - line 2: its tags · how one signs in · its tools;
  * - under them, the description (two lines), and an outstanding sign-in's
@@ -469,6 +454,7 @@ function ConnectorsTable({
         description: server?.getDescription(),
         auth: authLabel(server),
         tools: toolsLabel(entry),
+        icon: server?.getStatusIcon(),
         status: connectorStatus(entry, status),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? { signInServer: entry.id }
