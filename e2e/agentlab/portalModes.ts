@@ -47,6 +47,7 @@ export const SHELL_SPECS = [
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
   'new-agent-draft.spec.ts',
+  'new-session-draft.spec.ts',
   'model-backends.spec.ts',
   'models.spec.ts',
   'roster-namespaced.spec.ts',

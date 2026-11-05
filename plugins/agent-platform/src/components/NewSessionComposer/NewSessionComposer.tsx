@@ -235,6 +235,11 @@ export type NewSessionComposerProps = {
   renderFooter?: (context: NewSessionComposerFooterContext) => ReactNode;
   /** Called with the selected agent whenever it changes. */
   onSelectedAgentChange?: (agent: AgentRow | undefined) => void;
+  /**
+   * Called with the prompt as typed whenever it changes, so a caller can keep
+   * it as a draft (`StartNewSession`).
+   */
+  onPromptChange?: (prompt: string) => void;
   /** Some installations are still being queried, so more agents may appear. */
   isLoadingAgents?: boolean;
   /**
@@ -430,6 +435,7 @@ export function NewSessionComposer({
   renderPickerAccessory,
   renderFooter,
   onSelectedAgentChange,
+  onPromptChange,
   isLoadingAgents = false,
   agentFirst = false,
   defaultAgent,
@@ -446,7 +452,10 @@ export function NewSessionComposer({
   const buildAvatarUrl = useAgentAvatarUrl();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [searchText, setSearchText] = useState('');
-  const [expanded, setExpanded] = useState(!collapsible);
+  // A box that starts with a prompt (a kept draft) shows it whole.
+  const [expanded, setExpanded] = useState(
+    !collapsible || Boolean(initialPrompt),
+  );
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
   // bui's field forwards its ref to the wrapper, not the textarea.
@@ -730,6 +739,10 @@ export function NewSessionComposer({
   useEffect(() => {
     onSelectedAgentChange?.(selectedAgent);
   }, [onSelectedAgentChange, selectedAgent]);
+
+  useEffect(() => {
+    onPromptChange?.(prompt);
+  }, [onPromptChange, prompt]);
 
   const selectAgent = useCallback((agent: AgentRow) => {
     if (!isStartableAgent(agent)) {

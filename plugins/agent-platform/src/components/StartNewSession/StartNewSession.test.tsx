@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { useState } from 'react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
@@ -9,7 +10,11 @@ import {
   sessionsRouteRef,
 } from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
-import { StartNewSession, type StartNewSessionProps } from './StartNewSession';
+import {
+  NEW_SESSION_DRAFT_NAME,
+  StartNewSession,
+  type StartNewSessionProps,
+} from './StartNewSession';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
@@ -82,8 +87,21 @@ function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
 
 const prompt = () => screen.getByRole('textbox', { name: 'Prompt' });
 
+/** The new-session drafts the tab keeps, whoever they belong to. */
+function storedDrafts(): unknown[] {
+  return Object.keys(window.sessionStorage)
+    .filter(key => key.startsWith(`gs-draft:${NEW_SESSION_DRAFT_NAME}:`))
+    .map(key => JSON.parse(window.sessionStorage.getItem(key)!).value);
+}
+
+const agentPicker = () =>
+  screen
+    .getAllByRole('button')
+    .find(button => button.getAttribute('aria-haspopup') === 'listbox')!;
+
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
   mockNavigate.mockReset();
   mockCreateSession.mockReset();
   mockCreateSession.mockResolvedValue('new-session-id');
@@ -294,6 +312,128 @@ describe('StartNewSession', () => {
       ).toHaveAttribute('data-variant', 'body-medium');
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
       expect(screen.queryByText(/Agents tab/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('with a draft', () => {
+    const docs: AgentRow = {
+      ...sre,
+      id: 'gazelle/kagent/docs-agent',
+      name: 'Docs Agent',
+      technicalName: 'docs-agent',
+    };
+    const props: StartNewSessionProps = {
+      entryPoint: 'home',
+      layout: 'standalone',
+      draftName: NEW_SESSION_DRAFT_NAME,
+    };
+
+    beforeEach(() => {
+      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [sre, docs] });
+    });
+
+    async function writeDraft() {
+      await userEvent.click(agentPicker());
+      await userEvent.click(
+        await screen.findByRole('option', { name: /Docs Agent/ }),
+      );
+      await userEvent.type(prompt(), 'Summarise the runbook');
+    }
+
+    it('keeps the unsent prompt and the chosen agent in the tab', async () => {
+      await render(props);
+      await writeDraft();
+
+      await waitFor(() =>
+        expect(storedDrafts()).toEqual([
+          { prompt: 'Summarise the runbook', agentId: docs.id },
+        ]),
+      );
+    });
+
+    it('gives them back when the page is opened again in the tab', async () => {
+      const first = await render(props);
+      await writeDraft();
+      await waitFor(() => expect(storedDrafts()).toHaveLength(1));
+      first.unmount();
+
+      await render(props);
+
+      await waitFor(() =>
+        expect(prompt()).toHaveValue('Summarise the runbook'),
+      );
+      expect(agentPicker()).toHaveTextContent('Docs Agent');
+    });
+
+    it('restores the agent once it is read, over the one preselected meanwhile', async () => {
+      // The test app signs in as the guest.
+      window.sessionStorage.setItem(
+        `gs-draft:${NEW_SESSION_DRAFT_NAME}:user:default/guest`,
+        JSON.stringify({
+          version: 1,
+          value: { prompt: 'Summarise the runbook', agentId: docs.id },
+        }),
+      );
+      // Only the SRE agent is read so far.
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [sre],
+        isLoadingMore: true,
+      });
+      let readMore = () => {};
+      function Page() {
+        const [, setReads] = useState(0);
+        readMore = () => setReads(count => count + 1);
+        return <StartNewSession {...props} />;
+      }
+      await renderInTestApp(<Page />, {
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+      await waitFor(() =>
+        expect(prompt()).toHaveValue('Summarise the runbook'),
+      );
+
+      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [sre, docs] });
+      act(() => readMore());
+
+      await waitFor(() =>
+        expect(agentPicker()).toHaveTextContent('Docs Agent'),
+      );
+      expect(storedDrafts()).toEqual([
+        { prompt: 'Summarise the runbook', agentId: docs.id },
+      ]);
+    });
+
+    it('drops the draft once the session starts', async () => {
+      await render(props);
+      await writeDraft();
+      await waitFor(() => expect(storedDrafts()).toHaveLength(1));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+      expect(storedDrafts()).toEqual([]);
+    });
+
+    it('keeps the draft when the session could not start', async () => {
+      mockCreateSession.mockRejectedValue(new Error('agent-manager is down'));
+      await render(props);
+      await writeDraft();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+      await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(storedDrafts()).toEqual([
+        { prompt: 'Summarise the runbook', agentId: docs.id },
+      ]);
+    });
+
+    it('stores nothing without a draft name', async () => {
+      await render({ entryPoint: 'home', layout: 'standalone' });
+      await writeDraft();
+
+      expect(Object.keys(window.sessionStorage)).toEqual([]);
     });
   });
 });

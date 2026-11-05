@@ -102,6 +102,13 @@ describe('NewSessionComposer', () => {
       expect(agentPicker()).toBeInTheDocument();
     });
 
+    it('shows a prompt it starts with whole', () => {
+      renderComposer({ collapsible: true, initialPrompt: 'Kept from before' });
+
+      expect(field()).toHaveValue('Kept from before');
+      expect(field()).toHaveAttribute('rows', '3');
+    });
+
     it('shows a single line until focused, then grows', async () => {
       renderComposer({ collapsible: true });
       expect(field()).toHaveAttribute('rows', '1');
@@ -563,6 +570,15 @@ describe('NewSessionComposer', () => {
         undefined,
       );
     });
+  });
+
+  it('reports the prompt as it is typed, for a caller that keeps a draft', async () => {
+    const onPromptChange = jest.fn();
+    renderComposer({ onPromptChange });
+
+    await userEvent.type(field(), 'Hi');
+
+    expect(onPromptChange).toHaveBeenLastCalledWith('Hi');
   });
 
   it('says the fleet is still being read while installations respond', () => {
