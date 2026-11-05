@@ -62,6 +62,18 @@ describe('normalizeSentryEvent', () => {
       'Error: getaddrinfo ENOTFOUND <host>',
     ],
     [
+      'a local address after the host',
+      'Error: connect ECONNREFUSED ::1:443 - Local (::1:45678)',
+      'Error: connect ECONNREFUSED ::2:443 - Local (::2:45679)',
+      'Error: connect ECONNREFUSED <host>',
+    ],
+    [
+      'any text after an unresolvable host',
+      'Error: getaddrinfo EAI_AGAIN api.mc-one.example.com (retrying)',
+      'Error: getaddrinfo EAI_AGAIN api.mc-two.example.com (retrying)',
+      'Error: getaddrinfo EAI_AGAIN <host>',
+    ],
+    [
       'an IPv6 address',
       'Error: connect ECONNREFUSED 2001:db8::1:443',
       'Error: connect ECONNREFUSED 2001:db8::2:443',
@@ -146,6 +158,18 @@ describe('normalizeSentryEvent', () => {
         'Database keepalive failed for plugin auth, Error: nope',
     });
   });
+
+  it.each(['cluster', 'installation'])(
+    'sets %s from the extra data as a tag',
+    key => {
+      const event = normalizeSentryEvent<SentryEvent>({
+        message: 'Something went wrong',
+        extra: { [key]: 'example', other: 'value' },
+      });
+
+      expect(event.tags).toEqual({ [key]: 'example' });
+    },
+  );
 
   it('leaves the message of events that need no rewriting untouched', () => {
     const event = normalizeSentryEvent<SentryEvent>({

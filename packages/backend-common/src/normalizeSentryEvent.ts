@@ -34,7 +34,8 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   // @backstage/plugin-kubernetes-backend KubernetesProxy: one issue per
   // cluster, for a cause (refused, timed out) that is the same on each. The
   // cluster is in extra data and a tag. The cause can name the cluster too:
-  // the host it could not resolve or reach, or the names on its certificate.
+  // the host it could not resolve or reach (and whatever Node appends after
+  // it, such as ` - Local (<address>)`), or the names on its certificate.
   // See giantswarm/giantswarm#39002.
   [
     /^Kubernetes proxy error Cluster '[^']*' request error/,
@@ -42,7 +43,7 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   ],
   [
     new RegExp(
-      `^(${KUBERNETES_PROXY_ERROR}; caused by Error: (?:connect|getaddrinfo) \\w+) \\S+`,
+      `^(${KUBERNETES_PROXY_ERROR}; caused by Error: (?:connect|getaddrinfo) \\w+) \\S+.*$`,
     ),
     '$1 <host>',
   ],
@@ -59,7 +60,7 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
  * events spread over the values and can be searched and alerted on by them.
  * Sentry does not index extra data.
  */
-const TAGGED_EXTRA = ['cluster'];
+const TAGGED_EXTRA = ['cluster', 'installation'];
 
 /**
  * Tokens that differ per occurrence but not per fault. Order matters: URLs are
