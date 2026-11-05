@@ -1,5 +1,6 @@
 import { ConfigReader } from '@backstage/config';
 import { getSentryTransportConfig } from './rootLogger';
+import { isIgnored, sendToSentry } from './sentryTestUtils';
 
 const sentry = {
   dsn: 'https://key@sentry.example.com/1',
@@ -46,10 +47,6 @@ describe('getSentryTransportConfig', () => {
 });
 
 describe('the Sentry filters', () => {
-  const options = transportConfig({ backend: { errorReporter: { sentry } } })!;
-  const isIgnored = (message: string) =>
-    options.ignoreErrors.some(pattern => pattern.test(message));
-
   it('ignores the startup 503 the errorHandler logs', () => {
     expect(
       isIgnored(
@@ -76,9 +73,36 @@ describe('the Sentry filters', () => {
     expect(isIgnored(message)).toBe(false);
   });
 
+  it.each(['ECONNREFUSED', 'ETIMEDOUT'])(
+    'ignores the proxy library duplicate of a Kubernetes proxy error (%s)',
+    code => {
+      expect(
+        isIgnored(
+          `[HPM] Error occurred while proxying request portal.example.com//version to undefined [${code}] (https://nodejs.org/api/errors.html#errors_common_system_errors)`,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it('still reports a failed request of a proxy backend endpoint', () => {
+    expect(
+      isIgnored(
+        '[HPM] Error occurred while proxying request portal.example.com/api/proxy/grafana/api/health to https://grafana.example.com/ [ECONNREFUSED] (https://nodejs.org/api/errors.html#errors_common_system_errors)',
+      ),
+    ).toBe(false);
+  });
+
+  it('still reports the Kubernetes proxy error itself', () => {
+    expect(
+      isIgnored(
+        "Kubernetes proxy error Cluster 'mc-one' request error; caused by Error: connect ECONNREFUSED 10.0.1.2:443",
+      ),
+    ).toBe(false);
+  });
+
   it('drops an events poll failure caused by the backend starting up', () => {
     expect(
-      options.beforeSend({
+      sendToSentry({
         message:
           'Poll failed for subscription "signals.*", retrying in 1000ms Request failed with 503 Service Unavailable',
         extra: {
@@ -91,9 +115,18 @@ describe('the Sentry filters', () => {
     ).toBe(null);
   });
 
+  it('sets the cluster in extra data as a tag', () => {
+    expect(
+      sendToSentry({
+        message: 'Something failed',
+        extra: { cluster: 'mc-one' },
+      }),
+    ).toMatchObject({ tags: { cluster: 'mc-one' } });
+  });
+
   it('still normalizes every other event', () => {
     expect(
-      options.beforeSend({
+      sendToSentry({
         message: 'Processing of component:default/x failed',
       }),
     ).toMatchObject({ message: 'Processing of an entity failed' });
