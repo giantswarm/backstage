@@ -38,7 +38,7 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
-import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
+import { CREATED_BY_ANNOTATION, ownerOf } from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -123,27 +123,17 @@ export function getAgentRefetchInterval(
 }
 
 /**
- * Per-installation refetch interval for the agent list.
+ * Per-installation refetch interval for the agent list, re-evaluated by
+ * react-query after every fetch of that installation's list:
  *
- * `useResources` applies this to each installation's list query separately, and
- * react-query re-evaluates it after every fetch resolves — so this needs no
- * provider state and is self-correcting: an installation whose agents are all
- * ready stays on the baseline, and one whose agent starts converging tightens to
- * the fast interval and relaxes again once it settles.
+ * - no list yet, or an empty one: the baseline;
+ * - an agent still converging (see {@link isAgentConverging}): the
+ *   transitional tier;
+ * - every agent settled, or broken past the convergence window: the baseline.
  *
- * What this does **not** do is accelerate the first sighting of a *newly created*
- * agent. The decision is made from the data already in hand, so an installation
- * whose cached list predates the new agent stays on the baseline until the next
- * poll reveals it. Nothing invalidates the Agent list after creation (the flow
- * hands off to the scaffolder task page, and the agent does not exist yet at that
- * point), and `staleTime` suppresses a refetch on mount for a cache entry under a
- * minute old — so a new agent can take up to the baseline interval to appear, and
- * only then does the fast tier engage. Invalidating on creation would be the fix
- * if that wait proves annoying in practice.
- *
- * Note that interval refetches only fire while the tab is focused
- * (`refetchIntervalInBackground` defaults to `false`), which is the same
- * guard kagent's UI implements by hand with `document.hidden`.
+ * An agent deployed from this tab but not listed yet is not seen here;
+ * `AgentsDataProvider` tightens the interval for it. Interval refetches fire
+ * only while the tab is focused.
  */
 export function getAgentsRefetchInterval(
   query: Query<KubeObjectInterface[]>,
@@ -184,6 +174,8 @@ export type AgentRow = {
    */
   technicalName: string;
   description: string;
+  /** Keywords to find the agent by (`Agent.getTags()`); empty when none. */
+  tags: string[];
   /**
    * Human-readable model label resolved from the referenced ModelConfig: its
    * display name, else its `spec.model`, else its resource name. `undefined`
@@ -272,8 +264,8 @@ export type AgentRow = {
    */
   isSessionPending?: boolean;
   /**
-   * The tenant the agent belongs to ({@link tenantOf} its namespace):
-   * `platform`, `organization <name>`, or `namespace <name>`.
+   * The tenant the agent belongs to, as its owner ({@link ownerOf} its
+   * namespace): `Platform`, the organization's name, or `namespace <name>`.
    */
   tenant?: string;
   /**
@@ -432,6 +424,7 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
+    tags: agent.getTags(),
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     harness: harnessName,
@@ -447,7 +440,7 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
-    tenant: tenantOf(namespace),
+    tenant: ownerOf(namespace),
     ...(createdBy ? { createdBy } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),

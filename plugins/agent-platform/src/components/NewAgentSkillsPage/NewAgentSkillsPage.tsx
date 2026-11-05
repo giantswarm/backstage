@@ -15,7 +15,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   LoadingIndicator,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -352,18 +352,7 @@ function NewAgentSkillsPageContent() {
   } = useSkillCatalog();
 
   const [query, setQuery] = useState('');
-  // A handful of skills is read at a glance: no search field and no count of
-  // the selection (every card shows its own state). The field comes with a
-  // catalogue long enough to need it; should it shrink back under the
-  // threshold, the query goes with the field, so nothing stays filtered by
-  // text the author can no longer see or clear.
-  const isSearchable = skills.length > SEARCH_MIN;
-  const trimmed = isSearchable ? query.trim() : '';
-  useEffect(() => {
-    if (!isSearchable) {
-      setQuery('');
-    }
-  }, [isSearchable]);
+  const trimmed = query.trim();
   // A single repository needs no accordion around it, and a short catalogue
   // opens every repository it spans. Both read the whole catalogue, not the
   // matches, so the layout does not change shape on a keystroke.
@@ -388,10 +377,10 @@ function NewAgentSkillsPageContent() {
     [skills, trimmed],
   );
 
-  // Source and Usage, as on Customize → Skills (T49, T64): a multi-select
-  // dropdown each, always there — three skills from one repository get a
-  // Source dropdown of one option. Usage waits for the agents rather than
-  // calling every skill unused.
+  // Source and Usage, as on Customize → Skills (T49): a multi-select
+  // dropdown each, where it can narrow the list — skills from one repository
+  // get no Source dropdown. Usage waits for the agents rather than calling
+  // every skill unused.
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const filters = useSkillFilters({
@@ -399,7 +388,15 @@ function NewAgentSkillsPageContent() {
     searched: visibleSkills,
     usage: agentsLoading ? undefined : usage,
   });
-  const hasFilters = filters.dimensions.length > 0;
+  // A handful of skills is read at a glance: no search, no filters and no
+  // count of the selection (every card shows its own state). Both come with a
+  // catalogue long enough to need them, and stay while either narrows it, so
+  // what narrows the list can still be seen and cleared.
+  const isSearchable = isSearchableList(
+    skills.length,
+    trimmed !== '' || filters.isFiltered,
+  );
+  const hasFilters = filters.dimensions.length > 0 && isSearchable;
 
   // Search and filters narrow within the grouping rather than replacing it
   // with a flat list: the repo/subfolder a match came from is part of what
@@ -568,17 +565,7 @@ function NewAgentSkillsPageContent() {
               </Flex>
             )}
 
-            {hasFilters && (
-              <Flex
-                align="center"
-                justify="between"
-                gap="4"
-                style={{ flexWrap: 'wrap' }}
-              >
-                <SkillsFilterBar filters={filters} />
-                {!isSearchable && filters.isFiltered && selectedCount}
-              </Flex>
-            )}
+            {hasFilters && <SkillsFilterBar filters={filters} />}
 
             {groups.length > 0 ? (
               catalogue

@@ -36,6 +36,7 @@ function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'SRE Agent',
     technicalName: 'sre-agent',
     description: 'Investigates incidents',
+    tags: [],
     skillCount: 3,
     readiness: 'ready',
     ...overrides,
@@ -794,6 +795,8 @@ describe('opt-in picker options', () => {
       groupByNamespace: true,
       recentAgentIds: [research.id],
       favoriteAgentIds: [issues.id],
+      // The plain list's keyboard path; the searchable one is tested below.
+      searchable: false,
     });
 
     agentPicker().focus();

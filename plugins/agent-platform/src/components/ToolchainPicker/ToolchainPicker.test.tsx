@@ -42,6 +42,7 @@ const agent: AgentRow = {
   name: 'Coder',
   technicalName: 'coder',
   description: '',
+  tags: [],
   skillCount: 0,
   readiness: 'ready',
   defaultToolchains: [{ name: 'go' }],

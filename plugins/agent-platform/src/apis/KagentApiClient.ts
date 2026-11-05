@@ -268,6 +268,7 @@ function answerBody(
       rejectionReason: answer.rejectionReason,
     }),
     ...(answer.text && { text: answer.text }),
+    ...(answer.askedIn && { askedIn: answer.askedIn }),
   };
 }
 

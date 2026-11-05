@@ -16,6 +16,8 @@ const SKILL_MD = [
   'name: ticket-triage',
   'description: How to triage a ticket.',
   'license: Apache-2.0',
+  'metadata:',
+  '  tags: triage, support',
   '---',
   '',
   'Classify, prioritise, route.',
@@ -51,6 +53,7 @@ describe('readSkillContentFromGitHub', () => {
       commit: COMMIT,
       name: 'ticket-triage',
       description: 'How to triage a ticket.',
+      tags: ['triage', 'support'],
       instructions: 'Classify, prioritise, route.',
     });
     const [url, init] = (fetch as jest.Mock).mock.calls[0];
@@ -123,6 +126,7 @@ describe('readSkillContentFromGit', () => {
       commit: COMMIT,
       name: 'ticket-triage',
       description: 'How to triage a ticket.',
+      tags: ['triage', 'support'],
       instructions: 'Classify, prioritise, route.',
     });
   });

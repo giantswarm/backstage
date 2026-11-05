@@ -8,12 +8,14 @@ describe('mimirQueryRetry', () => {
     expect(mimirQueryRetry(1, timeout)).toBe(false);
   });
 
-  it.each(['UnauthorizedError', 'ForbiddenError', 'NotFoundError'])(
-    'never retries a %s',
-    name => {
-      const error = new Error('no');
-      error.name = name;
-      expect(mimirQueryRetry(0, error)).toBe(false);
-    },
-  );
+  it.each([
+    'InputError',
+    'UnauthorizedError',
+    'ForbiddenError',
+    'NotFoundError',
+  ])('never retries a %s', name => {
+    const error = new Error('no');
+    error.name = name;
+    expect(mimirQueryRetry(0, error)).toBe(false);
+  });
 });

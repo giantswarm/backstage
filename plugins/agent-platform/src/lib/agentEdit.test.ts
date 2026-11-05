@@ -31,6 +31,7 @@ function agent(overrides: Partial<AgentManagerAgent> = {}): AgentManagerAgent {
     exists: true,
     displayName: 'PR reviewer',
     description: 'Reviews pull requests.',
+    tags: ['review', 'github'],
     systemMessage: 'You review pull requests.',
     modelConfig: 'opus-4-7',
     skills: [PR_REVIEW, OCI_SKILL],
@@ -46,6 +47,7 @@ describe('editStateOf', () => {
     expect(editStateOf(agent())).toEqual({
       displayName: 'PR reviewer',
       description: 'Reviews pull requests.',
+      tags: ['review', 'github'],
       systemMessage: 'You review pull requests.',
       modelConfig: 'opus-4-7',
       toolset: ['preset:read-only'],
@@ -64,12 +66,14 @@ describe('editStateOf', () => {
       agent({
         displayName: undefined,
         description: undefined,
+        tags: undefined,
         systemMessage: undefined,
         toolset: undefined,
         skills: undefined,
       }),
     );
     expect(state.displayName).toBe('');
+    expect(state.tags).toEqual([]);
     expect(state.systemMessage).toBe('');
     expect(state.toolset).toEqual([]);
     expect(state.skills).toEqual([]);
@@ -105,6 +109,41 @@ describe('updateOf', () => {
       name: 'pr-reviewer',
       defaultWorkspace: '',
     });
+  });
+
+  it('replaces the whole tag list when it changed, clears it with an empty list, and ignores order', () => {
+    const current = agent();
+    const base = editStateOf(current);
+
+    expect(updateOf(current, { ...base, tags: ['github', 'review'] })).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+    });
+    expect(changedFields(current, { ...base, tags: ['review'] })).toEqual([
+      'tags',
+    ]);
+    expect(updateOf(current, { ...base, tags: ['review', 'ops'] })).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      tags: ['review', 'ops'],
+    });
+    expect(updateOf(current, { ...base, tags: [] })).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      tags: [],
+    });
+    // An agent without tags, left without: no change.
+    const untagged = agent({ tags: undefined });
+    expect(hasChanges(updateOf(untagged, editStateOf(untagged)))).toBe(false);
+  });
+
+  it('never resends a tag the chart refuses', () => {
+    const current = agent({ tags: ['review', 'Bad Tag', 'über'] });
+    expect(editStateOf(current).tags).toEqual(['review']);
+    expect(
+      updateOf(current, { ...editStateOf(current), tags: ['review', 'ops'] })
+        .tags,
+    ).toEqual(['review', 'ops']);
   });
 
   it('replaces the whole egress list, and clears it with an empty list', () => {
@@ -300,6 +339,7 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
       name: 'PR reviewer',
       slug: 'pr-reviewer',
       description: 'Reviews pull requests.',
+      tags: ['review', 'github'],
       systemMessage: 'You review pull requests.',
       installation: 'gazelle',
       modelConfigName: 'opus-4-7',
@@ -320,6 +360,18 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
     expect(seed(agent({ harness: 'claude-code' })).harness).toEqual({
       name: 'claude-code',
     });
+  });
+
+  it('keeps the agent’s own tags where agent-manager takes none', () => {
+    const current = agent();
+    const state = { ...seed(current), tags: [] };
+
+    expect(
+      changedFields(current, editStateOfForm(current, state, { tags: false })),
+    ).toEqual([]);
+    expect(changedFields(current, editStateOfForm(current, state))).toEqual([
+      'tags',
+    ]);
   });
 
   it('is no change at all when nothing is touched', () => {

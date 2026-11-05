@@ -45,7 +45,9 @@
       // pins, and @backstage/ui follows backstage.json, which Renovate does not
       // bump. Another version installs a second copy: RouteTabs' RouterProvider
       // no longer reaches the bui Tabs and Links, and their navigation falls
-      // back to the browser. They move with each Backstage bump.
+      // back to the browser, and ui-react's HintTooltip reads bui's
+      // TooltipTriggerStateContext from it, so its hints would never open.
+      // They move with each Backstage bump.
       matchPackageNames: ['react-aria', 'react-aria-components'],
       enabled: false,
     },

@@ -31,7 +31,7 @@ import {
   type TopAgentsRow,
   type UsageKpiSessions,
 } from '../LlmUsage';
-import { UsageColumn } from '../UsageColumn';
+import { ContentColumn } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionCountForWindow } from '../AgentUsageSection/helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -187,7 +187,7 @@ export function UsageOverviewPage() {
   const heatmapNote = `Every user's calls through the gateway, by UTC day${partialToday ? "; today's so far" : ''}.`;
 
   return (
-    <UsageColumn>
+    <ContentColumn>
       {/* gap 4, not the 6 the other views use: the view is dense, and
           keeps as much as it can in the first desktop viewport. */}
       <Flex direction="column" gap="4">
@@ -246,7 +246,10 @@ export function UsageOverviewPage() {
             {/* The headline trend beside who drives it. */}
             <div className={classes.row}>
               {usage.callsPerDay === null ? (
-                <ActivityHeatmapUnavailable title={HEATMAP_TITLE} />
+                <ActivityHeatmapUnavailable
+                  title={HEATMAP_TITLE}
+                  error={view.callsPerDayError}
+                />
               ) : (
                 callDays && (
                   <ActivityHeatmap
@@ -280,6 +283,6 @@ export function UsageOverviewPage() {
           </>
         )}
       </Flex>
-    </UsageColumn>
+    </ContentColumn>
   );
 }

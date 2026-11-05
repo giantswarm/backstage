@@ -1,3 +1,4 @@
+import type { ServerAuthStatus } from '../apis/types';
 import { MCPServer, type MCPServerAuth } from './k8s';
 
 /**
@@ -59,4 +60,31 @@ export function authModeOf(auth: MCPServerAuth | undefined): ServerAuthMode {
     return 'anonymous';
   }
   return 'unknown';
+}
+
+/**
+ * Whether a person's sign-in to the server serves one muster session only
+ * (muster's `grantScope: session`). The portal is one muster session and every
+ * agent conversation another, so such a sign-in never reaches the person's
+ * agents: each conversation asks for its own.
+ *
+ * muster's own report decides where the person's `auth://status` carries one
+ * (`grant_scope`, or a `kind` other than a grant of their own). Otherwise the
+ * spec does: a server people sign in to with their own account, unless its
+ * authorization server is pinned with `grantScope: subject`.
+ */
+export function signInServesOneSession(
+  server: MCPServer,
+  status?: Pick<ServerAuthStatus, 'kind' | 'grant_scope'>,
+): boolean {
+  if (status?.grant_scope) {
+    return status.grant_scope === 'session';
+  }
+  if (status?.kind && status.kind !== 'grant') {
+    return false;
+  }
+  return (
+    serverAuthMode(server) === 'own-account' &&
+    server.getAuth()?.authorizationServer?.grantScope !== 'subject'
+  );
 }

@@ -5,6 +5,7 @@ import type { LlmUsage } from '../../lib/llmUsage';
 import { formatDayWithYear } from '../../lib/formatDay';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageOverviewPage } from './UsageOverviewPage';
+import { SHELL_CONTENT_MAX_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Enough of an `LlmUsage` for the tiles, the token trend, the top-agents card
@@ -480,7 +481,9 @@ describe('UsageOverviewPage', () => {
 
     expect(await screen.findByText('Spend')).toBeInTheDocument();
     expect(
-      container.querySelector('[style*="max-width: 1080px"]'),
+      container.querySelector(
+        `[style*="max-width: ${SHELL_CONTENT_MAX_WIDTH}px"]`,
+      ),
     ).not.toBeNull();
   });
 

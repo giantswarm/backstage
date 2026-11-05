@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  MetricsUnavailableAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Alert, Flex, Table, Text } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import { useMimirAvailable } from '../../../hooks/useMimirAvailable';
@@ -121,9 +124,8 @@ export const ClusterGatewaysContent = ({
 
   if (error) {
     return (
-      <Alert
-        status="warning"
-        icon
+      <MetricsUnavailableAlert
+        error={error}
         title="Gateway API metrics could not be loaded."
         description={error instanceof Error ? error.message : undefined}
       />

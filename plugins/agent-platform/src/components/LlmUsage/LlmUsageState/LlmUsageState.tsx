@@ -1,8 +1,9 @@
 import { Progress } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
+import { MetricsUnavailableAlert } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmUsageViewModel } from '../../../hooks/useLlmUsageView';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
-import { usageWindowPhrase } from '../../../lib/usageWindow';
+import { lastDaysNoun, usageWindowPhrase } from '../../../lib/usageWindow';
 import { InstallationScopeNote } from '../../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
@@ -60,10 +61,17 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       );
 
     case 'error':
+      // Mimir said why (it cannot read older data just now): say that, in
+      // the words every Mimir figure uses, rather than guess at reachability.
       return (
-        <UnreachableInstallationsAlert
-          installations={installation ? [installation] : []}
-          resourceName="LLM metrics"
+        <MetricsUnavailableAlert
+          error={view.error}
+          fallback={
+            <UnreachableInstallationsAlert
+              installations={installation ? [installation] : []}
+              resourceName="LLM metrics"
+            />
+          }
         />
       );
 
@@ -77,7 +85,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
           No model calls went through {installation}'s LLM gateway{' '}
           {view.usage?.window
             ? usageWindowPhrase(view.usage.window)
-            : `over the last ${view.usage?.windowDays ?? WINDOW_DAYS} days`}
+            : `over ${lastDaysNoun(view.usage?.windowDays ?? WINDOW_DAYS)}`}
           . Agents configured to call a provider directly do not appear here.
         </Text>
       );

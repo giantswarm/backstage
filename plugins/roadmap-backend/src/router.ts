@@ -12,6 +12,8 @@ import {
   MUSTER_AUTH_HEADER,
   MusterServerGateway,
   MusterServerNotConnectedError,
+  reportedErrorHandler,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -106,7 +108,9 @@ const FILTER_FIELDS: Record<string, string> = {
  * act on to a 403/404 so the client shows them instead of a server fault.
  */
 function mapProError(error: unknown): unknown {
-  if (!(error instanceof Error)) {
+  // Muster could not be reached at all: a 503 with muster's text, never one of
+  // GitHub's refusals that the texts below are matched against.
+  if (!(error instanceof Error) || error instanceof MusterUnreachableError) {
     return error;
   }
   const message = error.message;
@@ -616,6 +620,9 @@ export async function createRouter(
       next(error);
     },
   );
+
+  // Last, so that the handlers above see the error first.
+  router.use(reportedErrorHandler());
 
   return router;
 }

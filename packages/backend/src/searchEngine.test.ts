@@ -1,21 +1,22 @@
 import {
   mockServices,
   startTestBackend,
+  TestDatabaseId,
   TestDatabases,
 } from '@backstage/backend-test-utils';
 import { createBackendModule } from '@backstage/backend-plugin-api';
 import searchPlugin from '@backstage/plugin-search-backend';
-import pgSearchEngineModule from '@backstage/plugin-search-backend-module-pg';
 import { searchIndexRegistryExtensionPoint } from '@backstage/plugin-search-backend-node/alpha';
 import { Readable } from 'stream';
 import request from 'supertest';
+import { pgSearchEngineLoader } from './searchEngine';
 
 jest.setTimeout(60_000);
 
 // The features are imported statically, not with import() as in index.ts:
 // jest refuses a dynamic import() here (docs/development.md, "Unit tests").
 
-// The search plugin with the engine module the backend wires, on the databases
+// The search plugin with the engine loader the backend wires, on the databases
 // the backend runs on: sqlite always; Postgres where
 // BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING names one (no container
 // is started; CI runs a Postgres service beside the job, .circleci/custom.yml).
@@ -33,6 +34,11 @@ if (process.env.CI && !databases.supports('POSTGRES_18')) {
 }
 
 type Knex = Awaited<ReturnType<TestDatabases['init']>>;
+
+// The client each database is configured with, which the loader reads.
+function client(databaseId: TestDatabaseId) {
+  return databaseId.startsWith('POSTGRES') ? 'pg' : 'better-sqlite3';
+}
 
 const document = {
   title: 'kept-component',
@@ -80,17 +86,26 @@ function testCollator(replica: Replica) {
   return { module, indexed };
 }
 
-async function startSearchBackend(knex: Knex, replica: Replica) {
+async function startSearchBackend(
+  databaseId: TestDatabaseId,
+  knex: Knex,
+  replica: Replica,
+) {
   const collator = testCollator(replica);
+  const logger = mockServices.logger.mock();
   const backend = await startTestBackend({
     features: [
       searchPlugin,
-      pgSearchEngineModule,
+      pgSearchEngineLoader,
       mockServices.database.factory({ knex }),
+      mockServices.rootConfig.factory({
+        data: { backend: { database: { client: client(databaseId) } } },
+      }),
+      logger.factory,
       collator.module,
     ],
   });
-  return { backend, indexed: collator.indexed };
+  return { backend, indexed: collator.indexed, logger };
 }
 
 // The portal's search page asks for its document types by name; the in-memory
@@ -107,6 +122,7 @@ describe('the search engine', () => {
     async databaseId => {
       const knex = await databases.init(databaseId);
       const { backend, indexed } = await startSearchBackend(
+        databaseId,
         knex,
         'indexes at start',
       );
@@ -124,13 +140,20 @@ describe('the search engine', () => {
 
   it('is the in-memory engine on sqlite, so a replica answers only once it indexed', async () => {
     const knex = await databases.init('SQLITE_3');
-    const { backend } = await startSearchBackend(knex, 'has not indexed yet');
+    const { backend, logger } = await startSearchBackend(
+      'SQLITE_3',
+      knex,
+      'has not indexed yet',
+    );
 
     const response = await query(backend);
 
     expect(response.status).toBe(500);
     expect(response.body.error.name).toBe('MissingIndexError');
     expect(await knex.schema.hasTable('documents')).toBe(false);
+    // The Postgres module is not loaded, so it does not warn at every start
+    // that it steps aside (giantswarm/giantswarm#38982); whatever its wording.
+    expect(logger.warn).not.toHaveBeenCalled();
     await backend.stop();
   });
 
@@ -148,6 +171,7 @@ describe('the search engine', () => {
       it('answers an empty set, not an error, before any index', async () => {
         const knex = await databases.init('POSTGRES_18');
         const { backend } = await startSearchBackend(
+          'POSTGRES_18',
           knex,
           'has not indexed yet',
         );
@@ -161,12 +185,20 @@ describe('the search engine', () => {
 
       it('keeps the index in the database, so a restarted backend answers at once', async () => {
         const knex = await databases.init('POSTGRES_18');
-        const first = await startSearchBackend(knex, 'indexes at start');
+        const first = await startSearchBackend(
+          'POSTGRES_18',
+          knex,
+          'indexes at start',
+        );
         await first.indexed;
         await first.backend.stop();
         expect(await knex.schema.hasTable('documents')).toBe(true);
 
-        const second = await startSearchBackend(knex, 'has not indexed yet');
+        const second = await startSearchBackend(
+          'POSTGRES_18',
+          knex,
+          'has not indexed yet',
+        );
         const response = await query(second.backend);
 
         expect(response.status).toBe(200);

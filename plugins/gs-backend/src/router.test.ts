@@ -54,6 +54,7 @@ import {
 } from './agentSkills/discoverAgentSkillsFromGit';
 import {
   containerRegistryServiceRef,
+  MimirUnavailableError,
   mimirServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
@@ -305,6 +306,57 @@ describe('GET /mimir/query_range', () => {
   });
 });
 
+describe('a Mimir that could not answer', () => {
+  const failure = () =>
+    new MimirUnavailableError(
+      'Mimir could not answer the query for installation "golem" (HTTP 500)',
+      {
+        reason: 'older_data_unavailable',
+        mimirError: 'failed to get store-gateway replication set',
+      },
+    );
+
+  it.each([
+    ['/mimir/query', { query: 'up', installationName: 'golem' }],
+    [
+      '/mimir/query_range',
+      {
+        query: 'up',
+        installationName: 'golem',
+        start: '1',
+        end: '2',
+        step: '1d',
+      },
+    ],
+  ])(
+    '%s answers the 503 itself, with the reason, so the error middleware does not report it again',
+    async (path, params) => {
+      const app = await buildAppWithErrors({
+        query: jest.fn().mockRejectedValue(failure()),
+        queryRange: jest.fn().mockRejectedValue(failure()),
+      });
+
+      const response = await request(app)
+        .get(path)
+        .query(params)
+        .set('X-Mimir-Token', 'tok');
+
+      // The test app's own error handler stands in for the middleware and
+      // would answer 500: a 503 here was answered by the router.
+      expect(response.status).toBe(503);
+      expect(response.body.error).toEqual({
+        name: 'ServiceUnavailableError',
+        message:
+          'Mimir could not answer the query for installation "golem" (HTTP 500)',
+        reason: 'older_data_unavailable',
+      });
+      // Mimir's own text stays in the warning, out of the browser.
+      expect(JSON.stringify(response.body)).not.toContain('store-gateway');
+      expect(response.body.response).toEqual({ statusCode: 503 });
+    },
+  );
+});
+
 describe('GET /installations/versions', () => {
   it('serves the management cluster versions read with the forwarded main session', async () => {
     const app = await buildApp(makeConfig({}));
@@ -420,6 +472,7 @@ describe('GET /agent-skills', () => {
       {
         name: 'notes',
         description: 'How to take notes.',
+        tags: [],
         repoUrl: 'https://github.com/giantswarm/other-skills',
         path: 'notes',
         ref: 'main',
@@ -702,6 +755,7 @@ describe('GET /agent-skills/content', () => {
     commit: COMMIT,
     name: 'notes',
     description: 'How to take notes.',
+    tags: [],
     instructions: 'Write things down.',
   };
 
@@ -751,6 +805,7 @@ describe('GET /agent-skills/content', () => {
       {
         name: 'skills',
         description: 'Root skill.',
+        tags: [],
         repoUrl: GIT_REPO,
         path: '',
         ref: 'main',
@@ -854,6 +909,7 @@ describe('GET /agent-skills/content', () => {
       commit: COMMIT,
       name: 'skills',
       description: 'Root skill.',
+      tags: [],
       instructions: 'Do it.',
       files: notesFiles.files,
       filesTruncated: false,
@@ -993,6 +1049,7 @@ describe('GET /agent-skills/content', () => {
           {
             name: 'notes',
             description: 'How to take notes.',
+            tags: [],
             repoUrl: 'https://github.com/giantswarm/skills',
             path: 'notes',
             ref: 'main',
@@ -1131,6 +1188,7 @@ describe('GET /agent-skills/content/file', () => {
   const skill = (repoUrl: string, path: string) => ({
     name: path,
     description: '',
+    tags: [],
     repoUrl,
     path,
     ref: 'main',
@@ -1775,6 +1833,55 @@ describe('POST /agent-skills/pull-request', () => {
 
     expect(response.status).toBe(200);
   });
+
+  it('passes the tags through, without repeats', async () => {
+    const app = await buildSkillsApp();
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({ ...body, tags: ['triage', 'k8s', 'triage'] });
+
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith({
+      ...body,
+      tags: ['triage', 'k8s'],
+      token: 'gh-token',
+    });
+  });
+
+  it('leaves the 50-tag limit to the write, which knows the stored tags', async () => {
+    const app = await buildSkillsApp();
+    const many = Array.from({ length: 55 }, (_, index) => `tag-${index}`);
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({ ...body, tags: many });
+
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith({
+      ...body,
+      tags: many,
+      token: 'gh-token',
+    });
+  });
+
+  it.each([['Triage'], ['on call'], ['x'.repeat(64)], ['-a']])(
+    'refuses with 400 the tag %s',
+    async tag => {
+      const app = await buildSkillsApp();
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .send({ ...body, tags: ['ok', tag] });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain('Each tag must be');
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
+    },
+  );
 
   it('passes an update through with the skill directory and base commit', async () => {
     const app = await buildSkillsApp();

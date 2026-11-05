@@ -64,18 +64,6 @@ describe('measure slots', () => {
       expect(new Set(slots).size).toBe(columns.length);
     },
   );
-
-  it('shares a hue only between measures no table shows together', () => {
-    // `cost` covers measured and estimated spend, `calls` covers model, tool
-    // and MCP-server calls, `ratio` covers share-of-spend and $/1M. Each pair
-    // is safe only because it never co-occurs — which the per-table assertion
-    // above is what actually guards.
-    const shared = MEASURE_KEYS.filter(m =>
-      ['calls', 'cost', 'ratio', 'tokens'].includes(m),
-    );
-
-    expect(shared).toHaveLength(4);
-  });
 });
 
 describe('useMeasureColor', () => {

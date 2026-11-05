@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import type { McpUsage } from '../../../apis';
+import { bucketDay } from '../utils/bucketDay';
 
 export type McpDataStartNoteProps = {
   usage: McpUsage;
@@ -28,8 +29,8 @@ export function McpDataStartNote({
   const dataStart =
     usage.step_hours >= 24
       ? usageDataStart(
-          usage.buckets.map(bucket => bucket.start.slice(0, 10)),
-          usage.data_start?.slice(0, 10),
+          usage.buckets.map(bucket => bucketDay(bucket.start)),
+          usage.data_start ? bucketDay(usage.data_start) : undefined,
         )
       : undefined;
   if (!dataStart) {
