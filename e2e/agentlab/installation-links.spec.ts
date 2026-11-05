@@ -1,4 +1,4 @@
-import type { Locator, Page, Response } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
 
@@ -64,10 +64,6 @@ async function valkeyInstallationCell(admin: Page): Promise<Locator> {
 }
 
 test.describe('installation links', () => {
-  test.afterEach(async ({ admin }) => {
-    await admin.unroute(INSTALLATION_NAMES);
-  });
-
   test('links the installation to its catalog page where the catalog has its entity', async ({
     admin,
   }) => {
@@ -97,17 +93,15 @@ test.describe('installation links', () => {
     admin,
   }) => {
     await stageInstallationNames(admin, []);
-    const answered = admin.waitForResponse((response: Response) =>
-      isInstallationNamesQuery(response.url()),
-    );
     await open(admin, '/deployments');
 
     const cell = await valkeyInstallationCell(admin);
-    // Without a link before the answer too: wait for the catalog's answer,
-    // and give the page a moment to render it, before checking the steady
-    // state.
-    await answered;
-    await admin.waitForTimeout(1_000);
+    // The plain name is plain before the catalog's answer too: wait for the
+    // cell to say the answer is in before checking that no link came of it.
+    await expect(
+      cell.locator('[data-installation-entity="none"]'),
+      'the catalog has answered for the cell',
+    ).toHaveText(lab.installation);
     await expect(
       cell.getByRole('link'),
       'without a catalog entity the name is plain text',

@@ -1,5 +1,8 @@
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import { useInstallationEntityNames } from '../../hooks/useInstallationEntityNames';
+import {
+  installationNameKey,
+  useInstallationEntityNames,
+} from '../../hooks/useInstallationEntityNames';
 
 type InstallationLinkProps = {
   installationName: string;
@@ -10,14 +13,24 @@ type InstallationLinkProps = {
  * the installation's entity, and plain text where it has none or has not
  * answered yet. The link is the bare name, with no entity icon, so the text
  * keeps its place when the catalog's answer turns it into a link.
+ *
+ * The plain name says in `data-installation-entity` whether the catalog has
+ * answered (`none`) or not yet (`pending`), so a test can tell the settled
+ * plain text from the text before the answer.
  */
 export const InstallationLink = ({
   installationName,
 }: InstallationLinkProps) => {
   const { installationEntityNames } = useInstallationEntityNames();
 
-  if (!installationEntityNames?.has(installationName)) {
-    return <>{installationName}</>;
+  if (!installationEntityNames?.has(installationNameKey(installationName))) {
+    return (
+      <span
+        data-installation-entity={installationEntityNames ? 'none' : 'pending'}
+      >
+        {installationName}
+      </span>
+    );
   }
 
   return (
@@ -27,8 +40,9 @@ export const InstallationLink = ({
         namespace: 'default',
         name: installationName,
       }}
-      title={installationName}
       underline="always"
-    />
+    >
+      {installationName}
+    </EntityRefLink>
   );
 };
