@@ -11,7 +11,10 @@ export type SentryEvent = {
   exception?: { values?: Array<{ value?: string }> };
   fingerprint?: string[];
   extra?: Record<string, unknown>;
+  tags?: Record<string, unknown>;
 };
+
+const KUBERNETES_PROXY_ERROR = 'Kubernetes proxy error: cluster request error';
 
 /**
  * Rewrites for known upstream messages, applied to the start of the message.
@@ -30,12 +33,33 @@ const MESSAGE_REWRITES: Array<[RegExp, string]> = [
   [/^Processing of \S+ failed/, 'Processing of an entity failed'],
   // @backstage/plugin-kubernetes-backend KubernetesProxy: one issue per
   // cluster, for a cause (refused, timed out) that is the same on each. The
-  // cluster is in extra data. See giantswarm/giantswarm#39002.
+  // cluster is in extra data and a tag. The cause can name the cluster too:
+  // the host it could not resolve or reach, or the names on its certificate.
+  // See giantswarm/giantswarm#39002.
   [
     /^Kubernetes proxy error Cluster '[^']*' request error/,
-    'Kubernetes proxy error: cluster request error',
+    KUBERNETES_PROXY_ERROR,
+  ],
+  [
+    new RegExp(
+      `^(${KUBERNETES_PROXY_ERROR}; caused by Error: (?:connect|getaddrinfo) \\w+) \\S+`,
+    ),
+    '$1 <host>',
+  ],
+  [
+    new RegExp(
+      `^(${KUBERNETES_PROXY_ERROR}; caused by .*does not match certificate's altnames):.*`,
+    ),
+    '$1',
   ],
 ];
+
+/**
+ * Metadata that is also set as a Sentry tag, so that an issue shows how its
+ * events spread over the values and can be searched and alerted on by them.
+ * Sentry does not index extra data.
+ */
+const TAGGED_EXTRA = ['cluster'];
 
 /**
  * Tokens that differ per occurrence but not per fault. Order matters: URLs are
@@ -92,10 +116,17 @@ function writeEventMessage(event: SentryEvent, message: string): void {
 /**
  * Collapses high-cardinality Sentry messages onto a stable fingerprint.
  *
- * Events whose message needs no rewriting are returned untouched, so their
- * grouping keeps working exactly as before.
+ * Events whose message needs no rewriting keep their message and grouping;
+ * they only gain the tags from `TAGGED_EXTRA`.
  */
 export function normalizeSentryEvent<T extends SentryEvent>(event: T): T {
+  for (const key of TAGGED_EXTRA) {
+    const value = event.extra?.[key];
+    if (typeof value === 'string') {
+      event.tags = { ...event.tags, [key]: value };
+    }
+  }
+
   const original = readEventMessage(event);
   if (!original) {
     return event;

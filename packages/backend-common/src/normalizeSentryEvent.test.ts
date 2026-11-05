@@ -47,11 +47,50 @@ describe('normalizeSentryEvent', () => {
     });
 
     expect(first.message).toBe(
-      'Kubernetes proxy error: cluster request error; caused by Error: connect ETIMEDOUT <address>',
+      'Kubernetes proxy error: cluster request error; caused by Error: connect ETIMEDOUT <host>',
     );
     expect(first.fingerprint).toEqual(second.fingerprint);
     expect(first.extra).toMatchObject({ cluster: 'mc-one' });
+    expect(first.tags).toEqual({ cluster: 'mc-one' });
   });
+
+  it.each([
+    [
+      'an unresolvable API host',
+      'Error: getaddrinfo ENOTFOUND api.mc-one.example.com',
+      'Error: getaddrinfo ENOTFOUND api.mc-two.example.com',
+      'Error: getaddrinfo ENOTFOUND <host>',
+    ],
+    [
+      'an IPv6 address',
+      'Error: connect ECONNREFUSED 2001:db8::1:443',
+      'Error: connect ECONNREFUSED 2001:db8::2:443',
+      'Error: connect ECONNREFUSED <host>',
+    ],
+    [
+      'a certificate for another host',
+      "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: api.mc-one.example.com. is not in the cert's altnames: DNS:api.mc-one.example.org",
+      "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: api.mc-two.example.com. is not in the cert's altnames: DNS:api.mc-two.example.org",
+      "Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames",
+    ],
+  ])(
+    'collapses Kubernetes proxy errors whose cause names the cluster: %s',
+    (_, firstCause, secondCause, normalizedCause) => {
+      const [first, second] = [
+        ['mc-one', firstCause],
+        ['mc-two', secondCause],
+      ].map(([cluster, cause]) =>
+        normalizeSentryEvent<SentryEvent>({
+          message: `Kubernetes proxy error Cluster '${cluster}' request error; caused by ${cause}`,
+        }),
+      );
+
+      expect(first.message).toBe(
+        `Kubernetes proxy error: cluster request error; caused by ${normalizedCause}`,
+      );
+      expect(first.fingerprint).toEqual(second.fingerprint);
+    },
+  );
 
   it('keeps Kubernetes proxy errors with different causes apart', () => {
     const [refused, timedOut, aggregate] = [
@@ -108,7 +147,7 @@ describe('normalizeSentryEvent', () => {
     });
   });
 
-  it('leaves events that need no rewriting untouched', () => {
+  it('leaves the message of events that need no rewriting untouched', () => {
     const event = normalizeSentryEvent<SentryEvent>({
       message: 'Something went wrong',
       extra: { plugin: 'catalog' },

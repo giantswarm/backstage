@@ -52,11 +52,14 @@ export function getSentryTransportConfig(config: RootConfigService) {
       STARTUP_REQUEST_FAILURE,
       // http-proxy-middleware's own log of a failed Kubernetes proxy request,
       // next to the backend's "Kubernetes proxy error" for the same failure,
-      // which names the cluster and the cause. Its "to undefined" is the
-      // unset static target, and its cluster is the one whose proxy was set
-      // up last, as the library's logger is global. See
-      // giantswarm/giantswarm#39002.
-      /^\[HPM\] Error occurred while proxying request /,
+      // which names the cluster and the cause. The library logs the target's
+      // `href`, and the Kubernetes proxy's per-request target (from its
+      // `router`) has none, hence "to undefined". The proxy backend's
+      // endpoints have a URL as their target and no other log of a failure,
+      // so their lines still reach Sentry. The cluster in this line's extra
+      // data is unreliable: the library's logger is global, so it is the one
+      // whose proxy was set up last. See giantswarm/giantswarm#39002.
+      /^\[HPM\] Error occurred while proxying request \S+ to undefined /,
     ],
     // The events poll loop's startup failures need the event's cause, which
     // `ignoreErrors` cannot see.

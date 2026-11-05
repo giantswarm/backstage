@@ -1,44 +1,17 @@
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import express from 'express';
-import { ConfigReader } from '@backstage/config';
 import { mockServices } from '@backstage/backend-test-utils';
 import { WinstonLogger } from '@backstage/backend-defaults/rootLogger';
 import { KubernetesProxy } from '@backstage/plugin-kubernetes-backend';
 import Sentry from 'winston-sentry-log';
-import { getSentryTransportConfig } from './rootLogger';
+import { sendToSentry, sentryOptions } from './sentryTestUtils';
 import type { SentryEvent } from './normalizeSentryEvent';
 
 // Runs the upstream Kubernetes proxy against a cluster that refuses the
 // connection, through the real logger and Sentry transport, so a rewording of
 // either log line fails here instead of reaching Sentry. See
 // giantswarm/giantswarm#39002.
-
-const options = getSentryTransportConfig(
-  new ConfigReader({
-    backend: {
-      errorReporter: {
-        sentry: {
-          dsn: 'https://key@sentry.example.com/1',
-          environment: 'test',
-          tracesSampleRate: 0,
-        },
-      },
-    },
-  }),
-)!;
-
-/**
- * Applies the transport options the way Sentry does: `ignoreErrors` against
- * the exception value, then `beforeSend`.
- */
-function send(event: SentryEvent): SentryEvent | null {
-  const value = event.exception?.values?.[0]?.value ?? '';
-  if (options.ignoreErrors.some(pattern => pattern.test(value))) {
-    return null;
-  }
-  return options.beforeSend(event);
-}
 
 /** The error events the Sentry transport captures, as Sentry builds them. */
 function sentryCapture() {
@@ -65,7 +38,7 @@ function sentryCapture() {
     captureMessage: () => {},
   };
   const transport = new Sentry({
-    config: options,
+    config: sentryOptions,
     level: 'warn',
     sentryClient,
     isClientInitialized: true,
@@ -89,13 +62,9 @@ describe('a Kubernetes proxy request to a cluster that refuses it', () => {
   let events: SentryEvent[];
   let backend: Server;
   let backendPort: number;
+  let refusingPort: number;
 
   beforeEach(async () => {
-    // A port nothing listens on.
-    const closed = createServer();
-    const refusingPort = await listen(closed);
-    await close(closed);
-
     const capture = sentryCapture();
     events = capture.events;
     const logger = WinstonLogger.create({
@@ -105,12 +74,13 @@ describe('a Kubernetes proxy request to a cluster that refuses it', () => {
 
     const clusters = ['mc-one', 'mc-two'].map(name => ({
       name,
-      url: `http://127.0.0.1:${refusingPort}`,
+      url: `https://api.${name}.example.com`,
       authMetadata: {},
     }));
     // The upstream step resolves the cluster's URL and credentials, and loads
     // @kubernetes/client-node with a dynamic import that Jest cannot run. The
-    // proxy middleware and both log lines stay upstream's.
+    // proxy middleware and both log lines stay upstream's. Every cluster's
+    // requests go to the refusing port.
     jest
       .spyOn(KubernetesProxy.prototype as any, 'prepareProxyTarget')
       .mockImplementation(async (req: any) => ({
@@ -141,6 +111,12 @@ describe('a Kubernetes proxy request to a cluster that refuses it', () => {
     );
     backend = createServer(app);
     backendPort = await listen(backend);
+
+    // A port nothing listens on. Taken after the backend's, so it cannot be
+    // the backend's: port 0 is never a port in use.
+    const closed = createServer();
+    refusingPort = await listen(closed);
+    await close(closed);
   });
 
   afterEach(async () => {
@@ -169,28 +145,29 @@ describe('a Kubernetes proxy request to a cluster that refuses it', () => {
         /^\[HPM\] Error occurred while proxying request \S+ to undefined \[ECONNREFUSED\]/,
       ),
     ]);
-    expect(events.map(send).filter(Boolean)).toHaveLength(1);
+    expect(events.map(sendToSentry).filter(Boolean)).toHaveLength(1);
   });
 
   it('groups the failures of different clusters into one issue', async () => {
     await requestVersion('mc-one');
     await requestVersion('mc-two');
 
-    const sent = events.map(send).filter(Boolean) as SentryEvent[];
+    const sent = events.map(sendToSentry).filter(Boolean) as SentryEvent[];
 
     expect(sent).toHaveLength(2);
     expect(sent[0].exception?.values?.[0]?.value).toBe(
-      'Kubernetes proxy error: cluster request error; caused by Error: connect ECONNREFUSED <address>',
+      'Kubernetes proxy error: cluster request error; caused by Error: connect ECONNREFUSED <host>',
     );
     expect(sent[0].fingerprint).toEqual(sent[1].fingerprint);
   });
 
-  it('keeps the cluster in the extra data', async () => {
+  it('keeps the cluster in the extra data and as a tag', async () => {
     await requestVersion('mc-one');
     await requestVersion('mc-two');
 
-    const sent = events.map(send).filter(Boolean) as SentryEvent[];
+    const sent = events.map(sendToSentry).filter(Boolean) as SentryEvent[];
 
     expect(sent.map(e => e.extra?.cluster)).toEqual(['mc-one', 'mc-two']);
+    expect(sent.map(e => e.tags?.cluster)).toEqual(['mc-one', 'mc-two']);
   });
 });
