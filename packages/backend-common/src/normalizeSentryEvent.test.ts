@@ -232,52 +232,84 @@ describe('normalizeSentryEvent', () => {
       };
     }
 
-    it('groups by kind and tool, whatever the message and installation', () => {
-      const [first, second] = [
-        ['gazelle', 30],
-        ['golem', 60],
-      ].map(([installation, seconds]) =>
-        normalizeSentryEvent(
-          toolErrorEvent(
-            `Tool execution failed: no answer within the server's timeout of ${seconds}s: context deadline exceeded`,
-            {
+    it.each(['timeout', 'client_not_connected', 'tool_not_found'])(
+      'groups %s by server, whatever the tool, message and installation',
+      kind => {
+        const [first, second] = [
+          ['gazelle', 'x_kubernetes_gazelle_get', 30],
+          ['golem', 'x_kubernetes_golem_list', 60],
+        ].map(([installation, tool, seconds]) =>
+          normalizeSentryEvent(
+            toolErrorEvent(`Tool execution failed after ${seconds}s`, {
               installation,
-              kind: 'timeout',
-              tool: 'x_prometheus_execute_query',
-              server: 'prometheus',
-            },
+              kind,
+              tool,
+              server: 'kubernetes',
+            }),
           ),
-        ),
-      );
+        );
 
-      expect(first.fingerprint).toEqual([
-        'MusterToolError',
-        'timeout',
-        'x_prometheus_execute_query',
-      ]);
-      expect(second.fingerprint).toEqual(first.fingerprint);
-      expect(first.tags).toEqual({
-        installation: 'gazelle',
-        tool: 'x_prometheus_execute_query',
-        server: 'prometheus',
-      });
-    });
+        expect(first.fingerprint).toEqual([
+          'MusterToolError',
+          kind,
+          'kubernetes',
+        ]);
+        expect(second.fingerprint).toEqual(first.fingerprint);
+        expect(first.tags).toEqual({
+          installation: 'gazelle',
+          tool: 'x_kubernetes_gazelle_get',
+          server: 'kubernetes',
+        });
+      },
+    );
 
-    it('keeps the same kind of another tool apart', () => {
-      const [prometheus, kubernetes] = [
-        'x_prometheus_execute_query',
-        'x_kubernetes_list',
-      ].map(
-        tool =>
+    it('keeps the same kind of another server apart', () => {
+      const [prometheus, kubernetes] = ['prometheus', 'kubernetes'].map(
+        server =>
           normalizeSentryEvent(
             toolErrorEvent('Tool execution failed: client not connected', {
               kind: 'client_not_connected',
-              tool,
+              tool: `x_${server}_list`,
+              server,
             }),
           ).fingerprint,
       );
 
       expect(prometheus).not.toEqual(kubernetes);
+    });
+
+    it("groups another kind by tool, without an Organization's or a workflow's name", () => {
+      const fingerprintOf = (tool: string) =>
+        normalizeSentryEvent(toolErrorEvent('boom', { kind: 'conflict', tool }))
+          .fingerprint;
+
+      expect(fingerprintOf('x_org-acme_github_search_issues')).toEqual([
+        'MusterToolError',
+        'conflict',
+        'x_<org>_github_search_issues',
+      ]);
+      expect(fingerprintOf('x_org-acme_github_search_issues')).toEqual(
+        fingerprintOf('x_org-other_github_search_issues'),
+      );
+      expect(fingerprintOf('workflow_deploy-app')).toEqual(
+        fingerprintOf('workflow_rotate_keys'),
+      );
+      expect(fingerprintOf('x_github_search_issues')).not.toEqual(
+        fingerprintOf('x_github_get_issue'),
+      );
+    });
+
+    it('replaces single-quoted values, not an apostrophe', () => {
+      const event = normalizeSentryEvent(
+        toolErrorEvent(
+          "Failed to start MCP server 'jira': the server's process exited",
+          { tool: 'core_mcpserver_start' },
+        ),
+      );
+
+      expect(event.fingerprint![1]).toBe(
+        "Request failed with status 500 Failed to start MCP server '<value>': the server's process exited",
+      );
     });
 
     // giantswarm/giantswarm#39001: one fault, a different workflow name each time.

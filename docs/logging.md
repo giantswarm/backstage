@@ -36,13 +36,17 @@ the middleware's.
 A muster tool error (`MusterToolError` in `gs-node`) names the `tool`, its MCP
 `server` and the `installation`, never the arguments, and carries the `kind`
 of a failure the portal knows, with its status (`MUSTER_TOOL_ERROR_STATUS`,
-next to the auth_required case in `MusterMcpClient`). agent-manager's refusals
-and muster's refusals of a connector write answer 4xx and stay out of Sentry.
-A muster rollout's `interrupted` is logged at `info` and answered 503 by
+next to the auth_required case in `MusterMcpClient`). The refusals of the
+Agent Platform's MCP servers (`mcpToolRefusalOf` in `gs-common`) and muster's
+refusals of a connector write answer 4xx and stay out of Sentry. A muster
+rollout's `interrupted` is logged at `info` and answered 503 by
 `reportedErrorHandler()`. A timeout (504), a server muster holds no connection
 to (503) and a missing tool (502) are reported. `normalizeSentryEvent` groups
-the events as `['MusterToolError', <kind>, <tool>]`, or by the message with its
-quoted values replaced where the kind is unknown, and tags `tool` and `server`.
+the events as `['MusterToolError', <kind>, <server>]` for those three, which
+belong to a whole server, and as `['MusterToolError', <kind>, <tool>]`
+otherwise, the tool without an Organization's or a workflow's name, or by the
+message with its quoted values replaced where the kind is unknown. It tags
+`tool` and `server`.
 
 Frontend equivalent: `SentryErrorReporter`
 (`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also

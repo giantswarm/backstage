@@ -1301,7 +1301,15 @@ describe('createRouter', () => {
     // ships to Sentry, only from 500 on: a refusal stays out, an outage not.
     it.each([
       [toolError(refusal), 422, false],
-      [toolError('forbidden: you may not update agents'), 403, false],
+      [
+        toolError(
+          'forbidden: you may not update agents',
+          [],
+          'x_agent-manager_update_agent',
+        ),
+        403,
+        false,
+      ],
       // The client logs a rollout's interruption at info and marks it.
       [markReported(toolError('interrupted: muster is rolling')), 503, false],
       [

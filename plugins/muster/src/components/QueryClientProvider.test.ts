@@ -50,6 +50,31 @@ describe('shouldRetryMusterQuery', () => {
     expect(shouldRetryMusterQuery(0, unavailable())).toBe(false);
   });
 
+  it.each([400, 409, 422])(
+    'never retries a tool refusal answered %i',
+    status => {
+      const refusal = Object.assign(new Error('conflict: x'), {
+        status,
+        kind: 'conflict',
+      });
+      expect(shouldRetryMusterQuery(0, refusal)).toBe(false);
+    },
+  );
+
+  it('retries a tool error muster failed with, a 504 or a 502', () => {
+    for (const [status, kind] of [
+      [504, 'timeout'],
+      [502, 'tool_not_found'],
+    ] as const) {
+      expect(
+        shouldRetryMusterQuery(
+          0,
+          Object.assign(new Error('x'), { status, kind }),
+        ),
+      ).toBe(true);
+    }
+  });
+
   it('retries any other failure up to three times', () => {
     expect(shouldRetryMusterQuery(2, new Error('connection reset'))).toBe(true);
     expect(shouldRetryMusterQuery(3, new Error('connection reset'))).toBe(

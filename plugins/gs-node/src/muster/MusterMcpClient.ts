@@ -8,8 +8,8 @@ import {
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
-  type AgentManagerRefusalCode,
-  isAgentManagerRefusalCode,
+  type McpToolRefusal,
+  mcpToolRefusalOf,
   readJwtClaims,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
@@ -281,6 +281,28 @@ function subjectOf(token: string | undefined): string | undefined {
     : undefined;
 }
 
+/** muster's structured mark of a call a replica stop interrupted. */
+const INTERRUPTED_META = 'giantswarm.io/interrupted';
+
+/**
+ * Whether muster marked an errored result interrupted: `_meta` carries
+ * `"giantswarm.io/interrupted": {"reason", "retryable"}`
+ * (docs/explanation/mcp-aggregation.md of giantswarm/muster), on the result
+ * or on the wrapped result in its text.
+ */
+function interruptedOf(meta: unknown, text: string | undefined): boolean {
+  const inner =
+    text === undefined
+      ? undefined
+      : (innerResultOf(text) as { _meta?: unknown } | undefined)?._meta;
+  return [meta, inner].some(
+    candidate =>
+      candidate !== null &&
+      typeof candidate === 'object' &&
+      (candidate as Record<string, unknown>)[INTERRUPTED_META] !== undefined,
+  );
+}
+
 /**
  * The server an errored result is muster's auth_required answer for, and the
  * sign-in link it carries: `structuredContent: {status: "auth_required",
@@ -315,7 +337,9 @@ function authRequiredOf(
  * knows: its status ({@link MUSTER_TOOL_ERROR_STATUS}) and its Sentry
  * grouping follow from it.
  *
- * - agent-manager's refusals, by their code (`AGENT_MANAGER_REFUSAL_CODES`);
+ * - the refusals of the Agent Platform's MCP servers (agent-manager,
+ *   model-manager, workspace-manager), as `mcpToolRefusalOf` in gs-common
+ *   names them;
  * - `connector_refused` -- muster refused a connector write
  *   ({@link CONNECTOR_REFUSALS});
  * - `interrupted` -- the muster replica serving the call shut down (a
@@ -325,7 +349,7 @@ function authRequiredOf(
  * - `tool_not_found` -- this muster has no such tool.
  */
 export type MusterToolErrorKind =
-  | AgentManagerRefusalCode
+  | McpToolRefusal
   | 'connector_refused'
   | 'interrupted'
   | 'timeout'
@@ -341,15 +365,29 @@ export type MusterToolErrorKind =
  * logs that at info and marks it reported (see {@link MusterMcpClient}), so
  * `reportedErrorHandler()` answers its 503 without a Sentry issue.
  *
+ * `client_not_connected` and `tool_not_found` stay reported although a
+ * session that has not signed in to a server yet answers them too: the
+ * routes that expect that state (`asConnected` in `serverGateway.ts`, behind
+ * plans, roadmap, repositories and platform-capabilities) catch them and
+ * reconnect or answer a 401 before the middleware sees them. What reaches the
+ * middleware comes from a page calling a tool directly, where they mean a
+ * server muster lost or a tool this muster does not have, as well as a
+ * missing sign-in. They are grouped per server and kind in Sentry
+ * (`normalizeSentryEvent` in backend-common), not per tool.
+ *
  * Muster's own auth_required answer is {@link MusterAuthRequiredError}'s 401.
  */
 export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
   not_found: 404,
   invalid_request: 400,
+  invalid: 400,
   conflict: 409,
   gitops_owned: 409,
+  already_exists: 409,
   forbidden: 403,
+  not_member: 403,
   unsupported: 400,
+  does_not_fit: 422,
   connector_refused: 422,
   interrupted: 503,
   timeout: 504,
@@ -413,17 +451,24 @@ const MUSTER_FAILURES: Array<[RegExp, MusterToolErrorKind]> = [
   [/\btool not found\b/, 'tool_not_found'],
 ];
 
-/** The kind of a tool's error, from its message; undefined when unknown. */
+/**
+ * The kind of a tool's error, from its message; undefined when unknown.
+ * `interrupted` is muster's structured mark of a rollout's interruption
+ * (`_meta["giantswarm.io/interrupted"]`), which the text match only backs up.
+ */
 export function musterToolErrorKindOf(
   message: string,
-  tool: string | undefined,
+  tool: string,
+  options: { interrupted?: boolean } = {},
 ): MusterToolErrorKind | undefined {
-  const code = /^([a-z_]+): /.exec(message)?.[1];
-  if (isAgentManagerRefusalCode(code)) {
-    return code;
+  if (options.interrupted) {
+    return 'interrupted';
+  }
+  const serverRefusal = mcpToolRefusalOf(musterServerOfTool(tool), message);
+  if (serverRefusal) {
+    return serverRefusal;
   }
   if (
-    tool !== undefined &&
     CONNECTOR_WRITE_TOOLS.has(tool) &&
     CONNECTOR_REFUSALS.some(refusal => refusal.test(message)) &&
     !CONNECTOR_FAILURES.some(failure => failure.test(message))
@@ -433,17 +478,25 @@ export function musterToolErrorKindOf(
   return MUSTER_FAILURES.find(([pattern]) => pattern.test(message))?.[1];
 }
 
+/** The start of an Organization's namespace, whose servers' tools it prefixes. */
+const ORGANIZATION_PREFIX = 'org-';
+
 /**
  * The MCP server an aggregated tool belongs to: muster names it
  * `x_<server>_<tool>`, so the first `_`-delimited segment after `x_`. A prefix
  * that itself contains `_` reads as its first segment, the server's family.
- * Undefined for muster's own tools (`core_*`, `workflow_*`, the meta-tools).
+ * A server in an Organization's namespace prefixes its tools with the
+ * namespace first (`x_org-<name>_<server>_<tool>`), which is skipped: the
+ * server, not the customer, is what a failure belongs to. Undefined for
+ * muster's own tools (`core_*`, `workflow_*`, the meta-tools).
  */
 export function musterServerOfTool(tool: string): string | undefined {
   if (!tool.startsWith('x_')) {
     return undefined;
   }
-  return tool.slice('x_'.length).split('_')[0] || undefined;
+  const [first, second] = tool.slice('x_'.length).split('_');
+  const server = first?.startsWith(ORGANIZATION_PREFIX) ? second : first;
+  return server || undefined;
 }
 
 /** The call a tool error belongs to; never its arguments, which may carry secrets. */
@@ -452,6 +505,8 @@ export interface MusterToolCall {
   tool: string;
   /** The muster installation that answered. */
   installation: string;
+  /** muster marked the result interrupted (`_meta`), whatever its text. */
+  interrupted?: boolean;
 }
 
 /**
@@ -483,7 +538,9 @@ export class MusterToolError extends Error {
     this.details = details;
     if (call) {
       const server = musterServerOfTool(call.tool);
-      const kind = musterToolErrorKindOf(message, call.tool);
+      const kind = musterToolErrorKindOf(message, call.tool, {
+        interrupted: call.interrupted,
+      });
       Object.assign(this, {
         tool: call.tool,
         ...(server ? { server } : {}),
@@ -1177,10 +1234,11 @@ export class MusterMcpClient {
     result: unknown,
     toolName: string,
   ): string | undefined {
-    const { content, isError, structuredContent } = (result ?? {}) as {
+    const { content, isError, structuredContent, _meta } = (result ?? {}) as {
       content?: ContentItem[];
       isError?: boolean;
       structuredContent?: unknown;
+      _meta?: unknown;
     };
 
     const text = content?.find(item => item.type === 'text')?.text;
@@ -1200,6 +1258,7 @@ export class MusterMcpClient {
         message ?? `Muster tool ${toolName} failed without an error message`,
         details,
         toolName,
+        interruptedOf(_meta, text),
       );
     }
 
@@ -1217,10 +1276,12 @@ export class MusterMcpClient {
     message: string,
     details: string[],
     toolName: string,
+    interrupted: boolean,
   ): MusterToolError {
     const error = new MusterToolError(message, details, {
       tool: toolName,
       installation: this.installation.name,
+      interrupted,
     });
     if (error.kind === 'interrupted') {
       this.logger.info('Muster tool call was interrupted by a muster rollout', {

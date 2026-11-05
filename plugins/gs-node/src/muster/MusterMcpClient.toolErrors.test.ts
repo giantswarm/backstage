@@ -178,6 +178,39 @@ describe('MusterMcpClient tool errors', () => {
     expect(error.status).toBe(401);
   });
 
+  it.each([
+    ['on the call_tool result', 'outer'],
+    ['on the wrapped result', 'inner'],
+  ])(
+    "reads muster's interruption mark %s, whatever the text",
+    async (_, where) => {
+      const meta = {
+        'giantswarm.io/interrupted': { reason: 'shutdown', retryable: true },
+      };
+      const inner = {
+        content: [{ type: 'text', text: 'the call was cancelled' }],
+        isError: true,
+        ...(where === 'inner' ? { _meta: meta } : {}),
+      };
+      const { client, logger } = buildClient({
+        content: [{ type: 'text', text: JSON.stringify(inner) }],
+        isError: true,
+        ...(where === 'outer' ? { _meta: meta } : {}),
+      });
+
+      const error = (await client
+        .callTool('x_agent-manager_list_agents', {})
+        .catch(e => e)) as MusterToolError;
+
+      expect(error).toMatchObject({
+        kind: 'interrupted',
+        status: 503,
+        message: 'the call was cancelled',
+      });
+      expect(logger.info).toHaveBeenCalled();
+    },
+  );
+
   it('logs a rollout interruption at info, with the call and not the arguments', async () => {
     const { logger } = await toolError(
       'interrupted: the muster replica serving this call is shutting down (rolling update)',
@@ -242,12 +275,57 @@ describe('MusterMcpClient tool errors', () => {
 });
 
 describe('musterToolErrorKindOf', () => {
+  const AGENT_TOOL = 'x_agent-manager_update_agent';
+
   it('reads only a refusal code at the start', () => {
-    expect(musterToolErrorKindOf('conflict: x', 'x_a_b')).toBe('conflict');
+    expect(musterToolErrorKindOf('conflict: x', AGENT_TOOL)).toBe('conflict');
+    expect(musterToolErrorKindOf('not_found:\nno agent', AGENT_TOOL)).toBe(
+      'not_found',
+    );
     expect(
-      musterToolErrorKindOf('request failed: conflict: x', 'x_a_b'),
+      musterToolErrorKindOf('request failed: conflict: x', AGENT_TOOL),
     ).toBeUndefined();
-    expect(musterToolErrorKindOf('backend_error: x', 'x_a_b')).toBeUndefined();
+    expect(
+      musterToolErrorKindOf('backend_error: x', AGENT_TOOL),
+    ).toBeUndefined();
+  });
+
+  it("reads a refusal by its server's own words", () => {
+    expect(
+      musterToolErrorKindOf(
+        'does_not_fit: llama-70b needs 40 GiB, the backend has 24',
+        'x_model-manager_load_model',
+      ),
+    ).toBe('does_not_fit');
+    expect(
+      musterToolErrorKindOf(
+        'get_workspace: permission denied: you are not a member',
+        'x_workspace-manager_get_workspace',
+      ),
+    ).toBe('not_member');
+    expect(
+      musterToolErrorKindOf(
+        'create_workspace: already exists: docs',
+        'x_workspace-manager_create_workspace',
+      ),
+    ).toBe('already_exists');
+  });
+
+  it("leaves another server's code-prefixed error unknown", () => {
+    expect(
+      musterToolErrorKindOf('not_found: no such pod', 'x_kubernetes_get'),
+    ).toBeUndefined();
+    expect(
+      musterToolErrorKindOf('does_not_fit: x', 'x_agent-manager_update_agent'),
+    ).toBeUndefined();
+  });
+
+  it("reads muster's structured interruption whatever its text", () => {
+    expect(
+      musterToolErrorKindOf('the replica stops', AGENT_TOOL, {
+        interrupted: true,
+      }),
+    ).toBe('interrupted');
   });
 
   it('keeps a connector failure in the same breath as a refusal a failure', () => {
@@ -264,6 +342,8 @@ describe('musterServerOfTool', () => {
   it.each([
     ['x_model-manager_list_backends', 'model-manager'],
     ['x_kubernetes_gazelle_get', 'kubernetes'],
+    ['x_org-acme_github_search_issues', 'github'],
+    ['x_org-acme', undefined],
     ['core_workflow_list', undefined],
     ['workflow_deploy', undefined],
     ['x_', undefined],

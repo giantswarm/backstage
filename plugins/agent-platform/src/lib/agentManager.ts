@@ -14,11 +14,13 @@
 import {
   AGENT_MANAGER_REFUSAL_CODES,
   type AgentManagerRefusalCode,
+  parseToolErrorCode,
+  AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
 import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
 
 /** The MCPServer name muster registers agent-manager under. */
-export const AGENT_MANAGER_SERVER = 'agent-manager';
+export { AGENT_MANAGER_SERVER };
 
 /**
  * Why agent-manager cannot be used on an installation, in one sentence, from
@@ -564,11 +566,12 @@ export function classifyAgentManagerError(error: unknown): Error {
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
-  const match = message.match(/^([a-z_]+):\s*([\s\S]*)$/);
-  if (match && (ERROR_CODES as readonly string[]).includes(match[1])) {
+  // The parser gs-node's MusterMcpClient reads a refusal's code with.
+  const parsed = parseToolErrorCode(message);
+  if (parsed && (ERROR_CODES as readonly string[]).includes(parsed.code)) {
     return new AgentManagerError(
-      match[1] as AgentManagerErrorCode,
-      match[2] || message,
+      parsed.code as AgentManagerErrorCode,
+      parsed.text || message,
       { cause: error },
     );
   }

@@ -161,6 +161,28 @@ describe('RoadmapApiClient', () => {
     expect(error.authUrl).toBe('https://muster/oauth/proxy/start?state=x');
   });
 
+  it('leaves a call a muster rollout interrupted retryable, but not another 503', async () => {
+    const message =
+      'interrupted: the muster replica serving this call is shutting down';
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { name: 'MusterToolError', message, kind: 'interrupted' } },
+        503,
+      ),
+    );
+    await expect(client.getSchema()).rejects.toMatchObject({
+      name: 'Error',
+      message,
+    });
+
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'not configured' } }, 503),
+    );
+    await expect(client.getSchema()).rejects.toMatchObject({
+      name: 'ServiceUnavailableError',
+    });
+  });
+
   it('surfaces the backend error message with a status-based name', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({ error: { message: 'no access' } }, 403),

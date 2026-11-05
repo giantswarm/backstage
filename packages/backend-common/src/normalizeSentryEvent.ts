@@ -70,11 +70,38 @@ const TAGGED_EXTRA = ['cluster', 'installation', 'tool', 'server'];
 const MUSTER_TOOL_ERROR = 'MusterToolError';
 
 /**
- * Quoted values in a tool's message: names of workflows, agents, Secrets. One
- * fault, such as muster refusing a label value, names a different one each
- * time.
+ * Quoted values in a tool's message: names of workflows, agents, Secrets,
+ * servers. One fault, such as muster refusing a label value, names a
+ * different one each time. muster quotes names in single quotes too (`MCP
+ * server 'jira'`); such a quote follows no letter or digit, which tells it
+ * from an apostrophe (`the server's timeout`).
  */
-const QUOTED_VALUE: [RegExp, string] = [/"[^"]*"/g, '"<value>"'];
+const QUOTED_VALUES: Array<[RegExp, string]> = [
+  [/"[^"]*"/g, '"<value>"'],
+  [/(^|[^\p{L}\p{N}])'[^']*'/gu, "$1'<value>'"],
+];
+
+/**
+ * The kinds of failure that belong to a whole MCP server rather than to one of
+ * its tools: a server that is slow, gone or not in this muster fails every
+ * tool of it, so they are one issue per server, with the tool as a tag.
+ */
+const SERVER_KINDS = new Set([
+  'timeout',
+  'client_not_connected',
+  'tool_not_found',
+]);
+
+/**
+ * A tool's name without what varies per customer or per workflow: an
+ * Organization's namespace in front of its servers' tools
+ * (`x_org-<name>_github_…`), and a workflow's own name (`workflow_<name>`).
+ */
+function toolGroupOf(tool: string): string {
+  return tool
+    .replace(/^x_org-[^_]+_/, 'x_<org>_')
+    .replace(/^workflow_.+$/, 'workflow_<name>');
+}
 
 /**
  * Tokens that differ per occurrence but not per fault. Order matters: URLs are
@@ -134,18 +161,24 @@ function isMusterToolError(event: SentryEvent): boolean {
 
 /**
  * One issue per kind of failure and tool, whatever route the call came
- * through: `['MusterToolError', <kind>, <tool>]`. Without a known `kind`, the
- * message stands in for it, with its quoted values replaced.
+ * through: `['MusterToolError', <kind>, <tool>]`, the tool without its
+ * Organization or workflow name ({@link toolGroupOf}). A kind that belongs to
+ * a whole server ({@link SERVER_KINDS}) is grouped by the server instead.
+ * Without a known `kind`, the message stands in for it, with its quoted
+ * values replaced.
  */
 function musterToolErrorFingerprint(
   event: SentryEvent,
   normalizedMessage: string,
 ): string[] {
-  const { kind, tool } = event.extra ?? {};
+  const { kind, tool, server } = event.extra ?? {};
+  if (typeof kind === 'string' && SERVER_KINDS.has(kind)) {
+    return [MUSTER_TOOL_ERROR, kind, typeof server === 'string' ? server : ''];
+  }
   return [
     MUSTER_TOOL_ERROR,
     typeof kind === 'string' ? kind : normalizedMessage,
-    typeof tool === 'string' ? tool : '',
+    typeof tool === 'string' ? toolGroupOf(tool) : '',
   ];
 }
 
@@ -154,7 +187,7 @@ function musterToolErrorFingerprint(
  *
  * Events whose message needs no rewriting keep their message and grouping;
  * they only gain the tags from `TAGGED_EXTRA`. A muster tool error is grouped
- * by its kind and tool ({@link musterToolErrorFingerprint}).
+ * by its kind and its tool or server ({@link musterToolErrorFingerprint}).
  */
 export function normalizeSentryEvent<T extends SentryEvent>(event: T): T {
   for (const key of TAGGED_EXTRA) {
@@ -172,7 +205,9 @@ export function normalizeSentryEvent<T extends SentryEvent>(event: T): T {
   const musterToolError = isMusterToolError(event);
   let normalized = normalizeMessage(original);
   if (musterToolError) {
-    normalized = normalized.replace(...QUOTED_VALUE);
+    for (const [pattern, replacement] of QUOTED_VALUES) {
+      normalized = normalized.replace(pattern, replacement);
+    }
   }
 
   if (normalized !== original) {

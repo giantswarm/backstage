@@ -12,14 +12,28 @@ import { isMusterAuthFailure } from '../apis/musterUnauthorized';
  * the single main re-login, a popup, for one probe), a missing object, a
  * refusal or an unavailable dependency. None of them is transient from a
  * query's point of view, but for a call a rollout of muster interrupted
- * (`kind: interrupted`, a 503). Shared with every plugin that reads through muster
+ * (`kind: interrupted`, a 503). A tool error the backend answered 4xx with
+ * its `kind` is a refusal (agent-manager's, muster's of a connector write):
+ * asking again gets the same answer. Shared with every plugin that reads through muster
  * (agent-platform's query client builds on it), so the rules cannot drift
  * apart.
  */
 export function shouldRetryMusterQuery(failureCount: number, error: unknown) {
   const name = (error as Error | null)?.name;
-  if ((error as { kind?: unknown } | null)?.kind === 'interrupted') {
+  const { kind, status } = (error ?? {}) as {
+    kind?: unknown;
+    status?: unknown;
+  };
+  if (kind === 'interrupted') {
     return failureCount <= 2;
+  }
+  if (
+    kind !== undefined &&
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500
+  ) {
+    return false;
   }
   if (
     isMusterAuthFailure(error) ||
