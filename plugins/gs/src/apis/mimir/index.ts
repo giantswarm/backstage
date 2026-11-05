@@ -1,4 +1,5 @@
 export { MimirClient } from './MimirClient';
+export { MimirQueryError } from './MimirQueryError';
 export { mimirApiRef } from './types';
 export type {
   MimirApi,

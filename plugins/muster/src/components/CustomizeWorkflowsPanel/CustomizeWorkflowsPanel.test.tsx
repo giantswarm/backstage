@@ -698,7 +698,9 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
         ([options]) => options.workflowName === undefined,
       ),
     ).toHaveLength(1);
-  });
+    // 300 rows and a dozen clicks: about 3 s alone, past Jest's 5 s default
+    // when the whole suite shares a CI machine.
+  }, 30_000);
 
   it('says when the filter leaves nothing of a search, and clears it', async () => {
     mockWorkflows = ['alpha', 'bravo'].map(name => makeWorkflow(name, 2));

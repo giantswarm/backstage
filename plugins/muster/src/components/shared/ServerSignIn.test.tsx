@@ -218,6 +218,34 @@ describe('ServerSignIn', () => {
   });
 
   /**
+   * The tab the click opened was given up before muster answered: there is
+   * no other tab to finish in, so the row must not say it waits for the
+   * person.
+   */
+  it('says the sign-in page is being prepared while its tab was given up', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+    });
+    const queryClient = newQueryClient();
+    queryClient.setQueryData(['muster', 'pending-sign-in', 'gazelle', 'pro'], {
+      authUrlExpiresAt: Date.now() + 60_000,
+      deadline: Date.now() + 60_000,
+      opened: false,
+      preparing: true,
+    });
+    await renderSignIn(api, queryClient);
+
+    expect(
+      await screen.findByText(
+        'Preparing the sign-in page. It opens from here once it is ready.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Waiting for you to finish signing in/),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
    * With popups blocked the URL is the only way in, so it stays a link -- but
    * only while muster honours it. Once the hook has withdrawn it, the row must
    * offer a fresh URL rather than nothing (or a dead link): a button, which
