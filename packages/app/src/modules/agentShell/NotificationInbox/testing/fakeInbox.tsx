@@ -344,6 +344,7 @@ export function fakeInboxMusterExports() {
  */
 export function fakeInboxPluginExports() {
   return {
+    useOrganizationsAvailable: () => false,
     AgentPlatformProviders: ({ children }: { children: ReactNode }) => (
       <>{children}</>
     ),
