@@ -1934,14 +1934,22 @@ describe('workspace setup notices', () => {
   });
 
   describe('the turn the person just sent', () => {
-    const renderReserved = async (reservedTurnIndex: number) => {
+    /** The `messageId` of the person's message in turn `index`. */
+    const sentIn = (index: number) => {
+      const turns = groupIntoTurns(timelineFor(tasksV099).items);
+      const turn = turns[index < 0 ? turns.length + index : index];
+      const message = turn.items.find(item => item.kind === 'user-message');
+      expect(message?.messageId).toBeDefined();
+      return message!.messageId!;
+    };
+    const renderReserved = async (reservedMessageId: string) => {
       const timeline = timelineFor(tasksV099);
       await renderInTestApp(
         <SessionTimeline
           timeline={timeline}
           agentName="Issue tracker"
           isAgentWorking
-          reservedTurnIndex={reservedTurnIndex}
+          reservedMessageId={reservedMessageId}
         />,
       );
       const turns = document.querySelectorAll<HTMLElement>('[data-turn-index]');
@@ -1949,9 +1957,7 @@ describe('workspace setup notices', () => {
     };
 
     it('holds the room for its reply, with the Working row inside it', async () => {
-      const newestIndex =
-        groupIntoTurns(timelineFor(tasksV099).items).length - 1;
-      const { turns, newest } = await renderReserved(newestIndex);
+      const { turns, newest } = await renderReserved(sentIn(-1));
       expect(newest).toHaveAttribute('data-reserved-turn');
       expect(
         [...turns].filter(turn => turn.hasAttribute('data-reserved-turn')),
@@ -1960,7 +1966,7 @@ describe('workspace setup notices', () => {
     });
 
     it('holds no room once a later turn is the newest', async () => {
-      const { turns, newest } = await renderReserved(0);
+      const { turns, newest } = await renderReserved(sentIn(0));
       expect(turns.length).toBeGreaterThan(1);
       for (const turn of turns) {
         expect(turn).not.toHaveAttribute('data-reserved-turn');

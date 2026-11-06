@@ -1034,6 +1034,62 @@ describe('SessionDetailPage', () => {
         screen.queryByRole('button', { name: 'Jump to bottom' }),
       ).not.toBeInTheDocument();
     });
+
+    it('puts a message sent again after a failed send at the top too', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      let failFirst: (error: Error) => void = () => {};
+      mockSendMessage
+        .mockImplementationOnce(() => {
+          mockUseSendMessage.mockReturnValue(
+            idleSend({
+              isSending: true,
+              pending: { messageId: 'attempt-1', text: 'and staging?' },
+            }),
+          );
+          return new Promise((_resolve, reject) => {
+            failFirst = reject;
+          });
+        })
+        .mockImplementationOnce(() => {
+          mockUseSendMessage.mockReturnValue(
+            idleSend({
+              isSending: true,
+              pending: { messageId: 'attempt-2', text: 'and staging?' },
+            }),
+          );
+          return new Promise(() => {});
+        });
+      await render();
+      await screen.findByTestId('session-dock');
+      const box = () => screen.getByRole('textbox', { name: 'Message' });
+
+      await userEvent.type(box(), 'and staging?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      setChatGpt({ ...NO_CHATGPT });
+      await screen.findByText('and staging?');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      // A 502: the echo goes, and the person sends the same text again.
+      mockUseSendMessage.mockReturnValue(idleSend());
+      await act(async () => failFirst(new Error('Bad gateway')));
+      setChatGpt({ ...NO_CHATGPT });
+      await waitFor(() =>
+        expect(screen.queryByText('and staging?')).not.toBeInTheDocument(),
+      );
+      await userEvent.type(box(), 'and staging?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      setChatGpt({ ...NO_CHATGPT });
+
+      const turn = (await screen.findByText('and staging?')).closest(
+        '[data-turn-index]',
+      );
+      expect(turn).toHaveAttribute('data-reserved-turn');
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(turn);
+    });
   });
 
   describe('renaming', () => {

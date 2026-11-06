@@ -30,19 +30,19 @@ import type { EgressRemedyFor } from '../../lib/egressRemedy';
 
 /**
  * CSS variable, set by the page around the timeline: the height the reserved
- * turn takes at least (see `reservedTurnIndex`).
+ * turn takes at least (see `reservedMessageId`).
  */
 export const TURN_RESERVE_VAR = '--session-turn-reserve';
 
 /**
- * Marks the reserved turn (see `reservedTurnIndex`): it is taller than what it
+ * Marks the reserved turn (see `reservedMessageId`): it is taller than what it
  * holds, so its newest content is its last child, not its own bottom.
  */
 export const RESERVED_TURN_ATTRIBUTE = 'data-reserved-turn';
 
 const useStyles = makeStyles(theme => ({
   // The turn the person just sent holds the room its reply streams into (see
-  // `reservedTurnIndex`); the page sets the height, the view less its chrome.
+  // `reservedMessageId`); the page sets the height, the view less its chrome.
   reservedTurn: {
     minHeight: `var(${TURN_RESERVE_VAR}, 0px)`,
   },
@@ -247,14 +247,15 @@ export type SessionTimelineProps = {
    */
   isAwaitingPerson?: boolean;
   /**
-   * The turn the person just sent from this page, by its position in the
-   * session's turns. While it is the newest turn on screen it is at least
+   * The message the person just sent from this page, by its `messageId`: the
+   * echo's and kagent's copy carry the same. While its turn is the newest turn
+   * on screen it is at least
    * {@link TURN_RESERVE_VAR} tall, with the "Working…" row inside it, so the
    * page can put it at the top of the view and the reply streams into the
    * room below without the page moving. It carries
    * `data-reserved-turn`, as its newest content is not its bottom.
    */
-  reservedTurnIndex?: number;
+  reservedMessageId?: string;
 };
 
 /**
@@ -280,7 +281,7 @@ export function SessionTimeline({
   connectorOf,
   showToolActivity = true,
   isAwaitingPerson = false,
-  reservedTurnIndex,
+  reservedMessageId,
 }: SessionTimelineProps) {
   const classes = useStyles();
 
@@ -453,10 +454,14 @@ export function SessionTimeline({
     .filter(({ segments }) => segments.length > 0);
   // Reserved only while it is the newest turn on screen: a later turn (sent
   // from elsewhere) takes the end, and the room goes.
+  const newestShown = shownTurns[shownTurns.length - 1];
   const reservedTurn =
-    reservedTurnIndex !== undefined &&
-    shownTurns[shownTurns.length - 1]?.turnIndex === reservedTurnIndex
-      ? reservedTurnIndex
+    reservedMessageId !== undefined &&
+    newestShown?.turn.items.some(
+      item =>
+        item.kind === 'user-message' && item.messageId === reservedMessageId,
+    )
+      ? newestShown.turnIndex
       : undefined;
   const renderEntry = (item: TimelineItem, technical = false) => {
     const messageKey =

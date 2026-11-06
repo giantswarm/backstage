@@ -67,6 +67,33 @@ describe('JumpToBottom', () => {
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus();
   });
 
+  it('moves the focus on to the dock’s first control while its box is disabled', async () => {
+    // A question card's answers, with the composer's box disabled under it.
+    const dock = dockWithBox();
+    dock.querySelector('textarea')!.disabled = true;
+    const answer = document.createElement('button');
+    answer.textContent = 'Approve';
+    dock.appendChild(answer);
+    render(<JumpToBottom isShown onJump={jest.fn()} dock={dock} />);
+    act(() =>
+      screen.getByRole('button', { name: JUMP_TO_BOTTOM_LABEL }).focus(),
+    );
+    await userEvent.keyboard('{Enter}');
+    expect(answer).toHaveFocus();
+  });
+
+  it('moves the focus on to the dock itself when it offers nothing to focus', async () => {
+    const dock = dockWithBox();
+    dock.querySelector('textarea')!.disabled = true;
+    render(<JumpToBottom isShown onJump={jest.fn()} dock={dock} />);
+    act(() =>
+      screen.getByRole('button', { name: JUMP_TO_BOTTOM_LABEL }).focus(),
+    );
+    await userEvent.keyboard('{Enter}');
+    expect(dock).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+  });
+
   it('leaves the focus alone after a click', async () => {
     const dock = dockWithBox();
     render(<JumpToBottom isShown onJump={jest.fn()} dock={dock} />);

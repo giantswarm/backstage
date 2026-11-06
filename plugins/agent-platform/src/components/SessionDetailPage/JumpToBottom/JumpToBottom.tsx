@@ -2,7 +2,7 @@ import { Button, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
 import { DOCK_HEIGHT_VAR } from '../useDockedComposerLayout';
-import { END_CHROME_ATTRIBUTE } from '../useJumpToBottom';
+import { END_CHROME_ATTRIBUTE } from '../hooks/useJumpToBottom';
 
 // The knobs. Everything a design iteration is likely to touch is here.
 
@@ -33,8 +33,37 @@ const ALIGN = 'center';
 /** How long it takes to fade in (ms); none under reduced motion. */
 const FADE_IN_MS = 150;
 
-/** The column's gap (`Flex gap="4"`), which the zero-height anchor gives back. */
-const COLUMN_GAP = 'var(--bui-space-4)';
+/**
+ * The conversation column's gap (its `Flex gap`), which the zero-height
+ * anchor gives back. The page's column uses this, so the two cannot drift.
+ */
+export const COLUMN_GAP = '4';
+
+/** What takes the focus in the dock when the button goes from under it. */
+const DOCK_FOCUS_TARGETS = [
+  // The composer's box.
+  'textarea:not(:disabled)',
+  // Else the first control: a question card's answers, a notice's button.
+  'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+];
+
+/**
+ * Move the focus on into the dock: its box, its first control, or the dock
+ * itself where it has neither — never the document's body, back at the top.
+ */
+function focusDock(dock: HTMLElement) {
+  for (const selector of DOCK_FOCUS_TARGETS) {
+    const target = dock.querySelector<HTMLElement>(selector);
+    if (target) {
+      target.focus({ preventScroll: true });
+      return;
+    }
+  }
+  if (!dock.hasAttribute('tabindex')) {
+    dock.setAttribute('tabindex', '-1');
+  }
+  dock.focus({ preventScroll: true });
+}
 
 const useStyles = makeStyles({
   // A zero-height strip right above the docked composer, sticky like it: the
@@ -45,7 +74,7 @@ const useStyles = makeStyles({
     bottom: `calc(var(${DOCK_HEIGHT_VAR}, 0px) + var(--agent-shell-mobile-bar-height, 0px))`,
     zIndex: 2,
     height: 0,
-    marginTop: `calc(-1 * ${COLUMN_GAP})`,
+    marginTop: `calc(-1 * var(--bui-space-${COLUMN_GAP}))`,
     display: 'flex',
     justifyContent: ALIGN,
     // Never the browser's scroll anchor: it moves with the view.
@@ -75,8 +104,8 @@ const useStyles = makeStyles({
  * Rendered as the column's child right before the dock, so it is the tab stop
  * before the composer. It is there only while there is something new below,
  * and a polite live region says so when it appears. Pressed from the
- * keyboard, the focus moves on to the composer's box, as the button goes away
- * under it.
+ * keyboard, the focus moves on into the dock — the composer's box, or what
+ * the dock offers instead — as the button goes away under it.
  */
 export function JumpToBottom({
   isShown,
@@ -85,7 +114,7 @@ export function JumpToBottom({
 }: {
   isShown: boolean;
   onJump: () => void;
-  /** The docked composer, whose box takes the focus after a key press. */
+  /** The docked composer, which takes the focus after a key press. */
   dock: HTMLElement | null;
 }) {
   const classes = useStyles();
@@ -104,12 +133,11 @@ export function JumpToBottom({
           onPress={event => {
             onJump();
             if (
-              event.pointerType === 'keyboard' ||
-              event.pointerType === 'virtual'
+              dock &&
+              (event.pointerType === 'keyboard' ||
+                event.pointerType === 'virtual')
             ) {
-              dock
-                ?.querySelector<HTMLElement>('textarea:not(:disabled)')
-                ?.focus({ preventScroll: true });
+              focusDock(dock);
             }
           }}
         >

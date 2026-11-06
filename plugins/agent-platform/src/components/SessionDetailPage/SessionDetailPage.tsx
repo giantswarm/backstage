@@ -123,12 +123,13 @@ import {
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
 import {
+  RESERVED_TURN_ATTRIBUTE,
   SessionTimeline,
   StreamLossPhase,
   TURN_RESERVE_VAR,
 } from '../SessionTimeline';
-import { JumpToBottom } from './JumpToBottom';
-import { END_CHROME_ATTRIBUTE, useJumpToBottom } from './useJumpToBottom';
+import { COLUMN_GAP, JumpToBottom } from './JumpToBottom';
+import { END_CHROME_ATTRIBUTE, useJumpToBottom } from './hooks/useJumpToBottom';
 import { SessionCostPopover } from '../SessionCostPopover';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
@@ -157,17 +158,12 @@ const CONTINUED_TITLE_PREFIX = 'Continued: ';
 const CONTINUED_TITLE_PATTERN = /^(?:Continued: )+/;
 
 /**
- * How long a message sent waits for its turn to show up before it is no
- * longer put at the top of the view (ms): the optimistic echo renders at
- * once, so this only drops a reveal whose turn never came.
+ * The room the turn just sent holds for its reply, from the view's height:
+ * the view, less the compact header, the dock and the shell's mobile bar
+ * under it, and the gaps between them.
  */
-const PENDING_REVEAL_MS = 10_000;
-
-/** The newest turn the timeline has on screen, by its position. */
-function newestTurnIndex(column: HTMLElement): number | undefined {
-  const turns = column.querySelectorAll<HTMLElement>('[data-turn-index]');
-  const newest = turns[turns.length - 1];
-  return newest ? Number(newest.dataset.turnIndex) : undefined;
+function turnReserve(viewHeight: string, gaps: number): string {
+  return `calc(${viewHeight} - var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) - var(${DOCK_HEIGHT_VAR}, 0px) - var(--agent-shell-mobile-bar-height, 0px) - ${gaps}px)`;
 }
 
 const useStyles = makeStyles(theme => ({
@@ -217,10 +213,14 @@ const useStyles = makeStyles(theme => ({
     fallbacks: {
       minHeight: `calc(100vh - var(${COLUMN_RESERVE_VAR}, 100vh))`,
     },
-    // The room the turn just sent holds for its reply: the view, less the
-    // compact header, the dock and the shell's mobile bar under it, and the
-    // gaps between them.
-    [TURN_RESERVE_VAR]: `calc(100dvh - var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) - var(${DOCK_HEIGHT_VAR}, 0px) - var(--agent-shell-mobile-bar-height, 0px) - ${theme.spacing(3)}px)`,
+    // The room the turn just sent holds for its reply (`turnReserve`). A
+    // custom property takes any value, so a `fallbacks` entry would never
+    // apply: where `dvh` is unknown, the `min-height` reading the variable
+    // would be invalid and hold no room. So `vh` unless `dvh` is supported.
+    [TURN_RESERVE_VAR]: turnReserve('100vh', theme.spacing(3)),
+    '@supports (height: 100dvh)': {
+      [TURN_RESERVE_VAR]: turnReserve('100dvh', theme.spacing(3)),
+    },
     // A control in the conversation that the browser scrolls into view — a
     // fold-out opened from the keyboard, a tab stop — lands clear of the dock
     // (and of the shell's mobile bottom bar under it), however tall a question
@@ -995,15 +995,16 @@ export function SessionDetailPage() {
   // session opens at its end, and a message sent is put at the top of the
   // view with room under it for the reply.
   const { hasNewBelow, jumpToBottom, openAtEnd, revealTurn, markReaderChange } =
-    useJumpToBottom(columnElement, dockElement);
+    useJumpToBottom(columnElement, dockElement, shownTimeline);
 
-  // The turn sent from this page: it holds the room its reply streams into
-  // (SessionTimeline's `reservedTurnIndex`). `pendingReveal` is the newest
-  // turn on screen when the message was sent, until the echo's turn shows up
-  // after it; `revealNext` the turn to put at the top once it holds its room.
-  const [reservedTurnIndex, setReservedTurnIndex] = useState<number>();
-  const pendingReveal = useRef<{ after: number; until: number } | null>(null);
-  const revealNext = useRef<number | null>(null);
+  // The message sent from this page's composer, by its `messageId`: its turn
+  // holds the room its reply streams into (SessionTimeline's
+  // `reservedMessageId`) and goes to the top of the view. `revealNextSend`
+  // says the next message that goes out is one; every send has an id of its
+  // own, so a message sent again after a failure is revealed again too.
+  const [reservedMessageId, setReservedMessageId] = useState<string>();
+  const revealNextSend = useRef(false);
+  const revealedMessageId = useRef<string>();
 
   // Adding or removing the work summaries around the place being read must
   // not move it: from the compact header the switch is pressed mid-session.
@@ -1012,7 +1013,7 @@ export function SessionDetailPage() {
     (show: boolean) => {
       captureReadingAnchor();
       // The summaries it adds or removes are the reader's change: they keep
-      // their place, and follow the end only if it is still in view.
+      // their place, and do not count as new content below.
       markReaderChange();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
@@ -1317,47 +1318,38 @@ export function SessionDetailPage() {
       return;
     }
     openedAtEndFor.current = sessionId;
-    pendingReveal.current = null;
-    revealNext.current = null;
-    setReservedTurnIndex(undefined);
+    revealNextSend.current = false;
+    setReservedMessageId(undefined);
     openAtEnd();
   }, [columnElement, isToolActivityKnown, sessionId, openAtEnd]);
 
-  // A message sent from here: once its turn is on screen, it takes the room
-  // for its reply, and then the top of the view. Before paint, so the echo
-  // never shows at the bottom first.
+  // A message sent from the composer: its echo is on screen with the same
+  // render that holds it as pending, so its turn takes the room for its
+  // reply, and then the top of the view. Before paint, so the echo never
+  // shows at the bottom first.
+  const pendingMessageId = send.pending?.messageId;
   useLayoutEffect(() => {
-    const pending = pendingReveal.current;
-    if (!pending || !columnElement) {
-      return;
+    if (pendingMessageId && revealNextSend.current) {
+      revealNextSend.current = false;
+      setReservedMessageId(pendingMessageId);
     }
-    if (performance.now() > pending.until) {
-      pendingReveal.current = null;
-      return;
-    }
-    const newest = newestTurnIndex(columnElement);
-    if (newest !== undefined && newest > pending.after) {
-      pendingReveal.current = null;
-      revealNext.current = newest;
-      setReservedTurnIndex(newest);
-    }
-  }, [shownTimeline, columnElement]);
+  }, [pendingMessageId]);
   useLayoutEffect(() => {
     if (
       !columnElement ||
-      reservedTurnIndex === undefined ||
-      revealNext.current !== reservedTurnIndex
+      !reservedMessageId ||
+      revealedMessageId.current === reservedMessageId
     ) {
       return;
     }
-    revealNext.current = null;
+    revealedMessageId.current = reservedMessageId;
     const turn = columnElement.querySelector<HTMLElement>(
-      `[data-turn-index="${reservedTurnIndex}"]`,
+      `[${RESERVED_TURN_ATTRIBUTE}]`,
     );
     if (turn) {
       revealTurn(turn);
     }
-  }, [columnElement, reservedTurnIndex, revealTurn]);
+  }, [columnElement, reservedMessageId, revealTurn]);
 
   // The loaded page's header from the first paint, with skeletons where the
   // read will fill in: the title and the badge row (T95).
@@ -1702,15 +1694,12 @@ export function SessionDetailPage() {
               // Errors are surfaced through the hook's `error`, which the composer
               // renders beside the text it hands back.
               // The optimistic echo's turn goes to the top of the view once
-              // it renders (see `pendingReveal`); a failed send drops it.
-              pendingReveal.current = {
-                after: columnElement
-                  ? (newestTurnIndex(columnElement) ?? -1)
-                  : -1,
-                until: performance.now() + PENDING_REVEAL_MS,
-              };
+              // it renders (see `reservedMessageId`); a failed send drops
+              // its room with the echo.
+              revealNextSend.current = true;
               send.sendMessage(text, images).catch(() => {
-                pendingReveal.current = null;
+                revealNextSend.current = false;
+                setReservedMessageId(undefined);
               });
             }}
           />
@@ -1923,7 +1912,7 @@ export function SessionDetailPage() {
         <Flex
           ref={setColumnElement}
           direction="column"
-          gap="4"
+          gap={COLUMN_GAP}
           className={classes.column}
         >
           {/* A refresh that failed after the page had loaded. Shown rather than
@@ -1967,7 +1956,7 @@ export function SessionDetailPage() {
               isAwaitingPerson={Boolean(
                 state && AWAITING_INPUT_STATES.has(state.key),
               )}
-              reservedTurnIndex={reservedTurnIndex}
+              reservedMessageId={reservedMessageId}
             />
           )}
 
