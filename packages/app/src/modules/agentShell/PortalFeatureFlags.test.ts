@@ -1,18 +1,30 @@
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis } from '@backstage/frontend-test-utils';
-import { isAgentShellOn } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  isAgentShellOn,
+  ORGANIZATIONS_FLAG,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_SHELL_FLAG } from './predicates';
 import { PortalFeatureFlags } from './PortalFeatureFlags';
 
 function flagsFor(
   portals: { platformPortal?: boolean; agentPlatform?: boolean } | undefined,
   states: Record<string, FeatureFlagState> = {},
+  organizationsEnabled?: boolean,
 ) {
   const inner = mockApis.featureFlags({ initialStates: states });
   inner.registerFlag({ name: AGENT_SHELL_FLAG, pluginId: 'app' });
+  inner.registerFlag({ name: ORGANIZATIONS_FLAG, pluginId: 'agent-platform' });
   inner.registerFlag({ name: 'other-flag', pluginId: 'app' });
   return new PortalFeatureFlags(
-    mockApis.config({ data: portals ? { app: { portals } } : {} }),
+    mockApis.config({
+      data: {
+        ...(portals && { app: { portals } }),
+        ...(organizationsEnabled !== undefined && {
+          agentPlatform: { organizations: { enabled: organizationsEnabled } },
+        }),
+      },
+    }),
     inner,
   );
 }
@@ -53,9 +65,50 @@ describe('PortalFeatureFlags', () => {
 
     expect(names(flagsFor(undefined))).toEqual([
       AGENT_SHELL_FLAG,
+      ORGANIZATIONS_FLAG,
       'other-flag',
     ]);
-    expect(names(flagsFor({ agentPlatform: true }))).toEqual(['other-flag']);
+    expect(names(flagsFor({ agentPlatform: true }))).toEqual([
+      ORGANIZATIONS_FLAG,
+      'other-flag',
+    ]);
+  });
+
+  it.each([FeatureFlagState.None, FeatureFlagState.Active])(
+    'keeps the browser organizations opt-in when deployment config is unset, state=%s',
+    state => {
+      const flags = flagsFor(undefined, { [ORGANIZATIONS_FLAG]: state });
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(
+        state === FeatureFlagState.Active,
+      );
+    },
+  );
+
+  it.each([
+    [false, FeatureFlagState.None],
+    [false, FeatureFlagState.Active],
+    [true, FeatureFlagState.None],
+    [true, FeatureFlagState.Active],
+  ])(
+    'uses deployment organizations=%s over browser state=%s',
+    (enabled, state) => {
+      const flags = flagsFor(
+        undefined,
+        { [ORGANIZATIONS_FLAG]: state },
+        enabled,
+      );
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(enabled);
+      flags.save({ states: { [ORGANIZATIONS_FLAG]: FeatureFlagState.Active } });
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(enabled);
+      expect(flags.getRegisteredFlags().map(flag => flag.name)).toEqual([
+        AGENT_SHELL_FLAG,
+        'other-flag',
+      ]);
+    },
+  );
+
+  it('keeps organizations off without deployment config or a browser opt-in', () => {
+    expect(flagsFor(undefined).isActive(ORGANIZATIONS_FLAG)).toBe(false);
   });
 
   it('latches the opt-in for render-time readers while the toggle keeps working', () => {

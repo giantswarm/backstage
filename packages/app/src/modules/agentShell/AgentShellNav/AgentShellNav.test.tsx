@@ -24,6 +24,7 @@ import { fakeInbox } from '../NotificationInbox/testing/fakeInbox';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
+const mockOrganizationsAvailable = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef, createSubRouteRef } = jest.requireActual(
@@ -35,6 +36,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const sessions = createRouteRef();
   return {
     ...fakeInboxPluginExports(),
+    useOrganizationsAvailable: () => mockOrganizationsAvailable(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     CommandPalette: ({
       renderTrigger,
@@ -90,6 +92,7 @@ async function renderNav({
   path = '/',
   profile = { displayName: 'Jane Doe', email: 'jane@example.com' },
   portals = { platformPortal: true, agentPlatform: true },
+  organizationsEnabled = false,
 }: {
   profile?: { displayName?: string; email?: string };
   bound?: boolean;
@@ -97,6 +100,7 @@ async function renderNav({
   isMobile?: boolean;
   path?: string;
   portals?: PortalsConfig;
+  organizationsEnabled?: boolean;
 } = {}) {
   await renderInTestApp(
     <RailWidthProvider>
@@ -134,6 +138,9 @@ async function renderNav({
           '/customize/connectors': musterPlugin.routes.mcpServers,
           '/customize/workflows': musterPlugin.routes.workflows,
           '/profile': agentPlatformPlugin.routes.profile,
+          ...(organizationsEnabled && {
+            '/organizations': agentPlatformPlugin.routes.organizations,
+          }),
         }),
       },
     },
@@ -153,9 +160,66 @@ beforeEach(() => {
   window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
+  mockOrganizationsAvailable.mockReturnValue(false);
 });
 
 describe('AgentShellNav', () => {
+  it.each([true, false])(
+    'shows Organizations when enabled and supported, pinned=%s',
+    async isPinned => {
+      mockOrganizationsAvailable.mockReturnValue(true);
+      await renderNav({ isPinned, organizationsEnabled: true });
+
+      expect(
+        screen.getByRole('link', { name: 'Organizations' }),
+      ).toHaveAttribute('href', '/organizations');
+    },
+  );
+
+  it('hides Organizations when no installation reports support', async () => {
+    await renderNav({ organizationsEnabled: true });
+
+    expect(
+      screen.queryByRole('link', { name: 'Organizations' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])(
+    'hides Organizations when its page is disabled, pinned=%s',
+    async isPinned => {
+      mockOrganizationsAvailable.mockReturnValue(true);
+      await renderNav({ isPinned });
+
+      expect(
+        screen.queryByRole('link', { name: 'Organizations' }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    'gates Organizations in the mobile profile menu, enabled=%s, supported=%s',
+    async (organizationsEnabled, supported) => {
+      mockOrganizationsAvailable.mockReturnValue(supported);
+      await renderNav({ isMobile: true, organizationsEnabled });
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+
+      const organization = within(await screen.findByRole('menu')).queryByRole(
+        'menuitem',
+        { name: 'Organizations' },
+      );
+      expect(organization?.getAttribute('href') ?? null).toBe(
+        organizationsEnabled && supported ? '/organizations' : null,
+      );
+    },
+  );
+
   it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
 
