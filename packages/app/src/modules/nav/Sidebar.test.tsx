@@ -20,6 +20,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     '@backstage/frontend-plugin-api',
   );
   return {
+    useOrganizationsAvailable: () => false,
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     agentPlatformPlugin: {
       routes: {

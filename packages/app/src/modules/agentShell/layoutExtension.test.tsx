@@ -37,6 +37,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
       },
     },
     RecentSessions: () => null,
+    useOrganizationsAvailable: () => false,
   };
 });
 

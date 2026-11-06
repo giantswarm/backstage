@@ -30,6 +30,7 @@ export const TEST_ORGANIZATIONS: OrganizationNamespace[] = [
 export const TEST_ORGANIZATION_DIRECTORY: OrganizationDirectoryValue = {
   directory: organizationDirectory(TEST_ORGANIZATIONS),
   installations: [],
+  discoveryErrors: [],
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},

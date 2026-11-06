@@ -29,22 +29,38 @@ function sentence(text: string): string {
  * agent-manager's words.
  */
 export function OrganizationsIndexPage() {
-  const { installations, organizationsOf, failureOf, isLoading } =
-    useOrganizationDirectory();
+  const {
+    installations,
+    discoveryErrors,
+    organizationsOf,
+    failureOf,
+    isLoading,
+  } = useOrganizationDirectory();
   const detailRoute = useRouteRef(organizationDetailRouteRef);
   const frame = { documentTitle: 'Organizations' };
+
+  const discoveryAlerts = discoveryErrors.map(message => (
+    <Alert
+      key={message}
+      status="warning"
+      title="Could not check organization availability"
+      description={message}
+    />
+  ));
 
   if (installations.length === 0) {
     return (
       <ShellPage title="Organizations" {...frame}>
-        {isLoading ? (
-          <ShellPageFactsSkeleton />
-        ) : (
-          <EmptyStateCard
-            title="Organizations are not available here"
-            description="No environment's agent-manager serves organizations to this portal yet."
-          />
-        )}
+        <Flex direction="column" gap="5">
+          {discoveryAlerts}
+          {isLoading && <ShellPageFactsSkeleton />}
+          {!isLoading && discoveryErrors.length === 0 && (
+            <EmptyStateCard
+              title="Organizations are not available here"
+              description="No environment's agent-manager serves organizations to this portal yet."
+            />
+          )}
+        </Flex>
       </ShellPage>
     );
   }
@@ -66,6 +82,7 @@ export function OrganizationsIndexPage() {
   return (
     <ShellPage title="Organizations" {...frame}>
       <Flex direction="column" gap="5">
+        {discoveryAlerts}
         {belongsNowhere && (
           <EmptyStateCard
             title="You belong to no organization"

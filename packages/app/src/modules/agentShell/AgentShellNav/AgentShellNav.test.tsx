@@ -24,6 +24,7 @@ import { fakeInbox } from '../NotificationInbox/testing/fakeInbox';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
+const mockOrganizationsAvailable = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef, createSubRouteRef } = jest.requireActual(
@@ -35,6 +36,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const sessions = createRouteRef();
   return {
     ...fakeInboxPluginExports(),
+    useOrganizationsAvailable: () => mockOrganizationsAvailable(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     CommandPalette: ({
       renderTrigger,
@@ -85,20 +87,20 @@ type PortalsConfig = { platformPortal?: boolean; agentPlatform?: boolean };
 
 async function renderNav({
   bound = true,
-  organizationsBound = false,
   isPinned = true,
   isMobile = false,
   path = '/',
   profile = { displayName: 'Jane Doe', email: 'jane@example.com' },
   portals = { platformPortal: true, agentPlatform: true },
+  organizationsEnabled = false,
 }: {
   profile?: { displayName?: string; email?: string };
   bound?: boolean;
-  organizationsBound?: boolean;
   isPinned?: boolean;
   isMobile?: boolean;
   path?: string;
   portals?: PortalsConfig;
+  organizationsEnabled?: boolean;
 } = {}) {
   await renderInTestApp(
     <RailWidthProvider>
@@ -136,7 +138,7 @@ async function renderNav({
           '/customize/connectors': musterPlugin.routes.mcpServers,
           '/customize/workflows': musterPlugin.routes.workflows,
           '/profile': agentPlatformPlugin.routes.profile,
-          ...(organizationsBound && {
+          ...(organizationsEnabled && {
             '/organizations': agentPlatformPlugin.routes.organizations,
           }),
         }),
@@ -158,50 +160,42 @@ beforeEach(() => {
   window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
+  mockOrganizationsAvailable.mockReturnValue(false);
 });
 
 describe('AgentShellNav', () => {
-  it.each([
+  describe.each([
     { isPinned: true, isMobile: false },
     { isPinned: false, isMobile: false },
     { isPinned: false, isMobile: true },
-  ])('puts Organizations in the profile menu, %j', async layout => {
-    await renderNav({ ...layout, organizationsBound: true });
+  ])('Organizations in the profile menu, %j', layout => {
+    it.each([
+      [false, false],
+      [false, true],
+      [true, false],
+      [true, true],
+    ])(
+      'requires enabled=%s and supported=%s',
+      async (organizationsEnabled, supported) => {
+        mockOrganizationsAvailable.mockReturnValue(supported);
+        await renderNav({ ...layout, organizationsEnabled });
 
-    expect(
-      screen.queryByRole('link', { name: 'Organizations' }),
-    ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('link', { name: 'Organizations' }),
+        ).not.toBeInTheDocument();
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Profile and settings' }),
+        );
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Profile and settings' }),
+        const organization = within(
+          await screen.findByRole('menu'),
+        ).queryByRole('menuitem', { name: 'Organizations' });
+        expect(organization?.getAttribute('href') ?? null).toBe(
+          organizationsEnabled && supported ? '/organizations' : null,
+        );
+      },
     );
-
-    expect(
-      within(await screen.findByRole('menu')).getByRole('menuitem', {
-        name: 'Organizations',
-      }),
-    ).toHaveAttribute('href', '/organizations');
   });
-
-  it.each([
-    { isPinned: true, isMobile: false },
-    { isPinned: false, isMobile: false },
-    { isPinned: false, isMobile: true },
-  ])(
-    'leaves an unbound Organizations page out of the profile menu, %j',
-    async layout => {
-      await renderNav(layout);
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Profile and settings' }),
-      );
-
-      expect(
-        within(await screen.findByRole('menu')).queryByRole('menuitem', {
-          name: 'Organizations',
-        }),
-      ).not.toBeInTheDocument();
-    },
-  );
 
   it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
