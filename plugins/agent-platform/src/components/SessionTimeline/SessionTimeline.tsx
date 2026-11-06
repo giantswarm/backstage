@@ -40,6 +40,14 @@ export const TURN_RESERVE_VAR = '--session-turn-reserve';
  */
 export const RESERVED_TURN_ATTRIBUTE = 'data-reserved-turn';
 
+/**
+ * Marks a row that says how the turn is going rather than what was said or
+ * done: "Working…", a lost stream being picked up, a stall. It appears,
+ * changes and goes with the turn's state, so the session page's jump button
+ * does not take it for new content (`useJumpToBottom`).
+ */
+export const STATUS_ROW_ATTRIBUTE = 'data-status-row';
+
 const useStyles = makeStyles(theme => ({
   // The turn the person just sent holds the room its reply streams into (see
   // `reservedMessageId`); the page sets the height, the view less its chrome.
@@ -366,7 +374,11 @@ export function SessionTimeline({
   let workingRow: ReactNode = null;
   if (stalledSince !== undefined) {
     workingRow = (
-      <div className={classes.stalled} role="status">
+      <div
+        className={classes.stalled}
+        role="status"
+        {...{ [STATUS_ROW_ATTRIBUTE]: '' }}
+      >
         <span className={classes.stalledText}>
           The agent last reported progress{' '}
           {/* The relative time ticks every minute: kept out of the live
@@ -392,7 +404,11 @@ export function SessionTimeline({
     );
   } else if (isAgentWorking) {
     workingRow = (
-      <div className={classes.working} aria-live="polite">
+      <div
+        className={classes.working}
+        aria-live="polite"
+        {...{ [STATUS_ROW_ATTRIBUTE]: '' }}
+      >
         <CircularProgress size={14} aria-hidden />
         {streamLost ? (
           <span className={classes.streamLostText}>

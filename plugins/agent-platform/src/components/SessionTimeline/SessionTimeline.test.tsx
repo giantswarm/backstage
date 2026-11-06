@@ -9,7 +9,11 @@ import {
   TimelineItem,
 } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import {
+  RECENT_TURNS,
+  STATUS_ROW_ATTRIBUTE,
+  SessionTimeline,
+} from './SessionTimeline';
 import { applyStreamEvent, createStreamTurn } from '../../lib/kagentStreamTurn';
 import {
   NOTICE_STALE,
@@ -1020,6 +1024,40 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
     expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
+  });
+});
+
+describe('status rows', () => {
+  // The session page's jump button skips these when it measures where the
+  // conversation ends: a spinner is not something new to read.
+  it.each([
+    ['Working…', { isAgentWorking: true }, 'Working…'],
+    [
+      'a lost stream',
+      { isAgentWorking: true, streamLost: 'reconnecting' as const },
+      /Reconnecting/,
+    ],
+    [
+      'a stall',
+      { stalledSince: Date.parse('2026-09-13T13:52:00Z') },
+      /last reported progress/,
+    ],
+  ])('marks %s as a status row', async (_row, props, text) => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        {...props}
+      />,
+    );
+
+    const row = document.querySelector(`[${STATUS_ROW_ATTRIBUTE}]`);
+    expect(row).toContainElement(screen.getByText(text));
+    // Only the row: no content of the conversation is inside it.
+    expect(document.querySelectorAll(`[${STATUS_ROW_ATTRIBUTE}]`)).toHaveLength(
+      1,
+    );
+    expect(row?.querySelector('[data-turn-index]')).toBeNull();
   });
 });
 

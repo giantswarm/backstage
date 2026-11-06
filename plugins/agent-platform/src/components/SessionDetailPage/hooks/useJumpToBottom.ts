@@ -9,7 +9,10 @@ import {
   isControl,
   isEditable,
 } from '../../../hooks/useStickToEnd';
-import { RESERVED_TURN_ATTRIBUTE } from '../../SessionTimeline';
+import {
+  RESERVED_TURN_ATTRIBUTE,
+  STATUS_ROW_ATTRIBUTE,
+} from '../../SessionTimeline';
 import { cssPx } from '../useDockedComposerLayout';
 
 /**
@@ -111,19 +114,44 @@ function rootVariable(name: string): number {
   );
 }
 
-/** Where the newest content ends, in viewport coordinates. */
+/**
+ * Where the last content in `parent` ends, in viewport coordinates: the last
+ * child that is neither chrome nor a status row, looked into where a status
+ * row is inside it. Undefined where there is none.
+ */
+function lastContentBottom(parent: Element): number | undefined {
+  for (let i = parent.children.length - 1; i >= 0; i--) {
+    const child = parent.children[i];
+    if (
+      child.hasAttribute(END_CHROME_ATTRIBUTE) ||
+      child.hasAttribute(STATUS_ROW_ATTRIBUTE)
+    ) {
+      continue;
+    }
+    if (child.querySelector(`[${STATUS_ROW_ATTRIBUTE}]`)) {
+      const inner = lastContentBottom(child);
+      if (inner !== undefined) {
+        return inner;
+      }
+      continue;
+    }
+    return child.getBoundingClientRect().bottom;
+  }
+  return undefined;
+}
+
+/**
+ * Where the newest content ends, in viewport coordinates. A status row —
+ * "Working…", a stall — is not content: it appearing, growing or going does
+ * not move the end.
+ */
 function contentEnd(column: Element): number {
   const reserved = column.querySelector(`[${RESERVED_TURN_ATTRIBUTE}]`);
-  if (reserved?.lastElementChild) {
-    return reserved.lastElementChild.getBoundingClientRect().bottom;
-  }
-  for (let i = column.children.length - 1; i >= 0; i--) {
-    const child = column.children[i];
-    if (!child.hasAttribute(END_CHROME_ATTRIBUTE)) {
-      return child.getBoundingClientRect().bottom;
-    }
-  }
-  return column.getBoundingClientRect().top;
+  return (
+    (reserved && lastContentBottom(reserved)) ??
+    lastContentBottom(column) ??
+    column.getBoundingClientRect().top
+  );
 }
 
 function scrollingElement(): Element {
@@ -206,7 +234,8 @@ function scrollsThePage(event: Event): boolean {
  * - Nothing else scrolls: not a streamed token, a second message, tool
  *   activity, a new turn, and not while the reader is at the end either.
  *   Content that grows below the visible part sets `hasNewBelow`, the jump
- *   button's cue; the reader reaching the end themselves — scrolling, End,
+ *   button's cue — content, not a status row ("Working…", a stall) coming,
+ *   changing or going; the reader reaching the end themselves — scrolling, End,
  *   `jumpToBottom` — clears it.
  * - A change the reader makes (`markReaderChange`, the conversation's
  *   disclosures, a window made narrower or wider) is not new content.

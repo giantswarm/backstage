@@ -1606,7 +1606,11 @@ what grows inside the sent turn's room, and not when the reader changed it:
 disclosures in the conversation (`aria-expanded` — _Show more_, the tool activity rows — and
 markdown `<summary>` folds) as they are pressed, a control elsewhere that calls
 `markReaderChange` (the tool activity switch), and the window getting
-narrower or wider. Label,
+narrower or wider. Status rows are not content: the conversation's end is
+measured above the Working row, a lost stream's row and a stall
+(`SessionTimeline`'s `STATUS_ROW_ATTRIBUTE`), so the button waits for reply
+text, a tool call or another item, not for a spinner appearing, changing or
+moving. Label,
 size, colour and position are constants at the top of
 `JumpToBottom/JumpToBottom.tsx`.
 

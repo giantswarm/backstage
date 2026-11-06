@@ -1,6 +1,9 @@
 import { act, fireEvent, render } from '@testing-library/react';
-import { useCallback, useState } from 'react';
-import { RESERVED_TURN_ATTRIBUTE } from '../../SessionTimeline';
+import { ReactNode, useCallback, useState } from 'react';
+import {
+  RESERVED_TURN_ATTRIBUTE,
+  STATUS_ROW_ATTRIBUTE,
+} from '../../SessionTimeline';
 import {
   END_CHROME_ATTRIBUTE,
   JUMP_MAX_MS,
@@ -110,14 +113,16 @@ describe('afterScroll', () => {
 
 /**
  * A page laid out by hand, since jsdom lays nothing out: a view of `view` px,
- * a conversation `content` px tall from the document's top, and a 100px dock
- * stuck to the view's bottom edge (at rest under the content at the end).
+ * a conversation `content` px tall from the document's top, whose last
+ * `status` px are a status row ("Working…"), and a 100px dock stuck to the
+ * view's bottom edge (at rest under the content at the end).
  * `top` is clamped like a browser's.
  */
 function fakePage() {
   const page = {
     top: 0,
     content: 2000,
+    status: 0,
     dock: 100,
     view: 800,
   };
@@ -172,8 +177,10 @@ function fakePage() {
     page,
     scrollTo,
     scrollBy,
-    /** The content's bottom, as the element's rect reports it. */
-    contentBottom: () => page.content - page.top,
+    /** The newest content's bottom, as the element's rect reports it. */
+    contentBottom: () => page.content - page.status - page.top,
+    /** The bottom of the conversation, status row and all. */
+    conversationBottom: () => page.content - page.top,
     /** The dock's top: stuck at the view's bottom, or at rest at the end. */
     dockTop: () => Math.min(page.view - page.dock, page.content - page.top),
     /**
@@ -181,7 +188,9 @@ function fakePage() {
      * column (and every observer) otherwise.
      */
     resize(
-      changes: Partial<Pick<typeof page, 'content' | 'dock' | 'view'>>,
+      changes: Partial<
+        Pick<typeof page, 'content' | 'status' | 'dock' | 'view'>
+      >,
       resized?: Element,
     ) {
       Object.assign(page, changes);
@@ -209,12 +218,15 @@ function Harness({
   onApi,
   conversation,
   reserved = false,
+  working = false,
 }: {
   fake: ReturnType<typeof fakePage>;
   onApi: (api: Api) => void;
   conversation: unknown;
   /** The newest content is inside a turn that holds room for its reply. */
   reserved?: boolean;
+  /** A "Working…" row follows the newest content, as tall as `status`. */
+  working?: boolean;
 }) {
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
@@ -227,6 +239,30 @@ function Harness({
           ({
             top: fake.contentBottom() - 10,
             bottom: fake.contentBottom(),
+          }) as DOMRect;
+      }
+    },
+    [fake],
+  );
+  const statusRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element) {
+        element.getBoundingClientRect = () =>
+          ({
+            top: fake.contentBottom(),
+            bottom: fake.conversationBottom(),
+          }) as DOMRect;
+      }
+    },
+    [fake],
+  );
+  const listRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element) {
+        element.getBoundingClientRect = () =>
+          ({
+            top: -fake.page.top,
+            bottom: fake.conversationBottom(),
           }) as DOMRect;
       }
     },
@@ -249,21 +285,37 @@ function Harness({
     },
     [fake],
   );
-  const content = (
+  const newest = (
     <div ref={contentRef} data-testid="newest">
       <button aria-expanded="false">Show more</button>
     </div>
   );
+  const status = working && (
+    <div ref={statusRef} {...{ [STATUS_ROW_ATTRIBUTE]: '' }}>
+      Working…
+    </div>
+  );
+  let content: ReactNode = newest;
+  if (reserved) {
+    content = (
+      <div {...{ [RESERVED_TURN_ATTRIBUTE]: '' }}>
+        <p>The message sent</p>
+        {newest}
+        {status}
+      </div>
+    );
+  } else if (working) {
+    // As the timeline lays it out: the row after the turns, inside the list.
+    content = (
+      <div ref={listRef}>
+        {newest}
+        {status}
+      </div>
+    );
+  }
   return (
     <div ref={setColumn}>
-      {reserved ? (
-        <div {...{ [RESERVED_TURN_ATTRIBUTE]: '' }}>
-          <p>The message sent</p>
-          {content}
-        </div>
-      ) : (
-        content
-      )}
+      {content}
       <div {...{ [END_CHROME_ATTRIBUTE]: '' }} />
       <div {...{ [END_CHROME_ATTRIBUTE]: '' }} ref={dockRef}>
         <textarea aria-label="Message" />
@@ -283,7 +335,7 @@ describe('useJumpToBottom', () => {
   };
 
   /** Mounts the page; `converse` gives it the conversation as it changes. */
-  const mount = (options: { reserved?: boolean } = {}) => {
+  const mount = (options: { reserved?: boolean; working?: boolean } = {}) => {
     const { rerender, unmount } = render(
       <Harness
         fake={fake}
@@ -354,7 +406,7 @@ describe('useJumpToBottom', () => {
 
   describe('once open', () => {
     let opened: ReturnType<typeof mount>;
-    const setUp = (options: { reserved?: boolean } = {}) => {
+    const setUp = (options: { reserved?: boolean; working?: boolean } = {}) => {
       opened = mount(options);
       act(() => api.openAtEnd());
       // The first streamed token: the open has settled.
@@ -572,6 +624,35 @@ describe('useJumpToBottom', () => {
         expect(turn.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
         expect(api.hasNewBelow).toBe(false);
         turn.remove();
+      });
+    });
+
+    describe.each([
+      ['after the turns', { working: true }],
+      [
+        'inside the turn that holds room for the reply',
+        { working: true, reserved: true },
+      ],
+    ])('with a Working row %s', (_where, options) => {
+      beforeEach(() => setUp(options));
+
+      it('does not take the row appearing, growing or moving for new content', () => {
+        fake.scroll(300);
+        // The row appears below the view, then turns into a taller stall
+        // notice with a button that wraps, then shifts down a little.
+        fake.resize({ content: 2040, status: 40 });
+        expect(api.hasNewBelow).toBe(false);
+        fake.resize({ content: 2090, status: 90 });
+        expect(api.hasNewBelow).toBe(false);
+        fake.resize({ content: 2060, status: 60 });
+        expect(api.hasNewBelow).toBe(false);
+        expect(fake.page.top).toBe(300);
+      });
+
+      it('takes the reply that arrives above the row for new content', () => {
+        fake.resize({ content: 2040, status: 40 });
+        fake.resize({ content: 2100 });
+        expect(api.hasNewBelow).toBe(true);
       });
     });
 
