@@ -131,11 +131,7 @@ export function ProfileMenu({
 }: {
   item: AgentShellNavItem;
   layout: RailLayout;
-  /**
-   * Nav items that live in this menu rather than beside it — on a phone the
-   * bottom bar holds five items, and Usage and the Platform Portal cross-link
-   * move in here (T22 D1).
-   */
+  /** Destinations shown inside the Profile menu. */
   menuItems?: AgentShellNavItem[];
 }) {
   const classes = useStyles();

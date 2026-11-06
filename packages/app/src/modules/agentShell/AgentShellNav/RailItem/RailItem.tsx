@@ -26,7 +26,7 @@ export function RailItem({
 }: {
   item: AgentShellNavItem;
   layout: RailLayout;
-  /** For the Profile menu: the items that moved into it (phone bar, T22 D1). */
+  /** Destinations shown inside the Profile menu. */
   menuItems?: AgentShellNavItem[];
 }) {
   const barClasses = useBarItemStyles();
