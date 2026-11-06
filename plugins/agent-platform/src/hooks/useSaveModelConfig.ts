@@ -21,7 +21,7 @@ import {
   modelConfigOwner,
   planKeySecret,
 } from '../lib/modelConfigs';
-import { defaultClaimsIn, planDefaultMove } from '../lib/defaultModel';
+import { markedIn, planDefaultMove } from '../lib/defaultModel';
 import {
   invalidateModelReads,
   readNamespaceModelConfigs,
@@ -77,7 +77,7 @@ export type SaveModelConfigResult = {
  * resolve on its first look.
  *
  * A create carries the namespace's default mark when no model there claims
- * the default (`defaultClaimsIn`), read fresh, or when `makeDefault` asks
+ * the default (`markedIn`), read fresh, or when `makeDefault` asks
  * for it; then the mark comes off the
  * model that had it (`planDefaultMove`, which refuses a mark the form did not
  * show). An edit leaves the mark as it is.
@@ -131,8 +131,7 @@ export function useSaveModelConfig() {
           });
           markDefault = true;
         } else {
-          markDefault =
-            defaultClaimsIn(items, namespace, directory).length === 0;
+          markDefault = markedIn(items, namespace).length === 0;
         }
       }
       let createdSecret = false;
