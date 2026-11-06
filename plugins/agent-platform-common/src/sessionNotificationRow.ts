@@ -8,9 +8,9 @@ import { SessionStateEntry } from './kagent/kagentSessionStates';
 
 /**
  * How much a person wants to hear about one session: `default`, labelled
- * **When action is required** (Waiting and Failed), `all`, labelled **Also
- * when a turn finishes** (adds Turn finished) or `muted`, labelled **Muted**
- * (nothing). A session with no stored level is at `default`.
+ * **When action is required** (Waiting and Failed), **All activity** (adds
+ * Turn finished) or **Muted** (nothing). A session with no stored level is at
+ * `default`.
  */
 export const NOTIFICATION_LEVELS = ['default', 'all', 'muted'] as const;
 
@@ -103,7 +103,7 @@ export function sessionNotificationRowId(
  * - Failed (`failed`, `rejected`, or a failed instance): a Failed row, for a
  *   portal-started session.
  * - Turn finished (`completed`): a Turn finished row, for a portal-started
- *   session at `all`.
+ *   session at All activity.
  * - Anything else — working, `canceled`, an unknown state, never run: no row.
  *
  * The state is read with the same parser and state sets the rail uses, so the

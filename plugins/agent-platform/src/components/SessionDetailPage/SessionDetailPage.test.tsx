@@ -3827,9 +3827,7 @@ describe('SessionDetailPage', () => {
       ).toHaveAttribute('aria-checked', 'true');
 
       await userEvent.click(
-        screen.getByRole('menuitemradio', {
-          name: 'When action is required or a turn finishes',
-        }),
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
       );
       await waitFor(() =>
         expect(lastProvidedActions().props.notifications.level).toBe('all'),
@@ -3846,9 +3844,7 @@ describe('SessionDetailPage', () => {
       await renderHeaderMenu();
       await openNotifications();
       expect(
-        screen.getByRole('menuitemradio', {
-          name: 'When action is required or a turn finishes',
-        }),
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
       ).toHaveAttribute('aria-checked', 'true');
       expect(
         screen.getByRole('menuitemradio', { name: 'When action is required' }),

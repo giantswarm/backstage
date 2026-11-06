@@ -1904,7 +1904,7 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   own `session-states` read through the row rule
   (`deriveSessionNotificationRow`, agent-platform-common) with the session's
   Notification level and origin: Waiting (any session), Failed and Turn
-  finished (portal-started sessions, the latter at `all` only). A row
+  finished (portal-started sessions, the latter at All activity only). A row
   shows the agent's Avatar and Display name, the event, the session's name,
   its age, a failure's reason class and a state chip (Waiting, Failed,
   Finished), newest first. Clicking a row opens the session and marks it
@@ -2096,11 +2096,10 @@ The row appears, with a toast, through the signal. Send it again with the same
 ### Notification level and the notification record
 
 The actions menu (on the page and on each Sessions-list row) has a
-**Notifications** submenu with three levels, the current one ticked, each
-labelled by when it notifies: **When action is required** (`default`, the
-level of a session without a stored one) when the session waits for the
-person or fails; **When action is required or a turn finishes** (`all`) in
-addition when a turn finishes; **Muted** (`muted`) never. The submenu
+**Notifications** submenu: When action is required, All activity or Muted,
+the current one ticked. When action is required (`default`, the level of a
+session without a stored one) notifies when the session waits for the person
+or fails; All activity also when a turn finishes; Muted never. The submenu
 opens beside the menu, towards the page, and over it on a phone. The composer
 has no control.
 

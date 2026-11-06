@@ -65,7 +65,7 @@ describe('deriveSessionNotificationRow', () => {
       ['failed', 'all', false, undefined],
       ['rejected', 'default', false, undefined],
 
-      // Turn finished: portal-started sessions at `all` only.
+      // Turn finished: portal-started sessions at All activity only.
       ['completed', 'all', true, 'turn-finished'],
       ['completed', 'default', true, undefined],
       ['completed', undefined, true, undefined],

@@ -428,17 +428,13 @@ describe('SessionActionsMenu — Notifications', () => {
   it.each`
     level        | ticked
     ${'default'} | ${'When action is required'}
-    ${'all'}     | ${'When action is required or a turn finishes'}
+    ${'all'}     | ${'All activity'}
     ${'muted'}   | ${'Muted'}
   `('ticks $ticked for a session at $level', async ({ level, ticked }) => {
     await renderWithLevel(level);
     await openNotifications();
 
-    for (const name of [
-      'When action is required',
-      'When action is required or a turn finishes',
-      'Muted',
-    ]) {
+    for (const name of ['When action is required', 'All activity', 'Muted']) {
       expect(levelItem(name)).toHaveAttribute(
         'aria-checked',
         String(name === ticked),
@@ -450,11 +446,7 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel(undefined);
     await openNotifications();
 
-    for (const name of [
-      'When action is required',
-      'When action is required or a turn finishes',
-      'Muted',
-    ]) {
+    for (const name of ['When action is required', 'All activity', 'Muted']) {
       expect(levelItem(name)).toHaveAttribute('aria-checked', 'false');
     }
   });
@@ -488,17 +480,13 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('default', onChange);
     await openNotifications();
 
-    await userEvent.click(
-      levelItem('When action is required or a turn finishes'),
-    );
+    await userEvent.click(levelItem('All activity'));
     await waitFor(() =>
       expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
     );
     await openNotifications();
 
-    expect(
-      levelItem('When action is required or a turn finishes'),
-    ).toHaveAttribute('aria-checked', 'true');
+    expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true');
     expect(levelItem('When action is required')).toHaveAttribute(
       'aria-checked',
       'false',
@@ -506,9 +494,7 @@ describe('SessionActionsMenu — Notifications', () => {
 
     finishWrite();
     await waitFor(() =>
-      expect(
-        levelItem('When action is required or a turn finishes'),
-      ).toHaveAttribute('aria-checked', 'true'),
+      expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true'),
     );
   });
 
@@ -527,9 +513,7 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('all', onChange);
     await openNotifications();
 
-    await userEvent.click(
-      levelItem('When action is required or a turn finishes'),
-    );
+    await userEvent.click(levelItem('All activity'));
 
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -539,9 +523,7 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('default', onChange);
     await openNotifications();
 
-    await userEvent.click(
-      levelItem('When action is required or a turn finishes'),
-    );
+    await userEvent.click(levelItem('All activity'));
 
     await waitFor(() =>
       expect(mockToastPost).toHaveBeenCalledWith(

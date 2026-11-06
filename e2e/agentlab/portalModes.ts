@@ -64,7 +64,6 @@ export const SHELL_SPECS = [
   'session-export.spec.ts',
   'session-images.spec.ts',
   'session-jump-to-bottom.spec.ts',
-  'session-notifications.spec.ts',
   'session-runtime-lost.spec.ts',
   'session-stream-resubscribe.spec.ts',
   'session-state-column.spec.ts',

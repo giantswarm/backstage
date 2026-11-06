@@ -37,15 +37,10 @@ import {
 /** Long enough to read one line, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
-/**
- * The Notifications submenu's choices, in the order the menu lists them. Each
- * is a radio read on its own, so each label says when its level notifies in
- * full; what each level notifies is the row rule's,
- * `deriveSessionNotificationRow` (agent-platform-common).
- */
+/** The Notifications submenu's choices, in the order the menu lists them. */
 const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
   ['default', 'When action is required'],
-  ['all', 'When action is required or a turn finishes'],
+  ['all', 'All activity'],
   ['muted', 'Muted'],
 ];
 
@@ -128,10 +123,10 @@ export function SessionActionsMenu({
   pin?: { isPinned: boolean; onToggle: () => void };
   /**
    * The session's Notification level and its setter, for the menu's
-   * Notifications submenu (`NOTIFICATION_LEVEL_LABELS`, the current one
-   * ticked). `level` is undefined until the stored level has been read, and
-   * then nothing is ticked. A failed write is reported here, in a toast.
-   * Absent: no Notifications item.
+   * Notifications submenu (When action is required / All activity / Muted,
+   * the current one ticked). `level` is undefined until the stored level has
+   * been read, and then nothing is ticked. A failed write is reported here, in
+   * a toast. Absent: no Notifications item.
    */
   notifications?: SessionNotificationsControl;
   /**
