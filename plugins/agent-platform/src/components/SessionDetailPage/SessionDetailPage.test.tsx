@@ -3823,7 +3823,7 @@ describe('SessionDetailPage', () => {
       const menu = await renderHeaderMenu();
       await openNotifications();
       expect(
-        screen.getByRole('menuitemradio', { name: 'Default' }),
+        screen.getByRole('menuitemradio', { name: 'When action is required' }),
       ).toHaveAttribute('aria-checked', 'true');
 
       await userEvent.click(
@@ -3847,7 +3847,7 @@ describe('SessionDetailPage', () => {
         screen.getByRole('menuitemradio', { name: 'All activity' }),
       ).toHaveAttribute('aria-checked', 'true');
       expect(
-        screen.getByRole('menuitemradio', { name: 'Default' }),
+        screen.getByRole('menuitemradio', { name: 'When action is required' }),
       ).toHaveAttribute('aria-checked', 'false');
     });
 

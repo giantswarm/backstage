@@ -2096,10 +2096,12 @@ The row appears, with a toast, through the signal. Send it again with the same
 ### Notification level and the notification record
 
 The actions menu (on the page and on each Sessions-list row) has a
-**Notifications** submenu: Default, All activity or Muted, the current one
-ticked. Default notifies when the session waits for the person or fails; All
-activity also when a turn finishes; Muted never. The submenu opens beside the
-menu, towards the page, and over it on a phone. The composer has no control.
+**Notifications** submenu: When action is required, All activity or Muted,
+the current one ticked. When action is required (`default`, the level of a
+session without a stored one) notifies when the session waits for the person
+or fails; All activity also when a turn finishes; Muted never. The submenu
+opens beside the menu, towards the page, and over it on a phone. The composer
+has no control.
 
 The level lives in the person's **notification record**
 (`lib/notificationRecord.ts`, `hooks/useSessionNotificationRecord.ts`), kept in
@@ -2109,8 +2111,8 @@ never touch the rare ones:
 - `sessionNotificationSettings`: per `${installation}/${sessionId}`, `origin:
 'portal'` when the portal's `start_session` started it (`useCreateSession`
   writes it on success; kagent's Session names no starting surface) and the
-  level (`all` or `muted`; absent is Default). Muting a session without an
-  entry creates one without making it portal-started; Default drops an entry
+  level (`all` or `muted`; absent is `default`). Muting a session without an
+  entry creates one without making it portal-started; `default` drops an entry
   that held only the level.
 - `notificationSeenMarks`: per session, and per installation for its MCP
   sign-in row, the mark of the last row the person has seen. The mark is the
