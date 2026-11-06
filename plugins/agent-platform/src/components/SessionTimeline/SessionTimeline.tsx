@@ -28,7 +28,24 @@ import {
 import { AgentAvatar } from '../AgentAvatar';
 import type { EgressRemedyFor } from '../../lib/egressRemedy';
 
+/**
+ * CSS variable, set by the page around the timeline: the height the reserved
+ * turn takes at least (see `reservedTurnIndex`).
+ */
+export const TURN_RESERVE_VAR = '--session-turn-reserve';
+
+/**
+ * Marks the reserved turn (see `reservedTurnIndex`): it is taller than what it
+ * holds, so its newest content is its last child, not its own bottom.
+ */
+export const RESERVED_TURN_ATTRIBUTE = 'data-reserved-turn';
+
 const useStyles = makeStyles(theme => ({
+  // The turn the person just sent holds the room its reply streams into (see
+  // `reservedTurnIndex`); the page sets the height, the view less its chrome.
+  reservedTurn: {
+    minHeight: `var(${TURN_RESERVE_VAR}, 0px)`,
+  },
   turnMarker: {
     display: 'flex',
     alignItems: 'center',
@@ -229,6 +246,15 @@ export type SessionTimelineProps = {
    * approval stays in sight with tool activity hidden.
    */
   isAwaitingPerson?: boolean;
+  /**
+   * The turn the person just sent from this page, by its position in the
+   * session's turns. While it is the newest turn on screen it is at least
+   * {@link TURN_RESERVE_VAR} tall, with the "Working…" row inside it, so the
+   * page can put it at the top of the view and the reply streams into the
+   * room below without the page moving. It carries
+   * `data-reserved-turn`, as its newest content is not its bottom.
+   */
+  reservedTurnIndex?: number;
 };
 
 /**
@@ -254,6 +280,7 @@ export function SessionTimeline({
   connectorOf,
   showToolActivity = true,
   isAwaitingPerson = false,
+  reservedTurnIndex,
 }: SessionTimelineProps) {
   const classes = useStyles();
 
@@ -406,6 +433,31 @@ export function SessionTimeline({
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
   const egressSettings = { agentName, remedyFor: egressRemedyFor };
+
+  // The turns on screen, with what each shows. The position in the whole
+  // session, not in the window: keys, the newest-turn test and the scroll
+  // anchor all have to survive the window moving. A turn of nothing but work
+  // (resumed by a decision with no words, say) leaves no marker standing over
+  // nothing. Its number stays taken, so the turns around it keep theirs.
+  const shownTurns = turns
+    .slice(firstShown)
+    .map((turn, offset) => {
+      const allSegments = segmentTurn(turn.items);
+      const segments = showToolActivity
+        ? allSegments
+        : allSegments.filter(segment =>
+            isConversationSegment(segment, openApproval),
+          );
+      return { turn, turnIndex: firstShown + offset, segments };
+    })
+    .filter(({ segments }) => segments.length > 0);
+  // Reserved only while it is the newest turn on screen: a later turn (sent
+  // from elsewhere) takes the end, and the room goes.
+  const reservedTurn =
+    reservedTurnIndex !== undefined &&
+    shownTurns[shownTurns.length - 1]?.turnIndex === reservedTurnIndex
+      ? reservedTurnIndex
+      : undefined;
   const renderEntry = (item: TimelineItem, technical = false) => {
     const messageKey =
       item.kind === 'user-message' ? (item.messageId ?? item.id) : undefined;
@@ -451,24 +503,9 @@ export function SessionTimeline({
         </Flex>
       )}
 
-      {turns.slice(firstShown).map((turn, offset) => {
-        // The position in the whole session, not in the window: keys, the
-        // newest-turn test and the scroll anchor all have to survive the
-        // window moving.
-        const turnIndex = firstShown + offset;
+      {shownTurns.map(({ turn, turnIndex, segments }) => {
         const isLastTurn = turnIndex === turns.length - 1;
-        const allSegments = segmentTurn(turn.items);
-        const segments = showToolActivity
-          ? allSegments
-          : allSegments.filter(segment =>
-              isConversationSegment(segment, openApproval),
-            );
-        // A turn of nothing but work (resumed by a decision with no words,
-        // say) leaves no marker standing over nothing. Its number stays
-        // taken, so the turns around it keep theirs.
-        if (segments.length === 0) {
-          return null;
-        }
+        const isReserved = turnIndex === reservedTurn;
         // The agent's side of the turn opens with its name and face, once —
         // everything until the next user bubble is then implicitly the agent's.
         const entries: ReactNode[] = [];
@@ -528,6 +565,8 @@ export function SessionTimeline({
             direction="column"
             gap="3"
             data-turn-index={turnIndex}
+            className={isReserved ? classes.reservedTurn : undefined}
+            {...(isReserved ? { [RESERVED_TURN_ATTRIBUTE]: '' } : {})}
           >
             {/* Absolute, not relative: every turn of a session usually falls on
                 the same day, so the relative form printed "1 day ago" three times
@@ -552,10 +591,11 @@ export function SessionTimeline({
               <span className={classes.rule} />
             </div>
             {entries}
+            {isReserved && workingRow}
           </Flex>
         );
       })}
-      {workingRow}
+      {reservedTurn === undefined && workingRow}
     </Flex>
   );
 }

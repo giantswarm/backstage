@@ -986,6 +986,56 @@ describe('SessionDetailPage', () => {
     });
   });
 
+  describe('sending', () => {
+    const original = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    beforeEach(() => {
+      scrollIntoView.mockReset();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    it('puts the message sent at the top of the view, with room for its reply', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      // The send hook's optimistic echo, from the next render on.
+      mockSendMessage.mockImplementation(() => {
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            pending: { messageId: 'pending-1', text: 'and the staging one?' },
+          }),
+        );
+        return new Promise(() => {});
+      });
+      await render();
+      await screen.findByTestId('session-dock');
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Message' }),
+        'and the staging one?',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      // Something renders the page again, and the echo with it.
+      setChatGpt({ ...NO_CHATGPT });
+
+      const turn = (await screen.findByText('and the staging one?')).closest(
+        '[data-turn-index]',
+      );
+      expect(turn).toHaveAttribute('data-reserved-turn');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(turn);
+      // Nothing new below: the reply is to come.
+      expect(
+        screen.queryByRole('button', { name: 'Jump to bottom' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('renaming', () => {
     it('makes the title a way in, not just a label', async () => {
       // The kebab is the discoverable route; the title is the obvious one. It is a

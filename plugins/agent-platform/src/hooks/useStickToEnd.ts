@@ -128,7 +128,7 @@ function goesToEnd(event: KeyboardEvent): boolean {
  */
 const TOGGLES = '[aria-expanded], summary';
 
-function closestToggle(target: EventTarget | null): Element | null {
+export function closestToggle(target: EventTarget | null): Element | null {
   return target instanceof Element ? target.closest(TOGGLES) : null;
 }
 
@@ -188,8 +188,9 @@ function staysInside(target: EventTarget | null, scroller: Element): boolean {
  * position is left alone until they come back to the end.
  *
  * `scroller` is what scrolls — `'document'` for a page that scrolls the
- * document (the session page), or a scroll box (the Create agent assist
- * panel; `null` until it mounts) — and `content` what grows inside it.
+ * document, or a scroll box (the Create agent assist panel; `null` until it
+ * mounts) — and `content` what grows inside it. The session page does not
+ * stick to the end: see `useJumpToBottom`.
  *
  * Whether the reader follows the end is decided by what *they* do, not by
  * how far from the end the view happens to be when content arrives: moving up

@@ -16,6 +16,7 @@ import {
   sessionWithNotices,
 } from '../../lib/__fixtures__/workspaceNotice';
 import { TimelineEntry } from './TimelineEntry';
+import { groupIntoTurns } from './helpers';
 
 import {
   attachmentPngV2,
@@ -1930,5 +1931,43 @@ describe('workspace setup notices', () => {
     expect(
       screen.queryByTestId('timeline-agent-message'),
     ).not.toBeInTheDocument();
+  });
+
+  describe('the turn the person just sent', () => {
+    const renderReserved = async (reservedTurnIndex: number) => {
+      const timeline = timelineFor(tasksV099);
+      await renderInTestApp(
+        <SessionTimeline
+          timeline={timeline}
+          agentName="Issue tracker"
+          isAgentWorking
+          reservedTurnIndex={reservedTurnIndex}
+        />,
+      );
+      const turns = document.querySelectorAll<HTMLElement>('[data-turn-index]');
+      return { turns, newest: turns[turns.length - 1] };
+    };
+
+    it('holds the room for its reply, with the Working row inside it', async () => {
+      const newestIndex =
+        groupIntoTurns(timelineFor(tasksV099).items).length - 1;
+      const { turns, newest } = await renderReserved(newestIndex);
+      expect(newest).toHaveAttribute('data-reserved-turn');
+      expect(
+        [...turns].filter(turn => turn.hasAttribute('data-reserved-turn')),
+      ).toHaveLength(1);
+      expect(within(newest).getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('holds no room once a later turn is the newest', async () => {
+      const { turns, newest } = await renderReserved(0);
+      expect(turns.length).toBeGreaterThan(1);
+      for (const turn of turns) {
+        expect(turn).not.toHaveAttribute('data-reserved-turn');
+      }
+      // The Working row stays after the conversation, as without a reserve.
+      expect(within(newest).queryByText('Working…')).not.toBeInTheDocument();
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
   });
 });

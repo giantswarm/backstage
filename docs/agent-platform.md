@@ -1564,28 +1564,47 @@ paints them, and the shell's accent (`#009fff`) fails contrast under white
 text; move the bubble when Send moves. Agent prose is GFM
 markdown. JSON inside result strings is inlined.
 
-**The page sticks to the end** (`hooks/useStickToEnd`, also the Create agent
-assist panel's scroll box): a session opens at its end, and while the reader is
-there the page follows whatever grows the conversation or the chrome around it
-— the streamed reply, the Working line, a turn the poll lands, the docked
-composer, the title replacing its skeleton. Whether they are there is decided
-by what they do, not by the distance when content arrives: any scroll up
-(wheel, swipe, arrow and page keys, Home, the scrollbar, anything that moves
-the view up by more than the content shrank) leaves the end at once,
-mid-stream included, and the page then keeps its place however much more
-arrives; scrolling back to within 48px (about two lines) of the end, or
-pressing End, follows again, and so does sending a message. Input that cannot
-move the page up (already at its top, behind a dialog, a pinch zoom, a box
-inside taking the scroll) leaves nothing. Wheel, swipe and keys are read
-before the browser scrolls, so a following page never fights a scroll under
-way, and nothing is scrolled while a finger is on the screen or for a moment
-after a press on the scrollbar. A change the reader makes never scrolls; it
-only re-reads whether the end is still in view: disclosures in the
+**The reading position is the reader's** (`useJumpToBottom` in
+`SessionDetailPage`): content from the agent never scrolls the session page —
+not a streamed token, a second message in the same turn, tool activity, a new
+turn, and not while the reader is at the end either, because a reader at the
+end is often still reading the reply above it. Only the person's own actions
+scroll:
+
+- **Opening** the session lands at its end, and keeps landing there while the
+  layout settles (500 ms, ended by any scroll input).
+- **Sending** a message puts its turn at the top of the view, below the
+  compact header. The sent turn holds the room its reply streams into
+  (`SessionTimeline`'s `reservedTurnIndex`, at least the view's height less
+  the compact header, the dock and the mobile bar, with the Working row inside
+  it), so the reply appears below the message without the page moving. A
+  short reply leaves room under it until the next message. The reserve goes
+  when a later turn (sent from elsewhere) is the newest.
+- **The docked composer growing** (a multi-line message, a question card)
+  while the end is in view keeps the end in view: the visible part shrank, no
+  content arrived.
+
+Once content lands below the visible part, **Jump to bottom** appears just
+above the composer (`JumpToBottom`): a large button in the shell's primary
+colour, floating over the conversation's bottom edge without taking room, so
+showing it moves nothing. It is the tab stop before the composer, and a
+polite live region says "New content below" when it appears. Pressing it
+scrolls to the very bottom, smoothly unless `prefers-reduced-motion` is set,
+and finishes there if more streamed in meanwhile; pressed from the keyboard,
+the focus moves on to the composer's box. Reaching the end any way (scrolling,
+End, the button) takes the button away; content that arrives after that shows
+it again. Content counts as new only when it grows below the visible part by
+more than 8px, and not when the reader changed it: disclosures in the
 conversation (`aria-expanded` — _Show more_, the tool activity rows — and
-markdown `<summary>` folds) are recognised as they are pressed, and a control
-elsewhere announces its change with `markReaderChange` (the tool activity
-switch does). There is no "jump to latest" control: scrolling down, or End, is
-the way back.
+markdown `<summary>` folds) as they are pressed, a control elsewhere that calls
+`markReaderChange` (the tool activity switch), and a window resize. Label,
+size, colour and position are constants at the top of
+`JumpToBottom/JumpToBottom.tsx`.
+
+The Create agent assist panel's scroll box still sticks to the end
+(`hooks/useStickToEnd`): while the reader is there it follows the streamed
+reply; any scroll up leaves the end and keeps the place, and scrolling back to
+within 48px of it, End or sending follows again.
 
 **A long user message is cut to 10 lines** of its own text (`10lh`, so the cut
 follows the reader's font size) behind a fade, with _Show more_ centred in the

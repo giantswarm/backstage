@@ -1,4 +1,8 @@
-export { SessionTimeline } from './SessionTimeline';
+export {
+  RESERVED_TURN_ATTRIBUTE,
+  SessionTimeline,
+  TURN_RESERVE_VAR,
+} from './SessionTimeline';
 export type { StreamLossPhase } from './SessionTimeline';
 export { TimelineEntry } from './TimelineEntry';
 export type { ConnectorOf } from './TimelineEntry';
