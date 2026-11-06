@@ -35,7 +35,7 @@ import {
 import { ConnectorLogoStack } from '@giantswarm/backstage-plugin-muster';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
-import { useAgentRowConnectors } from '../../hooks/useAgentRowConnectors';
+import { useAgentListConnectors } from '../../hooks/useAgentListConnectors';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
@@ -50,6 +50,7 @@ import {
 } from '../../lib/tenants';
 import type { OrganizationDirectory } from '../../lib/organizations';
 import { agentLastUsedAt } from '../../lib/recentAgents';
+import type { ConnectorMark } from '../../lib/connectorMarks';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   AGENT_SORTS,
@@ -88,6 +89,8 @@ export const AGENTS_PAGE_SIZE = 25;
 
 /** Connector logos a row shows, "+N" included. */
 export const ROW_CONNECTORS_MAX = 3;
+
+const NO_CONNECTORS: readonly ConnectorMark[] = [];
 
 /** The list's order, remembered per browser like `useLastUsedAgent`'s pick. */
 const SORT_STORAGE_KEY = 'gs-agent-platform-agents-sort';
@@ -400,6 +403,7 @@ function AgentListItem({
   isFavorite,
   onToggleFavorite,
   isPhone,
+  connectors,
 }: {
   row: AgentRow;
   href?: string;
@@ -410,6 +414,8 @@ function AgentListItem({
   showInstallation: boolean;
   /** The phone layout: texts wrap rather than truncate behind a `title`. */
   isPhone: boolean;
+  /** Its connectors' logos, built once per installation for the list. */
+  connectors: readonly ConnectorMark[];
   isFavorite: boolean;
   onToggleFavorite: () => void;
 }) {
@@ -417,7 +423,6 @@ function AgentListItem({
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
-  const connectors = useAgentRowConnectors(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
@@ -787,6 +792,7 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
     () => visible.filter(row => !isFavorite(row.id)),
     [visible, isFavorite],
   );
+  const connectorsOf = useAgentListConnectors(rows);
   const showInstallation = new Set(rows.map(row => row.installation)).size > 1;
   const isNarrowed = search.trim() !== '' || filters.isFiltered;
   // A new search or filter starts each group again from its first page.
@@ -808,6 +814,7 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
       showTenant={tenantCount > 1}
       showInstallation={showInstallation}
       isPhone={isPhone}
+      connectors={connectorsOf.get(row.id) ?? NO_CONNECTORS}
       isFavorite={isFavorite(row.id)}
       onToggleFavorite={() => {
         // A preference, like a pinned session: the StorageApi write is the

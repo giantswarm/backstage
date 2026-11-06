@@ -156,25 +156,27 @@ jest.mock('../../hooks/useFleetSessionStates', () => ({
   },
 }));
 let mockMetaAgent: AgentRow | undefined;
-// The installation's MCPServers behind a row's connector logos: named, one
-// with a URL a brand mark is found for. No catalogue: no row picks single
-// tools.
+// The installations' MCPServers behind the rows' connector logos, named. No
+// catalogue: no row picks single tools. Each call's installations are
+// recorded: the list asks each installation once, not once per row.
+const mockMusterServersAsked: string[][] = [];
+const mockMusterServers = {
+  servers: [{ name: 'jira', displayName: 'Jira' }, { name: 'slack' }],
+  resources: [],
+  labels: new Map([['jira', 'Jira']]),
+  isLoading: false,
+  isUnavailable: false,
+};
 jest.mock('../../hooks/useMusterServers', () => ({
-  useMusterServers: (installation?: string) => ({
-    servers: installation
-      ? [
-          { name: 'jira', displayName: 'Jira' },
-          { name: 'slack', url: 'https://mcp.slack.com/mcp' },
-        ]
-      : [],
-    resources: [],
-    labels: new Map(installation ? [['jira', 'Jira']] : []),
-    isLoading: false,
-    isUnavailable: false,
-  }),
+  useMusterServersByInstallation: (installations: readonly string[]) => {
+    mockMusterServersAsked.push([...installations]);
+    return new Map(
+      installations.map(installation => [installation, mockMusterServers]),
+    );
+  },
 }));
 jest.mock('../../hooks/useReachCatalogue', () => ({
-  useReachCatalogue: () => undefined,
+  useReachCataloguesByInstallation: () => new Map(),
 }));
 jest.mock('../../hooks/useMetaAgent', () => ({
   useMetaAgent: () => mockMetaAgent,
@@ -1947,6 +1949,17 @@ describe('CustomizeAgentsPanel connectors', () => {
         { name: /^Connectors/ },
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it('reads the servers once per installation, not once per row', async () => {
+    mockMusterServersAsked.length = 0;
+    await renderPanel();
+    expect(within(rowOf('A two')).getByRole('group')).toBeInTheDocument();
+    // Two rows name connectors on golem: one ask, for golem alone.
+    expect(mockMusterServersAsked.length).toBeGreaterThan(0);
+    expect(new Set(mockMusterServersAsked.map(asked => asked.join()))).toEqual(
+      new Set(['golem']),
+    );
   });
 
   it('shows two logos and "+N" for more than three connectors', async () => {
