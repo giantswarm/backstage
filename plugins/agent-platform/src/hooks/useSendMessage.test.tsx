@@ -685,6 +685,45 @@ describe('useSendMessage', () => {
       );
     });
 
+    it('keeps the message and says kagent is temporarily unavailable when it is down', async () => {
+      // The outage of giantswarm/giantswarm#39044: the gateway answered gRPC
+      // Unavailable, so the send and the read that checks it both fail.
+      streamMessage.mockRejectedValue(
+        Object.assign(
+          transportError(
+            'The Agent Platform is temporarily unavailable. Try again in a moment.',
+          ),
+          { status: 500, reason: 'unavailable', requestId: 'req-1' },
+        ),
+      );
+      listSessionTasks.mockRejectedValue(
+        Object.assign(new Error('unavailable'), {
+          status: 500,
+          reason: 'unavailable',
+        }),
+      );
+      const { result } = renderWith();
+
+      await act(async () => {
+        await expect(
+          result.current.sendMessage('why is the ingress failing?'),
+        ).rejects.toThrow('temporarily unavailable');
+      });
+
+      await waitFor(() =>
+        expect(result.current.failed).toEqual(
+          expect.objectContaining({ text: 'why is the ingress failing?' }),
+        ),
+      );
+      expect(result.current.error?.message).toBe(
+        'The Agent Platform is temporarily unavailable. Try again in a moment.',
+      );
+      // Nothing recorded: no stand-in left in the conversation.
+      expect(result.current.pending).toBeNull();
+      // Not counted as a send that timed out.
+      expect(result.current.timeouts).toBeUndefined();
+    });
+
     it('reports a decision without a verification read', async () => {
       // A rejected message, an unknown agent, an in-band A2A error: kagent
       // decided, and "cannot tell" logic must not soften what it said.
