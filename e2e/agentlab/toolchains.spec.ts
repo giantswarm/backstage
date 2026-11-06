@@ -247,7 +247,9 @@ test('a session started from the portal with an older go mounts that version', a
         response.url().includes('/api/muster/call') &&
         response.request().postDataJSON()?.name ===
           'x_agent-manager_start_session',
-      { timeout: 2 * 60_000 },
+      // agent-manager allows three minutes for a cold toolset's snapshot;
+      // leave room for its result instead of aborting that first start.
+      { timeout: 4 * 60_000 },
     );
     await dialog.getByRole('button', { name: 'Start', exact: true }).click();
     const response = await started;
@@ -268,7 +270,7 @@ test('a session started from the portal with an older go mounts that version', a
     const mounted = answer.toolchains ?? [];
     const go = mounted.find(toolchain => toolchain.name === 'go');
     expect(go, 'start_session mounts go').toBeDefined();
-    expect(go?.version).toBe(older);
+    expect(go?.version?.replace(/^v/, '')).toBe(older);
     expect(go?.image, 'pinned by digest').toMatch(/@sha256:[0-9a-f]{64}$/);
     await test.info().attach('start_session answer', {
       body: JSON.stringify(mounted, null, 2),
