@@ -60,8 +60,7 @@ gh pr list -R giantswarm/backstage --state merged --base "$b" --json number,titl
 ```
 
 Give each one found its own line, by its title, author and module, under the
-group of its own type, and add "Merged into #3315, which brought it to main"
-to its description.
+group of its own type, and add "Merged into #3315" to its description.
 
 ## Structure
 
