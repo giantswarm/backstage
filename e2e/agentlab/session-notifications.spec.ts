@@ -10,7 +10,7 @@ import { lab } from './lab';
 /**
  * The session page's Notifications submenu: three levels, each labelled by
  * when it notifies, the current one ticked, and the choice kept across a
- * reload. The session is started in the portal, so every level is offered.
+ * reload.
  */
 
 const prompt = 'Say hello in one word.';

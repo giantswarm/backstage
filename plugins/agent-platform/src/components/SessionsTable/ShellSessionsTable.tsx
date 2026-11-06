@@ -936,9 +936,6 @@ export function ShellSessionsTable({
       level: notificationSettings.isKnown
         ? notificationSettings.levelOf(row.installation, row.sessionId)
         : undefined,
-      portalStarted: notificationSettings.isKnown
-        ? notificationSettings.isPortalStarted(row.installation, row.sessionId)
-        : undefined,
       onChange: level =>
         notificationSettings.setLevel(row.installation, row.sessionId, level),
     }),

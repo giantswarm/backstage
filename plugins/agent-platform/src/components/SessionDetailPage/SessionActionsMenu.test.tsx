@@ -361,11 +361,9 @@ describe('SessionActionsMenu — Notifications', () => {
   function Harness({
     initial,
     onChange,
-    portalStarted,
   }: {
     initial: NotificationLevel | undefined;
     onChange: (level: NotificationLevel) => Promise<void>;
-    portalStarted?: boolean;
   }) {
     const [level, setLevel] = useState(initial);
     return (
@@ -375,7 +373,6 @@ describe('SessionActionsMenu — Notifications', () => {
         onRename={onRename}
         notifications={{
           level,
-          portalStarted,
           onChange: async next => {
             await onChange(next);
             setLevel(next);
@@ -390,16 +387,10 @@ describe('SessionActionsMenu — Notifications', () => {
     onChange: (level: NotificationLevel) => Promise<void> = jest
       .fn()
       .mockResolvedValue(undefined),
-    portalStarted?: boolean,
   ) =>
-    renderInTestApp(
-      <Harness
-        initial={initial}
-        onChange={onChange}
-        portalStarted={portalStarted}
-      />,
-      { mountedRoutes: { '/sessions': sessionsRouteRef } },
-    );
+    renderInTestApp(<Harness initial={initial} onChange={onChange} />, {
+      mountedRoutes: { '/sessions': sessionsRouteRef },
+    });
 
   async function openNotifications() {
     await openMenu();
@@ -453,26 +444,6 @@ describe('SessionActionsMenu — Notifications', () => {
         String(name === ticked),
       );
     }
-  });
-
-  it('leaves out the turn-finished level for a session the portal did not start', async () => {
-    // The row rule reports only the waits of such a session (Slack reports
-    // the rest), so the level would change nothing.
-    await renderWithLevel('default', undefined, false);
-    await openNotifications();
-
-    expect(
-      screen.getAllByRole('menuitemradio').map(item => item.textContent),
-    ).toEqual(['When action is required', 'Muted']);
-  });
-
-  it('still shows the turn-finished level, ticked, on such a session already at it', async () => {
-    await renderWithLevel('all', undefined, false);
-    await openNotifications();
-
-    expect(
-      levelItem('When action is required or a turn finishes'),
-    ).toHaveAttribute('aria-checked', 'true');
   });
 
   it('ticks nothing while the stored level is still being read', async () => {

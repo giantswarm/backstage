@@ -2100,9 +2100,7 @@ The actions menu (on the page and on each Sessions-list row) has a
 labelled by when it notifies: **When action is required** (`default`, the
 level of a session without a stored one) when the session waits for the
 person or fails; **When action is required or a turn finishes** (`all`) in
-addition when a turn finishes; **Muted** (`muted`) never. A session started
-outside the portal notifies only when it waits, so its menu leaves out the
-`all` choice, unless that is already its level. The submenu
+addition when a turn finishes; **Muted** (`muted`) never. The submenu
 opens beside the menu, towards the page, and over it on a phone. The composer
 has no control.
 

@@ -53,15 +53,9 @@ const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
  * A session's Notification level and its setter, for the menu's Notifications
  * submenu. `level` is undefined until the stored level has been read, and
  * then nothing is ticked.
- *
- * `portalStarted` is false for a session the portal did not start (Slack):
- * the row rule reports only its waits, so `all` would change nothing and is
- * left out, unless it is the stored level, which stays visible and ticked.
- * Undefined while unread: every choice is offered.
  */
 export type SessionNotificationsControl = {
   level: NotificationLevel | undefined;
-  portalStarted?: boolean;
   onChange: (level: NotificationLevel) => Promise<void>;
 };
 
@@ -271,12 +265,7 @@ export function SessionActionsMenu({
                   }
                 }}
               >
-                {NOTIFICATION_LEVEL_LABELS.filter(
-                  ([level]) =>
-                    level !== 'all' ||
-                    notifications.portalStarted !== false ||
-                    shownLevel === 'all',
-                ).map(([level, label]) => (
+                {NOTIFICATION_LEVEL_LABELS.map(([level, label]) => (
                   <MenuItem
                     key={level}
                     id={level}

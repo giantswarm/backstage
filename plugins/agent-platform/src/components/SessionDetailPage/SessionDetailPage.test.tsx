@@ -3801,13 +3801,6 @@ describe('SessionDetailPage', () => {
       // The level is kept per person, like the pin; the menu renders in the
       // shared header, so the element the page hands over is rendered here.
       const storage = mockApis.storage();
-      // Started in the portal: a session started elsewhere is not offered
-      // the turn-finished level.
-      await storage
-        .forBucket('agent-platform')
-        .set('sessionNotificationSettings', {
-          sessions: { 'gazelle/abc': { origin: 'portal', at: 1 } },
-        });
       const renderHeaderMenu = () =>
         renderInTestApp(<>{lastProvidedActions()}</>, {
           apis: [[storageApiRef, storage]],
