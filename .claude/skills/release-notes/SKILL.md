@@ -49,6 +49,19 @@ gh api repos/giantswarm/backstage/compare/v0.246.2...v0.246.3 \
 Link the title to that PR and add its author. A backport describes the same
 change as its main-line PR, which the backport PR names.
 
+A stacked pull request, merged into another PR's branch instead of `main`,
+reaches `main` inside that PR's squash commit and gets no line of its own
+from git-cliff, and the carrying PR's description rarely mentions it. Look
+for one behind every PR of the release:
+
+```bash
+b=$(gh pr view 3315 -R giantswarm/backstage --json headRefName --jq .headRefName)
+gh pr list -R giantswarm/backstage --state merged --base "$b" --json number,title
+```
+
+Give each one found its own line, by its title, author and module, under the
+group of its own type, and add "Merged into #3315" to its description.
+
 ## Structure
 
 Groups, in this order, each left out when empty:
