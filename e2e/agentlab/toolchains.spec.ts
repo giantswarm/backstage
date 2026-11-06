@@ -68,15 +68,29 @@ async function goVersions(
     const popupEvent = page.waitForEvent('popup');
     await signIn.getByRole('button', { name: /Sign in/ }).click();
     const popup = await popupEvent;
+    // Muster may first renew its Dex login, then send the same popup on
+    // to GitHub. completeDexLogin closes that popup after leaving Dex, so
+    // remember the next hop before it does: the person's App grant needs
+    // the real browser even when the popup did not start on GitHub.
+    let needsGitHubSignIn = false;
+    popup.on('request', request => {
+      if (new URL(request.url()).hostname === 'github.com') {
+        needsGitHubSignIn = true;
+      }
+    });
+    const missingSignIn = {
+      missing:
+        'the admin has not signed in to the toolchain-manager through its GitHub App (a real GitHub sign-in, once per lab muster)',
+    };
     await popup.waitForURL(url => url.href !== 'about:blank');
     if (new URL(popup.url()).hostname === 'github.com') {
       await popup.close();
-      return {
-        missing:
-          'the admin has not signed in to the toolchain-manager through its GitHub App (a real GitHub sign-in, once per lab muster)',
-      };
+      return missingSignIn;
     }
     await completeDexLogin(popup, lab.users.admin);
+    if (needsGitHubSignIn) {
+      return missingSignIn;
+    }
     await expect(unavailable.or(grant).or(go).first()).toBeVisible({
       timeout: 2 * 60_000,
     });
