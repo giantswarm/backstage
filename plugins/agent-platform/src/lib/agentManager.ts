@@ -198,6 +198,12 @@ export type AgentManagerInfo = {
   /** The muster MCP URL composed into every agent; empty = the chart default. */
   muster: { url: string };
   skillsRepositories: string[];
+  /**
+   * The installation's default agent, `<namespace>/<name>`: where a new
+   * session starts unless the person picks another. Empty or absent (an
+   * agent-manager before giantswarm/agent-manager#290) when there is none.
+   */
+  defaultAgent?: string;
 };
 
 /** The objects a create applies, as YAML, plus the values they carry. */

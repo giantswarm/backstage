@@ -52,6 +52,7 @@ export type StartNewSessionComposerProps = Pick<
   | 'groupByNamespace'
   | 'recentAgentIds'
   | 'favoriteAgentIds'
+  | 'leadingAgentId'
   | 'searchable'
   | 'pickerPlaceholder'
   | 'pickerPlacement'
@@ -84,6 +85,18 @@ export type StartNewSessionProps = {
    * person has typed or picked an agent before it was read.
    */
   draftName?: string;
+  /**
+   * A prompt a link brought (`?prompt=`): the field starts with it, and it
+   * wins over a stored draft, prompt and agent alike — the link is the newer
+   * intent. Without it the draft's precedence above holds.
+   */
+  linkedPrompt?: string;
+  /**
+   * Preselected when neither `composerProps.defaultAgent` nor a restored
+   * draft names an agent: the installation's default agent. Wins over the
+   * last one used.
+   */
+  suggestedAgent?: AgentRow;
 };
 
 /** The draft of the home screen's composer. */
@@ -121,6 +134,8 @@ export function StartNewSession({
   composerProps,
   titleMaxLength,
   draftName,
+  linkedPrompt,
+  suggestedAgent,
 }: StartNewSessionProps) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
@@ -147,7 +162,7 @@ export function StartNewSession({
   // composer preselected: a preselection (the last agent used, a sole agent)
   // never replaces a restored agent, which may only be read later.
   const [draftPrompt, setDraftPrompt] = useState(
-    composerProps?.initialPrompt ?? '',
+    linkedPrompt ?? composerProps?.initialPrompt ?? '',
   );
   const [restoredAgentId, setRestoredAgentId] = useState<string>();
   const [pickedAgentId, setPickedAgentId] = useState<string>();
@@ -161,8 +176,13 @@ export function StartNewSession({
     typedRef.current = true;
     setDraftPrompt(next);
   }, []);
-  // A stored draft wins over `initialPrompt`: it is the person's own.
+  // A stored draft wins over `initialPrompt`: it is the person's own. A
+  // linked prompt wins over the draft: following the link is newer.
+  const isLinked = useRef(linkedPrompt !== undefined);
   const onRestore = useCallback((stored: NewSessionDraft) => {
+    if (isLinked.current) {
+      return;
+    }
     if (!typedRef.current) {
       setDraftPrompt(stored.prompt);
     }
@@ -412,10 +432,14 @@ export function StartNewSession({
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
       // The caller's agent (a `?agent=` link, the person's latest explicit
-      // choice) first, then the restored draft's, then the last one used. The
-      // composer adopts a default that changes until the person picks one.
+      // choice) first, then the restored draft's, then the suggested one, then
+      // the last one used. The composer adopts a default that changes until
+      // the person picks one.
       defaultAgent={
-        composerProps?.defaultAgent ?? restoredAgent ?? lastUsedAgent
+        composerProps?.defaultAgent ??
+        restoredAgent ??
+        suggestedAgent ??
+        lastUsedAgent
       }
       // Collapsed only when it sits above a list of sessions. Elsewhere it opens
       // showing the agent picker and the Start button: there is nothing for it

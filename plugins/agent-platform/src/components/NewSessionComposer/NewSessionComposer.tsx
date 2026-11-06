@@ -203,6 +203,12 @@ export type NewSessionComposerProps = {
    * offer are skipped.
    */
   favoriteAgentIds?: string[];
+  /**
+   * The agent listed first, ahead of the Recent group, while the search box is
+   * empty: the installation's default agent. Only read with
+   * `groupByNamespace`; an id not on offer is skipped.
+   */
+  leadingAgentId?: string;
   /** Gives the picker a search box whatever the number of agents. */
   searchable?: boolean;
   /** What the picker says while no agent is selected. */
@@ -435,6 +441,7 @@ export function NewSessionComposer({
   groupByNamespace = false,
   recentAgentIds,
   favoriteAgentIds,
+  leadingAgentId,
   searchable,
   pickerPlaceholder = 'Select an agent',
   pickerPlacement = 'controls',
@@ -660,6 +667,12 @@ export function NewSessionComposer({
     const toOption = (agent: AgentRow) => optionsByAgentId.get(agent.id)!;
 
     if (groupByNamespace) {
+      // Out of its namespace's group, so it is listed once there; Recent and
+      // Favorites keep it, as they keep every agent of theirs.
+      const leading = isSearching
+        ? undefined
+        : listed.find(agent => agent.id === leadingAgentId);
+      const rest = leading ? listed.filter(agent => agent !== leading) : listed;
       const recent = isSearching
         ? []
         : (shownRecentIds ?? [])
@@ -670,16 +683,19 @@ export function NewSessionComposer({
       // namespace groups near the top.
       const favoriteIds = new Set(isSearching ? [] : shownFavoriteIds);
       const favorites = listed.filter(agent => favoriteIds.has(agent.id));
-      const namespaces = [
-        ...new Set(listed.map(agent => agent.namespace)),
-      ].sort((a, b) => a.localeCompare(b));
-      if (
-        isSearching ||
-        (recent.length === 0 &&
-          favorites.length === 0 &&
-          namespaces.length <= 1)
-      ) {
+      const namespaces = [...new Set(rest.map(agent => agent.namespace))].sort(
+        (a, b) => a.localeCompare(b),
+      );
+      const leadingOptions = leading ? [toOption(leading)] : [];
+      if (isSearching) {
         return matched.map(toOption);
+      }
+      if (
+        recent.length === 0 &&
+        favorites.length === 0 &&
+        namespaces.length <= 1
+      ) {
+        return [...leadingOptions, ...rest.map(toOption)];
       }
       const repeated = (title: string, prefix: string, group: AgentRow[]) =>
         group.length > 0
@@ -694,11 +710,12 @@ export function NewSessionComposer({
             ]
           : [];
       return [
+        ...leadingOptions,
         ...repeated('Recent', RECENT_OPTION_PREFIX, recent),
         ...repeated('Favorites', FAVORITE_OPTION_PREFIX, favorites),
         ...namespaces.map(namespace => ({
           title: namespace,
-          options: listed
+          options: rest
             .filter(agent => agent.namespace === namespace)
             .map(toOption),
         })),
@@ -724,6 +741,7 @@ export function NewSessionComposer({
     multipleInstallations,
     optionsByAgentId,
     groupByNamespace,
+    leadingAgentId,
     shownRecentIds,
     shownFavoriteIds,
     isSearching,

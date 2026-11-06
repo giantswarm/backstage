@@ -138,10 +138,12 @@ const useStyles = makeStyles(theme => ({
 /**
  * Where a link in agent prose should go.
  *
- * Same routing the AI chat makes: another origin opens externally with the
- * usual warning affordance, a catalog path becomes an entity link, and any
- * other same-origin path navigates within the app. A connector sign-in muster
- * issued in the session is the exception: a sign-in action.
+ * Another origin opens in a new tab with the usual external affordance, a
+ * catalog path becomes an entity link, and any other same-origin link
+ * navigates within the app, query and fragment kept — an agent's link to
+ * start a session (`/?agent=…&prompt=…`) lands on that screen in this tab. A
+ * connector sign-in muster issued in the session is the exception: a sign-in
+ * action.
  */
 function MarkdownLink({
   href,
@@ -188,7 +190,7 @@ function MarkdownLink({
   }
 
   return (
-    <BackstageLink to={url.pathname} target="_blank" rel="noopener noreferrer">
+    <BackstageLink to={`${url.pathname}${url.search}${url.hash}`}>
       {children}
     </BackstageLink>
   );
