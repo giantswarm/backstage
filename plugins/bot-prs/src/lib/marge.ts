@@ -1,3 +1,5 @@
+import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
+
 /**
  * marge's tool contract, as the portal calls it through muster.
  *
@@ -520,6 +522,15 @@ export function looksNotConnected(message: string): boolean {
  */
 export class MargeNotConnectedError extends Error {
   readonly name = 'MargeNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to marge (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way, which a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**
@@ -666,7 +677,7 @@ export function classifyMargeError(error: unknown): Error {
   // Before the status: muster-backend answers muster's `tool not found` 502
   // and `client not connected` 503, which a sign-in to marge fixes.
   if (looksNotConnected(message)) {
-    return new MargeNotConnectedError(message);
+    return new MargeNotConnectedError(message, { cause: error });
   }
   if (looksAnswerLost(error)) {
     return new MargeAnswerLostError(message, { cause: error });

@@ -729,7 +729,7 @@ export async function openHome(admin: Page): Promise<void> {
 /**
  * The Notification inbox's toasts a fresh tab meets: the one summary of what
  * was unread at the tab's first read ("2 notifications need your attention")
- * and a new MCP sign-in row's ("1 MCP server needs your sign-in"). While a
+ * and a new MCP sign-in row's ("1 connector needs your sign-in"). While a
  * connector waits for the person's sign-in (the lab's `lab-oauth-fixture`
  * does), a fresh tab raises one at the foot of the page. It stands clear of
  * the bottom bar, a docked composer and a wizard's footer, but covers the foot

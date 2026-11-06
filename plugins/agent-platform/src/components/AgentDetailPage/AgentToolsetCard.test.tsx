@@ -174,6 +174,9 @@ function makeApi(
           },
         ],
       }),
+      listConnectorNames: jest.fn(async () => ({
+        servers: [{ name: 'pro', displayName: 'Pro Search' }],
+      })),
       signInServer: jest.fn(),
       signOutServer: jest.fn(),
     } as unknown as MusterApi,
@@ -222,6 +225,7 @@ async function renderCard(
   agent: Agent,
   api?: MusterApi,
   carrierRead: CarrierRead = {},
+  serverCrs: MCPServer[] = SERVER_CRS,
 ) {
   mockUseResources.mockImplementation(
     (_clusters: unknown, ResourceClass: unknown) =>
@@ -234,7 +238,7 @@ async function renderCard(
             ...carrierRead,
           }
         : {
-            resources: SERVER_CRS,
+            resources: serverCrs,
             isLoading: false,
             errors: [],
             queries: ANSWERED,
@@ -473,6 +477,31 @@ describe('AgentToolsetCard', () => {
       await screen.findByText("Sign in to see these connectors' tools"),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    // By the MCPServer's label, as the rest of the card names it: no second
+    // source to disagree with it.
+    expect(
+      screen.getByText(
+        'pro — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.',
+      ),
+    ).toBeInTheDocument();
+    expect(api.listConnectorNames).not.toHaveBeenCalled();
+  });
+
+  // A viewer who cannot read the MCPServer: muster-backend names it.
+  it('names a connector whose MCPServer the viewer cannot read as muster does', async () => {
+    const { api } = makeApi(resolvedAnswer(['server:pro']));
+    await renderCard(
+      withToolset('preset:read-only,server:pro'),
+      api,
+      {},
+      SERVER_CRS.filter(server => server.getName() !== 'pro'),
+    );
+
+    expect(
+      await screen.findByText(
+        'Pro Search — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows muster's error when the toolset names a preset the installation does not define", async () => {

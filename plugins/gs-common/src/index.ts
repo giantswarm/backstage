@@ -9,3 +9,4 @@ export * from './mimirUnavailable';
 export * from './musterUnauthorized';
 export * from './shortSha';
 export * from './tags';
+export * from './connectorName';

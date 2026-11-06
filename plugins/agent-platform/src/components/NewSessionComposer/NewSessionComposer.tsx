@@ -584,6 +584,13 @@ export function NewSessionComposer({
   // The workspace the last Start asked for: what the notice above the box
   // speaks of, whatever is picked since.
   const [startedIn, setStartedIn] = useState<Workspace>();
+  // The refusal a sign-in to agent-manager has answered since: the caller
+  // keeps the start's error until the next start, so the alert that asked for
+  // the sign-in would otherwise stay up after it landed.
+  const [signedInPast, setSignedInPast] = useState<unknown>();
+  // What the last Start sent, so a sign-in runs again exactly the start it
+  // answered, never one the person did not press.
+  const lastStart = useRef<{ agentId: string; text: string }>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -811,6 +818,7 @@ export function NewSessionComposer({
       return;
     }
     setStartedIn(inWorkspace);
+    lastStart.current = { agentId: selectedAgent.id, text };
     onStart(
       selectedAgent,
       text,
@@ -1024,22 +1032,40 @@ export function NewSessionComposer({
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
         {workspaceNotice}
-        {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
-          <ConnectAgentManagerAlert
-            installation={selectedAgent.installation}
-            message={error.message}
-            action="Sessions are started"
-          />
-        ) : (
-          error &&
-          !workspaceSaysError && (
-            <Alert
-              status="danger"
-              title="Session not started"
-              description={typeof error === 'string' ? error : error.message}
-            />
-          )
-        )}
+        {error instanceof AgentManagerNotConnectedError && selectedAgent
+          ? error !== signedInPast && (
+              <ConnectAgentManagerAlert
+                installation={selectedAgent.installation}
+                message={error.message}
+                signInRequired={error.signInRequired}
+                action="Sessions are started"
+                // Signed in: the alert goes. Where the sign-in was made in
+                // this tab, the start it answered goes again, as after a
+                // workspace's sign-in, while the agent and the prompt are
+                // the ones refused. A sign-in made in another tab only clears
+                // the alert here: Start is the person's to press.
+                onSignedIn={({ here }) => {
+                  setSignedInPast(error);
+                  const refused = lastStart.current;
+                  if (
+                    here &&
+                    refused &&
+                    refused.agentId === selectedAgent.id &&
+                    refused.text === text
+                  ) {
+                    submit({ workspace: startedIn });
+                  }
+                }}
+              />
+            )
+          : error &&
+            !workspaceSaysError && (
+              <Alert
+                status="danger"
+                title="Session not started"
+                description={typeof error === 'string' ? error : error.message}
+              />
+            )}
         {modelWarning && selectedAgent && (
           <Alert
             status="warning"
