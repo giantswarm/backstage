@@ -131,10 +131,20 @@ const failedProbe = (name: string) => Object.assign(new Error(name), { name });
 let mockSessions: SessionRow[] = [];
 // Sessions still being read: none in yet, or more to come.
 let mockSessionsLoading: 'none' | 'loading' | 'loadingMore' = 'none';
+// Whether the provider reads sessions, at each render: a read mints each
+// installation's Dex token.
+const mockSessionsEnabled: boolean[] = [];
 jest.mock('../SessionsDataProvider', () => ({
-  SessionsDataProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+  SessionsDataProvider: ({
+    children,
+    enabled = true,
+  }: {
+    children: ReactNode;
+    enabled?: boolean;
+  }) => {
+    mockSessionsEnabled.push(enabled);
+    return <>{children}</>;
+  },
   useSessions: () => ({
     rows: mockSessions,
     notUserScopedInstallations: [],
@@ -1785,14 +1795,15 @@ describe('CustomizeAgentsPanel sort', () => {
     expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
   });
 
-  it('asks for session states only while sorting by last use', async () => {
+  it('asks for session states only while sorting by last use or showing the cards', async () => {
     mockSessions = [sessionWith(older, '2026-10-05T10:00:00Z')];
-    await renderPanel();
+    await renderPanel('a');
     expect(sortDropdown()).toHaveTextContent('Last used');
     expect(mockSessionStatesAsked.at(-1)).toEqual(['golem']);
 
     await userEvent.click(sortDropdown());
     await userEvent.click(await screen.findByRole('option', { name: 'Name' }));
+    // A search hides the cards.
     expect(mockSessionStatesAsked.at(-1)).toEqual([]);
   });
 
@@ -1842,6 +1853,68 @@ describe('CustomizeAgentsPanel sort', () => {
     await renderPanel();
     expect(sortDropdown()).toHaveTextContent('Recently added');
     expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+  });
+
+  it('reads no sessions under a search with a picked Name sort', async () => {
+    localStorage.setItem(
+      'gs-agent-platform-agents-sort',
+      JSON.stringify('name'),
+    );
+    mockSessionsEnabled.length = 0;
+    await renderPanel('Alpha');
+    expect(names()).toEqual(['Alpha']);
+    expect(mockSessionsEnabled).not.toContain(true);
+    expect(mockSessionStatesAsked.every(asked => asked.length === 0)).toBe(
+      true,
+    );
+  });
+
+  it('reads sessions under a search while the sort is Last used, or not picked', async () => {
+    localStorage.setItem(
+      'gs-agent-platform-agents-sort',
+      JSON.stringify('lastUsed'),
+    );
+    mockSessionsEnabled.length = 0;
+    const { unmount } = await renderPanel('Alpha');
+    expect(mockSessionsEnabled.at(-1)).toBe(true);
+    unmount();
+
+    localStorage.clear();
+    mockSessionsEnabled.length = 0;
+    await renderPanel('Alpha');
+    expect(mockSessionsEnabled.at(-1)).toBe(true);
+  });
+
+  it('ranks the cards by last turn whatever the sort', async () => {
+    localStorage.setItem(
+      'gs-agent-platform-agents-sort',
+      JSON.stringify('name'),
+    );
+    const charlieSession = sessionWith(middle, '2026-10-02T10:00:00Z');
+    mockSessions = [
+      sessionWith(newest, '2026-10-05T10:00:00Z'),
+      charlieSession,
+    ];
+    // A later turn in the older session puts its agent first.
+    mockSessionStates = new Map([
+      [charlieSession.id, { changedAt: Date.parse('2026-10-09T10:00:00Z') }],
+    ]);
+    mockSessionsEnabled.length = 0;
+    await renderPanel();
+
+    expect(mockSessionsEnabled.at(-1)).toBe(true);
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    const cards = () =>
+      within(screen.getByRole('region', { name: 'Last used by you' }))
+        .getAllByRole('link')
+        .map(link => link.textContent);
+    expect(cards()).toEqual(['Charlie', 'Bravo']);
+
+    await userEvent.click(sortDropdown());
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Recently added' }),
+    );
+    expect(cards()).toEqual(['Charlie', 'Bravo']);
   });
 
   it('offers no sort for a single agent', async () => {

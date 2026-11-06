@@ -681,17 +681,102 @@ function AgentGroup({
  * each row names its tenant and the bar filters by it (giantswarm#36698, D6).
  * Must be mounted inside a `CustomizeDataProvider`.
  */
-export function CustomizeAgentsPanel(props: CustomizeAgentsPanelProps) {
-  // The person's sessions order the list by last use and fill the "Last used
-  // by you" cards.
+export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
+  const { rows, installations, isLoading } = useAgents();
+  const { isPinned: isFavorite } = useFavoriteAgents();
+  const list = useAgentListFilters(rows, installations, search, isFavorite);
+  const [storedSort, setSort] = useLocalStorageState<AgentSort | undefined>(
+    SORT_STORAGE_KEY,
+    { defaultValue: undefined },
+  );
+  const pickedSort = AGENT_SORTS.find(option => option.id === storedSort)?.id;
+  // The recent-agent cards, while the tab shows everything: a search or a
+  // filter narrows the list below, and the cards would not follow.
+  const showCards = !isLoading && rows.length > 0 && !list.isNarrowed;
+  // Each installation's session read mints its Dex token: read only while
+  // something on the tab needs them (`sessionsNeeded`).
   return (
-    <SessionsDataProvider>
-      <AgentsPanelContent {...props} />
+    <SessionsDataProvider
+      enabled={sessionsNeeded({ showCards, sort: pickedSort })}
+    >
+      <AgentsPanelContent
+        search={search}
+        list={list}
+        showCards={showCards}
+        pickedSort={pickedSort}
+        onSort={setSort}
+      />
     </SessionsDataProvider>
   );
 }
 
-function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
+/**
+ * Whether the tab reads the person's sessions: for the "Last used by you"
+ * cards, for the Last used sort, and while no sort is picked, to decide the
+ * default (see `AgentsPanelContent`).
+ */
+export function sessionsNeeded({
+  showCards,
+  sort,
+}: {
+  showCards: boolean;
+  /** The person's pick; none while the default applies. */
+  sort: AgentSort | undefined;
+}): boolean {
+  return showCards || sort === 'lastUsed' || sort === undefined;
+}
+
+type AgentListFilters = ReturnType<typeof useAgentListFilters>;
+
+/**
+ * The list's search and filter picks, and what they leave: read ahead of the
+ * sessions, since whether the cards show decides whether they are read.
+ */
+function useAgentListFilters(
+  rows: AgentRow[],
+  installations: string[],
+  search: string,
+  isFavorite: (id: string) => boolean,
+) {
+  const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
+  const harnesses = useMemo(() => agentHarnesses(rows), [rows]);
+  // Main's `singleHarness` rule (#2858): one Harness for every agent shows no
+  // Harness fact; the filter follows the shared rule, which agrees.
+  const showHarness = harnesses.size > 1;
+  const tenantCount = new Set(rows.map(row => row.tenant)).size;
+  // "Created by me": the creator agent-manager recorded against the person as
+  // agent-manager names them (their email) on the agent's installation.
+  const capabilitiesFor = useKagentCapabilitiesMap(installations);
+  // Emails, compared as the IdP may write them in either case.
+  const isMine = useCallback(
+    (row: AgentRow) =>
+      row.createdBy !== undefined &&
+      row.createdBy.toLowerCase() ===
+        capabilitiesFor(row.installation).caller?.toLowerCase(),
+    [capabilitiesFor],
+  );
+  const facets = useMemo(
+    () => agentFacets(isFavorite, harnesses, { isMine }),
+    [isFavorite, harnesses, isMine],
+  );
+  const filters = useCatalogFilters({ items: rows, searched, facets });
+  const isNarrowed = search.trim() !== '' || filters.isFiltered;
+  return { filters, showHarness, tenantCount, isNarrowed };
+}
+
+function AgentsPanelContent({
+  search,
+  list: { filters, showHarness, tenantCount },
+  showCards,
+  pickedSort,
+  onSort,
+}: {
+  search: string;
+  list: AgentListFilters;
+  showCards: boolean;
+  pickedSort: AgentSort | undefined;
+  onSort: (sort: AgentSort) => void;
+}) {
   const classes = useStyles();
   // The New agent form’s reads, started from here so its Owner field
   // does not arrive a moment after the form opens.
@@ -715,29 +800,6 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
   const isPhone = usePhoneLayout();
   const { isPinned: isFavorite, togglePin: toggleFavorite } =
     useFavoriteAgents();
-
-  const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
-  const harnesses = useMemo(() => agentHarnesses(rows), [rows]);
-  // Main's `singleHarness` rule (#2858): one Harness for every agent shows no
-  // Harness fact; the filter follows the shared rule, which agrees.
-  const showHarness = harnesses.size > 1;
-  const tenantCount = new Set(rows.map(row => row.tenant)).size;
-  // "Created by me": the creator agent-manager recorded against the person as
-  // agent-manager names them (their email) on the agent's installation.
-  const capabilitiesFor = useKagentCapabilitiesMap(installations);
-  // Emails, compared as the IdP may write them in either case.
-  const isMine = useCallback(
-    (row: AgentRow) =>
-      row.createdBy !== undefined &&
-      row.createdBy.toLowerCase() ===
-        capabilitiesFor(row.installation).caller?.toLowerCase(),
-    [capabilitiesFor],
-  );
-  const facets = useMemo(
-    () => agentFacets(isFavorite, harnesses, { isMine }),
-    [isFavorite, harnesses, isMine],
-  );
-  const filters = useCatalogFilters({ items: rows, searched, facets });
   // Last use is the person's own: sessions of an installation whose list is
   // not scoped to them are left out, as the "Last used by you" cards do.
   const {
@@ -750,10 +812,6 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
     const notMine = new Set(notUserScopedInstallations);
     return sessions.filter(session => !notMine.has(session.installation));
   }, [sessions, notUserScopedInstallations]);
-  const [storedSort, setSort] = useLocalStorageState<AgentSort | undefined>(
-    SORT_STORAGE_KEY,
-    { defaultValue: undefined },
-  );
   // Last used once the person has used any agent listed, by name otherwise:
   // decided on the sessions' starts alone, so it needs no session states.
   // Held while sessions are still read and none is with an agent listed, so
@@ -762,18 +820,19 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
     const started = agentLastUsedAt(mySessions);
     return rows.some(row => started.has(row.id));
   }, [mySessions, rows]);
-  const pickedSort = AGENT_SORTS.find(option => option.id === storedSort)?.id;
   const sort: AgentSort = pickedSort ?? (usedAny ? 'lastUsed' : 'name');
   const sortPending =
     !pickedSort && !usedAny && (sessionsLoading || sessionsLoadingMore);
-  // A session's last turn is in its state, read only for the Last used sort:
-  // each read costs its installation a pass over its sessions.
+  // A session's last turn is in its state, read only for the Last used sort
+  // and the cards, which rank by it whatever the sort: each read costs its
+  // installation a pass over its sessions.
+  const readStates = showCards || sort === 'lastUsed';
   const sessionInstallations = useMemo(
     () =>
-      sort === 'lastUsed'
+      readStates
         ? Array.from(new Set(mySessions.map(session => session.installation)))
         : [],
-    [sort, mySessions],
+    [readStates, mySessions],
   );
   const { states: sessionStates } = useFleetSessionStates(sessionInstallations);
   const lastUsedAt = useMemo(
@@ -794,7 +853,6 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
   );
   const connectorsOf = useAgentListConnectors(rows);
   const showInstallation = new Set(rows.map(row => row.installation)).size > 1;
-  const isNarrowed = search.trim() !== '' || filters.isFiltered;
   // A new search or filter starts each group again from its first page.
   const pageKey = `${search.trim()}|${filters.key}`;
 
@@ -974,7 +1032,7 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
               value={sort}
               onChange={key => {
                 if (key !== null) {
-                  setSort(String(key) as AgentSort);
+                  onSort(String(key) as AgentSort);
                 }
               }}
               style={{ flex: 'none', width: 'auto', marginLeft: 'auto' }}
@@ -998,11 +1056,7 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
         isLoading={isLoading}
       />
       <AgentsHelperBanner />
-      {/* The person's recent agents, while the tab shows everything: a search
-          or a filter narrows the list below, and the cards would not follow. */}
-      {!isLoading && rows.length > 0 && !isNarrowed && (
-        <LastUsedAgents states={sessionStates} />
-      )}
+      {showCards && <LastUsedAgents states={sessionStates} />}
       {rows.length > 0 ? (
         <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin
