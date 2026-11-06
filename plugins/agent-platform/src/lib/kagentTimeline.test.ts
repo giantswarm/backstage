@@ -14,6 +14,8 @@ import {
   tasksClaudeHarnessFailed as claudeHarnessFailed,
   tasksEmptyNoData as emptyNoData,
   tasksFailed as failed,
+  tasksGoAdkThought as goAdkThought,
+  tasksKagentA2aCanonical as kagentA2aCanonical,
   tasksKagent4a91c273 as kagent4a91c273,
   tasksMalformed as malformed,
   tasksV099 as kagentPrefixed,
@@ -296,6 +298,47 @@ describe('buildTimeline', () => {
       expect(withAdk.items.map(item => item.author)).toEqual(
         withKagent.items.map(item => item.author),
       );
+    });
+  });
+
+  describe('reasoning under the kagent.dev/a2a contract', () => {
+    it('shows the parts the Go ADK runtime marks as reasoning, in place', () => {
+      // A thought ahead of the call it leads to, and one ahead of the answer in
+      // the same artifact: each splits off as its own reasoning item.
+      const { items } = timelineFor(goAdkThought);
+
+      expect(
+        items.map(item =>
+          'text' in item ? [item.kind, item.text] : [item.kind],
+        ),
+      ).toEqual([
+        [
+          'user-message',
+          'How many namespaces does the management cluster have?',
+        ],
+        [
+          'reasoning',
+          'The user wants the namespace count. One list call on namespaces answers it.',
+        ],
+        ['tool-call'],
+        ['reasoning', 'The list returned totalItems 12, so the answer is 12.'],
+        ['agent-message', 'The management cluster has 12 namespaces.'],
+      ]);
+    });
+
+    it('takes unmarked text as the answer', () => {
+      // How the ADK runtime stores an Anthropic turn today: tool calls carry
+      // part-type, and the text carries no metadata at all.
+      const { items } = timelineFor(kagentA2aCanonical);
+
+      expect(items.some(item => item.kind === 'reasoning')).toBe(false);
+      expect(items.filter(item => item.kind === 'tool-call')).not.toHaveLength(
+        0,
+      );
+      expect(items[items.length - 1]).toMatchObject({
+        kind: 'agent-message',
+        text: '12',
+      });
     });
   });
 
