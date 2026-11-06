@@ -14,6 +14,8 @@ export {
   toolErrorDetails,
 } from './apis';
 export type {
+  ConnectorName,
+  ConnectorNamesResponse,
   MusterApi,
   MusterAuthProvidersApi,
   MusterUnauthorizedReason,
@@ -92,6 +94,8 @@ export {
   ToolMarkers,
   hasMarkers,
   ServerSignIn,
+  useConnectorLabel,
+  useConnectorLabels,
   useServerSignIn,
   useServerNeedsSignIn,
   toneColors,
@@ -110,6 +114,7 @@ export type {
   ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
+  SignedIn,
   DeviceCode,
   SignInNoun,
   Tone,

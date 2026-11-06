@@ -10,6 +10,13 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type { ClusterWriteResult } from '../../lib/clusterManager';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 import { DeleteClusterDialog } from './DeleteClusterDialog';
 import { REMOVAL_CHECK_INTERVAL_MS } from './removalPasses';
 
@@ -781,6 +788,62 @@ describe('DeleteClusterDialog', () => {
         'apply',
       ]),
     );
+  });
+
+  // The dry runs ask again once the sign-in lands; a deletion is never sent
+  // by itself.
+  it('asks the dry runs again once the sign-in lands, and deletes nothing by itself', async () => {
+    const user = userEvent.setup();
+    const signIn = { done: false };
+    const muster = makeMusterApi({});
+    const scripted = muster.callTool.getMockImplementation()!;
+    muster.callTool.mockImplementation(async (name, args) => {
+      if (!signIn.done) {
+        throw new Error('tool not found: x_cluster-manager_delete_cluster');
+      }
+      return scripted(name, args);
+    });
+    const { callTool } = await renderDialog({}, false, undefined, muster);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    signIn.done = true;
+    await signInLands(user);
+
+    expect(await screen.findByTestId('what-goes')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Connect to cluster-manager'),
+    ).not.toBeInTheDocument();
+    expect(writesOf(callTool)).toHaveLength(0);
+  });
+
+  it('clears a deletion refused for want of the sign-in once it lands, without deleting again', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog(
+      {
+        passes: [
+          () => new Error('tool not found: x_cluster-manager_delete_cluster'),
+        ],
+      },
+      false,
+    );
+    await deleteCluster(user);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands(user);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Connect to cluster-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(writesOf(callTool)).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Delete cluster' }),
+    ).toBeEnabled();
   });
 
   it('shows the refusal with its reason and checks again', async () => {

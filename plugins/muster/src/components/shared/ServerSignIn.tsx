@@ -3,9 +3,11 @@ import { Button, ButtonLink, Text } from '@backstage/ui';
 import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
+  SignedIn,
   SignInNoun,
   useServerSignIn,
 } from './useServerSignIn';
+import { useConnectorLabel } from './hooks/useConnectorLabels';
 
 /**
  * The gate reason for a deactivated server (`spec.suspended`): muster keeps it
@@ -416,18 +418,32 @@ export interface ServerSignInProps {
   /** The muster server name, as reported by `list_tools` / `auth://status`. */
   serverName: string;
   /**
-   * What the sentences call the server for people (its display name); the
-   * server name by default.
+   * What the sentences call the server for people (its display name); by
+   * default the name muster-backend reads for everyone
+   * (`useConnectorLabel`), the server name until it is known.
    */
   displayName?: string;
   installation?: string;
-  /** Show the server name next to the action (a list of several servers). */
+  /**
+   * Show the display name next to the action, with the server's own name
+   * where it differs (a list of several servers, the members of one family
+   * among them).
+   */
   showName?: boolean;
   /**
-   * What the copy calls the server: main's "server" by default (the classic
-   * portal, e.g. Bot PRs), "connector" in the agent platform's own sections.
+   * What the copy calls the server: "server" by default (the muster plugin's
+   * own MCP servers page), "connector" wherever people meet it as one (the
+   * agent platform, the sign-in dialog, Bot PRs).
    */
   noun?: SignInNoun;
+  /**
+   * Called once the person is signed in to the server: a sign-in that lands,
+   * here or in another tab, or a click that finds it connected already (see
+   * `UseServerSignInOptions.onSignedIn`). For a surface that shows the
+   * sign-in in place of a refused call, to clear the refusal and run it
+   * again.
+   */
+  onSignedIn?: (signedIn: SignedIn) => void;
 }
 
 /**
@@ -447,10 +463,19 @@ export function ServerSignIn({
   installation,
   showName,
   noun = 'server',
+  onSignedIn,
 }: ServerSignInProps) {
   const classes = useStyles();
-  const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(displayName ?? serverName, state, {
+  const state = useServerSignIn(serverName, installation, {
+    noun,
+    onSignedIn,
+  });
+  // Read only where the caller names no display name of its own.
+  const known = useConnectorLabel(installation, serverName, {
+    enabled: displayName === undefined,
+  });
+  const label = displayName ?? known;
+  const parts = authActionParts(label, state, {
     noun,
     alwaysOffer: true,
   });
@@ -469,7 +494,19 @@ export function ServerSignIn({
 
   return (
     <div className={classes.root}>
-      {showName ? <code className={classes.name}>{serverName}</code> : null}
+      {showName ? (
+        <span className={classes.name}>
+          {label}
+          {/* A display name may be shared, by the members of one family: the
+              server's own name keeps the rows of a list apart. */}
+          {label !== serverName ? (
+            <>
+              {' '}
+              <code>{serverName}</code>
+            </>
+          ) : null}
+        </span>
+      ) : null}
       <SignInFlow
         state={state}
         wait={parts.kind === 'sign-in' ? parts.wait : undefined}
