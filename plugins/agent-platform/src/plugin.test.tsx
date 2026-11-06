@@ -46,11 +46,15 @@ jest.mock('./components/UsageRouter', () => ({
 jest.mock('./components/ProfilePage', () => ({
   ProfilePage: () => <div>Profile content</div>,
 }));
+jest.mock('./components/OrganizationsRouter', () => ({
+  OrganizationsRouter: () => <div>Organizations content</div>,
+}));
 
 function renderPages(
   agentShell: FeatureFlagState,
   path: string,
   extensions: Array<string | Record<string, boolean>> = [],
+  organizations?: FeatureFlagState,
 ) {
   return renderTestApp({
     features: [
@@ -60,6 +64,7 @@ function renderPages(
           agentPlatformPlugin.getExtension('page:agent-platform/sessions'),
           agentPlatformPlugin.getExtension('page:agent-platform/usage'),
           agentPlatformPlugin.getExtension('page:agent-platform/profile'),
+          agentPlatformPlugin.getExtension('page:agent-platform/organizations'),
         ],
       }),
     ],
@@ -67,13 +72,70 @@ function renderPages(
     initialRouteEntries: [path],
     apis: [
       mockApis.featureFlags({
-        initialStates: { [AGENT_SHELL_FLAG]: agentShell },
+        initialStates: {
+          [AGENT_SHELL_FLAG]: agentShell,
+          ...(organizations !== undefined && {
+            'agent-platform-organizations': organizations,
+          }),
+        },
       }),
     ],
   });
 }
 
 describe("the Agent Platform's own pages", () => {
+  it.each([
+    '/organizations',
+    '/organizations/gazelle/org-acme/payments',
+    '/organizations/gazelle/org-acme/payments/models',
+  ])('requires the organizations opt-in to route %s', async path => {
+    renderPages(FeatureFlagState.Active, path);
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+    expect(screen.queryByText('Organizations content')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    '/organizations',
+    '/organizations/gazelle/org-acme/payments',
+    '/organizations/gazelle/org-acme/payments/models',
+  ])('routes %s with the organizations opt-in', async path => {
+    renderPages(FeatureFlagState.Active, path, [], FeatureFlagState.Active);
+
+    expect(
+      await screen.findByText('Organizations content'),
+    ).toBeInTheDocument();
+  });
+
+  it.each([FeatureFlagState.None, FeatureFlagState.Active])(
+    'does not route organizations without the shell, organizations=%s',
+    async organizations => {
+      renderPages(
+        FeatureFlagState.None,
+        '/organizations',
+        ['page:agent-platform/organizations'],
+        organizations,
+      );
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Organizations content'),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it('does not let app.extensions bypass an inactive organizations flag', async () => {
+    renderPages(
+      FeatureFlagState.Active,
+      '/organizations',
+      ['page:agent-platform/organizations'],
+      FeatureFlagState.None,
+    );
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+    expect(screen.queryByText('Organizations content')).not.toBeInTheDocument();
+  });
+
   it.each([
     ['/sessions', 'Sessions content'],
     ['/sessions/gazelle/abc', 'Sessions content'],

@@ -3,6 +3,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
+  agentPlatformPlugin,
   CommandPalette,
   RecentSessions,
   useOrganizationsAvailable,
@@ -225,12 +226,16 @@ function AgentShellRail() {
   const { isPinned, toggleSidebarPinState, isMobile } = useSidebarPinState();
   const portals = usePortals();
   const organizationsAvailable = useOrganizationsAvailable();
+  const organizationsRoute = useRouteRef(
+    agentPlatformPlugin.routes.organizations,
+  );
   const homeRoute = useRouteRef(homeRouteRef);
   // A cross-link into the other portal only while the deployment serves it.
   const items = agentShellNavItems.filter(
     item =>
       (!item.crossLinkTo || portals[item.crossLinkTo]) &&
-      (item.id !== 'organizations' || organizationsAvailable),
+      (item.id !== 'organizations' ||
+        (organizationsRoute && organizationsAvailable)),
   );
   const top = items.filter(item => item.position === 'top');
   const bottom = items.filter(item => item.position === 'bottom');

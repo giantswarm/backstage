@@ -92,6 +92,7 @@ async function renderNav({
   path = '/',
   profile = { displayName: 'Jane Doe', email: 'jane@example.com' },
   portals = { platformPortal: true, agentPlatform: true },
+  organizationsEnabled = false,
 }: {
   profile?: { displayName?: string; email?: string };
   bound?: boolean;
@@ -99,6 +100,7 @@ async function renderNav({
   isMobile?: boolean;
   path?: string;
   portals?: PortalsConfig;
+  organizationsEnabled?: boolean;
 } = {}) {
   await renderInTestApp(
     <RailWidthProvider>
@@ -136,7 +138,9 @@ async function renderNav({
           '/customize/connectors': musterPlugin.routes.mcpServers,
           '/customize/workflows': musterPlugin.routes.workflows,
           '/profile': agentPlatformPlugin.routes.profile,
-          '/organizations': agentPlatformPlugin.routes.organizations,
+          ...(organizationsEnabled && {
+            '/organizations': agentPlatformPlugin.routes.organizations,
+          }),
         }),
       },
     },
@@ -161,10 +165,10 @@ beforeEach(() => {
 
 describe('AgentShellNav', () => {
   it.each([true, false])(
-    'shows Organizations only when supported, pinned=%s',
+    'shows Organizations when enabled and supported, pinned=%s',
     async isPinned => {
       mockOrganizationsAvailable.mockReturnValue(true);
-      await renderNav({ isPinned });
+      await renderNav({ isPinned, organizationsEnabled: true });
 
       expect(
         screen.getByRole('link', { name: 'Organizations' }),
@@ -173,7 +177,7 @@ describe('AgentShellNav', () => {
   );
 
   it('hides Organizations when no installation reports support', async () => {
-    await renderNav();
+    await renderNav({ organizationsEnabled: true });
 
     expect(
       screen.queryByRole('link', { name: 'Organizations' }),
@@ -181,10 +185,27 @@ describe('AgentShellNav', () => {
   });
 
   it.each([true, false])(
-    'gates Organizations in the mobile profile menu, supported=%s',
-    async supported => {
+    'hides Organizations when its page is disabled, pinned=%s',
+    async isPinned => {
+      mockOrganizationsAvailable.mockReturnValue(true);
+      await renderNav({ isPinned });
+
+      expect(
+        screen.queryByRole('link', { name: 'Organizations' }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    'gates Organizations in the mobile profile menu, enabled=%s, supported=%s',
+    async (organizationsEnabled, supported) => {
       mockOrganizationsAvailable.mockReturnValue(supported);
-      await renderNav({ isMobile: true });
+      await renderNav({ isMobile: true, organizationsEnabled });
       await userEvent.click(
         screen.getByRole('button', { name: 'Profile and settings' }),
       );
@@ -194,7 +215,7 @@ describe('AgentShellNav', () => {
         { name: 'Organizations' },
       );
       expect(organization?.getAttribute('href') ?? null).toBe(
-        supported ? '/organizations' : null,
+        organizationsEnabled && supported ? '/organizations' : null,
       );
     },
   );
