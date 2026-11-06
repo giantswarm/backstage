@@ -1960,6 +1960,33 @@ describe('CustomizeAgentsPanel creator', () => {
       'Created by: Platform',
     );
   });
+
+  it("names no creator on an organization's agent without a recorded one", async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [
+        row({
+          name: 'Acme helper',
+          technicalName: 'helper',
+          namespace: 'org-acme',
+          tenant: 'acme',
+        }),
+        row({
+          name: 'Acme mine',
+          technicalName: 'mine',
+          namespace: 'org-acme',
+          tenant: 'acme',
+          createdBy: 'ana@example.com',
+        }),
+      ],
+    };
+    await renderPanel();
+    const [helper, mine] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(within(helper).queryByText(/^by /)).not.toBeInTheDocument();
+    expect(within(mine).getByText('by ana@example.com')).toBeInTheDocument();
+  });
 });
 
 describe('CustomizeAgentsPanel connectors', () => {

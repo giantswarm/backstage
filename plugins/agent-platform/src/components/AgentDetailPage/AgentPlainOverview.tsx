@@ -60,8 +60,13 @@ import { FailureMarker } from './FailureMarker';
 import {
   CREATED_BY_ANNOTATION,
   creatorOf,
+  tenantKindOf,
   OWNER_LABEL,
 } from '../../lib/tenants';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -710,6 +715,7 @@ export function agentFacts({
   harness,
   isReadingHarness = false,
   platformHarness,
+  directory = EMPTY_ORGANIZATION_DIRECTORY,
 }: {
   agent: Agent;
   installation: string;
@@ -723,6 +729,8 @@ export function agentFacts({
    * (or unless) `get_info` names it, so no Harness is marked on a guess.
    */
   platformHarness?: string;
+  /** Which namespace is which organization, for who created the agent. */
+  directory?: OrganizationDirectory;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
@@ -767,10 +775,13 @@ export function agentFacts({
   if (defaultWorkspace) {
     facts.push({ label: 'Default workspace', value: defaultWorkspace });
   }
-  facts.push({
-    label: 'Created by',
-    value: creatorOf(agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim()),
-  });
+  const creator = creatorOf(
+    agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim(),
+    tenantKindOf(agent.getNamespace() ?? '', directory),
+  );
+  if (creator) {
+    facts.push({ label: 'Created by', value: creator });
+  }
   if (created) {
     facts.push({
       label: 'Created',

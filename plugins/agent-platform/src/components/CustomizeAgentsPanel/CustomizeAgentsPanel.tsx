@@ -447,14 +447,23 @@ function AgentListItem({
     [owner && ownerId, row.tags.length > 0 && tagsId]
       .filter(Boolean)
       .join(' ') || undefined;
+  const creator = creatorOf(
+    row.createdBy,
+    tenantKindOf(row.namespace, directory),
+  );
   const facts: AgentFact[] = [
-    // Who made it, or the platform for an agent no one is recorded against.
-    {
-      key: 'createdBy',
-      text: `by ${creatorOf(row.createdBy)}`,
-      label: 'Created by',
-      detail: creatorOf(row.createdBy),
-    },
+    // Who made it, or the platform for an agent no one is recorded against
+    // outside an organization.
+    ...(creator
+      ? [
+          {
+            key: 'createdBy',
+            text: `by ${creator}`,
+            label: 'Created by',
+            detail: creator,
+          },
+        ]
+      : []),
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
     ...(showHarness

@@ -3149,6 +3149,25 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(createdBy).toHaveTextContent(/^Platform$/);
     });
 
+    it('names no creator of an organization’s agent without a recorded one', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(await within(facts).findByText('acme')).toBeInTheDocument();
+      expect(within(facts).queryByText('Created by')).not.toBeInTheDocument();
+    });
+
     it('keeps the ModelConfig name without a display name, the model below it', async () => {
       stubResources(
         { resource: makeAgent() },
