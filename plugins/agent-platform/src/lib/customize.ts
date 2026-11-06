@@ -6,6 +6,10 @@ import {
   type StatusLabelIntent,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../components/AgentsDataProvider';
+import {
+  newestFirst,
+  timestampValue,
+} from '../components/SessionsDataProvider/helpers';
 import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
 import { matches } from './search';
@@ -171,19 +175,6 @@ export const AGENT_SORTS: ReadonlyArray<{ id: AgentSort; label: string }> = [
   { id: 'name', label: 'Name' },
 ];
 
-function timeOf(value: string | undefined): number | undefined {
-  const parsed = value ? Date.parse(value) : NaN;
-  return Number.isNaN(parsed) ? undefined : parsed;
-}
-
-/** Newest first, an unknown time last. */
-function byTimeDesc(a: number | undefined, b: number | undefined): number {
-  if (a === b) return 0;
-  if (a === undefined) return 1;
-  if (b === undefined) return -1;
-  return b - a;
-}
-
 /**
  * The rows in the list's order: by when the person last used each agent
  * (`lastUsedAt`, epoch ms by row id; an agent never used goes last), by
@@ -198,9 +189,12 @@ export function sortAgents(
   return [...rows].sort((a, b) => {
     let order = 0;
     if (sort === 'lastUsed') {
-      order = byTimeDesc(lastUsedAt.get(a.id), lastUsedAt.get(b.id));
+      order = newestFirst(lastUsedAt.get(a.id), lastUsedAt.get(b.id));
     } else if (sort === 'recent') {
-      order = byTimeDesc(timeOf(a.createdAt), timeOf(b.createdAt));
+      order = newestFirst(
+        timestampValue(a.createdAt),
+        timestampValue(b.createdAt),
+      );
     }
     return order || byName(a, b);
   });
