@@ -3135,6 +3135,47 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
     });
 
+    it('names the creator by name, the email as the secondary line', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+        'agent-platform.giantswarm.io/created-by-name': 'Ana Example',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts).getByText('Created by').closest('dt')
+        ?.nextElementSibling as HTMLElement;
+      expect(within(createdBy).getByText('Ana Example')).toBeInTheDocument();
+      expect(
+        within(createdBy).getByText('ana@example.com'),
+      ).toBeInTheDocument();
+    });
+
+    it('names the creator by email alone where no name is recorded', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts)
+        .getByText('Created by')
+        .closest('dt')?.nextElementSibling;
+      expect(createdBy).toHaveTextContent(/^ana@example\.com$/);
+    });
+
     it('names the platform as creator of an agent without a recorded one', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 

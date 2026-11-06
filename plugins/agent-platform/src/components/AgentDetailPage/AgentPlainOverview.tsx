@@ -59,6 +59,7 @@ import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
 import {
   CREATED_BY_ANNOTATION,
+  CREATED_BY_NAME_ANNOTATION,
   creatorOf,
   tenantKindOf,
   OWNER_LABEL,
@@ -775,12 +776,32 @@ export function agentFacts({
   if (defaultWorkspace) {
     facts.push({ label: 'Default workspace', value: defaultWorkspace });
   }
+  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
   const creator = creatorOf(
-    agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim(),
+    createdBy,
     tenantKindOf(agent.getNamespace() ?? '', directory),
+    agent.getAnnotations()?.[CREATED_BY_NAME_ANNOTATION]?.trim(),
   );
   if (creator) {
-    facts.push({ label: 'Created by', value: creator });
+    facts.push({
+      label: 'Created by',
+      // A name, with the email it stands for as the secondary line.
+      value:
+        createdBy && creator !== createdBy ? (
+          <Flex direction="column" gap="1">
+            <Text variant="body-small">{creator}</Text>
+            <Text
+              variant="body-x-small"
+              color="secondary"
+              style={{ overflowWrap: 'anywhere' }}
+            >
+              {createdBy}
+            </Text>
+          </Flex>
+        ) : (
+          creator
+        ),
+    });
   }
   if (created) {
     facts.push({
