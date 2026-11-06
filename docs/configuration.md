@@ -465,6 +465,13 @@ as the domain's subdomains.
 `http` module reads a bare `example.com` in `NO_PROXY` as that one host only,
 so domain suffixes need the leading dot there.
 
+This mode needs Node 24.17 or later, the minimum the root `package.json`
+declares in `engines`. On older Node versions, native `fetch` bypasses the
+proxy while `http`/`https` still use it: the backend loads undici 8, which
+replaces the proxy dispatcher Node installs with a direct one when Node's
+bundled undici is older than 7.27 (Node 24.16 bundles 7.25, Node 22 bundles
+undici 6). The `GLOBAL_AGENT_*` mode does not depend on the Node version.
+
 ## Grafana dashboards card
 
 Team and component pages carrying the `grafana/dashboard-selector` annotation
