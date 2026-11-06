@@ -239,6 +239,11 @@ function AgentShellRail() {
   );
   const top = items.filter(item => item.position === 'top');
   const bottom = items.filter(item => item.position === 'bottom');
+  const inProfileMenu = items.filter(
+    item =>
+      item.position === 'profileMenu' ||
+      (isMobile && item.phone === 'profileMenu'),
+  );
 
   // The skip link sits outside the rail, fixed to the top left of the
   // viewport: inside the bottom-anchored mobile bar its hidden state floated
@@ -252,7 +257,6 @@ function AgentShellRail() {
     const inBar = [...top, ...bottom].filter(
       item => item.phone !== 'profileMenu',
     );
-    const inProfileMenu = items.filter(item => item.phone === 'profileMenu');
     return (
       <>
         <SkipLink />
@@ -359,7 +363,12 @@ function AgentShellRail() {
           <Box pt="2" className={classes.bottom}>
             <ul className={listClassName}>
               {bottom.map(item => (
-                <RailItem key={item.id} item={item} layout={layout} />
+                <RailItem
+                  key={item.id}
+                  item={item}
+                  layout={layout}
+                  menuItems={'menu' in item ? inProfileMenu : undefined}
+                />
               ))}
             </ul>
           </Box>

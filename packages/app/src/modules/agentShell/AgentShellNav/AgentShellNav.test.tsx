@@ -164,61 +164,38 @@ beforeEach(() => {
 });
 
 describe('AgentShellNav', () => {
-  it.each([true, false])(
-    'shows Organizations when enabled and supported, pinned=%s',
-    async isPinned => {
-      mockOrganizationsAvailable.mockReturnValue(true);
-      await renderNav({ isPinned, organizationsEnabled: true });
+  describe.each([
+    { isPinned: true, isMobile: false },
+    { isPinned: false, isMobile: false },
+    { isPinned: false, isMobile: true },
+  ])('Organizations in the profile menu, %j', layout => {
+    it.each([
+      [false, false],
+      [false, true],
+      [true, false],
+      [true, true],
+    ])(
+      'requires enabled=%s and supported=%s',
+      async (organizationsEnabled, supported) => {
+        mockOrganizationsAvailable.mockReturnValue(supported);
+        await renderNav({ ...layout, organizationsEnabled });
 
-      expect(
-        screen.getByRole('link', { name: 'Organizations' }),
-      ).toHaveAttribute('href', '/organizations');
-    },
-  );
+        expect(
+          screen.queryByRole('link', { name: 'Organizations' }),
+        ).not.toBeInTheDocument();
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Profile and settings' }),
+        );
 
-  it('hides Organizations when no installation reports support', async () => {
-    await renderNav({ organizationsEnabled: true });
-
-    expect(
-      screen.queryByRole('link', { name: 'Organizations' }),
-    ).not.toBeInTheDocument();
+        const organization = within(
+          await screen.findByRole('menu'),
+        ).queryByRole('menuitem', { name: 'Organizations' });
+        expect(organization?.getAttribute('href') ?? null).toBe(
+          organizationsEnabled && supported ? '/organizations' : null,
+        );
+      },
+    );
   });
-
-  it.each([true, false])(
-    'hides Organizations when its page is disabled, pinned=%s',
-    async isPinned => {
-      mockOrganizationsAvailable.mockReturnValue(true);
-      await renderNav({ isPinned });
-
-      expect(
-        screen.queryByRole('link', { name: 'Organizations' }),
-      ).not.toBeInTheDocument();
-    },
-  );
-
-  it.each([
-    [false, false],
-    [false, true],
-    [true, false],
-    [true, true],
-  ])(
-    'gates Organizations in the mobile profile menu, enabled=%s, supported=%s',
-    async (organizationsEnabled, supported) => {
-      mockOrganizationsAvailable.mockReturnValue(supported);
-      await renderNav({ isMobile: true, organizationsEnabled });
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Profile and settings' }),
-      );
-
-      const organization = within(await screen.findByRole('menu')).queryByRole(
-        'menuitem',
-        { name: 'Organizations' },
-      );
-      expect(organization?.getAttribute('href') ?? null).toBe(
-        organizationsEnabled && supported ? '/organizations' : null,
-      );
-    },
-  );
 
   it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
