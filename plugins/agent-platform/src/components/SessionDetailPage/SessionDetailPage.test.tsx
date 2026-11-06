@@ -2745,7 +2745,7 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
       // The runtime's words are the evidence under the explanation — and
       // nowhere the whole text of anything.
-      expect(screen.getByText(/kagent reported:/)).toHaveTextContent(ATENET);
+      expect(screen.getByText(/Platform details:/)).toHaveTextContent(ATENET);
       expect(screen.queryByText(ATENET)).not.toBeInTheDocument();
       // Suspected, not reported: the retry stays, and no mark yet.
       expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
@@ -3471,12 +3471,10 @@ describe('SessionDetailPage', () => {
       mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
       await render();
 
-      expect(
-        screen.getByText('Could not resume this session'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
       expect(
         screen.getByText(
-          /the question is still open and this session cannot continue/,
+          /The latest session read still showed an unanswered question/,
         ),
       ).toBeInTheDocument();
       expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
@@ -3496,7 +3494,7 @@ describe('SessionDetailPage', () => {
         screen.queryByRole('textbox', { name: 'Message' }),
       ).not.toBeInTheDocument();
       const notice = screen
-        .getByText('Could not resume this session')
+        .getByText('Answer not yet confirmed')
         .closest('.bui-Alert') as HTMLElement;
       expect(
         within(notice).getByRole('button', {
@@ -3623,9 +3621,7 @@ describe('SessionDetailPage', () => {
       );
       await render();
 
-      expect(
-        screen.getByText('Could not resume this session'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
       expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
       await userEvent.click(startButton());
       await waitFor(() => {
@@ -3650,7 +3646,7 @@ describe('SessionDetailPage', () => {
       expect(screen.getByText('Answer not sent')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Send answer' })).toBeEnabled();
       expect(
-        screen.queryByText('Could not resume this session'),
+        screen.queryByText('Answer not yet confirmed'),
       ).not.toBeInTheDocument();
     });
 
@@ -3666,9 +3662,7 @@ describe('SessionDetailPage', () => {
       mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
       await render();
 
-      expect(
-        screen.getByText('Could not resume this session'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
       expect(
         screen.queryByText('The agent’s runtime could not be brought back'),
       ).not.toBeInTheDocument();
@@ -3692,7 +3686,7 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(
-        screen.queryByText('Could not resume this session'),
+        screen.queryByText('Answer not yet confirmed'),
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole('form', { name: 'Question from the agent' }),
@@ -3709,7 +3703,7 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(
-        screen.queryByText('Could not resume this session'),
+        screen.queryByText('Answer not yet confirmed'),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /Continue in a new session/ }),
@@ -4222,8 +4216,10 @@ describe('SessionDetailPage', () => {
       // A bold headline that says what the chip shows.
       expect(within(tooltip).getByText('Workspace')).toHaveStyle({
         display: 'block',
-        fontWeight: '700',
       });
+      expect(['bold', '700']).toContain(
+        getComputedStyle(within(tooltip).getByText('Workspace')).fontWeight,
+      );
 
       await user.click(chip);
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -4399,7 +4395,7 @@ describe('SessionDetailPage', () => {
 
       const dock = screen.getByTestId('session-dock');
       expect(
-        within(dock).getByText('Could not resume this session'),
+        within(dock).getByText('Answer not yet confirmed'),
       ).toBeInTheDocument();
       expect(within(dock).getByText('Your answer: prod')).toBeInTheDocument();
       expect(

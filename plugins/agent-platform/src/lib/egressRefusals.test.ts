@@ -184,4 +184,36 @@ describe('withEgressRefusals', () => {
   it('leaves a timeline without refusals as it is', () => {
     expect(withEgressRefusals(items, [])).toBe(items);
   });
+
+  it('uses the latest activity in a turn to place its refusals', () => {
+    const timeline: TimelineItem[] = [
+      { kind: 'user-message', id: 'u0', taskIndex: 0, at: iso(0), text: 'a' },
+      {
+        kind: 'agent-message',
+        id: 'a0',
+        taskIndex: 0,
+        at: iso(100),
+        text: 'b',
+      },
+      { kind: 'user-message', id: 'u1', taskIndex: 1, at: iso(200), text: 'c' },
+      {
+        kind: 'agent-message',
+        id: 'a1',
+        taskIndex: 1,
+        at: iso(300),
+        text: 'd',
+      },
+    ];
+    const result = withEgressRefusals(timeline, [refusal(90, 60)]);
+    expect(result.find(item => item.kind === 'egress-refused')?.taskIndex).toBe(
+      0,
+    );
+    expect(result.map(item => item.id)).toEqual([
+      'u0',
+      'egress-refused:0|https|proxy.golang.org|443',
+      'a0',
+      'u1',
+      'a1',
+    ]);
+  });
 });

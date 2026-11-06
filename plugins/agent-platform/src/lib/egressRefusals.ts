@@ -152,14 +152,20 @@ export function withEgressRefusals(
   }
   const turnEnds: { taskIndex: number; at?: string }[] = [];
   for (const item of items) {
-    if (turnEnds[turnEnds.length - 1]?.taskIndex !== item.taskIndex) {
+    const last = turnEnds[turnEnds.length - 1];
+    if (last?.taskIndex !== item.taskIndex) {
       turnEnds.push({ taskIndex: item.taskIndex, at: item.at });
+    } else if (
+      item.at &&
+      (!last.at || Date.parse(item.at) > Date.parse(last.at))
+    ) {
+      last.at = item.at;
     }
   }
   const turnOf = (refusal: EgressRefusal): number => {
     const happened = refusal.since ?? refusal.at;
     const turn = turnEnds.find(
-      end => end.at !== undefined && end.at >= happened,
+      end => end.at !== undefined && Date.parse(end.at) >= Date.parse(happened),
     );
     return (turn ?? turnEnds[turnEnds.length - 1]).taskIndex;
   };
