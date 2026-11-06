@@ -19,4 +19,30 @@ describe('MessageMarkdown', () => {
       overflowWrap: 'normal',
     });
   });
+
+  it('navigates in the app for a same-origin link, query kept', async () => {
+    await renderInTestApp(
+      <MessageMarkdown text="[Start a session with General Assistant](/?agent=golem%2Fkagent%2Fdefault-agent&prompt=Watch%20backups)" />,
+    );
+
+    const link = screen.getByRole('link', {
+      name: 'Start a session with General Assistant',
+    });
+    expect(link).toHaveAttribute(
+      'href',
+      '/?agent=golem%2Fkagent%2Fdefault-agent&prompt=Watch%20backups',
+    );
+    expect(link).not.toHaveAttribute('target');
+  });
+
+  it('opens another origin in a new tab', async () => {
+    await renderInTestApp(
+      <MessageMarkdown text="[Docs](https://docs.giantswarm.io/)" />,
+    );
+
+    const link = screen.getByRole('link', { name: /Docs/ });
+    expect(link).toHaveAttribute('href', 'https://docs.giantswarm.io/');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+  });
 });

@@ -19,7 +19,12 @@ import {
 import { makeStyles } from '@material-ui/core/styles';
 
 import { useFavoriteAgentIds } from '../../hooks/useFavoriteAgents';
-import { NEW_SESSION_AGENT_PARAM } from '../../lib/newSessionLink';
+import { useDefaultAgentIds } from '../../hooks/useAgentManager';
+import { useLinkedPrompt } from '../../hooks/useLinkedPrompt';
+import {
+  findLinkedAgent,
+  NEW_SESSION_AGENT_PARAM,
+} from '../../lib/newSessionLink';
 import { recentAgents } from '../../lib/recentAgents';
 import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
 import { AgentReachLine } from '../AgentReachLine';
@@ -147,17 +152,33 @@ function AgentPlatformHomeContent({
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
   const navigate = useNavigate();
   // `?agent=<id>` (a "New session" link from elsewhere, e.g. Customize →
-  // Agents) preselects that agent, when it is one that can be started.
+  // Agents, or one an agent wrote) preselects that agent, when it is one that
+  // can be started.
   const [searchParams] = useSearchParams();
   const requestedAgentId = searchParams.get(NEW_SESSION_AGENT_PARAM);
   const requestedAgent = useMemo(
-    () =>
-      requestedAgentId
-        ? agents.find(
-            agent => agent.id === requestedAgentId && isStartableAgent(agent),
-          )
-        : undefined,
+    () => findLinkedAgent(agents, requestedAgentId, isStartableAgent),
     [agents, requestedAgentId],
+  );
+  // `?prompt=` prefills the prompt; the person still starts the session.
+  const linkedPrompt = useLinkedPrompt();
+  // The installation's default agent, as agent-manager names it: preselected
+  // when nothing else is, and listed first. The home installation's wins.
+  const startableInstallations = useMemo(
+    () => [
+      ...new Set(
+        agents.filter(isStartableAgent).map(agent => agent.installation),
+      ),
+    ],
+    [agents],
+  );
+  const defaultAgentIds = useDefaultAgentIds(startableInstallations);
+  const defaultAgent = useMemo(
+    () =>
+      agents.find(
+        agent => defaultAgentIds.has(agent.id) && isStartableAgent(agent),
+      ),
+    [agents, defaultAgentIds],
   );
   // The composer's pick, only while it can still be started: it reports a
   // pick, never that the agent left the offer (its installation turned out
@@ -237,6 +258,11 @@ function AgentPlatformHomeContent({
             </Text>
           </Flex>
           <StartNewSession
+            // A link followed while the page is open starts the composer over
+            // from its prompt.
+            key={linkedPrompt.key}
+            linkedPrompt={linkedPrompt.prompt}
+            suggestedAgent={defaultAgent}
             entryPoint="home"
             layout="standalone"
             // An unsent prompt outlives a reload or a sign-in that leaves the
@@ -258,6 +284,7 @@ function AgentPlatformHomeContent({
               groupByNamespace: true,
               recentAgentIds,
               favoriteAgentIds,
+              leadingAgentId: defaultAgent?.id,
               pickerPlaceholder: 'Choose an agent',
               pickerFooterAction: manageAgents,
               promptPlaceholder,

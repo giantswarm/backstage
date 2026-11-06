@@ -136,3 +136,39 @@ export function useCreatesAgentsNowhere(installations: string[]): {
     isLoading,
   };
 }
+
+/**
+ * The ids (`<installation>/<namespace>/<name>`) of the default agents of
+ * `installations`, as each one's agent-manager answers `get_info`
+ * (`defaultAgent`): agent-manager decides which agent that is, the portal
+ * does not resolve it again. An installation whose answer has none, or that
+ * has not answered, contributes nothing.
+ */
+export function useDefaultAgentIds(installations: string[]): Set<string> {
+  const musterApi = useMusterPluginApi();
+  // Same query as `useAgentManagerInfo`, so the answers are shared.
+  const infos = useQueries({
+    queries: installations.map(installation => ({
+      queryKey: musterAgentManagerInfoQueryKey(installation),
+      enabled: Boolean(musterApi),
+      queryFn: () => new AgentManagerClient(musterApi!, installation).getInfo(),
+      staleTime: 60_000,
+      retry: false,
+    })),
+  });
+  const refs = infos.map(info => info.data?.defaultAgent?.trim() ?? '');
+  const key = installations
+    .map((installation, index) => `${installation}=${refs[index]}`)
+    .join(',');
+  return useMemo(
+    () =>
+      new Set(
+        installations.flatMap((installation, index) =>
+          refs[index] ? [`${installation}/${refs[index]}`] : [],
+        ),
+      ),
+    // `key` stands for both lists, which are new arrays on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [key],
+  );
+}
