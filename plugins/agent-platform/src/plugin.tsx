@@ -16,7 +16,10 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Model Manager tools are accessed through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
-import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  AGENT_SHELL_ON,
+  ORGANIZATIONS_FLAG,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   KagentApiClient,
@@ -85,7 +88,6 @@ import {
  * deployments replace wholesale.
  */
 const CUSTOMIZE_PAGE = 'page:app/agent-shell-customize';
-const ORGANIZATIONS_FLAG = 'agent-platform-organizations';
 
 // The Customize screen's "Agents" tab. Its content is one agent's page
 // (`/customize/agents/<installation>/<namespace>/<name>`), its edit

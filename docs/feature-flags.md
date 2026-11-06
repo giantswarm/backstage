@@ -1,5 +1,5 @@
 # User facing feature flags
 
-- `agent-platform-organizations`: Enables the experimental Organizations pages in the Agent Platform shell. Off by default. Navigation also requires an installation that supports organizations. Takes effect after a reload.
+- `agent-platform-organizations`: Enables the experimental Organizations pages in the Agent Platform shell. Off by default. Deployments set `agentPlatform.organizations.enabled` to enable or disable the pages for everyone; an explicit value overrides the browser flag and hides its toggle. When unset, the browser flag opts one person in. Navigation also requires an installation that supports organizations. Takes effect after a reload.
 - `agent-platform-shell`: Opts one browser into the Agent Platform shell on its own routes (`/`, `/sessions`, `/usage`, `/profile`, `/customize`) next to the classic portal, with cross-links between the two, while the deployment has the Agent Platform switched off. Takes effect after a reload. Deployments switch the shell on for everyone with `app.portals.agentPlatform` (see `packages/app/config.d.ts`); while that is on, the flag is moot and not listed in the settings.
 - `ai-chat-verbose-debugging`: Enables verbose output for the AI Chat plugin, showing reasoning output and tool usage details.

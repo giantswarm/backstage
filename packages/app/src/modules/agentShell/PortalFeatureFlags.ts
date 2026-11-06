@@ -7,6 +7,7 @@ import type {
 } from '@backstage/frontend-plugin-api';
 import {
   AGENT_SHELL_FLAG,
+  ORGANIZATIONS_FLAG,
   isAgentShellOptInOffered,
   readPortals,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -16,6 +17,8 @@ import {
  * `agent-platform-shell` reports what the deployment decided
  * (`app.portals`, see `readPortals`) with the person's own flag as the
  * opt-in while the deployment has the Agent Platform off.
+ * `agentPlatform.organizations.enabled`, when set, controls the Organizations
+ * flag for everyone and hides its browser toggle.
  *
  * Extension `if` predicates can only read feature flags (and permissions),
  * and the shell's extensions (its `/` home, Customize, the classic home's
@@ -43,13 +46,24 @@ export class PortalFeatureFlags implements FeatureFlagsApi {
 
   getRegisteredFlags(): FeatureFlag[] {
     const flags = this.flags.getRegisteredFlags();
-    if (isAgentShellOptInOffered(this.config)) {
-      return flags;
-    }
-    return flags.filter(flag => flag.name !== AGENT_SHELL_FLAG);
+    return flags.filter(
+      flag =>
+        (flag.name !== AGENT_SHELL_FLAG ||
+          isAgentShellOptInOffered(this.config)) &&
+        (flag.name !== ORGANIZATIONS_FLAG ||
+          this.config.getOptionalBoolean(
+            'agentPlatform.organizations.enabled',
+          ) === undefined),
+    );
   }
 
   isActive(name: string): boolean {
+    if (name === ORGANIZATIONS_FLAG) {
+      return (
+        this.config.getOptionalBoolean('agentPlatform.organizations.enabled') ??
+        this.flags.isActive(name)
+      );
+    }
     if (name !== AGENT_SHELL_FLAG) {
       return this.flags.isActive(name);
     }
