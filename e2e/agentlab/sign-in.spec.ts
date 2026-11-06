@@ -29,7 +29,14 @@ for (const role of ['admin', 'dev', 'viewer'] as const) {
       page.getByRole('heading', { name: user.name, exact: true }),
       'the Profile card names the signed-in user',
     ).toBeVisible();
-    await expect(page.getByText(`User Entity: ${user.name}`)).toBeVisible();
+    // The lab's local Dex accounts are external identities, not staff
+    // catalog users. Their display name comes from the OIDC profile, while
+    // their entity ref stays in the subject-keyed oidc namespace.
+    await expect(page.getByText(user.email, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(/^User Entity: oidc\/[a-f0-9]{40}$/),
+      'the external identity has its own subject-keyed entity ref',
+    ).toBeVisible();
 
     // The Profile card's menu carries Sign Out; the sign-in page is back.
     await page.getByRole('button', { name: 'more' }).click();

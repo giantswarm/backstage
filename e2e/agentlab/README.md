@@ -230,8 +230,21 @@ the user's muster session, per-server sign-ins and Notification inbox are one.
 A lab for `AGENTLAB_E2E_WORKERS=<w>` carries workers 1 to _w_-1's users in its
 `agentlab.yaml`, each in its original's groups and with the fixture password,
 then `agentlab platform`, which adds them to the lab Dex and to the portal's
-catalog (`agentlab reload` reaches Dex only, and Settings then names no user
-entity for them):
+catalog. These local Dex accounts sign in as external identities: Settings
+shows the name and email from their OIDC profile, and `User Entity:
+oidc/<subject hash>`. They do not resolve to the catalog's `default` users;
+the resolver reserves those for the staff connectors. `sign-in.spec.ts`
+checks both the profile and the separate identity namespace.
+
+To check all three roles sequentially and in three separate browser workers:
+
+```bash
+yarn test:e2e:agentlab 'sign-in.spec.ts' --project agentlab -g 'signs in as the lab' --workers 1
+yarn test:e2e:agentlab 'sign-in.spec.ts' --project agentlab -g 'signs in as the lab' --workers 3 --fully-parallel
+```
+
+The parallel run needs the worker users below; `--fully-parallel` makes the
+three tests in the same spec run in separate workers.
 
 ```yaml
 users:
