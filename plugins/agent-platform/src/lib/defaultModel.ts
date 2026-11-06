@@ -3,8 +3,6 @@
  * `agent-platform.giantswarm.io/is-default-model-config: "true"`. As with the
  * default IngressClass, none annotated or more than one is no default. Nothing
  * enforces a single mark, so every write here refuses to create a second one.
- * Outside an Organization, a namespace without a mark falls back to the
- * kagent chart's `default-model-config`, as agent-manager resolves it.
  *
  * Where agents are created, agent-manager's `list_model_configs` answers which
  * model is the default (`default`); the portal reads that field there rather
@@ -12,14 +10,9 @@
  * model's own page and what it writes.
  */
 
-import type { OrganizationDirectory } from './organizations';
-
 /** The marker annotation. */
 export const DEFAULT_MODEL_ANNOTATION =
   'agent-platform.giantswarm.io/is-default-model-config';
-
-/** The values key a Helm-managed ModelConfig is marked with instead. */
-export const DEFAULT_MODEL_VALUES_KEY = 'kagent.modelConfigs[].default';
 
 /** The part of a ModelConfig the marker reads. */
 export type MarkableModelConfig = {
@@ -46,45 +39,15 @@ export function markedIn(
 }
 
 /**
- * The kagent chart's own ModelConfig: the default of a namespace outside an
- * Organization while no ModelConfig there carries the marker.
- */
-export const FALLBACK_DEFAULT_MODEL_CONFIG = 'default-model-config';
-
-/**
- * The models that claim the default of `namespace`: the marked ones, else
- * `FALLBACK_DEFAULT_MODEL_CONFIG` outside an organization (as agent-manager
- * names them in `directory`) when it exists.
- * One claim is the default; none or several is no default.
- */
-export function defaultClaimsIn(
-  modelConfigs: readonly MarkableModelConfig[],
-  namespace: string,
-  directory: OrganizationDirectory,
-): string[] {
-  const marked = markedIn(modelConfigs, namespace);
-  if (marked.length > 0 || directory.has(namespace)) {
-    return marked;
-  }
-  const hasFallback = modelConfigs.some(
-    mc =>
-      (mc.getNamespace() ?? '') === namespace &&
-      mc.getName() === FALLBACK_DEFAULT_MODEL_CONFIG,
-  );
-  return hasFallback ? [FALLBACK_DEFAULT_MODEL_CONFIG] : [];
-}
-
-/**
- * The default of `namespace`: the name of its one claim
- * (`defaultClaimsIn`), or undefined when there is none or several.
+ * The default of `namespace`: the name of its one marked model, or undefined
+ * when none or several are marked.
  */
 export function defaultIn(
   modelConfigs: readonly MarkableModelConfig[],
   namespace: string,
-  directory: OrganizationDirectory,
 ): string | undefined {
-  const claims = defaultClaimsIn(modelConfigs, namespace, directory);
-  return claims.length === 1 ? claims[0] : undefined;
+  const marked = markedIn(modelConfigs, namespace);
+  return marked.length === 1 ? marked[0] : undefined;
 }
 
 /**
@@ -93,7 +56,6 @@ export function defaultIn(
  */
 export function defaultModelIds(
   modelConfigs: readonly (MarkableModelConfig & { cluster: string })[],
-  directory: OrganizationDirectory,
 ): Set<string> {
   const byNamespace = new Map<string, MarkableModelConfig[]>();
   for (const mc of modelConfigs) {
@@ -102,7 +64,7 @@ export function defaultModelIds(
   }
   const ids = new Set<string>();
   for (const [key, models] of byNamespace) {
-    const name = defaultIn(models, models[0].getNamespace() ?? '', directory);
+    const name = defaultIn(models, models[0].getNamespace() ?? '');
     if (name) {
       ids.add(`${key}/${name}`);
     }
@@ -166,7 +128,7 @@ export function planDefaultMove<T extends MarkableModelConfig>({
     if (owner) {
       throw new Error(
         owner === 'Helm'
-          ? `${mc.getName()} is the default through Helm values, which would mark it again. Move the default in the values (${DEFAULT_MODEL_VALUES_KEY}).`
+          ? `${mc.getName()} is the default through Helm values, which would mark it again. Move the default in that release's values.`
           : `${mc.getName()} is the default and ${owner} manages it, which would mark it again. Move the default where ${owner} is configured.`,
       );
     }

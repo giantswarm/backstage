@@ -48,7 +48,7 @@ import {
   type ModelProvider,
   providersFor,
 } from '../../lib/modelConfigs';
-import { defaultClaimsIn, isMarkedDefault } from '../../lib/defaultModel';
+import { isMarkedDefault, markedIn } from '../../lib/defaultModel';
 import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
@@ -204,8 +204,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     [installation, modelConfigsFor, namespace],
   );
   const marks = useMemo(
-    () => defaultClaimsIn(namespaceModels, namespace, directory),
-    [namespaceModels, namespace, directory],
+    () => markedIn(namespaceModels, namespace),
+    [namespaceModels, namespace],
   );
   const markOwner = namespaceModels
     .filter(isMarkedDefault)
