@@ -1,7 +1,7 @@
 import { makeStyles } from '@material-ui/core';
 import { VisuallyHidden } from '@backstage/ui';
 import { HintTooltip } from '@giantswarm/backstage-plugin-ui-react';
-import { ConnectorLogo } from './ConnectorLogo';
+import { ConnectorLogo } from '../ConnectorLogo';
 
 type StyleProps = { size: number };
 
