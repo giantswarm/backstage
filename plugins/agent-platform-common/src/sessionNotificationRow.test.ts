@@ -49,7 +49,7 @@ describe('deriveSessionNotificationRow', () => {
       ['input-required', 'all', false, 'waiting'],
       ['input-required', 'muted', false, undefined],
       ['auth-required', 'default', false, 'waiting'],
-      // No stored level is Default.
+      // No stored level is `default`.
       ['input-required', undefined, false, 'waiting'],
 
       // Failed: portal-started sessions only, unless muted.
@@ -65,7 +65,7 @@ describe('deriveSessionNotificationRow', () => {
       ['failed', 'all', false, undefined],
       ['rejected', 'default', false, undefined],
 
-      // Turn finished: portal-started sessions at All activity only.
+      // Turn finished: portal-started sessions at `all` only.
       ['completed', 'all', true, 'turn-finished'],
       ['completed', 'default', true, undefined],
       ['completed', undefined, true, undefined],

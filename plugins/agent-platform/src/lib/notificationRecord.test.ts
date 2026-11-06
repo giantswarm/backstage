@@ -108,13 +108,13 @@ describe('withLevel', () => {
     });
   });
 
-  it('unmutes with Default, and drops an entry that held only the level', () => {
+  it('unmutes with `default`, and drops an entry that held only the level', () => {
     const muted = withLevel(empty, 'gazelle', 'slack', 'muted', EARLIER)!;
 
     expect(withLevel(muted, 'gazelle', 'slack', 'default', NOW)).toEqual(empty);
   });
 
-  it('keeps a portal-started session’s entry when it goes back to Default', () => {
+  it('keeps a portal-started session’s entry when it goes back to `default`', () => {
     const all = withLevel(portalStarted, 'gazelle', 'abc', 'all', EARLIER)!;
 
     expect(withLevel(all, 'gazelle', 'abc', 'default', NOW)).toEqual({

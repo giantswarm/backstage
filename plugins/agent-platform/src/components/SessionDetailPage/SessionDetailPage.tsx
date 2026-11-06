@@ -937,14 +937,18 @@ export function SessionDetailPage() {
   const notificationLevel = notificationSettings.isKnown
     ? notificationSettings.levelOf(installation, sessionId)
     : undefined;
+  const portalStarted = notificationSettings.isKnown
+    ? notificationSettings.isPortalStarted(installation, sessionId)
+    : undefined;
   const { setLevel } = notificationSettings;
   const notifications = useMemo(
     () => ({
       level: notificationLevel,
+      portalStarted,
       onChange: (level: NotificationLevel) =>
         setLevel(installation, sessionId, level),
     }),
-    [notificationLevel, setLevel, installation, sessionId],
+    [notificationLevel, portalStarted, setLevel, installation, sessionId],
   );
 
   // Whether the conversation shows the agent's tool activity, kept per

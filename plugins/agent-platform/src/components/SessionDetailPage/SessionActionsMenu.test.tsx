@@ -361,9 +361,11 @@ describe('SessionActionsMenu — Notifications', () => {
   function Harness({
     initial,
     onChange,
+    portalStarted,
   }: {
     initial: NotificationLevel | undefined;
     onChange: (level: NotificationLevel) => Promise<void>;
+    portalStarted?: boolean;
   }) {
     const [level, setLevel] = useState(initial);
     return (
@@ -373,6 +375,7 @@ describe('SessionActionsMenu — Notifications', () => {
         onRename={onRename}
         notifications={{
           level,
+          portalStarted,
           onChange: async next => {
             await onChange(next);
             setLevel(next);
@@ -387,10 +390,16 @@ describe('SessionActionsMenu — Notifications', () => {
     onChange: (level: NotificationLevel) => Promise<void> = jest
       .fn()
       .mockResolvedValue(undefined),
+    portalStarted?: boolean,
   ) =>
-    renderInTestApp(<Harness initial={initial} onChange={onChange} />, {
-      mountedRoutes: { '/sessions': sessionsRouteRef },
-    });
+    renderInTestApp(
+      <Harness
+        initial={initial}
+        onChange={onChange}
+        portalStarted={portalStarted}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
 
   async function openNotifications() {
     await openMenu();
@@ -428,7 +437,7 @@ describe('SessionActionsMenu — Notifications', () => {
   it.each`
     level        | ticked
     ${'default'} | ${'When action is required'}
-    ${'all'}     | ${'Also when a turn finishes'}
+    ${'all'}     | ${'When action is required or a turn finishes'}
     ${'muted'}   | ${'Muted'}
   `('ticks $ticked for a session at $level', async ({ level, ticked }) => {
     await renderWithLevel(level);
@@ -436,7 +445,7 @@ describe('SessionActionsMenu — Notifications', () => {
 
     for (const name of [
       'When action is required',
-      'Also when a turn finishes',
+      'When action is required or a turn finishes',
       'Muted',
     ]) {
       expect(levelItem(name)).toHaveAttribute(
@@ -446,13 +455,33 @@ describe('SessionActionsMenu — Notifications', () => {
     }
   });
 
+  it('leaves out the turn-finished level for a session the portal did not start', async () => {
+    // The row rule reports only the waits of such a session (Slack reports
+    // the rest), so the level would change nothing.
+    await renderWithLevel('default', undefined, false);
+    await openNotifications();
+
+    expect(
+      screen.getAllByRole('menuitemradio').map(item => item.textContent),
+    ).toEqual(['When action is required', 'Muted']);
+  });
+
+  it('still shows the turn-finished level, ticked, on such a session already at it', async () => {
+    await renderWithLevel('all', undefined, false);
+    await openNotifications();
+
+    expect(
+      levelItem('When action is required or a turn finishes'),
+    ).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('ticks nothing while the stored level is still being read', async () => {
     await renderWithLevel(undefined);
     await openNotifications();
 
     for (const name of [
       'When action is required',
-      'Also when a turn finishes',
+      'When action is required or a turn finishes',
       'Muted',
     ]) {
       expect(levelItem(name)).toHaveAttribute('aria-checked', 'false');
@@ -488,16 +517,17 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('default', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('Also when a turn finishes'));
+    await userEvent.click(
+      levelItem('When action is required or a turn finishes'),
+    );
     await waitFor(() =>
       expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
     );
     await openNotifications();
 
-    expect(levelItem('Also when a turn finishes')).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    expect(
+      levelItem('When action is required or a turn finishes'),
+    ).toHaveAttribute('aria-checked', 'true');
     expect(levelItem('When action is required')).toHaveAttribute(
       'aria-checked',
       'false',
@@ -505,10 +535,9 @@ describe('SessionActionsMenu — Notifications', () => {
 
     finishWrite();
     await waitFor(() =>
-      expect(levelItem('Also when a turn finishes')).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
+      expect(
+        levelItem('When action is required or a turn finishes'),
+      ).toHaveAttribute('aria-checked', 'true'),
     );
   });
 
@@ -527,7 +556,9 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('all', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('Also when a turn finishes'));
+    await userEvent.click(
+      levelItem('When action is required or a turn finishes'),
+    );
 
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -537,7 +568,9 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('default', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('Also when a turn finishes'));
+    await userEvent.click(
+      levelItem('When action is required or a turn finishes'),
+    );
 
     await waitFor(() =>
       expect(mockToastPost).toHaveBeenCalledWith(

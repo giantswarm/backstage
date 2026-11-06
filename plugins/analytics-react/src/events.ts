@@ -132,7 +132,7 @@ export const portalEvents = defineEvents({
   },
   'AgentPlatform.sessionNotificationLevelChanged': {
     description:
-      "A session's notification level was set: When action is required (`default`), Also when a turn finishes (`all`) or Muted.",
+      "A session's notification level was set: `default`, `all` or `muted`.",
     attributes: { level: ['default', 'all', 'muted'] },
   },
   'AgentPlatform.notificationOpened': {

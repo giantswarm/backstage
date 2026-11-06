@@ -1872,7 +1872,7 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   own `session-states` read through the row rule
   (`deriveSessionNotificationRow`, agent-platform-common) with the session's
   Notification level and origin: Waiting (any session), Failed and Turn
-  finished (portal-started sessions, the latter at All activity only). A row
+  finished (portal-started sessions, the latter at `all` only). A row
   shows the agent's Avatar and Display name, the event, the session's name,
   its age, a failure's reason class and a state chip (Waiting, Failed,
   Finished), newest first. Clicking a row opens the session and marks it
@@ -2067,9 +2067,10 @@ The actions menu (on the page and on each Sessions-list row) has a
 **Notifications** submenu with three levels, the current one ticked, each
 labelled by when it notifies: **When action is required** (`default`, the
 level of a session without a stored one) when the session waits for the
-person or fails; **Also when a turn finishes** (`all`) in addition when a
-turn finishes; **Muted** (`muted`) never. A session started outside the
-portal notifies only when it waits, at either of the first two. The submenu
+person or fails; **When action is required or a turn finishes** (`all`) in
+addition when a turn finishes; **Muted** (`muted`) never. A session started
+outside the portal notifies only when it waits, so its menu leaves out the
+`all` choice, unless that is already its level. The submenu
 opens beside the menu, towards the page, and over it on a phone. The composer
 has no control.
 
@@ -2081,8 +2082,8 @@ never touch the rare ones:
 - `sessionNotificationSettings`: per `${installation}/${sessionId}`, `origin:
 'portal'` when the portal's `start_session` started it (`useCreateSession`
   writes it on success; kagent's Session names no starting surface) and the
-  level (`all` or `muted`; absent is Default). Muting a session without an
-  entry creates one without making it portal-started; Default drops an entry
+  level (`all` or `muted`; absent is `default`). Muting a session without an
+  entry creates one without making it portal-started; `default` drops an entry
   that held only the level.
 - `notificationSeenMarks`: per session, and per installation for its MCP
   sign-in row, the mark of the last row the person has seen. The mark is the

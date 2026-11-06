@@ -103,7 +103,7 @@ export function sessionNotificationRowId(
  * - Failed (`failed`, `rejected`, or a failed instance): a Failed row, for a
  *   portal-started session.
  * - Turn finished (`completed`): a Turn finished row, for a portal-started
- *   session at All activity.
+ *   session at `all`.
  * - Anything else — working, `canceled`, an unknown state, never run: no row.
  *
  * The state is read with the same parser and state sets the rail uses, so the

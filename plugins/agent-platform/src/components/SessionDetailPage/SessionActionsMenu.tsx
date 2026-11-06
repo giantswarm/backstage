@@ -39,15 +39,13 @@ const TOAST_TIMEOUT_MS = 6000;
 
 /**
  * The Notifications submenu's choices, in the order the menu lists them. Each
- * label says when the level notifies, so no choice reads as a mystery
- * "Default": `default` when the session waits for the person (a question, a
- * confirmation, a sign-in) or fails, `all` also when a turn finishes, `muted`
- * never. A session started outside the portal (Slack) notifies only when it
- * waits, at either level: its other outcomes are reported where it started.
+ * is a radio read on its own, so each label says when its level notifies in
+ * full; what each level notifies is the row rule's,
+ * `deriveSessionNotificationRow` (agent-platform-common).
  */
 const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
   ['default', 'When action is required'],
-  ['all', 'Also when a turn finishes'],
+  ['all', 'When action is required or a turn finishes'],
   ['muted', 'Muted'],
 ];
 
@@ -55,9 +53,15 @@ const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
  * A session's Notification level and its setter, for the menu's Notifications
  * submenu. `level` is undefined until the stored level has been read, and
  * then nothing is ticked.
+ *
+ * `portalStarted` is false for a session the portal did not start (Slack):
+ * the row rule reports only its waits, so `all` would change nothing and is
+ * left out, unless it is the stored level, which stays visible and ticked.
+ * Undefined while unread: every choice is offered.
  */
 export type SessionNotificationsControl = {
   level: NotificationLevel | undefined;
+  portalStarted?: boolean;
   onChange: (level: NotificationLevel) => Promise<void>;
 };
 
@@ -130,8 +134,8 @@ export function SessionActionsMenu({
   pin?: { isPinned: boolean; onToggle: () => void };
   /**
    * The session's Notification level and its setter, for the menu's
-   * Notifications submenu (When action is required / Also when a turn
-   * finishes / Muted, the current one ticked). `level` is undefined until the stored level has been read, and
+   * Notifications submenu (`NOTIFICATION_LEVEL_LABELS`, the current one
+   * ticked). `level` is undefined until the stored level has been read, and
    * then nothing is ticked. A failed write is reported here, in a toast.
    * Absent: no Notifications item.
    */
@@ -267,7 +271,12 @@ export function SessionActionsMenu({
                   }
                 }}
               >
-                {NOTIFICATION_LEVEL_LABELS.map(([level, label]) => (
+                {NOTIFICATION_LEVEL_LABELS.filter(
+                  ([level]) =>
+                    level !== 'all' ||
+                    notifications.portalStarted !== false ||
+                    shownLevel === 'all',
+                ).map(([level, label]) => (
                   <MenuItem
                     key={level}
                     id={level}
