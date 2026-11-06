@@ -35,6 +35,20 @@ describe('creatorOf', () => {
       expect(creatorOf(createdBy, kind)).toBe(expected);
     },
   );
+
+  it.each([
+    ['ana@example.com', 'Ana Example', 'organization', 'Ana Example'],
+    ['ana@example.com', 'Ana Example', 'platform', 'Ana Example'],
+    ['ana@example.com', '', 'organization', 'ana@example.com'],
+    ['ana@example.com', undefined, 'platform', 'ana@example.com'],
+    [undefined, undefined, 'platform', 'Platform'],
+    [undefined, undefined, 'organization', undefined],
+  ] as const)(
+    '%p named %p in a %s namespace reads as %p',
+    (createdBy, createdByName, kind, expected) => {
+      expect(creatorOf(createdBy, kind, createdByName)).toBe(expected);
+    },
+  );
 });
 
 describe('tenantOf', () => {

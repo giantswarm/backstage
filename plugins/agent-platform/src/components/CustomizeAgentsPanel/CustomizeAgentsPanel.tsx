@@ -454,6 +454,7 @@ function AgentListItem({
   const creator = creatorOf(
     row.createdBy,
     tenantKindOf(row.namespace, directory),
+    row.createdByName,
   );
   const facts: AgentFact[] = [
     // Who made it, or the platform for an agent no one is recorded against
@@ -464,7 +465,11 @@ function AgentListItem({
             key: 'createdBy',
             text: `by ${creator}`,
             label: 'Created by',
-            detail: creator,
+            // The email beside a name, in the tooltip.
+            detail:
+              row.createdBy && creator !== row.createdBy
+                ? `${creator} (${row.createdBy})`
+                : creator,
           },
         ]
       : []),

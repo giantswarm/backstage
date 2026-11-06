@@ -42,7 +42,11 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
-import { CREATED_BY_ANNOTATION, ownerOf } from '../../lib/tenants';
+import {
+  CREATED_BY_ANNOTATION,
+  CREATED_BY_NAME_ANNOTATION,
+  ownerOf,
+} from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -288,6 +292,11 @@ export type AgentRow = {
    * not through agent-manager.
    */
   createdBy?: string;
+  /**
+   * The creator's display name ({@link CREATED_BY_NAME_ANNOTATION}), shown in
+   * place of `createdBy`; display only. `undefined` where none was recorded.
+   */
+  createdByName?: string;
   /** When the `Agent` was created (`metadata.creationTimestamp`). */
   createdAt?: string;
   /**
@@ -426,6 +435,9 @@ export function toAgentRow(
     }));
   const skillIds = gitSkills.map(skill => skill.id);
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  const createdByName = agent
+    .getAnnotations()
+    ?.[CREATED_BY_NAME_ANNOTATION]?.trim();
   const createdAt = agent.getCreatedTimestamp();
   const defaultWorkspace = defaultWorkspaceName(
     agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
@@ -477,6 +489,7 @@ export function toAgentRow(
     readinessMessage: agent.getReadinessMessage(),
     tenant: ownerOf(namespace, organizations),
     ...(createdBy ? { createdBy } : {}),
+    ...(createdByName ? { createdByName } : {}),
     ...(createdAt ? { createdAt } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),

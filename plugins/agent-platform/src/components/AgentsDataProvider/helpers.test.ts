@@ -272,6 +272,21 @@ describe('toAgentRow', () => {
     });
   });
 
+  it('carries the creator’s name where one is recorded', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'kagent' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
+      'agent-platform.giantswarm.io/created-by-name': ' Ana Example ',
+    };
+    expect(toAgentRow(agent, [])).toMatchObject({
+      createdBy: 'ana@acme.example',
+      createdByName: 'Ana Example',
+    });
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'createdByName',
+    );
+  });
+
   it('carries when the agent was created, for the list’s sort', () => {
     expect(
       toAgentRow(

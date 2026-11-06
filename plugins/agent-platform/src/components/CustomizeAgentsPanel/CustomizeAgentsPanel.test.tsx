@@ -2023,6 +2023,31 @@ describe('CustomizeAgentsPanel creator', () => {
     );
   });
 
+  it('names the creator by name where one is recorded, the email in the tooltip', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [
+        row({
+          name: 'Named',
+          technicalName: 'named',
+          createdBy: 'ana@example.com',
+          createdByName: 'Ana Example',
+        }),
+      ],
+    };
+    await renderPanel();
+    const [named] = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(within(named).getByText('by Ana Example')).toHaveAttribute(
+      'title',
+      'Created by: Ana Example (ana@example.com)',
+    );
+    expect(
+      within(named).queryByText(/ana@example\.com/),
+    ).not.toBeInTheDocument();
+  });
+
   it("names no creator on an organization's agent without a recorded one", async () => {
     mockAgents = {
       ...mockAgents,
