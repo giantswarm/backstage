@@ -465,12 +465,13 @@ as the domain's subdomains.
 `http` module reads a bare `example.com` in `NO_PROXY` as that one host only,
 so domain suffixes need the leading dot there.
 
-This mode needs Node 24.17 or later, the minimum the root `package.json`
-declares in `engines`. On older Node versions, native `fetch` bypasses the
-proxy while `http`/`https` still use it: the backend loads undici 8, which
-replaces the proxy dispatcher Node installs with a direct one when Node's
-bundled undici is older than 7.27 (Node 24.16 bundles 7.25, Node 22 bundles
-undici 6). The `GLOBAL_AGENT_*` mode does not depend on the Node version.
+This mode needs a Node version within `engines` in the root
+[`package.json`](../package.json). On an older Node, native `fetch` would
+bypass the proxy: the backend loads undici 8, which replaces the proxy
+dispatcher Node installs with a direct one when Node's bundled undici is older
+than 7.27. The backend therefore refuses to start with `NODE_USE_ENV_PROXY=1`
+on such a Node and names the version it needs. The `GLOBAL_AGENT_*` mode does
+not depend on the Node version.
 
 ## Grafana dashboards card
 

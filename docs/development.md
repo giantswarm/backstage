@@ -30,8 +30,8 @@ This is the recommended way if you want to get started simply, but it may not pr
 
 1. Have **NodeJS** installed in the right version. Here is how to manage this:
    - Look for the key `"engines"` in [/package.json](../package.json) to find
-     out which versions are supported (Node 24.17 or a later 24 release). The
-     [/.nvmrc](../.nvmrc) file names the exact version the image and CI use.
+     out which versions are supported. The [/.nvmrc](../.nvmrc) file names the
+     exact version the image and CI use.
    - You can use `nvm` to install, update, and switch NodeJS version in your
      system. As a homebrew user, use `brew install nvm`, then `nvm list-remote`
      to find available versions, `nvm install <version>` to install one and
