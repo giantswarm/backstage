@@ -19,7 +19,6 @@ import {
   clientEndpointOf,
   managerRefOf,
   namespaceOfServedUrl,
-  notableCapabilities,
   sharedHostsOf,
   toGpuNodeFromManager,
   toServedModelFromManager,
@@ -174,7 +173,9 @@ describe('toServedModelFromManager', () => {
     });
 
     expect(served.readiness).toBe('ready');
-    expect(served.readinessMessage).toMatch(/^Loaded in memory until /);
+    // When it goes is told at render, relative to that moment
+    // (`servedReadinessMessage`): the row keeps the time alone.
+    expect(served.readinessMessage).toBe('Loaded in memory.');
     expect(served.loaded).toBe(true);
     expect(served.memoryBytes).toBe(1_200_000_000);
     expect(served.loadedUntil).toBe('2026-09-02T13:05:00Z');
@@ -416,14 +417,6 @@ describe('model features', () => {
       false,
     );
     expect(lacksToolCalling({ capabilities: undefined })).toBe(false);
-  });
-
-  it('hides the implied completion feature', () => {
-    expect(notableCapabilities(['vision', 'completion', 'tools'])).toEqual([
-      'vision',
-      'tools',
-    ]);
-    expect(notableCapabilities(['completion'])).toEqual([]);
   });
 });
 

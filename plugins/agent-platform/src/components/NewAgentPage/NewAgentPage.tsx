@@ -25,8 +25,9 @@ import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
-import { InstallationSelect } from '../InstallationSelect';
-import { TenantPicker } from '../TenantPicker';
+import { useEnvironmentField } from './hooks/useEnvironmentField';
+import { useOwnerField } from './hooks/useOwnerField';
+import { ownerOf } from '../../lib/tenants';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker, useRuntimeChoices } from '../HarnessPicker';
 import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
@@ -34,7 +35,6 @@ import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { supportsTags } from '../../lib/agentManager';
 import {
   harnessTitle,
   PLATFORM_DEFAULT_LABEL,
@@ -42,6 +42,7 @@ import {
   runtimeLabel,
 } from '../../lib/harnesses';
 import { MAX_SYSTEM_MESSAGE_LENGTH } from '../../lib/systemMessage';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles({
   // The info button sits in the line of text, on its baseline.
@@ -64,6 +65,7 @@ export function NewAgentPage() {
 }
 
 function NewAgentPageContent() {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const navigate = useNavigate();
   const links = useAgentWizardLinks();
@@ -89,6 +91,8 @@ function NewAgentPageContent() {
     setEgressSetByPlatform,
     validationErrors,
     fieldErrors,
+    tagsOffered,
+    storedTags,
   } = useNewAgentForm();
   // The platform Harness the runtime field shows, for the summary below.
   const { platformChoice } = useRuntimeChoices();
@@ -110,25 +114,42 @@ function NewAgentPageContent() {
   // to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { errorFor, fieldProps, textFieldProps } = validation;
-  // Tags only where the installation's agent-manager takes them. A draft
-  // left in the hidden field must not block Continue.
-  const tagsSupported = supportsTags(agentManagerInfo);
-  const hasHiddenTagDraft =
-    agentManagerInfo !== undefined && !tagsSupported && !!state.tagDraft;
-  useEffect(() => {
-    if (hasHiddenTagDraft) {
-      setTagDraft('');
-    }
-  }, [hasHiddenTagDraft, setTagDraft]);
   // "More options" holds the technical knobs (model, runtime, default
-  // workspace, technical name, EgressPolicies and extra egress), collapsed: their defaults fit most agents. The shared
-  // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
-  // model picker's preselection of the installation's default model runs
-  // without the person ever opening it.
+  // workspace, technical name, EgressPolicies and extra egress, and the lines
+  // naming an environment and owner with nothing to choose),
+  // collapsed: their defaults fit most agents. The shared `MoreOptions`
+  // disclosure keeps
+  // the pickers inside mounted while closed — the model picker's preselection
+  // of the installation's default model runs without the person ever opening
+  // it.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+
+  // Where the agent runs and who owns it, a pair kept together, Environment
+  // first: the owners offered depend on the environment,
+  // so changing one never resets the other out of sight. In the main form if
+  // either is a choice (or says why there is none), else both are lines under
+  // More options. Each field's hook runs here, once, wherever the pair goes,
+  // so its pick lands while More options is closed. Both are inert while
+  // editing: an existing agent stays where it is.
+  const environment = useEnvironmentField({
+    error: errorFor('installation', fieldErrors.installation),
+  });
+  const owner = useOwnerField({ errorFor });
+  // The portal's only environment is no part of the pair: its line sits
+  // first under More options whatever Owner does.
+  const pairInMain = (!environment.alone && environment.inMain) || owner.inMain;
+  const pair = (
+    <>
+      {!environment.alone && environment.field}
+      {owner.field}
+    </>
+  );
 
   // A problem with a field behind the disclosure opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
+  // Environment and Owner are never among them: under More options they are
+  // lines with nothing to fix, and Owner's blocked Continue
+  // ("Still reading…") shows in the main form.
   const hasHiddenProblem = Boolean(
     fieldErrors.slug || fieldErrors.model || fieldErrors.egress,
   );
@@ -151,7 +172,10 @@ function NewAgentPageContent() {
       return;
     }
     // A typed tag not yet added goes with the agent, however step 1 is left.
-    commitTagDraft();
+    // Where the field is not offered, its text stays out of the agent.
+    if (tagsOffered) {
+      commitTagDraft();
+    }
     if (nextLink) {
       navigate(nextLink());
     }
@@ -161,6 +185,7 @@ function NewAgentPageContent() {
     nextLink,
     navigate,
     reveal,
+    tagsOffered,
     commitTagDraft,
   ]);
 
@@ -180,8 +205,9 @@ function NewAgentPageContent() {
 
   // The disclosure's one-line summary of what it holds: the runtime (the
   // platform Harness, by the runtime field's title for it, unless another is
-  // picked) and, while creating, the technical name it can override. An
-  // edited agent's Harness is known by its name until the picker reads it.
+  // picked), the sole owner when its line is in there, and, while
+  // creating, the technical name it can override. An edited
+  // agent's Harness is known by its name until the picker reads it.
   let runtimeName = platformChoice
     ? harnessTitle(platformChoice)
     : PLATFORM_DEFAULT_LABEL;
@@ -192,6 +218,8 @@ function NewAgentPageContent() {
         : state.harness.name;
   }
   const defaultsSummary = `${runtimeName} runtime${
+    !pairInMain && owner.sole ? `, owner ${ownerOf(owner.sole, directory)}` : ''
+  }${
     state.defaultWorkspace
       ? `, default workspace ${state.defaultWorkspace}`
       : ''
@@ -202,7 +230,7 @@ function NewAgentPageContent() {
   }${state.slug && !edit ? `, technical name ${state.slug}` : ''}`;
 
   // The plain view's one line about the model picked for the person (the
-  // installation's default, see ModelConfigPicker), so it is never a surprise
+  // namespace default, see ModelConfigPicker), so it is never a surprise
   // on the review step.
   const { isLoading: isLoadingModels, modelConfigsFor } = useModelConfigs();
   // An edited agent starts with its ModelConfig's name only; its display name
@@ -307,11 +335,12 @@ function NewAgentPageContent() {
           placeholder="e.g. Sorts, summarises and routes support tickets"
           description="Shown to people when they pick an agent."
         />
-        {tagsSupported && (
+        {tagsOffered && (
           <TagsField
             tags={state.tags}
             draft={state.tagDraft ?? ''}
             error={errorFor('tags', fieldErrors.tags)}
+            stored={storedTags}
             onDraftChange={setTagDraft}
             onAdd={addTags}
             onRemove={removeTag}
@@ -330,17 +359,7 @@ function NewAgentPageContent() {
           error={fieldErrors.systemMessage}
         />
 
-        {/* Where the agent runs: renders nothing on a single-installation
-            portal, where the sole one is picked automatically. An existing
-            agent stays where it is. */}
-        {!edit && (
-          <InstallationSelect
-            error={errorFor('installation', fieldErrors.installation)}
-          />
-        )}
-        {/* Which tenant the agent belongs to, among those the person may
-            create in there. An existing agent stays in its own. */}
-        {!edit && <TenantPicker errorFor={errorFor} />}
+        {pairInMain && pair}
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">
             {modelSummary}
@@ -355,6 +374,9 @@ function NewAgentPageContent() {
           <Text variant="body-small" color="secondary">
             The defaults work for most agents.
           </Text>
+          {/* First: the models offered depend on them. */}
+          {environment.alone && environment.field}
+          {!pairInMain && pair}
           <ModelConfigPicker error={errorFor('model', fieldErrors.model)} />
           <HarnessPicker />
           <DefaultWorkspacePicker />

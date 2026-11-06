@@ -2,7 +2,6 @@ import {
   type CSSProperties,
   ReactNode,
   useCallback,
-  useEffect,
   useId,
   useMemo,
 } from 'react';
@@ -41,12 +40,15 @@ import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
+import { useWarmNewAgentForm } from '../../hooks/useWarmNewAgentForm';
 import {
   ACCESS_GRANT_HINT,
   creatorOf,
+  ownerOf,
+  OWNER_LABEL,
   tenantKindOf,
-  tenantOf,
 } from '../../lib/tenants';
+import type { OrganizationDirectory } from '../../lib/organizations';
 import { agentLastUsedAt } from '../../lib/recentAgents';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -72,6 +74,7 @@ import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** At least twice the rendered 40px (bui's large avatar), for 2x displays. */
 const ROW_AVATAR_SIZE: AvatarSize = 96;
@@ -199,7 +202,7 @@ const useStyles = makeStyles({
     rowGap: 2,
     marginBottom: 'var(--bui-space-3)',
   },
-  // The name with its organization and state, what the agent is for, then
+  // The name with its owner and state, what the agent is for, then
   // its tags and facts: three lines, each its own.
   body: {
     flex: '1 1 0',
@@ -208,23 +211,23 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 'var(--bui-space-1)',
   },
-  // The name, its organization and its state on one baseline.
+  // The name, its owner and its state on one baseline.
   nameLine: {
     display: 'flex',
     alignItems: 'baseline',
     columnGap: 'var(--bui-space-2)',
     rowGap: 2,
     minWidth: 0,
-    // A phone's name takes two lines: its organization goes under it.
+    // A phone's name takes two lines: its owner goes under it.
     [PHONE_MEDIA]: {
       flexWrap: 'wrap',
     },
   },
   // Whose agent it is, beside its name: never more than half the line, so a
-  // long name and a long organization each keep some of it, and never
+  // long name and a long owner each keep some of it, and never
   // squeezed out by the name.
   // On a phone it shrinks to its line and wraps there instead.
-  organization: {
+  owner: {
     flex: 'none',
     maxWidth: '50%',
     [PHONE_MEDIA]: {
@@ -293,55 +296,37 @@ export type CustomizeAgentsPanelProps = {
 };
 
 /**
- * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
- * runs on, its Harness, who created it, the person's favorites and its tags
- * (drawn only once some agent has one), last as on every catalog tab. The
- * environment is not one of them: the page's Environment select already
- * scopes the tab to one installation, and shows only where there is more than
- * one — a second control for the same thing would be two answers to one
- * question.
+ * The Agents tab's facets (T49): the agent's owner (its tenant), the model it
+ * runs on, its Harness, who created it, the person's favorites and its tags,
+ * last as on every catalog tab. The environment is not one of them: the
+ * page's Environment select already scopes the tab to one installation, and
+ * shows only where there is more than one — a second control for the same
+ * thing would be two answers to one question.
  *
- * @param harnesses the fleet's Harnesses ({@link agentHarnesses}); the
- *   Harness facet is offered only when there are two or more.
- * @param tenants how many tenants the rows belong to; the Tenant facet is
- *   offered only from two on, as the Harness one.
+ * The bar draws a facet only when it can narrow the list (one owner,
+ * model or Harness among the agents that have one is no choice:
+ * `catalogFilterDimensions`); an agent without a Harness is one not read yet,
+ * not a second choice.
+ *
+ * @param harnesses the fleet's Harnesses ({@link agentHarnesses}), for how
+ *   each option reads.
  * @param isMine whether the person created the row's agent: the "Created by"
  *   facet, which the bar shows only when some row is theirs.
  */
 export function agentFacets(
   isFavorite: (id: string) => boolean,
   harnesses: ReadonlyMap<string, string | undefined>,
-  {
-    tenants = 0,
-    isMine,
-  }: { tenants?: number; isMine?: (row: AgentRow) => boolean } = {},
+  { isMine }: { isMine?: (row: AgentRow) => boolean } = {},
 ): CatalogFacet<AgentRow>[] {
   return [
-    ...(tenants > 1
-      ? [
-          {
-            id: 'tenant',
-            label: 'Organization',
-            value: (row: AgentRow) => row.tenant,
-          },
-        ]
-      : []),
+    { id: 'tenant', label: OWNER_LABEL, value: row => row.tenant },
     { id: 'model', label: 'Model', value: row => row.model || undefined },
-    // Sanctioned exception to the bar's dropdown-of-one (T64): main's
-    // `singleHarness` rule (#2858) — most fleets run every agent on one
-    // Harness, so the Harness filter, like its per-agent fact, appears only
-    // from two Harnesses on.
-    ...(harnesses.size > 1
-      ? [
-          {
-            id: 'harness',
-            label: 'Harness',
-            value: (row: AgentRow) => row.harness,
-            optionLabel: (name: string) =>
-              harnessLabel(name, harnesses.get(name)),
-          },
-        ]
-      : []),
+    {
+      id: 'harness',
+      label: 'Harness',
+      value: row => row.harness,
+      optionLabel: name => harnessLabel(name, harnesses.get(name)),
+    },
     ...(isMine
       ? [
           {
@@ -349,6 +334,7 @@ export function agentFacets(
             label: 'Created by',
             value: (row: AgentRow) => (isMine(row) ? 'me' : undefined),
             optionLabel: () => 'Me',
+            missingIsChoice: true,
           },
         ]
       : []),
@@ -357,6 +343,7 @@ export function agentFacets(
       label: 'Favorites',
       value: row => (isFavorite(row.id) ? 'starred' : undefined),
       optionLabel: () => 'Starred',
+      missingIsChoice: true,
     },
     // After the agent's own facets, as on every catalog tab.
     tagsFacet((row: AgentRow) => row.tags),
@@ -373,31 +360,33 @@ type AgentFact = {
 };
 
 /**
- * A row's organization, beside its name, where the list's agents belong to
- * more than one tenant, in the words of the Organization filter's options
- * (`tenantOf`). A row has no labels, so an organization reads
- * "Organization: acme", as the agent's page has it, and is not taken for the
- * environment among the facts.
- * An agent of the platform belongs to no organization and has no text there:
- * a "None" without its label says nothing (its page says "None", and what
- * that means). Another namespace already says what it is
+ * A row's owner, beside its name, where the list's agents belong to more
+ * than one tenant, in the words of the Owner filter's options (`ownerOf`). A
+ * row has no labels, so an organization reads "Owner: acme", as the agent's
+ * page has it, and is not taken for the environment among the facts.
+ * An agent of the platform, the usual owner, has no text there: the rows
+ * that name one stand out as an organization's (its page says "Platform",
+ * and what that means). Another namespace already says what it is
  * (`namespace sre-team`).
  */
-function organizationText(namespace: string): string {
-  const kind = tenantKindOf(namespace);
+function ownerText(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string {
+  const kind = tenantKindOf(namespace, directory);
   if (kind === 'platform') {
     return '';
   }
   return kind === 'organization'
-    ? `Organization: ${tenantOf(namespace)}`
-    : tenantOf(namespace);
+    ? `${OWNER_LABEL}: ${ownerOf(namespace, directory)}`
+    : ownerOf(namespace, directory);
 }
 
 /**
  * One agent as the prototype's list row: avatar; then the name — with its
- * organization and, only when it is not Ready, its state — what it is for, and
+ * owner and, only when it is not Ready, its state — what it is for, and
  * a line of its tags, creator, Harness and environment; then its connectors'
- * logos. The organization, Harness and environment show when the list has more
+ * logos. The owner, Harness and environment show when the list has more
  * than one of each. The model and skills are technical detail, on the agent's
  * own page.
  */
@@ -424,6 +413,7 @@ function AgentListItem({
   isFavorite: boolean;
   onToggleFavorite: () => void;
 }) {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
@@ -431,25 +421,25 @@ function AgentListItem({
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const organization = showTenant ? organizationText(row.namespace) : '';
-  const organizationId = useId();
+  const owner = showTenant ? ownerText(row.namespace, directory) : '';
+  const ownerId = useId();
   const tagsId = useId();
-  // The name's tooltip, with the organization beside it on a line of its own:
+  // The name's tooltip, with the owner beside it on a line of its own:
   // the name link's hit area covers the row, so the row shows this tooltip
-  // wherever it is pointed at, the organization's text included, and either
+  // wherever it is pointed at, the owner's text included, and either
   // can be read in full however it is cut. A phone has no hover.
   const nameTitle = isPhone
     ? undefined
     : [
         row.name,
-        organization,
+        owner,
         row.tags.length > 0 ? `Tags: ${row.tags.join(', ')}` : '',
       ]
         .filter(Boolean)
         .join('\n');
-  // The link names the agent; its organization and tags describe it.
+  // The link names the agent; its owner and tags describe it.
   const describedBy =
-    [organization && organizationId, row.tags.length > 0 && tagsId]
+    [owner && ownerId, row.tags.length > 0 && tagsId]
       .filter(Boolean)
       .join(' ') || undefined;
   const facts: AgentFact[] = [
@@ -491,6 +481,7 @@ function AgentListItem({
               its ellipsis, as the text does without one. */}
           {href ? (
             <Link
+              standalone
               href={href}
               variant="body-medium"
               weight="bold"
@@ -523,16 +514,16 @@ function AgentListItem({
               which say what the agent is like; a platform agent's row has
               nothing here. Its tooltip is the name's (above): a title of its
               own would sit under the link's hit area. */}
-          {organization && (
+          {owner && (
             <Text
               as="span"
-              id={organizationId}
+              id={ownerId}
               variant="body-small"
               color="secondary"
               truncate={truncate}
-              className={classes.organization}
+              className={classes.owner}
             >
-              {organization}
+              {owner}
             </Text>
           )}
           {/* The state shows only when it needs a look, as in the
@@ -697,6 +688,9 @@ export function CustomizeAgentsPanel(props: CustomizeAgentsPanelProps) {
 
 function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
+  // The New agent form’s reads, started from here so its Owner field
+  // does not arrive a moment after the form opens.
+  useWarmNewAgentForm();
   const {
     rows,
     installations,
@@ -719,8 +713,8 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
 
   const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
   const harnesses = useMemo(() => agentHarnesses(rows), [rows]);
-  // Main's `singleHarness` rule (#2858): one Harness for every agent shows
-  // neither the Harness fact nor its filter.
+  // Main's `singleHarness` rule (#2858): one Harness for every agent shows no
+  // Harness fact; the filter follows the shared rule, which agrees.
   const showHarness = harnesses.size > 1;
   const tenantCount = new Set(rows.map(row => row.tenant)).size;
   // "Created by me": the creator agent-manager recorded against the person as
@@ -735,19 +729,10 @@ function AgentsPanelContent({ search }: CustomizeAgentsPanelProps) {
     [capabilitiesFor],
   );
   const facets = useMemo(
-    () => agentFacets(isFavorite, harnesses, { tenants: tenantCount, isMine }),
-    [isFavorite, harnesses, tenantCount, isMine],
+    () => agentFacets(isFavorite, harnesses, { isMine }),
+    [isFavorite, harnesses, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
-  // A Harness pick outlives its dropdown when the fleet settles on one
-  // Harness; it would filter nothing yet still count as a filter in force.
-  const { selection, select } = filters;
-  const harnessPicked = (selection.harness?.length ?? 0) > 0;
-  useEffect(() => {
-    if (!showHarness && harnessPicked) {
-      select('harness', []);
-    }
-  }, [showHarness, harnessPicked, select]);
   // Last use is the person's own: sessions of an installation whose list is
   // not scoped to them are left out, as the "Last used by you" cards do.
   const {

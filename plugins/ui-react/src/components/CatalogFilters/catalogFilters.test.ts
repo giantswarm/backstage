@@ -27,17 +27,68 @@ const items: Item[] = [
 ];
 
 describe('catalogFilterDimensions', () => {
-  it('draws every facet the catalog has values on, one value or many', () => {
-    // One model for all is still a dropdown (of one option): T64.
+  it('draws only the facets that can narrow the catalog', () => {
+    // One model for all has nothing to choose: no dropdown.
     const dimensions = catalogFilterDimensions(items, items, facets, {});
     expect(dimensions.map(dimension => dimension.id)).toEqual([
       'repo',
       'usage',
-      'model',
     ]);
-    expect(dimensions[2].options).toEqual([
-      { id: 'opus', label: 'opus', count: 3 },
+  });
+
+  it('leaves out one value the other items lack, as one not read yet', () => {
+    // One organization while the rest of the fleet loads: nothing to choose.
+    const some = items.map((item, index) => ({
+      ...item,
+      model: index === 0 ? 'opus' : undefined,
+    }));
+    expect(
+      catalogFilterDimensions(some, some, facets, {}).map(
+        dimension => dimension.id,
+      ),
+    ).toEqual(['repo', 'usage']);
+  });
+
+  it('draws two values among the items that have one, the rest without', () => {
+    const mixed = items.map((item, index) => ({
+      ...item,
+      model: ['opus', 'sonnet', undefined][index],
+    }));
+    const [model] = catalogFilterDimensions(mixed, mixed, facets, {}).filter(
+      dimension => dimension.id === 'model',
+    );
+    expect(model.options.map(option => option.id)).toEqual(['opus', 'sonnet']);
+  });
+
+  it('draws one value some items lack where a missing value is a choice, as Favorites', () => {
+    const starred: CatalogFacet<Item> = {
+      id: 'favorites',
+      label: 'Favorites',
+      value: item => (item.name === 'a' ? 'starred' : undefined),
+      missingIsChoice: true,
+    };
+    const [favorites] = catalogFilterDimensions(items, items, [starred], {});
+    expect(favorites.options).toEqual([
+      { id: 'starred', label: 'starred', count: 1 },
     ]);
+  });
+
+  it('leaves out a flag every item has', () => {
+    const everyone: CatalogFacet<Item> = {
+      id: 'favorites',
+      label: 'Favorites',
+      value: () => 'starred',
+      missingIsChoice: true,
+    };
+    expect(catalogFilterDimensions(items, items, [everyone], {})).toEqual([]);
+  });
+
+  it('keeps a facet of one value while it is picked, so it can be undone', () => {
+    expect(
+      catalogFilterDimensions(items, items, facets, { model: ['opus'] }).map(
+        dimension => dimension.id,
+      ),
+    ).toEqual(['repo', 'usage', 'model']);
   });
 
   it('leaves out a facet no item has a value on', () => {
@@ -209,6 +260,33 @@ describe('a facet with several values per item', () => {
       ['x', 1],
       ['y', 1],
     ]);
+  });
+
+  const drawn = (rows: Tagged[]) =>
+    catalogFilterDimensions(rows, rows, tagFacets, {}).map(
+      dimension => dimension.id,
+    );
+
+  it('leaves the facet out when every item has the same values', () => {
+    const same = tagged.map(item => ({ ...item, tags: ['a', 'b'] }));
+    expect(drawn(same)).toEqual(['repo']);
+  });
+
+  it('draws the facet when a value is not on every item', () => {
+    const some = tagged.map((item, index) => ({
+      ...item,
+      tags: index === 0 ? ['a'] : ['a', 'b'],
+    }));
+    expect(drawn(some)).toEqual(['tags', 'repo']);
+  });
+
+  it('counts an empty list as no value', () => {
+    // One value, the rest without: nothing to choose unless missing is one.
+    const one = tagged.map((item, index) => ({
+      ...item,
+      tags: index === 0 ? ['a'] : [],
+    }));
+    expect(drawn(one)).toEqual(['repo']);
   });
 
   it('leaves the facet out when no item has a value', () => {

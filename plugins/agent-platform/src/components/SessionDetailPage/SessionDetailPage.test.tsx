@@ -1,5 +1,6 @@
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  analyticsApiRef,
   storageApiRef,
   toastApiRef,
   type StorageApi,
@@ -27,12 +28,13 @@ import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
 import type { EgressRefusal } from '../../lib/egressRefusals';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
-  deriveSessionState,
   formatBytes,
   normalizeSessionDetail,
   normalizeTaskList,
+  readNewestTaskState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { buildContinuationPrompt } from '../../lib/continuationPrompt';
 import { SessionDetailPage } from './SessionDetailPage';
@@ -150,7 +152,7 @@ jest.mock('../../hooks/useTokenRates', () => ({
     model: undefined,
     isLoading: false,
     isAvailable: true,
-    window: '7d',
+    windowDays: 7,
   }),
 }));
 
@@ -399,13 +401,14 @@ const detail = normalizeSessionDetail(detailV099, 'gazelle').detail!;
 const loadedView: SessionDetailView = {
   detail,
   timeline,
-  state: deriveSessionState(tasks),
+  state: readNewestTaskState(tasks)?.state,
   // The fixture's newest task is `working`. Its timestamp is long past the
   // staleness bound, so the real hook would call it stale — set explicitly here so
   // these tests describe a live turn rather than depending on a fixture's age.
   isAgentWorking: true,
   taskCount: tasks.length,
   hasConversation: true,
+  isConversationCurrent: true,
   isLoading: false,
   isNotFound: false,
   error: undefined,
@@ -452,7 +455,11 @@ describe('SessionDetailPage', () => {
     mockPricedRate = undefined;
     mockEgressRefusals = [];
     mockUseEgressRemedy.mockReset();
-    mockUseEgressRemedy.mockReturnValue({ kind: 'pending' });
+    // As the hook does before it reads the agent: the `tcp` remedy needs
+    // none of it, the rest wait.
+    mockUseEgressRemedy.mockReturnValue((scheme: string) =>
+      remedyNeedsAgent(scheme) ? { kind: 'pending' } : { kind: 'tcp' },
+    );
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
@@ -731,6 +738,31 @@ describe('SessionDetailPage', () => {
     expect(screen.queryByTestId('timeline-egress-refused')).toBeNull();
   });
 
+  it('reads no remedy for raw TCP refusals alone, which need none of the agent', async () => {
+    mockEgressRefusals = [
+      {
+        scheme: 'tcp',
+        host: 'github.com',
+        port: 22,
+        at: new Date().toISOString(),
+        count: 1,
+      },
+    ];
+
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If github.com offers HTTPS, have Issue tracker use that instead.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).toBeNull();
+  });
+
   it('shows the remedy for the session’s agent under its egress refusal', async () => {
     mockEgressRefusals = [
       {
@@ -741,10 +773,10 @@ describe('SessionDetailPage', () => {
         count: 2,
       },
     ];
-    mockUseEgressRemedy.mockReturnValue({
+    mockUseEgressRemedy.mockReturnValue(() => ({
       kind: 'platform',
       runtime: 'Claude Code',
-    });
+    }));
 
     await render();
 
@@ -1578,21 +1610,21 @@ describe('SessionDetailPage', () => {
         turnProgress: { kind: 'stalled' as const, since },
         currentTaskId: 'task-9',
       };
-      const clock = new Date(since).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 
       it('says the agent has stopped reporting progress, and since when', async () => {
-        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSessionDetail.mockReturnValue({
+          ...stalledView,
+          turnProgress: {
+            kind: 'stalled' as const,
+            since: Date.now() - 12 * 60 * 1000,
+          },
+        });
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(
-            `The agent has not reported progress since ${clock}.`,
-          ),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+          'The agent last reported progress 12 minutes ago.',
+        );
       });
 
       it('names the stall in the state too, not Working (R2-4)', async () => {
@@ -1636,9 +1668,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
 
       it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
@@ -1689,9 +1719,7 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Stop the turn' }),
         ).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
     });
 
@@ -1775,9 +1803,7 @@ describe('SessionDetailPage', () => {
         );
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
@@ -3944,7 +3970,6 @@ describe('SessionDetailPage', () => {
       name: 'ws-docs',
       organization: 'lab',
       sources: [],
-      sync: { schedule: 'nightly' },
       resourceVersion: '1',
       createdAt: '2026-10-01T00:00:00Z',
       repositories: 2,
@@ -4032,14 +4057,16 @@ describe('SessionDetailPage', () => {
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
     });
 
-    it('shows the workspace’s name, last sync and fetched repositories as a chip opening a drawer', async () => {
+    it('shows the workspace’s name as a chip opening a drawer, its last sync and fetched repositories in its name and tooltip', async () => {
       withWorkspace();
       await renderWithWorkspaces();
 
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      // The chip shows the name alone; its accessible name keeps the rest.
       const chip = screen.getByRole('button', {
-        name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
+        name: 'Workspace: ws-docs · Synchronized 4 h ago · 1 repository fetched',
       });
+      expect(chip).toHaveTextContent(/^ws-docs$/);
       await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
@@ -4072,16 +4099,92 @@ describe('SessionDetailPage', () => {
       expect(within(drawer).getByText('github')).toBeVisible();
     });
 
+    it('tells the workspace’s last sync and fetched repositories in a tooltip on hover, gone once the drawer opens', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // react-aria opens a tooltip on hover only once it has seen the pointer
+      // move over the page.
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      expect(tooltip).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
+      );
+      // A bold headline that says what the chip shows.
+      expect(within(tooltip).getByText('Workspace')).toHaveStyle({
+        display: 'block',
+        fontWeight: '700',
+      });
+
+      await user.click(chip);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('tells the same on keyboard focus, and Enter still opens the drawer', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // A key press puts react-aria in keyboard modality, so the focus that
+      // follows is a visible one, whatever comes before the chip in the
+      // header.
+      await user.keyboard('{Tab}');
+      act(() => chip.focus());
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
+      );
+
+      await user.keyboard('{Enter}');
+      expect(
+        within(screen.getByRole('dialog')).getByRole('heading', {
+          name: 'Workspace: ws-docs',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('adds the full name under the tooltip’s headline when the chip cuts it off', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+      // jsdom lays nothing out: the label reports itself wider than its box.
+      const label = within(chip).getByText('ws-docs');
+      Object.defineProperty(label, 'scrollWidth', { value: 400 });
+      Object.defineProperty(label, 'clientWidth', { value: 320 });
+
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      await waitFor(() =>
+        expect(tooltip).toHaveTextContent(
+          /^Workspacews-docsSynchronized 4 h ago · 1 repository fetched$/,
+        ),
+      );
+      // Under the bold headline, on a line of its own in the regular weight.
+      expect(within(tooltip).getByText('ws-docs')).toHaveStyle({
+        display: 'block',
+      });
+      expect(within(tooltip).getByText('ws-docs')).not.toHaveStyle({
+        fontWeight: '700',
+      });
+    });
+
     it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
       withWorkspace();
       mockWorkspaceName = { status: 'unnamed' };
       await renderWithWorkspaces();
 
-      await userEvent.click(
-        screen.getByRole('button', {
-          name: 'Workspace: Workspace · 1 fetched',
-        }),
-      );
+      const chip = screen.getByRole('button', {
+        name: 'Workspace: Workspace · 1 repository fetched',
+      });
+      expect(chip).toHaveTextContent(/^Workspace$/);
+      await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
       expect(
@@ -4204,6 +4307,87 @@ describe('SessionDetailPage', () => {
       expect(
         within(dock).getByRole('button', { name: /Session cost and context/ }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the view signal', () => {
+    /** The page under a button that re-renders it, as a poll does. */
+    function Harness() {
+      const [, setTick] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick(tick => tick + 1)}>
+            poll
+          </button>
+          <SessionDetailPage />
+        </>
+      );
+    }
+
+    function viewEvents(captureEvent: jest.Mock) {
+      return captureEvent.mock.calls
+        .map(([event]) => event)
+        .filter(event => event.action === 'AgentPlatform.sessionViewed');
+    }
+
+    it('reports the session’s turns once it is read, and not again as it polls', async () => {
+      const analyticsApi = mockApis.analytics.mock();
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: undefined,
+        timeline: emptyTimeline,
+        hasConversation: false,
+        isLoading: true,
+      });
+      await renderInTestApp(<Harness />, {
+        apis: [[analyticsApiRef, analyticsApi]],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+      const captureEvent = jest.mocked(analyticsApi.captureEvent);
+
+      expect(viewEvents(captureEvent)).toEqual([]);
+
+      // An earlier visit's cache, shown while the opening read is on its way:
+      // its turns may be out of date, so they are not reported.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        taskCount: 3,
+        isConversationCurrent: false,
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      expect(viewEvents(captureEvent)).toEqual([]);
+
+      mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 7 });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 12 });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+
+      // The number, and neither the session nor its id.
+      expect(viewEvents(captureEvent)).toEqual([
+        expect.objectContaining({
+          action: 'AgentPlatform.sessionViewed',
+          attributes: { turns: 7 },
+        }),
+      ]);
+    });
+
+    it('reports nothing while the conversation is unread', async () => {
+      const analyticsApi = mockApis.analytics.mock();
+      // The session read answered, the tasks read did not: the turns are
+      // absent, not zero.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        timeline: emptyTimeline,
+        taskCount: 0,
+        hasConversation: false,
+        isConversationCurrent: false,
+      });
+      await renderInTestApp(<SessionDetailPage />, {
+        apis: [[analyticsApiRef, analyticsApi]],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+
+      expect(viewEvents(jest.mocked(analyticsApi.captureEvent))).toEqual([]);
     });
   });
 });

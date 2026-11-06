@@ -14,6 +14,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
   CatalogNoMatch,
+  isSearchableList,
   LoadingIndicator,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -22,7 +23,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
-import { useMusterServers } from '../../hooks/useMusterServers';
+import {
+  connectorsForTenant,
+  useMusterServers,
+} from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -46,10 +50,7 @@ import {
 } from '../../lib/toolset';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import {
-  AUTO_EXPAND_MAX,
-  ToolsetResolutionList,
-} from '../ToolsetResolutionList';
+import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { AccessLevelCards } from './AccessLevelCards';
 import {
   EFFECT_FILTER_ID,
@@ -229,8 +230,15 @@ export function NewAgentToolsPage() {
   const musterApi = useMusterPluginApi();
   const presets = useToolsetPresets(installation);
   const catalogue = useMusterToolCatalogue(installation);
-  const { servers, isLoading: isLoadingServers } =
+  const { servers: installationServers, isLoading: isLoadingServers } =
     useMusterServers(installation);
+  // The connectors follow the agent's organization: another one's servers
+  // are not offered. Editing, the agent's own namespace.
+  const tenant = edit ? edit.agent.namespace : state.tenant;
+  const { servers, tools: catalogueTools } = useMemo(
+    () => connectorsForTenant(installationServers, catalogue.tools, tenant),
+    [installationServers, catalogue.tools, tenant],
+  );
   // A connector muster signs in to per session or per person needs muster's
   // sign-in tool in the toolset, or the agent cannot start that sign-in
   // (giantswarm/giantswarm#38774): the step adds it, and what is resolved
@@ -269,8 +277,8 @@ export function NewAgentToolsPage() {
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
   const groups = useMemo(
     () =>
-      buildCatalogue(catalogue.tools, servers, catalogue.serversRequiringAuth),
-    [catalogue.tools, servers, catalogue.serversRequiringAuth],
+      buildCatalogue(catalogueTools, servers, catalogue.serversRequiringAuth),
+    [catalogueTools, servers, catalogue.serversRequiringAuth],
   );
   const connectors = useMemo(() => connectorsOf(groups), [groups]);
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);
@@ -450,27 +458,28 @@ export function NewAgentToolsPage() {
   const individualOpen = showIndividual && !selectionOff;
 
   // The catalogue's search and its All / Reads / Changes things filter, both
-  // only over a catalogue too long to read whole (AUTO_EXPAND_MAX).
+  // from SEARCH_MIN entries on (`isSearchableList`): its tools and workflows,
+  // and the connectors awaiting sign-in, which are found by their name. Kept
+  // while either narrows, so a re-read that shrinks the catalogue (a
+  // sign-out) leaves what narrowed it visible and clearable.
   const [query, setQuery] = useState('');
+  const [effect, setEffect] = useState<EffectFilter>('all');
+  const activeQuery = query.trim();
+  const isNarrowed = activeQuery !== '' || effect !== 'all';
+  const awaitingSignIn = groups.reduce(
+    (count, group) =>
+      count + group.servers.filter(bucket => bucket.needsSignIn).length,
+    0,
+  );
   const isShortCatalogue =
     !isCatalogueLoading &&
-    inventory.servers +
-      inventory.tools +
-      inventory.platformAdministration +
-      inventory.workflows <=
-      AUTO_EXPAND_MAX;
-  // Dropped when the catalogue shrinks under the bar (a re-read after a
-  // sign-out), so neither is reapplied if it grows back.
-  const activeQuery = isShortCatalogue ? '' : query.trim();
-  const [effectPick, setEffect] = useState<EffectFilter>('all');
-  const effect: EffectFilter = isShortCatalogue ? 'all' : effectPick;
-  useEffect(() => {
-    if (isShortCatalogue) {
-      setQuery('');
-      setEffect('all');
-    }
-  }, [isShortCatalogue]);
-  const isNarrowed = activeQuery !== '' || effect !== 'all';
+    !isSearchableList(
+      awaitingSignIn +
+        inventory.tools +
+        inventory.platformAdministration +
+        inventory.workflows,
+      isNarrowed,
+    );
 
   const searchedGroups = useMemo(
     () => filterCatalogue(groups, activeQuery),

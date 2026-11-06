@@ -71,45 +71,61 @@ counting a session only when its agent is still on the fleet. An agent that
 cannot start a session now stays in it. Like every item of the list, each
 opens the agent's page, where **Use this agent** starts a session.
 
-Every agent belongs to the platform or to one organization, shown under the
-label **Organization**: the organization's plain name (`acme`) for its
-`org-acme` namespace, and "None" for the installation's `kagent` namespace,
-since the platform is no organization; beside "None", an info icon
-(`InfoHint`, a button the keyboard reaches) says "Available to all
-organizations" (`OrganizationValue`). (The code and agent-manager call this the
-agent's tenant; the UI never does.) The agent's page names it beside the
-overview. Where the agents belong to more than one, the filter bar filters by
-it, the platform's agents under the option "None", and the row of an
-organization's agent names it beside the agent's name, "Organization: acme",
-since it says whose agent it is: a row has no labels, and a bare `acme` would
-read like the environment among the facts. The name is the filter option's
-(`organization none` for an organization named `none`); a long one truncates,
-taking at most half the name's line. The name link's tooltip gives the name
-and the organization in full, wherever the row is pointed at: the link's hit
-area covers the row, the organization's text included, which is also the
-link's accessible description. A
-platform agent's row names none: a "None" without its label would say
-nothing. An agent in another namespace reads `namespace <name>` there. The
-facts (model, Harness, skills and connectors, environment) are the same fixed
-columns on every row, so they line up from row to row: beside the name where
-the name keeps at least 320px (220px in a list that names no organizations),
-otherwise on one line under the name and its description, on every row of the
-list alike. At phone width they wrap under the name, and the organization goes
-under a name too long for its line and wraps there. A
-row's link is the agent's name, its hit area stretched over the row, so the
-star is a button of its own above it. The New
-agent form asks for it on Details from the places agent-manager lets the person
-create in (`get_info.namespaces.managed`): the only one is picked and named.
-Several of more than one kind are offered as a choice of **Platform**,
-**Organization** and, for a managed namespace that is no organization (not
-`org-<name>`), **Other namespace**; Organization and Other namespace then show a
-dropdown of their namespaces by plain name, and a kind with only one picks it
-straight away. Several of one kind show the dropdown alone. The choice lives in
-the form's state (`tenantKind`) and goes with the environment. Nothing is
-chosen for the person, a dropdown that appears after a blocked Continue stays
-quiet until the next, and editing an agent never moves it. The form keeps
-"Platform" as the name of that choice. An organization named `none` reads
-`organization none`, never as the platform's "None".
+Every agent belongs to the platform or to one organization, its owner, shown
+under the label **Owner**: the organization's plain name (`acme`) for its
+`org-acme` namespace, and "Platform" for the installation's `kagent` namespace;
+beside "Platform", an info icon (`InfoHint`, a button the keyboard reaches)
+says "Available to all organizations" (`OwnerValue`). (The code and
+agent-manager call this the agent's tenant; the UI never does.) The agent's
+page names it beside the overview. Where the agents belong to more than one,
+the filter bar filters by it (**Owner**, the platform's agents under the
+option "Platform"), and the row of an organization's agent names it beside
+the agent's name, "Owner: acme", since it says whose agent it is: a row has no
+labels, and a bare `acme` would read like the environment among the facts.
+The name is the filter option's (`organization platform` for an organization
+named `platform`); a long one truncates, taking at most half the name's line.
+The name link's tooltip gives the name and the owner in full, wherever the row
+is pointed at: the link's hit area covers the row, the owner's text included,
+which is also the link's accessible description. A platform agent's row names
+none: the platform is the usual owner, so the rows that name one stand out as
+an organization's. An agent in another namespace reads `namespace <name>`
+there. The facts (model, Harness, skills and connectors, environment) are the
+same fixed columns on every row, so they line up from row to row: beside the
+name where the name keeps at least 320px (220px in a list that names no
+organizations), otherwise on one line under the name and its description, on
+every row of the list alike. At phone width they wrap under the name, and the
+owner goes under a name too long for its line and wraps there. A row's link
+is the agent's name, its hit area stretched over the row, so the star is a
+button of its own above it.
+
+The New agent form asks for the owner on Details, from the places agent-manager
+lets the person create in (`get_info.namespaces.managed`). Where it offers the
+platform and organizations, the **Owner** field is a radio group, **Platform**
+or **Organization** (and **Other namespace** for a managed namespace that is
+no organization, not `org-<name>`), so the either/or stays in sight: the
+platform is no organization. **Platform** is preselected. Choosing
+**Organization** shows a dropdown of the organizations by plain name below it,
+one always picked: the person's own last pick of an organization, else the
+first. Where it offers organizations only, the field is that dropdown alone,
+its first preselected. The only place is picked and stated in a line under
+**More options** ("Owner: **acme**, the only one you may create agents for on
+…"), as is the case for the platform alone. A pick of the person's own stays
+while another environment offers it; an environment that does not falls back
+to Platform, or its first organization. Editing an agent never moves it. The
+usage pages, which group by organization, keep the label **Organization**
+there, with "None" for the platform's agents.
+
+Continue needs the owner: while agent-manager's `get_info` is read it says
+so, and where the read failed it says it could not read it, with **Check
+again**; where the person may create nowhere, the field's warning names who
+grants access. An agent-manager that answers without a `managed` list says
+nothing either way, so no owner is asked for and the create call gets its own
+answer. The form takes the answer in one place (`useTenantChoicesSync`,
+mounted by every step), and every step starts `get_info` for the likely
+environment (the only one configured, or the home installation) beside the
+reads that pick it (`useWarmNewAgentForm`), as the agents list does, so the
+owner does not arrive after the environment. Warnings about environments that
+are not offered keep the pair in the main form even where both are lines.
 
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
@@ -125,7 +141,7 @@ it: coming back to the form fills it in again and says so ("Your draft is
 back") on the step it reopens on, with **Start over** to begin empty instead;
 the note closes once the person moves to another step. The draft is everything
 typed and picked on the four steps (name, description, instructions,
-environment, organization, model, runtime, default workspace, technical name,
+environment, owner, model, runtime, default workspace, technical name,
 EgressPolicies, egress origins, skills, plugins and tools); the form holds no secret or token, and the
 helper's side chat is not part of it. It lives in the browser tab's session
 storage, per signed-in person, so another tab or another person on the same
@@ -439,7 +455,12 @@ page.
 
 ## Usage
 
-`/usage` reports over 7, 30 (the default) or 90 days:
+`/usage` reports over 7, 30 (the default) or 90 days, or over one calendar
+month: the Time range select offers this month so far and the two before it
+(`?window=2026-10`; the installations keep about three months of metrics). A
+past month is its exact UTC days, evaluated at its end, with the change
+against the month before; the current month is month-to-date, with no change
+shown yet.
 
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by organization, agent and model. The
@@ -448,7 +469,12 @@ page.
   platform's shared agents, `namespace <name>` for another namespace agents
   run in, and Unattributed for calls the gateway placed in no namespace; each
   row carries its model calls, tokens, spend and share of spend. A row opens
-  the same page narrowed to that organization.
+  the same page narrowed to that organization. In a calendar month, Cost
+  also shows a **By person** table: spend, tokens and share of spend by the
+  gateway's `user` label, the person the runtime ran the turn for (an email),
+  with the calls it named nobody for as "No person recorded" (the Claude
+  harness sends no person, and an environment may switch the label off).
+  One organization, one month, by agent and by person is the chargeback view.
 - **Connectors** — every caller's tool calls from muster's metrics. Only where
   the muster plugin is registered. Each connector in its table links to that
   connector's Usage tab on the selected installation and window; an instance
@@ -456,8 +482,9 @@ page.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled options there, each saying
-  how many days kagent keeps. Its cost is the
+  30 days by default); wider ranges and the calendar months are disabled
+  options there, each saying why, and a month a link names there reads as the
+  default 30 days, as it does on Connectors. Its cost is the
   gateway's price for the person's own model calls, in total and per agent —
   every call made as them, in these sessions or not. Where that cannot be read,
   it shows an estimate labelled **Est. cost**, and its tooltip says why.
@@ -500,9 +527,14 @@ A wizard (`AgentWizardFrame`, bui). The portal composes nothing: the review is
 agent-manager's dry run and the deploy is agent-manager's `create_agent`, both
 called through the installation's muster as the signed-in person.
 
-1. **Details** — `/customize/agents/new` (`NewAgentPage`). The installation
-   select renders nothing on a single-installation portal. **More options**
-   holds the model, the runtime, the technical name and extra egress origins.
+1. **Details** — `/customize/agents/new` (`NewAgentPage`). Environment and
+   Owner sit together, Environment first: in the main form when either is a
+   choice, else both are lines under **More options**. A
+   single-installation portal names its environment in a line first under
+   More options, whatever Owner does; with several usable, its dropdown preselects the home installation
+   (`gs.authProvider`'s), else the first usable one; a sole usable
+   environment is a line. **More options** holds the model, the runtime, the
+   technical name and extra egress origins.
    `CreateAgentAssist` appears when an `agentManagement` meta-agent resolves.
 2. **Skills** — `/customize/agents/new/skills` (`NewAgentSkillsPage`); see
    "Skill discovery".
@@ -587,7 +619,7 @@ because it signs as muster.
 
 `ModelConfigPicker` lists the selected installation's kagent `ModelConfig`s.
 The preselection is the only model, else the installation's default, else the
-first. `InstallationSelect` offers only installations known to have at least
+first. `useEnvironmentField` offers only installations known to have at least
 one `ModelConfig`, resolved incrementally.
 
 `ModelConfigsProvider` keeps the fleet-wide query cheap:
@@ -1033,7 +1065,7 @@ keys (`lib/queryKeys.ts`): never persisted, and re-read after sign-in.
 
 Only installations whose muster lists agent-manager (`core_mcpserver_list`
 through `musterApi.listServers`) are offered for creation
-(`useAgentManagerAvailability`, `InstallationSelect`). One with models but no
+(`useAgentManagerAvailability`, `useEnvironmentField`). One with models but no
 agent-manager is named with the reason. There is no fallback write path.
 
 ### Deploy through agent-manager
@@ -1153,9 +1185,18 @@ a session"). Renaming and deleting are described below.
 Neither Sessions nor Agents renders an empty table. Sessions shows
 `ShellSessionsEmpty` only when the empty answer is final:
 
-- **Nothing could be read** is not an empty history: the "couldn't read"
-  warning stays. This is why the branch tests `unreachableInstallations`, not
-  only `rows.length`.
+- **Nothing could be read** is not an empty history. When no installation
+  answered (`useSessions().nothingRead`), the failure is the page's answer: a
+  danger card "Could not read your sessions" that names each environment's
+  reason, offers Try again and cannot be closed. The shell rail then says
+  "Could not read your sessions." with Try again in place of "No sessions
+  yet". When another installation answered, even with no sessions, it is the
+  closable warning with the same Try again. Try again (`useSessions().retry`)
+  reads each reported failure once, without the client's automatic retries,
+  and never an installation without kagent. An agent's Sessions tab shows the
+  danger card for a failure kagent answered, and a quiet line when kagent is
+  not deployed there. This is why the branch tests `unreachableInstallations`,
+  not only `rows.length`.
 - **Something must have been queried.** At least one scoped installation must
   be outside `notReachableInstallations`. Every installation need not be
   reachable, since a local portal almost always has unreachable ones.
@@ -1263,6 +1304,17 @@ Failures are classified as **absent** or **unwell**:
 - **Reported** in `UnreachableInstallationsAlert` — everything else: kagent
   `5xx` or `429`, timeouts, unreadable bodies. Otherwise a degraded
   installation's sessions would vanish silently.
+
+kagent down for a moment (its gateway answers gRPC `Unavailable`, as while the
+controller restarts) reaches the browser as a `500` with
+`reason: "unavailable"`. It stays a `5xx`, because the frontend reads a `503` as
+"no kagent here" and stays silent. The reason reads "temporarily unavailable" in
+the read-failure card, and a write or a send that meets it says "The Agent
+Platform is temporarily unavailable. Try again in a moment."
+(`isKagentUnavailable` in `lib/readFailure.ts`); the backend's own message,
+with the installation and the gateway's words, stays on the error as its
+`cause`. A message that could not be sent goes back into the composer, to be
+sent again with one press.
 
 An in-band `{error: true}` on a `200`, or a `data` that is not an array, also
 throws. A partial read keeps the readable rows and logs a console warning.
@@ -1676,11 +1728,13 @@ is not allowed to reach this address · {time} · {n} attempts"), read from
 (`useSessionEgressRefusals`). The port, scheme and origin are folded under
 Technical details.
 
-Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
-(`egressRemedyKind`, giantswarm/giantswarm#38814), in this order:
+Once a refusal other than raw TCP shows, `useEgressRemedy` reads the agent;
+the remedy is picked by `egressRemedyKind` (giantswarm/giantswarm#38814) in
+this order:
 
 | Case                                                        | Remedy                                                     |
 | ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Raw TCP (any scheme but HTTP(S)), any runtime, for anyone   | No egress setting allows it; use HTTPS if the host has it  |
 | Coding Harness, `get_info` reports `toolchains`             | Start a session with a toolchain, or ask the platform team |
 | Coding Harness, no toolchains                               | Ask the platform team                                      |
 | From Git, HelmRelease outside the agent's namespace         | Changed in Git                                             |
@@ -1689,8 +1743,18 @@ Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
 | Written live (or by pull request), the person may update it | Add the origin; links the edit page                        |
 | The agent or its runtime cannot be read                     | Neutral: ask the platform team; nothing is promised        |
 
+Raw TCP comes first because no one can allow it: kagent's egress declares
+HTTP and HTTPS origins only, and agent-manager's `harness.egress.<harness>` is
+a list of origins too. Every scheme the gateway labels other than `http`
+and `https` counts as raw TCP. Its remedy has no link and needs nothing of the
+agent, so a Session whose refusals are all raw TCP reads nothing for it; one
+test, `remedyNeedsAgent`, decides both. Where the gateway folded the host, the
+remedy is only "No egress setting can allow it." The wording
+matches klaus-gateway's Slack notice (giantswarm/klaus-gateway#564); if raw
+TCP becomes allowable, both change together.
+
 A coding Harness (every runtime but `kagent`) reaches the platform's list for
-it only (agent-manager's `guardCoding`), so it is decided first, from the
+it only (agent-manager's `guardCoding`), so it is decided next, from the
 fleet's Agent row or the namespace's Harnesses, without `get_agent`. "Outside
 agent-manager's directory" is the cheap signal from `get_agent` (`managed:
 gitops` and a HelmRelease namespace other than the agent's). While anything
@@ -1900,7 +1964,14 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   unread rows, waits for all of them and reports
   `AgentPlatform.notificationsMarkedRead` once if any marked something;
   opening a plain row reports `AgentPlatform.notificationOpened` with
-  `kind: plain`.
+  `kind: plain`. When "Mark all read" or a row the person opened could not be
+  marked, the overlay says so in a danger alert with Try again (not a toast,
+  which the overlay covers), and the rows stay unread; the alert goes once
+  they are read, by Try again, a later mark or another tab. Try again marks
+  only the rows the alert names, not rows that arrived since, and a "Mark all
+  read" that marked part of the rows is not reported again. A row only marked
+  because its page is on screen fails quietly and is marked again with the
+  next read.
 - **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
   keys as the rail's dots: every 10 s while the tab is visible, and on the
   60 s baseline tier while it is hidden. A state for a session the sessions
@@ -2025,7 +2096,14 @@ user-settings storage is our own `RoamingSettingsStorage`
 the backend does not answer is "unknown", never "absent", and no read is
 cached. Every write reads the key first (`useStoredSetting`) and refuses to
 write on a read that was not answered, so a tab that wakes up offline erases
-nothing. A shown value stays until a read answers. The storage is created with
+nothing. The storage says why a read or write failed (`status`, or `network`
+when the backend could not be reached), and a write the person waits on (a
+row opened, "Mark all read"; `retry` on the update) is tried twice more, after
+250 ms and 500 ms, when that is a 5xx or the network, so a single 503 does not
+fail it. A 4xx, an answer that is not JSON, a read that timed out and a mark
+of a row on screen are not retried. A retry reads and applies again in the
+write's own place in the queue, so a write queued behind it still lands after
+it. A shown value stays until a read answers. The storage is created with
 the signals API, so a write in one tab reaches the person's other tabs, and
 the record is read again whenever a tab becomes visible. Two tabs writing the
 same key within one read-and-write still race: the backend has no
@@ -2591,6 +2669,14 @@ request the controller recorded** (`GetTask` first), never from the browser's
 claims. The browser sends only approve or reject and, for questions, the
 answers in order.
 
+The browser also sends `askedIn`, the `messageId` of the status message it
+answers (`PendingConfirmation.askedIn`). Slack answers the same task, so by
+the time an answer arrives the task may have been answered there and paused
+again: it keeps its id but asks in a new status message. The backend then
+refuses the answer with a 409 instead of applying it to a request the person
+never saw. An answer without `askedIn` is checked against the task's state
+alone.
+
 - **A tool approval decides every requested tool at once**: the one verdict
   applies to every `tools[].id`. A rejection carries the reason on each; an
   approval carries none, since the controller refuses one.
@@ -2783,6 +2869,55 @@ hand-offs ("<verb> with <agent>", `useMetaAgentHandoff`) and
 `CreateAgentAssist`. The composer grows with its content and never shrinks back.
 Enter starts.
 
+The home screen's composer keeps its unsent prompt and the chosen agent as a
+draft (`StartNewSession`'s `draftName`, through `useSessionDraft`):
+`sessionStorage` under `gs-draft:agent-platform-new-session:<userEntityRef>`,
+so each tab keeps its own and a reload, a sign-in that leaves the page or a
+link followed in the tab gives them back. `StartNewSession` holds the prompt
+and the composer shows it (`prompt`), so a restore sets it without remounting
+the composer. The draft is read a moment after the page renders (the person's
+identity first): what the person typed or picked meanwhile stays, the rest is
+restored. The agent kept is the one the person picked, else the restored one,
+else the composer's preselection, which never replaces a restored agent that is
+not read yet. A `?agent=` link goes ahead of the restored agent, which goes
+ahead of the last agent used. The images, the workspace and the toolchains are
+not kept. The draft is removed once the session is created; a failed start
+keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
+never leaves the page: it opens the provider in a new tab
+(`useServerSignIn`).
+
+A start that muster refuses for want of the person's sign-in to agent-manager
+shows `ConnectAgentManagerAlert` above the box. The refusal is the error of
+`useCreateSession`'s mutation, which the caller keeps until the next start, so
+the composer clears it itself once the sign-in lands (`ServerSignIn`'s
+`onSignedIn`, once per landing: muster's status moves to connected, or a click
+on Sign in finds agent-manager connected already). Where the sign-in was made
+in this tab (`SignedIn.here`: a sign-in page this tab opened, or that click),
+the refused start goes again, as after a workspace's provider sign-in, while
+the agent and the prompt are the ones refused. A sign-in made in another tab,
+read when this one is focused again, only clears the alert: two tabs with the
+same refused prompt never start two sessions.
+
+Every other page and dialog that shows `ConnectAgentManagerAlert` (for
+agent-manager, cluster-manager or model-manager) follows one rule once the
+sign-in lands:
+
+- A read or a dry run behind the alert is read again. A query under
+  `['muster', …]` is, by itself: the sign-in invalidates every muster query.
+  A dry run made through a write hook (the node pool, model backend and
+  cluster forms and dialogs) is asked again from the alert's `onSignedIn`.
+- A write's refusal (the hook's or the mutation's failure) is cleared from
+  `onSignedIn` (`reset`), so the alert goes; the write itself is the
+  person's to press again, on the dry run they see. Nothing that deletes or
+  removes is ever sent again by itself. Only the session start goes again by
+  itself, and only in the tab the sign-in was made in.
+- The alert words a missing sign-in as one only where muster asked for it:
+  its 401 with `server_sign_in_required`, read where the error is classified
+  and kept on the failure as `signInRequired`. Any other not-connected answer
+  (a tool not found, a server down) keeps muster's answer in sight. The
+  `needsGitHub` variant takes no `onSignedIn`: agent-manager is connected
+  there, and a click finds it so without the GitHub authorization.
+
 #### Create, navigate, then send — in that order
 
 1. **agent-manager's `start_session`**, through muster as the person
@@ -2869,7 +3004,7 @@ is typed. `isStartableAgent` is shared, so the picker and the decision to offer
 one agree.
 
 A single offered agent is preselected and the control disabled, but still named
-to confirm the target. `InstallationSelect` does the same for one installation.
+to confirm the target. `useEnvironmentField` does the same for one installation.
 A lone non-ready agent is never preselected.
 
 The start screen tells apart three reasons for having no composer: nothing
@@ -3244,11 +3379,14 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 `/usage` has routed tabs, Overview at the bare path; an unknown view redirects
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
-environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
-select labelled "Time range" with the options "Last 7 days", "Last 30 days"
-and "Last 90 days", the same label, box and height as the Environment select
-beside it.
+environment and the window: the last 7, 30 or 90 days, or a calendar month
+(`?window=7d`, `?window=2026-10`; `lib/usageWindow.ts`). The window control is
+`UsageWindowSelect`: a select labelled "Time range" with "Last 7 days", "Last
+30 days" and "Last 90 days", then this month so far and the two before it, the
+same label, box and height as the Environment select beside it. In a month
+still being written the gateway queries re-key with the clock every five
+minutes; `useLlmUsage` holds the previous answer across that
+(`keepPreviousAnswer`) and reports a change of scope as loading.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |
@@ -3363,6 +3501,39 @@ that falls back to the ModelConfig's resource name and never matches
 `gen_ai_response_model`. It is the agent's model now: kagent pins no model to a
 session.
 
+#### The rate counts each token once, and is the window's mix
+
+The gateway's `input` token type already holds the cache reads and writes:
+since v1.5.0, agentgateway normalises every provider's input count to include
+them (agentgateway#2880) and records them again as `input_cache_read` and
+`input_cache_write`. `deriveTokenRates` therefore divides the spend by `input`
+plus `output` (plus any type it does not know), never by the sum of all four.
+Summing them counted cached input twice and halved the rate: on `gazelle`,
+claude-sonnet-5-5 read $0.30/1M where $0.59/1M was right
+(giantswarm/giantswarm#38457).
+
+An older gateway leaves the cache types out of `input`, and subtracting them
+there would inflate the rate about tenfold. The totals tell the two apart:
+inside `input`, the cache types cannot exceed it (on `gazelle` they sit at
+99.8–99.998% of it per agent and model), while outside it a cache-heavy mix
+has them at many times `input`. So `deriveTokenRates` subtracts them only when
+they are at most 1% above `input`. A 7-day window that straddles the upgrade
+holds both conventions and can be off either way until it rolls past.
+
+Even counted once, the blend is the window's token mix, not the session's.
+Over a week most input is cache reads, which Claude models price at a tenth of
+fresh input, so the rate undercharges a session that reads little from cache.
+The issue's one-turn session (9,800 input, 1,000 output, billed $0.0296)
+estimates at $0.0064. A long session, whose own mix is mostly cache reads like
+the window's, comes out close. Pricing the two apart takes spend by token type,
+which the cost metric does not carry (see below).
+
+The estimate stays a 7-day average, and says so wherever it shows: the cost
+popover's basis line (`describeCostBasis`) and the Your sessions note
+(`ByAgentTable`) call it the average cost per token over the last 7 days and
+add `AVERAGE_RATE_CAVEAT`: "An average can be low for short sessions that read
+little from cache."
+
 **A model without a usable price contributes no cost, not an error.** Only
 `agentgateway_cost_catalog_lookups_total` tells zero spend from unpriced spend,
 which is why the Cost tab has a pricing-coverage alert and an unpriced-models
@@ -3449,7 +3620,8 @@ it out of its debug log (`redactQuery`).
   `dailyWindowDayKeys` and `todayDayKey` take the range instead of reading the
   clock, so they cannot straddle midnight.
 - **The cost metric has no `gen_ai_token_type`.** Tokens split four ways
-  (`input`, `output`, `input_cache_read`, `input_cache_write`); spend does not.
+  (`input`, `output`, `input_cache_read`, `input_cache_write`, the two cache
+  types also counted in `input`); spend does not.
   `deriveTokenRates` returns only `blended`; its per-type branch waits for a
   gateway release that adds the label. Check with
   `count by (gen_ai_token_type) (agentgateway_gen_ai_client_cost_usd_total)`.

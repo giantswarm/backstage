@@ -63,8 +63,14 @@ A lab works without these; production needs them:
   [Meta-agents](#meta-agents-agentplatformmetaagents)).
 - **The avatar service.** Avatars come from the chart's DiceBear service
   (`dicebear`, on by default) at `avatars.<baseDomain>`, through
-  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it every avatar
-  fails, the backend logs a warning per image, and the UI shows initials.
+  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it, or when
+  the backend cannot connect to that host directly (no route to it, no
+  connection within 3 s of resolving its name), the UI shows initials and the
+  backend logs the finding once at info, then answers from it for a minute
+  (no service) or five minutes (no connection). A service that is reached but
+  answers slowly, with an error or with something other than an image, a
+  refused connection (a gateway that is down) and an egress proxy that cannot
+  be connected to log a warning per image.
 
 ## Portals: `app.portals`
 
@@ -92,7 +98,9 @@ with the tabs the plugins attach to it (`sub-page:agent-platform/agents`,
 enabled by default and mounted only where the shell is on, so
 `app.portals.agentPlatform` alone switches the Agent Platform on; `false` for
 one in `app.extensions` turns it off. The classic sidebar's Agent Platform item
-follows `app.portals`, not `nav-item:agent-platform`.
+follows `app.portals`. There is no `nav-item:agent-platform` extension: an
+`app.extensions` entry naming it logs `INVALID_EXTENSION_CONFIG_KEY` at
+start-up.
 
 ```yaml
 app:

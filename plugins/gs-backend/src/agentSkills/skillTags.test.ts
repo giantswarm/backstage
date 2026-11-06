@@ -72,6 +72,35 @@ describe('withSkillTags', () => {
     },
   );
 
+  describe('the 50-tag limit, as muster checks it', () => {
+    const numbered = (count: number) =>
+      Array.from({ length: count }, (_, index) => `tag-${index}`);
+    const stored = numbered(55);
+    const skill = { metadata: { tags: stored.join(', ') } };
+
+    it('refuses more than 50 tags on a new skill', () => {
+      expect(() => withSkillTags({}, numbered(51))).toThrow(
+        'A skill takes at most 50 tags.',
+      );
+      expect(withSkillTags({}, numbered(50))).toEqual({
+        metadata: { tags: numbered(50).join(', ') },
+      });
+    });
+
+    it('keeps an unchanged or shortened list past it', () => {
+      expect(withSkillTags(skill, stored)).toEqual(skill);
+      expect(withSkillTags(skill, stored.slice(3))).toEqual({
+        metadata: { tags: stored.slice(3).join(', ') },
+      });
+    });
+
+    it('refuses a tag the skill lacks on a list past it', () => {
+      expect(() => withSkillTags(skill, [...stored.slice(1), 'new'])).toThrow(
+        SkillTagsError,
+      );
+    });
+  });
+
   it('replaces a metadata.tags it reads whole, in any case', () => {
     expect(
       withSkillTags({ metadata: { tags: 'Ops, ,Triage' } }, ['ops']),

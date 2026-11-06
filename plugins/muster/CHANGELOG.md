@@ -1,5 +1,165 @@
 # @giantswarm/backstage-plugin-muster
 
+## 0.5.0
+
+### Minor Changes
+
+- 06967c4: The connector wizard takes a pre-registered OAuth client's ID and secret in "Each person signs in with their own account" mode; muster stores them in a Secret bound to the connector. An edit shows the client as stored, with Replace, and asks for it again when the issuer or an endpoint changes; choosing "Existing Secret" names a Secret instead. Both choices say they are about a Kubernetes Secret of type Opaque. The existing Secret's name, namespace and data keys are checked as Kubernetes names when the person leaves the field and again on save, with the error under the field; left all empty, Existing Secret is no client, as New Secret is. The key fields show their defaults, `client-id` and `client-secret`, as placeholders. Switching between the two keeps what was typed on either side, except a typed client secret. On a muster whose create and update take no `clientCredentials`, New Secret offers no client fields and says to name an existing Secret instead. In the Advanced settings the issuer comes first, then the endpoints and scopes, and scopes are no longer greyed out before an issuer is set. The values go only into muster's create or update call: not into validation, the form's saved state, analytics or errors.
+
+  muster-backend answers a refusal of muster's connector writes (`core_mcpserver_create`, `_update`, `_validate`) on `/call` with 422 instead of 500, so it no longer reaches Sentry: a permission muster names, an invalid definition, a name taken, muster's own rules or an admission policy's denial. muster's own failures keep their 500.
+
+- 5bc242c: Make a connector's sign-in reach the person's agents where muster allows it,
+  and say so where it does not.
+
+  - The connector wizard now defaults "Each person signs in with their own
+    account" connectors to one sign-in for the portal and every agent
+    conversation (`grantScope: subject`). The choice moved out of the Advanced
+    section. muster takes `subject` only on a pinned authorization server, so it
+    is written only when an issuer is set. Without one, or when `session` is
+    picked, the wizard warns: "Agents will ask you to sign in again in every
+    conversation." Editing a connector keeps the grant scope it already has.
+  - The Connectors list and the connector page show "Portal only", with an
+    explanation in a hint, for a connector the person signed in to whose sign-in
+    serves this muster session only, instead of a plain green "Connected". The
+    Connectors list's Connection filter has a matching "Portal only" bucket. The
+    scope comes from muster's `auth://status` (`grant_scope`) and falls back to
+    the MCPServer spec.
+
+- 8ab4a8f: Connectors show a logo: the icon muster wrote to the `MCPServer`'s `.status.icon` (the server's own, or muster's mark for a known service), else the letter tile. `ConnectorLogo` is exported from the muster plugin and used on the Connectors list, the connector page header and the agent overview, whose Connectors section now shows the agent's connectors as a row of logos named on hover or focus. Directly bound servers and `server:` selectors read by their display names. `ui-react` exports `HintTooltip`, the tap-friendly hint on a badge or a logo that the connector logos and the workflow effect badge share.
+- 0314965: Text links in the Agent Platform shell now share one style: the link colour and
+  a solid underline on every surface. Links that act as controls (rail items, the
+  logo, breadcrumbs, a wizard's steps, Close and Cancel, row and card titles, the
+  skill file tree, the connector tool pills) pass bui's `standalone` and keep
+  their own look.
+  `ExternalLink` now carries its link's underline onto its content, so an
+  underline also shows on an external link.
+- 5ded107: Customize's Connectors tab is one list: registered connectors first, then the platform's own, which carry a read-only tag from their tool-group label (`infrastructure`, `agent-platform`) for the Tags filter, search and tag links. The Your connectors, Infrastructure and Internal sub-tabs are gone; their addresses redirect to the list with `?tags=`. Until a connector is registered, the list starts with how to add one. An infrastructure family's page says it has an instance per management cluster. Exports `RETIRED_CONNECTOR_GROUP_TAGS` in place of `CONNECTOR_GROUPS`, `connectorGroupInfo`, `connectorGroupOfPath` and `LEGACY_CONNECTOR_GROUP_PATHS`; `useMusterCustomizeCounts` no longer returns `connectorGroups`.
+- 5ded107: `TagList` draws a resource's tags read-only. Connectors and workflows have tags: a Tags filter and column on Customize, search by tag, a Tags row on their pages, and a Tags field when adding or editing a connector where muster takes them. The agent wizard's connector search matches tags too.
+- 5ded107: One tag vocabulary: `TagVocabularyProvider` counts tags across the sources it is given, read only while a `TagsField` is on screen, so suggestions and the "Existing:" hint span agents, skills, connectors and workflows. The sources are `AgentTagSource`, `SkillTagSource` (agent-platform), `ConnectorTagSource` and `WorkflowTagSource` (muster). A tag on an agent's, skill's, connector's or workflow's page links to its Customize tab with the tag picked (`?tags=<tag>`); the pick goes with a switch to another tab. `TagList` takes `getHref`; `SharedTagsProvider`, `tagHref`, `tagsOfSearch` and `withTagsSearch` share a Tags pick between catalogs.
+- 5ded107: One rule for search across the agent platform: a list of entities shows its
+  search and filters from three entries on (`isSearchableList`, `SEARCH_MIN` now
+  3, was more than 8), and keeps them while a search or filter is in force; a
+  dropdown offers type-ahead from three options (`searchableIf`). Paging is
+  unchanged.
+- 5ded107: `catalogFilterDimensions` draws a filter only where picking from it can narrow
+  the list: it needs two values among the entries that have one, so one
+  repository, organization, model, agent or Harness gets no dropdown, even while
+  some entries have no value yet. A facet with `missingIsChoice` (a flag: Pinned,
+  Starred, "Created by: Me") is drawn from one value some entries lack. A filter
+  with a pick in force stays until it is cleared. A bar with no filters draws
+  nothing.
+
+### Patch Changes
+
+- 8fd67a7: Show a connector's "Calls, last 30 days" line on its Details tab from the first
+  paint, with a skeleton until the usage is read, so the facts below it no longer
+  jump. Where there is no figure the line says why: no muster session (and why
+  not), no usage metrics on the environment, or a failed read.
+
+  `CellSkeleton`, the one-line placeholder for a value still being read, moves
+  from agent-platform to `ui-react` and takes a `body-medium` variant and an
+  accessible `label`.
+
+- ef2cf27: Connector sign-in: the tab a Sign in click opens now says "Opening the
+  sign-in page…" while muster prepares the page, instead of a bare
+  about:blank. When muster takes longer than 10 seconds, or the person closes
+  the tab first, the tab is closed and the row offers the sign-in at once: it
+  says the sign-in page is being prepared, and "Open sign-in page" becomes a
+  link as soon as the page is ready, rather than after the Sign in button's
+  spinner. A tab the person took to another address is left open. Each
+  click's answer only ever opens in that click's own tab, and a late answer
+  never replaces a newer sign-in. A provider App's device-code sign-in keeps
+  its button until muster issued the code.
+- 2f531d8: Label the days of the "Tool calls by outcome" chart (the Usage screen's
+  Connectors section and a connector's Usage tab) in UTC, like the Usage charts
+  beside it. West of UTC, each bar was labelled with the day before. The chart's
+  tooltips and those of a workflow's "Runs per day" chart now show the year too,
+  from the same day labels the Usage charts use.
+- 6b4e6d6: Write every duration in the Agent Platform the same way, through the shared
+  `formatSeconds`: `420 ms` below a second, `1.2 s` or `3 s` below 10 s, `18 s` up to a
+  minute, then `2 min 30 s`, `12 min` and `1 h 5 min`.
+
+  - A fast try of a served model reads `200 as you in 420 ms`, not `in 0 s`.
+  - A workflow's average and longest run read `5 min`, not `300 s`.
+  - A tool or workflow run's result reads `5.3 s`, as the flow does, not
+    `5321 ms`.
+  - A starting model reads `Starting on <node> for 4 min 30 s`, not a floored
+    `for 4 min` or `for 0 min`.
+  - Latencies (p50, p95) above a minute read in minutes.
+
+  `formatSeconds` in `agent-platform-common` now goes on to minutes and hours;
+  muster's `formatDuration` and the second `formatSeconds` in agent-platform's
+  `lifecycle.ts` are gone.
+
+- 5ded107: Handing a skill to the skill creator agent carries its tags (a new skill's, or an edit's changed ones) into the first message. "Edit in Git" for a GitOps-managed connector or workflow names the tags annotation.
+- 5ded107: A Tags field the installation does not offer (an older muster or agent-manager) no longer yields a problem, so an edit of a connector with more than 50 stored tags on such a muster no longer bounces from Sign-in back to Connect. Tags under five characters are no longer offered as near-duplicates of each other (`docs`, `dogs`). `TagVocabularyProvider` and `SharedTagsProvider` move to their own component directories; muster's `useConnectorGroupPaths` is now `useConnectorListPaths`, and `useTakesDisplayName`/`useTakesTags` are one `useToolTakesArgument`.
+
+  The 50-tag limit is checked as muster checks it (`exceedsTagLimit` in gs-common): a list past 50 is refused only when it holds a tag not already stored, so an unchanged or shortened list of tags written elsewhere goes through, and a create takes at most 50. gs-backend's skill pull request checks it against the SKILL.md's stored `metadata.tags` (a 422) instead of capping every request at 50.
+
+- 5ded107: Tag helpers (`parseTags`, `TAGS_ANNOTATION` and the rest), `TagsField`, `TagVocabularyContext` and the `tagsFacet` catalog facet move to `ui-react`, for every resource with tags.
+
+  A resource takes at most 50 tags (`MAX_TAGS`): `TagsField` and the agent, connector and skill forms refuse more with "At most 50 tags." An edit that leaves more tags written elsewhere as they are goes through, since it does not write them.
+
+- 4f2299d: Created and connection times read as relative dates, the local date and time
+  on hover. The agent page says "Created 3 days ago" once, in the facts beside the
+  Overview, no longer in its header or in Technical details. A connector's "Added" fact says how long ago it was
+  added instead of a fixed UK-format UTC date. Its Health block ("Last
+  connected", "Next retry") and the Instances tab's "Last connected" column drop
+  the browser-locale timestamp and show the exact time on hover; a retry time
+  that has passed is no longer shown as the next one.
+
+  A relative `DateComponent` (and `getRelativeDate`) shows a value that does not
+  parse as given, as the absolute one already did, instead of throwing.
+
+- 54e92f7: Name time windows in words instead of PromQL durations: the session cost
+  popover, the by-agent cost note and the connector usage empty state now say
+  "the last 7 days" rather than "the last 7d". A one-day window, which kagent's
+  configurable session window allows, reads "the last day" rather than "the last
+  1 days". The new `lastDaysNoun` (`the last 7 days`) and `lastDaysLabel`
+  (`last 7 days`) helpers in `agent-platform-common` are where every days window
+  in the copy turns into words, and `useTokenRates` reports its window as
+  `windowDays` instead of the PromQL string.
+- 4c53a2b: Name the tool, its MCP server and the installation on a muster tool error, and give each known kind of failure its status: the refusals of agent-manager, model-manager and workspace-manager and muster's refusals of a connector write answer 4xx and no longer reach Sentry, a muster rollout's interruption is logged at info and answered with a 503 the muster, plans and roadmap pages retry, and a timeout (504), a server muster holds no connection to (503) and a missing tool (502) stay reported. Sentry groups muster tool errors by kind and tool, or by server for the kinds that belong to a whole server. The muster pages no longer retry a refusal. platform-capabilities and repositories no longer show muster's own failures as the manager's refusal. `gs-node` adds `MUSTER_TOOL_ERROR_STATUS`, `musterToolErrorKindOf`, `musterServerOfTool` and `markReported`; `gs-common` adds the refusal registry (`mcpToolRefusalOf`, `parseToolErrorCode`). bot-prs keeps offering the marge sign-in for a missing tool or a lost connection.
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [2fb06f7]
+- Updated dependencies [36f0927]
+- Updated dependencies [148a689]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [a665a44]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [a85c17f]
+- Updated dependencies [ded8231]
+- Updated dependencies [6b4e6d6]
+- Updated dependencies [0314965]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+- Updated dependencies [54e92f7]
+- Updated dependencies [4c53a2b]
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.1.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+  - @giantswarm/backstage-plugin-gs@0.72.0
+  - @giantswarm/backstage-plugin-gs-common@0.23.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.3.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.1
+  - @giantswarm/backstage-plugin-gs-react@0.1.1
+
 ## 0.4.0
 
 ### Minor Changes

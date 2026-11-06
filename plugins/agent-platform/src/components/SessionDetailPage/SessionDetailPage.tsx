@@ -30,6 +30,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -129,6 +130,7 @@ import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
 import { useEgressRemedy } from '../../hooks/useEgressRemedy';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -404,6 +406,7 @@ export function SessionDetailPage() {
     tasks,
     taskCount,
     hasConversation,
+    isConversationCurrent,
     isLoading,
     isNotFound,
     error,
@@ -415,6 +418,22 @@ export function SessionDetailPage() {
     justCreated: Boolean(handoff),
   });
   const cancellation = useCancelTask(installation, sessionId);
+
+  // How long the sessions people open are: once per opening, when the
+  // session and a current read of its turns are in hand (not an older cache
+  // the opening read is about to replace), and not again as it polls.
+  const turns = detail && isConversationCurrent ? taskCount : undefined;
+  const viewEvent = useMemo(
+    () =>
+      turns === undefined
+        ? undefined
+        : {
+            name: 'AgentPlatform.sessionViewed' as const,
+            attributes: { turns },
+          },
+    [turns],
+  );
+  useTrackedView(viewEvent, `${installation}/${sessionId}`);
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
@@ -629,7 +648,8 @@ export function SessionDetailPage() {
   const {
     rates,
     tier: rateTier,
-    window: rateWindow,
+    windowDays: rateWindowDays,
+    error: rateError,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -862,14 +882,15 @@ export function SessionDetailPage() {
     }),
     [timelineWithLive, shownItems, egressRefusals],
   );
-  // What a refusal's alert offers for this agent: read once there is one,
-  // since it takes agent-manager's reading of the agent and the person's
-  // access (giantswarm/giantswarm#38814).
-  const egressRemedy = useEgressRemedy({
+  // What a refusal's alert offers for this agent: read once there is one
+  // that needs it, since it takes agent-manager's reading of the agent and
+  // the person's access. Raw TCP's remedy needs none of it
+  // (giantswarm/giantswarm#38814).
+  const egressRemedyFor = useEgressRemedy({
     installation,
     agent,
     row: agentRow,
-    enabled: egressRefusals.length > 0,
+    enabled: egressRefusals.some(refusal => remedyNeedsAgent(refusal.scheme)),
   });
 
   // Owned by the page, unlike the delete dialog's state, because two things open
@@ -1333,9 +1354,10 @@ export function SessionDetailPage() {
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({
         tier: rateTier,
+        error: rateError,
         model: row.agentModel,
         installation: row.installation,
-        window: rateWindow,
+        windowDays: rateWindowDays,
         inputTokens: timeline.tokens.prompt,
         outputTokens: timeline.tokens.completion,
         unpricedTokens:
@@ -1841,7 +1863,7 @@ export function SessionDetailPage() {
             <SessionTimeline
               timeline={shownTimeline}
               agentName={row.agentName}
-              egressRemedy={egressRemedy}
+              egressRemedyFor={egressRemedyFor}
               agentAvatarUrl={avatarUrl}
               isAgentWorking={showWorking}
               streamLost={streamLost}

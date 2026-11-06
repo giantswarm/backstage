@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import {
   AuthStatusResponse,
+  ConnectorName,
   MusterApi,
   musterApiRef,
   ServerAuthStatus,
@@ -18,27 +19,9 @@ import {
   SETTLE_REREAD_UNTIL_MS,
   SETTLE_WINDOW_MS,
 } from './hooks/useSettledWaiting';
-import { MCPServer } from '../../lib/k8s';
 
-/** The installation's MCPServers, per test; none by default. */
-let mockServers: MCPServer[] = [];
-/** The options of each read of the MCPServers, in render order. */
-const mockServerReadOptions: Array<Record<string, unknown>> = [];
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: (
-    _installations: string[],
-    _kind: unknown,
-    _query: unknown,
-    options: Record<string, unknown>,
-  ) => ({
-    resources: (mockServerReadOptions.push(options), mockServers),
-    errors: [],
-    queries: [],
-    isLoading: false,
-    retry: jest.fn(),
-  }),
-}));
+/** The installation's connectors as muster names them, per test; none by default. */
+let mockNames: ConnectorName[] = [];
 
 // The plugin's own client is a module singleton; each test brings a fresh
 // one around the provider instead.
@@ -56,21 +39,6 @@ jest.mock('./useSignInInstallation', () => ({
   useSignInInstallation: () => mockInstallation,
 }));
 
-function annotated(name: string, displayName: string): MCPServer {
-  return new MCPServer(
-    {
-      apiVersion: 'muster.giantswarm.io/v1alpha1',
-      kind: 'MCPServer',
-      metadata: {
-        name,
-        annotations: { 'ui.giantswarm.io/display-name': displayName },
-      },
-      spec: {},
-    } as never,
-    'graveler',
-  );
-}
-
 // The waiting servers settle on a second read a few seconds after the first.
 beforeEach(() => {
   jest.useFakeTimers();
@@ -78,12 +46,14 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.useRealTimers();
-  mockServers = [];
-  mockServerReadOptions.length = 0;
+  mockNames = [];
   mockInstallation = { installation: 'graveler', isLoading: false };
 });
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
+type Api = Pick<
+  MusterApi,
+  'getAuthStatus' | 'listConnectorNames' | 'signInServer' | 'signOutServer'
+>;
 
 const waitingFor = (name: string): ServerAuthStatus => ({
   name,
@@ -100,6 +70,7 @@ function makeApi(response: AuthStatusResponse): jest.Mocked<Api> {
   return {
     // A fresh object per read, as the wire gives: the tests change `response`.
     getAuthStatus: jest.fn(() => Promise.resolve({ ...response })),
+    listConnectorNames: jest.fn(() => Promise.resolve({ servers: mockNames })),
     signInServer: jest.fn(),
     signOutServer: jest.fn(),
   };
@@ -468,7 +439,7 @@ describe('McpSignInProvider', () => {
   });
 
   it('names a server by its display name', async () => {
-    mockServers = [annotated('workspace-manager', 'Workspaces')];
+    mockNames = [{ name: 'workspace-manager', displayName: 'Workspaces' }];
     await renderProvider(
       makeApi({ servers: [waitingFor('workspace-manager')] }),
     );
@@ -482,7 +453,7 @@ describe('McpSignInProvider', () => {
   });
 
   it('keeps a display name that holds a newline or a tab whole', async () => {
-    mockServers = [annotated('workspace-manager', 'Work\tspaces\n')];
+    mockNames = [{ name: 'workspace-manager', displayName: 'Work\tspaces' }];
     await renderProvider(
       makeApi({ servers: [waitingFor('workspace-manager')] }),
     );
@@ -490,7 +461,7 @@ describe('McpSignInProvider', () => {
 
     await waitFor(() =>
       expect(status().waiting).toEqual([
-        // One server, not a phantom second; the display name is trimmed.
+        // One server, not a phantom second.
         { name: 'workspace-manager', label: 'Work\tspaces' },
       ]),
     );
@@ -584,10 +555,10 @@ describe('McpSignInProvider', () => {
     await user().click(screen.getByRole('button', { name: 'Open sign-in' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Sign in to MCP servers');
+    expect(dialog).toHaveTextContent('Sign in to connectors');
     expect(dialog).toHaveTextContent('workspace-manager');
     expect(dialog).toHaveTextContent(
-      '1 more server comes with your portal sign-in.',
+      '1 more connector comes with your portal sign-in.',
     );
   });
 
@@ -607,21 +578,18 @@ describe('McpSignInProvider', () => {
     const queryClient = await renderProvider(api);
     await settle();
     await waitFor(() => expect(status().waiting).toHaveLength(1));
-    // No discovery and no refetch of its own that could ask for the cluster
-    // token in the background.
-    expect(mockServerReadOptions.at(-1)).toEqual({
-      enabled: true,
-      enableDiscovery: false,
-      staleTime: Infinity,
-    });
+    // The status is read again as it settles; the names are kept.
+    expect(api.getAuthStatus.mock.calls.length).toBeGreaterThan(1);
+    expect(api.listConnectorNames).toHaveBeenCalledTimes(1);
+    expect(api.listConnectorNames).toHaveBeenCalledWith('graveler');
 
     api.getAuthStatus.mockRejectedValue(sessionExpiredError('graveler'));
+    await queryClient.refetchQueries({ queryKey: ['muster', 'auth-status'] });
+    await waitFor(() => expect(status().isAvailable).toBe(false));
+    api.listConnectorNames.mockClear();
     await queryClient.refetchQueries({ queryKey: ['muster'] });
-    await waitFor(() =>
-      expect(mockServerReadOptions.at(-1)).toMatchObject({ enabled: false }),
-    );
-    // What was read before the session expired is no answer now.
-    expect(status().isAvailable).toBe(false);
+    // Nothing reading in the background asks for the sign-in.
+    expect(api.listConnectorNames).not.toHaveBeenCalled();
   });
 
   it('has nothing waiting once the portal session has expired', async () => {

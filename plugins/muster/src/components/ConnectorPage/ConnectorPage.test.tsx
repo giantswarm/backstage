@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+  getRelativeDate,
   PageHeaderActionsProvider,
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -76,6 +79,7 @@ function makeServer(opts: {
   spec?: Record<string, unknown>;
   displayName?: string;
   tags?: string;
+  lastConnected?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -107,11 +111,17 @@ function makeServer(opts: {
           : {}),
         ...opts.spec,
       },
-      status: { state: opts.state ?? 'Connected' },
+      status: {
+        state: opts.state ?? 'Connected',
+        ...(opts.lastConnected ? { lastConnected: opts.lastConnected } : {}),
+      },
     } as never,
     'gazelle',
   );
 }
+
+/** When the failed kubernetes instance last connected. */
+const LAST_CONNECTED = '2026-10-16T14:05:12Z';
 
 const makeServers = () => [
   makeServer({
@@ -126,11 +136,19 @@ const makeServers = () => [
     mc: 'gazelle',
     state: 'Failed',
     labels: INFRASTRUCTURE,
+    lastConnected: LAST_CONNECTED,
   }),
   makeServer({
     name: 'jira',
     spec: {
-      auth: { type: 'oauth' },
+      // One sign-in for all of the person's sessions, so it reads Connected.
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://auth.jira.example.test',
+          grantScope: 'subject',
+        },
+      },
       description: 'Search, read and update tickets',
     },
   }),
@@ -246,24 +264,27 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    // The shell mounts the scope around its pages, as the app does.
-    <ShellScopeProvider>
-      <QueryClientProvider client={queryClient}>
-        <PageHeaderActionsProvider>
-          <Routes>
-            {/* The connector wizard, where Edit leads. */}
-            <Route
-              path="/customize/connectors/:installation/:server/edit"
-              element={<LocationProbe />}
-            />
-            <Route
-              path="/customize/connectors/:installation/:server/*"
-              element={<ConnectorPage usedBy={usedBy} />}
-            />
-          </Routes>
-        </PageHeaderActionsProvider>
-      </QueryClientProvider>
-    </ShellScopeProvider>,
+    // The shell mounts the scope and its clock around its pages, as the app
+    // does.
+    <DateTimeZoneProvider timeZone="local">
+      <ShellScopeProvider>
+        <QueryClientProvider client={queryClient}>
+          <PageHeaderActionsProvider>
+            <Routes>
+              {/* The connector wizard, where Edit leads. */}
+              <Route
+                path="/customize/connectors/:installation/:server/edit"
+                element={<LocationProbe />}
+              />
+              <Route
+                path="/customize/connectors/:installation/:server/*"
+                element={<ConnectorPage usedBy={usedBy} />}
+              />
+            </Routes>
+          </PageHeaderActionsProvider>
+        </QueryClientProvider>
+      </ShellScopeProvider>
+    </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
@@ -455,9 +476,79 @@ describe('ConnectorPage', () => {
       hours: 720,
       servers: ['jira'],
     });
-    expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
+    // Added: how long ago, the local date and time on hover.
+    const added = within(facts).getByText(
+      getRelativeDate('2026-08-04T10:00:00Z', new Date()),
+    );
+    expect(added).toHaveTextContent(/ ago$/);
+    expect(added).toHaveAttribute(
+      'title',
+      formatLocalDateFull('2026-08-04T10:00:00Z'),
+    );
     // The address is technical: in the fold-out's configuration.
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
+  });
+
+  it('holds the Calls line in place with a skeleton while the usage is read', async () => {
+    const api = makeApi();
+    let answer: (usage: unknown) => void = () => {};
+    api.getMcpUsage.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          answer = resolve as typeof answer;
+        }),
+    );
+    await renderAt(`${BASE}/jira/details`, { api });
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    const labels = () =>
+      Array.from(facts.querySelectorAll('dt')).map(dt => dt.textContent);
+    // Every line from the first paint, Calls in the place it keeps.
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+    expect(within(facts).getByTestId('cell-skeleton')).toBeInTheDocument();
+
+    answer(await makeApi().getMcpUsage());
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(within(facts).queryByTestId('cell-skeleton')).toBeNull();
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+  });
+
+  it('reads the calls on the Details tab addressed with a trailing slash', async () => {
+    const api = await renderAt(`${BASE}/jira/details/`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+  });
+
+  it('keeps the Calls line without a muster session, saying why', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/jira/details`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(within(facts).getByText('Calls, last 30 days')).toBeInTheDocument();
+    expect(
+      within(facts).getByText('Needs a muster session'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 
   it('keeps the tools search across a visit to another tab', async () => {
@@ -499,6 +590,14 @@ describe('ConnectorPage', () => {
         .getByRole('tab', { name: 'Tools' })
         .querySelector('[data-count="loading"]'),
     ).not.toBeNull();
+  });
+
+  it('holds the logo’s place with a skeleton, not the letter, while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira`);
+
+    expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(screen.queryByText('j')).toBeNull();
   });
 
   it('holds the Tools count’s place while the tools load', async () => {
@@ -612,6 +711,20 @@ describe('ConnectorPage', () => {
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
+    // Last connected: how long ago, the local date and time on hover, as
+    // the expanded row's Health says it; a dash for one that never has.
+    const lastConnected = screen.getByText(
+      getRelativeDate(LAST_CONNECTED, new Date()),
+    );
+    expect(lastConnected).toHaveAttribute(
+      'title',
+      formatLocalDateFull(LAST_CONNECTED),
+    );
+    expect(
+      within(
+        screen.getByRole('row', { name: /walrus-mcp-kubernetes/ }),
+      ).getByTitle('—'),
+    ).toBeInTheDocument();
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
@@ -687,6 +800,72 @@ describe('ConnectorPage', () => {
 
     expect(signedOutHeader).toEqual(['Edit', 'More actions']);
     expect(headerButtons()).toEqual(signedOutHeader);
+  });
+
+  describe('a connector whose sign-in serves one session', () => {
+    beforeEach(() => {
+      mockServers = [
+        ...makeServers(),
+        makeServer({
+          name: 'grafana-cloud',
+          spec: { auth: { type: 'oauth' } },
+        }),
+      ];
+    });
+
+    function signedIn(status: Record<string, unknown> = {}) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana-cloud',
+            status: 'connected',
+            kind: 'grant',
+            ...status,
+          },
+        ],
+      } as never);
+      return api;
+    }
+
+    it('says the sign-in covers the portal only, not plain Connected', async () => {
+      const user = userEvent.setup();
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'session' }),
+      });
+
+      expect(await screen.findByText('Portal only')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).toBeNull();
+      // react-aria opens a tooltip on hover only once it has seen a pointer
+      // move, and a hover's own move lands after its enter.
+      await user.hover(document.body);
+      await user.hover(
+        screen.getByRole('button', {
+          name: 'About the state of grafana-cloud',
+        }),
+      );
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+      );
+    });
+
+    it('keeps muster’s state until muster reports this session signed in', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
+      await renderAt(`${BASE}/grafana-cloud`, { api });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+
+    it('reads Connected where muster reports the grant as the person’s', async () => {
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'subject' }),
+      });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
   });
 
   describe('an SSO connector', () => {

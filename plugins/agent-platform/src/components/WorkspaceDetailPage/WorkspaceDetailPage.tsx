@@ -31,13 +31,14 @@ import {
   type CatalogFacet,
   DateComponent,
   EmptyStateCard,
+  ExternalCellText,
   type Fact,
   FactList,
   formatLocalDateFull,
   INITIAL_ROWS,
   MoreActionsMenu,
   PageSection,
-  SEARCH_MIN,
+  isSearchableList,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
@@ -668,8 +669,10 @@ function RepositoriesTab({
       isRowHeader: true,
       defaultWidth: '3fr',
       minWidth: 200,
+      // The repository lives at its provider, outside the portal: it opens
+      // in a new tab, the page staying where it is.
       cell: mirror => (
-        <CellText
+        <ExternalCellText
           title={mirror.repository}
           href={
             hosts.has(mirror.provider)
@@ -776,7 +779,7 @@ function RepositoriesTab({
             : []),
         ].join(' ')}
       </Text>
-      {(mirrors.length > SEARCH_MIN || search) && (
+      {isSearchableList(mirrors.length, search !== '') && (
         <SearchField
           aria-label="Search repositories"
           placeholder="Search repositories"
@@ -827,12 +830,18 @@ function SessionsTab({
               value: directory =>
                 directory.creator?.toLowerCase() === caller ? 'me' : undefined,
               optionLabel: () => 'Me',
+              missingIsChoice: true,
             },
           ]
         : [],
     [caller],
   );
   const filters = useCatalogFilters({ items: directories, searched, facets });
+  // Search and filters from SEARCH_MIN sessions on, kept while either narrows.
+  const isSearchable = isSearchableList(
+    directories.length,
+    search !== '' || filters.isFiltered,
+  );
   const shown = filters.filtered;
 
   const columns: ColumnConfig<DirectoryRow>[] = [
@@ -943,19 +952,21 @@ function SessionsTab({
         14 days after its session's last turn, unless the environment sets
         another time; a new turn moves the date.
       </Text>
-      {(directories.length > SEARCH_MIN || search) && (
-        <SearchField
-          aria-label="Search sessions"
-          placeholder="Search sessions"
-          value={search}
-          onChange={setSearch}
-        />
+      {isSearchable && (
+        <>
+          <SearchField
+            aria-label="Search sessions"
+            placeholder="Search sessions"
+            value={search}
+            onChange={setSearch}
+          />
+          <CatalogFilterBar
+            dimensions={filters.dimensions}
+            onSelect={filters.select}
+            onClear={filters.clear}
+          />
+        </>
       )}
-      <CatalogFilterBar
-        dimensions={filters.dimensions}
-        onSelect={filters.select}
-        onClear={filters.clear}
-      />
       {body}
     </Flex>
   );

@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from '@giantswarm/backstage-plugin-gs';
+import { pickMimirError } from '@giantswarm/backstage-plugin-ui-react';
 import type { MimirMetricSample } from '@giantswarm/backstage-plugin-gs';
 import { deriveTokenRates, type TokenRates } from '../lib/costEstimate';
-import { RATE_WINDOW, tokenRateQueries } from '../lib/llmUsageQueries';
+import { RATE_WINDOW_DAYS, tokenRateQueries } from '../lib/llmUsageQueries';
 
 /**
  * Which observation the rate came from — the whole point of the hook, because
@@ -49,8 +50,13 @@ export type TokenRatesView = {
   isLoading: boolean;
   /** `false` when the installation is opted out of Mimir (`mimirEnabled: false`). */
   isAvailable: boolean | undefined;
-  /** The window the rate was averaged over, for the copy that discloses it. */
-  window: string;
+  /** Why `tier` is `error`: the first failed query's error. */
+  error: Error | null;
+  /**
+   * The days the rate was averaged over, for the copy that discloses it
+   * (`lastDaysNoun`), never the PromQL duration the queries use.
+   */
+  windowDays: number;
 };
 
 export type TokenRateScope = {
@@ -70,7 +76,7 @@ const NO_RATES: TokenRates = {};
  * The observed $/token to price a session's tokens at, and which observation
  * it came from.
  *
- * Two Mimir queries — cost and tokens over {@link RATE_WINDOW}, grouped by
+ * Two Mimir queries — cost and tokens over {@link RATE_WINDOW_DAYS}, grouped by
  * agent, model and token type — and everything else is arithmetic.
  *
  * **A known model that the gateway has not priced yields no rate at all**,
@@ -123,7 +129,8 @@ export function useTokenRates(
 
   const isLoading = cost.isLoading || tokens.isLoading;
   const isAvailable = cost.isAvailable;
-  const hasError = Boolean(cost.error || tokens.error);
+  const error = pickMimirError(cost.error, tokens.error);
+  const hasError = Boolean(error);
 
   return useMemo(() => {
     const costSamples = cost.data?.data?.result;
@@ -177,13 +184,15 @@ export function useTokenRates(
       model,
       isLoading,
       isAvailable,
-      window: RATE_WINDOW,
+      error,
+      windowDays: RATE_WINDOW_DAYS,
     };
   }, [
     cost.data,
     tokens.data,
     isAvailable,
     hasError,
+    error,
     isLoading,
     namespace,
     name,

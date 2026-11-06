@@ -21,7 +21,7 @@ import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import {
   ComposerFrame,
   matchesQuery,
-  SEARCH_MIN,
+  searchableIf,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -225,16 +225,31 @@ export type NewSessionComposerProps = {
    * choosing it runs the action and selects nothing.
    */
   pickerFooterAction?: NewSessionComposerPickerAction;
-  /** The prompt the field starts with. */
+  /** The prompt the field starts with, while {@link prompt} is not given. */
   initialPrompt?: string;
+  /**
+   * The prompt, held by the caller (`StartNewSession`, which keeps it as a
+   * draft); {@link onPromptChange} then receives every edit. Without it the
+   * composer holds the prompt itself, starting from {@link initialPrompt}.
+   */
+  prompt?: string;
   /** The field's placeholder for the selected agent, or for none. */
   promptPlaceholder?: (agent: AgentRow | undefined) => string;
   /** Rendered beside the agent picker. */
   renderPickerAccessory?: (agent: AgentRow | undefined) => ReactNode;
   /** Rendered under the composer. */
   renderFooter?: (context: NewSessionComposerFooterContext) => ReactNode;
-  /** Called with the selected agent whenever it changes. */
-  onSelectedAgentChange?: (agent: AgentRow | undefined) => void;
+  /**
+   * Called with the selected agent whenever it changes, and whether the person
+   * picked it (`byPerson`) or the composer preselected it (a default, a sole
+   * agent).
+   */
+  onSelectedAgentChange?: (
+    agent: AgentRow | undefined,
+    selection: { byPerson: boolean },
+  ) => void;
+  /** Called with the prompt on every edit the person makes. */
+  onPromptChange?: (prompt: string) => void;
   /** Some installations are still being queried, so more agents may appear. */
   isLoadingAgents?: boolean;
   /**
@@ -426,10 +441,12 @@ export function NewSessionComposer({
   pickerLabel,
   pickerFooterAction,
   initialPrompt,
+  prompt: controlledPrompt,
   promptPlaceholder,
   renderPickerAccessory,
   renderFooter,
   onSelectedAgentChange,
+  onPromptChange,
   isLoadingAgents = false,
   agentFirst = false,
   defaultAgent,
@@ -444,9 +461,19 @@ export function NewSessionComposer({
   const classes = useStyles();
   const touch = useTouchInput();
   const buildAvatarUrl = useAgentAvatarUrl();
-  const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
+  const prompt = controlledPrompt ?? ownPrompt;
+  const setPrompt = (next: string) => {
+    if (controlledPrompt === undefined) {
+      setOwnPrompt(next);
+    }
+    onPromptChange?.(next);
+  };
   const [searchText, setSearchText] = useState('');
-  const [expanded, setExpanded] = useState(!collapsible);
+  const [isFocusExpanded, setExpanded] = useState(!collapsible);
+  // A box with a prompt in it (one it starts with, a kept draft) shows it
+  // whole, focused or not.
+  const expanded = isFocusExpanded || prompt !== '';
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
   // bui's field forwards its ref to the wrapper, not the textarea.
@@ -464,7 +491,7 @@ export function NewSessionComposer({
    * A dropdown with a single item is not a choice, so it is preselected and the
    * control disabled. It still *names* the agent, which is worth keeping: the dialog
    * on an agent's page is about that agent, and seeing it named confirms the target
-   * before you commit a paid turn to it. `InstallationSelect` makes the same call
+   * before you commit a paid turn to it. `useEnvironmentField` makes the same call
    * for a one-installation fleet.
    */
   const soleAgent = offered.length === 1 ? offered[0] : undefined;
@@ -557,6 +584,13 @@ export function NewSessionComposer({
   // The workspace the last Start asked for: what the notice above the box
   // speaks of, whatever is picked since.
   const [startedIn, setStartedIn] = useState<Workspace>();
+  // The refusal a sign-in to agent-manager has answered since: the caller
+  // keeps the start's error until the next start, so the alert that asked for
+  // the sign-in would otherwise stay up after it landed.
+  const [signedInPast, setSignedInPast] = useState<unknown>();
+  // What the last Start sent, so a sign-in runs again exactly the start it
+  // answered, never one the person did not press.
+  const lastStart = useRef<{ agentId: string; text: string }>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -589,7 +623,7 @@ export function NewSessionComposer({
   // installation too (`agentOptionLabel`): the group heading is only visible
   // in the open list, and the selected value must still tell an "SRE Agent"
   // on one installation from its namesake on another.
-  const isSearchable = searchable ?? listed.length > SEARCH_MIN;
+  const isSearchable = searchable ?? searchableIf(listed);
   const isSearching = searchText.trim() !== '';
   const installations = useMemo(
     () => [...new Set(listed.map(agent => agent.installation))],
@@ -727,8 +761,9 @@ export function NewSessionComposer({
       : selectedId;
   }, [options, pickedOptionId, selectedId]);
 
+  // `touched` is set before the pick's state update, so it is current here.
   useEffect(() => {
-    onSelectedAgentChange?.(selectedAgent);
+    onSelectedAgentChange?.(selectedAgent, { byPerson: touched.current });
   }, [onSelectedAgentChange, selectedAgent]);
 
   const selectAgent = useCallback((agent: AgentRow) => {
@@ -783,6 +818,7 @@ export function NewSessionComposer({
       return;
     }
     setStartedIn(inWorkspace);
+    lastStart.current = { agentId: selectedAgent.id, text };
     onStart(
       selectedAgent,
       text,
@@ -996,22 +1032,40 @@ export function NewSessionComposer({
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
         {workspaceNotice}
-        {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
-          <ConnectAgentManagerAlert
-            installation={selectedAgent.installation}
-            message={error.message}
-            action="Sessions are started"
-          />
-        ) : (
-          error &&
-          !workspaceSaysError && (
-            <Alert
-              status="danger"
-              title="Session not started"
-              description={typeof error === 'string' ? error : error.message}
-            />
-          )
-        )}
+        {error instanceof AgentManagerNotConnectedError && selectedAgent
+          ? error !== signedInPast && (
+              <ConnectAgentManagerAlert
+                installation={selectedAgent.installation}
+                message={error.message}
+                signInRequired={error.signInRequired}
+                action="Sessions are started"
+                // Signed in: the alert goes. Where the sign-in was made in
+                // this tab, the start it answered goes again, as after a
+                // workspace's sign-in, while the agent and the prompt are
+                // the ones refused. A sign-in made in another tab only clears
+                // the alert here: Start is the person's to press.
+                onSignedIn={({ here }) => {
+                  setSignedInPast(error);
+                  const refused = lastStart.current;
+                  if (
+                    here &&
+                    refused &&
+                    refused.agentId === selectedAgent.id &&
+                    refused.text === text
+                  ) {
+                    submit({ workspace: startedIn });
+                  }
+                }}
+              />
+            )
+          : error &&
+            !workspaceSaysError && (
+              <Alert
+                status="danger"
+                title="Session not started"
+                description={typeof error === 'string' ? error : error.message}
+              />
+            )}
         {modelWarning && selectedAgent && (
           <Alert
             status="warning"

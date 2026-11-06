@@ -4,15 +4,11 @@ import {
   AuthLoginResult,
   McpContentItem,
   MusterServerGateway,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import {
-  bodyArguments,
-  createRouter,
-  listArguments,
-  RouterOptions,
-} from './router';
+import { createRouter, RouterOptions } from './router';
 
 const TOKEN_HEADER = 'backstage-muster-authorization';
 
@@ -184,10 +180,10 @@ describe('createRouter', () => {
     ]);
   });
 
-  it('drops the arguments the manager no longer takes', async () => {
+  it('drops empty values and the arguments the manager no longer takes', async () => {
     manager.answers.set('list_repositories', { repositories: [] });
     const res = await request(app).get(
-      '/repositories?scope=all&minOrphanScore=40&decision=keep&stalePeriodDays=90&undeclared=true',
+      '/repositories?scope=all&search=&minOrphanScore=40&decision=keep&stalePeriodDays=90&undeclared=true',
     );
     expect(res.status).toBe(200);
     expect(manager.calls[0].args).toEqual({ scope: 'all' });
@@ -221,6 +217,21 @@ describe('createRouter', () => {
       tool: 'get_repository',
       authToken: 'dex-id-token',
       args: { repository: 'muster' },
+    });
+  });
+
+  it("answers a muster that cannot be reached 503 with muster's text, not as GitHub's 404", async () => {
+    manager.failNextCallWith = new MusterUnreachableError(
+      'gazelle',
+      'the muster endpoint answered HTTP 404',
+    );
+
+    const res = await request(app).get('/repositories/nope');
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toEqual({
+      name: 'ServiceUnavailableError',
+      message: 'gazelle did not answer: the muster endpoint answered HTTP 404',
     });
   });
 
@@ -268,7 +279,13 @@ describe('createRouter', () => {
       manager.answers.set('validate_repository', validation);
       const res = await request(app)
         .post('/repositories/validate')
-        .send({ team: 'team-bumblebee', entry, reason: 'the new service' });
+        // A null value is dropped, not passed on.
+        .send({
+          team: 'team-bumblebee',
+          entry,
+          reason: 'the new service',
+          dryRun: null,
+        });
       expect(res.status).toBe(200);
       expect(res.body).toEqual(validation);
       expect(manager.calls).toEqual([
@@ -422,38 +439,10 @@ describe('createRouter', () => {
             .send({ lifecycle: 'archived', dryRun: 'yes' })
         ).status,
       ).toBe(400);
+      expect(
+        (await request(app).post('/repositories/validate').send([])).status,
+      ).toBe(400);
       expect(manager.calls).toHaveLength(0);
-    });
-  });
-});
-
-describe('bodyArguments', () => {
-  it('drops null and undefined values and keeps the tool argument names', () => {
-    expect(
-      bodyArguments(
-        { team: 'team-bumblebee', reason: null, entry: { name: 'x' } },
-        'create_repository',
-      ),
-    ).toEqual({ team: 'team-bumblebee', entry: { name: 'x' } });
-  });
-
-  it('refuses a body that is not an object', () => {
-    expect(() => bodyArguments([], 'validate_repository')).toThrow(
-      /JSON object/,
-    );
-  });
-});
-
-describe('listArguments', () => {
-  it('drops empty values and keeps the tool argument names', () => {
-    expect(
-      listArguments({ scope: 'mine', search: '', archived: 'false' }),
-    ).toEqual({ scope: 'mine', archived: false });
-  });
-
-  it('ignores parameters the tool does not take', () => {
-    expect(listArguments({ page: '2', scope: 'all' })).toEqual({
-      scope: 'all',
     });
   });
 });

@@ -1,4 +1,7 @@
-import { MusterAnswerCutError } from '@giantswarm/backstage-plugin-muster';
+import {
+  MusterAnswerCutError,
+  MusterUnauthorizedError,
+} from '@giantswarm/backstage-plugin-muster';
 import {
   classifyMargeError,
   dependencyOf,
@@ -192,6 +195,26 @@ describe('statusIntentOf', () => {
 });
 
 describe('classifyMargeError', () => {
+  // From muster's structured 401, not from its wording.
+  it("says whether a not-connected answer is muster's request for the sign-in", () => {
+    const signIn = classifyMargeError(
+      new MusterUnauthorizedError(
+        "auth_required: server 'mcp-marge' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'mcp-marge',
+        'gazelle',
+      ),
+    );
+    expect(signIn).toBeInstanceOf(MargeNotConnectedError);
+    expect((signIn as MargeNotConnectedError).signInRequired).toBe(true);
+
+    const missing = classifyMargeError(
+      new Error('tool not found: x_marge_list_queue'),
+    );
+    expect(missing).toBeInstanceOf(MargeNotConnectedError);
+    expect((missing as MargeNotConnectedError).signInRequired).toBe(false);
+  });
+
   it.each([
     'tool not found: x_marge_list',
     'not signed in',
@@ -238,6 +261,17 @@ describe('classifyMargeError', () => {
         { status },
       );
       expect(classifyMargeError(error)).toBeInstanceOf(MargeAnswerLostError);
+    },
+  );
+
+  it.each([
+    ['Tool execution failed: tool not found: x_marge_list', 502],
+    ['Tool execution failed: client not connected', 503],
+  ])(
+    "reads muster-backend's %j, answered %i, as not connected",
+    (message, status) => {
+      const error = Object.assign(new Error(message), { status });
+      expect(classifyMargeError(error)).toBeInstanceOf(MargeNotConnectedError);
     },
   );
 

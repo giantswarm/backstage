@@ -311,6 +311,38 @@ describe('CustomizeConnectorsPanel', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('says a sign-in serving one session covers the portal only, with the why in a hint', async () => {
+    const user = userEvent.setup();
+    api.getAuthStatus.mockImplementation(async () => ({
+      servers: [
+        {
+          name: 'github',
+          status: 'connected',
+          kind: 'grant',
+          grant_scope: 'session',
+        },
+        { name: 'kubernetes', status: 'connected' },
+        { name: 'web-search', status: 'connected' },
+      ],
+    }));
+    await renderPanel();
+
+    const github = rowOf('github');
+    expect(await within(github).findByText('Portal only')).toBeInTheDocument();
+    expect(within(github).queryByText('Connected')).toBeNull();
+    const hint = within(github).getByRole('button', {
+      name: 'About the state of github',
+    });
+    await user.hover(document.body);
+    await user.hover(hint);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Your sign-in to github covers this portal only. Each agent conversation asks you to sign in again.',
+    );
+    // The hint keeps its press: the row does not open the connector.
+    await user.click(hint);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('says Connecting while muster still connects an SSO connector, then Connected without a reload', async () => {
     let connecting = true;
     api.getAuthStatus.mockImplementation(async () => ({
@@ -369,7 +401,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('says "Signing in…" while the sign-in page is open, the wait in a tooltip', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
     } as unknown as Window);
     api.signInServer.mockResolvedValueOnce({
       status: 'auth_required',
@@ -408,6 +440,68 @@ describe('CustomizeConnectorsPanel', () => {
     expect(tooltip).toHaveTextContent('Waiting for you to finish signing in…');
     expect(tooltip).toHaveTextContent(/Dynamic Client Registration/);
     expect(mockNavigate).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  /**
+   * muster can take a while to answer the sign-in, and the tab the click
+   * opened has nothing to show until then. A person who closes it is back on
+   * this page, where the sign-in must be on offer at once -- not behind the
+   * Sign in button's spinner until muster answers.
+   */
+  it('offers the sign-in page here once the blank tab is closed before muster answered', async () => {
+    const tab = {
+      closed: false,
+      opener: window,
+      close: jest.fn(),
+      location: { href: 'about:blank' },
+    };
+    const open = jest
+      .spyOn(window, 'open')
+      .mockReturnValue(tab as unknown as Window);
+    let answer: (value: unknown) => void = () => {};
+    api.signInServer.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          answer = resolve;
+        }) as never,
+    );
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+    await waitFor(() => expect(api.signInServer).toHaveBeenCalled());
+
+    tab.closed = true;
+
+    expect(
+      await within(github).findByRole(
+        'button',
+        { name: 'Opening…' },
+        { timeout: 3_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(within(github).getByText('Signing in…')).toBeInTheDocument();
+
+    await act(async () =>
+      answer({
+        status: 'auth_required',
+        authUrl: 'https://github.example.test/login/oauth/authorize',
+        message: 'Sign in to github.',
+      }),
+    );
+
+    const link = await within(github).findByRole('link', {
+      name: /Open sign-in page/,
+    });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://github.example.test/login/oauth/authorize',
+    );
+    expect(tab.location.href).toBe('about:blank');
     open.mockRestore();
   });
 
@@ -450,7 +544,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('names an error during a sign-in over "Signing in…": a refused reopen', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
     } as unknown as Window);
     const user = userEvent.setup();
     await renderPanel();
@@ -579,7 +673,7 @@ describe('CustomizeConnectorsPanel', () => {
   it('says "Status unavailable", not a failed sign-in, when the status cannot be read during one', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
-      location: { href: '' },
+      location: { href: 'about:blank' },
       close: jest.fn(),
     } as unknown as Window);
     const user = userEvent.setup();
@@ -985,19 +1079,23 @@ describe('CustomizeConnectorsPanel', () => {
       expect(screen.queryByText(/were not searched/)).not.toBeInTheDocument();
     });
 
-    it('offers a one-option dropdown over connectors that all answer', async () => {
+    it('offers no connection filter over connectors that all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
       // And muster itself.
       expect(bodyRows()).toHaveLength(4);
-      await screen.findByRole('button', { name: /Filter by connection/ });
+      // muster signs in with the company login, the rest with none.
+      await screen.findByRole('button', { name: /Filter by sign-in/ });
       expect(await filterOptions('sign-in')).toEqual([
         'No sign-in 3',
         'Company login 1',
       ]);
-      expect(await filterOptions('connection')).toEqual(['Connected 4']);
+      // One connection state for all: nothing to choose.
+      expect(
+        screen.queryByRole('button', { name: /Filter by connection/ }),
+      ).not.toBeInTheDocument();
     });
 
     it('filters three connectors by sign-in and by connection', async () => {
@@ -1036,9 +1134,11 @@ describe('CustomizeConnectorsPanel', () => {
       ];
       await renderPanel();
 
-      await screen.findByRole('button', { name: /Filter by connection/ });
+      // All answer, so no connection filter; muster's company login makes
+      // the sign-in one.
+      await screen.findByRole('button', { name: /Filter by sign-in/ });
       expect(
-        filterDropdown('connection').compareDocumentPosition(
+        filterDropdown('sign-in').compareDocumentPosition(
           filterDropdown('tags'),
         ) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
@@ -1256,7 +1356,7 @@ describe('CustomizeConnectorsPanel', () => {
     it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
       const open = jest.spyOn(window, 'open').mockReturnValue({
         closed: false,
-        location: { href: '' },
+        location: { href: 'about:blank' },
       } as unknown as Window);
       await renderPanel();
 

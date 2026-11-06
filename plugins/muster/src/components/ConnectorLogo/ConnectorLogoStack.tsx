@@ -1,7 +1,7 @@
 import { makeStyles } from '@material-ui/core';
 import { VisuallyHidden } from '@backstage/ui';
-import type { ConnectorLogoSource } from '../../lib/connectorLogo';
-import { ConnectorLogo, LogoTooltip } from './ConnectorLogo';
+import { HintTooltip } from '@giantswarm/backstage-plugin-ui-react';
+import { ConnectorLogo } from './ConnectorLogo';
 
 type StyleProps = { size: number };
 
@@ -34,21 +34,15 @@ const useStyles = makeStyles({
     fontWeight: 700,
     color: 'var(--bui-fg-secondary)',
   }),
+  // The focus ring follows the circle.
   trigger: {
-    display: 'inline-flex',
     borderRadius: '50%',
-    cursor: 'default',
-    '&:focus-visible': {
-      outline: '2px solid var(--bui-ring, #009fff)',
-      outlineOffset: 2,
-    },
-  },
-  tooltip: {
-    maxWidth: 280,
   },
 });
 
-export type ConnectorLogoStackItem = ConnectorLogoSource & {
+export type ConnectorLogoStackItem = {
+  /** The MCPServer's `.status.icon`; checked by `connectorIconOf`. */
+  icon?: string;
   /** The connector's display name: its tooltip and fallback letter. */
   name: string;
   /** Unique within the stack; the name by default. */
@@ -98,7 +92,6 @@ export function ConnectorLogoStack({
           <ConnectorLogo
             name={connector.name}
             icon={connector.icon}
-            url={connector.url}
             size={size}
             round
             tooltip
@@ -107,16 +100,15 @@ export function ConnectorLogoStack({
       ))}
       {rest.length > 0 && (
         <span className={classes.item}>
-          <LogoTooltip
+          <HintTooltip
             hint={rest.map(connector => connector.name).join(', ')}
             className={classes.trigger}
-            tooltipClassName={classes.tooltip}
           >
             <span className={classes.more}>
               <span aria-hidden>{`+${rest.length}`}</span>
               <VisuallyHidden>{`${rest.length} more connectors`}</VisuallyHidden>
             </span>
-          </LogoTooltip>
+          </HintTooltip>
         </span>
       )}
     </span>

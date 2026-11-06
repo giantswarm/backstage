@@ -39,6 +39,7 @@ import {
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
+  ConnectorNamesResponse,
   MusterAnswerCutError,
   MusterApi,
   MusterAuthProvidersApi,
@@ -304,6 +305,14 @@ export class MusterApiClient implements MusterApi {
 
   async listServers(installation?: string): Promise<McpServerListResponse> {
     return this.get<McpServerListResponse>('/servers', installation);
+  }
+
+  async listConnectorNames(
+    installation?: string,
+  ): Promise<ConnectorNamesResponse> {
+    return this.get<ConnectorNamesResponse>('/servers/names', installation, {
+      silent: true,
+    });
   }
 
   async filterTools(
@@ -911,9 +920,12 @@ export class MusterApiClient implements MusterApi {
     installation: string | undefined,
   ): Promise<T> {
     if (!response.ok) {
-      const { message, details } =
-        (errorData as { error?: { message?: string; details?: unknown } })
-          ?.error ?? {};
+      const { message, details, kind } =
+        (
+          errorData as {
+            error?: { message?: string; details?: unknown; kind?: unknown };
+          }
+        )?.error ?? {};
       const { reason, server } = unauthorizedBodyOf(errorData);
       if (
         reason === 'token_expired' ||
@@ -931,8 +943,15 @@ export class MusterApiClient implements MusterApi {
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 503) error.name = 'ServiceUnavailableError';
       // The status stays with it (above): a 502, 503 or 504 is the portal's
-      // edge answering in the backend's place, and a caller that wrote
-      // something cannot tell from it how far the write got.
+      // edge answering in the backend's place, or muster-backend's own for a
+      // tool muster did not answer (a timeout, a rollout, a server it holds
+      // no connection to), and a caller that wrote something cannot tell
+      // from it how far the write got.
+      // So does the kind of a tool error (gs-node's MusterToolError `kind`):
+      // `interrupted`, a rollout of muster, is worth a retry.
+      if (typeof kind === 'string') {
+        (error as Error & { kind: string }).kind = kind;
+      }
       // A tool-level error's further text blocks (gs-node's MusterToolError
       // `details`) stay with it: cluster-manager's structured refusal rides there.
       if (isStringArray(details)) {

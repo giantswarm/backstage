@@ -836,7 +836,7 @@ describe('ServeModelPage · the selects at scale', () => {
 
   const presetSelect = () => screen.findByRole('button', { name: /Preset/ });
 
-  it('offers three targets and two presets without a search', async () => {
+  it('offers type-ahead over three targets, none over two presets', async () => {
     listPresets.mockResolvedValue(presets);
     await render({
       targets: [pool, host, { ...pool, name: 'golem' }],
@@ -848,7 +848,7 @@ describe('ServeModelPage · the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /golem/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
 
     await waitFor(() => expect(listPresets).toHaveBeenCalled());

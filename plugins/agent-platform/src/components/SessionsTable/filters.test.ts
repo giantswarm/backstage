@@ -8,11 +8,13 @@ import {
   filterSessionsBySelection,
   sessionAgentOptions,
   sessionFacets,
+  sessionOrganization,
   sessionSelectionOf,
   SessionStateFilter,
   SHELL_SESSION_STATE_FILTERS,
 } from './filters';
 import { withSessionStates } from './helpers';
+import { organizationDirectory } from '../../lib/organizations';
 
 function row(
   id: string,
@@ -267,11 +269,48 @@ describe('the shell list’s dropdown filters (T92)', () => {
 
   it('names states in the shell words and agents as the picker did', () => {
     const facets = sessionFacets(rows, { showStates: true });
-    expect(facets.map(facet => facet.id)).toEqual(['state', 'agent', 'pinned']);
+    expect(facets.map(facet => facet.id)).toEqual([
+      'state',
+      'tenant',
+      'agent',
+      'pinned',
+    ]);
     expect(facets[0].optionLabel?.('waiting')).toBe('Waiting for you');
-    expect(facets[1].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
+    expect(facets[2].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
     expect(
       sessionFacets(rows, { showStates: false }).map(facet => facet.id),
-    ).toEqual(['agent', 'pinned']);
+    ).toEqual(['tenant', 'agent', 'pinned']);
+  });
+
+  it('names a session’s organization as the Agents tab does', () => {
+    // As agent-manager's `list_my_organizations` names the namespace.
+    const directory = organizationDirectory([
+      {
+        namespace: 'agents-acme-x7k2q',
+        organization: 'acme',
+        parent: 'org-acme',
+      },
+    ]);
+    const fleet = withSessionStates(
+      [
+        row('a', 'Issue tracker', {
+          namespace: 'agents-acme-x7k2q',
+          name: 'tracker',
+        }),
+        row('b', 'SRE Agent', { namespace: 'kagent', name: 'sre-agent' }),
+        row('c', 'Helper', { namespace: 'agents-acme-x7k2q', name: 'helper' }),
+        row('d', 'Unmatched'),
+      ],
+      undefined,
+    );
+    expect(fleet.map(r => sessionOrganization(r, directory))).toEqual([
+      'acme',
+      'None',
+      'acme',
+      undefined,
+    ]);
+    expect(
+      ids(filterSessionsBySelection(fleet, { tenant: ['acme'] }, directory)),
+    ).toEqual(['a', 'c']);
   });
 });

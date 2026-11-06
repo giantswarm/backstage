@@ -106,6 +106,9 @@ export function isUnauthorizedTransportError(error: unknown): boolean {
  * the transport's (a tool-level error, a Backstage error, ...) and must reach
  * the caller unchanged. A 401 is also left alone: the proxies answer it as a
  * 401 with its reason (`toMusterUnauthorizedError`).
+ *
+ * The reasons are a small fixed set, which is what lets Sentry group a failure
+ * by its kind: `MusterMcpClient` logs them in a fixed message.
  */
 export function describeMcpFailure(error: unknown): string | undefined {
   if (!isTransportError(error)) {

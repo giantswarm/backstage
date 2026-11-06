@@ -26,6 +26,8 @@ type Store = {
   levels: Map<string, NotificationLevel>;
   portalStarted: Set<string>;
   seen: Map<string, string>;
+  /** Seen-mark writes reject, as after their retries of a read that 503s. */
+  marksFail: boolean;
   mcp: {
     installation?: string;
     waiting: McpServerAwaitingSignIn[];
@@ -46,6 +48,7 @@ function emptyStore(): Store {
     levels: new Map(),
     portalStarted: new Set(),
     seen: new Map(),
+    marksFail: false,
     mcp: {
       installation: 'gazelle',
       waiting: [],
@@ -86,6 +89,12 @@ function seenKey(target: SeenMarkTarget) {
     : `mcp:${target.installation}`;
 }
 
+function refuseIfMarksFail() {
+  if (store.marksFail) {
+    throw new Error('The stored setting could not be read.');
+  }
+}
+
 const writes = {
   setLevel: jest.fn(
     async (
@@ -98,10 +107,12 @@ const writes = {
     },
   ),
   markSeen: jest.fn(async (target: SeenMarkTarget) => {
+    refuseIfMarksFail();
     store.seen.set(seenKey(target), target.mark);
     emit();
   }),
   markManySeen: jest.fn(async (targets: readonly SeenMarkTarget[]) => {
+    refuseIfMarksFail();
     targets.forEach(target => store.seen.set(seenKey(target), target.mark));
     emit();
   }),
@@ -180,6 +191,14 @@ export const fakeInbox = {
   setRead(isRead: boolean) {
     store.isRead = isRead;
     emit();
+  },
+  /**
+   * Whether the seen-mark writes reject, as the plugin's do once their
+   * retries of a read the backend answers with a 503 are used up. Nothing
+   * re-reads: the inbox learns of it only through the write it made.
+   */
+  failMarks(failing: boolean) {
+    store.marksFail = failing;
   },
   /** Marks a row seen as another tab or device would. */
   seeElsewhere(target: SeenMarkTarget) {
@@ -294,7 +313,7 @@ function McpSignInProvider({ children }: { children: ReactNode }) {
     <>
       {children}
       {store.mcp.isDialogOpen && (
-        <div role="dialog" aria-label="Sign in to MCP servers">
+        <div role="dialog" aria-label="Sign in to connectors">
           <button
             onClick={() => {
               store.mcp = { ...store.mcp, isDialogOpen: false };

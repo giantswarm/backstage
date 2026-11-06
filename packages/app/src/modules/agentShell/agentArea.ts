@@ -23,6 +23,7 @@ const AGENT_AREA_PREFIXES = [
   '/sessions',
   '/usage',
   '/profile',
+  '/organizations',
   '/customize',
   '/agent-platform',
 ];

@@ -20,6 +20,7 @@ import type {
   PresetSizeFit,
 } from '../../lib/clusterManager';
 import type { ServeChoice } from '../../lib/serveIntent';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import {
   AddGpuNodePoolPage,
   CLUSTER_PENDING,
@@ -35,8 +36,14 @@ import {
   PICK_A_ZONE,
 } from './PoolPlacementPicker';
 
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
@@ -798,6 +805,32 @@ describe('AddGpuNodePoolPage', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
+  // The dry run's refusal is the write hook's: once the sign-in lands it is
+  // cleared and the dry run asks again, so the sizes come in; Deploy is the
+  // person's to press.
+  it('asks the dry run again once the sign-in lands', async () => {
+    const user = setupUser();
+    const scenario: Scenario = {
+      createError: new Error(
+        'tool not found: x_cluster-manager_create_node_pool',
+      ),
+    };
+    await renderPage(scenario);
+    await fillForm(user);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    scenario.createError = undefined;
+    await signInLands(user);
+
+    expect(await screen.findByTestId('node-size-picker')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Connect to cluster-manager'),
+    ).not.toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
   it("shows the tool's note, not an error, where the Cluster API is not served", async () => {
     await renderPage({ noClusterApi: true });
     const note = await screen.findByTestId('cluster-api-note');
@@ -1465,7 +1498,7 @@ describe('AddGpuNodePoolPage: the form stands in place (giantswarm/backstage#250
 });
 
 describe('AddGpuNodePoolPage: the selects at scale', () => {
-  it('offers three environments and three clusters without a search', async () => {
+  it('offers type-ahead over three environments and three clusters', async () => {
     const user = setupUser();
     await renderPage({
       clusterCount: 3,
@@ -1478,14 +1511,14 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /^wc3/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: /^inst-1/ }));
     expect(
       await screen.findByRole('option', { name: 'inst-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 clusters and 300 environments', async () => {
@@ -1506,7 +1539,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 
-  it('offers the two presets of I want to serve without a search', async () => {
+  it('offers type-ahead over the two presets and Any of I want to serve', async () => {
     const user = setupUser();
     await renderPage();
     await fillForm(user);
@@ -1516,7 +1549,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /Qwen3 Coder Next/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 presets in I want to serve', async () => {

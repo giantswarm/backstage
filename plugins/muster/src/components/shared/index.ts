@@ -41,15 +41,20 @@ export {
   ServerSignInStatus,
   SignInStatusActions,
   SignInStatusText,
+  StatusWithHint,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
 export {
-  useConnectorGroupPaths,
+  connectorNamesQueryKey,
+  useConnectorLabel,
+  useConnectorLabels,
+  useConnectorListPaths,
   useServerSignInStatus,
   useWorkflowPageLinks,
 } from './hooks';
-export type { ConnectorGroupPaths, WorkflowPageLinks } from './hooks';
+export type { ConnectorListPaths, WorkflowPageLinks } from './hooks';
 export type {
+  ExplainedStatusText,
   ServerSignInStatusState,
   StatusText,
   UseServerSignInStatusOptions,
@@ -67,6 +72,7 @@ export {
 export type {
   DeviceCode,
   ServerSignInState,
+  SignedIn,
   SignInNoun,
 } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
@@ -80,6 +86,7 @@ export type {
 } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { familyHealthLabel } from './familyHealth';
+export { PORTAL_ONLY_LABEL, portalOnlyStatus } from './portalOnlyStatus';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
 export { useToolDescription } from './useToolDescription';
 export { DefinitionEditorDialog } from './DefinitionEditorDialog';

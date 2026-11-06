@@ -3,6 +3,7 @@ import {
   parseAuthLoginResult,
   parseAuthLogoutResult,
 } from './authLogin';
+import { MusterToolError } from './MusterMcpClient';
 
 describe('parseAuthLoginResult', () => {
   it('takes the sign-in URL from structuredContent.authUrl', () => {
@@ -228,6 +229,26 @@ describe('parseAuthLogoutResult', () => {
 });
 
 describe('isInfrastructureError', () => {
+  it.each([
+    [
+      "Tool execution failed: no answer within the server's timeout of 30s",
+      true,
+    ],
+    ['Tool execution failed: client not connected', true],
+    ['interrupted: the muster replica is shutting down', true],
+    ['forbidden: you may not', false],
+    ['something else', false],
+  ])(
+    'reads the muster tool error %j as infrastructure: %s',
+    (text, expected) => {
+      const error = new MusterToolError(text, [], {
+        tool: 'x_agent-manager_update_agent',
+        installation: 'gazelle',
+      });
+      expect(isInfrastructureError(error)).toBe(expected);
+    },
+  );
+
   it.each([
     [
       'a closed client',

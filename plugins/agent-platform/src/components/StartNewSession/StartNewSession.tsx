@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button, Flex, Link, Text } from '@backstage/ui';
@@ -6,6 +6,7 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import {
   EmptyStateCard,
   LoadingIndicator,
+  useSessionDraft,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -74,7 +75,29 @@ export type StartNewSessionProps = {
   composerProps?: StartNewSessionComposerProps;
   /** Passed to `useCreateSession` as the derived title's bound. */
   titleMaxLength?: number;
+  /**
+   * Keeps the unsent prompt and the chosen agent as a draft under this name
+   * (`useSessionDraft`: the tab's `sessionStorage`, per person), so a reload,
+   * a sign-in that leaves the page or a link followed in the same tab does not
+   * lose them; the draft goes once the session starts. Without it nothing is
+   * stored. A stored draft replaces `composerProps.initialPrompt`, unless the
+   * person has typed or picked an agent before it was read.
+   */
+  draftName?: string;
 };
+
+/** The draft of the home screen's composer. */
+export const NEW_SESSION_DRAFT_NAME = 'agent-platform-new-session';
+
+/**
+ * What a new session's draft keeps: the prompt as typed and the agent it is
+ * for, by id. Not the images (they would not fit the tab's storage), nor the
+ * workspace and the toolchains, which follow the agent's presets again.
+ */
+type NewSessionDraft = { prompt: string; agentId?: string };
+
+/** Bumped when {@link NewSessionDraft}'s shape changes. */
+const DRAFT_VERSION = 1;
 
 /**
  * Start a new session: pick an agent, write the prompt, and land on the
@@ -97,6 +120,7 @@ export function StartNewSession({
   layout = 'inline',
   composerProps,
   titleMaxLength,
+  draftName,
 }: StartNewSessionProps) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
@@ -116,6 +140,66 @@ export function StartNewSession({
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
+
+  // The prompt is held here and the composer shows it (`prompt`), so the
+  // draft is this state and restoring it is setting it. The agent stored is
+  // the one the person picked, else the restored one, else the one the
+  // composer preselected: a preselection (the last agent used, a sole agent)
+  // never replaces a restored agent, which may only be read later.
+  const [draftPrompt, setDraftPrompt] = useState(
+    composerProps?.initialPrompt ?? '',
+  );
+  const [restoredAgentId, setRestoredAgentId] = useState<string>();
+  const [pickedAgentId, setPickedAgentId] = useState<string>();
+  const [preselectedAgentId, setPreselectedAgentId] = useState<string>();
+  // What the person did since the page opened: a draft read after that (the
+  // person's identity is asked first, so a moment later) gives back only
+  // what they have not set themselves, and their input replaces the rest.
+  const typedRef = useRef(false);
+  const pickedRef = useRef(false);
+  const onPromptChange = useCallback((next: string) => {
+    typedRef.current = true;
+    setDraftPrompt(next);
+  }, []);
+  // A stored draft wins over `initialPrompt`: it is the person's own.
+  const onRestore = useCallback((stored: NewSessionDraft) => {
+    if (!typedRef.current) {
+      setDraftPrompt(stored.prompt);
+    }
+    if (!pickedRef.current) {
+      setRestoredAgentId(stored.agentId);
+    }
+  }, []);
+  const draft = useSessionDraft<NewSessionDraft>({
+    name: draftName,
+    value: {
+      prompt: draftPrompt,
+      agentId: pickedAgentId ?? restoredAgentId ?? preselectedAgentId,
+    },
+    isDirty: draftPrompt.trim() !== '',
+    version: DRAFT_VERSION,
+    onRestore,
+  });
+  const { clear: clearDraft } = draft;
+  const restoredAgent = restoredAgentId
+    ? agents.find(agent => agent.id === restoredAgentId)
+    : undefined;
+
+  // The caller's own handler, read through a ref so the composer's stays put.
+  const onSelectedAgentChangeRef = useRef(composerProps?.onSelectedAgentChange);
+  onSelectedAgentChangeRef.current = composerProps?.onSelectedAgentChange;
+  const onSelectedAgentChange = useCallback(
+    (agent: AgentRow | undefined, selection: { byPerson: boolean }) => {
+      if (agent && selection.byPerson) {
+        pickedRef.current = true;
+        setPickedAgentId(agent.id);
+      } else if (agent) {
+        setPreselectedAgentId(agent.id);
+      }
+      onSelectedAgentChangeRef.current?.(agent, selection);
+    },
+    [],
+  );
 
   const { createSession } = creation;
   const onStart = useCallback(
@@ -140,6 +224,9 @@ export function StartNewSession({
         return;
       }
 
+      // Sent: the prompt travels with the navigation below, and the box it was
+      // typed in is left.
+      clearDraft();
       rememberAgent(agent);
 
       const href = sessionDetailRoute?.({
@@ -171,7 +258,7 @@ export function StartNewSession({
         },
       });
     },
-    [createSession, navigate, rememberAgent, sessionDetailRoute],
+    [clearDraft, createSession, navigate, rememberAgent, sessionDetailRoute],
   );
 
   // Every environment in scope answered without kagent: no agent can be
@@ -319,9 +406,17 @@ export function StartNewSession({
   const composer = (
     <NewSessionComposer
       {...composerProps}
+      prompt={draftPrompt}
+      onPromptChange={onPromptChange}
+      onSelectedAgentChange={onSelectedAgentChange}
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
-      defaultAgent={composerProps?.defaultAgent ?? lastUsedAgent}
+      // The caller's agent (a `?agent=` link, the person's latest explicit
+      // choice) first, then the restored draft's, then the last one used. The
+      // composer adopts a default that changes until the person picks one.
+      defaultAgent={
+        composerProps?.defaultAgent ?? restoredAgent ?? lastUsedAgent
+      }
       // Collapsed only when it sits above a list of sessions. Elsewhere it opens
       // showing the agent picker and the Start button: there is nothing for it
       // to make room for.

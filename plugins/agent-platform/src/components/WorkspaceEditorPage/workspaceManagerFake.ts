@@ -135,7 +135,6 @@ export function createWorkspaceManagerFake({
       createdAt: '2026-10-14T00:00:00Z',
       repositories: 0,
       sessions: 0,
-      sync: { schedule: 'nightly' },
     }),
     update_workspace: args => ({ ...args, resourceVersion: '2' }),
   };

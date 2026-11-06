@@ -37,6 +37,7 @@ import {
   type CatalogFilterSelection,
   formatLocalDateFull,
   isCatalogFiltered,
+  PinIcon,
   StackedRowList,
   StatusDot,
   stopRowPress,
@@ -56,7 +57,6 @@ import {
   UNNAMED_WORKSPACE_LABEL,
   workspaceNameLabel,
 } from '../../lib/sessionWorkspace';
-import { PinIcon } from '../PinIcon';
 import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
@@ -93,7 +93,8 @@ import {
 import type { SessionsTableProps } from './SessionsTable';
 import { sessionStackedRow } from './stackedRows';
 import { sessionStateDotVar } from '../../lib/stableClassNames';
-import { SEARCH_MIN } from '../../lib/toolset';
+import { isSearchableList } from '@giantswarm/backstage-plugin-ui-react';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** No picks: every facet keeps everything. */
 const NO_SELECTION: CatalogFilterSelection = {};
@@ -632,8 +633,9 @@ function DayList({
 
 /**
  * The list's search and filters: the standard search field, and under it the
- * shared catalog dropdowns (T92) — State, Agent and, once something is
- * pinned, Pinned — exactly as the Customize tabs draw them.
+ * shared catalog dropdowns (T92) — State, Organization, Agent and Pinned —
+ * exactly as the Customize tabs draw them: each only where picking from it
+ * can narrow the list (`catalogFilterDimensions`).
  */
 function ShellFilterBar({
   searchField,
@@ -652,9 +654,10 @@ function ShellFilterBar({
   showStates: boolean;
   showAgents: boolean;
 }) {
+  const { directory } = useOrganizationDirectory();
   const facets = useMemo(
-    () => sessionFacets(rows, { showStates, showAgents }),
-    [rows, showStates, showAgents],
+    () => sessionFacets(rows, { showStates, showAgents, directory }),
+    [rows, showStates, showAgents, directory],
   );
   // Known undercount (platform follow-up, list-scale-inventory #7): the
   // backend evaluates states only for the newest sessions per installation
@@ -707,8 +710,8 @@ function focusRowOrHeading(container: HTMLElement, rowId: string | undefined) {
 }
 
 /**
- * The agent-platform shell's sessions list: search and the State, Agent and
- * Pinned dropdowns over one data set, shown as one table per day the sessions
+ * The agent-platform shell's sessions list: search and the State,
+ * Organization, Agent and Pinned dropdowns over one data set, shown as one table per day the sessions
  * were last active (Today, Yesterday, Earlier), most recently active first —
  * the rail's order — a page of sessions at a time.
  */
@@ -737,6 +740,12 @@ export function ShellSessionsTable({
   );
 
   const { isPinned, togglePin } = usePinnedSessions();
+  const { directory: organizations } = useOrganizationDirectory();
+  const filterSessions = useCallback(
+    (all: SessionTableRow[], selection: CatalogFilterSelection) =>
+      filterSessionsBySelection(all, selection, organizations),
+    [organizations],
+  );
 
   // The workspaces' names: one list per installation with a session in one.
   const installationsWithWorkspaces = useMemo(
@@ -802,7 +811,7 @@ export function ShellSessionsTable({
     searchDebounceMs,
     initialSearch: opening.query,
     initialFilter: sessionSelectionOf(opening.filter),
-    filterFn: filterSessionsBySelection,
+    filterFn: filterSessions,
     sortFn: sortPinnedFirst,
     initialSort: { column: 'lastActiveAt', direction: 'descending' },
     paginationOptions: { type: 'none' },
@@ -856,11 +865,12 @@ export function ShellSessionsTable({
     [matching, start, range.end],
   );
 
-  // Search and filters only once there is something to narrow down (T39):
-  // three sessions are read, not searched. Kept while a search or filter is
-  // in force, so whatever narrowed the list can still be undone.
-  const showFilterBar =
-    stateRows.length > SEARCH_MIN || search.value !== '' || filtered;
+  // Search and filters from SEARCH_MIN sessions on, and while either is in
+  // force, so whatever narrowed the list can still be undone.
+  const showFilterBar = isSearchableList(
+    stateRows.length,
+    search.value !== '' || filtered,
+  );
 
   const groups = useMemo((): Array<{
     id: SessionListGroup;
@@ -1008,9 +1018,7 @@ export function ShellSessionsTable({
             searchField={
               <SearchField
                 aria-label="Search sessions"
-                placeholder={
-                  showAgent ? 'Search by title or agent' : 'Search by title'
-                }
+                placeholder="Search sessions"
                 value={search.value}
                 onChange={search.onChange}
                 style={{ maxWidth: 420 }}

@@ -1,11 +1,13 @@
 /**
- * Day labels for the Usage screen: the charts' axes and tooltips, and the
- * data-start notes.
+ * Day labels for the per-day charts' axes and tooltips, and the data-start
+ * notes.
  *
- * In the common package because both plugins on that screen label days — the
- * agent-platform charts and the muster plugin's Connectors section — and they
+ * In the common package because both plugins label days — the agent-platform
+ * Usage charts, and muster's tool-call chart (the Usage screen's Connectors
+ * section, a connector's Usage tab) and a workflow's runs per day — and they
  * have to label the same day the same way. Every day here is a UTC calendar
- * day, matching the `YYYY-MM-DD` keys the usage reducers produce.
+ * day, matching the `YYYY-MM-DD` keys the usage reducers produce and the
+ * buckets muster-backend aligns to UTC midnight.
  */
 
 /** A `YYYY-MM-DD` day in the browser's locale, or the input if it is not one. */
@@ -20,7 +22,7 @@ function formatDay(day: string, options: Intl.DateTimeFormatOptions): string {
   });
 }
 
-/** `2026-09-04` as `4 Sep`, matching muster's daily axis. */
+/** `2026-09-04` as `4 Sep`, for an axis tick. */
 export function formatDayTick(day: string): string {
   return formatDay(day, { day: 'numeric', month: 'short' });
 }

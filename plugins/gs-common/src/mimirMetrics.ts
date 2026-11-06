@@ -250,6 +250,198 @@ export const GatewayApiGatewayListenerInfo = {
   source: 'gateway-api-state-metrics',
 } as const satisfies PrometheusMetric;
 
+export const GatewayApiGatewayInfo = {
+  name: 'gatewayapi_gateway_info',
+  description:
+    'Info series (value is always 1) with one time series per Gateway API Gateway. `name`/`namespace` identify the Gateway; `gatewayclass_name` is its GatewayClass.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayStatus = {
+  name: 'gatewayapi_gateway_status',
+  description:
+    'One series per status condition of a Gateway API Gateway (`type`, e.g. `Accepted`, `Programmed`). Value 1 when the condition is True, 0 when False or Unknown.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayStatusListenerAttachedRoutes = {
+  name: 'gatewayapi_gateway_status_listener_attached_routes',
+  description:
+    'Number of routes attached to a Gateway listener, as reported in the Gateway status. `name`/`namespace` identify the Gateway; `listener_name` is the listener.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteStatusParentInfo = {
+  name: 'gatewayapi_httproute_status_parent_info',
+  description:
+    'Info series (value is always 1) with one time series per entry in `status.parents` of an HTTPRoute, i.e. per parent the controller has written status for. `parent_name`/`parent_namespace`/`parent_section_name` identify the parent.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+/**
+ * Route conditions per parent, added after observability-bundle 3.5.0
+ * (giantswarm/observability-bundle#467). Clusters on an older bundle export no
+ * series at all, so an absent condition means "not available", never "healthy".
+ */
+export const GatewayApiHttprouteStatusParentAccepted = {
+  name: 'gatewayapi_httproute_status_parent_accepted',
+  description:
+    'Accepted condition of an HTTPRoute, one series per parent (`parent_name`/`parent_namespace`/`parent_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when not reported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteStatusParentResolvedRefs = {
+  name: 'gatewayapi_httproute_status_parent_resolved_refs',
+  description:
+    'ResolvedRefs condition of an HTTPRoute, one series per parent, with the condition `reason` as label (e.g. `RefNotPermitted`, `BackendNotFound`). Value 1 when True, 0 when False or Unknown, no series when not reported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+/**
+ * Envoy Gateway policy metrics. `created` has one series per policy on every
+ * observability-bundle with the Envoy Gateway config (since #366). `info` only
+ * reads the deprecated `spec.targetRef`, and a policy without it has no `info`
+ * series. `target_info` (from `spec.targetRefs`) and `status_ancestor_accepted`
+ * were added in 3.6.0 (giantswarm/observability-bundle#467);
+ * `spec.targetSelectors` is not exported. Envoy Gateway writes no ancestor
+ * status when a policy's target doesn't exist, isn't managed by it, or before
+ * reconciling.
+ */
+
+export const EnvoyGatewaySecurityPolicyCreated = {
+  name: 'envoygateway_securitypolicy_created',
+  description:
+    'Creation timestamp of a SecurityPolicy, one series per policy. `name`/`namespace` identify the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewaySecurityPolicyInfo = {
+  name: 'envoygateway_securitypolicy_info',
+  description:
+    'Info series (value is always 1) per SecurityPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewaySecurityPolicyTargetInfo = {
+  name: 'envoygateway_securitypolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a SecurityPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewaySecurityPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_securitypolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a SecurityPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyCreated = {
+  name: 'envoygateway_backendtrafficpolicy_created',
+  description:
+    'Creation timestamp of a BackendTrafficPolicy, one series per policy. `name`/`namespace` identify the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyInfo = {
+  name: 'envoygateway_backendtrafficpolicy_info',
+  description:
+    'Info series (value is always 1) per BackendTrafficPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyTargetInfo = {
+  name: 'envoygateway_backendtrafficpolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a BackendTrafficPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_backendtrafficpolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a BackendTrafficPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyCreated = {
+  name: 'envoygateway_clienttrafficpolicy_created',
+  description:
+    'Creation timestamp of a ClientTrafficPolicy, one series per policy. `name`/`namespace` identify the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyInfo = {
+  name: 'envoygateway_clienttrafficpolicy_info',
+  description:
+    'Info series (value is always 1) per ClientTrafficPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyTargetInfo = {
+  name: 'envoygateway_clienttrafficpolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a ClientTrafficPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_clienttrafficpolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a ClientTrafficPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyCreated = {
+  name: 'envoygateway_envoyextensionpolicy_created',
+  description:
+    'Creation timestamp of a EnvoyExtensionPolicy, one series per policy. `name`/`namespace` identify the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyInfo = {
+  name: 'envoygateway_envoyextensionpolicy_info',
+  description:
+    'Info series (value is always 1) per EnvoyExtensionPolicy. `name`/`namespace` identify the policy; `target_kind`/`target_name` come from the deprecated `spec.targetRef` and are absent for policies using `spec.targetRefs`.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyTargetInfo = {
+  name: 'envoygateway_envoyextensionpolicy_target_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.targetRefs` of a EnvoyExtensionPolicy: `target_group`/`target_kind`/`target_name`/`target_section_name`. Targets are in the namespace of the policy.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const EnvoyGatewayEnvoyExtensionPolicyStatusAncestorAccepted = {
+  name: 'envoygateway_envoyextensionpolicy_status_ancestor_accepted',
+  description:
+    'Accepted condition of a EnvoyExtensionPolicy, one series per ancestor (`ancestor_kind`/`ancestor_name`/`ancestor_namespace`/`ancestor_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when the policy resolved no ancestor.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
 export const CertmanagerCertificateExpirationTimestampSeconds = {
   name: 'certmanager_certificate_expiration_timestamp_seconds',
   description:
@@ -320,7 +512,7 @@ export const KarpenterNodePoolsAllowedDisruptions = {
 export const AgentgatewayGenAiClientTokenUsage = {
   name: 'agentgateway_gen_ai_client_token_usage',
   description:
-    'Tokens the gateway proxied. `_sum` is the token count and `_count` the number of usage records. Split by `gen_ai_token_type` into `input`, `output`, `input_cache_read` and `input_cache_write` — Anthropic counts the three input types separately, so `input` excludes cache traffic and a high cache-read share is prompt caching paying off. Needs no price catalogue, so it is the figure to trust when pricing is incomplete.',
+    'Tokens the gateway proxied. `_sum` is the token count and `_count` the number of usage records. Split by `gen_ai_token_type` into `input`, `output`, `input_cache_read` and `input_cache_write` — since agentgateway v1.5.0 the gateway normalises `input` to include the tokens read from and written to cache, and records those again under the two cache types, so `input` + `output` is every token and adding the cache types counts cached input twice. A high cache-read share of `input` is prompt caching paying off. Needs no price catalogue, so it is the figure to trust when pricing is incomplete.',
   type: 'histogram',
   source: 'agentgateway',
 } as const satisfies PrometheusMetric;
@@ -400,6 +592,28 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   GatewayApiHttprouteHostnameInfo,
   GatewayApiHttprouteParentInfo,
   GatewayApiGatewayListenerInfo,
+  GatewayApiGatewayInfo,
+  GatewayApiGatewayStatus,
+  GatewayApiGatewayStatusListenerAttachedRoutes,
+  GatewayApiHttprouteStatusParentInfo,
+  GatewayApiHttprouteStatusParentAccepted,
+  GatewayApiHttprouteStatusParentResolvedRefs,
+  EnvoyGatewaySecurityPolicyCreated,
+  EnvoyGatewaySecurityPolicyInfo,
+  EnvoyGatewaySecurityPolicyTargetInfo,
+  EnvoyGatewaySecurityPolicyStatusAncestorAccepted,
+  EnvoyGatewayBackendTrafficPolicyCreated,
+  EnvoyGatewayBackendTrafficPolicyInfo,
+  EnvoyGatewayBackendTrafficPolicyTargetInfo,
+  EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted,
+  EnvoyGatewayClientTrafficPolicyCreated,
+  EnvoyGatewayClientTrafficPolicyInfo,
+  EnvoyGatewayClientTrafficPolicyTargetInfo,
+  EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted,
+  EnvoyGatewayEnvoyExtensionPolicyCreated,
+  EnvoyGatewayEnvoyExtensionPolicyInfo,
+  EnvoyGatewayEnvoyExtensionPolicyTargetInfo,
+  EnvoyGatewayEnvoyExtensionPolicyStatusAncestorAccepted,
   CertmanagerCertificateExpirationTimestampSeconds,
   CertmanagerCertificateReadyStatus,
   KarpenterNodesAllocatable,

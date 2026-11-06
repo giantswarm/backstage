@@ -3,18 +3,25 @@ import userEvent from '@testing-library/user-event';
 import { ConnectorLogo } from './ConnectorLogo';
 
 describe('ConnectorLogo', () => {
-  it("shows the name's first letter without an icon or a known host", () => {
-    render(<ConnectorLogo name="weather" url="https://weather.example.com" />);
+  it("shows the name's first letter without an icon", () => {
+    render(<ConnectorLogo name="weather" />);
     expect(screen.getByRole('img', { name: 'weather' })).toHaveTextContent('w');
   });
 
-  it("shows the brand's mark for a known host", () => {
-    render(
-      <ConnectorLogo name="Tickets" url="https://mcp.pagerduty.com/mcp" />,
+  it('shows a leading emoji whole', () => {
+    render(<ConnectorLogo name="🚀 Deploys" />);
+    expect(screen.getByRole('img', { name: '🚀 Deploys' })).toHaveTextContent(
+      /^🚀$/u,
     );
-    const logo = screen.getByRole('img', { name: 'Tickets' });
-    expect(logo).toHaveTextContent('');
-    expect(logo.querySelector('svg')).toBeInTheDocument();
+  });
+
+  it('shows the letter for an icon that is not a safe data: image', () => {
+    render(
+      <ConnectorLogo name="weather" icon="https://example.com/icon.png" />,
+    );
+    const logo = screen.getByRole('img', { name: 'weather' });
+    expect(logo).toHaveTextContent('w');
+    expect(logo.querySelector('img')).toBeNull();
   });
 
   it('falls back to the letter while an icon has not loaded', () => {
@@ -36,6 +43,29 @@ describe('ConnectorLogo', () => {
       /PagerDuty\s*All tools/,
     );
   });
+
+  it('is a focusable image named by the connector and described by its detail', () => {
+    render(<ConnectorLogo name="PagerDuty" detail="All tools" tooltip />);
+    const logo = screen.getByRole('img', { name: 'PagerDuty' });
+    expect(logo).toHaveAttribute('tabindex', '0');
+    expect(logo).toHaveAccessibleDescription('All tools');
+  });
+
+  it.each(['{Enter}', ' '])(
+    'keeps %s on the logo off the row it sits in',
+    async key => {
+      const onRowKeyDown = jest.fn();
+      render(
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div onKeyDown={onRowKeyDown}>
+          <ConnectorLogo name="PagerDuty" tooltip />
+        </div>,
+      );
+      await userEvent.tab();
+      await userEvent.keyboard(key);
+      expect(onRowKeyDown).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps one tooltip open: hovering a logo closes the focused one', async () => {
     const user = userEvent.setup();

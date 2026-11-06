@@ -45,6 +45,10 @@ export type {
   CustomizeCounts,
   CustomizeDataValue,
 } from './components/CustomizeDataProvider';
+export {
+  useTrackCustomizeView,
+  type MusterViewCounts,
+} from './hooks/useTrackCustomizeView';
 export { CustomizeAgentsPanel } from './components/CustomizeAgentsPanel';
 export type { CustomizeAgentsPanelProps } from './components/CustomizeAgentsPanel';
 export {
@@ -66,6 +70,7 @@ export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPane
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { MODEL_PAGE_TABS } from './components/ModelDetailPage';
 export { WORKSPACE_PAGE_TABS } from './components/WorkspaceDetailPage';
+export { ORGANIZATION_PAGE_TABS } from './components/OrganizationPage';
 export { AGENT_PAGE_TABS } from './components/AgentDetailPage';
 export { parseSkillDetailPath } from './lib/skills';
 export {

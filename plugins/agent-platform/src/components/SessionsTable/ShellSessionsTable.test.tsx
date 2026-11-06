@@ -12,12 +12,21 @@ import {
   MAX_RENDERED_SESSIONS,
   SESSIONS_PAGE_SIZE,
 } from './ShellSessionsTable';
-import { SEARCH_MIN } from '../../lib/toolset';
+import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
@@ -453,7 +462,7 @@ describe('SessionsTable in the shell layout', () => {
     await renderShell(filterable);
 
     const search = screen.getByRole('searchbox', { name: 'Search sessions' });
-    expect(search).toHaveAttribute('placeholder', 'Search by title or agent');
+    expect(search).toHaveAttribute('placeholder', 'Search sessions');
 
     await user.type(search, 'release writer');
     expect(
@@ -489,7 +498,7 @@ describe('SessionsTable in the shell layout', () => {
   it('opens on the state a link asks for, even under SEARCH_MIN', async () => {
     // The needs-input toast's "Show waiting sessions" (T39).
     await renderShell(
-      rows,
+      rows.slice(0, 2),
       states,
       mockApis.storage(),
       '/sessions?state=waiting',
@@ -760,7 +769,7 @@ describe('SessionsTable in the shell layout', () => {
     }, 20_000);
   });
 
-  describe('at 3 sessions and at 300 (T39)', () => {
+  describe('at 2, 3 and 300 sessions (T39)', () => {
     const fleetOf = (count: number, agents = 3) =>
       Array.from({ length: count }, (_, index) =>
         session(
@@ -771,10 +780,10 @@ describe('SessionsTable in the shell layout', () => {
         ),
       );
 
-    it('lists three sessions bare: no search, no filters, no paging', async () => {
-      await renderShell(rows.slice(0, 3));
+    it('lists two sessions bare: no search, no filters, no paging', async () => {
+      await renderShell(rows.slice(0, 2));
 
-      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(screen.getAllByRole('rowheader')).toHaveLength(2);
       expect(
         screen.queryByRole('searchbox', { name: 'Search sessions' }),
       ).not.toBeInTheDocument();
@@ -787,13 +796,79 @@ describe('SessionsTable in the shell layout', () => {
       expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
     });
 
-    it('draws one agent’s sessions as an Agent dropdown of one option (T64)', async () => {
+    it('lists three sessions with search and filters (SEARCH_MIN)', async () => {
+      await renderShell(
+        rows.slice(0, 3),
+        states,
+        mockApis.storage(),
+        '/sessions',
+      );
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search sessions' }),
+      ).toBeInTheDocument();
+      expect(dropdown('state')).toBeInTheDocument();
+      expect(dropdown('agent')).toBeInTheDocument();
+    });
+
+    it('filters by organization once the agents belong to two', async () => {
+      const inOrg = (row: SessionRow, namespace: string): SessionRow => ({
+        ...row,
+        agentNamespace: namespace,
+      });
+      await renderShell(
+        [
+          inOrg(rows[0], 'org-acme'),
+          inOrg(rows[1], 'kagent'),
+          inOrg(rows[2], 'org-acme'),
+        ],
+        states,
+        mockApis.storage(),
+        '/sessions',
+      );
+
+      expect(await optionsOf('organization')).toEqual(['acme 2', 'None 1']);
+      await pick('organization', /^acme/);
+      expect(
+        screen.getAllByRole('rowheader').map(cell => cell.textContent),
+      ).toEqual(['Triage this week', 'Pricing research']);
+    });
+
+    it('draws no Organization dropdown for one organization', async () => {
+      await renderShell(rows);
+
+      expect(dropdown('agent')).toBeInTheDocument();
+      expect(queryDropdown('organization')).not.toBeInTheDocument();
+    });
+
+    it('draws no Organization dropdown for one organization while others are unmatched', async () => {
+      // Sessions whose agent is not matched (yet) have no organization: not a
+      // second one to choose, so no dropdown that vanishes once they load.
+      await renderShell([
+        { ...rows[0], agentNamespace: 'org-acme' },
+        { ...rows[1], agentNamespace: undefined },
+        { ...rows[2], agentNamespace: 'org-acme' },
+        { ...rows[3], agentNamespace: undefined },
+      ]);
+
+      expect(dropdown('agent')).toBeInTheDocument();
+      expect(queryDropdown('organization')).not.toBeInTheDocument();
+    });
+
+    it('draws the Pinned dropdown once some sessions are pinned', async () => {
+      // A flag: a session without the pin is a choice in itself.
+      await renderShell(rows, states, await storageWithPins(['a']));
+
+      expect(dropdown('pinned')).toBeInTheDocument();
+    });
+
+    it('draws no Agent dropdown over one agent’s sessions', async () => {
       await renderShell(fleetOf(SEARCH_MIN + 1, 1));
 
       expect(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
       ).toBeInTheDocument();
-      expect(await optionsOf('agent')).toEqual([`Agent 0 ${SEARCH_MIN + 1}`]);
+      expect(queryDropdown('agent')).not.toBeInTheDocument();
     });
 
     it('keeps 300 sessions to a bounded window, with search and a way back', async () => {

@@ -41,6 +41,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         skills: createRouteRef(),
         models: createRouteRef(),
         profile: createRouteRef(),
+        organizations: createRouteRef(),
       },
     },
     RecentSessions: () => null,
@@ -355,6 +356,172 @@ describe('Notification inbox', () => {
         ).not.toBeInTheDocument(),
       );
       expect(within(overlay).getAllByRole('listitem')).toHaveLength(2);
+    });
+
+    describe('when the read marks cannot be saved', () => {
+      it('says so in the overlay after "Mark all read", keeps the rows unread, and marks them with Try again', async () => {
+        fakeInbox.setSessions(waiting);
+        await renderShell();
+        fakeInbox.failMarks(true);
+
+        const overlay = await openOverlay();
+        await userEvent.click(
+          within(overlay).getByRole('button', { name: 'Mark all read' }),
+        );
+
+        const alert = await within(overlay).findByRole('alert');
+        expect(alert).toHaveTextContent(
+          'Could not mark the notifications read',
+        );
+        expect(alert).toHaveTextContent(
+          'What you have read could not be saved, so they stay unread.',
+        );
+        expect(
+          within(overlay).getAllByRole('link', { name: /^Unread: / }),
+        ).toHaveLength(2);
+        expect(
+          screen.getByRole('button', {
+            name: 'Notifications, 2 unread',
+            hidden: true,
+          }),
+        ).toBeInTheDocument();
+        // Not a toast, which would sit under the overlay and time out.
+        expect(toastTitles()).not.toContain(
+          'Could not mark the notifications read',
+        );
+
+        // Still failing: the same alert stays up, not taken down and raised
+        // again.
+        await userEvent.click(
+          within(alert).getByRole('button', { name: 'Try again' }),
+        );
+        await waitFor(() =>
+          expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(2),
+        );
+        expect(within(overlay).getByRole('alert')).toBe(alert);
+
+        // A session that starts waiting since is not what the alert named.
+        await read([
+          ...waiting,
+          { sessionId: 's3', title: 'New one', state: 'input-required' },
+        ]);
+        fakeInbox.failMarks(false);
+        await userEvent.click(
+          within(alert).getByRole('button', { name: 'Try again' }),
+        );
+
+        await waitFor(() =>
+          expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
+        );
+        expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(3);
+        expect(fakeInbox.writes.markManySeen).toHaveBeenLastCalledWith([
+          expect.objectContaining({ sessionId: 's1' }),
+          expect.objectContaining({ sessionId: 's2' }),
+        ]);
+        expect(
+          within(overlay).getAllByRole('link', { name: /^Unread: / }),
+        ).toHaveLength(1);
+      });
+
+      it('says so the next time the overlay opens after a row was opened, and marks it with Try again', async () => {
+        fakeInbox.setSessions(waiting);
+        await renderShell();
+        fakeInbox.failMarks(true);
+
+        let overlay = await openOverlay();
+        await userEvent.click(
+          within(overlay).getAllByRole('link', {
+            name: 'Unread: SRE Agent needs your input',
+          })[0],
+        );
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          `${SESSION_PATH}/s1`,
+        );
+        await waitFor(() =>
+          expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
+            expect.objectContaining({ sessionId: 's1' }),
+            { action: 'opened', kind: 'waiting' },
+          ),
+        );
+        expect(
+          screen.getByRole('button', { name: 'Notifications, 2 unread' }),
+        ).toBeInTheDocument();
+
+        overlay = await openOverlay();
+        const alert = await within(overlay).findByRole('alert');
+        expect(alert).toHaveTextContent('Could not mark the notification read');
+        expect(alert).toHaveTextContent(
+          'What you have read could not be saved, so it stays unread.',
+        );
+
+        fakeInbox.failMarks(false);
+        fakeInbox.writes.markSeen.mockClear();
+        await userEvent.click(
+          within(alert).getByRole('button', { name: 'Try again' }),
+        );
+
+        await waitFor(() =>
+          expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
+        );
+        expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
+          expect.objectContaining({ sessionId: 's1' }),
+          { action: 'opened', kind: 'waiting' },
+        );
+        expect(
+          screen.getByRole('button', {
+            name: 'Notifications, 1 unread',
+            hidden: true,
+          }),
+        ).toBeInTheDocument();
+      });
+      it('marks a row with Try again after the mark of its page, on its way, failed', async () => {
+        fakeInbox.setSessions(waiting);
+        await renderShell();
+        fakeInbox.failMarks(true);
+
+        let overlay = await openOverlay();
+        await userEvent.click(
+          within(overlay).getAllByRole('link', {
+            name: 'Unread: SRE Agent needs your input',
+          })[0],
+        );
+        await waitFor(() =>
+          expect(fakeInbox.writes.markSeen).toHaveBeenCalledTimes(1),
+        );
+
+        // The next read marks the row of the page on screen, slowly.
+        let failLate: () => void = () => {};
+        fakeInbox.writes.markSeen.mockImplementationOnce(
+          () =>
+            new Promise<void>((_, reject) => {
+              failLate = () => reject(new Error('could not be read'));
+            }),
+        );
+        await read(waiting);
+        await waitFor(() =>
+          expect(fakeInbox.writes.markSeen).toHaveBeenLastCalledWith(
+            expect.objectContaining({ sessionId: 's1' }),
+            undefined,
+          ),
+        );
+
+        overlay = await openOverlay();
+        const alert = await within(overlay).findByRole('alert');
+        fakeInbox.failMarks(false);
+        await userEvent.click(
+          within(alert).getByRole('button', { name: 'Try again' }),
+        );
+        // Try again waits for that mark; when it fails, Try again marks it.
+        await act(async () => failLate());
+
+        await waitFor(() =>
+          expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
+        );
+        expect(fakeInbox.writes.markSeen).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sessionId: 's1' }),
+          { action: 'opened', kind: 'waiting' },
+        );
+      });
     });
 
     it('mutes a session from its row', async () => {
@@ -735,7 +902,7 @@ describe('Notification inbox', () => {
       return within(overlay)
         .getAllByRole('listitem')
         .find(item =>
-          /MCP servers? needs? your sign-in/.test(item.textContent!),
+          /connectors? needs? your sign-in/.test(item.textContent!),
         );
     }
 
@@ -757,7 +924,7 @@ describe('Notification inbox', () => {
       const overlay = await openOverlay();
       const rows = within(overlay).getAllByRole('listitem');
       expect(rows.map(row => row.textContent)).toEqual([
-        expect.stringContaining('2 MCP servers need your sign-in'),
+        expect.stringContaining('2 connectors need your sign-in'),
         expect.stringContaining('SRE Agent needs your input'),
       ]);
       expect(rows[0]).toHaveTextContent('Kubernetes, github');
@@ -765,7 +932,7 @@ describe('Notification inbox', () => {
         within(rows[0]).getByText('Unread:', { exact: false }),
       ).toBeInTheDocument();
       expect(
-        within(rows[0]).getByRole('button', { name: 'Sign in to MCP servers' }),
+        within(rows[0]).getByRole('button', { name: 'Sign in to connectors' }),
       ).toHaveTextContent('Sign in');
       expect(within(rows[0]).queryByRole('link')).not.toBeInTheDocument();
     });
@@ -776,7 +943,7 @@ describe('Notification inbox', () => {
 
       const overlay = await openOverlay();
       expect(mcpRow(overlay)).toHaveTextContent(
-        '5 MCP servers need your sign-in',
+        '5 connectors need your sign-in',
       );
       expect(mcpRow(overlay)).toHaveTextContent('a, b, c and 2 more');
     });
@@ -801,11 +968,11 @@ describe('Notification inbox', () => {
 
       const overlay = await openOverlay();
       await userEvent.click(
-        within(overlay).getByRole('button', { name: 'Sign in to MCP servers' }),
+        within(overlay).getByRole('button', { name: 'Sign in to connectors' }),
       );
 
       expect(
-        await screen.findByRole('dialog', { name: 'Sign in to MCP servers' }),
+        await screen.findByRole('dialog', { name: 'Sign in to connectors' }),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('dialog', { name: 'Notifications' }),
@@ -1029,7 +1196,7 @@ describe('Notification inbox', () => {
       await readMcp([['kubernetes', 'Kubernetes']]);
       expect(post).toHaveBeenCalledTimes(1);
       expect(post).toHaveBeenCalledWith({
-        title: '1 MCP server needs your sign-in',
+        title: '1 connector needs your sign-in',
         description: 'Kubernetes',
         status: 'warning',
         links: [{ label: 'Sign in', href: '#mcp-sign-in' }],
@@ -1039,7 +1206,7 @@ describe('Notification inbox', () => {
       // The toast's Sign in: the dialog where the person is, the row read.
       await userEvent.click(screen.getByRole('link', { name: 'Sign in' }));
       expect(
-        await screen.findByRole('dialog', { name: 'Sign in to MCP servers' }),
+        await screen.findByRole('dialog', { name: 'Sign in to connectors' }),
       ).toBeInTheDocument();
       expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
       expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
@@ -1053,12 +1220,12 @@ describe('Notification inbox', () => {
       fakeInbox.setMcpWaiting([], { isRead: false, isAvailable: false });
       await renderShell({ path: '/sessions#mcp-sign-in' });
       expect(
-        screen.queryByRole('dialog', { name: 'Sign in to MCP servers' }),
+        screen.queryByRole('dialog', { name: 'Sign in to connectors' }),
       ).not.toBeInTheDocument();
 
       await readMcp(['kubernetes']);
       expect(
-        await screen.findByRole('dialog', { name: 'Sign in to MCP servers' }),
+        await screen.findByRole('dialog', { name: 'Sign in to connectors' }),
       ).toBeInTheDocument();
       expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'mcpSignIn' }),
@@ -1076,7 +1243,7 @@ describe('Notification inbox', () => {
         ),
       );
       expect(
-        screen.queryByRole('dialog', { name: 'Sign in to MCP servers' }),
+        screen.queryByRole('dialog', { name: 'Sign in to connectors' }),
       ).not.toBeInTheDocument();
     });
 
@@ -1085,7 +1252,7 @@ describe('Notification inbox', () => {
       await renderShell({ path: '/sessions#mcp-sign-in' });
 
       expect(
-        await screen.findByRole('dialog', { name: 'Sign in to MCP servers' }),
+        await screen.findByRole('dialog', { name: 'Sign in to connectors' }),
       ).toBeInTheDocument();
       expect(screen.getByTestId('location')).toHaveTextContent('/sessions');
     });
@@ -1107,8 +1274,8 @@ describe('Notification inbox', () => {
       // A server that starts to wait is news again.
       await readMcp(['kubernetes', 'jira']);
       expect(toastTitles()).toEqual([
-        '2 MCP servers need your sign-in',
-        '2 MCP servers need your sign-in',
+        '2 connectors need your sign-in',
+        '2 connectors need your sign-in',
       ]);
     });
   });
@@ -1263,7 +1430,7 @@ describe('Notification inbox', () => {
       });
       expect(shown).toEqual([
         {
-          title: '1 MCP server needs your sign-in',
+          title: '1 connector needs your sign-in',
           options: {
             body: 'Kubernetes',
             tag: 'mcp-sign-in:gazelle:kubernetes',
@@ -1277,7 +1444,7 @@ describe('Notification inbox', () => {
         shown[0].notification.onclick?.();
       });
       expect(
-        await screen.findByRole('dialog', { name: 'Sign in to MCP servers' }),
+        await screen.findByRole('dialog', { name: 'Sign in to connectors' }),
       ).toBeInTheDocument();
     });
 

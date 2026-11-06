@@ -5,8 +5,16 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { deriveTokenRates, type TokenRates } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from './organizations';
 import { tenantKindOf, tenantOf, type TenantKind } from './tenants';
-import { usageDataStart, type UsageDataStart } from './usageWindow';
+import {
+  usageDataStart,
+  type UsageDataStart,
+  type UsageWindow,
+} from './usageWindow';
 
 /**
  * Reducers turning Mimir's answers into the rows the LLM usage views render.
@@ -128,6 +136,27 @@ export type LlmOrganizationRow = {
   sharePct: number | undefined;
 };
 
+/** A person the gateway named, or the calls it named nobody for. */
+export type LlmPersonRowKind = 'person' | 'unknown';
+
+/**
+ * One person's traffic: the gateway's `user` label, an email where the
+ * runtime knew the person. The monthly view's chargeback rows beside the
+ * agents' (giantswarm/backstage#2672).
+ */
+export type LlmPersonRow = {
+  id: string;
+  /** The raw `user` label; empty for calls the gateway named nobody for. */
+  user: string;
+  kind: LlmPersonRowKind;
+  label: string;
+  tokens: number;
+  /** As {@link LlmAgentRow.costUsd}: `undefined` when nothing was priced. */
+  costUsd: number | undefined;
+  /** Percentage of the window's total spend. `undefined` when nothing was priced. */
+  sharePct: number | undefined;
+};
+
 export type UnpricedModelRow = {
   id: string;
   requestModel: string;
@@ -200,12 +229,21 @@ export type LlmUsageTotals = {
 
 export type LlmUsage = {
   windowDays: number;
+  /** The window the vectors cover, when the view named one; `windowDays` alone otherwise. */
+  window?: UsageWindow;
+  /**
+   * The day still being written, whose row of the daily series is partial;
+   * none for a window that has ended, whose last row is a whole day.
+   */
+  partialDay?: string;
   totals: LlmUsageTotals;
   tokenTypes: TokenTypeTotals;
   byAgent: LlmAgentRow[];
   byModel: LlmModelRow[];
   /** The same traffic rolled up by the namespace the agents run in. */
   byOrganization: LlmOrganizationRow[];
+  /** The same traffic by the person behind the calls, when the view asked for it. */
+  byPerson?: LlmPersonRow[];
   /** Every agent and model pair, for a breakdown of one agent or one model. */
   byAgentModel: LlmAgentModelRow[];
   costPerDay: LlmDailySeries;
@@ -486,7 +524,8 @@ function organizationKey(labels: Record<string, string>): string {
 /**
  * Roll the same three vectors up by the namespace the agents run in: the
  * organization's tenant, which is the cost centre (giantswarm/giantswarm#36698,
- * D8). An Organization's `org-<name>` namespace reads as the organization,
+ * D8). An organization namespace reads as the organization, by the labels
+ * agent-manager answered for it (`organizations`),
  * the `kagent` namespace as the platform (no organization), any other
  * namespace by its name, and traffic in no namespace as `unknownLabel`. No
  * join is needed: the namespace is the identity.
@@ -496,8 +535,16 @@ export function reduceByOrganization(options: {
   tokens: MimirMetricSample[] | undefined;
   calls: MimirMetricSample[] | undefined;
   unknownLabel: string;
+  /** Which namespace is which organization, as agent-manager answered. */
+  organizations?: OrganizationDirectory;
 }): LlmOrganizationRow[] {
-  const { cost, tokens, calls, unknownLabel } = options;
+  const {
+    cost,
+    tokens,
+    calls,
+    unknownLabel,
+    organizations: directory = EMPTY_ORGANIZATION_DIRECTORY,
+  } = options;
 
   const costByNamespace = sumBy(cost, organizationKey);
   const tokensByNamespace = sumBy(tokens, organizationKey);
@@ -516,7 +563,7 @@ export function reduceByOrganization(options: {
     rows.push({
       id: namespace || 'unattributed',
       namespace,
-      ...identifyOrganization(namespace, unknownLabel),
+      ...identifyOrganization(namespace, unknownLabel, directory),
       tokens: tokensByNamespace.get(namespace) ?? 0,
       calls: callsByNamespace.get(namespace) ?? 0,
       costUsd,
@@ -536,18 +583,64 @@ export function reduceByOrganization(options: {
 function identifyOrganization(
   namespace: string,
   unknownLabel: string,
+  directory: OrganizationDirectory,
 ): Pick<LlmOrganizationRow, 'kind' | 'label' | 'description'> {
   if (namespace === '') {
     return { kind: 'unattributed', label: unknownLabel };
   }
-  const kind = tenantKindOf(namespace);
+  const kind = tenantKindOf(namespace, directory);
   return {
     kind,
-    label: tenantOf(namespace),
+    label: tenantOf(namespace, directory),
     // The organization's name is not its namespace, so the namespace goes
     // under it; for the platform and another namespace the label says it.
     description: kind === 'organization' ? namespace : undefined,
   };
+}
+
+/** The `user` label, or `''` for the gateway's own `unknown` and for none. */
+function personKey(labels: Record<string, string>): string {
+  const user = labels.user ?? '';
+  return user === UNKNOWN_AGENT_LABEL ? '' : user;
+}
+
+/**
+ * Roll the cost and token vectors up by the person behind the calls. The
+ * label is the person only where the runtime knew one: the Claude harness
+ * sends none, and an installation may switch the label off, so those calls
+ * pool under `unknownLabel` rather than vanish from the total.
+ */
+export function reduceByPerson(options: {
+  cost: MimirMetricSample[] | undefined;
+  tokens: MimirMetricSample[] | undefined;
+  unknownLabel: string;
+}): LlmPersonRow[] {
+  const { cost, tokens, unknownLabel } = options;
+  const costByPerson = sumBy(cost, personKey);
+  const tokensByPerson = sumBy(tokens, personKey);
+  const totalCost = optionalSum(costByPerson);
+
+  const keys = new Set([...costByPerson.keys(), ...tokensByPerson.keys()]);
+  const rows: LlmPersonRow[] = [];
+  for (const user of keys) {
+    const costUsd = optionalTotal(costByPerson, user);
+    rows.push({
+      id: user || 'no-person',
+      user,
+      kind: user ? 'person' : 'unknown',
+      label: user || unknownLabel,
+      tokens: tokensByPerson.get(user) ?? 0,
+      costUsd,
+      sharePct: percent(costUsd, totalCost),
+    });
+  }
+
+  return rows.sort(
+    (a, b) =>
+      (b.costUsd ?? 0) - (a.costUsd ?? 0) ||
+      b.tokens - a.tokens ||
+      a.label.localeCompare(b.label),
+  );
 }
 
 /**
@@ -845,7 +938,8 @@ function fillDays(
 export function firstSampledDay(
   daily: (MimirMatrixSample[] | null | undefined)[],
   fallback: {
-    today: string;
+    /** Today's key, or none for a window that has ended, which has no today. */
+    today: string | undefined;
     windowTotals: (MimirMetricSample[] | undefined)[];
   },
 ): string | undefined {
@@ -869,7 +963,7 @@ export function firstSampledDay(
   const hasTotals = fallback.windowTotals.some(samples =>
     (samples ?? []).some(sample => instantValue(sample) !== undefined),
   );
-  return hasTotals ? fallback.today : undefined;
+  return hasTotals && fallback.today ? fallback.today : undefined;
 }
 
 /** Assemble everything the two Mimir views read. */
@@ -889,10 +983,23 @@ export function buildLlmUsage(options: {
   hrefFor: (row: AgentRow) => string | undefined;
   unknownAgentLabel: string;
   unknownModelLabel: string;
+  /**
+   * The cost and token vectors by `user`, from `byPersonQueriesFor`, when
+   * the view asked for the by-person rows; absent otherwise.
+   */
+  costByPerson?: MimirMetricSample[];
+  tokensByPerson?: MimirMetricSample[];
+  /** The caller's word for calls the gateway named nobody for. */
+  unknownPersonLabel?: string;
+  /** The window the vectors cover, for the copy that names it. */
+  window?: UsageWindow;
   /** The days both charts render, from `dailyWindowDayKeys()`. Last is today. */
   days: string[];
-  /** Today's key, whose row the partial vectors below fill. */
-  today: string;
+  /**
+   * Today's key, whose row the partial vectors below fill; none for a window
+   * that has ended (a past month), which has no partial row.
+   */
+  today?: string;
   costToday: MimirMetricSample[] | undefined;
   tokensToday: MimirMetricSample[] | undefined;
   /**
@@ -922,6 +1029,8 @@ export function buildLlmUsage(options: {
    * baseline for a change, and an unchecked one is no better.
    */
   dataBeforePreviousWindow?: boolean;
+  /** Which namespace is which organization, as agent-manager answered. */
+  organizations?: OrganizationDirectory;
 }): LlmUsage {
   const { cost, tokens, calls } = options;
 
@@ -953,6 +1062,7 @@ export function buildLlmUsage(options: {
     tokens,
     calls,
     unknownLabel: options.unknownAgentLabel,
+    organizations: options.organizations,
   });
 
   const modelLabel = (labels: Record<string, string>) =>
@@ -972,7 +1082,11 @@ export function buildLlmUsage(options: {
       label: typeLabel,
       days: options.days,
     }),
-    { day: options.today, samples: options.tokensToday, label: typeLabel },
+    {
+      day: options.today,
+      samples: options.tokensToday,
+      label: typeLabel,
+    },
   );
   const callsLabel = () => CALLS_SERIES;
   const callsPerDay =
@@ -993,6 +1107,8 @@ export function buildLlmUsage(options: {
 
   return {
     windowDays: options.windowDays ?? WINDOW_DAYS,
+    ...(options.window && { window: options.window }),
+    ...(options.today !== undefined && { partialDay: options.today }),
     totals: {
       costUsd: totalCost,
       tokens: totalTokens,
@@ -1016,6 +1132,13 @@ export function buildLlmUsage(options: {
     byAgent,
     byModel,
     byOrganization,
+    ...((options.costByPerson || options.tokensByPerson) && {
+      byPerson: reduceByPerson({
+        cost: options.costByPerson,
+        tokens: options.tokensByPerson,
+        unknownLabel: options.unknownPersonLabel ?? 'No person recorded',
+      }),
+    }),
     byAgentModel: reduceByAgentModel({ cost, tokens, calls }),
     costPerDay,
     tokensPerDay,
@@ -1066,11 +1189,18 @@ export function hasAnyLlmUsage(usage: LlmUsage | undefined): boolean {
 export function applyTodayPartial(
   daily: LlmDailySeries,
   options: {
-    day: string;
+    /** Today's key; none for a window that has ended, which has no partial row. */
+    day: string | undefined;
     samples: MimirMetricSample[] | undefined;
     label: (labels: Record<string, string>) => string;
   },
 ): LlmDailySeries {
+  // A window that has ended carries none of today, whatever the today
+  // vectors hold: their queries are off for it, but react-query may still
+  // have the days window's answer for them.
+  if (options.day === undefined) {
+    return daily;
+  }
   const today = sumBy(options.samples, labels => options.label(labels));
   if (today.size === 0) {
     return daily;

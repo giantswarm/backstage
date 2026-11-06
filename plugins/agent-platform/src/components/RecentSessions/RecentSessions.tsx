@@ -4,6 +4,7 @@ import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Badge,
   Box,
+  Button,
   ButtonIcon,
   Flex,
   Link,
@@ -11,7 +12,11 @@ import {
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { StatusDot, TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PinIcon,
+  StatusDot,
+  TOUCH_MEDIA,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -25,7 +30,6 @@ import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
-import { PinIcon } from '../PinIcon';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
@@ -176,6 +180,7 @@ function SessionItem({
   return (
     <li className={pin ? `${classes.item} ${activeClass}` : undefined}>
       <Link
+        standalone
         href={href}
         className={
           pin
@@ -256,6 +261,37 @@ function GroupHeader({ id, label }: { id: string; label: string }) {
   );
 }
 
+/**
+ * In place of "No sessions yet" when the list is empty because it could not be
+ * read: an empty rail during a kagent outage is not an empty history. The
+ * Sessions page names each environment and why; the rail says that the read
+ * failed and offers to read again.
+ */
+function RecentSessionsReadError({
+  onRetry,
+  isRetrying,
+}: {
+  onRetry: () => void;
+  isRetrying: boolean;
+}) {
+  return (
+    <Flex direction="column" gap="1" align="start" px="2">
+      {/* Announced once, politely: the rail is on every page. */}
+      <Text variant="body-small" color="danger" role="status">
+        Could not read your sessions.
+      </Text>
+      <Button
+        variant="secondary"
+        size="small"
+        isPending={isRetrying}
+        onPress={onRetry}
+      >
+        Try again
+      </Button>
+    </Flex>
+  );
+}
+
 function RecentSessionsList({
   limit,
   sessionDetailRoute,
@@ -270,7 +306,10 @@ function RecentSessionsList({
   const allSessionsHref = shellRail ? sessionsRoute?.() : undefined;
   const baseId = useId();
   const { pathname } = useLocation();
-  const { rows, isLoading } = useSessions();
+  const { rows, isLoading, nothingRead, retry, isRetrying } = useSessions();
+  // No installation answered: not "No sessions yet". With one that answered
+  // empty, the empty line stands and the Sessions page names the rest.
+  const readFailed = nothingRead;
   const { pinnedIds, isPinned, togglePin } = usePinnedSessions();
 
   // Every installation that has a session, not only the listed ones: the rail
@@ -358,6 +397,7 @@ function RecentSessionsList({
       </Link>
       {grouped.waitingCount > 0 && (
         <Link
+          standalone
           href={`${allSessionsHref}${sessionsListSearch({ state: 'waiting' })}`}
           aria-label={`${grouped.waitingCount} ${SESSION_STATE_LABELS.waiting.toLowerCase()}`}
           className={classes.countLink}
@@ -438,11 +478,18 @@ function RecentSessionsList({
           !hasTimeGroups && (
             <>
               <GroupHeader id={`${baseId}-empty`} label="Sessions" />
-              <Box px="2">
-                <Text variant="body-small" color="secondary">
-                  No sessions yet
-                </Text>
-              </Box>
+              {readFailed ? (
+                <RecentSessionsReadError
+                  onRetry={retry}
+                  isRetrying={isRetrying}
+                />
+              ) : (
+                <Box px="2">
+                  <Text variant="body-small" color="secondary">
+                    No sessions yet
+                  </Text>
+                </Box>
+              )}
             </>
           )}
         {allSessionsLink}
@@ -451,7 +498,9 @@ function RecentSessionsList({
   }
 
   let body;
-  if (recent.length === 0) {
+  if (readFailed) {
+    body = <RecentSessionsReadError onRetry={retry} isRetrying={isRetrying} />;
+  } else if (recent.length === 0) {
     body = (
       <Box px="2">
         <Text variant="body-small" color="secondary">

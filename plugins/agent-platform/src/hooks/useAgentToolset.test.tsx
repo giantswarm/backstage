@@ -96,7 +96,7 @@ describe('useAgentToolset', () => {
       { gazelle: { namespace: 'kagent' } },
       { enableDiscovery: false, enabled: true },
     );
-    expect(result.current).toMatchObject({
+    expect(result.current).toEqual({
       declared: {
         state: 'declared',
         selectors: ['preset:read-only'],
@@ -104,8 +104,8 @@ describe('useAgentToolset', () => {
       },
       isReading: false,
       isUnreadable: false,
+      servers: [expect.any(RemoteMCPServer)],
     });
-    expect(result.current?.servers).toHaveLength(1);
   });
 
   // Never a premature "implicit full access": until the servers have answered
@@ -115,11 +115,12 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toMatchObject({
+    expect(result.current).toEqual({
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: true,
       isUnreadable: false,
     });
+    expect(result.current.servers).toBeUndefined();
   });
 
   // The window `isLoading` misses: an enabled query reports fetchStatus 'idle'
@@ -160,11 +161,12 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toMatchObject({
+    expect(result.current).toEqual({
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: true,
     });
+    expect(result.current.servers).toBeUndefined();
   });
 
   // `useResources` filters a RejectedError — an installation the person has
@@ -223,10 +225,11 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toMatchObject({
+    expect(result.current).toEqual({
       declared: { state: 'unresolved', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
+      servers: [],
     });
   });
 
@@ -238,10 +241,11 @@ describe('useAgentToolset', () => {
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
-    expect(result.current).toMatchObject({
+    expect(result.current).toEqual({
       declared: { state: 'implicit-full', carrier: 'pr-reviewer' },
       isReading: false,
       isUnreadable: false,
+      servers: [expect.any(RemoteMCPServer)],
     });
   });
 

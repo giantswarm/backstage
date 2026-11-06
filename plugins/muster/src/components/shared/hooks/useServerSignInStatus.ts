@@ -2,8 +2,8 @@ import type { StatusDotProps } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type AuthActionParts,
   authActionParts,
+  signInWaitText,
   SSO_REFUSED_STATUS,
-  WAITING_FOR_SIGN_IN,
 } from '../ServerSignIn';
 import {
   type ServerSignInState,
@@ -15,6 +15,9 @@ import {
 export type StatusText = Required<Pick<StatusDotProps, 'tone'>> & {
   label: string;
 };
+
+/** A state with the sentence a hint beside it says, where it has one. */
+export type ExplainedStatusText = StatusText & { explanation?: string };
 
 export interface UseServerSignInStatusOptions {
   /** The muster server name, as reported by `auth://status`. */
@@ -102,7 +105,7 @@ function statusDetails(
     details.push(parts.explanation);
   }
   if (parts.kind === 'sign-in' && parts.wait) {
-    details.push(WAITING_FOR_SIGN_IN);
+    details.push(signInWaitText(state));
     if (parts.wait.clientIdNote) {
       details.push(parts.wait.clientIdNote.text);
     }

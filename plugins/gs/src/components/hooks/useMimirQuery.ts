@@ -40,7 +40,7 @@ export function useMimirQuery(options: {
 
   const wanted = Boolean(enabled && installationName && query);
 
-  const { data, error, isPending, fetchStatus } = useQuery<
+  const { data, error, isPending, fetchStatus, isPlaceholderData } = useQuery<
     MimirQueryResponse,
     Error
   >({
@@ -63,7 +63,12 @@ export function useMimirQuery(options: {
       isLoading: isLoading || (wanted && isAvailable === undefined),
       error: error as Error | null,
       isAvailable,
+      /**
+       * Whether `data` is the previous key's answer, held by
+       * `keepPreviousAnswer` while this key's first fetch runs.
+       */
+      isPlaceholderData,
     }),
-    [data, isLoading, error, wanted, isAvailable],
+    [data, isLoading, error, wanted, isAvailable, isPlaceholderData],
   );
 }

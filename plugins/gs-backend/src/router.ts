@@ -54,12 +54,12 @@ import {
 import {
   containerRegistryServiceRef,
   mimirServiceRef,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { readSignedInConfig } from './signedInConfig';
 import {
   isValidTag,
   MAX_TAG_LENGTH,
-  MAX_TAGS,
   shortSha,
   SUBJECT_TOKEN_HEADER,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -932,7 +932,8 @@ export async function createRouter({
             message: `Each tag must be lowercase letters and digits with single dashes between, at most ${MAX_TAG_LENGTH} characters`,
           }),
         )
-        .max(MAX_TAGS)
+        // The limit is checked against the stored tags when the SKILL.md is
+        // written (`withSkillTags`): an unchanged list past it goes through.
         .optional(),
       kind: z.enum(['create', 'update']).optional(),
       path: z
@@ -1030,6 +1031,13 @@ export async function createRouter({
       throw error;
     }
   });
+
+  // Last, so that every route above reaches it. A Mimir that could not answer
+  // `/mimir/query` or `/mimir/query_range` is a `MimirUnavailableError`,
+  // which `MimirService` has already logged once: this answers its 503, with
+  // the `reason` the frontend picks its words from, without the error
+  // middleware reporting it again.
+  router.use(reportedErrorHandler());
 
   return router;
 }

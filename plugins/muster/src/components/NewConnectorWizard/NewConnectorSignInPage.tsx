@@ -1,6 +1,22 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
+import {
+  Alert,
+  Button,
+  Flex,
+  PasswordField,
+  Radio,
+  RadioGroup,
+  Text,
+  TextField,
+} from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   useFieldValidation,
@@ -10,16 +26,26 @@ import {
 
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
+  clientCredentialsArgument,
+  clientCredentialsProblems,
+  effectiveGrantScope,
   hasAdvancedAuthorizationServer,
+  hasStoredClientSecret,
+  mcpServerFieldErrors,
+  type ClientCredentials,
   type McpServerAuthMode,
 } from '../../lib/mcpServerDefinition';
 import { mutationErrorMessage } from '../../lib/authError';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { useRegisterMcpServer } from '../NewMcpServerReviewPage';
+import {
+  OneTimeClientCredentials,
+  useRegisterMcpServer,
+} from '../NewMcpServerReviewPage';
 import { SelectableCard } from '../SelectableCard';
 import { DisclosureAccordion, SessionGate } from '../shared';
+import { useToolArgumentSupport } from '../shared/hooks';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
@@ -41,6 +67,12 @@ const useStyles = makeStyles({
     gap: 16,
     margin: 0,
   },
+  // A tertiary button's label lines up with the fields' left edge: its own
+  // inline padding (bui's small size, space-2) moves outside the column.
+  inlineAction: {
+    alignSelf: 'flex-start',
+    marginInlineStart: 'calc(-1 * var(--bui-space-2))',
+  },
   disclosureSummary: {
     padding: '4px 0',
     fontWeight: 500,
@@ -53,6 +85,8 @@ const useStyles = makeStyles({
     gap: 12,
   },
 });
+
+const NO_CREDENTIALS: ClientCredentials = { clientId: '', clientSecret: '' };
 
 // The auth question is asked about the people using the connector, never as
 // muster spec fields. One card per mode the platform decided to offer; token
@@ -92,18 +126,72 @@ const SIGN_IN_CHOICES: Array<{
   },
 ];
 
-// Plain first, muster's `grantScope` value in parentheses for whoever is
-// matching this up with the MCPServer resource.
-const GRANT_SCOPE_OPTIONS = [
-  {
-    id: 'session',
-    label: 'Sign in again in every new session (session, default)',
-  },
-  {
-    id: 'subject',
-    label: "Sign in once, reused across the person's sessions (subject)",
-  },
-];
+/**
+ * What `grantScope: session` means for the people using the connector: the
+ * portal is one muster session and every agent conversation another.
+ */
+const SESSION_GRANT_WARNING =
+  'Agents will ask you to sign in again in every conversation.';
+
+/**
+ * How often people sign in to an own-account connector, outside the Advanced
+ * disclosure: it decides whether their agents see the sign-in at all. Plain
+ * first, muster's `grantScope` value in parentheses for whoever is matching
+ * this up with the MCPServer resource. muster takes `subject` only on a pinned
+ * authorization server, so without an issuer the choice shows `session`,
+ * disabled, and says what lifts it.
+ */
+function GrantScopeChoice({
+  grantScope,
+  hasIssuer,
+  onChange,
+}: {
+  /** The scope the connector ends up with (`effectiveGrantScope`). */
+  grantScope: 'session' | 'subject';
+  hasIssuer: boolean;
+  onChange: (grantScope: 'session' | 'subject') => void;
+}) {
+  let description: string | undefined;
+  if (!hasIssuer) {
+    description =
+      "Signing in once needs the app's issuer URL, under Advanced: muster can't yet reuse a sign-in to an app whose sign-in settings it looks up.";
+  } else if (grantScope === 'subject') {
+    description = 'A sign-in lasts until the person signs out of it.';
+  }
+  // Why the choice is disabled is the description's to say; the warning only
+  // says what a session sign-in means.
+  const warning =
+    grantScope === 'session'
+      ? 'A sign-in covers one session only: the portal, or one agent conversation.'
+      : undefined;
+  return (
+    <Flex direction="column" gap="3">
+      <RadioGroup
+        label="How often people sign in"
+        value={grantScope}
+        onChange={value => {
+          if (value === 'session' || value === 'subject') {
+            onChange(value);
+          }
+        }}
+        isDisabled={!hasIssuer}
+        description={description}
+      >
+        <Radio value="subject">
+          Once, for the portal and every agent conversation (subject)
+        </Radio>
+        <Radio value="session">Again in every conversation (session)</Radio>
+      </RadioGroup>
+      {warning && (
+        <Alert
+          status="warning"
+          title={SESSION_GRANT_WARNING}
+          description={warning}
+        />
+      )}
+    </Flex>
+  );
+}
 
 /**
  * Step 2 (Sign-in) of the shell's connector wizard: how people sign in to the
@@ -127,6 +215,7 @@ export function NewConnectorSignInPage() {
     setScopes,
     setAuthorizationEndpoint,
     setTokenEndpoint,
+    setUseExistingSecret,
     setClientSecretName,
     setClientSecretNamespace,
     setClientIdKey,
@@ -146,7 +235,75 @@ export function NewConnectorSignInPage() {
     registeredInstallation,
     startedFromEdit,
     markSaved,
+    storedClientCredentials,
+    authorizationServerChanged,
   } = useNewMcpServerForm();
+
+  // A client's ID and secret live here only, never in the form state: they
+  // go into the create or update call and are cleared once it succeeds. A
+  // refused save keeps them for the retry (see `onRegister`).
+  const [credentials, setCredentials] =
+    useState<ClientCredentials>(NO_CREDENTIALS);
+  // An older muster takes no `clientCredentials` (giantswarm/muster#1737):
+  // New Secret then has no fields to type a client into, and says why.
+  const takesClient = useToolArgumentSupport(
+    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+    state.installation,
+    'clientCredentials',
+    { enabled: state.authMode === 'own-account' },
+  );
+  const cannotStoreClient = takesClient === false;
+  const [replacing, setReplacing] = useState(false);
+  // A client muster stored for this connector. It is used only while an
+  // issuer is set; it is bound to its authorization server, so pointing the
+  // connector at another one needs the client again (muster refuses the save
+  // otherwise).
+  const hadClient =
+    !state.useExistingSecret &&
+    (hasStoredClientSecret(state) || storedClientCredentials);
+  const clientSecretStored = hadClient && Boolean(state.issuer.trim());
+  const serverChanged = clientSecretStored && authorizationServerChanged;
+  const replaceMode = clientSecretStored && (replacing || serverChanged);
+  const enteringCredentials =
+    !state.useExistingSecret &&
+    !cannotStoreClient &&
+    (!clientSecretStored || replaceMode);
+  const credentialProblems = enteringCredentials
+    ? clientCredentialsProblems(state, credentials, { required: replaceMode })
+    : [];
+  const credentialErrors = mcpServerFieldErrors(credentialProblems);
+  const issuerError = fieldErrors.issuer ?? credentialErrors.issuer;
+
+  // Replace and Keep stored secret take themselves off the page, so the
+  // focus moves to what replaces them rather than to the body.
+  const clientIdRef = useRef<HTMLDivElement>(null);
+  const replaceButtonRef = useRef<HTMLButtonElement>(null);
+  const [focusAfter, setFocusAfter] = useState<'clientId' | 'replace'>();
+  useEffect(() => {
+    if (focusAfter === 'clientId') {
+      clientIdRef.current?.querySelector('input')?.focus();
+    } else if (focusAfter === 'replace') {
+      replaceButtonRef.current?.focus();
+    }
+    setFocusAfter(undefined);
+  }, [focusAfter]);
+  // What was typed on the other side stays for the way back (the forms
+  // skill), except the client secret: a typed secret is never kept around
+  // out of sight.
+  const chooseSource = (existing: boolean) => {
+    setUseExistingSecret(existing);
+    setCredentials(prev => ({ ...prev, clientSecret: '' }));
+    setReplacing(false);
+  };
+  const startReplacing = () => {
+    setReplacing(true);
+    setFocusAfter('clientId');
+  };
+  const keepStoredSecret = () => {
+    setReplacing(false);
+    setCredentials(NO_CREDENTIALS);
+    setFocusAfter('replace');
+  };
 
   // Audiences are a list in the form state but one comma-separated field here;
   // raw text is local so typing "aud1, " isn't normalised mid-keystroke. A
@@ -159,6 +316,10 @@ export function NewConnectorSignInPage() {
   if (audiencesMode !== state.authMode) {
     setAudiencesMode(state.authMode);
     setAudiencesRaw(state.requiredAudiences.join(', '));
+    // Typed client values belong to "own account"; another mode drops them,
+    // as switching the client's source does.
+    setCredentials(NO_CREDENTIALS);
+    setReplacing(false);
   }
   const onAudiencesChange = (raw: string) => {
     setAudiencesRaw(raw);
@@ -176,10 +337,15 @@ export function NewConnectorSignInPage() {
   );
   // The own-account fields all sit in the Advanced disclosure.
   const hasAdvancedProblem = Boolean(
-    fieldErrors.issuer ||
+    issuerError ||
     fieldErrors.authorizationEndpoint ||
     fieldErrors.tokenEndpoint ||
-    fieldErrors.clientSecretName,
+    fieldErrors.clientSecretName ||
+    fieldErrors.clientSecretNamespace ||
+    fieldErrors.clientIdKey ||
+    fieldErrors.clientSecretKey ||
+    credentialErrors.clientId ||
+    credentialErrors.clientSecret,
   );
 
   const isEdit = Boolean(registeredName);
@@ -195,7 +361,7 @@ export function NewConnectorSignInPage() {
   // moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { reveal, textFieldProps } = validation;
-  const authErrorCount = authErrors.length;
+  const authErrorCount = authErrors.length + credentialProblems.length;
   const installation = state.installation;
   const authMode = state.authMode;
   const onRegister = useCallback(() => {
@@ -203,12 +369,33 @@ export function NewConnectorSignInPage() {
       reveal();
       return;
     }
+    const clientCredentials = enteringCredentials
+      ? clientCredentialsArgument(state, credentials)
+      : undefined;
     register(
-      { definition, installation, authMode, isEdit, startedFromEdit },
       {
+        definition,
+        installation,
+        authMode,
+        isEdit,
+        startedFromEdit,
+        clientCredentials: clientCredentials
+          ? new OneTimeClientCredentials(clientCredentials)
+          : undefined,
+      },
+      {
+        // Cleared only once stored: after a refusal the person fixes what
+        // muster named and saves again with the values still typed (the
+        // forms skill: never clear typed input on a failed submit). They
+        // stay in this page's state only, never in the form, its saved base
+        // or the edit draft.
         onSuccess: sent => {
+          setCredentials(NO_CREDENTIALS);
           // What was just written is the base of any further save in this run.
-          markSaved(sent);
+          markSaved(sent, {
+            storedClientCredentials: Boolean(clientCredentials),
+          });
+          setReplacing(false);
           const test = wizardLinks('verify', {
             name: sent.name,
             installation,
@@ -222,6 +409,9 @@ export function NewConnectorSignInPage() {
   }, [
     authErrorCount,
     reveal,
+    enteringCredentials,
+    state,
+    credentials,
     register,
     definition,
     installation,
@@ -232,6 +422,16 @@ export function NewConnectorSignInPage() {
     wizardLinks,
     navigate,
   ]);
+
+  let newSecretText =
+    'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.';
+  if (cannotStoreClient && !clientSecretStored) {
+    newSecretText =
+      'Muster on this installation cannot store a client yet. To use your own client, choose Existing Secret and name a Secret that holds it.';
+  } else if (!enteringCredentials) {
+    newSecretText =
+      'Muster keeps the client in a Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.';
+  }
 
   const registerLabel = isEdit ? 'Save changes' : 'Add connector';
   const busyLabel = isEdit ? 'Saving…' : 'Adding…';
@@ -330,6 +530,11 @@ export function NewConnectorSignInPage() {
               {callbackUrl}
             </Text>
           )}
+          <GrantScopeChoice
+            grantScope={effectiveGrantScope(state)}
+            hasIssuer={Boolean(state.issuer.trim())}
+            onChange={setGrantScope}
+          />
           {/* Remounted on each blocked attempt, open when a field inside
               has a problem: a collapsed panel unmounts its fields, and the
               one that says what is wrong must be on screen. */}
@@ -340,8 +545,12 @@ export function NewConnectorSignInPage() {
                 Advanced: sign-in settings for apps muster can&apos;t look up
               </span>
             }
+            // An issuer opens it too: the grant-scope choice above depends on
+            // it and sends people here for it.
             defaultExpanded={
+              Boolean(state.issuer.trim()) ||
               hasAdvancedAuthorizationServer(state) ||
+              hadClient ||
               (validation.submitted && hasAdvancedProblem)
             }
           >
@@ -355,29 +564,16 @@ export function NewConnectorSignInPage() {
                 secondaryLabel="optional"
                 value={state.issuer}
                 onChange={setIssuer}
-                placeholder="https://auth.example.com"
+                placeholder="e.g. https://auth.example.com"
                 description="Every setting below requires this."
-                {...textFieldProps('issuer', fieldErrors.issuer)}
-              />
-              <TextField
-                label="Permissions to ask for (scopes)"
-                secondaryLabel="optional"
-                isDisabled={!authFields.scopes.available}
-                value={state.scopes}
-                onChange={setScopes}
-                placeholder="read write"
-                description={
-                  authFields.scopes.available
-                    ? "Separate them with spaces, as the app's documentation names them."
-                    : authFields.scopes.reason
-                }
+                {...textFieldProps('issuer', issuerError)}
               />
               <TextField
                 label="Sign-in page address (authorization endpoint)"
                 secondaryLabel="optional"
                 value={state.authorizationEndpoint}
                 onChange={setAuthorizationEndpoint}
-                placeholder="https://github.com/login/oauth/authorize"
+                placeholder="e.g. https://github.com/login/oauth/authorize"
                 description="Set together with the token address, or leave both empty."
                 {...textFieldProps(
                   'authorizationEndpoint',
@@ -389,9 +585,21 @@ export function NewConnectorSignInPage() {
                 secondaryLabel="optional"
                 value={state.tokenEndpoint}
                 onChange={setTokenEndpoint}
-                placeholder="https://github.com/login/oauth/access_token"
+                placeholder="e.g. https://github.com/login/oauth/access_token"
                 description="Set together with the sign-in page address."
                 {...textFieldProps('tokenEndpoint', fieldErrors.tokenEndpoint)}
+              />
+              {/* Enabled with or without an issuer: a field greyed out until
+                  one above is filled reads as broken. Validation names the
+                  missing issuer instead. */}
+              <TextField
+                label="Permissions to ask for (scopes)"
+                secondaryLabel="optional"
+                value={state.scopes}
+                onChange={setScopes}
+                placeholder="e.g. read write"
+                description="Separated by spaces. Needs an issuer."
+                {...textFieldProps('scopes', fieldErrors.scopes)}
               />
               <div
                 className={classes.fieldGroup}
@@ -404,61 +612,155 @@ export function NewConnectorSignInPage() {
                   variant="body-medium"
                   weight="bold"
                 >
-                  Client credentials — stored in a Kubernetes Secret
+                  Client credentials
                 </Text>
                 <Text variant="body-small" color="secondary">
                   Only if you registered the app with its provider yourself,
-                  such as a GitHub App. Enter the Secret&apos;s name and key
-                  names — never the client ID or secret themselves. Leave empty
-                  when muster can register itself.
+                  such as a GitHub App. Leave empty when muster can register
+                  itself.
                 </Text>
-                <TextField
-                  label="Secret name"
-                  secondaryLabel="optional"
-                  value={state.clientSecretName}
-                  onChange={setClientSecretName}
-                  placeholder="github-oauth-client"
-                  {...textFieldProps(
-                    'clientSecretName',
-                    fieldErrors.clientSecretName,
-                  )}
-                />
-                <TextField
-                  label="Secret namespace"
-                  secondaryLabel="optional"
-                  value={state.clientSecretNamespace}
-                  onChange={setClientSecretNamespace}
-                  placeholder="muster"
-                  description="Defaults to the connector's namespace."
-                />
-                <TextField
-                  label="Key holding the client ID"
-                  secondaryLabel="optional"
-                  value={state.clientIdKey}
-                  onChange={setClientIdKey}
-                  placeholder="client-id"
-                  description="Defaults to client-id."
-                />
-                <TextField
-                  label="Key holding the client secret"
-                  secondaryLabel="optional"
-                  value={state.clientSecretKey}
-                  onChange={setClientSecretKey}
-                  placeholder="client-secret"
-                  description="Defaults to client-secret."
-                />
+                <RadioGroup
+                  aria-labelledby={credentialsHeadingId}
+                  orientation="horizontal"
+                  value={state.useExistingSecret ? 'existing' : 'new'}
+                  onChange={value => chooseSource(value === 'existing')}
+                >
+                  <Radio value="new">New Secret</Radio>
+                  <Radio value="existing">Existing Secret</Radio>
+                </RadioGroup>
+                {/* What either choice means in Kubernetes terms. muster
+                    writes its own client Secret as `Opaque`, and reads any
+                    other type but the ones that hold the cluster's or its own
+                    credentials (TLS, tokens, image pulls, Helm releases). */}
+                {state.useExistingSecret ? (
+                  <Text variant="body-small" color="secondary">
+                    Name a Kubernetes Secret of type Opaque that holds the
+                    client ID and secret in its data, by default under the keys
+                    client-id and client-secret. Whoever saves the connector
+                    must be allowed to get this Secret.
+                  </Text>
+                ) : (
+                  <Text variant="body-small" color="secondary">
+                    {newSecretText}
+                  </Text>
+                )}
+                {clientSecretStored && !replaceMode && (
+                  <Flex align="center" justify="between" gap="3">
+                    <Text variant="body-medium">Client secret stored</Text>
+                    {!cannotStoreClient && (
+                      <Button
+                        ref={replaceButtonRef}
+                        variant="secondary"
+                        size="small"
+                        onPress={startReplacing}
+                      >
+                        Replace
+                      </Button>
+                    )}
+                  </Flex>
+                )}
+                {serverChanged && (
+                  <Text variant="body-small" color="secondary">
+                    The sign-in server changed, so enter the client again.
+                  </Text>
+                )}
+                {hadClient && !clientSecretStored && (
+                  <Text variant="body-small" color="secondary">
+                    Without an issuer, the stored client is no longer used.
+                  </Text>
+                )}
+                {enteringCredentials && (
+                  <>
+                    <TextField
+                      ref={clientIdRef}
+                      label="Client ID"
+                      isRequired={replaceMode}
+                      secondaryLabel={replaceMode ? undefined : 'optional'}
+                      autoComplete="off"
+                      value={credentials.clientId}
+                      onChange={clientId =>
+                        setCredentials(prev => ({ ...prev, clientId }))
+                      }
+                      {...textFieldProps('clientId', credentialErrors.clientId)}
+                    />
+                    <PasswordField
+                      label="Client secret"
+                      isRequired={replaceMode}
+                      secondaryLabel={replaceMode ? undefined : 'optional'}
+                      autoComplete="new-password"
+                      value={credentials.clientSecret}
+                      onChange={clientSecret =>
+                        setCredentials(prev => ({ ...prev, clientSecret }))
+                      }
+                      description="It cannot be read back once saved."
+                      {...textFieldProps(
+                        'clientSecret',
+                        credentialErrors.clientSecret,
+                      )}
+                    />
+                    {replaceMode && !serverChanged && (
+                      <Button
+                        className={classes.inlineAction}
+                        variant="tertiary"
+                        size="small"
+                        onPress={keepStoredSecret}
+                      >
+                        Keep stored secret
+                      </Button>
+                    )}
+                  </>
+                )}
+                {state.useExistingSecret && (
+                  <>
+                    <TextField
+                      label="Secret name"
+                      value={state.clientSecretName}
+                      onChange={setClientSecretName}
+                      placeholder="e.g. github-oauth-client"
+                      {...textFieldProps(
+                        'clientSecretName',
+                        fieldErrors.clientSecretName,
+                      )}
+                    />
+                    <TextField
+                      label="Secret namespace"
+                      secondaryLabel="optional"
+                      value={state.clientSecretNamespace}
+                      onChange={setClientSecretNamespace}
+                      description="Defaults to the connector's namespace."
+                      {...textFieldProps(
+                        'clientSecretNamespace',
+                        fieldErrors.clientSecretNamespace,
+                      )}
+                    />
+                    {/* The placeholder is the default key itself, not an
+                        "e.g.": an empty field sends nothing and muster uses
+                        that key, which the text above says too. */}
+                    <TextField
+                      label="Key in the Secret's data that holds the client ID"
+                      secondaryLabel="optional"
+                      value={state.clientIdKey}
+                      onChange={setClientIdKey}
+                      placeholder="client-id"
+                      {...textFieldProps(
+                        'clientIdKey',
+                        fieldErrors.clientIdKey,
+                      )}
+                    />
+                    <TextField
+                      label="Key in the Secret's data that holds the client secret"
+                      secondaryLabel="optional"
+                      value={state.clientSecretKey}
+                      onChange={setClientSecretKey}
+                      placeholder="client-secret"
+                      {...textFieldProps(
+                        'clientSecretKey',
+                        fieldErrors.clientSecretKey,
+                      )}
+                    />
+                  </>
+                )}
               </div>
-              <Select
-                label="How long a sign-in lasts"
-                options={GRANT_SCOPE_OPTIONS}
-                selectedKey={state.grantScope}
-                onSelectionChange={key => {
-                  if (key === 'session' || key === 'subject') {
-                    setGrantScope(key);
-                  }
-                }}
-                description="Reuse suits personal accounts like GitHub; it lasts until the person signs out."
-              />
             </div>
           </DisclosureAccordion>
         </Flex>

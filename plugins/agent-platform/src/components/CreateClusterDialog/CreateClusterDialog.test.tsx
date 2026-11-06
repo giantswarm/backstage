@@ -2,7 +2,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
@@ -13,6 +13,7 @@ import type {
   ClusterReleasesResult,
   ClusterWriteResult,
 } from '../../lib/clusterManager';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import {
   CreateClusterDialog,
   clusterNameProblem,
@@ -20,8 +21,14 @@ import {
   parseValues,
 } from './CreateClusterDialog';
 
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
@@ -402,6 +409,52 @@ describe('CreateClusterDialog', () => {
       await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  // The review's dry runs ask again once the sign-in lands; Deploy is the
+  // person's to press.
+  it('asks the review again once the sign-in lands, and deploys nothing by itself', async () => {
+    const user = userEvent.setup();
+    const scenario: Scenario = { notConnected: true };
+    const { callTool } = await renderDialog(scenario);
+    await fillAndReview(user);
+    await screen.findByText('Connect to cluster-manager');
+
+    scenario.notConnected = false;
+    await signInLands(user);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Connect to cluster-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByRole('button', { name: 'Deploy' })).toBeEnabled();
+    expect(writesOf(callTool)).toHaveLength(0);
+  });
+
+  it('clears a refused Deploy once the sign-in lands, without deploying again', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog();
+    const scripted = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args, ...rest) => {
+      if (name === 'x_cluster-manager_create_cluster' && !args.dryRun) {
+        throw new Error('tool not found: x_cluster-manager_create_cluster');
+      }
+      return scripted(name, args, ...rest);
+    });
+    await fillAndReview(user);
+    await user.click(await screen.findByRole('button', { name: 'Deploy' }));
+    await screen.findByText('Connect to cluster-manager');
+
+    await signInLands(user);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Connect to cluster-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(writesOf(callTool)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
   });
 });
 

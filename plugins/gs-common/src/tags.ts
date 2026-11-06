@@ -36,3 +36,20 @@ export function parseTags(raw: string | undefined): string[] {
     ),
   ];
 }
+
+/**
+ * Whether writing `tags` over `stored` (the resource's tags as read; none on
+ * create) breaks the {@link MAX_TAGS} limit, as muster checks it: only a list
+ * past the limit that holds a tag not stored. An unchanged or shortened list
+ * of tags written elsewhere past the limit goes through.
+ */
+export function exceedsTagLimit(
+  tags: readonly string[],
+  stored: readonly string[] = [],
+): boolean {
+  if (tags.length <= MAX_TAGS) {
+    return false;
+  }
+  const kept = new Set(stored);
+  return tags.some(tag => !kept.has(tag));
+}

@@ -1,3 +1,4 @@
+import { ServiceUnavailableError } from '@backstage/errors';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
@@ -5,10 +6,12 @@ import express from 'express';
 import request from 'supertest';
 import {
   EndpointProbeResult,
+  markReported,
   MusterAuthRequiredError,
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   createRouter,
@@ -1138,6 +1141,96 @@ describe('createRouter', () => {
     ]);
   const asPerson = { authToken: 'user-token' };
 
+  describe('/servers/names', () => {
+    it("answers each connector's name, family and display name, as the person", async () => {
+      callTool.mockResolvedValue({
+        mcpServers: [
+          {
+            name: 'agent-manager',
+            displayName: ' Agent Manager ',
+            url: 'https://example.com/mcp',
+            statusMessage: 'Connected',
+          },
+          {
+            name: 'gazelle-mcp-kubernetes',
+            family: { name: 'kubernetes', instanceArg: 'management_cluster' },
+          },
+          {
+            name: 'search',
+            namespace: 'org-acme',
+            key: 'org-acme/search',
+            displayName: 'Acme Search',
+          },
+          { name: 'blank', displayName: '  ' },
+          { displayName: 'Nameless' },
+        ],
+      });
+      const response = await request(await personApp())
+        .get('/servers/names?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        servers: [
+          { name: 'agent-manager', displayName: 'Agent Manager' },
+          { name: 'gazelle-mcp-kubernetes', family: 'kubernetes' },
+          // A tenant's server by muster's key, as auth://status names it.
+          { name: 'org-acme/search', displayName: 'Acme Search' },
+          { name: 'blank' },
+        ],
+      });
+      expect(callTool).toHaveBeenCalledWith(
+        'core_mcpserver_list',
+        { showAll: true },
+        { authToken: 'user-token' },
+      );
+    });
+
+    // A background reader names the connectors: a failure is no Sentry
+    // issue, and the prompts keep the servers' own names.
+    it('answers a refused list as unavailable, not a 5xx', async () => {
+      callTool.mockRejectedValue(new Error('Failed to list MCP servers'));
+
+      const response = await request(app).get('/servers/names');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ servers: [], unavailable: true });
+    });
+
+    // Read once per installation, not polled: an outage is reported, as on
+    // `/auth/login`, not hidden behind an empty answer.
+    it('answers muster being unreachable with a 5xx', async () => {
+      callTool.mockRejectedValue(new TypeError('fetch failed'));
+
+      const response = await request(app).get('/servers/names');
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+
+    // The token refresh only follows a 401: muster refusing the bearer
+    // must not read as "cannot name them" for the rest of the tab.
+    it('answers 401 when muster refuses the forwarded token', async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError('Your token has expired. Please re-authenticate.'),
+      );
+
+      const response = await request(await personApp())
+        .get('/servers/names?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(401);
+    });
+
+    it('refuses a read without the person token with a 401', async () => {
+      const response = await request(await personApp()).get(
+        '/servers/names?installation=gazelle',
+      );
+
+      expect(response.status).toBe(401);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+  });
+
   describe('/call', () => {
     it('executes a core tool on an installation without per-user auth', async () => {
       callTool.mockResolvedValue({ ok: true });
@@ -1244,6 +1337,234 @@ describe('createRouter', () => {
         message: 'node pool gpu-l4 still runs 1 node(s)',
         details: ['{"refused":{"nodes":["i-0abc"],"models":[],"hint":"wait"}}'],
       });
+    });
+  });
+
+  describe("/call of muster's connector tools", () => {
+    const SECRET = 'hubspot-s3cret';
+    // The client names the called tool on its error, as MusterMcpClient does,
+    // which gives a connector write's refusal its 422.
+    const toolError = (
+      message: string,
+      details: string[] = [],
+      tool = 'core_mcpserver_create',
+    ) =>
+      new MusterToolError(message, details, { tool, installation: 'gazelle' });
+    const rejectWith = (message: string, details: string[] = []) =>
+      callTool.mockImplementation(async (tool: string) => {
+        throw toolError(message, details, tool);
+      });
+    const refusal =
+      'Permission denied: your user may not create Secret jira-oauth-client-ab12c in namespace muster. Ask a platform admin to grant you the mcpserver-editor role.';
+    const create = async () =>
+      request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'core_mcpserver_create',
+          arguments: {
+            name: 'jira',
+            clientCredentials: {
+              clientId: 'hubspot-client',
+              clientSecret: SECRET,
+            },
+          },
+        });
+
+    // A refusal is the person's answer, not the portal's fault: below the
+    // 500 at which the error middleware logs to Sentry.
+    it("answers muster's refusal as a 422 with its message, never the arguments", async () => {
+      rejectWith(refusal, ['{"missing":"create secrets"}']);
+
+      const response = await create();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterToolError',
+        message: refusal,
+        details: ['{"missing":"create secrets"}'],
+      });
+      expect(JSON.stringify(response.body)).not.toContain(SECRET);
+    });
+
+    // MiddlewareFactory.error() logs at error level, which the root logger
+    // ships to Sentry, only from 500 on: a refusal stays out, an outage not.
+    it.each([
+      [toolError(refusal), 422, false],
+      [
+        toolError(
+          'forbidden: you may not update agents',
+          [],
+          'x_agent-manager_update_agent',
+        ),
+        403,
+        false,
+      ],
+      // The client logs a rollout's interruption at info and marks it.
+      [markReported(toolError('interrupted: muster is rolling')), 503, false],
+      [
+        toolError(
+          "Tool execution failed: no answer within the server's timeout of 30s",
+        ),
+        504,
+        true,
+      ],
+      [new Error('fetch failed'), 500, true],
+    ])(
+      'logs %s at error level only for a 5xx not already logged',
+      async (error, status, loggedAsError) => {
+        const logger = mockServices.logger.mock();
+        jest.mocked(logger.child).mockReturnValue(logger);
+        const config = mockServices.rootConfig({
+          data: {
+            muster: {
+              installations: [
+                { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+              ],
+            },
+          },
+        });
+        const router = await createRouter({
+          logger,
+          config,
+          client: mockClient,
+          reachability: reachableEverywhere(),
+        });
+        const loggedApp = expressApp();
+        loggedApp.use(router);
+        loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
+        callTool.mockRejectedValue(error);
+
+        const response = await request(loggedApp)
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({
+            name: 'core_mcpserver_create',
+            arguments: { clientCredentials: { clientSecret: SECRET } },
+          });
+
+        expect(response.status).toBe(status);
+        expect(jest.mocked(logger.error).mock.calls.length > 0).toBe(
+          loggedAsError,
+        );
+        expect(
+          JSON.stringify(jest.mocked(logger.error).mock.calls),
+        ).not.toContain(SECRET);
+      },
+    );
+
+    it('keeps the sign-in muster asks for a 401', async () => {
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError('jira', 'https://idp/authorize', [
+          "auth_required: server 'jira' requires authentication",
+        ]),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('server_sign_in_required');
+    });
+
+    it("keeps muster's expired-token answer a 401", async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError(
+          'token has expired for muster, re-authenticate to refresh: token is expired',
+        ),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+    });
+
+    // muster's refusals, as its connector write tools word them.
+    it.each([
+      'Permission denied: your user may not create MCPServer "jira" (mcpservers) in namespace "muster". Ask a platform admin to grant you the mcpserver-editor role. API server response: forbidden',
+      'Invalid MCP server definition: url is required',
+      'Validation failed: auth.authorizationServer needs an issuer',
+      "MCP server 'jira' already exists",
+      "Cannot create MCP server 'jira': server 'hubspot' pins issuer https://app.hubspot.com with another client. One issuer, one client: use an existing Secret with that server's client, or another issuer",
+      "Cannot update MCP server 'jira': its stored client belongs to the previous issuer and endpoints of auth.authorizationServer; re-enter it with clientCredentials",
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster".',
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: Secret "jira-oauth-client-ab12c" already exists in namespace "muster"; retry to generate another name',
+      "Failed to create MCP server: mcpservers.muster.giantswarm.io \"jira\" is forbidden: ValidatingAdmissionPolicy 'muster-mcpserver-secret-references' with binding 'muster-mcpserver-secret-references' denied request: the writer of an MCPServer may name only Secrets they may get",
+    ])('answers the refusal %j as a 422', async message => {
+      rejectWith(message);
+
+      const response = await create();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.message).toBe(message);
+    });
+
+    // muster's own failures are tool errors too: they stay 500 and reach
+    // Sentry rather than read as the person's mistake.
+    it.each([
+      'Failed to create MCP server: etcdserver: request timed out',
+      'Failed to update MCP server: Internal error occurred: failed calling webhook "mcpservers.muster.giantswarm.io": connection refused',
+      'Failed to get existing MCP server: the server is currently unable to handle the request',
+      'Cannot store the client credentials of MCP server \'jira\', so it was not created: failed to create Secret "jira-oauth-client-ab12c" in namespace "muster": connection refused',
+      "Cannot store the client credentials of MCP server 'jira': it has no UID to own the Secret",
+      'Cannot store the client credentials of MCP server \'jira\': Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster". Removing the server failed too, so it is left behind without its client: delete MCP server \'jira\' (connection refused)',
+      'unknown args: [clientCredentials]. Allowed args: [name url]',
+    ])("leaves muster's failure %j a 500", async message => {
+      rejectWith(message);
+
+      const response = await create();
+
+      expect(response.status).toBe(500);
+    });
+
+    it('keeps the stack of the tool error it answers 422', async () => {
+      const error = toolError(refusal);
+      callTool.mockRejectedValue(error);
+
+      const response = await create();
+
+      // The 422 is muster's own error's, not a copy's without its stack.
+      expect(response.status).toBe(422);
+      expect(error.status).toBe(422);
+    });
+
+    it.each(['core_mcpserver_update', 'core_mcpserver_validate'])(
+      "answers %s's refusal as a 422 too",
+      async name => {
+        rejectWith(refusal);
+
+        const response = await request(await personApp())
+          .post('/call')
+          .set(MUSTER_AUTH_HEADER, 'user-token')
+          .send({ name, arguments: { name: 'jira' } });
+
+        expect(response.status).toBe(422);
+        expect(response.body.error.message).toBe(refusal);
+      },
+    );
+
+    it.each([
+      'core_mcpserver_get',
+      'core_mcpserver_list',
+      'core_mcpserver_detect',
+      'core_mcpserver_delete',
+    ])("leaves %s's tool error a 500", async name => {
+      rejectWith('not found');
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name, arguments: { name: 'jira' } });
+
+      expect(response.status).toBe(500);
+    });
+
+    it('leaves an outage a 5xx', async () => {
+      callTool.mockRejectedValue(new Error('fetch failed'));
+
+      const response = await create();
+
+      expect(response.status).toBe(500);
     });
   });
 
@@ -1665,6 +1986,78 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(500);
       expect(response.body.error.reason).toBeUndefined();
+    });
+  });
+
+  describe("an installation's muster that cannot be reached", () => {
+    async function buildLoggedApp() {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({ data: {} });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      // The error middleware logs through a child logger: route it back here.
+      logger.child.mockReturnValue(logger);
+      // Mounted under a path, as the backend mounts it, so that a URL relative
+      // to the router would show in the body.
+      const loggedApp = expressApp();
+      loggedApp.use('/api/muster', router);
+      loggedApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { loggedApp, logger };
+    }
+
+    it('answers 503 itself, with the body the error middleware sends, and does not log it again', async () => {
+      const { loggedApp, logger } = await buildLoggedApp();
+      listTools.mockRejectedValue(
+        new MusterUnreachableError(
+          'gazelle',
+          'the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+        ),
+      );
+      const answered = await request(loggedApp).get('/api/muster/tools');
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // The same failure as a plain ServiceUnavailableError goes through the
+      // error middleware: the person gets the same answer either way.
+      listTools.mockRejectedValue(
+        new ServiceUnavailableError(
+          'gazelle did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+        ),
+      );
+      const viaMiddleware = await request(loggedApp).get('/api/muster/tools');
+      expect(logger.error).toHaveBeenCalledTimes(1);
+
+      expect(answered.status).toBe(503);
+      expect(answered.body).toEqual(viaMiddleware.body);
+      expect(answered.body.request).toEqual({
+        method: 'GET',
+        url: '/api/muster/tools',
+      });
+      expect(answered.body.error).toEqual({
+        name: 'ServiceUnavailableError',
+        message:
+          'gazelle did not answer: the connection failed (UND_ERR_CONNECT_TIMEOUT)',
+      });
+    });
+
+    it('leaves any other 503 to the error middleware', async () => {
+      const { loggedApp, logger } = await buildLoggedApp();
+      listTools.mockRejectedValue(
+        new ServiceUnavailableError(
+          'Muster meta-tool list_tools has no executor',
+        ),
+      );
+
+      const response = await request(loggedApp).get('/api/muster/tools');
+
+      expect(response.status).toBe(503);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Request failed with status 503',
+        expect.any(ServiceUnavailableError),
+      );
     });
   });
 });

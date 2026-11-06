@@ -208,6 +208,8 @@ export interface MCPServerAuthorizationServer {
   authorizationEndpoint?: string;
   tokenEndpoint?: string;
   expectedIssuer?: string;
+  /** RFC 7009 token revocation endpoint; muster discovers it when unset. */
+  revocationEndpoint?: string;
   clientCredentialsSecretRef?: MCPServerClientCredentialsSecretRef;
   grantScope?: 'session' | 'subject';
 }
@@ -253,8 +255,9 @@ interface MCPServerInterface extends KubeObjectInterface {
     nextRetryAfter?: string;
     conditions?: MCPServerCondition[];
     /**
-     * The server's own icon, read by muster from its MCP `icons`: a base64
-     * `data:` URI (SVG, PNG, JPEG or WebP) of at most 64 KiB.
+     * The connector's icon as muster writes it: the server's own MCP `icons`,
+     * else muster's mark for a known service. A base64 `data:` URI (SVG, PNG,
+     * JPEG or WebP); muster caps the whole URI at 64 KiB.
      */
     icon?: string;
   };
@@ -280,8 +283,8 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
   }
 
   /**
-   * The server's own icon as muster wrote it (`.status.icon`), unchecked:
-   * `resolveConnectorLogo` decides whether it is shown.
+   * The connector's icon as muster wrote it (`.status.icon`), unchecked:
+   * `connectorIconOf` decides whether it is shown.
    */
   getStatusIcon(): string | undefined {
     return this.jsonData.status?.icon;

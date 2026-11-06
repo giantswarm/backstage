@@ -292,6 +292,12 @@ function render({
           identityApiRef,
           mockApis.identity.mock({
             getProfileInfo: async () => ({ displayName }),
+            // Whose the composer's draft is.
+            getBackstageIdentity: async () => ({
+              type: 'user',
+              userEntityRef: 'user:default/jane',
+              ownershipEntityRefs: ['user:default/jane'],
+            }),
           }),
         ],
         [storageApiRef, storage],
@@ -315,6 +321,7 @@ const agentPicker = () =>
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 9, 8, 15, 0), advanceTimers: true });
   window.localStorage.clear();
+  window.sessionStorage.clear();
   mockNavigate.mockClear();
   mockUseAgents.mockClear();
   mockUseCreateSession.mockReset();
@@ -792,6 +799,34 @@ describe('AgentPlatformHome', () => {
       expect(screen.getByText('Required to start')).toBeInTheDocument();
     });
 
+    // giantswarm/giantswarm#39043: a sign-in from the inbox, a reload or a
+    // link followed in the tab must not cost the person their prompt.
+    it('keeps the unsent prompt and the chosen agent when the page is opened again', async () => {
+      const first = await render();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Research Agent' }),
+      );
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Prompt' }),
+        'Compare the two runbooks',
+      );
+      await waitFor(() =>
+        expect(Object.keys(window.sessionStorage)).toHaveLength(1),
+      );
+      first.unmount();
+
+      await render();
+
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveValue(
+          'Compare the two runbooks',
+        ),
+      );
+      expect(
+        screen.getByText("You're starting a session with Research Agent."),
+      ).toBeInTheDocument();
+    });
+
     it('names the chosen agent and what it can use, without its model', async () => {
       await render();
 
@@ -1003,7 +1038,8 @@ describe('AgentPlatformHome', () => {
       expect(agentPicker()).toHaveTextContent('Choose an agent');
     });
 
-    it('offers no search over a short list of agents', async () => {
+    it('offers no search over two agents', async () => {
+      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [sre, research] });
       await render({ manageAgentsHref: '/customize/agents' });
 
       await userEvent.click(agentPicker());
@@ -1011,7 +1047,7 @@ describe('AgentPlatformHome', () => {
     });
 
     it('keeps Manage agents in the picker while searching', async () => {
-      // Past SEARCH_MIN, where the picker offers its search.
+      // From SEARCH_MIN on, where the picker offers its search.
       const more = Array.from({ length: 7 }, (_, index) => ({
         ...sre,
         id: `gazelle/kagent/helper-${index}`,

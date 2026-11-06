@@ -82,7 +82,6 @@ function docs(overrides: Partial<WorkspaceDetail['workspace']> = {}) {
           repositories: ['api', 'web'],
         },
       ],
-      sync: { schedule: 'nightly' },
       sizing: { minimum: '20Gi' },
       resourceVersion: '7',
       createdAt: '2026-10-01T00:00:00Z',
@@ -262,18 +261,71 @@ describe('WorkspaceDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links each repository at its provider’s host', async () => {
+  it('links each repository at its provider’s host, in a new tab', async () => {
     mockProviders = [
       { name: 'github', kind: 'github', connected: true, host: 'github.com' },
     ];
+    // One repository has left the selection: linked all the same, and said.
+    const detail = docs();
+    detail.mirrors = [
+      ...detail.mirrors,
+      {
+        provider: 'github',
+        repository: 'example-org/old',
+        defaultBranch: 'main',
+        head: 'abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+        pushedAt: '2026-10-10T08:00:00Z',
+        sizeBytes: 1024 ** 2,
+        droppedAt: '2026-10-19T00:00:00Z',
+      },
+    ];
+    mockDetail = { ...mockDetail, data: detail };
     await renderPage();
 
+    const link = screen.getByRole('link', {
+      name: 'example-org/api (opens in a new tab)',
+    });
+    expect(link).toHaveAttribute('href', 'https://github.com/example-org/api');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    const dropped = screen.getByRole('row', { name: /^example-org\/old/ });
     expect(
-      screen.getByRole('link', { name: 'example-org/api' }),
-    ).toHaveAttribute('href', 'https://github.com/example-org/api');
+      within(dropped).getByRole('link', {
+        name: 'example-org/old (opens in a new tab)',
+      }),
+    ).toHaveAttribute('href', 'https://github.com/example-org/old');
+    expect(
+      within(dropped).getByText(
+        'left the selection, kept while a session uses it',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a repository as plain text where its provider names no host', async () => {
+    mockProviders = [{ name: 'github', kind: 'github', connected: true }];
+    await renderPage();
+
+    expect(screen.getByText('example-org/api')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /^example-org\/api/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('lists the Sessions on the workspace with their cleanup dates, and filters to mine', async () => {
+    // A third session, so the list gets its search and filters (SEARCH_MIN).
+    const detail = docs();
+    detail.sessionDirectories = [
+      ...(detail.sessionDirectories ?? []),
+      {
+        session: 'sess-other',
+        name: 'Tidy the docs',
+        creator: 'ops@example.com',
+        lastTurn: '2026-10-18T09:00:00Z',
+        sizeBytes: 1024 ** 2,
+        cleanupAfter: '2026-11-01T09:00:00Z',
+      },
+    ];
+    mockDetail = { ...mockDetail, data: detail };
     await renderPage('/customize/workspaces/gazelle/lab/ws-docs/sessions');
 
     const table = screen.getByRole('grid');
@@ -291,6 +343,16 @@ describe('WorkspaceDetailPage', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByText('Bump the chart')).toBeNull();
     expect(screen.getByText('Fix the flaky test')).toBeInTheDocument();
+  });
+
+  it('lists two Sessions on the workspace without search or filters', async () => {
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/sessions');
+
+    expect(screen.getByText('Bump the chart')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search sessions' }),
+    ).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Filters' })).toBeNull();
   });
 
   it('shows a failed last synchronization with the manager’s reason', async () => {

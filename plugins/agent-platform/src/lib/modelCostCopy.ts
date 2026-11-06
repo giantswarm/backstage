@@ -1,4 +1,12 @@
-import type { ModelCostFallbackReason } from '../hooks/useModelCost';
+import {
+  describeMimirFailure,
+  OLDER_METRICS_UNAVAILABLE,
+} from '@giantswarm/backstage-plugin-ui-react';
+import type {
+  ModelCostFallbackReason,
+  ModelCostView,
+} from '../hooks/useModelCost';
+import { lastDaysNoun } from './usageWindow';
 
 /**
  * The one line that says why "Your sessions" shows an estimate rather than
@@ -24,9 +32,11 @@ export function describeModelCostFallback(
     case 'not-recorded':
       return `No actual cost: the gateway on ${installation} does not record who made each model call.`;
     case 'no-spend':
-      return `No actual cost: the gateway priced none of your model calls on ${installation} in the last ${days} days.`;
+      return `No actual cost: the gateway priced none of your model calls on ${installation} in ${lastDaysNoun(days)}.`;
     case 'unreadable':
       return `No actual cost: ${installation}’s gateway metrics could not be read just now.`;
+    case 'older-data-unavailable':
+      return `No actual cost. ${OLDER_METRICS_UNAVAILABLE.sentence}`;
     case 'no-mimir':
       return undefined;
     case 'error':
@@ -51,7 +61,7 @@ export function describeActualCost({
   converted: boolean;
 }): string {
   const parts = [
-    `Sums the gateway’s price for every model call made as you on ${installation} in the last ${days} days. That includes calls outside these sessions, so it can be more than the tokens beside it suggest. Models missing from its catalogue add nothing.`,
+    `Sums the gateway’s price for every model call made as you on ${installation} in ${lastDaysNoun(days)}. That includes calls outside these sessions, so it can be more than the tokens beside it suggest. Models missing from its catalogue add nothing.`,
   ];
   if (partial) {
     parts.push(
@@ -82,7 +92,7 @@ export function describeActualCostByAgent({
   converted: boolean;
 }): string {
   const parts = [
-    `Cost is the gateway’s price for every model call each agent made as you in the last ${days} days, in these sessions or not, so it need not match the tokens beside it. A call from outside any agent’s pod, or through an agent with no session in the window, has no row.`,
+    `Cost is the gateway’s price for every model call each agent made as you in ${lastDaysNoun(days)}, in these sessions or not, so it need not match the tokens beside it. A call from outside any agent’s pod, or through an agent with no session in the window, has no row.`,
   ];
   if (partial) {
     parts.push(
@@ -93,4 +103,39 @@ export function describeActualCostByAgent({
     parts.push('Converted from USD at this environment’s configured rate.');
   }
   return parts.join(' ');
+}
+
+/**
+ * The estimate's basis line, led by why there is no actual cost when the
+ * fallback has a reason of its own to give.
+ *
+ * `rateFailure` is the rate queries' error when the estimate has no rate
+ * because they failed. When it and the actual cost failed for the same reason
+ * Mimir gave (older data unavailable), the line says it once rather than once
+ * for each.
+ */
+export function withFallbackReason({
+  cost,
+  installation,
+  days,
+  basis,
+  rateFailure,
+}: {
+  cost: ModelCostView;
+  installation: string;
+  days: number;
+  basis: string;
+  rateFailure?: unknown;
+}): string {
+  if (cost.state !== 'fallback') {
+    return basis;
+  }
+  if (
+    cost.reason === 'older-data-unavailable' &&
+    describeMimirFailure(rateFailure) === OLDER_METRICS_UNAVAILABLE
+  ) {
+    return `No actual cost and no estimate. ${OLDER_METRICS_UNAVAILABLE.sentence}`;
+  }
+  const reason = describeModelCostFallback(cost.reason, installation, days);
+  return reason ? `${reason} ${basis}` : basis;
 }

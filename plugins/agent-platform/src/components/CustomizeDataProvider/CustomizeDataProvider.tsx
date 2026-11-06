@@ -5,6 +5,7 @@ import {
   type SkillCatalog,
 } from '../../hooks/useSkillCatalog';
 import { useScopedToolchainInstallations } from '../../hooks/useToolchainManager';
+import { defaultModelIds } from '../../lib/defaultModel';
 import { clientLookupOf } from '../../lib/serving';
 import { uniqueSkills } from '../../lib/customize';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -16,6 +17,7 @@ import {
   useWorkspacesData,
   WorkspacesDataProvider,
 } from '../WorkspacesDataProvider';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 /**
  * What the Customize screen's tab strip counts: `'loading'` while still being
@@ -30,6 +32,13 @@ export type CustomizeCounts = {
 
 export type CustomizeDataValue = {
   counts: CustomizeCounts;
+  /**
+   * The same counts once complete: `'loading'` until every installation in
+   * scope has answered, where `counts` already shows the ones that have, and
+   * absent when an installation could not be read and nothing was. For a
+   * report sent once, which must not go out with a partial total.
+   */
+  settledCounts: CustomizeCounts;
   /**
    * Whether any skill repository is configured; `undefined` until the
    * signed-in config is known.
@@ -64,6 +73,16 @@ function skillCountOf(catalog: SkillCatalog): RouteTabCount | undefined {
   return unreadable ? undefined : uniqueSkills(catalog.skills).length;
 }
 
+/** The skills of every repository; unknown when one could not be read. */
+function settledSkillCountOf(catalog: SkillCatalog): RouteTabCount | undefined {
+  if (catalog.isLoading) {
+    return 'loading';
+  }
+  return catalog.error !== null || catalog.failedRepositories.length > 0
+    ? undefined
+    : uniqueSkills(catalog.skills).length;
+}
+
 const CustomizeDataContext = createContext<CustomizeDataValue | undefined>(
   undefined,
 );
@@ -90,6 +109,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     isAvailable: hasWorkspaces,
     isLoading: workspacesLoading,
     rows: { length: workspaceCount },
+    totalCount: workspaceTotal,
     failures: workspaceFailures,
   } = useWorkspacesData();
   const { hasToolchains } = useScopedToolchainInstallations();
@@ -99,13 +119,14 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
-      modelInstallations.flatMap(installation =>
-        modelConfigsFor(installation).map(modelConfig => {
+      modelInstallations.flatMap(installation => {
+        const defaults = defaultModelIds(modelConfigsFor(installation));
+        return modelConfigsFor(installation).map(modelConfig => {
           const state = servingStateFor(
             installation,
             clientLookupOf(modelConfig),
           );
-          return toModelRow(
+          const row = toModelRow(
             modelConfig,
             state
               ? toModelServedBy(
@@ -115,8 +136,9 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
                 )
               : undefined,
           );
-        }),
-      ),
+          return defaults.has(row.id) ? { ...row, isDefault: true } : row;
+        });
+      }),
     [
       modelInstallations,
       modelConfigsFor,
@@ -144,6 +166,21 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
             : workspaceCount;
         })(),
       },
+      settledCounts: {
+        agents: (() => {
+          if (agents.isLoading || agents.isLoadingMore) {
+            return 'loading';
+          }
+          // An installation that could not be read leaves the total short.
+          return agents.unreachableInstallations.length > 0
+            ? undefined
+            : agents.rows.length;
+        })(),
+        models: modelsLoading ? 'loading' : modelRows.length,
+        skills: settledSkillCountOf(skillCatalog),
+        // Every Organization's, where the strip counts the picked one's.
+        workspaces: workspaceTotal,
+      },
       hasWorkspaces,
       hasToolchains,
       hasSkillRepositories: skillCatalog.isLoading
@@ -162,6 +199,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
       workspacesLoading,
       workspaceCount,
       workspacesUnread,
+      workspaceTotal,
     ],
   );
 
@@ -180,17 +218,19 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 export function CustomizeDataProvider({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider>
-      <ModelConfigsProvider>
-        <ServingProvider>
-          <AgentsDataProvider>
-            <WorkspacesDataProvider>
-              <CustomizeDataContextProvider>
-                {children}
-              </CustomizeDataContextProvider>
-            </WorkspacesDataProvider>
-          </AgentsDataProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          <ServingProvider>
+            <AgentsDataProvider>
+              <WorkspacesDataProvider>
+                <CustomizeDataContextProvider>
+                  {children}
+                </CustomizeDataContextProvider>
+              </WorkspacesDataProvider>
+            </AgentsDataProvider>
+          </ServingProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 }

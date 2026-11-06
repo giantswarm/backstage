@@ -14,6 +14,8 @@ export {
   toolErrorDetails,
 } from './apis';
 export type {
+  ConnectorName,
+  ConnectorNamesResponse,
   MusterApi,
   MusterAuthProvidersApi,
   MusterUnauthorizedReason,
@@ -64,18 +66,8 @@ export {
   mcpServerDisplayNames,
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
-export {
-  CONNECTOR_BRANDS,
-  connectorBrandOf,
-  connectorIconOf,
-  resolveConnectorLogo,
-} from './lib/connectorLogo';
-export type {
-  ConnectorBrand,
-  ConnectorLogoResolution,
-  ConnectorLogoSource,
-} from './lib/connectorLogo';
 export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
+export { connectorIconOf } from './lib/connectorLogo';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
@@ -102,6 +94,8 @@ export {
   ToolMarkers,
   hasMarkers,
   ServerSignIn,
+  useConnectorLabel,
+  useConnectorLabels,
   useServerSignIn,
   useServerNeedsSignIn,
   toneColors,
@@ -120,6 +114,7 @@ export type {
   ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
+  SignedIn,
   DeviceCode,
   SignInNoun,
   Tone,

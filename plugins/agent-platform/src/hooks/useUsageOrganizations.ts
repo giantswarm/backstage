@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useMimirQuery } from '@giantswarm/backstage-plugin-gs';
 import { useAgents } from '../components/AgentsDataProvider';
 import { UNKNOWN_AGENT_LABEL } from '../lib/llmUsage';
 import { organizationsSeenQueryFor } from '../lib/llmUsageQueries';
+import type { OrganizationDirectory } from '../lib/organizations';
 import { tenantKindOf, tenantOf } from '../lib/tenants';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
+import type { UsageWindow } from '../lib/usageWindow';
 
 export type UsageOrganizationsView = {
   /**
@@ -18,10 +21,15 @@ export type UsageOrganizationsView = {
 /** Platform first, then organizations, then other namespaces; by name within. */
 const KIND_ORDER = { platform: 0, organization: 1, namespace: 2 } as const;
 
-function compareNamespaces(a: string, b: string): number {
+function compareNamespaces(
+  a: string,
+  b: string,
+  directory: OrganizationDirectory,
+): number {
   return (
-    KIND_ORDER[tenantKindOf(a)] - KIND_ORDER[tenantKindOf(b)] ||
-    tenantOf(a).localeCompare(tenantOf(b))
+    KIND_ORDER[tenantKindOf(a, directory)] -
+      KIND_ORDER[tenantKindOf(b, directory)] ||
+    tenantOf(a, directory).localeCompare(tenantOf(b, directory))
   );
 }
 
@@ -38,16 +46,36 @@ function compareNamespaces(a: string, b: string): number {
  */
 export function useUsageOrganizations(
   installation: string | undefined,
-  days: number,
+  window: UsageWindow,
 ): UsageOrganizationsView {
   const seen = useMimirQuery({
     installationName: installation ?? '',
-    query: organizationsSeenQueryFor(days),
+    query: organizationsSeenQueryFor(
+      window.kind === 'month' ? { month: window.month } : { days: window.days },
+    ),
     enabled: Boolean(installation),
+    // In a month still being written the query re-keys with the clock every
+    // five minutes (`usageWindowSpec`): hold the options across that, so the
+    // control neither empties nor vanishes for a round trip.
+    keepPreviousAnswer: true,
   });
   const { rows: agents, isLoading: isLoadingAgents } = useAgents();
+  const { directory } = useOrganizationDirectory();
 
-  const seenResult = seen.data?.data?.result;
+  // The hold is for the clock alone. A list held across a change of
+  // installation or window is another scope's, and an organization picked
+  // from it may not exist here; it counts as no answer, as before the hold.
+  const scope = `${installation ?? ''}\n${window.kind === 'month' ? window.month : `${window.days}d`}`;
+  const answeredScope = useRef(scope);
+  useEffect(() => {
+    if (!seen.isPlaceholderData && seen.data !== undefined) {
+      answeredScope.current = scope;
+    }
+  }, [seen.isPlaceholderData, seen.data, scope]);
+  const heldFromAnotherScope =
+    seen.isPlaceholderData && answeredScope.current !== scope;
+
+  const seenResult = heldFromAnotherScope ? undefined : seen.data?.data?.result;
   const namespaces = useMemo(() => {
     const set = new Set<string>();
     for (const sample of seenResult ?? []) {
@@ -65,11 +93,13 @@ export function useUsageOrganizations(
         }
       }
     }
-    return [...set].sort(compareNamespaces);
-  }, [seenResult, agents, installation]);
+    return [...set].sort((a, b) => compareNamespaces(a, b, directory));
+  }, [seenResult, agents, installation, directory]);
 
   return {
     namespaces,
-    isLoading: Boolean(installation) && (seen.isLoading || isLoadingAgents),
+    isLoading:
+      Boolean(installation) &&
+      (seen.isLoading || heldFromAnotherScope || isLoadingAgents),
   };
 }

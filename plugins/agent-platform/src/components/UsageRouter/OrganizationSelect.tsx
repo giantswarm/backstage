@@ -1,6 +1,8 @@
 import { Select } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import type { OrganizationDirectory } from '../../lib/organizations';
 import { tenantKindOf, tenantOf } from '../../lib/tenants';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * The class name on the select's root that does not change between builds,
@@ -33,8 +35,11 @@ export type OrganizationSelectProps = {
  * says little in a list of organizations; an organization's namespace, which
  * its name is not; nothing for another namespace, whose name says it.
  */
-function describe(namespace: string): string | undefined {
-  switch (tenantKindOf(namespace)) {
+function describe(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string | undefined {
+  switch (tenantKindOf(namespace, directory)) {
     case 'platform':
       return 'Platform: agents available to every organization';
     case 'organization':
@@ -59,6 +64,7 @@ export function OrganizationSelect({
   value,
   onChange,
 }: OrganizationSelectProps) {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const offered =
     value !== undefined && !namespaces.includes(value)
@@ -74,8 +80,8 @@ export function OrganizationSelect({
           { id: ALL_ORGANIZATIONS, label: 'All organizations' },
           ...offered.map(namespace => ({
             id: namespace,
-            label: tenantOf(namespace),
-            description: describe(namespace),
+            label: tenantOf(namespace, directory),
+            description: describe(namespace, directory),
           })),
         ]}
         onSelectionChange={key => {

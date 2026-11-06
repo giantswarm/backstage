@@ -2,6 +2,7 @@ import { ReactElement } from 'react';
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
 import { ClusterApps } from '../cluster-details/ClusterApps';
+import { ClusterGateways } from '../cluster-details/ClusterGateways';
 import { ClusterNodePools } from '../cluster-details/ClusterNodePools';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
 import { ClusterRBAC } from '../cluster-details/ClusterRBAC';
@@ -32,6 +33,16 @@ export const ClusterDetailsPage = ({ actions }: ClusterDetailsPageProps) => {
           <ClusterLayout.Route path="/deployments" title="Deployments">
             <ClusterErrorsProvider>
               <ClusterApps />
+            </ClusterErrorsProvider>
+          </ClusterLayout.Route>
+          <ClusterLayout.Route
+            path="/gateways"
+            title="Gateways"
+            // Everything on the tab comes from Mimir metrics.
+            if={({ mimirAvailable }) => mimirAvailable !== false}
+          >
+            <ClusterErrorsProvider>
+              <ClusterGateways />
             </ClusterErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route

@@ -1,5 +1,343 @@
 # @giantswarm/backstage-plugin-agent-platform
 
+## 1.3.0
+
+### Minor Changes
+
+- db5c770: Agent Platform organizations. `/organizations` lists the organizations the signed-in person belongs to (agent-manager's `list_my_organizations`) and tells a person in none who can add them; an organization's page has Members, Models, Connectors and Egress tabs read from agent-manager's organization tools, adds a group (offered first) or a person to a role and removes one, showing agent-manager's refusal. On installations whose agent-manager reports `organizations`, the New agent form offers only the person's organizations, preselects a single one and has no Platform option; its models, with the organization's default preselected, and its connectors follow the organization. Every page names an agent's organization from agent-manager's answers, never from a namespace name prefix. New events `AgentPlatform.organizationMemberAdded` and `AgentPlatform.organizationMemberRemoved`; exports `ORGANIZATION_PAGE_TABS`.
+- 5ded107: Agents can carry tags (the `ui.giantswarm.io/tags` annotation). The agent wizard adds them where the installation's agent-manager reports the `tags` capability, suggesting tags other agents use and pointing out a near-duplicate of an existing one; the agent page shows them; Customize → Agents shows up to three on each row, in place of the model, skills and connectors, searches them and filters by them with a Tags dropdown. `Agent.getTags()` reads them. A `CatalogFacet` may now give an item several values, and every filter bar's option labels are cut with an ellipsis at 16rem, read whole on hover.
+- 8ab4a8f: Connectors show a logo: the icon muster wrote to the `MCPServer`'s `.status.icon` (the server's own, or muster's mark for a known service), else the letter tile. `ConnectorLogo` is exported from the muster plugin and used on the Connectors list, the connector page header and the agent overview, whose Connectors section now shows the agent's connectors as a row of logos named on hover or focus. Directly bound servers and `server:` selectors read by their display names. `ui-react` exports `HintTooltip`, the tap-friendly hint on a badge or a logo that the connector logos and the workflow effect badge share.
+- a665a44: A namespace's default model is the ModelConfig annotated `agent-platform.giantswarm.io/is-default-model-config: "true"`; none or several annotated is no default. The New agent form preselects the default agent-manager reports (`list_model_configs` `default`) and otherwise asks the person to choose, badges it, and warns when the chosen model is not ready (`ResolvedRefs` not true). Outside an organization, `default-model-config` stays the default while no model there is annotated, as agent-manager resolves it; an organization is offered only its own models. Customize → Models shows which model is the default; a model's page says so and offers **Set as default**, which moves the annotation as the signed-in person and refuses when another model was marked meanwhile or when the current default is managed by Helm (`kagent.modelConfigs[].default`) or another tool. Connect a model marks a new model as the default when its namespace has none, offers **Make this the default model** otherwise, and lets an organization's admins add a model to their organization: its key goes into the Secret `tenant-credential-<model>`, it takes no base URL (the LLM gateway routes it), and only Anthropic and OpenAI are offered. New portal event `AgentPlatform.defaultModelSet`.
+- 0314965: Text links in the Agent Platform shell now share one style: the link colour and
+  a solid underline on every surface. Links that act as controls (rail items, the
+  logo, breadcrumbs, a wizard's steps, Close and Cancel, row and card titles, the
+  skill file tree, the connector tool pills) pass bui's `standalone` and keep
+  their own look.
+  `ExternalLink` now carries its link's underline onto its content, so an
+  underline also shows on an external link.
+- 4c325fa: Make the search palette easier to use. Its filter chips hold their places
+  while results load, and the chips of kinds that turn out empty go in one step
+  once everything is read. Descriptions, key hints and other small text are at
+  least 12px. A search ignores spaces, hyphens and underscores, so
+  `swarmoperator`, `swarm-operator` and `Swarm Operator` all find the Swarm
+  Operator agent, and a name still matches with one typo; exact and prefix
+  matches rank first. The palette no longer dims the page behind it, and can be
+  dragged by its header to keep a running session in view; the browser
+  remembers where it was put, and a double-click on the header puts it back in
+  the middle.
+- 5ded107: Skills have tags, read from and written to the SKILL.md frontmatter `metadata.tags`: a Tags filter and tag search in Customize › Skills and the agent wizard's skill step, tags on skill cards and the skill page, and a Tags field when adding or editing a skill.
+- 5ded107: One tag vocabulary: `TagVocabularyProvider` counts tags across the sources it is given, read only while a `TagsField` is on screen, so suggestions and the "Existing:" hint span agents, skills, connectors and workflows. The sources are `AgentTagSource`, `SkillTagSource` (agent-platform), `ConnectorTagSource` and `WorkflowTagSource` (muster). A tag on an agent's, skill's, connector's or workflow's page links to its Customize tab with the tag picked (`?tags=<tag>`); the pick goes with a switch to another tab. `TagList` takes `getHref`; `SharedTagsProvider`, `tagHref`, `tagsOfSearch` and `withTagsSearch` share a Tags pick between catalogs.
+- 5ded107: One rule for search across the agent platform: a list of entities shows its
+  search and filters from three entries on (`isSearchableList`, `SEARCH_MIN` now
+  3, was more than 8), and keeps them while a search or filter is in force; a
+  dropdown offers type-ahead from three options (`searchableIf`). Paging is
+  unchanged.
+- 5ded107: The Sessions list filters by Organization (the agent's, named as on the Agents
+  tab) beside State, Agent and Pinned.
+- 5ded107: `catalogFilterDimensions` draws a filter only where picking from it can narrow
+  the list: it needs two values among the entries that have one, so one
+  repository, organization, model, agent or Harness gets no dropdown, even while
+  some entries have no value yet. A facet with `missingIsChoice` (a flag: Pinned,
+  Starred, "Created by: Me") is drawn from one value some entries lack. A filter
+  with a pick in force stays until it is cleared. A bar with no filters draws
+  nothing.
+- 6dee1f6: Usage data says how big what people work with is, as exact numbers and never
+  by name. Opening an agent's page sends `AgentPlatform.agentViewed` with its
+  number of skills and of tools; opening a session sends
+  `AgentPlatform.sessionViewed` with its number of turns; opening Customize sends
+  `AgentPlatform.customizeViewed` with its number of agents, skills, connectors,
+  models, workflows, workspaces and toolchains. Each goes once per opening of the
+  page, once its counts have finished loading; a count that could not be read is
+  left out. `AgentPlatform.messageSent` now carries the session's number of
+  turns.
+
+  `analytics-react` adds count attributes (`COUNT` in `portalEvents`, a whole
+  number of 0 or more, which the connector checks) and `useTrackedView`, which
+  reports a page's view event once per opening.
+
+- d3af100: The session header's workspace chip shows only the workspace's name. Its last
+  synchronization and the number of repositories fetched before the first turn
+  ("Synchronized 4 h ago · 1 repository fetched") move into a tooltip on hover
+  and keyboard focus. The tooltip is headed "Workspace" in bold, and gives the
+  full name under it when the chip cuts it off.
+  The chip's accessible name still carries all of it, and a press still opens
+  the workspace drawer.
+
+### Patch Changes
+
+- 3745db0: Import `PinIcon` and `ContentColumn` (formerly `UsageColumn`) from `ui-react`,
+  rename the file viewer `CodeBlock` to `FileView` so that `CodeBlock` names only
+  `ui-react`'s copyable snippet, and remove the unused `ModelChip`. No visible
+  change.
+- 8fd67a7: Show a connector's "Calls, last 30 days" line on its Details tab from the first
+  paint, with a skeleton until the usage is read, so the facts below it no longer
+  jump. Where there is no figure the line says why: no muster session (and why
+  not), no usage metrics on the environment, or a failed read.
+
+  `CellSkeleton`, the one-line placeholder for a value still being read, moves
+  from agent-platform to `ui-react` and takes a `body-medium` variant and an
+  accessible `label`.
+
+- ef2cf27: Connector sign-in: the tab a Sign in click opens now says "Opening the
+  sign-in page…" while muster prepares the page, instead of a bare
+  about:blank. When muster takes longer than 10 seconds, or the person closes
+  the tab first, the tab is closed and the row offers the sign-in at once: it
+  says the sign-in page is being prepared, and "Open sign-in page" becomes a
+  link as soon as the page is ready, rather than after the Sign in button's
+  spinner. A tab the person took to another address is left open. Each
+  click's answer only ever opens in that click's own tab, and a late answer
+  never replaces a newer sign-in. A provider App's device-code sign-in keeps
+  its button until muster issued the code.
+- 6c38c40: The estimated cost of a session, and the estimate the Usage pages fall back to,
+  divide the gateway's spend by each token once. The gateway counts cache reads
+  and writes inside `input` as well as on their own, and adding them on top
+  counted cached input twice, which halved the rate and the estimate.
+
+  The cost popover and the Your sessions note call the rate the installation's
+  average cost per token over the last 7 days, and say that an average can be low
+  for short sessions that read little from cache.
+
+- e61f4bb: Show times that can be yesterday or tomorrow relative to now instead of as a
+  bare clock time, which read as today:
+
+  - A loaded model's eviction on the hosting page: `evicts in about 3 hours`,
+    with the date and time on hover. An eviction that has passed, or one so far
+    ahead that the model is kept loaded (Ollama's `keep_alive: -1`), is left
+    out.
+  - When a node's model cache was scanned, in the GPU capacity hover:
+    `scanned 2 days ago (2 Sep 2026, 13:05:00 CEST)`.
+  - A stalled turn in a session: `The agent last reported progress 12 minutes
+ago.`, with the date and time on hover; screen readers announce the stall
+    once, not each minute.
+
+- 8b5f520: Session egress refusals: a refused raw TCP connection now gets one remedy on
+  every runtime, whoever the person is: "No egress setting can allow it. If
+  {host} offers HTTPS, have {agent} use that instead.", with no link. It no
+  longer suggests asking the platform team or editing the agent, neither of
+  which can allow raw TCP. The wording matches klaus-gateway's Slack notice.
+  HTTP and HTTPS refusals keep their remedies.
+- 6bfac24: Import `FileView` from `ui-react`. The new-agent wizard's helm command and a
+  failed toolchain build's log are no longer shown as files: they render in
+  `CodeBlock`, without a file header. The log sits under a "Log of the failed
+  job" heading, scrolls inside the block instead of stretching the page, and
+  opens at its end, where the error is.
+- 80e27ce: Delete cluster: every pass of the removal shows what it removed or otherwise
+  changed, what is still being removed or left and why, and what it waits for,
+  and a pass that changed nothing new says "Nothing more could be removed yet".
+  After each pass the dialog asks cluster-manager by a dry run whether another
+  pass would do something new, and offers **Finish removal** only then. While the
+  uninstall runs it checks again every 15 seconds, through a failed check, for 30
+  minutes at most and not once what is left is not cluster-manager's to remove;
+  **Check again** starts another round. A check that finds nothing left reads as
+  the removal complete.
+- c576d7c: An answer to a confirmation, a question or a sign-in names the status message
+  it answers (`askedIn`), and the backend refuses it with a 409 when the task now
+  asks in another one: the task was answered elsewhere, from Slack, and paused
+  again on a new request. Before, the late answer was applied to that new
+  request.
+- ee27c7f: Try a notification seen-mark write the person waits on (a row opened, "Mark
+  all read") again, twice with backoff, when its read or write of the stored
+  marks meets a 5xx or the network, before it rejects. "Mark all read" in the
+  Notification inbox no longer fails on a single 503. A stored-setting write
+  opts in with `retry` on its update.
+- aa72ac2: Say when kagent is temporarily unavailable, and do not show an empty session
+  list while it is. A message sent while kagent's controller cannot be reached
+  (its gateway answers gRPC `Unavailable`) is reported as "The Agent Platform is
+  temporarily unavailable. Try again in a moment." in place of "failed with
+  status 500", and its text stays in the composer to send again. Other writes
+  use the same words. A session list that could not be read is no longer shown
+  as "No sessions yet": the Sessions page shows the error with the reason
+  ("temporarily unavailable") and a Try again button, the session rail says
+  "Could not read your sessions." with Try again, and an agent's Sessions tab
+  shows the same error card in place of its one-line note.
+- 468c22d: Model hosting is offered wherever cluster-manager runs, with or without a
+  serving layer: the Model hosting entry on Customize → Models shows, and the
+  page draws its tabs at the all-installations scope. Without model-manager the
+  GPU pools and Model cache tabs were unreachable there, though the Add GPU node
+  pool form points to Model cache for removing a kept cache.
+- c87f4fb: New agent form: the Environment and Owner fields read like the form's other fields (a field label and description instead of a card heading) and sit together, Environment first: in the main form when either is a choice, else both are lines under More options. Environment preselects the home installation, else the first usable one. Owner (formerly Organization) keeps its radio group, Platform or Organization, with Platform preselected; choosing Organization shows the organization dropdown, one always picked. A sole environment or owner is a line, not a control; a portal's only environment is named first under More options. Continue waits until the owner is known, and says why while it is read or could not be. The agents list starts the form's agent-manager reads for the likely environment, so Owner no longer arrives late. The agent's page and the agents list's filter and rows say Owner too, and name the platform's agents "Platform" instead of "None".
+- cf32689: New session keeps an unsent prompt and the chosen agent in the browser tab, so
+  a reload or a sign-in that leaves the page no longer loses them. The draft is
+  removed once the session starts.
+- 6b4e6d6: Write every duration in the Agent Platform the same way, through the shared
+  `formatSeconds`: `420 ms` below a second, `1.2 s` or `3 s` below 10 s, `18 s` up to a
+  minute, then `2 min 30 s`, `12 min` and `1 h 5 min`.
+
+  - A fast try of a served model reads `200 as you in 420 ms`, not `in 0 s`.
+  - A workflow's average and longest run read `5 min`, not `300 s`.
+  - A tool or workflow run's result reads `5.3 s`, as the flow does, not
+    `5321 ms`.
+  - A starting model reads `Starting on <node> for 4 min 30 s`, not a floored
+    `for 4 min` or `for 0 min`.
+  - Latencies (p50, p95) above a minute read in minutes.
+
+  `formatSeconds` in `agent-platform-common` now goes on to minutes and hours;
+  muster's `formatDuration` and the second `formatSeconds` in agent-platform's
+  `lifecycle.ts` are gone.
+
+- 5ded107: `TagList` draws a resource's tags read-only. Connectors and workflows have tags: a Tags filter and column on Customize, search by tag, a Tags row on their pages, and a Tags field when adding or editing a connector where muster takes them. The agent wizard's connector search matches tags too.
+- 5ded107: Handing a skill to the skill creator agent carries its tags (a new skill's, or an edit's changed ones) into the first message. "Edit in Git" for a GitOps-managed connector or workflow names the tags annotation.
+- 5ded107: A Tags field the installation does not offer (an older muster or agent-manager) no longer yields a problem, so an edit of a connector with more than 50 stored tags on such a muster no longer bounces from Sign-in back to Connect. Tags under five characters are no longer offered as near-duplicates of each other (`docs`, `dogs`). `TagVocabularyProvider` and `SharedTagsProvider` move to their own component directories; muster's `useConnectorGroupPaths` is now `useConnectorListPaths`, and `useTakesDisplayName`/`useTakesTags` are one `useToolTakesArgument`.
+
+  The 50-tag limit is checked as muster checks it (`exceedsTagLimit` in gs-common): a list past 50 is refused only when it holds a tag not already stored, so an unchanged or shortened list of tags written elsewhere goes through, and a create takes at most 50. gs-backend's skill pull request checks it against the SKILL.md's stored `metadata.tags` (a 422) instead of capping every request at 50.
+
+- 5ded107: Tag helpers (`parseTags`, `TAGS_ANNOTATION` and the rest), `TagsField`, `TagVocabularyContext` and the `tagsFacet` catalog facet move to `ui-react`, for every resource with tags.
+
+  A resource takes at most 50 tags (`MAX_TAGS`): `TagsField` and the agent, connector and skill forms refuse more with "At most 50 tags." An edit that leaves more tags written elsewhere as they are goes through, since it does not write them.
+
+- 5bde8bf: Report a Mimir that cannot answer a query to Sentry once, under a fixed title,
+  and say on the page when older data is temporarily unavailable.
+
+  `MimirService` logs a Mimir that is down, slow or failing once as a warning
+  with a fixed message (`Mimir answered a query with HTTP <status>`,
+  `Mimir could not be reached`, or
+  `Mimir could not read older data: no healthy store-gateway`), with the
+  installation, the status and Mimir's own error text in the metadata, and throws
+  the new `MimirUnavailableError`. Its message no longer carries Mimir's body;
+  that stays in the warning (`mimirError`, left out of the answer to the
+  browser), and a connection error no longer names the query. A query Mimir
+  refused (a 4xx other than a refused token: bad PromQL, a range over its limits)
+  is an `InputError` (400) with Mimir's text instead, not logged and not retried
+  by the frontend. `query({ logFailures: false })` logs at `debug` for a caller
+  that handles the failure itself, as the model cost route does. The gs
+  backend's `/mimir/query` and `/mimir/query_range` routes answer a
+  `MimirUnavailableError` 503 themselves, so the error middleware no longer
+  reports it again. A Mimir without a healthy store-gateway answers
+  with `error.reason: 'older_data_unavailable'` (`MIMIR_UNAVAILABLE_REASONS` in
+  gs-common), and the model cost route answers `older-data-unavailable`.
+
+  gs-node's answer-it-in-the-router pattern is now generic:
+  `ReportedServiceUnavailableError` with `reportedErrorHandler()`, which replaces
+  `musterUnreachableErrorHandler()` (`MusterUnreachableError` is one), and
+  `errorResponseBody()` for a router that answers some other error with the body
+  the error middleware would send.
+
+  ui-react adds `MetricsUnavailableAlert` (with a `fallback` for a caller whose
+  generic failure is a line of text), `describeMimirFailure` and
+  `pickMimirError`, which every place that shows a failed Mimir read now uses: a
+  deployment's resource usage and hostnames, a cluster's gateways and node pool
+  nodes, the workload status summary, the Usage overview and cost pages, the
+  activity heatmap, an agent's and a model's Usage tab, and the cost estimate and
+  actual-cost hints.
+  `MimirClient` throws a `MimirQueryError` that carries the backend's `reason`.
+
+- 4f2299d: Created and connection times read as relative dates, the local date and time
+  on hover. The agent page says "Created 3 days ago" once, in the facts beside the
+  Overview, no longer in its header or in Technical details. A connector's "Added" fact says how long ago it was
+  added instead of a fixed UK-format UTC date. Its Health block ("Last
+  connected", "Next retry") and the Instances tab's "Last connected" column drop
+  the browser-locale timestamp and show the exact time on hover; a retry time
+  that has passed is no longer shown as the next one.
+
+  A relative `DateComponent` (and `getRelativeDate`) shows a value that does not
+  parse as given, as the absolute one already did, instead of throwing.
+
+- ded8231: Delete cluster: reopened mid-removal, the dialog tells an object that is
+  already being removed from a new one. It reads each object a pass would delete
+  as you, and one whose deletion was requested already shows under "Still being
+  removed", in what goes with the cluster and in the pass that deletes it again,
+  and does not bring back **Finish removal**. A release into the gone cluster
+  that a pass would still suspend keeps offering it.
+  When a read fails because the Kubernetes proxy cannot reach the installation,
+  the dialog stops reading until it is closed and works as before.
+- c72aab9: Links to Git repositories open in a new tab with the external link icon, and
+  say "(opens in a new tab)" to a screen reader: the Repository column of a
+  workspace's Repositories tab and of the toolchain Sources table, a toolchain's
+  Source, a skill's Source and Latest commit, and the repository named where an
+  agent is defined outside agent-manager's directory.
+
+  `ui-react` adds `ExternalCellText`, bui's `CellText` for a link that leaves the
+  app, and an `inline` display for `ExternalLink`, for a link in running text
+  that wraps with the sentence.
+
+- a2e34ef: The "View on GitHub" link above a file of a skill's Instructions tab shows the
+  external link icon instead of a text arrow, and says "(opens in a new tab)" to
+  a screen reader. The "View on GitHub" button that stands in for a binary or
+  oversized file keeps its look and now says "(opens in a new tab)" to a screen
+  reader too. Neither link shows while the file is still being read.
+- 54e92f7: Name time windows in words instead of PromQL durations: the session cost
+  popover, the by-agent cost note and the connector usage empty state now say
+  "the last 7 days" rather than "the last 7d". A one-day window, which kagent's
+  configurable session window allows, reads "the last day" rather than "the last
+  1 days". The new `lastDaysNoun` (`the last 7 days`) and `lastDaysLabel`
+  (`last 7 days`) helpers in `agent-platform-common` are where every days window
+  in the copy turns into words, and `useTokenRates` reports its window as
+  `windowDays` instead of the PromQL string.
+- 4c53a2b: Name the tool, its MCP server and the installation on a muster tool error, and give each known kind of failure its status: the refusals of agent-manager, model-manager and workspace-manager and muster's refusals of a connector write answer 4xx and no longer reach Sentry, a muster rollout's interruption is logged at info and answered with a 503 the muster, plans and roadmap pages retry, and a timeout (504), a server muster holds no connection to (503) and a missing tool (502) stay reported. Sentry groups muster tool errors by kind and tool, or by server for the kinds that belong to a whole server. The muster pages no longer retry a refusal. platform-capabilities and repositories no longer show muster's own failures as the manager's refusal. `gs-node` adds `MUSTER_TOOL_ERROR_STATUS`, `musterToolErrorKindOf`, `musterServerOfTool` and `markReported`; `gs-common` adds the refusal registry (`mcpToolRefusalOf`, `parseToolErrorCode`). bot-prs keeps offering the marge sign-in for a missing tool or a lost connection.
+- dad7774: Drop the workspace sync schedule from the workspace-manager types, which
+  workspace-manager no longer has: `sync` and `nextSync` are gone from
+  workspaces and their create and update inputs. The `schedule` sync trigger
+  stays as a legacy value, since a last sync recorded before the upgrade may
+  still carry it.
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [2fb06f7]
+- Updated dependencies [36f0927]
+- Updated dependencies [148a689]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [06967c4]
+- Updated dependencies [5bc242c]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [ef2cf27]
+- Updated dependencies [a665a44]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [a85c17f]
+- Updated dependencies [ded8231]
+- Updated dependencies [2f531d8]
+- Updated dependencies [6b4e6d6]
+- Updated dependencies [0314965]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+- Updated dependencies [54e92f7]
+- Updated dependencies [4c53a2b]
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.1.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+  - @giantswarm/backstage-plugin-gs@0.72.0
+  - @giantswarm/backstage-plugin-gs-common@0.23.0
+  - @giantswarm/backstage-plugin-muster@0.5.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.3.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.1
+  - @giantswarm/backstage-plugin-gs-react@0.1.1
+
+## 1.2.0
+
+### Minor Changes
+
+- d1486af: Usage reports a calendar month: the Time range select offers this month so
+  far and the two before it beside the days windows, carried in the URL as
+  `?window=2026-10`. Overview and Cost report exactly that month's UTC days, a
+  past month evaluated at its end with the change against the month before, the
+  current month to date. In a month, Cost also shows spend and tokens by person,
+  the gateway's `user` label, with the calls it named nobody for as "No person
+  recorded"; with the Organization scope that is one organization's month by
+  agent and by person. Your sessions and Connectors keep their days windows: the
+  months are disabled choices there, and a month a link names there reads as the
+  default days. Closes giantswarm/backstage#2672.
+
+### Patch Changes
+
+- Updated dependencies [d1486af]
+- Updated dependencies [d1486af]
+  - @giantswarm/backstage-plugin-gs@0.71.1
+  - @giantswarm/backstage-plugin-agent-platform-common@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes

@@ -27,7 +27,6 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   type BreadcrumbItem,
-  DateComponent,
   EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
@@ -39,6 +38,7 @@ import {
   StatusDot,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
@@ -50,6 +50,7 @@ import {
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useAgentViewEvent } from '../../hooks/useAgentViewEvent';
 import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
@@ -105,6 +106,7 @@ import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
 import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
 import { AgentUsageTab } from './AgentUsageTab';
 import { AgentAvatar } from '../AgentAvatar';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 8000;
@@ -203,6 +205,7 @@ function ReadinessBadge({ readiness }: { readiness: ReadinessPresentation }) {
 }
 
 function AgentDetailPageContent() {
+  const { directory } = useOrganizationDirectory();
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
 
@@ -300,11 +303,14 @@ function AgentDetailPageContent() {
               agent,
               modelConfig ? [modelConfig] : [],
               resolveServing,
+              undefined,
+              undefined,
+              directory,
             ),
             ...agentManagerSessionGate(availability, installation),
           }
         : undefined,
-    [agent, modelConfig, resolveServing, availability, installation],
+    [agent, modelConfig, resolveServing, availability, installation, directory],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -512,6 +518,10 @@ function AgentDetailPageContent() {
   // carrier read is shared with the Overview's Connectors section and the
   // toolset card, so it runs once.
   const toolset = useAgentToolset(agent);
+  // How many skills and tools the agents people open have: once per opening,
+  // when both are known, and not again as the agent polls or the tabs change.
+  const viewEvent = useAgentViewEvent(agent, toolset);
+  useTrackedView(viewEvent, `${installation}/${namespace}/${name}`);
 
   const openEdit = useCallback(() => {
     const href = agentEditRoute?.({ installation, namespace, name });
@@ -912,6 +922,7 @@ function AgentDetailPageContent() {
               : refusedWrites[0].replace(/^./, c => c.toUpperCase())
           } the agents of ${tenantInSentence(
             namespace,
+            directory,
           )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         />
       )}
@@ -995,7 +1006,6 @@ function AgentDetailPageContent() {
   );
 
   const displayName = agent.getDisplayName();
-  const created = agent.getCreatedTimestamp();
 
   return (
     <AgentFrame
@@ -1012,13 +1022,6 @@ function AgentDetailPageContent() {
         <ReadinessBadge
           readiness={READINESS_PRESENTATION[agent.getReadiness()]}
         />
-      }
-      meta={
-        created ? (
-          <>
-            Created <DateComponent value={created} />
-          </>
-        ) : undefined
       }
       actions={shellActions}
       menu={menu}

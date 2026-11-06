@@ -8,7 +8,7 @@ import {
   type CatalogFilterSelection,
   isCatalogFiltered,
 } from './catalogFilters';
-import { useSharedTags } from './sharedTags';
+import { useSharedTags } from '../SharedTagsProvider';
 import { TAGS_FACET_ID } from './tagsFacet';
 
 export type UseCatalogFiltersOptions<T> = {

@@ -10,12 +10,16 @@ import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
+  formatDayTick,
+  formatDayTooltip,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
   StackedBarChart,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { WorkflowStatsPerDay } from '../../apis';
-import { formatDuration } from '../../lib/formatDuration';
+import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { workflowRunKeys } from '../../lib/workflowRunKeys';
 import { Stat } from '../shared';
 
@@ -77,25 +81,6 @@ function padPerDay(perDay: WorkflowStatsPerDay[]): WorkflowStatsPerDay[] {
     result.push(byDate.get(date) ?? { date, completed: 0, failed: 0 });
   }
   return result;
-}
-
-/** Short x-axis tick, e.g. `Jun 30`. Formatted in UTC to match the day keys. */
-function formatAxisDate(date: string): string {
-  return new Date(parseDay(date)).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
-}
-
-/** Fuller tooltip heading, e.g. `Mon, Jun 30`. */
-function formatTooltipDate(date: string): string {
-  return new Date(parseDay(date)).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
 }
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -209,10 +194,8 @@ export function WorkflowStatsPanel({
   if (successRatePct !== null) {
     successTone = successRatePct >= 95 ? 'ok' : 'warning';
   }
-  const avg =
-    data.avg_duration_ms !== null ? formatDuration(data.avg_duration_ms) : '—';
-  const max =
-    data.max_duration_ms !== null ? formatDuration(data.max_duration_ms) : '—';
+  const avg = formatMilliseconds(data.avg_duration_ms);
+  const max = formatMilliseconds(data.max_duration_ms);
 
   const perDay = padPerDay(data.per_day);
   const sampleScope =
@@ -290,8 +273,9 @@ export function WorkflowStatsPanel({
               },
               { dataKey: 'failed', name: 'failed', color: failedColor },
             ]}
-            formatXAxisTick={formatAxisDate}
-            formatTooltipLabel={formatTooltipDate}
+            // UTC days, labelled like the Usage screen's charts.
+            formatXAxisTick={formatDayTick}
+            formatTooltipLabel={formatDayTooltip}
           />
         </Paper>
       )}

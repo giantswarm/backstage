@@ -2,6 +2,7 @@ import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
 import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import SecurityIcon from '@material-ui/icons/Security';
 import {
   Agent,
   AgentSkill,
@@ -40,26 +41,37 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { connectorLogoSources, connectorMarks } from '../../lib/connectorMarks';
+import { connectorMarks } from '../../lib/connectorMarks';
 import { bindsGateway } from '../../lib/toolset';
-import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import {
+  describeReach,
+  reachedConnectors,
+  reachNeedsCatalogue,
+} from '../../lib/toolsetReach';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { HarnessSummary } from '../HarnessSummary';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { OrganizationValue } from '../OrganizationValue';
+import { OwnerValue } from '../OwnerValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
-import { CREATED_BY_ANNOTATION, creatorOf } from '../../lib/tenants';
+import {
+  CREATED_BY_ANNOTATION,
+  creatorOf,
+  OWNER_LABEL,
+} from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
 } from '../../lib/defaultWorkspace';
 import {
+  connectorIcons,
   describeToolScope,
+  directServerName,
   isGatewayServerBinding,
+  mcpBindingId,
   skillLabel,
 } from './helpers';
 
@@ -109,6 +121,27 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     padding: 0,
     listStyle: 'none',
+  },
+  logo: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
+  // The approval request's shield, small on the logo's corner.
+  approvalMark: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    backgroundColor: 'var(--bui-warning-bg-subdued, #fff3e8)',
+    color: 'var(--bui-warning-fg-subdued, #7d3900)',
+    boxShadow: '0 0 0 2px var(--bui-bg-surface-1, #fff)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    '& svg': { width: 11, height: 11 },
   },
 }));
 
@@ -284,32 +317,39 @@ function ConnectorsSection({
     agent.cluster,
     reachNeedsCatalogue(declared),
   );
-  const muster = useMusterServers(agent.cluster);
   const direct = agent
     .getMcpBindings()
     .filter(binding => !isGatewayServerBinding(agent, binding));
   const hasGateway = bindsGateway(agent);
+  const reached = hasGateway ? reachedConnectors(declared, groups) : [];
+  // Labels and icons: read only when the toolset names a connector, as the
+  // composer's reach line does.
+  const muster = useMusterServers(
+    reached.length > 0 ? agent.cluster : undefined,
+  );
   const subAgents = agent.getSubAgentBindings();
 
-  const sources = useMemo(
-    () => connectorLogoSources(muster.servers),
-    [muster.servers],
-  );
+  const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
+
   const marks = connectorMarks({
     toolset: hasGateway ? declared : undefined,
     groups,
-    sources,
+    icons,
     labels: muster.labels,
-    direct: direct.map(binding => ({
-      name: binding.server.name,
-      url: servers
-        ?.find(server => server.getName() === binding.server.name)
-        ?.getUrl(),
+    direct: direct.map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      name: directServerName(binding, servers),
       detail: `${describeToolScope(binding)}${
         binding.requireApproval ? ' · asks you before every call' : ''
       }`,
+      approval: Boolean(binding.requireApproval),
     })),
   });
+  const asksFirst = [
+    ...new Set(marks.filter(mark => mark.approval).map(mark => mark.name)),
+  ];
 
   let reach: string;
   if (!hasGateway) {
@@ -333,17 +373,30 @@ function ConnectorsSection({
       {marks.length > 0 && (
         <ul className={classes.logos} aria-label="Connectors">
           {marks.map(mark => (
-            <li key={mark.key}>
+            <li key={mark.key} className={classes.logo}>
               <ConnectorLogo
                 name={mark.name}
                 icon={mark.icon}
-                url={mark.url}
                 detail={mark.detail}
                 tooltip
               />
+              {mark.approval && (
+                <span
+                  className={classes.approvalMark}
+                  data-testid="approval-mark"
+                  aria-hidden
+                >
+                  <SecurityIcon />
+                </span>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {asksFirst.length > 0 && (
+        <Text variant="body-small" color="secondary">
+          Asks before every call: {asksFirst.join(', ')}
+        </Text>
       )}
       {subAgents.length > 0 && (
         <div className={classes.rows}>
@@ -647,7 +700,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to, who created it and since when.
+ * its owner (the platform or an organization), who created it and how long ago.
  */
 export function agentFacts({
   agent,
@@ -699,8 +752,13 @@ export function agentFacts({
     },
     { label: 'Environment', value: installation },
     {
-      label: 'Organization',
-      value: <OrganizationValue namespace={agent.getNamespace() ?? ''} />,
+      label: OWNER_LABEL,
+      value: (
+        <OwnerValue
+          namespace={agent.getNamespace() ?? ''}
+          installation={installation}
+        />
+      ),
     },
   ];
   const defaultWorkspace = defaultWorkspaceName(
@@ -718,7 +776,7 @@ export function agentFacts({
       label: 'Created',
       value: (
         <Text variant="body-small">
-          <DateComponent value={created} />
+          <DateComponent value={created} relative />
         </Text>
       ),
     });

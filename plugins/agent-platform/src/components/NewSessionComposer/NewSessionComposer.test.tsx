@@ -8,7 +8,11 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
-import { AgentManagerNotConnectedError } from '../../lib/agentManager';
+import {
+  AgentManagerNotConnectedError,
+  classifyAgentManagerError,
+} from '../../lib/agentManager';
+import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { mockImageEncoding, pngFile } from '../../lib/__fixtures__/images';
 import {
@@ -90,7 +94,28 @@ beforeEach(() => {
 
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
-  ServerSignIn: () => <div data-testid="server-sign-in" />,
+  // Its `onSignedIn` stands for muster reporting the sign-in landed: made
+  // in this tab, or in another one.
+  ServerSignIn: ({
+    onSignedIn,
+  }: {
+    onSignedIn?: (signedIn: { here: boolean }) => void;
+  }) => (
+    <div data-testid="server-sign-in">
+      {onSignedIn && (
+        <>
+          <button type="button" onClick={() => onSignedIn({ here: true })}>
+            Sign-in lands
+          </button>
+          <button type="button" onClick={() => onSignedIn({ here: false })}>
+            Sign-in lands in another tab
+          </button>
+        </>
+      )}
+    </div>
+  ),
+  useConnectorLabel: (_installation: string, name: string) =>
+    name === 'agent-manager' ? 'Agent Manager' : name,
 }));
 
 describe('NewSessionComposer', () => {
@@ -100,6 +125,13 @@ describe('NewSessionComposer', () => {
 
       expect(startButton()).toBeInTheDocument();
       expect(agentPicker()).toBeInTheDocument();
+    });
+
+    it('shows a prompt it starts with whole', () => {
+      renderComposer({ collapsible: true, initialPrompt: 'Kept from before' });
+
+      expect(field()).toHaveValue('Kept from before');
+      expect(field()).toHaveAttribute('rows', '3');
     });
 
     it('shows a single line until focused, then grows', async () => {
@@ -565,6 +597,58 @@ describe('NewSessionComposer', () => {
     });
   });
 
+  it('reports the prompt as it is typed, for a caller that keeps a draft', async () => {
+    const onPromptChange = jest.fn();
+    renderComposer({ onPromptChange });
+
+    await userEvent.type(field(), 'Hi');
+
+    expect(onPromptChange).toHaveBeenLastCalledWith('Hi');
+  });
+
+  it('shows the prompt a caller holds, and hands it every edit', async () => {
+    const onPromptChange = jest.fn();
+    const view = renderComposer({ prompt: 'Kept', onPromptChange });
+    expect(field()).toHaveValue('Kept');
+
+    await userEvent.type(field(), '!');
+    expect(onPromptChange).toHaveBeenLastCalledWith('Kept!');
+    // Held by the caller, which has not taken the edit.
+    expect(field()).toHaveValue('Kept');
+
+    view.rerender(
+      <NewSessionComposer
+        agents={[sre]}
+        isStarting={false}
+        onStart={onStart}
+        prompt="Restored"
+        onPromptChange={onPromptChange}
+      />,
+    );
+    expect(field()).toHaveValue('Restored');
+  });
+
+  it('says whether the person picked the agent or it was preselected', async () => {
+    const onSelectedAgentChange = jest.fn();
+    renderComposer({
+      agents: [sre, issues],
+      defaultAgent: sre,
+      onSelectedAgentChange,
+    });
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(sre, {
+      byPerson: false,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Issue Tracker/ }),
+    );
+
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
+  });
+
   it('says the fleet is still being read while installations respond', () => {
     renderComposer({ isLoadingAgents: true });
 
@@ -588,9 +672,169 @@ describe('NewSessionComposer', () => {
       error: new AgentManagerNotConnectedError('tool not found'),
     });
 
-    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
+    // Not muster's request for a sign-in: its answer stays in sight.
+    expect(screen.getByText('Connect to Agent Manager')).toBeInTheDocument();
+    expect(screen.getByText('tool not found')).toBeInTheDocument();
     expect(screen.getByTestId('server-sign-in')).toBeInTheDocument();
     expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+
+  // giantswarm/giantswarm#39050: muster's own text names the server by its
+  // technical name; the composer says it in the portal's words.
+  it("says muster's sign-in request in its own words, with the connector's display name", () => {
+    renderComposer({
+      defaultAgent: sre,
+      error: classifyAgentManagerError(
+        new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        ),
+      ),
+    });
+
+    expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Sessions are started through the Agent Manager connector, which acts as you. You have not signed in to it on gazelle yet.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/requires authentication/)).toBeNull();
+    expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+
+  // The start's error belongs to the caller (`useCreateSession`'s mutation),
+  // which keeps it until the next start: the alert used to stay up after the
+  // sign-in, and a second click on its Sign in read muster's "already
+  // authenticated".
+  describe('once the sign-in to agent-manager lands', () => {
+    const signInRequired = () =>
+      classifyAgentManagerError(
+        new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        ),
+      );
+
+    it('takes the alert away and starts the refused session again, for a sign-in made in this tab', async () => {
+      const error = signInRequired();
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      onStart.mockClear();
+      // The start was refused: the caller hands its error back.
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={error}
+        />,
+      );
+      expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).toHaveBeenCalledTimes(1);
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the ingress',
+        [],
+        undefined,
+        undefined,
+      );
+      expect(field()).toHaveValue('check the ingress');
+    });
+
+    // Only the tab the person pressed Start in starts again: a sign-in made
+    // in another tab clears the alert here and leaves Start to the person.
+    it('only clears the alert for a sign-in made in another tab', async () => {
+      const error = signInRequired();
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={error}
+        />,
+      );
+      onStart.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands in another tab' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).not.toHaveBeenCalled();
+      expect(field()).toHaveValue('check the ingress');
+    });
+
+    // The start that was refused, not whatever the box holds by then.
+    it('only clears the alert once the prompt changed since the refused start', async () => {
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={signInRequired()}
+        />,
+      );
+      await userEvent.type(field(), ' and the egress');
+      onStart.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it('asks again when the start that followed is refused again', async () => {
+      const { rerender } = renderComposer({
+        defaultAgent: sre,
+        error: signInRequired(),
+      });
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={signInRequired()}
+        />,
+      );
+
+      expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    });
   });
 });
 
@@ -795,6 +1039,8 @@ describe('opt-in picker options', () => {
       groupByNamespace: true,
       recentAgentIds: [research.id],
       favoriteAgentIds: [issues.id],
+      // The plain list's keyboard path; the searchable one is tested below.
+      searchable: false,
     });
 
     agentPicker().focus();
@@ -1251,7 +1497,9 @@ describe('opt-in picker options', () => {
     );
 
     expect(agentPicker()).toHaveTextContent('Issue Tracker');
-    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues);
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
   });
 });
 

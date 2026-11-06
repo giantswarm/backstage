@@ -16,6 +16,15 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
 }));
 
 // The muster providers, whose instance the mock below stands for.
+// The router's own query client is the module-level one; the test's fresh
+// client above it stands in for it, so each test reads afresh.
+jest.mock('../QueryClientProvider', () => ({
+  ...jest.requireActual('../QueryClientProvider'),
+  QueryClientProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 jest.mock('../MusterSubPage', () => ({
   MusterSubPage: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>

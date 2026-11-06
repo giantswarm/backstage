@@ -6,12 +6,35 @@ import { musterApiRef } from '../../apis';
 import { isMusterAuthError } from '../../lib/authError';
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import {
-  takesDisplayName,
-  takesTags,
+  takesArgument,
+  withoutClientSecretRef,
+  type ClientCredentials,
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
-import { displayNameSupportQuery } from './useTakesDisplayName';
+import { toolArgumentsQuery } from '../shared/hooks';
+
+/**
+ * Client credentials handed to exactly one write. React Query keeps a
+ * mutation's variables after it settles (and shows them in its devtools), so
+ * the values do not travel as plain variables: the write takes them out of
+ * this holder, which is empty from then on. A private field, so neither
+ * `JSON.stringify` nor an error serializer finds them on the variables.
+ */
+export class OneTimeClientCredentials {
+  #value: ClientCredentials | undefined;
+
+  constructor(value: ClientCredentials) {
+    this.#value = value;
+  }
+
+  /** The credentials, once; `undefined` on every later call. */
+  take(): ClientCredentials | undefined {
+    const value = this.#value;
+    this.#value = undefined;
+    return value;
+  }
+}
 
 export type McpServerRegistration = {
   definition: McpServerDefinition;
@@ -24,6 +47,13 @@ export type McpServerRegistration = {
    * registered server rather than a correction inside its registration.
    */
   startedFromEdit: boolean;
+  /**
+   * A client's ID and secret for muster to store in a Secret bound to the
+   * server (`clientCredentials` of create and update). Sent to the write
+   * only — never to validate — and then with the definition's own
+   * `clientCredentialsSecretRef` left out, since muster sets that itself.
+   */
+  clientCredentials?: OneTimeClientCredentials;
 };
 
 /**
@@ -51,51 +81,84 @@ export function useRegisterMcpServer() {
 
   return useTrackedMutation({
     mutationFn: async ({
-      definition,
+      definition: composed,
       installation,
       isEdit,
+      clientCredentials: handedOver,
     }: McpServerRegistration): Promise<McpServerDefinition> => {
       const tool = isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create';
+      // Taken at once, so the values live only in this call's scope.
+      const clientCredentials = handedOver?.take();
+      const definition = clientCredentials
+        ? withoutClientSecretRef(composed)
+        : composed;
       const { displayName, tags } = definition;
+      const schemaOf = (name: string, asking: string) =>
+        queryClient
+          .fetchQuery(toolArgumentsQuery(musterApi, name, installation))
+          .then(detail => detail.inputSchema)
+          .catch(error => {
+            if (isMusterAuthError(error)) {
+              throw error;
+            }
+            throw new Error(
+              `Muster could not be asked whether it ${asking} (${
+                (error as Error)?.message ?? error
+              }). Nothing was saved; try again.`,
+            );
+          });
       const definitionFor = async (
         name: string,
       ): Promise<McpServerDefinition> => {
         if (displayName === undefined && tags === undefined) {
           return definition;
         }
-        const detail = await queryClient
-          .fetchQuery(displayNameSupportQuery(musterApi, name, installation))
-          .catch(error => {
-            if (isMusterAuthError(error)) {
-              throw error;
-            }
-            throw new Error(
-              `Muster could not be asked whether it keeps the connector's ${
-                displayName === undefined ? 'tags' : 'name'
-              } (${
-                (error as Error)?.message ?? error
-              }). Nothing was saved; try again.`,
-            );
-          });
+        const inputSchema = await schemaOf(
+          name,
+          `keeps the connector's ${displayName === undefined ? 'tags' : 'name'}`,
+        );
         const sent = { ...definition };
-        if (!takesDisplayName(detail.inputSchema)) {
+        if (!takesArgument(inputSchema, 'displayName')) {
           delete sent.displayName;
         }
-        if (!takesTags(detail.inputSchema)) {
+        if (!takesArgument(inputSchema, 'tags')) {
           delete sent.tags;
         }
         return sent;
       };
+      // An older muster refuses the argument as unknown, after the person
+      // typed a client: say what it cannot do instead (the sign-in step
+      // hides the fields once it knows).
+      const takesClient = async () => {
+        if (
+          clientCredentials &&
+          !takesArgument(
+            await schemaOf(tool, 'can store a client'),
+            'clientCredentials',
+          )
+        ) {
+          throw new Error(
+            'Muster on this installation cannot store a client yet. Nothing was saved; choose Existing Secret to name a Secret that holds the client instead.',
+          );
+        }
+      };
       const [validated, sent] = await Promise.all([
         definitionFor('core_mcpserver_validate'),
         definitionFor(tool),
+        takesClient(),
       ]);
       await musterApi.callTool(
         'core_mcpserver_validate',
         validated,
         installation,
       );
-      await musterApi.callTool(tool, sent, installation);
+      await musterApi.callTool(
+        tool,
+        clientCredentials ? { ...sent, clientCredentials } : sent,
+        installation,
+      );
+      // What was written, without the credentials: the caller keeps it as the
+      // base of later saves.
       return sent;
     },
     event: (_data, { isEdit, startedFromEdit, authMode }) => {

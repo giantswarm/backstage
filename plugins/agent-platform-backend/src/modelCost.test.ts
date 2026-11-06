@@ -4,7 +4,10 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import type { MimirQueryResponse } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  MimirUnavailableError,
+  type MimirQueryResponse,
+} from '@giantswarm/backstage-plugin-gs-node';
 import {
   callerEmail,
   MimirQuerier,
@@ -238,6 +241,15 @@ describe('readModelCost', () => {
     }
   });
 
+  it('asks Mimir not to warn about a failure, which the page handles', async () => {
+    const mimir = fakeMimir({ attributed: '1' });
+    await read({ mimir });
+
+    for (const [args] of mimir.query.mock.calls) {
+      expect(args.logFailures).toBe(false);
+    }
+  });
+
   it('answers unreadable for a Mimir that is down, and logs it below warn', async () => {
     const logger = mockServices.logger.mock();
     const mimir = {
@@ -249,6 +261,37 @@ describe('readModelCost', () => {
     });
     expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('answers older-data-unavailable when Mimir has no healthy store-gateway', async () => {
+    const logger = mockServices.logger.mock();
+    const mimir = {
+      query: jest.fn().mockRejectedValue(
+        new MimirUnavailableError('Mimir could not answer the query', {
+          reason: 'older_data_unavailable',
+        }),
+      ),
+    };
+    await expect(read({ mimir, logger })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'older-data-unavailable',
+    });
+    // Handled: the page falls back to the estimate and says why.
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('answers unreadable for any other Mimir failure', async () => {
+    const mimir = {
+      query: jest
+        .fn()
+        .mockRejectedValue(
+          new MimirUnavailableError('Mimir could not answer the query'),
+        ),
+    };
+    await expect(read({ mimir })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'unreadable',
+    });
   });
 
   it('answers no-mimir, not an error, where the installation has none', async () => {

@@ -10,6 +10,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  COUNT,
   portalEvents,
   type PortalEventSpec,
 } from '@giantswarm/backstage-plugin-analytics-react';
@@ -331,14 +332,18 @@ describe('TelemetryDeckAnalyticsApi', () => {
       });
     }
 
+    /** Every allowed value of an attribute; a count at a few whole numbers. */
+    const valuesOf = (allowed: PortalEventSpec['attributes'][string]) =>
+      allowed === COUNT ? [0, 1, 1234] : allowed;
+
     it.each(
       Object.entries(portalEvents as Record<string, PortalEventSpec>).flatMap(
         ([name, { attributes }]) =>
-          Object.entries(attributes).flatMap(([key, values]) =>
-            values.map(value => {
+          Object.entries(attributes).flatMap(([key, allowed]) =>
+            valuesOf(allowed).map(value => {
               // Every other attribute at its first value, this one at each.
               const all = Object.fromEntries(
-                Object.entries(attributes).map(([k, v]) => [k, v[0]]),
+                Object.entries(attributes).map(([k, v]) => [k, valuesOf(v)[0]]),
               );
               return [name, { ...all, [key]: value }] as const;
             }),
@@ -349,6 +354,16 @@ describe('TelemetryDeckAnalyticsApi', () => {
       await flushPromises();
 
       expect(mockSignal).toHaveBeenCalledWith(name, attributes);
+      expect(errorReporterApi.notify).not.toHaveBeenCalled();
+    });
+
+    it('forwards an event with a count left out without it', async () => {
+      captureAction('AgentPlatform.agentViewed', { skills: 2 });
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentViewed', {
+        skills: 2,
+      });
       expect(errorReporterApi.notify).not.toHaveBeenCalled();
     });
 
@@ -391,6 +406,9 @@ describe('TelemetryDeckAnalyticsApi', () => {
         'Muster.mcpServerAdded',
         { authMode: 'https://mcp.example.com' },
       ],
+      ['a negative count', 'AgentPlatform.sessionViewed', { turns: -1 }],
+      ['a fractional count', 'AgentPlatform.sessionViewed', { turns: 1.5 }],
+      ['a count as text', 'AgentPlatform.sessionViewed', { turns: 'abc' }],
     ])('drops %s and reports it to Sentry', async (_, action, attributes) => {
       captureAction(action, attributes);
       await flushPromises();

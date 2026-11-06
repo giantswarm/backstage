@@ -135,6 +135,18 @@ describe('createSkillPullRequest', () => {
     }
   });
 
+  it('refuses more than 50 tags on a new skill before it creates a branch', async () => {
+    const calls = mockGithub(happyHandlers);
+
+    await expect(
+      createSkillPullRequest({
+        ...input,
+        tags: Array.from({ length: 51 }, (_, index) => `tag-${index}`),
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(calls.map(call => call.key)).not.toContain(`POST ${API}/git/refs`);
+  });
+
   it('refuses in words when the person has no push access', async () => {
     mockGithub({
       [`GET ${API}`]: () => ({
@@ -712,6 +724,33 @@ describe('renderSkillMarkdown', () => {
       metadata: { tags: 'triage, kubernetes' },
     });
     expect(parseFrontmatter(written).tags).toEqual(['triage', 'kubernetes']);
+  });
+
+  it('refuses with 422 more than 50 tags on a new skill, not on a kept list', () => {
+    const many = Array.from({ length: 51 }, (_, index) => `tag-${index}`);
+    const options = {
+      skillName: 'notes',
+      description: 'Notes.',
+      instructions: 'Body',
+      tags: many,
+    };
+    let refusal: unknown;
+    try {
+      renderSkillMarkdown(options);
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(GitHubApiError);
+    expect(refusal).toMatchObject({
+      status: 422,
+      message: 'A skill takes at most 50 tags.',
+    });
+    expect(() =>
+      renderSkillMarkdown({
+        ...options,
+        keepFrontmatter: { metadata: { tags: many.join(', ') } },
+      }),
+    ).not.toThrow();
   });
 
   it('round-trips an edit: every other key and metadata key is kept', () => {

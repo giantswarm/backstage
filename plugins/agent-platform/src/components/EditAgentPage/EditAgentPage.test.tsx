@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import {
   MCPServer,
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -21,6 +22,7 @@ import type {
   AgentUpdate,
 } from '../../lib/agentManager';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import {
   musterAgentManagerAgentQueryKey,
   musterCommitAgentUpdateDryRunQueryKey,
@@ -32,6 +34,11 @@ const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
 const REPO = 'https://github.com/giantswarm/agent-skills';
 
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
     skills: [
@@ -88,7 +95,7 @@ jest.mock('../ModelConfigsProvider', () => ({
     isLoading: false,
     unreachableInstallations: [],
     modelConfigsFor: () => [
-      modelConfig('default-model-config', 'kagent', 'Claude Sonnet'),
+      modelConfig('anthropic-main', 'kagent', 'Claude Sonnet'),
       modelConfig('opus-4-7', 'kagent', 'Claude Opus'),
       modelConfig('elsewhere', 'other-team', 'Elsewhere'),
     ],
@@ -162,14 +169,11 @@ jest.mock('../../hooks/useUnderlyingModel', () => ({
     namespace: string | undefined,
   ) => (name && namespace ? `${name}-model · Anthropic` : undefined),
 }));
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({
-    content,
-    filename,
-  }: {
-    content: string;
-    filename?: string;
-  }) => <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>,
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
+  ),
 }));
 
 const PR_REVIEW: AgentSkillEntry = {
@@ -542,6 +546,42 @@ describe('EditAgentPage', () => {
     expect(
       screen.getByText('Runtime', { selector: 'dt' }).nextElementSibling,
     ).toHaveTextContent('Platform default');
+  });
+
+  // The save's refusal is the mutation's, kept until the next write: once
+  // the sign-in lands it goes, and Save is the person's to press again.
+  it('clears the connect step of a refused save once the sign-in lands', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE);
+    const scripted = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args) => {
+      if (name === 'x_agent-manager_update_agent' && !args.dryRun) {
+        throw new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        );
+      }
+      return scripted(name, args);
+    });
+
+    await changeDescriptionAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
   });
 
   it('saves only what changed through update_agent and hands over to the agent’s page', async () => {
@@ -1079,11 +1119,43 @@ describe('EditAgentPage', () => {
     mockDeniedVerbs = new Set(['update']);
     await renderEdit(BASE, { notConnected: true });
 
+    // Not muster's request for a sign-in: its answer stays in sight.
     expect(
       await screen.findByText(/server agent-manager not connected/),
     ).toBeInTheDocument();
+    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
     expect(
       screen.queryByText('You cannot change this agent'),
+    ).not.toBeInTheDocument();
+  });
+
+  // A read, not a write: muster's status moving to connected reads every
+  // muster query again (`useServerSignIn`), this one with them.
+  it('opens the form once the sign-in lands, from the status alone', async () => {
+    const scenario: Scenario = {
+      notConnected: true,
+      agentManagerAuth: 'auth_required',
+    };
+    const { queryClient } = await renderEdit(BASE, scenario);
+    expect(
+      await screen.findByText('Connect to agent-manager'),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeVisible(),
+    );
+
+    // Signed in, here or in another tab: the status read says so.
+    scenario.notConnected = false;
+    scenario.agentManagerAuth = 'connected';
+    await act(() =>
+      queryClient.invalidateQueries({
+        queryKey: ['muster', 'auth-status', 'gazelle'],
+      }),
+    );
+
+    expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Connect to agent-manager'),
     ).not.toBeInTheDocument();
   });
 
@@ -1198,12 +1270,14 @@ describe('EditAgentPage', () => {
         screen.getByText(
           /^This agent is defined in Git outside the directory the portal writes to\. Change it in the file that defines it in/,
         ),
-      ).toHaveTextContent('in giantswarm/giantswarm-management-clusters.');
+      ).toHaveTextContent(
+        'in giantswarm/giantswarm-management-clusters (opens in a new tab).',
+      );
       // Only what agent-manager reports is linked: the repository, never a
       // guess at where the release is defined.
       expect(
         screen.getByRole('link', {
-          name: 'giantswarm/giantswarm-management-clusters',
+          name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
         }),
       ).toHaveAttribute(
         'href',

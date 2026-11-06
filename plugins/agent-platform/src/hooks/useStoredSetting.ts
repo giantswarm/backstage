@@ -24,6 +24,79 @@ const BUCKET = 'agent-platform';
 /** How long a write waits for the stored value before it gives up. */
 const READ_TIMEOUT_MS = 10_000;
 
+/**
+ * Why a read or a write of the storage failed, as the app's user-settings
+ * storage (`RoamingSettingsStorage`) says on a read's "unknown" snapshot and
+ * on a write's error: `status`, the backend's answer, or `network`, that it
+ * could not be reached. A storage that says neither gives no reason to try
+ * again.
+ */
+type StorageFailure = { status?: unknown; network?: unknown };
+
+/** A 5xx or the network: a new try may well succeed. */
+function isTransientFailure(failure: StorageFailure | null | undefined) {
+  if (failure?.network === true) {
+    return true;
+  }
+  const status = failure?.status;
+  return typeof status === 'number' && status >= 500;
+}
+
+/**
+ * A write's read of the stored value that failed. `transient`: the storage
+ * says the backend answered with a 5xx or could not be reached, and a new
+ * read may well succeed. A 4xx, an answer that is not JSON, or a read that
+ * timed out (a retry would wait as long again) is not.
+ */
+export class StoredSettingReadError extends Error {
+  constructor(
+    message: string,
+    readonly transient: boolean,
+  ) {
+    super(message);
+    this.name = 'StoredSettingReadError';
+  }
+}
+
+/** How many times a write that may retry is tried again. */
+export const STORED_SETTING_RETRIES = 2;
+
+/** The wait before the first retry; it doubles before each one after. */
+export const STORED_SETTING_RETRY_DELAY_MS = 250;
+
+/**
+ * Whether a failed write may succeed if tried again: its read failed
+ * transiently, or its write met a 5xx or the network (as the storage's write
+ * error says).
+ */
+export function isTransientStoredSettingError(error: unknown): boolean {
+  if (error instanceof StoredSettingReadError) {
+    return error.transient;
+  }
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    isTransientFailure(error as StorageFailure)
+  );
+}
+
+export type StoredSettingWriteOptions = {
+  /**
+   * Try a transient failure ({@link isTransientStoredSettingError}) again,
+   * {@link STORED_SETTING_RETRIES} times, after
+   * {@link STORED_SETTING_RETRY_DELAY_MS} and then twice as long each time.
+   * For writes the person waits on; a write the app makes on its own, again
+   * with the next read, fails at once rather than adding reads to a backend
+   * that is failing.
+   */
+  retry?: boolean;
+};
+
+const wait = (ms: number) =>
+  new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  });
+
 /** The queue of writes to one setting. */
 const queues = new WeakMap<StorageApi, Map<string, Promise<unknown>>>();
 
@@ -45,7 +118,8 @@ function setTail(storageApi: StorageApi, key: string, tail: Promise<unknown>) {
  * storage, in tests and signed out) answers from its snapshot; the app's
  * user-settings storage answers `snapshot` with "unknown", and a subscription
  * reads the backend afresh. A read the backend did not answer ("unknown")
- * rejects: a write built on it would replace the stored value.
+ * rejects with a {@link StoredSettingReadError}: a write built on it would
+ * replace the stored value.
  */
 function readStored(
   bucket: StorageApi,
@@ -72,13 +146,23 @@ function readStored(
       // subscription is assigned.
       queueMicrotask(() => state.subscription?.unsubscribe());
     };
-    const unreadable = () =>
-      reject(new Error('The stored setting could not be read.'));
-    state.timer = setTimeout(() => settle(unreadable), READ_TIMEOUT_MS);
+    const unreadable = (transient: boolean) =>
+      reject(
+        new StoredSettingReadError(
+          'The stored setting could not be read.',
+          transient,
+        ),
+      );
+    state.timer = setTimeout(
+      () => settle(() => unreadable(false)),
+      READ_TIMEOUT_MS,
+    );
     state.subscription = bucket.observe$<StoredJson>(key).subscribe({
       next: value =>
         settle(() =>
-          value.presence === 'unknown' ? unreadable() : resolve(value),
+          value.presence === 'unknown'
+            ? unreadable(isTransientFailure(value as StorageFailure))
+            : resolve(value),
         ),
       error: error => settle(() => reject(error)),
     });
@@ -96,14 +180,21 @@ function readStored(
  * queued across the app, so quick changes in one tab each start from the one
  * before (R2-5). Two tabs writing within one read-and-write still race; the
  * backend offers no compare-and-set.
+ *
+ * With `retry`, a transient failure reads and applies again within the
+ * write's place in the queue: a write queued behind it still lands after it
+ * (a retry at the queue's tail could store an older seen mark over a newer
+ * one), and a write that did land before its answer was lost changes nothing
+ * the second time.
  */
 function updateStoredSetting<R>(
   storageApi: StorageApi,
   key: string,
   apply: (current: unknown) => { value: StoredJson; result: R } | undefined,
+  { retry = false }: StoredSettingWriteOptions = {},
 ): Promise<R | undefined> {
   const bucket = storageApi.forBucket(BUCKET);
-  const run = async (): Promise<R | undefined> => {
+  const once = async (): Promise<R | undefined> => {
     const stored = await readStored(bucket, key);
     const change = apply(
       stored.presence === 'present' ? stored.value : undefined,
@@ -113,6 +204,22 @@ function updateStoredSetting<R>(
     }
     await bucket.set(key, change.value);
     return change.result;
+  };
+  const run = async (): Promise<R | undefined> => {
+    for (let failures = 0; ; failures += 1) {
+      try {
+        return await once();
+      } catch (error) {
+        if (
+          !retry ||
+          failures >= STORED_SETTING_RETRIES ||
+          !isTransientStoredSettingError(error)
+        ) {
+          throw error;
+        }
+        await wait(STORED_SETTING_RETRY_DELAY_MS * 2 ** failures);
+      }
+    }
   };
   const done = tailOf(storageApi, key).then(run);
   // The queue goes on whether or not this write failed.
@@ -130,7 +237,8 @@ export function useStoredSettingUpdate(key: string) {
   return useCallback(
     <R>(
       apply: (current: unknown) => { value: StoredJson; result: R } | undefined,
-    ) => updateStoredSetting(storageApi, key, apply),
+      options?: StoredSettingWriteOptions,
+    ) => updateStoredSetting(storageApi, key, apply, options),
     [storageApi, key],
   );
 }

@@ -9,6 +9,7 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  FileView,
   MoreOptions,
   searchableIf,
   useFieldValidation,
@@ -29,7 +30,6 @@ import {
   type AddBackendResult,
   type BackendKind,
 } from '../../lib/modelManagerBackends';
-import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
@@ -621,7 +621,7 @@ export function AddModelBackendPage({
               {' on '}
               {installation}. model-manager validates it when it reads it.
             </Text>
-            <CodeBlock
+            <FileView
               filename={`${review.configMap.name}.yaml`}
               content={review.document}
               language="yaml"
@@ -640,8 +640,18 @@ export function AddModelBackendPage({
           <ConnectAgentManagerAlert
             installation={installation}
             message={write.failure!.message}
+            signInRequired={write.failure!.signInRequired}
             action="Model backends are registered"
             server={MODEL_MANAGER_SERVER}
+            // Signed in: the refusal is cleared. A Review refused before it
+            // answered asks again, being a dry run; a Deploy is the person's
+            // to press again on the review they see.
+            onSignedIn={() => {
+              write.reset();
+              if (!review) {
+                void onReview();
+              }
+            }}
           />
         )}
         {applied && (

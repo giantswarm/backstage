@@ -12,7 +12,11 @@ import {
   idTokenLifetimeLeft,
 } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
-import type { KagentRequestErrorFields } from '../lib/readFailure';
+import {
+  isKagentUnavailable,
+  KAGENT_UNAVAILABLE_MESSAGE,
+  type KagentRequestErrorFields,
+} from '../lib/readFailure';
 import {
   KagentInstallation,
   parseKagentInstallations,
@@ -143,6 +147,15 @@ async function readRequestError(
   };
 }
 
+/**
+ * The backend's message as the `cause` of an error that says something
+ * friendlier, so the installation and the upstream detail survive for the
+ * console and Sentry; nothing when the body carried none.
+ */
+function backendCause(message: string | undefined): { cause?: Error } {
+  return message ? { cause: new Error(message) } : {};
+}
+
 /** How `relayStream`'s errors name the request they are about. */
 type StreamWording = {
   /** What an in-band refusal refused. */
@@ -268,6 +281,7 @@ function answerBody(
       rejectionReason: answer.rejectionReason,
     }),
     ...(answer.text && { text: answer.text }),
+    ...(answer.askedIn && { askedIn: answer.askedIn }),
   };
 }
 
@@ -733,12 +747,19 @@ export class KagentApiClient implements KagentApi {
         // report. The backend's own says why: `reason: "timeout"` is its wait
         // for kagent's first event running out, and several of those in a
         // row read as a runtime that cannot start (`useSendMessage`).
-        const { fields } = await readRequestError(response);
+        //
+        // `reason: "unavailable"` is kagent or its gateway answering gRPC
+        // `Unavailable`: the controller is down for a moment, and the person
+        // hears that in place of a bare status.
+        const { message, fields } = await readRequestError(response);
         throw Object.assign(
           streamTransportError(
-            `The ${wording.stream} failed with status ${response.status}.`,
+            isKagentUnavailable(fields)
+              ? KAGENT_UNAVAILABLE_MESSAGE
+              : `The ${wording.stream} failed with status ${response.status}.`,
           ),
           fields,
+          backendCause(message),
         );
       }
       // 4xx: a decision — a malformed message, a rejected token, an unknown
@@ -1001,9 +1022,21 @@ export class KagentApiClient implements KagentApi {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
       const { message: bodyMessage, fields } = await readRequestError(response);
-      const message =
-        bodyMessage ?? `kagent request failed with status ${response.status}`;
-      const error = Object.assign(new Error(message), fields);
+      // kagent down for a moment reads as that, not as the backend's message,
+      // which quotes the gateway ("upstream call failed: Connect: Connection
+      // refused"). The status, reason and request id still travel on the error.
+      // The backend's own message stays on the error as its `cause`, for the
+      // console and Sentry: the installation and the gateway's words.
+      const unavailable = isKagentUnavailable(fields);
+      const message = unavailable
+        ? KAGENT_UNAVAILABLE_MESSAGE
+        : (bodyMessage ??
+          `kagent request failed with status ${response.status}`);
+      const error = Object.assign(
+        new Error(message),
+        fields,
+        unavailable ? backendCause(bodyMessage) : {},
+      );
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`
       // raises InputError for a name outside the allowlist). That allowlist is

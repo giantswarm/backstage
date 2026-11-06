@@ -232,6 +232,12 @@ describe('McpUsageSection window', () => {
         "This covers every caller's tool calls, not only yours, over the last 7 days.",
       ),
     ).toBeInTheDocument();
+    // The window in words, never the PromQL duration (`in the last 7d`).
+    expect(
+      await screen.findByText(
+        /No tool calls were dispatched to connectors in the last 7 days\./,
+      ),
+    ).toBeInTheDocument();
     expect(api.getMcpUsage).toHaveBeenCalledWith({
       installation: 'gazelle',
       hours: 168,
