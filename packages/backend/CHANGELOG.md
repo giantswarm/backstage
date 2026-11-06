@@ -1,5 +1,32 @@
 # backend
 
+## 0.21.2
+
+### Patch Changes
+
+- Updated dependencies [6afeaa2]
+- Updated dependencies [06967c4]
+- Updated dependencies [c576d7c]
+- Updated dependencies [51a5714]
+- Updated dependencies [10604ae]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4c53a2b]
+  - @giantswarm/backstage-plugin-agent-platform-backend@1.2.0
+  - @giantswarm/backstage-plugin-muster-backend@0.3.1
+  - @giantswarm/backstage-plugin-plans-backend@0.1.1
+  - @giantswarm/backstage-plugin-roadmap-backend@0.1.1
+  - @giantswarm/backstage-plugin-platform-capabilities-backend@0.1.1
+  - @giantswarm/backstage-plugin-repositories-backend@0.1.1
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.17.1
+  - @giantswarm/backstage-plugin-gs-backend@0.12.0
+  - @internal/backend-common@0.6.1
+  - @giantswarm/backstage-plugin-catalog-backend-module-gs@0.7.1
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.18.1
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.13.1
+
 ## 0.21.1
 
 ### Patch Changes
