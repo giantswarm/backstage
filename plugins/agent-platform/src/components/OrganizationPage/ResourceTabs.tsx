@@ -239,7 +239,7 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
   return (
     <PageSection
       title="Connectors"
-      description="The MCP servers the organization's agents reach, each credential by its Secret's name, never its value."
+      description="The connectors the organization's agents reach, each credential by its Secret's name, never its value."
     >
       {rows.length === 0 ? (
         <Text color="secondary">

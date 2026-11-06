@@ -3,27 +3,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import {
   AuthStatusResponse,
+  ConnectorNamesResponse,
   MusterApi,
   musterApiRef,
   ServerAuthStatus,
 } from '../../apis';
 import { McpAuthDialog } from './McpAuthDialog';
-import { MCPServer } from '../../lib/k8s';
 
-/** The installation's MCPServers: none, so every server keeps its name. */
-const mockServers: MCPServer[] = [];
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({
-    resources: mockServers,
-    errors: [],
-    queries: [],
-    isLoading: false,
-    retry: jest.fn(),
-  }),
-}));
+/** The installation's connectors as muster names them: none by default. */
+let mockNames: ConnectorNamesResponse = { servers: [] };
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
+afterEach(() => {
+  mockNames = { servers: [] };
+});
+
+type Api = Pick<
+  MusterApi,
+  'getAuthStatus' | 'listConnectorNames' | 'signInServer' | 'signOutServer'
+>;
 
 const status = (
   name: string,
@@ -34,6 +31,7 @@ function makeApi(response: AuthStatusResponse): jest.Mocked<Api> {
   return {
     // A fresh object per read, as the wire gives: the tests change `response`.
     getAuthStatus: jest.fn(() => Promise.resolve({ ...response })),
+    listConnectorNames: jest.fn(() => Promise.resolve(mockNames)),
     signInServer: jest.fn(),
     signOutServer: jest.fn(),
   };
@@ -88,6 +86,52 @@ function Harness({
 }
 
 describe('McpAuthDialog', () => {
+  // muster-backend names the connectors for everyone, with or without
+  // Kubernetes access to the MCPServer objects.
+  it('names each connector by its display name, a family member by its family', async () => {
+    mockNames = {
+      servers: [
+        { name: 'agent-manager', displayName: 'Agent Manager' },
+        {
+          name: 'graveler-mcp-kubernetes',
+          family: 'kubernetes',
+          displayName: 'Kubernetes',
+        },
+      ],
+    };
+    const api = makeApi({
+      servers: [
+        status('agent-manager', 'auth_required'),
+        status('graveler-mcp-kubernetes', 'auth_required'),
+        status('workspace-manager', 'auth_required'),
+      ],
+    });
+    await renderDialog(api);
+
+    const list = await screen.findByRole('list', { name: 'Connectors' });
+    await waitFor(() => expect(list).toHaveTextContent('Agent Manager'));
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows.map(row => row.firstChild?.firstChild?.textContent)).toEqual([
+      'Agent Manager',
+      'Kubernetes',
+      // Not named by muster: its own name.
+      'workspace-manager',
+    ]);
+    expect(api.listConnectorNames).toHaveBeenCalledWith('graveler');
+  });
+
+  it('keeps the servers’ own names when muster cannot name them', async () => {
+    mockNames = { servers: [], unavailable: true };
+    const api = makeApi({
+      servers: [status('agent-manager', 'auth_required')],
+    });
+    await renderDialog(api);
+
+    const list = await screen.findByRole('list', { name: 'Connectors' });
+    await waitFor(() => expect(api.listConnectorNames).toHaveBeenCalled());
+    expect(list).toHaveTextContent('agent-manager');
+  });
+
   it('reads the status once per opening', async () => {
     const api = makeApi({
       servers: [status('workspace-manager', 'auth_required')],
@@ -101,7 +145,7 @@ describe('McpAuthDialog', () => {
     );
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'One MCP server needs your sign-in',
+      'One connector needs your sign-in',
     );
     expect(api.getAuthStatus).toHaveBeenCalledTimes(1);
   });
@@ -121,7 +165,7 @@ describe('McpAuthDialog', () => {
       <Harness api={api} queryClient={queryClient} isOpen />,
     );
     expect(await screen.findByRole('status')).toHaveTextContent(
-      '2 MCP servers need your sign-in',
+      '2 connectors need your sign-in',
     );
 
     rerender(<Harness api={api} queryClient={queryClient} isOpen={false} />);
@@ -137,10 +181,10 @@ describe('McpAuthDialog', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'One MCP server needs your sign-in',
+        'One connector needs your sign-in',
       ),
     );
-    const list = screen.getByRole('list', { name: 'MCP servers' });
+    const list = screen.getByRole('list', { name: 'Connectors' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(list).not.toHaveTextContent('cluster-manager');
   });
@@ -183,10 +227,10 @@ describe('McpAuthDialog', () => {
       }),
     );
 
-    const list = await screen.findByRole('list', { name: 'MCP servers' });
+    const list = await screen.findByRole('list', { name: 'Connectors' });
     expect(list).toHaveTextContent('workspace-manager');
     expect(
-      screen.getByText('1 more server comes with your portal sign-in.'),
+      screen.getByText('1 more connector comes with your portal sign-in.'),
     ).toBeInTheDocument();
   });
 
@@ -200,13 +244,13 @@ describe('McpAuthDialog', () => {
     const api = makeApi(response);
     const queryClient = await renderDialog(api);
 
-    const list = await screen.findByRole('list', { name: 'MCP servers' });
+    const list = await screen.findByRole('list', { name: 'Connectors' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(
       within(list).getAllByRole('button', { name: 'Sign in' }),
     ).toHaveLength(2);
     expect(screen.getByRole('status')).toHaveTextContent(
-      '2 MCP servers need your sign-in',
+      '2 connectors need your sign-in',
     );
 
     response.servers = [
@@ -220,7 +264,7 @@ describe('McpAuthDialog', () => {
     );
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByRole('status')).toHaveTextContent(
-      'One MCP server needs your sign-in',
+      'One connector needs your sign-in',
     );
 
     response.servers = [
@@ -230,7 +274,7 @@ describe('McpAuthDialog', () => {
     await queryClient.invalidateQueries({ queryKey: ['muster'] });
     expect(
       await screen.findByText(
-        'Done: you are signed in to every server listed.',
+        'Done: you are signed in to every connector listed.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
@@ -257,15 +301,15 @@ describe('McpAuthDialog', () => {
       }),
     );
 
-    const list = await screen.findByRole('list', { name: 'MCP servers' });
+    const list = await screen.findByRole('list', { name: 'Connectors' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(list).toHaveTextContent('workspace-manager');
     expect(list).not.toHaveTextContent('devctl');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'One MCP server needs your sign-in',
+      'One connector needs your sign-in',
     );
     expect(
-      screen.getByText('1 more server comes with your portal sign-in.'),
+      screen.getByText('1 more connector comes with your portal sign-in.'),
     ).toBeInTheDocument();
   });
 
@@ -280,7 +324,7 @@ describe('McpAuthDialog', () => {
       ['workspace-manager'],
     );
 
-    const list = await screen.findByRole('list', { name: 'MCP servers' });
+    const list = await screen.findByRole('list', { name: 'Connectors' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(list).toHaveTextContent('workspace-manager');
     expect(list).not.toHaveTextContent('cluster-manager');
@@ -296,7 +340,7 @@ describe('McpAuthDialog', () => {
       ['workspace-manager'],
     );
     expect(
-      await screen.findByText('You are signed in to every MCP server here.'),
+      await screen.findByText('You are signed in to every connector here.'),
     ).toBeInTheDocument();
   });
 
@@ -311,7 +355,7 @@ describe('McpAuthDialog', () => {
     await renderDialog(api);
 
     expect(
-      await screen.findByRole('heading', { name: 'Sign in to MCP servers' }),
+      await screen.findByRole('heading', { name: 'Sign in to connectors' }),
     ).toBeInTheDocument();
     const apps = await screen.findByRole('list', { name: 'Connections' });
     const rows = within(apps).getAllByRole('listitem');
@@ -329,10 +373,10 @@ describe('McpAuthDialog', () => {
       screen.queryByRole('button', { name: 'Disconnect' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('list', { name: 'MCP servers' }),
+      screen.getByRole('list', { name: 'Connectors' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(
-      '1 MCP server and 1 connection need your sign-in before agents and portal features can use them.',
+      '1 connector and 1 connection need your sign-in before agents and portal features can use them.',
     );
   });
 
@@ -345,7 +389,7 @@ describe('McpAuthDialog', () => {
     );
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'One MCP server needs your sign-in before agents and portal features can use its tools.',
+      'One connector needs your sign-in before agents and portal features can use its tools.',
     );
     expect(
       screen.queryByRole('list', { name: 'Connections' }),
@@ -389,9 +433,9 @@ describe('McpAuthDialog', () => {
     );
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'One MCP server needs your sign-in',
+      'One connector needs your sign-in',
     );
-    const list = screen.getByRole('list', { name: 'MCP servers' });
+    const list = screen.getByRole('list', { name: 'Connectors' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(list).not.toHaveTextContent('cluster-manager');
     expect(api.getAuthStatus).toHaveBeenCalled();
@@ -416,7 +460,7 @@ describe('McpAuthDialog', () => {
     expect(within(apps).getAllByRole('listitem')).toHaveLength(1);
     expect(apps).toHaveTextContent('ChatGPT');
     expect(
-      screen.queryByRole('list', { name: 'MCP servers' }),
+      screen.queryByRole('list', { name: 'Connectors' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });

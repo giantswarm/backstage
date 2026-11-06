@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import {
   AuthStatusResponse,
+  ConnectorNamesResponse,
   MusterApi,
   musterApiRef,
   ServerAuthStatus,
@@ -49,7 +50,10 @@ function seedExpiredUrlWait(queryClient: QueryClient) {
   });
 }
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
+type Api = Pick<
+  MusterApi,
+  'getAuthStatus' | 'listConnectorNames' | 'signInServer' | 'signOutServer'
+>;
 
 /**
  * The tab pre-opened by the Sign in click, which the hook navigates once
@@ -91,12 +95,16 @@ function makeApi(options: {
   status?: ServerAuthStatus;
   signIn?: ServerSignInResult;
   signOut?: ServerSignOutResult;
+  names?: ConnectorNamesResponse;
 }): jest.Mocked<Api> {
   const response: AuthStatusResponse = {
     servers: options.status ? [options.status] : [],
   };
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(response)),
+    listConnectorNames: jest.fn(() =>
+      Promise.resolve(options.names ?? { servers: [] }),
+    ),
     signInServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(
         options.signIn ?? {
@@ -546,6 +554,76 @@ describe('ServerSignIn', () => {
       screen.getByText(/to the server's trusted audiences\.$/),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  // The callers that name no display name (the agent platform's alerts) get
+  // the one muster-backend reads for everyone.
+  it('names the connector by the display name muster gives, when the caller gives none', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+      names: { servers: [{ name: 'pro', displayName: 'Pro Search' }] },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(/^Pro Search uses your portal sign-in/),
+    ).toBeInTheDocument();
+    expect(api.listConnectorNames).toHaveBeenCalledWith('gazelle');
+  });
+
+  it('shows the display name next to the sign-in of a list', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+      names: { servers: [{ name: 'pro', displayName: 'Pro Search' }] },
+    });
+    await renderSignIn(api);
+
+    expect(await screen.findByText('Pro Search')).toBeInTheDocument();
+    // Its own name beside it keeps the rows of a list apart.
+    expect(screen.getByText('pro').tagName).toBe('CODE');
+  });
+
+  // Two members of one family share the family's display name.
+  it('keeps two servers with one display name apart', async () => {
+    const api = makeApi({
+      status: {
+        name: 'gazelle-mcp-kubernetes',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+    });
+    await renderInTestApp(
+      <TestApiProvider apis={[[musterApiRef, api]]}>
+        <QueryClientProvider client={newQueryClient()}>
+          <ServerSignIn
+            serverName="gazelle-mcp-kubernetes"
+            displayName="Kubernetes"
+            installation="gazelle"
+            showName
+          />
+          <ServerSignIn
+            serverName="grizzly-mcp-kubernetes"
+            displayName="Kubernetes"
+            installation="gazelle"
+            showName
+          />
+        </QueryClientProvider>
+      </TestApiProvider>,
+    );
+
+    expect(screen.getByText('gazelle-mcp-kubernetes')).toBeInTheDocument();
+    expect(screen.getByText('grizzly-mcp-kubernetes')).toBeInTheDocument();
+    // The caller named them: nothing to read.
+    expect(api.listConnectorNames).not.toHaveBeenCalled();
   });
 
   it('explains a connected SSO server without a failure muster kept from another session', async () => {

@@ -1,3 +1,4 @@
+import type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
 import { MCPServer, TOOL_GROUP_ORDER, ToolGroupKey } from './k8s';
 
 /**
@@ -217,17 +218,12 @@ export function serverRowKey(row: ServerPageRow): string {
 }
 
 /**
- * What the connector naming rule needs to know of one MCPServer CR. Kept
- * structural, so the agent platform's own view of a server fits it too.
+ * What the connector naming rule needs to know of one MCPServer: the shape
+ * muster-backend's `/servers/names` answers too (gs-common's
+ * `ConnectorName`), so a CR, the agent platform's own view of a server and
+ * that answer all fit it.
  */
-export interface ConnectorNameSource {
-  /** The CR name. */
-  name: string;
-  /** `spec.family.name`, for a family member. */
-  family?: string;
-  /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
-  displayName?: string;
-}
+export type ConnectorNameSource = ConnectorName;
 
 /** {@link ConnectorNameSource} of an MCPServer. */
 export function connectorNameSource(server: MCPServer): ConnectorNameSource {

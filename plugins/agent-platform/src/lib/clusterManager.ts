@@ -13,7 +13,10 @@
  * nothing of its own.
  */
 
-import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterSignInRequiredOf,
+  toolErrorDetails,
+} from '@giantswarm/backstage-plugin-muster';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
 import { looksNotConnected, type GitOpsCommit } from './agentManager';
@@ -1022,6 +1025,15 @@ export class ClusterManagerError extends Error {
  */
 export class ClusterManagerNotConnectedError extends Error {
   readonly name = 'ClusterManagerNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to the server (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way, which a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**
@@ -1057,6 +1069,11 @@ export type NodePoolWriteFailure = {
   refused?: Refusal;
   /** `delete_cluster`'s not-found answer, when the answer carried one. */
   notFound?: NotFound;
+  /**
+   * A `not-connected` that is muster asking for the person's sign-in
+   * (`ClusterManagerNotConnectedError.signInRequired`).
+   */
+  signInRequired?: boolean;
 };
 
 export function classifyNodePoolWriteFailure(
@@ -1064,7 +1081,11 @@ export function classifyNodePoolWriteFailure(
 ): NodePoolWriteFailure {
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof ClusterManagerNotConnectedError) {
-    return { kind: 'not-connected', message };
+    return {
+      kind: 'not-connected',
+      message,
+      signInRequired: error.signInRequired,
+    };
   }
   return {
     kind: 'refused',
