@@ -53,6 +53,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Fixed
 
+- Agent Platform: network refusals stay on turns ending in tool output, including when responses are folded into tool calls.
+
 - Backend: a fresh install with the postgresql engine and two or more replicas starts every pod without a restart. Each plugin's migrations wait for a PostgreSQL advisory lock named after the plugin and its migrations table, held on a connection of its own, so replicas started at once on an empty database migrate one after another instead of failing with `… knex_migrations already exists` or `MigrationLocked` (#3088).
 - Agents: after a Deploy from the New agent wizard the Agents list polls every 5 s until it lists the new agent (for up to three minutes, in that tab, across a reload), so the roster shows it within seconds of its `Agent` existing instead of after the one-minute poll. The invalidation on deploy alone refetched before Flux had rendered the `Agent`, and that list stayed fresh for a minute (#2851).
 - Chart: the `VerticalPodAutoscaler` renders only when `resources.verticalPodAutoscaler.enabled` is set and the cluster serves `autoscaling.k8s.io/v1/VerticalPodAutoscaler`. A default install on a cluster without the VPA CRD no longer fails with "no matches for kind VerticalPodAutoscaler"; installations that run the VPA keep it with unchanged values, and `helm template` renders it with `--api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler` (#2800).

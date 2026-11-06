@@ -902,9 +902,9 @@ export function SessionDetailPage() {
   const shownTimeline = useMemo(
     () => ({
       ...timelineWithLive,
-      items: withEgressRefusals(shownItems, egressRefusals),
+      items: withEgressRefusals(shownItems, egressRefusals, tasks),
     }),
-    [timelineWithLive, shownItems, egressRefusals],
+    [timelineWithLive, shownItems, egressRefusals, tasks],
   );
   // What a refusal's alert offers for this agent: read once there is one
   // that needs it, since it takes agent-manager's reading of the agent and
