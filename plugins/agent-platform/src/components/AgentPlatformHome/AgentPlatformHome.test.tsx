@@ -1004,8 +1004,20 @@ describe('AgentPlatformHome', () => {
     });
 
     describe('with a default agent', () => {
+      // The platform's default agent; its name is read from the agent.
+      const general: AgentRow = {
+        ...sre,
+        id: 'gazelle/kagent/default-agent',
+        name: 'General Assistant',
+        technicalName: 'default-agent',
+      };
+
       beforeEach(() => {
-        mockDefaultAgentIds.mockReturnValue(new Set([docs.id]));
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [sre, research, docs, general],
+        });
+        mockDefaultAgentIds.mockReturnValue(new Set([general.id]));
       });
 
       it('asks agent-manager on the installations of startable agents', async () => {
@@ -1017,9 +1029,9 @@ describe('AgentPlatformHome', () => {
       it('preselects it', async () => {
         await render();
 
-        expect(agentPicker()).toHaveTextContent('Docs Agent');
+        expect(agentPicker()).toHaveTextContent('General Assistant');
         expect(
-          screen.getByText("You're starting a session with Docs Agent."),
+          screen.getByText("You're starting a session with General Assistant."),
         ).toBeInTheDocument();
       });
 
@@ -1029,9 +1041,11 @@ describe('AgentPlatformHome', () => {
         await userEvent.click(agentPicker());
         const options = screen.getAllByRole('option');
 
-        expect(options[0]).toHaveTextContent('Docs Agent');
+        expect(options[0]).toHaveTextContent('General Assistant');
         expect(
-          options.filter(option => option.textContent?.includes('Docs Agent')),
+          options.filter(option =>
+            option.textContent?.includes('General Assistant'),
+          ),
         ).toHaveLength(1);
         expect(screen.getAllByRole('group')[0]).toHaveAccessibleName('Recent');
       });
@@ -1045,7 +1059,7 @@ describe('AgentPlatformHome', () => {
       it('preselects nothing when it cannot be started', async () => {
         mockUseAgents.mockReturnValue({
           ...loadedAgents,
-          rows: [sre, research, { ...docs, readiness: 'failed' }],
+          rows: [sre, research, docs, { ...general, readiness: 'failed' }],
         });
         await render();
 

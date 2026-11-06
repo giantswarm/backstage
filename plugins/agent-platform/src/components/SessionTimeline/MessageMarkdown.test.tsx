@@ -22,11 +22,11 @@ describe('MessageMarkdown', () => {
 
   it('navigates in the app for a same-origin link, query kept', async () => {
     await renderInTestApp(
-      <MessageMarkdown text="[Start a session with Assistant](/?agent=golem%2Fkagent%2Fdefault-agent&prompt=Watch%20backups)" />,
+      <MessageMarkdown text="[Start a session with General Assistant](/?agent=golem%2Fkagent%2Fdefault-agent&prompt=Watch%20backups)" />,
     );
 
     const link = screen.getByRole('link', {
-      name: 'Start a session with Assistant',
+      name: 'Start a session with General Assistant',
     });
     expect(link).toHaveAttribute(
       'href',
