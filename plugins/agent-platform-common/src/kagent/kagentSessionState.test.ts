@@ -211,6 +211,79 @@ describe('readTurnProgress', () => {
     });
   });
 
+  it.each(['history', 'artifacts'])(
+    'keeps working while %s advances without a status change',
+    field => {
+      const active = {
+        ...task('working', 12 * 60_000),
+        [field]: [
+          {
+            metadata: {
+              'kagent.dev/a2a/timeline-position': new Date(
+                NOW - 1_000,
+              ).toISOString(),
+            },
+          },
+        ],
+      };
+      expect(progress([active])).toEqual({ kind: 'working' });
+      expect(
+        readTurnProgress(
+          normalizeTaskList({ data: [active] }).tasks,
+          NOW + ACTIVE_MAX_AGE_MS,
+        ),
+      ).toEqual({
+        kind: 'stalled',
+        since: NOW - 1_000,
+      });
+    },
+  );
+
+  it('uses the latest valid output position rather than array order', () => {
+    expect(
+      progress([
+        {
+          ...task('working', 12 * 60_000),
+          history: [
+            {
+              metadata: {
+                'kagent.dev/a2a/timeline-position': new Date(
+                  NOW - 1_000,
+                ).toISOString(),
+              },
+            },
+            {
+              metadata: {
+                'kagent.dev/timeline-position': new Date(
+                  NOW - 10 * 60_000,
+                ).toISOString(),
+              },
+            },
+            { metadata: { 'kagent.dev/a2a/timeline-position': 'invalid' } },
+            null,
+          ],
+        },
+      ]),
+    ).toEqual({ kind: 'working' });
+  });
+
+  it('does not revive a completed turn because its output is recent', () => {
+    expect(
+      progress([
+        {
+          ...task('completed', 12 * 60_000),
+          artifacts: [
+            {
+              metadata: {
+                'kagent.dev/a2a/timeline-position': new Date(NOW).toISOString(),
+              },
+            },
+          ],
+        },
+      ]),
+    ).toBeUndefined();
+  });
+
   it('reports nothing for a terminal turn, whatever its age', () => {
     expect(
       progress([task('completed', ACTIVE_MAX_AGE_MS * 10)]),

@@ -53,6 +53,11 @@ describe('EgressRefusedEntry', () => {
         /^Claude Code is not allowed to reach this address · .+ · 2 attempts$/,
       ),
     ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /A blocked connection does not necessarily stop the task/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('folds the port, the scheme and the origin into technical details', async () => {

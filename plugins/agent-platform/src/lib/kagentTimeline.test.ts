@@ -300,6 +300,30 @@ describe('buildTimeline', () => {
   });
 
   describe('timestamps', () => {
+    it('uses recorded entry positions within a long-running turn', () => {
+      const { items } = timelineFor({
+        data: [
+          {
+            status: { state: 'working', timestamp: '2026-11-06T20:10:16Z' },
+            history: [
+              { role: 'user', messageId: 'u', parts: [{ text: 'Plan' }] },
+              {
+                role: 'agent',
+                messageId: 'a',
+                metadata: {
+                  'kagent.dev/a2a/timeline-position': '2026-11-06T20:19:10Z',
+                },
+                parts: [{ text: 'Rendering complete' }],
+              },
+            ],
+          },
+        ],
+      });
+      expect(items.map(item => item.at)).toEqual([
+        '2026-11-06T20:10:16Z',
+        '2026-11-06T20:19:10.000Z',
+      ]);
+    });
     it('gives every item its task’s timestamp', () => {
       // A2A messages carry no time of their own and there is no finer source:
       // the session's stored events turned out to be ADK events with no

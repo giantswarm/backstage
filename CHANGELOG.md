@@ -30,6 +30,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Changed
 
+- Agent Platform: recorded output keeps turn progress current, network refusals stay on their turn, session filesystem links display as local paths, and unconfirmed answers recover when a later read confirms receipt. Session error notices use platform wording and distinguish unconfirmed answers from runtime loss.
+
 - Agent Platform: Customize's Connectors tab is one list, registered connectors first; the Your connectors, Infrastructure and Internal sub-tabs are gone. The platform's own connectors carry the read-only tags `infrastructure` and `agent-platform`, and the old sub-tab addresses redirect to the list filtered by them until the end of 2026.
 - Backstage 1.56.2 (was 1.55.3), with `@backstage/ui` 0.19.0 and its `react-aria-components` ~1.22 / `react-aria` ~3.53, which the app, `ui-react` and `plans` now share. From `@backstage/backend-defaults` 0.18.1 the backend no longer sends the periodic per-plugin database keepalive queries and the PostgreSQL pool minimum is 0; `backend.database.keepalive: true` turns the queries back on. `auth.providers.guest` is now visible to the frontend.
 - Chart: `backstage.args` defaults to the image's bundled config files (`--config app-config.yaml --config app-config.production.yaml`), the base layer the chart's own `--config` flags follow, so an install that sets only `backstage.appConfig` starts instead of exiting with `Missing required config value`. An installation that sets `backstage.args` keeps its value; one that should keep the bundled files out sets `args: []` (#2759).
