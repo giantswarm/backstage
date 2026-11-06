@@ -640,8 +640,18 @@ export function AddModelBackendPage({
           <ConnectAgentManagerAlert
             installation={installation}
             message={write.failure!.message}
+            signInRequired={write.failure!.signInRequired}
             action="Model backends are registered"
             server={MODEL_MANAGER_SERVER}
+            // Signed in: the refusal is cleared. A Review refused before it
+            // answered asks again, being a dry run; a Deploy is the person's
+            // to press again on the review they see.
+            onSignedIn={() => {
+              write.reset();
+              if (!review) {
+                void onReview();
+              }
+            }}
           />
         )}
         {applied && (

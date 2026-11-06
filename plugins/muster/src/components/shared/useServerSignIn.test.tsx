@@ -425,6 +425,139 @@ describe('useServerSignIn', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  describe('onSignedIn', () => {
+    // A sign-in finished in another tab: nothing started here, and returning
+    // to this tab re-reads the status (simulated by refetching it).
+    it('is called when the status moves to connected, with no sign-in started here', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      const queryClient = newQueryClient();
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, queryClient) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+      expect(onSignedIn).not.toHaveBeenCalled();
+
+      api.getAuthStatus.mockResolvedValue({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: ['muster', 'auth-status', 'gazelle'],
+        });
+      });
+
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      // Made in another tab: nothing this tab started.
+      expect(onSignedIn).toHaveBeenCalledWith({ here: false });
+    });
+
+    it('is called when the sign-in started here lands', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () =>
+          useServerSignIn('pro', 'gazelle', { onSignedIn, pollIntervalMs: 20 }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+      await act(async () => result.current.signIn());
+      await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+      api.getAuthStatus.mockResolvedValue({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+
+      await waitFor(() => expect(result.current.isWaiting).toBe(false));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
+    });
+
+    // muster's "already authenticated and connected": the sign-in holds, so
+    // what waits on it goes ahead, whatever the status read said before.
+    it('is called when a sign-in click finds the server connected already', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+      api.signInServer.mockResolvedValue({
+        status: 'connected',
+        message: "Server 'pro' is already authenticated and connected.",
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() =>
+        expect(result.current.status?.status).toBe('connected'),
+      );
+      // A server connected on first sight says nothing about a refusal.
+      expect(onSignedIn).not.toHaveBeenCalled();
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
+      expect(result.current.error).toBeUndefined();
+    });
+
+    // The click reports the landing; the status read it causes, moving from
+    // waiting to connected, is the same landing, not a second one.
+    it('is called once when a click finds the server connected while the status still waits', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockImplementation(async () => {
+        api.getAuthStatus.mockResolvedValue({
+          servers: [{ name: 'pro', status: 'connected' }],
+        });
+        return {
+          status: 'connected',
+          message: "Server 'pro' is already authenticated and connected.",
+        };
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not called while the sign-in is refused', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockResolvedValue({
+        status: 'error',
+        message: 'Rate limit exceeded.',
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() =>
+        expect(result.current.error).toBe('Rate limit exceeded.'),
+      );
+      expect(onSignedIn).not.toHaveBeenCalled();
+    });
+  });
+
   /**
    * The inverse flow: a completed logout must invalidate every muster query so
    * the server's tools re-gate and the sign-in affordance comes back -- there

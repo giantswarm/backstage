@@ -56,6 +56,8 @@ export type UpdateVerdict =
       reason: string;
       /** muster's words, when the person's session must connect first. */
       connect?: string;
+      /** That answer is muster asking for the sign-in (see `ConnectAgentManagerAlert`). */
+      signInRequired?: boolean;
     };
 
 /** What happened to one agent after confirming. */
@@ -155,6 +157,7 @@ export function updateVerdictOf({
       kind: 'blocked',
       reason: `Your muster session on ${installation} is not connected to agent-manager yet.`,
       connect: read.failure.message,
+      signInRequired: read.failure.signInRequired,
     };
   }
   if (read.agent?.managed === 'gitops') {
@@ -526,7 +529,13 @@ export function SkillUpdateAgentsDialog({
       )
       .find(verdict => verdict?.kind === 'blocked' && verdict.connect);
     return blocked?.kind === 'blocked' && blocked.connect
-      ? [{ installation, message: blocked.connect }]
+      ? [
+          {
+            installation,
+            message: blocked.connect,
+            signInRequired: blocked.signInRequired,
+          },
+        ]
       : [];
   });
 
@@ -684,11 +693,12 @@ export function SkillUpdateAgentsDialog({
               : `${proposing} selected agents are applied from git: they are updated through pull requests in their GitOps repositories and move once those are merged.`}
           </Text>
         )}
-        {connectAlerts.map(({ installation, message }) => (
+        {connectAlerts.map(({ installation, message, signInRequired }) => (
           <ConnectAgentManagerAlert
             key={installation}
             installation={installation}
             message={message}
+            signInRequired={signInRequired}
             action="Agents are updated"
           />
         ))}

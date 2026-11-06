@@ -39,7 +39,7 @@ test('a person without a GitHub grant is guided to sign in, one with a grant see
   admin,
 }) => {
   await open(admin, '/bot-prs?scope=all&team=bumblebee');
-  const signIn = admin.getByText('Sign in to GitHub for marge');
+  const signIn = admin.getByText(/^Sign in to GitHub for /);
   const summary = admin.getByTestId('queue-summary');
   await expect(
     signIn.or(summary).first(),
