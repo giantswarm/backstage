@@ -13,7 +13,7 @@ type AgentShellNavItemBase = {
   id: string;
   title: string;
   icon: IconComponent;
-  position: 'top' | 'bottom';
+  position: 'top' | 'bottom' | 'profileMenu';
   /** The label under the icon in the phone's bottom bar, when shorter. */
   barTitle?: string;
   /**
@@ -83,8 +83,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     title: 'Organizations',
     icon: GroupIcon,
     routeRef: agentPlatformPlugin.routes.organizations,
-    position: 'top',
-    phone: 'profileMenu',
+    position: 'profileMenu',
   },
   {
     // The way back into the classic portal, whose own routes render classic

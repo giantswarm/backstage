@@ -85,6 +85,7 @@ type PortalsConfig = { platformPortal?: boolean; agentPlatform?: boolean };
 
 async function renderNav({
   bound = true,
+  organizationsBound = false,
   isPinned = true,
   isMobile = false,
   path = '/',
@@ -93,6 +94,7 @@ async function renderNav({
 }: {
   profile?: { displayName?: string; email?: string };
   bound?: boolean;
+  organizationsBound?: boolean;
   isPinned?: boolean;
   isMobile?: boolean;
   path?: string;
@@ -134,6 +136,9 @@ async function renderNav({
           '/customize/connectors': musterPlugin.routes.mcpServers,
           '/customize/workflows': musterPlugin.routes.workflows,
           '/profile': agentPlatformPlugin.routes.profile,
+          ...(organizationsBound && {
+            '/organizations': agentPlatformPlugin.routes.organizations,
+          }),
         }),
       },
     },
@@ -156,6 +161,48 @@ beforeEach(() => {
 });
 
 describe('AgentShellNav', () => {
+  it.each([
+    { isPinned: true, isMobile: false },
+    { isPinned: false, isMobile: false },
+    { isPinned: false, isMobile: true },
+  ])('puts Organizations in the profile menu, %j', async layout => {
+    await renderNav({ ...layout, organizationsBound: true });
+
+    expect(
+      screen.queryByRole('link', { name: 'Organizations' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Profile and settings' }),
+    );
+
+    expect(
+      within(await screen.findByRole('menu')).getByRole('menuitem', {
+        name: 'Organizations',
+      }),
+    ).toHaveAttribute('href', '/organizations');
+  });
+
+  it.each([
+    { isPinned: true, isMobile: false },
+    { isPinned: false, isMobile: false },
+    { isPinned: false, isMobile: true },
+  ])(
+    'leaves an unbound Organizations page out of the profile menu, %j',
+    async layout => {
+      await renderNav(layout);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+
+      expect(
+        within(await screen.findByRole('menu')).queryByRole('menuitem', {
+          name: 'Organizations',
+        }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
 
