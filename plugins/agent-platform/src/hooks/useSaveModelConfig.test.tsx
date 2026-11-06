@@ -424,7 +424,7 @@ describe('useSaveModelConfig', () => {
       });
     });
 
-    it('leaves default-model-config the default while nothing is marked', async () => {
+    it('marks the new model beside an unmarked default-model-config', async () => {
       mockFetchResourceList.mockResolvedValue([listed('default-model-config')]);
       const { result } = setup();
 
@@ -436,8 +436,10 @@ describe('useSaveModelConfig', () => {
         });
       });
 
-      expect(saved).toEqual({ isDefault: false });
-      expect(createdManifest().metadata.annotations).toBeUndefined();
+      expect(saved).toEqual({ isDefault: true });
+      expect(createdManifest().metadata.annotations).toEqual({
+        [MARK]: 'true',
+      });
     });
 
     it('leaves a namespace with a default as it is', async () => {

@@ -1,3 +1,5 @@
+import type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
+
 /**
  * Types mirroring the muster workflow data model
  * (giantswarm/muster internal/api), as returned by the muster-backend
@@ -197,6 +199,20 @@ export interface MusterInstallationsResponse {
 export interface McpServerRuntime {
   name: string;
   /**
+   * What muster registers a server outside its own namespace under (a
+   * tenant's), `<namespace>/<name>`, and names it by in `auth://status` and
+   * the `core_auth_*` tools; absent for a server of muster's namespace
+   * (muster#1508, v5.53.1).
+   */
+  key?: string;
+  /** The `metadata.namespace`; absent in filesystem mode. */
+  namespace?: string;
+  /**
+   * The `ui.giantswarm.io/display-name` annotation, when set (muster#1518,
+   * v5.53.1).
+   */
+  displayName?: string;
+  /**
    * `spec.toolPrefix`: the segment muster puts in this server's exposed tool
    * names, which is not its name. A server named `mcp-marge` with
    * prefix `marge` exposes `x_marge_<tool>`.
@@ -238,6 +254,19 @@ export interface McpServerRuntime {
 
 export interface McpServerListResponse {
   mcpServers: McpServerRuntime[] | null;
+}
+
+/** A connector as muster-backend names it (`/servers/names`). */
+export type { ConnectorName };
+
+/**
+ * The connectors of one installation the person may see, by name. `unavailable`
+ * when muster could not list them: the sign-in prompts keep the servers' own
+ * names then.
+ */
+export interface ConnectorNamesResponse {
+  servers: ConnectorName[];
+  unavailable?: boolean;
 }
 
 /**
@@ -598,6 +627,11 @@ export interface MusterApi {
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
+  /**
+   * What people call the installation's connectors, for everyone who sees a
+   * sign-in prompt. A background read: it never asks the person to sign in.
+   */
+  listConnectorNames(installation?: string): Promise<ConnectorNamesResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
   filterResources(

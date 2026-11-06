@@ -1073,7 +1073,7 @@ describe('ModelDetailPage', () => {
       ).toBeDisabled();
       expect(
         screen.getByText(
-          'Helm manages this model: make it the default in its values (kagent.modelConfigs[].default).',
+          "Helm manages this model: make it the default in its release's values.",
         ),
       ).toBeInTheDocument();
     });

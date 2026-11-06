@@ -300,7 +300,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           .getAllByRole('listitem')
           .map(row => row.textContent),
       ).toEqual([
-        expect.stringContaining('1 MCP server needs your sign-in'),
+        expect.stringContaining('1 connector needs your sign-in'),
         expect.stringContaining('Template run finished'),
         expect.stringContaining('SRE Agent needs your input'),
       ]);

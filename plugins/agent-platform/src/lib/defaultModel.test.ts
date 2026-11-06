@@ -1,19 +1,11 @@
 import {
   DEFAULT_MODEL_ANNOTATION,
-  defaultClaimsIn,
   defaultIn,
   defaultMarkPatch,
   defaultModelIds,
   markedIn,
   planDefaultMove,
 } from './defaultModel';
-import { organizationDirectory } from './organizations';
-
-// The organization agent-manager names `org-acme` as; the namespace's name
-// says nothing.
-const directory = organizationDirectory([
-  { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
-]);
 
 function model(
   name: string,
@@ -36,53 +28,24 @@ describe('defaultIn', () => {
       model('opus', { namespace: 'org-acme', marked: true }),
     ];
 
-    expect(defaultIn(models, 'kagent', directory)).toBe('sonnet');
-    expect(defaultIn(models, 'org-acme', directory)).toBe('opus');
+    expect(defaultIn(models, 'kagent')).toBe('sonnet');
+    expect(defaultIn(models, 'org-acme')).toBe('opus');
   });
 
   it('is none without a mark, or with several', () => {
-    expect(defaultIn([model('haiku')], 'kagent', directory)).toBeUndefined();
+    expect(defaultIn([model('haiku')], 'kagent')).toBeUndefined();
     expect(
       defaultIn(
         [model('haiku', { marked: true }), model('sonnet', { marked: true })],
         'kagent',
-        directory,
       ),
     ).toBeUndefined();
   });
 
-  it('falls back to default-model-config outside an Organization while nothing is marked', () => {
+  it('gives default-model-config no special meaning', () => {
     expect(
-      defaultIn([model('default-model-config')], 'kagent', directory),
-    ).toBe('default-model-config');
-    expect(
-      defaultIn(
-        [model('default-model-config'), model('sonnet', { marked: true })],
-        'kagent',
-        directory,
-      ),
-    ).toBe('sonnet');
-    expect(
-      defaultIn(
-        [model('default-model-config', { namespace: 'org-acme' })],
-        'org-acme',
-        directory,
-      ),
+      defaultIn([model('default-model-config')], 'kagent'),
     ).toBeUndefined();
-  });
-
-  it('claims with every mark, so several stay no default', () => {
-    expect(
-      defaultClaimsIn(
-        [
-          model('default-model-config'),
-          model('haiku', { marked: true }),
-          model('sonnet', { marked: true }),
-        ],
-        'kagent',
-        directory,
-      ),
-    ).toEqual(['haiku', 'sonnet']);
   });
 
   it('reads only "true" as a mark', () => {
@@ -98,15 +61,12 @@ describe('defaultIn', () => {
 describe('defaultModelIds', () => {
   it('resolves each namespace of each installation on its own', () => {
     expect(
-      defaultModelIds(
-        [
-          model('sonnet', { marked: true }),
-          model('sonnet', { marked: true, cluster: 'glean' }),
-          model('haiku', { marked: true, cluster: 'glean' }),
-          model('opus', { namespace: 'org-acme', marked: true }),
-        ],
-        directory,
-      ),
+      defaultModelIds([
+        model('sonnet', { marked: true }),
+        model('sonnet', { marked: true, cluster: 'glean' }),
+        model('haiku', { marked: true, cluster: 'glean' }),
+        model('opus', { namespace: 'org-acme', marked: true }),
+      ]),
     ).toEqual(new Set(['gazelle/kagent/sonnet', 'gazelle/org-acme/opus']));
   });
 });
@@ -177,7 +137,7 @@ describe('planDefaultMove', () => {
     );
   });
 
-  it('refuses to unmark a model Helm marks, naming the values key', () => {
+  it('refuses to unmark a model Helm marks', () => {
     expect(() =>
       planDefaultMove({
         modelConfigs: [model('sonnet', { marked: true }), model('opus')],
@@ -186,7 +146,7 @@ describe('planDefaultMove', () => {
         ownerOf: () => 'Helm',
       }),
     ).toThrow(
-      'sonnet is the default through Helm values, which would mark it again. Move the default in the values (kagent.modelConfigs[].default).',
+      "sonnet is the default through Helm values, which would mark it again. Move the default in that release's values.",
     );
   });
 

@@ -986,6 +986,112 @@ describe('SessionDetailPage', () => {
     });
   });
 
+  describe('sending', () => {
+    const original = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    beforeEach(() => {
+      scrollIntoView.mockReset();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    it('puts the message sent at the top of the view, with room for its reply', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      // The send hook's optimistic echo, from the next render on.
+      mockSendMessage.mockImplementation(() => {
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            pending: { messageId: 'pending-1', text: 'and the staging one?' },
+          }),
+        );
+        return new Promise(() => {});
+      });
+      await render();
+      await screen.findByTestId('session-dock');
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Message' }),
+        'and the staging one?',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      // Something renders the page again, and the echo with it.
+      setChatGpt({ ...NO_CHATGPT });
+
+      const turn = (await screen.findByText('and the staging one?')).closest(
+        '[data-turn-index]',
+      );
+      expect(turn).toHaveAttribute('data-reserved-turn');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(turn);
+      // Nothing new below: the reply is to come.
+      expect(
+        screen.queryByRole('button', { name: 'Jump to bottom' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('puts a message sent again after a failed send at the top too', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      let failFirst: (error: Error) => void = () => {};
+      mockSendMessage
+        .mockImplementationOnce(() => {
+          mockUseSendMessage.mockReturnValue(
+            idleSend({
+              isSending: true,
+              pending: { messageId: 'attempt-1', text: 'and staging?' },
+            }),
+          );
+          return new Promise((_resolve, reject) => {
+            failFirst = reject;
+          });
+        })
+        .mockImplementationOnce(() => {
+          mockUseSendMessage.mockReturnValue(
+            idleSend({
+              isSending: true,
+              pending: { messageId: 'attempt-2', text: 'and staging?' },
+            }),
+          );
+          return new Promise(() => {});
+        });
+      await render();
+      await screen.findByTestId('session-dock');
+      const box = () => screen.getByRole('textbox', { name: 'Message' });
+
+      await userEvent.type(box(), 'and staging?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      setChatGpt({ ...NO_CHATGPT });
+      await screen.findByText('and staging?');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      // A 502: the echo goes, and the person sends the same text again.
+      mockUseSendMessage.mockReturnValue(idleSend());
+      await act(async () => failFirst(new Error('Bad gateway')));
+      setChatGpt({ ...NO_CHATGPT });
+      await waitFor(() =>
+        expect(screen.queryByText('and staging?')).not.toBeInTheDocument(),
+      );
+      await userEvent.type(box(), 'and staging?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      setChatGpt({ ...NO_CHATGPT });
+
+      const turn = (await screen.findByText('and staging?')).closest(
+        '[data-turn-index]',
+      );
+      expect(turn).toHaveAttribute('data-reserved-turn');
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(turn);
+    });
+  });
+
   describe('renaming', () => {
     it('makes the title a way in, not just a label', async () => {
       // The kebab is the discoverable route; the title is the obvious one. It is a

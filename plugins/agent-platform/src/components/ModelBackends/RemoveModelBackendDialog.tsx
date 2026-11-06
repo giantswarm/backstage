@@ -66,13 +66,8 @@ export function RemoveModelBackendDialog({
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope, { isOpen });
 
-  useEffect(() => {
-    if (!isOpen) {
-      setTyped('');
-      setPlan(undefined);
-      write.reset();
-      return;
-    }
+  /** The dry run: what the removal would take along, before any confirm. */
+  const readPlan = () => {
     const isCurrent = startAnswer();
     write
       .dryRunRemove(kind)
@@ -84,6 +79,16 @@ export function RemoveModelBackendDialog({
       .catch(() => {
         // Shown from `write.failure`; the confirm stays disabled.
       });
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setTyped('');
+      setPlan(undefined);
+      write.reset();
+      return;
+    }
+    readPlan();
     // `write` changes identity every render; one dry run per open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, kind, installation]);
@@ -173,8 +178,18 @@ export function RemoveModelBackendDialog({
                   <ConnectAgentManagerAlert
                     installation={installation}
                     message={write.failure!.message}
+                    signInRequired={write.failure!.signInRequired}
                     action="Model backends are removed"
                     server={MODEL_MANAGER_SERVER}
+                    // Signed in: the refusal is cleared, and a dry run that
+                    // was refused asks again. The removal itself never goes
+                    // again by itself: the person confirms once more.
+                    onSignedIn={() => {
+                      write.reset();
+                      if (!plan) {
+                        readPlan();
+                      }
+                    }}
                   />
                 )}
                 {plan && (

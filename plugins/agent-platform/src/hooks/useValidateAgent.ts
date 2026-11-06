@@ -24,6 +24,12 @@ export type ValidateAgentState = {
   failure?: {
     kind: 'refused' | 'not-connected' | 'error';
     message: string;
+    /**
+     * A `not-connected` that is muster asking for the person's sign-in
+     * (`AgentManagerNotConnectedError.signInRequired`), not one a sign-in may
+     * not fix.
+     */
+    signInRequired?: boolean;
   };
 };
 
@@ -54,7 +60,11 @@ export function useValidateAgent(
   if (error) {
     const message = (error as Error).message;
     if (error instanceof AgentManagerNotConnectedError) {
-      failure = { kind: 'not-connected', message };
+      failure = {
+        kind: 'not-connected',
+        message,
+        signInRequired: error.signInRequired,
+      };
     } else if (error instanceof AgentManagerError) {
       failure = { kind: 'refused', message };
     } else {

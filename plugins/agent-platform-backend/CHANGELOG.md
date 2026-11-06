@@ -1,5 +1,103 @@
 # @giantswarm/backstage-plugin-agent-platform-backend
 
+## 1.2.0
+
+### Minor Changes
+
+- 51a5714: Report a failed kagent call to Sentry once, as one issue per call and cause
+  instead of one per route and installation. A kagent call that fails with a 5xx
+  (a timeout, an unavailable controller, an internal error) is answered by the
+  agent-platform router with the same 500 and body as before, and logged once at
+  `warn` as `kagent <call> <cause>`, for example
+  `kagent SessionService/ListSessions timed out`, with the installation, the
+  Connect code and the request id in the log metadata, and the message for an
+  unavailable or timed-out call, which the transport or the gateway wrote. The
+  message of any other failure is kagent's own and may name a user or a session,
+  so it stays out of the log.
+  Backstage's error middleware no longer reports it a second time. This covers
+  every kagent call, not only the session list, and carries the request id of
+  every call that sent one. A session list refused with another 4xx (an expired
+  token, a conflict) is now logged at `info` instead of `warn`, as
+  `kagent SessionService/ListSessions failed with status <status>`, without the
+  installation in the message, so it no longer reaches Sentry. The error text the
+  person sees is unchanged.
+
+  The kagent transport now pings its HTTP/2 connection every 3 s, open or idle,
+  and takes it for dead when a ping goes unanswered for 5 s, long enough to ride
+  out a stalled event loop without ending the turns streaming on a healthy
+  connection. A connection that died silently is replaced within 8 s, before the
+  10 s request timeout, rather than holding every call on it until the timeout. `@connectrpc/connect` and
+  `@connectrpc/connect-node` move to 2.3.0, which no longer drops the session's
+  error listener when a dead session is replaced.
+
+  A new histogram, `kagent_client_call_duration` (seconds), records every unary
+  kagent call with the attributes `installation`, `method` and `outcome`; see
+  `docs/logging.md`, "Backend metrics". The backend warns at startup when
+  `agentPlatform.kagent.timeoutMs` is not above the keepalive's 8 s.
+
+### Patch Changes
+
+- 6afeaa2: The avatar proxy answers an installation whose avatars host it cannot connect
+  to (no route to the address, no connection within 3 s of resolving its name)
+  as an installation without avatars: a 404 the browser and the backend keep for
+  five minutes, logged once at info, so the agent's initials show at once. Before,
+  each avatar waited up to 10 s and logged a warning. A reachable avatar service
+  that answers slowly, with an error or with something other than an image still
+  logs a warning, and so does a refused connection or an egress proxy that
+  cannot be connected to.
+- c576d7c: An answer to a confirmation, a question or a sign-in names the status message
+  it answers (`askedIn`), and the backend refuses it with a 409 when the task now
+  asks in another one: the task was answered elsewhere, from Slack, and paused
+  again on a new request. Before, the late answer was applied to that new
+  request.
+- 5bde8bf: Report a Mimir that cannot answer a query to Sentry once, under a fixed title,
+  and say on the page when older data is temporarily unavailable.
+
+  `MimirService` logs a Mimir that is down, slow or failing once as a warning
+  with a fixed message (`Mimir answered a query with HTTP <status>`,
+  `Mimir could not be reached`, or
+  `Mimir could not read older data: no healthy store-gateway`), with the
+  installation, the status and Mimir's own error text in the metadata, and throws
+  the new `MimirUnavailableError`. Its message no longer carries Mimir's body;
+  that stays in the warning (`mimirError`, left out of the answer to the
+  browser), and a connection error no longer names the query. A query Mimir
+  refused (a 4xx other than a refused token: bad PromQL, a range over its limits)
+  is an `InputError` (400) with Mimir's text instead, not logged and not retried
+  by the frontend. `query({ logFailures: false })` logs at `debug` for a caller
+  that handles the failure itself, as the model cost route does. The gs
+  backend's `/mimir/query` and `/mimir/query_range` routes answer a
+  `MimirUnavailableError` 503 themselves, so the error middleware no longer
+  reports it again. A Mimir without a healthy store-gateway answers
+  with `error.reason: 'older_data_unavailable'` (`MIMIR_UNAVAILABLE_REASONS` in
+  gs-common), and the model cost route answers `older-data-unavailable`.
+
+  gs-node's answer-it-in-the-router pattern is now generic:
+  `ReportedServiceUnavailableError` with `reportedErrorHandler()`, which replaces
+  `musterUnreachableErrorHandler()` (`MusterUnreachableError` is one), and
+  `errorResponseBody()` for a router that answers some other error with the body
+  the error middleware would send.
+
+  ui-react adds `MetricsUnavailableAlert` (with a `fallback` for a caller whose
+  generic failure is a line of text), `describeMimirFailure` and
+  `pickMimirError`, which every place that shows a failed Mimir read now uses: a
+  deployment's resource usage and hostnames, a cluster's gateways and node pool
+  nodes, the workload status summary, the Usage overview and cost pages, the
+  activity heatmap, an agent's and a model's Usage tab, and the cost estimate and
+  actual-cost hints.
+  `MimirClient` throws a `MimirQueryError` that carries the backend's `reason`.
+
+- Updated dependencies [36f0927]
+- Updated dependencies [10604ae]
+- Updated dependencies [6b4e6d6]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [54e92f7]
+- Updated dependencies [4c53a2b]
+  - @giantswarm/backstage-plugin-gs-common@0.23.0
+  - @giantswarm/backstage-plugin-gs-node@0.5.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.3.0
+
 ## 1.1.0
 
 ### Minor Changes

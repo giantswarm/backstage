@@ -1,5 +1,5 @@
-import { act, fireEvent, render } from '@testing-library/react';
-import { useState } from 'react';
+import { act, createEvent, fireEvent, render } from '@testing-library/react';
+import { useCallback, useState } from 'react';
 import {
   AT_END_THRESHOLD_PX,
   SCROLLBAR_HOLD_MS,
@@ -132,32 +132,40 @@ describe('onHeightChange', () => {
 });
 
 /**
- * The document's scroll metrics, faked: jsdom lays nothing out. `height` is
- * what the conversation has grown to; `top` is clamped like a browser's.
+ * A scroll box's metrics, faked: jsdom lays nothing out. `height` is what the
+ * conversation has grown to; `top` is clamped like a browser's.
  */
-function fakePage(view = 800) {
-  const page = document.documentElement;
+function fakeBox(view = 800) {
   const state = { top: 0, height: 2000 };
+  let element: HTMLElement | undefined;
   const clamp = (value: number) =>
     Math.max(0, Math.min(value, state.height - view));
-  const spies = [
-    jest
-      .spyOn(page, 'scrollHeight', 'get')
-      .mockImplementation(() => state.height),
-    jest.spyOn(page, 'clientHeight', 'get').mockReturnValue(view),
-    jest.spyOn(page, 'scrollTop', 'get').mockImplementation(() => state.top),
-    jest.spyOn(page, 'scrollTop', 'set').mockImplementation(value => {
-      state.top = clamp(value);
-    }),
-  ];
   return {
     state,
+    /** Lays out the box as it mounts, before the hook first reads it. */
+    attach(box: HTMLElement) {
+      element = box;
+      Object.defineProperties(box, {
+        scrollHeight: { configurable: true, get: () => state.height },
+        clientHeight: { configurable: true, get: () => view },
+        clientWidth: { configurable: true, get: () => 600 },
+        scrollTop: {
+          configurable: true,
+          get: () => state.top,
+          set: (value: number) => {
+            state.top = clamp(value);
+          },
+        },
+      });
+    },
+    get box(): HTMLElement {
+      return element!;
+    },
     /** The reader scrolls to `top`; the browser then reports it. */
     scrollTo(top: number) {
       state.top = clamp(top);
-      fireEvent.scroll(window);
+      fireEvent.scroll(element!);
     },
-    restore: () => spies.forEach(spy => spy.mockRestore()),
   };
 }
 
@@ -174,7 +182,7 @@ class FakeResizeObserver {
 const resize = () => resizes.forEach(callback => callback());
 
 /** The conversation grows by `by` pixels, the way a streamed chunk does. */
-function grow(page: ReturnType<typeof fakePage>, by: number) {
+function grow(page: ReturnType<typeof fakeBox>, by: number) {
   act(() => {
     page.state.height += by;
     resize();
@@ -183,33 +191,51 @@ function grow(page: ReturnType<typeof fakePage>, by: number) {
 
 type Api = ReturnType<typeof useStickToEnd>;
 
-function Harness({ onReady }: { onReady: (api: Api) => void }) {
+function Harness({
+  page,
+  onReady,
+}: {
+  page: ReturnType<typeof fakeBox>;
+  onReady: (api: Api) => void;
+}) {
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
   const [replyKey, setReplyKey] = useState(0);
-  const api = useStickToEnd(column);
+  const boxRef = useCallback(
+    (box: HTMLDivElement | null) => {
+      if (box) {
+        page.attach(box);
+      }
+      setScroller(box);
+    },
+    [page],
+  );
+  const api = useStickToEnd(column, scroller);
   onReady(api);
   return (
     <>
       <button type="button" aria-expanded={false}>
         Session actions
       </button>
-      <div ref={setColumn}>
-        <button type="button" aria-expanded={false}>
-          Show more
-        </button>
-        <button type="button">Copy</button>
-        <p key={replyKey}>Streaming reply</p>
-        <button type="button" onClick={() => setReplyKey(key => key + 1)}>
-          Re-mount reply
-        </button>
-        <textarea aria-label="Message" />
+      <div ref={boxRef}>
+        <div ref={setColumn}>
+          <button type="button" aria-expanded={false}>
+            Show more
+          </button>
+          <button type="button">Copy</button>
+          <p key={replyKey}>Streaming reply</p>
+          <button type="button" onClick={() => setReplyKey(key => key + 1)}>
+            Re-mount reply
+          </button>
+          <textarea aria-label="Message" />
+        </div>
       </div>
     </>
   );
 }
 
 describe('useStickToEnd', () => {
-  let page: ReturnType<typeof fakePage>;
+  let page: ReturnType<typeof fakeBox>;
   let api: Api;
   const stickToEnd = () => api.stickToEnd();
   const original = window.ResizeObserver;
@@ -217,16 +243,17 @@ describe('useStickToEnd', () => {
   beforeEach(() => {
     window.ResizeObserver =
       FakeResizeObserver as unknown as typeof ResizeObserver;
-    page = fakePage();
+    page = fakeBox();
     resizes = [];
   });
   afterEach(() => {
-    page.restore();
     window.ResizeObserver = original;
   });
 
   function renderAtEnd() {
-    const view = render(<Harness onReady={ready => (api = ready)} />);
+    const view = render(
+      <Harness page={page} onReady={ready => (api = ready)} />,
+    );
     act(() => stickToEnd());
     expect(page.state.top).toBe(1200);
     return view;
@@ -256,7 +283,7 @@ describe('useStickToEnd', () => {
     // must not scroll the page back down under it.
     renderAtEnd();
 
-    fireEvent.wheel(window, { deltaY: -100 });
+    fireEvent.wheel(page.box, { deltaY: -100 });
     grow(page, 60);
 
     expect(page.state.top).toBe(1200);
@@ -265,7 +292,7 @@ describe('useStickToEnd', () => {
   it('keeps following on a wheel down at the end', () => {
     renderAtEnd();
 
-    fireEvent.wheel(window, { deltaY: 100 });
+    fireEvent.wheel(page.box, { deltaY: 100 });
     grow(page, 60);
 
     expect(page.state.top).toBe(1260);
@@ -281,7 +308,7 @@ describe('useStickToEnd', () => {
     grow(page, 60);
     expect(page.state.top).toBe(1260);
 
-    fireEvent.keyDown(document.body, { key: 'PageUp' });
+    fireEvent.keyDown(page.box, { key: 'PageUp' });
     grow(page, 60);
     expect(page.state.top).toBe(1260);
   });
@@ -289,16 +316,16 @@ describe('useStickToEnd', () => {
   it('leaves the end on a swipe down the screen, and not on a tap', () => {
     renderAtEnd();
 
-    fireEvent.touchStart(window, { touches: [{ clientY: 400 }] });
-    fireEvent.touchMove(window, { touches: [{ clientY: 402 }] });
-    fireEvent.touchEnd(window, { touches: [] });
+    fireEvent.touchStart(page.box, { touches: [{ clientY: 400 }] });
+    fireEvent.touchMove(page.box, { touches: [{ clientY: 402 }] });
+    fireEvent.touchEnd(page.box, { touches: [] });
     grow(page, 60);
     expect(page.state.top).toBe(1260);
 
-    fireEvent.touchStart(window, { touches: [{ clientY: 400 }] });
-    fireEvent.touchMove(window, { touches: [{ clientY: 480 }] });
+    fireEvent.touchStart(page.box, { touches: [{ clientY: 400 }] });
+    fireEvent.touchMove(page.box, { touches: [{ clientY: 480 }] });
     grow(page, 60);
-    fireEvent.touchEnd(window, { touches: [] });
+    fireEvent.touchEnd(page.box, { touches: [] });
     grow(page, 60);
     expect(page.state.top).toBe(1260);
   });
@@ -306,12 +333,12 @@ describe('useStickToEnd', () => {
   it('does not scroll while a finger is on the screen', () => {
     renderAtEnd();
 
-    fireEvent.touchStart(window, { touches: [{ clientY: 400 }] });
+    fireEvent.touchStart(page.box, { touches: [{ clientY: 400 }] });
     grow(page, 60);
     expect(page.state.top).toBe(1200);
 
     // Lifted at the end: following resumes with the next chunk.
-    fireEvent.touchEnd(window, { touches: [] });
+    fireEvent.touchEnd(page.box, { touches: [] });
     grow(page, 60);
     expect(page.state.top).toBe(1320);
   });
@@ -337,7 +364,7 @@ describe('useStickToEnd', () => {
 
     // A wheel down to the end of 2300; a paragraph taller than the threshold
     // lands before the scroll does, so it stops 100 short of the new end.
-    fireEvent.wheel(window, { deltaY: 5000 });
+    fireEvent.wheel(page.box, { deltaY: 5000 });
     grow(page, 100);
     page.scrollTo(2300 - 800);
     grow(page, 60);
@@ -353,7 +380,7 @@ describe('useStickToEnd', () => {
     // A chunk is in the DOM but not in a frame yet when the wheel turns: the
     // browser scrolls to the end of 2300, the frame before it.
     page.state.height += 100;
-    fireEvent.wheel(window, { deltaY: 5000 });
+    fireEvent.wheel(page.box, { deltaY: 5000 });
     page.scrollTo(2300 - 800);
     grow(page, 60);
 
@@ -363,9 +390,9 @@ describe('useStickToEnd', () => {
   it('measures the end from the latest scroll only, until it ends', () => {
     renderAtEnd();
     page.scrollTo(400);
-    fireEvent.wheel(window, { deltaY: 100 });
+    fireEvent.wheel(page.box, { deltaY: 100 });
     page.scrollTo(500);
-    fireEvent(window, new Event('scrollend'));
+    fireEvent(page.box, new Event('scrollend'));
     grow(page, 100);
 
     // Moved to the end as it was at that wheel, but with no input since.
@@ -379,7 +406,7 @@ describe('useStickToEnd', () => {
     renderAtEnd();
     page.scrollTo(400);
 
-    fireEvent.keyDown(document.body, { key: 'End' });
+    fireEvent.keyDown(page.box, { key: 'End' });
     grow(page, 60);
 
     expect(page.state.top).toBe(2060 - 800);
@@ -394,7 +421,7 @@ describe('useStickToEnd', () => {
       page.state.top = page.state.height - 800;
       resize();
     });
-    fireEvent.scroll(window);
+    fireEvent.scroll(page.box);
     grow(page, 200);
 
     expect(page.state.top).toBe(1160 + 200);
@@ -471,25 +498,25 @@ describe('useStickToEnd', () => {
     renderAtEnd();
 
     // A pinch zoom.
-    fireEvent.wheel(window, { deltaY: -100, ctrlKey: true });
+    fireEvent.wheel(page.box, { deltaY: -100, ctrlKey: true });
     grow(page, 60);
     expect(page.state.top).toBe(1260);
 
     // Locked behind a dialog.
-    document.documentElement.style.overflowY = 'hidden';
-    fireEvent.wheel(window, { deltaY: -100 });
-    document.documentElement.style.removeProperty('overflow-y');
+    page.box.style.overflowY = 'hidden';
+    fireEvent.wheel(page.box, { deltaY: -100 });
+    page.box.style.removeProperty('overflow-y');
     grow(page, 60);
     expect(page.state.top).toBe(1320);
   });
 
   it('does not leave a conversation that fits the view on a wheel up', () => {
-    render(<Harness onReady={ready => (api = ready)} />);
+    render(<Harness page={page} onReady={ready => (api = ready)} />);
     page.state.height = 600;
     act(() => stickToEnd());
     expect(page.state.top).toBe(0);
 
-    fireEvent.wheel(window, { deltaY: -100 });
+    fireEvent.wheel(page.box, { deltaY: -100 });
     grow(page, 600);
 
     expect(page.state.top).toBe(400);
@@ -512,7 +539,10 @@ describe('useStickToEnd', () => {
     try {
       renderAtEnd();
 
-      fireEvent.mouseDown(document.documentElement);
+      // On the box's scrollbar, past its content width.
+      const press = createEvent.mouseDown(page.box);
+      Object.defineProperty(press, 'offsetX', { value: 604 });
+      fireEvent(page.box, press);
       grow(page, 60);
       expect(page.state.top).toBe(1200);
 
