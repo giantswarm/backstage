@@ -26,9 +26,8 @@ export type RecentAgentUse = {
  * `states` (keyed by session row id) knows it, its start otherwise
  * ({@link lastActiveAt}), as {@link agentLastUsedAt} orders the Agents list.
  * A session counts only when it matched an `Agent` on the fleet, since only
- * then is its agent known by identity. Sessions are walked newest first and
- * stop at `limit` agents, so a person with hundreds of sessions costs no
- * more than the few it takes.
+ * then is its agent known by identity. Every session is ranked once, each
+ * one's use read once, then walked newest first until `limit` agents.
  *
  * `startableOnly` (the default) skips an agent no session can start on now,
  * for a list that starts one; a list that opens the agent's page keeps it,
@@ -51,10 +50,19 @@ export function recentAgentUses(
   const picked: RecentAgentUse[] = [];
   let ranked = sortSessionRows(sessions);
   if (states && states.size > 0) {
-    // Stable: sessions with the same use keep the start order.
-    const used = (session: SessionRow) =>
-      lastActiveAt(session, states.get(session.id)) ?? Number.MIN_SAFE_INTEGER;
-    ranked = ranked.sort((a, b) => used(b) - used(a));
+    // Each session's use once, not once per comparison. Stable: sessions
+    // with the same use keep the start order.
+    ranked = ranked
+      .map(
+        session =>
+          [
+            session,
+            lastActiveAt(session, states.get(session.id)) ??
+              Number.MIN_SAFE_INTEGER,
+          ] as const,
+      )
+      .sort(([, a], [, b]) => b - a)
+      .map(([session]) => session);
   }
   for (const session of ranked) {
     if (picked.length >= limit) {

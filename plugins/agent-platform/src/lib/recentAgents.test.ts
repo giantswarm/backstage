@@ -141,6 +141,41 @@ describe('recentAgentUses with session states', () => {
     ]);
   });
 
+  it("reads each session's use once over 300 sessions, not per comparison", () => {
+    const agents = Array.from({ length: 300 }, (_, i) => agent(`a${i}`));
+    const sessions = agents.map((each, i) =>
+      session(
+        `s${i}`,
+        each.technicalName,
+        new Date(Date.UTC(2026, 9, 1) + i * 60_000).toISOString(),
+      ),
+    );
+    // A turn in the oldest session, after every start.
+    let reads = 0;
+    class CountingMap<K, V> extends Map<K, V> {
+      get(key: K) {
+        reads += 1;
+        return super.get(key);
+      }
+    }
+    const states = new CountingMap([
+      [
+        'gazelle/s0',
+        {
+          sessionId: 's0',
+          state: 'completed',
+          changedAt: Date.parse('2026-12-01T10:00:00Z'),
+        },
+      ],
+    ]);
+
+    expect(
+      recentAgentUses(sessions, agents, { states }).map(use => use.agent.name),
+    ).toEqual(['a0', 'a299', 'a298']);
+    // One per session to rank, one per agent picked.
+    expect(reads).toBe(sessions.length + 3);
+  });
+
   it('agrees with agentLastUsedAt on the order', () => {
     const sessions = [
       session('a', 'sre', '2026-10-01T10:00:00Z'),
