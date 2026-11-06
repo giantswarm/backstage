@@ -1,5 +1,72 @@
 # @giantswarm/backstage-plugin-agent-platform-common
 
+## 1.3.0
+
+### Minor Changes
+
+- 6b4e6d6: Write every duration in the Agent Platform the same way, through the shared
+  `formatSeconds`: `420 ms` below a second, `1.2 s` or `3 s` below 10 s, `18 s` up to a
+  minute, then `2 min 30 s`, `12 min` and `1 h 5 min`.
+
+  - A fast try of a served model reads `200 as you in 420 ms`, not `in 0 s`.
+  - A workflow's average and longest run read `5 min`, not `300 s`.
+  - A tool or workflow run's result reads `5.3 s`, as the flow does, not
+    `5321 ms`.
+  - A starting model reads `Starting on <node> for 4 min 30 s`, not a floored
+    `for 4 min` or `for 0 min`.
+  - Latencies (p50, p95) above a minute read in minutes.
+
+  `formatSeconds` in `agent-platform-common` now goes on to minutes and hours;
+  muster's `formatDuration` and the second `formatSeconds` in agent-platform's
+  `lifecycle.ts` are gone.
+
+- 54e92f7: Name time windows in words instead of PromQL durations: the session cost
+  popover, the by-agent cost note and the connector usage empty state now say
+  "the last 7 days" rather than "the last 7d". A one-day window, which kagent's
+  configurable session window allows, reads "the last day" rather than "the last
+  1 days". The new `lastDaysNoun` (`the last 7 days`) and `lastDaysLabel`
+  (`last 7 days`) helpers in `agent-platform-common` are where every days window
+  in the copy turns into words, and `useTokenRates` reports its window as
+  `windowDays` instead of the PromQL string.
+
+### Patch Changes
+
+- 5bde8bf: Report a Mimir that cannot answer a query to Sentry once, under a fixed title,
+  and say on the page when older data is temporarily unavailable.
+
+  `MimirService` logs a Mimir that is down, slow or failing once as a warning
+  with a fixed message (`Mimir answered a query with HTTP <status>`,
+  `Mimir could not be reached`, or
+  `Mimir could not read older data: no healthy store-gateway`), with the
+  installation, the status and Mimir's own error text in the metadata, and throws
+  the new `MimirUnavailableError`. Its message no longer carries Mimir's body;
+  that stays in the warning (`mimirError`, left out of the answer to the
+  browser), and a connection error no longer names the query. A query Mimir
+  refused (a 4xx other than a refused token: bad PromQL, a range over its limits)
+  is an `InputError` (400) with Mimir's text instead, not logged and not retried
+  by the frontend. `query({ logFailures: false })` logs at `debug` for a caller
+  that handles the failure itself, as the model cost route does. The gs
+  backend's `/mimir/query` and `/mimir/query_range` routes answer a
+  `MimirUnavailableError` 503 themselves, so the error middleware no longer
+  reports it again. A Mimir without a healthy store-gateway answers
+  with `error.reason: 'older_data_unavailable'` (`MIMIR_UNAVAILABLE_REASONS` in
+  gs-common), and the model cost route answers `older-data-unavailable`.
+
+  gs-node's answer-it-in-the-router pattern is now generic:
+  `ReportedServiceUnavailableError` with `reportedErrorHandler()`, which replaces
+  `musterUnreachableErrorHandler()` (`MusterUnreachableError` is one), and
+  `errorResponseBody()` for a router that answers some other error with the body
+  the error middleware would send.
+
+  ui-react adds `MetricsUnavailableAlert` (with a `fallback` for a caller whose
+  generic failure is a line of text), `describeMimirFailure` and
+  `pickMimirError`, which every place that shows a failed Mimir read now uses: a
+  deployment's resource usage and hostnames, a cluster's gateways and node pool
+  nodes, the workload status summary, the Usage overview and cost pages, the
+  activity heatmap, an agent's and a model's Usage tab, and the cost estimate and
+  actual-cost hints.
+  `MimirClient` throws a `MimirQueryError` that carries the backend's `reason`.
+
 ## 1.2.0
 
 ### Minor Changes

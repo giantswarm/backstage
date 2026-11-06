@@ -1,5 +1,105 @@
 # app
 
+## 0.43.0
+
+### Minor Changes
+
+- 0314965: Text links in the Agent Platform shell now share one style: the link colour and
+  a solid underline on every surface. Links that act as controls (rail items, the
+  logo, breadcrumbs, a wizard's steps, Close and Cancel, row and card titles, the
+  skill file tree, the connector tool pills) pass bui's `standalone` and keep
+  their own look.
+  `ExternalLink` now carries its link's underline onto its content, so an
+  underline also shows on an external link.
+- 6dee1f6: Usage data says how big what people work with is, as exact numbers and never
+  by name. Opening an agent's page sends `AgentPlatform.agentViewed` with its
+  number of skills and of tools; opening a session sends
+  `AgentPlatform.sessionViewed` with its number of turns; opening Customize sends
+  `AgentPlatform.customizeViewed` with its number of agents, skills, connectors,
+  models, workflows, workspaces and toolchains. Each goes once per opening of the
+  page, once its counts have finished loading; a count that could not be read is
+  left out. `AgentPlatform.messageSent` now carries the session's number of
+  turns.
+
+  `analytics-react` adds count attributes (`COUNT` in `portalEvents`, a whole
+  number of 0 or more, which the connector checks) and `useTrackedView`, which
+  reports a page's view event once per opening.
+
+### Patch Changes
+
+- db5c770: Agent Platform organizations. `/organizations` lists the organizations the signed-in person belongs to (agent-manager's `list_my_organizations`) and tells a person in none who can add them; an organization's page has Members, Models, Connectors and Egress tabs read from agent-manager's organization tools, adds a group (offered first) or a person to a role and removes one, showing agent-manager's refusal. On installations whose agent-manager reports `organizations`, the New agent form offers only the person's organizations, preselects a single one and has no Platform option; its models, with the organization's default preselected, and its connectors follow the organization. Every page names an agent's organization from agent-manager's answers, never from a namespace name prefix. New events `AgentPlatform.organizationMemberAdded` and `AgentPlatform.organizationMemberRemoved`; exports `ORGANIZATION_PAGE_TABS`.
+- Updated dependencies [3745db0]
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [2fb06f7]
+- Updated dependencies [36f0927]
+- Updated dependencies [148a689]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [06967c4]
+- Updated dependencies [5bc242c]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [ef2cf27]
+- Updated dependencies [6c38c40]
+- Updated dependencies [e61f4bb]
+- Updated dependencies [a665a44]
+- Updated dependencies [8b5f520]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [6bfac24]
+- Updated dependencies [80e27ce]
+- Updated dependencies [a85c17f]
+- Updated dependencies [c576d7c]
+- Updated dependencies [ee27c7f]
+- Updated dependencies [aa72ac2]
+- Updated dependencies [ded8231]
+- Updated dependencies [468c22d]
+- Updated dependencies [2f531d8]
+- Updated dependencies [c87f4fb]
+- Updated dependencies [cf32689]
+- Updated dependencies [6b4e6d6]
+- Updated dependencies [0314965]
+- Updated dependencies [4c325fa]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [ded8231]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+- Updated dependencies [54e92f7]
+- Updated dependencies [4c53a2b]
+- Updated dependencies [dad7774]
+- Updated dependencies [d3af100]
+  - @giantswarm/backstage-plugin-agent-platform@1.3.0
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.1.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+  - @giantswarm/backstage-plugin-gs@0.72.0
+  - @giantswarm/backstage-plugin-muster@0.5.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.3.0
+  - @giantswarm/backstage-plugin-bot-prs@0.1.1
+  - @giantswarm/backstage-plugin-plans@0.1.1
+  - @giantswarm/backstage-plugin-roadmap@0.1.1
+  - @giantswarm/backstage-plugin-ai-chat@0.15.1
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.1
+  - @giantswarm/backstage-plugin-repositories@0.1.1
+  - @giantswarm/backstage-plugin-flux@0.10.1
+  - @giantswarm/backstage-plugin-flux-react@0.15.1
+
 ## 0.42.0
 
 ### Minor Changes
