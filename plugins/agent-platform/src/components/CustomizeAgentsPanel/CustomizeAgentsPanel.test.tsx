@@ -156,12 +156,15 @@ jest.mock('../SessionsDataProvider', () => ({
 // use beyond a session's start. Each call's installations are recorded: only
 // those are asked.
 let mockSessionStates = new Map<string, { changedAt?: number }>();
+// Whether every installation asked has answered once.
+let mockStatesComplete = true;
 const mockSessionStatesAsked: string[][] = [];
 jest.mock('../../hooks/useFleetSessionStates', () => ({
   useFleetSessionStates: (installations: string[]) => {
     mockSessionStatesAsked.push(installations);
     return {
       states: installations.length > 0 ? mockSessionStates : new Map(),
+      isComplete: installations.length === 0 || mockStatesComplete,
     };
   },
 }));
@@ -1748,13 +1751,19 @@ describe('CustomizeAgentsPanel sort', () => {
     mockSessions = [];
     mockSessionsLoading = 'none';
     mockSessionStates = new Map();
+    mockStatesComplete = true;
     mockSessionStatesAsked.length = 0;
     mockMetaAgent = undefined;
   });
   afterEach(() => {
     localStorage.clear();
     mockSessionsLoading = 'none';
+    mockStatesComplete = true;
   });
+  const storedSort = () =>
+    JSON.parse(localStorage.getItem('gs-agent-platform-agents-sort') ?? 'null');
+  const storeSort = (sort: string) =>
+    localStorage.setItem('gs-agent-platform-agents-sort', JSON.stringify(sort));
 
   it('sorts by name while the person has used no agent', async () => {
     await renderPanel();
@@ -1762,7 +1771,7 @@ describe('CustomizeAgentsPanel sort', () => {
     expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
 
-  it('sorts by last use once the person has used an agent, never-used ones last by name', async () => {
+  it('opens by Name once the person has used an agent, and Last used from the next visit', async () => {
     const charlieSession = sessionWith(middle, '2026-10-02T10:00:00Z');
     mockSessions = [
       sessionWith(newest, '2026-10-05T10:00:00Z'),
@@ -1772,10 +1781,26 @@ describe('CustomizeAgentsPanel sort', () => {
     mockSessionStates = new Map([
       [charlieSession.id, { changedAt: Date.parse('2026-10-09T10:00:00Z') }],
     ]);
-    await renderPanel();
+    const { unmount } = await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Name');
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    await waitFor(() => expect(storedSort()).toBe('lastUsed'));
+    // Still this visit's order.
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    unmount();
 
+    await renderPanel();
     expect(sortDropdown()).toHaveTextContent('Last used');
+    // Never-used ones last, by name.
     expect(names()).toEqual(['Charlie', 'Bravo', 'Alpha']);
+  });
+
+  it('stores no default over a pick', async () => {
+    storeSort('recent');
+    mockSessions = [sessionWith(older, '2026-10-05T10:00:00Z')];
+    await renderPanel();
+    expect(sortDropdown()).toHaveTextContent('Recently added');
+    expect(storedSort()).toBe('recent');
   });
 
   it('sorts by creation, newest first, and remembers the pick', async () => {
@@ -1796,6 +1821,7 @@ describe('CustomizeAgentsPanel sort', () => {
   });
 
   it('asks for session states only while sorting by last use or showing the cards', async () => {
+    storeSort('lastUsed');
     mockSessions = [sessionWith(older, '2026-10-05T10:00:00Z')];
     await renderPanel('a');
     expect(sortDropdown()).toHaveTextContent('Last used');
@@ -1815,33 +1841,69 @@ describe('CustomizeAgentsPanel sort', () => {
     );
   });
 
-  it('holds the list while sessions are read rather than jump from Name to Last used', async () => {
+  it('shows a new person the rows by Name at once, and moves none when sessions arrive', async () => {
     mockSessionsLoading = 'loading';
     await renderRerenderablePanel();
     expect(
-      await screen.findByLabelText('Reading your agents…'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('list', { name: 'Agents' }),
+      screen.queryByLabelText('Reading your agents…'),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /Sort agents/, hidden: true }),
-    ).not.toBeInTheDocument();
+    expect(sortDropdown()).toHaveTextContent('Name');
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
 
     mockSessionsLoading = 'none';
     mockSessions = [sessionWith(middle, '2026-10-05T10:00:00Z')];
     act(() => rerenderPanel());
-    expect(screen.getByRole('list', { name: 'Agents' })).toBeInTheDocument();
-    expect(sortDropdown()).toHaveTextContent('Last used');
-    expect(names()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+    expect(sortDropdown()).toHaveTextContent('Name');
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    await waitFor(() => expect(storedSort()).toBe('lastUsed'));
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
 
-  it('shows the list as soon as a session decides on Last used', async () => {
-    mockSessionsLoading = 'loadingMore';
-    mockSessions = [sessionWith(middle, '2026-10-05T10:00:00Z')];
-    await renderPanel();
-    expect(sortDropdown()).toHaveTextContent('Last used');
-    expect(names()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+  it('holds a stored Last used order once read, whatever arrives later', async () => {
+    storeSort('lastUsed');
+    mockSessionsLoading = 'loading';
+    await renderRerenderablePanel();
+    // Waits for its first read rather than reorder later.
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+
+    const charlieSession = sessionWith(middle, '2026-10-02T10:00:00Z');
+    mockSessionsLoading = 'none';
+    mockSessions = [
+      sessionWith(newest, '2026-10-05T10:00:00Z'),
+      charlieSession,
+    ];
+    mockStatesComplete = false;
+    act(() => rerenderPanel());
+    // The sessions, not yet their states.
+    expect(screen.getByLabelText('Reading your agents…')).toBeInTheDocument();
+
+    mockStatesComplete = true;
+    act(() => rerenderPanel());
+    expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+
+    // A later turn that would put Charlie first, and a session for Alpha:
+    // the rows stay put.
+    mockSessionStates = new Map([
+      [charlieSession.id, { changedAt: Date.parse('2026-10-09T10:00:00Z') }],
+    ]);
+    mockSessions = [
+      ...mockSessions,
+      sessionWith(older, '2026-10-10T10:00:00Z'),
+    ];
+    act(() => rerenderPanel());
+    expect(names()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+
+    // A pick reorders at once, on what is known now.
+    await userEvent.click(sortDropdown());
+    await userEvent.click(await screen.findByRole('option', { name: 'Name' }));
+    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    await userEvent.click(sortDropdown());
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Last used' }),
+    );
+    expect(names()).toEqual(['Alpha', 'Charlie', 'Bravo']);
   });
 
   it('keeps a picked sort while sessions are read', async () => {

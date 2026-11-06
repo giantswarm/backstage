@@ -2,8 +2,10 @@ import {
   type CSSProperties,
   ReactNode,
   useCallback,
+  useEffect,
   useId,
   useMemo,
+  useState,
 } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -91,6 +93,8 @@ export const AGENTS_PAGE_SIZE = 25;
 export const ROW_CONNECTORS_MAX = 3;
 
 const NO_CONNECTORS: readonly ConnectorMark[] = [];
+
+const NO_ROWS: AgentRow[] = [];
 
 /** The list's order, remembered per browser like `useLastUsedAgent`'s pick. */
 const SORT_STORAGE_KEY = 'gs-agent-platform-agents-sort';
@@ -694,11 +698,25 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const { rows, installations, isLoading } = useAgents();
   const { isPinned: isFavorite } = useFavoriteAgents();
   const list = useAgentListFilters(rows, installations, search, isFavorite);
-  const [storedSort, setSort] = useLocalStorageState<AgentSort | undefined>(
-    SORT_STORAGE_KEY,
-    { defaultValue: undefined },
-  );
+  const [storedSort, setStoredSort] = useLocalStorageState<
+    AgentSort | undefined
+  >(SORT_STORAGE_KEY, { defaultValue: undefined });
   const pickedSort = AGENT_SORTS.find(option => option.id === storedSort)?.id;
+  // The visit's order: the stored sort as the tab opens, else Name. A default
+  // stored during the visit applies from the next one, so the list never
+  // reorders under the person; a pick applies at once.
+  const [sort, setSort] = useState<AgentSort>(() => pickedSort ?? 'name');
+  const pick = useCallback(
+    (next: AgentSort) => {
+      setSort(next);
+      setStoredSort(next);
+    },
+    [setStoredSort],
+  );
+  const storeDefault = useCallback(
+    () => setStoredSort('lastUsed'),
+    [setStoredSort],
+  );
   // The recent-agent cards, while the tab shows everything: a search or a
   // filter narrows the list below, and the cards would not follow.
   const showCards = !isLoading && rows.length > 0 && !list.isNarrowed;
@@ -706,14 +724,16 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   // something on the tab needs them (`sessionsNeeded`).
   return (
     <SessionsDataProvider
-      enabled={sessionsNeeded({ showCards, sort: pickedSort })}
+      enabled={sessionsNeeded({ showCards, sort, storedSort: pickedSort })}
     >
       <AgentsPanelContent
         search={search}
         list={list}
         showCards={showCards}
-        pickedSort={pickedSort}
-        onSort={setSort}
+        sort={sort}
+        storedSort={pickedSort}
+        onSort={pick}
+        onDefaultSort={storeDefault}
       />
     </SessionsDataProvider>
   );
@@ -721,18 +741,73 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
 
 /**
  * Whether the tab reads the person's sessions: for the "Last used by you"
- * cards, for the Last used sort, and while no sort is picked, to decide the
- * default (see `AgentsPanelContent`).
+ * cards, for the Last used sort, and while no sort is stored, to store Last
+ * used as the default once the person has used an agent listed.
  */
 export function sessionsNeeded({
   showCards,
   sort,
+  storedSort,
 }: {
   showCards: boolean;
-  /** The person's pick; none while the default applies. */
-  sort: AgentSort | undefined;
+  /** The visit's sort. */
+  sort: AgentSort;
+  /** The stored sort; none until a pick or the default is stored. */
+  storedSort: AgentSort | undefined;
 }): boolean {
-  return showCards || sort === 'lastUsed' || sort === undefined;
+  return showCards || sort === 'lastUsed' || storedSort === undefined;
+}
+
+/**
+ * `rows` in the order of `sort`, held steady for the visit under Last used:
+ * that order is taken once its first read is in (`ready`) and kept, so a
+ * session or state that arrives later moves no row under the cursor; an agent
+ * listed later follows the held ones. Name and Recently added depend on no
+ * read and simply follow the rows. Undefined while Last used waits for its
+ * first read. A pick reorders at once.
+ */
+function useSteadyOrder(
+  allRows: readonly AgentRow[],
+  rows: readonly AgentRow[],
+  sort: AgentSort,
+  lastUsedAt: ReadonlyMap<string, number>,
+  ready: boolean,
+): AgentRow[] | undefined {
+  const [held, setHeld] = useState<{
+    sort: AgentSort;
+    rank: ReadonlyMap<string, number>;
+  }>();
+  const live = useMemo(
+    () => rankOf(sortAgents(allRows, sort, lastUsedAt)),
+    [allRows, sort, lastUsedAt],
+  );
+  const steady = sort === 'lastUsed';
+  const rank = steady && held?.sort === sort ? held.rank : undefined;
+  useEffect(() => {
+    if (steady && ready && !rank) {
+      setHeld({ sort, rank: live });
+    } else if (!steady && held) {
+      // A pick of another sort lets go: picking Last used again orders
+      // afresh.
+      setHeld(undefined);
+    }
+  }, [steady, ready, rank, sort, live, held]);
+
+  return useMemo(() => {
+    if (steady && !rank && !ready) {
+      return undefined;
+    }
+    const order = rank ?? live;
+    // An agent the held order does not know follows it, in the live order.
+    const at = (row: AgentRow) =>
+      order.get(row.id) ?? order.size + (live.get(row.id) ?? 0);
+    return [...rows].sort((a, b) => at(a) - at(b));
+  }, [rows, steady, rank, ready, live]);
+}
+
+/** Each row's place in `rows`, by id. */
+function rankOf(rows: readonly AgentRow[]): ReadonlyMap<string, number> {
+  return new Map(rows.map((row, index) => [row.id, index]));
 }
 
 type AgentListFilters = ReturnType<typeof useAgentListFilters>;
@@ -777,14 +852,20 @@ function AgentsPanelContent({
   search,
   list: { filters, showHarness, tenantCount },
   showCards,
-  pickedSort,
+  sort,
+  storedSort,
   onSort,
+  onDefaultSort,
 }: {
   search: string;
   list: AgentListFilters;
   showCards: boolean;
-  pickedSort: AgentSort | undefined;
+  sort: AgentSort;
+  storedSort: AgentSort | undefined;
+  /** A pick in the Sort select: the visit's sort, and stored. */
   onSort: (sort: AgentSort) => void;
+  /** Stores Last used as the default, for the next visit. */
+  onDefaultSort: () => void;
 }) {
   const classes = useStyles();
   // The New agent form’s reads, started from here so its Owner field
@@ -821,17 +902,18 @@ function AgentsPanelContent({
     const notMine = new Set(notUserScopedInstallations);
     return sessions.filter(session => !notMine.has(session.installation));
   }, [sessions, notUserScopedInstallations]);
-  // Last used once the person has used any agent listed, by name otherwise:
-  // decided on the sessions' starts alone, so it needs no session states.
-  // Held while sessions are still read and none is with an agent listed, so
-  // the list does not open by name and then jump.
+  // Last used becomes the default once the person has used any agent
+  // listed, decided on the sessions' starts alone: stored for the next visit,
+  // never over a stored pick. This visit keeps its order.
   const usedAny = useMemo(() => {
     const started = agentLastUsedAt(mySessions);
     return rows.some(row => started.has(row.id));
   }, [mySessions, rows]);
-  const sort: AgentSort = pickedSort ?? (usedAny ? 'lastUsed' : 'name');
-  const sortPending =
-    !pickedSort && !usedAny && (sessionsLoading || sessionsLoadingMore);
+  useEffect(() => {
+    if (storedSort === undefined && usedAny) {
+      onDefaultSort();
+    }
+  }, [storedSort, usedAny, onDefaultSort]);
   // A session's last turn is in its state, read only for the Last used sort
   // and the cards, which rank by it whatever the sort: each read costs its
   // installation a pass over its sessions.
@@ -843,15 +925,22 @@ function AgentsPanelContent({
         : [],
     [readStates, mySessions],
   );
-  const { states: sessionStates } = useFleetSessionStates(sessionInstallations);
+  const { states: sessionStates, isComplete: statesRead } =
+    useFleetSessionStates(sessionInstallations);
   const lastUsedAt = useMemo(
     () => agentLastUsedAt(mySessions, sessionStates),
     [mySessions, sessionStates],
   );
-  const visible = useMemo(
-    () => sortAgents(filters.filtered, sort, lastUsedAt),
-    [filters.filtered, sort, lastUsedAt],
+  // Last used's first read: every installation's sessions, then their states.
+  const lastUsedRead = !sessionsLoading && !sessionsLoadingMore && statesRead;
+  const ordered = useSteadyOrder(
+    rows,
+    filters.filtered,
+    sort,
+    lastUsedAt,
+    lastUsedRead,
   );
+  const visible = ordered ?? NO_ROWS;
   const favorites = useMemo(
     () => visible.filter(row => isFavorite(row.id)),
     [visible, isFavorite],
@@ -971,8 +1060,9 @@ function AgentsPanelContent({
         />
       );
     }
-  } else if (sortPending) {
-    // The order waits on the person's sessions (see `sortPending`).
+  } else if (!ordered) {
+    // Last used waits for its first read rather than reorder later
+    // (`useSteadyOrder`).
     body = <LoadingIndicator label="Reading your agents…" />;
   } else if (visible.length === 0) {
     body = (
@@ -1028,7 +1118,7 @@ function AgentsPanelContent({
             onSelect={filters.select}
             onClear={filters.clear}
           />
-          {rows.length > 1 && !sortPending && (
+          {rows.length > 1 && (
             <Select
               aria-label="Sort agents"
               size="small"
