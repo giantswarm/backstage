@@ -102,10 +102,12 @@ export function RuntimeLostNotice({
   const fromSends = !loss.reported && loss.source === 'send-timeouts';
 
   let title = 'The agent’s runtime could not be brought back';
-  let what = `kagent could not restart the runtime holding this session’s state — its platform node likely went away (spot interruption, node roll) while the session waited for your answer.`;
+  let what =
+    'The platform could not restart the runtime holding this session’s state. The cause reported below may be temporary.';
   if (loss.reported) {
     title = 'This session cannot continue';
-    what = `kagent marked this session’s runtime as lost: its working state was on a platform node that went away, likely while waiting for your answer. Nothing can restore it.`;
+    what =
+      'The platform marked this session’s runtime as lost. It cannot restore this session’s working state.';
   } else if (fromSends) {
     title = 'This session may not be able to continue';
     what = `${loss.attempts === 2 ? 'Neither' : 'None'} of your last ${loss.attempts} messages reached the agent: each timed out before it started. The session’s runtime may be failing to start.`;
@@ -147,7 +149,9 @@ export function RuntimeLostNotice({
             <span className={classes.answer}>Your answer: {answer}</span>
           )}
           {loss.cause && (
-            <span className={classes.cause}>kagent reported: {loss.cause}</span>
+            <span className={classes.cause}>
+              Platform details: {loss.cause}
+            </span>
           )}
           {startError && (
             <span>The new session could not be started: {startError}</span>

@@ -184,6 +184,7 @@ export function EgressRefusedEntry({
         description={
           <Flex direction="column" gap="1">
             <Text variant="body-small">{facts}</Text>
+            <Text variant="body-small">{EGRESS_ALERT_COPY.impact}</Text>
             {remedy}
             <SimpleAccordion
               title={EGRESS_ALERT_COPY.details.title}
