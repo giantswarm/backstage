@@ -24,6 +24,7 @@ import { fakeInbox } from '../NotificationInbox/testing/fakeInbox';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
+const mockOrganizationsAvailable = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef, createSubRouteRef } = jest.requireActual(
@@ -35,6 +36,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const sessions = createRouteRef();
   return {
     ...fakeInboxPluginExports(),
+    useOrganizationsAvailable: () => mockOrganizationsAvailable(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     CommandPalette: ({
       renderTrigger,
@@ -134,6 +136,7 @@ async function renderNav({
           '/customize/connectors': musterPlugin.routes.mcpServers,
           '/customize/workflows': musterPlugin.routes.workflows,
           '/profile': agentPlatformPlugin.routes.profile,
+          '/organizations': agentPlatformPlugin.routes.organizations,
         }),
       },
     },
@@ -153,9 +156,49 @@ beforeEach(() => {
   window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
+  mockOrganizationsAvailable.mockReturnValue(false);
 });
 
 describe('AgentShellNav', () => {
+  it.each([true, false])(
+    'shows Organizations only when supported, pinned=%s',
+    async isPinned => {
+      mockOrganizationsAvailable.mockReturnValue(true);
+      await renderNav({ isPinned });
+
+      expect(
+        screen.getByRole('link', { name: 'Organizations' }),
+      ).toHaveAttribute('href', '/organizations');
+    },
+  );
+
+  it('hides Organizations when no installation reports support', async () => {
+    await renderNav();
+
+    expect(
+      screen.queryByRole('link', { name: 'Organizations' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])(
+    'gates Organizations in the mobile profile menu, supported=%s',
+    async supported => {
+      mockOrganizationsAvailable.mockReturnValue(supported);
+      await renderNav({ isMobile: true });
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+
+      const organization = within(await screen.findByRole('menu')).queryByRole(
+        'menuitem',
+        { name: 'Organizations' },
+      );
+      expect(organization?.getAttribute('href') ?? null).toBe(
+        supported ? '/organizations' : null,
+      );
+    },
+  );
+
   it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
 
