@@ -3,7 +3,7 @@
   "version": "0.138.0",
   "private": true,
   "engines": {
-    "node": "22 || 24"
+    "node": "^24.17.0"
   },
   "scripts": {
     "start": "yarn env-cmd yarn backstage-cli repo start",
