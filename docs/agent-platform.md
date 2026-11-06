@@ -2064,10 +2064,14 @@ The row appears, with a toast, through the signal. Send it again with the same
 ### Notification level and the notification record
 
 The actions menu (on the page and on each Sessions-list row) has a
-**Notifications** submenu: Default, All activity or Muted, the current one
-ticked. Default notifies when the session waits for the person or fails; All
-activity also when a turn finishes; Muted never. The submenu opens beside the
-menu, towards the page, and over it on a phone. The composer has no control.
+**Notifications** submenu with three levels, the current one ticked, each
+labelled by when it notifies: **When action is required** (`default`, the
+level of a session without a stored one) when the session waits for the
+person or fails; **Also when a turn finishes** (`all`) in addition when a
+turn finishes; **Muted** (`muted`) never. A session started outside the
+portal notifies only when it waits, at either of the first two. The submenu
+opens beside the menu, towards the page, and over it on a phone. The composer
+has no control.
 
 The level lives in the person's **notification record**
 (`lib/notificationRecord.ts`, `hooks/useSessionNotificationRecord.ts`), kept in

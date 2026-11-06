@@ -427,14 +427,18 @@ describe('SessionActionsMenu — Notifications', () => {
 
   it.each`
     level        | ticked
-    ${'default'} | ${'Default'}
-    ${'all'}     | ${'All activity'}
+    ${'default'} | ${'When action is required'}
+    ${'all'}     | ${'Also when a turn finishes'}
     ${'muted'}   | ${'Muted'}
   `('ticks $ticked for a session at $level', async ({ level, ticked }) => {
     await renderWithLevel(level);
     await openNotifications();
 
-    for (const name of ['Default', 'All activity', 'Muted']) {
+    for (const name of [
+      'When action is required',
+      'Also when a turn finishes',
+      'Muted',
+    ]) {
       expect(levelItem(name)).toHaveAttribute(
         'aria-checked',
         String(name === ticked),
@@ -446,7 +450,11 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel(undefined);
     await openNotifications();
 
-    for (const name of ['Default', 'All activity', 'Muted']) {
+    for (const name of [
+      'When action is required',
+      'Also when a turn finishes',
+      'Muted',
+    ]) {
       expect(levelItem(name)).toHaveAttribute('aria-checked', 'false');
     }
   });
@@ -464,7 +472,10 @@ describe('SessionActionsMenu — Notifications', () => {
     );
     await openNotifications();
     expect(levelItem('Muted')).toHaveAttribute('aria-checked', 'true');
-    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+    expect(levelItem('When action is required')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
   it('ticks the chosen level at once, while its write is still under way', async () => {
@@ -477,27 +488,36 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('default', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('All activity'));
+    await userEvent.click(levelItem('Also when a turn finishes'));
     await waitFor(() =>
       expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
     );
     await openNotifications();
 
-    expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true');
-    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+    expect(levelItem('Also when a turn finishes')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(levelItem('When action is required')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
 
     finishWrite();
     await waitFor(() =>
-      expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true'),
+      expect(levelItem('Also when a turn finishes')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
     );
   });
 
-  it('unmutes with Default', async () => {
+  it('unmutes with When action is required', async () => {
     const onChange = jest.fn().mockResolvedValue(undefined);
     await renderWithLevel('muted', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('Default'));
+    await userEvent.click(levelItem('When action is required'));
 
     expect(onChange).toHaveBeenCalledWith('default');
   });
@@ -507,7 +527,7 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('all', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('All activity'));
+    await userEvent.click(levelItem('Also when a turn finishes'));
 
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -517,7 +537,7 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel('default', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('All activity'));
+    await userEvent.click(levelItem('Also when a turn finishes'));
 
     await waitFor(() =>
       expect(mockToastPost).toHaveBeenCalledWith(
@@ -529,7 +549,10 @@ describe('SessionActionsMenu — Notifications', () => {
       ),
     );
     await openNotifications();
-    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'true');
+    expect(levelItem('When action is required')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
   });
 });
 
