@@ -11,10 +11,18 @@ the frontend sends the user's main login (Dex) ID token in the
 (`list_issues`, `get_board_schema`, `get_item_by_issue`, `get_issue_details`,
 the sub-issue tools, `update_issue_field`) through the muster installation
 named in `roadmap.muster`, and muster executes them with the person's own
-GitHub grant -- reads and writes alike. No GitHub App token is used anywhere;
-board reads are cached in memory per person with a short TTL (a full board
-read paginates the project, >10s), stale-while-revalidate, and writes patch
-the person's cached lists in place.
+GitHub grant -- reads and writes alike. No GitHub App token is used anywhere.
+
+Board reads are kept per person in the plugin's database (table
+`roadmap_board_reads`, keyed by the person's user entity ref), so every
+backend instance serves them, after a restart too: a board read paginates the
+project 100 items per sequential GitHub call, and a team's Done column takes
+40-55 s. A read is fresh for 5 minutes (the schema for 10); an older one is
+answered at once while one background refresh per instance replaces it
+(stale-while-revalidate). A read older than 24 hours is never served, and an
+hourly task drops it. Writes patch the person's stored lists in place. When
+the database fails, reads come from pro as on a cold start. A read made with
+one person's grant is never served to another person.
 
 A caller whose muster session has no grant yet gets `401` with
 `error.name: MusterServerNotConnectedError` and `error.authUrl`, muster's

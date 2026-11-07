@@ -17,17 +17,25 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
+import { BoardReadStore, MemoryBoardReadStore } from './BoardReadStore';
 
 /**
- * Board reads paginate the full project (~430 items for one team is five
- * sequential GraphQL pages, >10s), so results are cached per person --
+ * Board reads paginate the project, 100 items per sequential GraphQL call (a
+ * team's Done column takes 40-55 s), so each read is stored per person --
  * every read runs with the caller's own GitHub grant -- and served
- * stale-while-revalidate: an expired entry is answered immediately while one
- * background refresh per key brings it up to date.
+ * stale-while-revalidate: an expired read is answered immediately while one
+ * background refresh per key brings it up to date. The store is shared by
+ * every backend instance and kept across restarts.
  */
 const ITEMS_TTL_MS = 5 * 60_000;
 /** The board schema (fields/options) rarely changes. */
 const SCHEMA_TTL_MS = 10 * 60_000;
+/**
+ * A stored read older than this is never served, not even while it is
+ * refreshed: the person waits for a fresh read instead. The store drops
+ * such reads.
+ */
+export const MAX_READ_AGE_MS = 24 * 60 * 60_000;
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -35,6 +43,11 @@ export interface RouterOptions {
   httpAuth: HttpAuthService;
   /** pro's board tools, through muster, as the caller; undefined when unconfigured. */
   pro?: MusterServerGateway;
+  /**
+   * Where each person's board reads are kept. Default: this process's memory,
+   * which neither another instance nor a restart sees.
+   */
+  store?: BoardReadStore;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -136,6 +149,7 @@ export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
   const { logger, config, httpAuth, pro } = options;
+  const store = options.store ?? new MemoryBoardReadStore();
 
   // The plugin ships in every portal image, but the roadmap board is
   // internal: only portals that set `roadmap.board` serve it. Same opt-in
@@ -197,37 +211,66 @@ export async function createRouter(
 
   type ProSession = ReturnType<typeof proFor>;
 
-  // Per-person caches: entries are keyed by the caller's identity, since
-  // every read carries their own grant and sees their own view of GitHub.
-  const cache = new Map<string, { expires: number; data: unknown }>();
+  /**
+   * The store answering is no reason to fail a board read or write that pro
+   * answered: a failing store means reads come from pro, as on a cold start.
+   */
+  const orWithoutStore = async <T>(
+    what: string,
+    operation: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> => {
+    try {
+      return await operation();
+    } catch (error) {
+      logger.warn(`Roadmap board read store failed to ${what}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return fallback;
+    }
+  };
+
+  // Reads are stored per person, since every read carries their own grant
+  // and sees their own view of GitHub; refreshes are joined per instance.
   const inflight = new Map<string, Promise<unknown>>();
   const cached = async <T>(
+    user: string,
+    kind: string,
     key: string,
     ttlMs: number,
     load: () => Promise<T>,
   ): Promise<T> => {
-    const hit = cache.get(key);
-    if (hit && hit.expires > Date.now()) {
-      return hit.data as T;
+    const stored = await orWithoutStore(
+      'look up a read',
+      () => store.get<T>(user, kind, key),
+      undefined,
+    );
+    const age = stored ? Date.now() - stored.readAt : Infinity;
+    if (stored && age < ttlMs) {
+      return stored.data;
     }
-    let refresh = inflight.get(key) as Promise<T> | undefined;
+    const id = JSON.stringify([user, kind, key]);
+    let refresh = inflight.get(id) as Promise<T> | undefined;
     if (!refresh) {
-      refresh = load().then(
-        data => {
-          cache.set(key, { expires: Date.now() + ttlMs, data });
-          inflight.delete(key);
+      refresh = (async () => {
+        try {
+          const readAt = Date.now();
+          const data = await load();
+          await orWithoutStore(
+            'keep a read',
+            () => store.set(user, kind, key, { data, readAt }),
+            undefined,
+          );
           return data;
-        },
-        error => {
-          inflight.delete(key);
-          throw error;
-        },
-      );
-      inflight.set(key, refresh);
+        } finally {
+          inflight.delete(id);
+        }
+      })();
+      inflight.set(id, refresh);
     }
-    if (hit) {
+    if (stored && age < MAX_READ_AGE_MS) {
       refresh.catch(() => {});
-      return hit.data as T;
+      return stored.data;
     }
     return refresh;
   };
@@ -263,7 +306,9 @@ export async function createRouter(
     args: Record<string, unknown>,
   ): Promise<BoardItem[]> => {
     const result = await cached(
-      `${session.user}:items:${JSON.stringify(args)}`,
+      session.user,
+      'items',
+      JSON.stringify(args),
       ITEMS_TTL_MS,
       async () => {
         const started = Date.now();
@@ -292,35 +337,39 @@ export async function createRouter(
   };
 
   /**
-   * Apply a field write to the person's cached lists in place, so the next
-   * read reflects it without a rescan; drop their cached item detail.
+   * Apply a field write to the person's stored lists in place, so the next
+   * read reflects it without a rescan; drop their stored item detail.
    */
-  const patchCachedItem = (
+  const patchStoredItem = (
     user: string,
     itemId: string,
     name: string,
     value: string,
-  ) => {
-    for (const [key, entry] of cache) {
-      if (key.startsWith(`${user}:items:`)) {
-        const result = entry.data as { issues?: BoardItem[] };
-        for (const item of result.issues ?? []) {
-          if (item.id === itemId) {
+  ) =>
+    orWithoutStore(
+      'apply a field write',
+      async () => {
+        const reads = await store.list<{ issues?: BoardItem[] }>(user, 'items');
+        for (const { key, read } of reads) {
+          const items = (read.data.issues ?? []).filter(i => i.id === itemId);
+          for (const item of items) {
             item.fields = { ...item.fields, [name]: value };
           }
+          if (items.length > 0) {
+            await store.set(user, 'items', key, read);
+          }
         }
-      }
-    }
-    cache.delete(`${user}:item:${itemId}`);
-  };
+        await store.delete(user, 'item', itemId);
+      },
+      undefined,
+    );
 
-  const dropSubIssueCaches = (user: string) => {
-    for (const key of cache.keys()) {
-      if (key.startsWith(`${user}:sub-issues:`)) {
-        cache.delete(key);
-      }
-    }
-  };
+  const dropStoredSubIssues = (user: string) =>
+    orWithoutStore(
+      'drop sub-issue reads',
+      () => store.delete(user, 'sub-issues'),
+      undefined,
+    );
 
   const router = Router();
   router.use(express.json());
@@ -357,7 +406,9 @@ export async function createRouter(
   router.get('/schema', async (req, res) => {
     const session = proFor(req);
     const fields = await cached(
-      `${session.user}:schema`,
+      session.user,
+      'schema',
+      '',
       SCHEMA_TTL_MS,
       async () =>
         (
@@ -444,7 +495,9 @@ export async function createRouter(
     const { owner, repo } = req.params;
     const session = proFor(req);
     const item = await cached(
-      `${session.user}:by-issue:${owner}/${repo}#${number}`,
+      session.user,
+      'by-issue',
+      `${owner}/${repo}#${number}`,
       ITEMS_TTL_MS,
       async () =>
         (
@@ -467,7 +520,9 @@ export async function createRouter(
   router.get('/items/:id', async (req, res) => {
     const session = proFor(req);
     const item = await cached(
-      `${session.user}:item:${req.params.id}`,
+      session.user,
+      'item',
+      req.params.id,
       ITEMS_TTL_MS,
       () =>
         session.call<unknown>('get_issue_details', { itemId: req.params.id }),
@@ -483,7 +538,9 @@ export async function createRouter(
     };
     const session = proFor(req);
     const [subIssues, parent] = await cached(
-      `${session.user}:sub-issues:${target.owner}/${target.repo}#${target.issue_number}`,
+      session.user,
+      'sub-issues',
+      `${target.owner}/${target.repo}#${target.issue_number}`,
       ITEMS_TTL_MS,
       () =>
         Promise.all([
@@ -539,7 +596,7 @@ export async function createRouter(
       }
       throw error;
     }
-    patchCachedItem(
+    await patchStoredItem(
       session.user,
       req.params.id,
       result.field ?? name,
@@ -569,7 +626,7 @@ export async function createRouter(
       'add_sub_issue',
       { ...target, subIssueUrl: child },
     );
-    dropSubIssueCaches(session.user);
+    await dropStoredSubIssues(session.user);
     logger.info(
       `Linked ${child} as sub-issue of ${target.owner}/${target.repo}#${target.issue_number}`,
     );
@@ -589,7 +646,7 @@ export async function createRouter(
         subIssueId: parsePositiveInt(req.params.subIssueId, 'subIssueId'),
       };
       await session.call('remove_sub_issue', target);
-      dropSubIssueCaches(session.user);
+      await dropStoredSubIssues(session.user);
       logger.info(
         `Unlinked sub-issue ${target.subIssueId} from ${target.owner}/${target.repo}#${target.issue_number}`,
       );

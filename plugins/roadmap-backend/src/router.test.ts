@@ -1,5 +1,9 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { mockServices } from '@backstage/backend-test-utils';
+import {
+  mockCredentials,
+  mockServices,
+  TestDatabases,
+} from '@backstage/backend-test-utils';
 import { AuthenticationError } from '@backstage/errors';
 import { JsonObject } from '@backstage/types';
 import {
@@ -10,7 +14,8 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import { createRouter, RouterOptions } from './router';
+import { BoardReadStore, DatabaseBoardReadStore } from './BoardReadStore';
+import { createRouter, MAX_READ_AGE_MS, RouterOptions } from './router';
 
 const TOKEN_HEADER = 'backstage-muster-authorization';
 
@@ -650,6 +655,175 @@ describe('createRouter', () => {
         issue_number: 45,
         subIssueId: 7,
       });
+    });
+  });
+
+  describe('stored board reads', () => {
+    const databases = TestDatabases.create({ ids: ['SQLITE_3'] });
+    let store: BoardReadStore;
+
+    /** One backend instance, as a person: its own router over the store. */
+    const instance = (user = 'user:default/alice') =>
+      buildApp(
+        undefined,
+        {
+          store,
+          httpAuth: mockServices.httpAuth({
+            defaultCredentials: mockCredentials.user(user),
+          }),
+        },
+        { user },
+      );
+
+    const readsOf = (user: string) =>
+      pro.calls.filter(
+        c => c.tool === 'list_issues' && c.authToken === `dex-id-token-${user}`,
+      );
+
+    beforeEach(async () => {
+      const knex = await databases.init('SQLITE_3');
+      store = await DatabaseBoardReadStore.create(
+        mockServices.database({ knex }),
+      );
+      pro.answers.set('list_issues', { issues: [ITEM] });
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('serves a person their read after a restart, without reading again', async () => {
+      await request(await instance())
+        .get('/items')
+        .query({ status: 'Done' });
+
+      const restarted = await instance();
+      const res = await request(restarted)
+        .get('/items')
+        .query({ status: 'Done' });
+
+      expect(res.body).toEqual({ items: [ITEM] });
+      expect(readsOf('user:default/alice')).toHaveLength(1);
+    });
+
+    it('serves a stored read at once after a restart and refreshes it once', async () => {
+      const now = Date.now();
+      await request(await instance())
+        .get('/items')
+        .query({ status: 'Done' });
+      jest.spyOn(Date, 'now').mockReturnValue(now + 60 * 60_000);
+      pro.answers.set('list_issues', {
+        issues: [{ ...ITEM, title: 'Renamed' }],
+      });
+
+      const restarted = await instance();
+      const stale = await request(restarted)
+        .get('/items')
+        .query({ status: 'Done' });
+      expect(stale.body.items[0].title).toBe(ITEM.title);
+
+      // The background refresh lands in the store; the next request, on
+      // either instance, gets it without another read.
+      await new Promise(resolve => setImmediate(resolve));
+      const fresh = await request(await instance())
+        .get('/items')
+        .query({ status: 'Done' });
+      expect(fresh.body.items[0].title).toBe('Renamed');
+      expect(readsOf('user:default/alice')).toHaveLength(2);
+    });
+
+    it('reads anew instead of serving a read past its maximum age', async () => {
+      const now = Date.now();
+      await request(await instance())
+        .get('/items')
+        .query({ status: 'Done' });
+      jest.spyOn(Date, 'now').mockReturnValue(now + MAX_READ_AGE_MS + 60_000);
+      pro.answers.set('list_issues', {
+        issues: [{ ...ITEM, title: 'Renamed' }],
+      });
+
+      const res = await request(await instance())
+        .get('/items')
+        .query({ status: 'Done' });
+      expect(res.body.items[0].title).toBe('Renamed');
+    });
+
+    it("serves two instances one person's board from one stored read", async () => {
+      const first = await instance();
+      const second = await instance();
+
+      await request(first).get('/items').query({ status: 'Done' });
+      const res = await request(second).get('/items').query({ status: 'Done' });
+
+      expect(res.body).toEqual({ items: [ITEM] });
+      expect(readsOf('user:default/alice')).toHaveLength(1);
+    });
+
+    it("never serves one person's read to another", async () => {
+      pro.answers.set('list_issues', (args: Record<string, unknown>) => ({
+        issues: [
+          { ...ITEM, title: `read for ${JSON.stringify(args.filters)}` },
+        ],
+      }));
+      const alice = await instance('user:default/alice');
+      const bob = await instance('user:default/bob');
+
+      await request(alice).get('/items').query({ status: 'Done' });
+      await request(bob).get('/items').query({ status: 'Done' });
+
+      expect(readsOf('user:default/alice')).toHaveLength(1);
+      expect(readsOf('user:default/bob')).toHaveLength(1);
+    });
+
+    it('applies a field write to the stored read every instance serves', async () => {
+      pro.answers.set('update_issue_field', {
+        success: true,
+        field: 'Status',
+        value: 'Done ✅',
+      });
+      const first = await instance();
+      const second = await instance();
+
+      await request(first).get('/items').query({ team: 'Bumblebee🐝' });
+      await request(first)
+        .patch('/items/PVTI_1/field')
+        .send({ name: 'status', value: 'done' });
+      const res = await request(second)
+        .get('/items')
+        .query({ team: 'Bumblebee🐝' });
+
+      expect(res.body.items[0].fields.Status).toBe('Done ✅');
+      expect(readsOf('user:default/alice')).toHaveLength(1);
+    });
+
+    it('drops the stored sub-issue reads after a sub-issue write', async () => {
+      pro.answers.set('list_sub_issues', { sub_issues: [] });
+      pro.answers.set('get_parent_issue', { parent: null });
+      pro.answers.set('remove_sub_issue', { success: true });
+      const first = await instance();
+      const second = await instance();
+
+      await request(first).get('/issues/giantswarm/giantswarm/45/sub-issues');
+      await request(first).delete(
+        '/issues/giantswarm/giantswarm/45/sub-issues/7',
+      );
+      await request(second).get('/issues/giantswarm/giantswarm/45/sub-issues');
+
+      expect(pro.calls.filter(c => c.tool === 'list_sub_issues')).toHaveLength(
+        2,
+      );
+    });
+
+    it('reads from pro when the store fails', async () => {
+      jest.spyOn(store, 'get').mockRejectedValue(new Error('database down'));
+      jest.spyOn(store, 'set').mockRejectedValue(new Error('database down'));
+
+      const res = await request(await instance())
+        .get('/items')
+        .query({ status: 'Done' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ items: [ITEM] });
     });
   });
 });
