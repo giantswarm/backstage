@@ -3,10 +3,10 @@ import { expect, openReadyAgent, startSessionButton, test } from './fixtures';
 import { lab } from './lab';
 
 /**
- * Stick to the end while a turn streams: a session page at its end follows
- * the reply as it streams in, and a reader who scrolls up — wheel, keys, a
- * swipe on a phone — keeps their place however much more arrives, until they
- * scroll back down to the end.
+ * The reading position is the reader's while a turn streams: the session
+ * page never scrolls for the agent's content — not at the end either — and
+ * "Jump to bottom" appears above the composer once content lands below the
+ * view. Reaching the end, by scrolling or with the button, takes it away.
  *
  * **The turn's stream is stubbed in the browser**, and nothing else: the
  * session is started on the lab's kagent through the portal's own path. Its
@@ -26,8 +26,7 @@ const prompt =
 /** How often the stubbed reply writes another paragraph (ms). */
 const CHUNK_MS = 150;
 
-/** How near the end still counts as at it — `AT_END_THRESHOLD_PX`. */
-const AT_END_PX = 48;
+const JUMP = { name: 'Jump to bottom', exact: true } as const;
 
 type Metrics = { top: number; height: number; distance: number };
 
@@ -53,7 +52,12 @@ async function armEndlessReply(page: Page): Promise<void> {
       const original = window.fetch.bind(window);
       let used = false;
       const w = window as unknown as {
-        __e2eStream?: { chunks: number; finish: () => void };
+        __e2eStream?: {
+          chunks: number;
+          finish: () => void;
+          pause: () => void;
+          resume: () => void;
+        };
       };
       window.fetch = (input, init) => {
         const url = new URL(
@@ -110,6 +114,8 @@ async function armEndlessReply(page: Page): Promise<void> {
             );
             const state = {
               chunks: 0,
+              pause: () => {},
+              resume: () => {},
               finish: () => {
                 clearInterval(timer);
                 controller.enqueue(frame(text(written, false)));
@@ -126,12 +132,18 @@ async function armEndlessReply(page: Page): Promise<void> {
               },
             };
             w.__e2eStream = state;
-            timer = setInterval(() => {
+            const write = () => {
               state.chunks += 1;
               const paragraph = `Paragraph ${state.chunks}. Charcoal wants patience: light it, wait for the white ash, and only then put anything on the grill.\n\n`;
               written += paragraph;
               controller.enqueue(frame(text(paragraph, true)));
-            }, chunkMs);
+            };
+            timer = setInterval(write, chunkMs);
+            state.pause = () => clearInterval(timer);
+            state.resume = () => {
+              clearInterval(timer);
+              timer = setInterval(write, chunkMs);
+            };
           },
           cancel() {
             clearInterval(timer);
@@ -195,19 +207,44 @@ async function settled(page: Page, from: Metrics): Promise<Metrics> {
 }
 
 /**
- * Expects the page to follow the end. A single read can land between a
- * streamed chunk's render and the frame that follows it — at 375px one
- * paragraph is more than {@link AT_END_PX} — so it is polled: a page that
- * follows is at the end at every frame, one that stopped following drifts
- * further from it with every chunk and never comes back.
+ * Expects the page to stay exactly where it is while more of the reply
+ * streams in, and returns where that is.
  */
-async function expectFollowsEnd(page: Page, message: string): Promise<void> {
+async function expectKeepsPlace(page: Page, message: string): Promise<Metrics> {
+  const from = await metrics(page);
+  await whileItStreams(page);
+  const later = await metrics(page);
+  expect(later.height, 'the reply went on growing').toBeGreaterThan(
+    from.height,
+  );
+  expect(Math.abs(later.top - from.top), message).toBeLessThanOrEqual(1);
+  return later;
+}
+
+function pauseReply(page: Page): Promise<void> {
+  return page.evaluate(() =>
+    (
+      window as unknown as { __e2eStream?: { pause: () => void } }
+    ).__e2eStream?.pause(),
+  );
+}
+
+function resumeReply(page: Page): Promise<void> {
+  return page.evaluate(() =>
+    (
+      window as unknown as { __e2eStream?: { resume: () => void } }
+    ).__e2eStream?.resume(),
+  );
+}
+
+/** Expects the page to come to rest at its very bottom. */
+async function expectAtBottom(page: Page, message: string): Promise<void> {
   await expect
     .poll(async () => (await metrics(page)).distance, {
       message,
       timeout: 10_000,
     })
-    .toBeLessThanOrEqual(AT_END_PX);
+    .toBeLessThanOrEqual(1);
 }
 
 /** A swipe on the touch screen, `step` px per move (positive: finger down). */
@@ -243,7 +280,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/sessions$/, { timeout: 60_000 });
 }
 
-test('a streaming reply is followed at the end and leaves a reader who scrolled up where they are', async ({
+test('a streaming reply never moves the page and offers Jump to bottom instead', async ({
   admin,
   labAgent,
 }) => {
@@ -261,10 +298,11 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
     { timeout: 60_000 },
   );
 
+  const jump = admin.getByRole('button', JUMP);
   let failure: unknown;
   let cdp: CDPSession | undefined;
   try {
-    // --- The reply streams in, longer than the view: the page follows it ---
+    // --- The reply streams in, longer than the view: the page stays put ----
     await expect(
       admin.getByText(/Paragraph 1\./),
       'the stubbed reply streams onto the session page',
@@ -279,57 +317,41 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
         { message: 'the reply grows past two views', timeout: 60_000 },
       )
       .toBe(true);
-    await expectFollowsEnd(admin, 'at the end while the reply streams');
+    await expect(
+      jump,
+      'content below the view offers the way down',
+    ).toBeVisible();
+    await expectKeepsPlace(admin, 'the page does not follow the stream');
+
+    // --- At the very end, by the reader's own scroll: the cue goes, and the
+    // page still does not follow ----------------------------------------------
+    await admin.mouse.move(400, 400);
+    await pauseReply(admin);
+    let before = await metrics(admin);
+    await admin.mouse.wheel(0, 100_000);
+    await settled(admin, before);
+    await expect(jump, 'reaching the end takes the cue away').toBeHidden();
+    await resumeReply(admin);
+    await expectKeepsPlace(admin, 'at the very end the page waits too');
+    await expect(jump).toBeVisible();
 
     // --- Scrolled up with the wheel, mid-stream: the place is kept ---------
-    await admin.mouse.move(400, 400);
-    let before = await metrics(admin);
+    before = await metrics(admin);
     await admin.mouse.wheel(0, -600);
-    const read = await settled(admin, before);
-    await whileItStreams(admin);
-    const later = await metrics(admin);
-    expect(later.height, 'the reply went on growing').toBeGreaterThan(
-      read.height,
-    );
-    expect(
-      Math.abs(later.top - read.top),
+    await settled(admin, before);
+    await expectKeepsPlace(
+      admin,
       'the page stays where the reader scrolled to',
-    ).toBeLessThanOrEqual(1);
-
-    // --- End: back to the end, followed again --------------------------
-    // The composer has the focus (the session was just started), where End
-    // only moves the caret; the page takes the key once the focus is off it.
-    await admin.evaluate(() =>
-      (document.activeElement as HTMLElement | null)?.blur(),
     );
-    await admin.keyboard.press('End');
-    await whileItStreams(admin);
-    await expectFollowsEnd(
-      admin,
-      'End goes back to the end and follows the reply',
-    );
+    await expect(jump).toBeVisible();
 
-    // A nudge of one line up, from the end, leaves the end just the same:
-    // the old follow pulled back anything within 240px.
-    before = await metrics(admin);
-    await admin.mouse.wheel(0, -40);
-    const nudged = await settled(admin, before);
-    await whileItStreams(admin);
-    expect(
-      Math.abs((await metrics(admin)).top - nudged.top),
-      'a small scroll up is not pulled back down',
-    ).toBeLessThanOrEqual(1);
-
-    // --- Back to the end: the page follows again ---------------------------
-    before = await metrics(admin);
-    await admin.mouse.wheel(0, 100_000);
-    const back = await settled(admin, before);
-    await whileItStreams(admin);
-    expect((await metrics(admin)).height).toBeGreaterThan(back.height);
-    await expectFollowsEnd(
-      admin,
-      'scrolled back to the end, the reply is followed again',
-    );
+    // --- Jump to bottom: at the very bottom, the cue gone ------------------
+    await pauseReply(admin);
+    await jump.click();
+    await expectAtBottom(admin, 'Jump to bottom goes to the very bottom');
+    await expect(jump).toBeHidden();
+    await resumeReply(admin);
+    await expect(jump, 'what streams in next is new again').toBeVisible();
 
     // --- A phone, by touch -------------------------------------------------
     await admin.setViewportSize({ width: 375, height: 812 });
@@ -338,32 +360,26 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
       enabled: true,
       maxTouchPoints: 1,
     });
-    await whileItStreams(admin);
-    await expectFollowsEnd(admin, 'at 375px the page still follows the end');
+    await expectKeepsPlace(admin, 'at 375px the page stays put too');
 
-    // Finger down the screen: the page scrolls up.
+    // Finger down the screen: the page scrolls up, and keeps its place.
     before = await metrics(admin);
     await swipe(cdp, 180, 250, 20);
-    const swiped = await settled(admin, before);
-    await whileItStreams(admin);
-    const afterSwipe = await metrics(admin);
-    expect(afterSwipe.height).toBeGreaterThan(swiped.height);
-    expect(
-      Math.abs(afterSwipe.top - swiped.top),
-      'a swipe up keeps its place while the reply streams',
-    ).toBeLessThanOrEqual(1);
-
-    // Swiped back down to the end: followed again.
-    before = await metrics(admin);
-    for (let i = 0; i < 8; i++) {
-      await swipe(cdp, 180, 700, -40);
-    }
     await settled(admin, before);
-    await whileItStreams(admin);
-    await expectFollowsEnd(
+    await expectKeepsPlace(
       admin,
-      'swiped back to the end, the reply is followed again',
+      'a swipe up keeps its place while the reply streams',
     );
+
+    // The button sits above the composer, not on it.
+    const box = await jump.boundingBox();
+    const dock = await admin.getByTestId('session-dock').boundingBox();
+    expect(box && dock && box.y + box.height <= dock.y).toBe(true);
+
+    await pauseReply(admin);
+    await jump.tap();
+    await expectAtBottom(admin, 'tapped, Jump to bottom goes to the bottom');
+    await expect(jump).toBeHidden();
   } catch (error) {
     failure = error;
   } finally {

@@ -254,23 +254,16 @@ describe('NewModelPage', () => {
     });
   });
 
-  it('offers to take over the Helm-rendered default-model-config while nothing is marked', async () => {
-    mockModelConfigs = [
-      mockModel('kagent', 'default-model-config', { helm: true }),
-    ];
+  it('makes the new model the default beside an unmarked default-model-config', async () => {
+    mockModelConfigs = [mockModel('kagent', 'default-model-config')];
     await renderPage();
 
     expect(
-      screen.getByText(
-        'The default now is default-model-config. Agents that run on it keep it.',
-      ),
+      screen.getByText(/has no default model yet, so this one becomes it\./),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('checkbox', { name: 'Make this the default model' }),
-    ).toBeEnabled();
   });
 
-  it('cannot move a default Helm values set, and names the values key', async () => {
+  it('cannot move a default Helm values set', async () => {
     mockModelConfigs = [
       mockModel('kagent', 'sonnet', { marked: true, helm: true }),
     ];
@@ -280,9 +273,7 @@ describe('NewModelPage', () => {
       screen.getByRole('checkbox', { name: 'Make this the default model' }),
     ).toBeDisabled();
     expect(
-      screen.getByText(
-        /set in Helm values\. Move it there \(kagent\.modelConfigs\[\]\.default\)/,
-      ),
+      screen.getByText(/set in a Helm release's values\. Move it there\./),
     ).toBeInTheDocument();
   });
 

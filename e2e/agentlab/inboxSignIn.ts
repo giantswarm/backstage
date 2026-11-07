@@ -54,6 +54,6 @@ export async function openInbox(page: Page): Promise<Locator> {
 export function fixtureRow(overlay: Locator, label: string): Locator {
   return overlay
     .getByRole('listitem')
-    .filter({ hasText: /MCP servers? needs? your sign-in/ })
+    .filter({ hasText: /connectors? needs? your sign-in/ })
     .filter({ hasText: label });
 }

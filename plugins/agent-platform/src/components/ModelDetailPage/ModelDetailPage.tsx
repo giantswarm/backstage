@@ -44,12 +44,7 @@ import {
   lookUpContextWindow,
 } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
-import {
-  DEFAULT_MODEL_VALUES_KEY,
-  defaultClaimsIn,
-  defaultIn,
-  listed,
-} from '../../lib/defaultModel';
+import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
 import { modelProblem } from '../../lib/modelProblem';
@@ -142,7 +137,7 @@ function ManagedByValue({ owner }: { owner: string }) {
 /** Whether the model is its namespace's default, and how it would become it. */
 export type ModelDefaultState = {
   isDefault: boolean;
-  /** The other models that claim the default there (`defaultClaimsIn`). */
+  /** The other models marked as the default there (`markedIn`). */
   otherMarks: string[];
   /** The owner inside a sentence (`tenantInSentence`). */
   where: string;
@@ -160,7 +155,8 @@ function DefaultModelValue({
   if (state.isDefault) {
     note = `New agents for ${state.where} start with this model.`;
   } else if (owner === 'Helm') {
-    note = `Helm manages this model: make it the default in its values (${DEFAULT_MODEL_VALUES_KEY}).`;
+    note =
+      "Helm manages this model: make it the default in its release's values.";
   } else if (owner) {
     note = `${owner} manages this model: make it the default where ${owner} is configured.`;
   } else if (state.otherMarks.length > 1) {
@@ -301,7 +297,7 @@ function ModelDetailPageContent() {
 
   const deletion = useDeleteModelConfig(modelConfig);
 
-  // The default as the marks say it (`defaultClaimsIn`): this model as just
+  // The default as the marks say it (`markedIn`): this model as just
   // read, the namespace's others as listed. Unknown until the list has
   // answered.
   const toastApi = useApi(toastApiRef);
@@ -318,8 +314,8 @@ function ModelDetailPageContent() {
       modelConfig,
     ];
     return {
-      isDefault: defaultIn(namespaceModels, namespace, directory) === name,
-      otherMarks: defaultClaimsIn(namespaceModels, namespace, directory).filter(
+      isDefault: defaultIn(namespaceModels, namespace) === name,
+      otherMarks: markedIn(namespaceModels, namespace).filter(
         mark => mark !== name,
       ),
       where: tenantInSentence(namespace, directory),

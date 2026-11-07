@@ -427,14 +427,14 @@ describe('SessionActionsMenu — Notifications', () => {
 
   it.each`
     level        | ticked
-    ${'default'} | ${'Default'}
+    ${'default'} | ${'When action is required'}
     ${'all'}     | ${'All activity'}
     ${'muted'}   | ${'Muted'}
   `('ticks $ticked for a session at $level', async ({ level, ticked }) => {
     await renderWithLevel(level);
     await openNotifications();
 
-    for (const name of ['Default', 'All activity', 'Muted']) {
+    for (const name of ['When action is required', 'All activity', 'Muted']) {
       expect(levelItem(name)).toHaveAttribute(
         'aria-checked',
         String(name === ticked),
@@ -446,7 +446,7 @@ describe('SessionActionsMenu — Notifications', () => {
     await renderWithLevel(undefined);
     await openNotifications();
 
-    for (const name of ['Default', 'All activity', 'Muted']) {
+    for (const name of ['When action is required', 'All activity', 'Muted']) {
       expect(levelItem(name)).toHaveAttribute('aria-checked', 'false');
     }
   });
@@ -464,7 +464,10 @@ describe('SessionActionsMenu — Notifications', () => {
     );
     await openNotifications();
     expect(levelItem('Muted')).toHaveAttribute('aria-checked', 'true');
-    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+    expect(levelItem('When action is required')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
   it('ticks the chosen level at once, while its write is still under way', async () => {
@@ -484,7 +487,10 @@ describe('SessionActionsMenu — Notifications', () => {
     await openNotifications();
 
     expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true');
-    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+    expect(levelItem('When action is required')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
 
     finishWrite();
     await waitFor(() =>
@@ -492,12 +498,12 @@ describe('SessionActionsMenu — Notifications', () => {
     );
   });
 
-  it('unmutes with Default', async () => {
+  it('unmutes with When action is required', async () => {
     const onChange = jest.fn().mockResolvedValue(undefined);
     await renderWithLevel('muted', onChange);
     await openNotifications();
 
-    await userEvent.click(levelItem('Default'));
+    await userEvent.click(levelItem('When action is required'));
 
     expect(onChange).toHaveBeenCalledWith('default');
   });
@@ -529,7 +535,10 @@ describe('SessionActionsMenu — Notifications', () => {
       ),
     );
     await openNotifications();
-    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'true');
+    expect(levelItem('When action is required')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
   });
 });
 

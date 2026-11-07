@@ -18,7 +18,6 @@ import {
   WorkspacesDataProvider,
 } from '../WorkspacesDataProvider';
 import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
-import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * What the Customize screen's tab strip counts: `'loading'` while still being
@@ -114,7 +113,6 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     failures: workspaceFailures,
   } = useWorkspacesData();
   const { hasToolchains } = useScopedToolchainInstallations();
-  const { directory: organizations } = useOrganizationDirectory();
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
   const workspacesUnread =
     workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
@@ -122,10 +120,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
   const modelRows = useMemo<ModelRow[]>(
     () =>
       modelInstallations.flatMap(installation => {
-        const defaults = defaultModelIds(
-          modelConfigsFor(installation),
-          organizations,
-        );
+        const defaults = defaultModelIds(modelConfigsFor(installation));
         return modelConfigsFor(installation).map(modelConfig => {
           const state = servingStateFor(
             installation,
@@ -147,7 +142,6 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     [
       modelInstallations,
       modelConfigsFor,
-      organizations,
       servingStateFor,
       capabilitiesFor,
       backends,

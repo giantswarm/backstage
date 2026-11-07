@@ -17,6 +17,7 @@ import {
   parseToolErrorCode,
   AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
 import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
 
 /** The MCPServer name muster registers agent-manager under. */
@@ -540,6 +541,16 @@ export function codingEgressRefusal(
  */
 export class AgentManagerNotConnectedError extends Error {
   readonly name = 'AgentManagerNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to the server (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way (a tool not found, a server down), which
+   * a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**
@@ -560,9 +571,12 @@ export function looksNotConnected(message: string): boolean {
 }
 
 /**
- * Classifies what a tool call threw. agent-manager's refusals become
- * {@link AgentManagerError} with their code; muster's "not connected" answers
- * become {@link AgentManagerNotConnectedError}; anything else is passed on.
+ * Classifies what a tool call threw. muster's "not connected" answers become
+ * {@link AgentManagerNotConnectedError}, its 401 asking for the person's
+ * sign-in first: that one reads `auth_required: …` like agent-manager's own
+ * refusal of a commit without a GitHub authorization, and would otherwise be
+ * taken for it and shown in muster's words. agent-manager's refusals become
+ * {@link AgentManagerError} with their code; anything else is passed on.
  */
 export function classifyAgentManagerError(error: unknown): Error {
   if (
@@ -572,6 +586,9 @@ export function classifyAgentManagerError(error: unknown): Error {
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
+  if (musterSignInRequiredOf(error)) {
+    return new AgentManagerNotConnectedError(message, { cause: error });
+  }
   // The parser gs-node's MusterMcpClient reads a refusal's code with.
   const parsed = parseToolErrorCode(message);
   if (parsed && (ERROR_CODES as readonly string[]).includes(parsed.code)) {

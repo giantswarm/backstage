@@ -1,7 +1,7 @@
 import { Card, CardBody, Checkbox, Flex, Text } from '@backstage/ui';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 
-import { DEFAULT_MODEL_VALUES_KEY, listed } from '../../lib/defaultModel';
+import { listed } from '../../lib/defaultModel';
 
 /**
  * Whether a new model becomes its namespace's default. Without a default
@@ -43,7 +43,7 @@ export function DefaultModelChoice({
   } else {
     let description: string;
     if (markOwner === 'Helm') {
-      description = `The default, ${listed(marks)}, is set in Helm values. Move it there (${DEFAULT_MODEL_VALUES_KEY}).`;
+      description = `The default, ${listed(marks)}, is set in a Helm release's values. Move it there.`;
     } else if (markOwner) {
       description = `The default, ${listed(marks)}, is managed by ${markOwner}. Move it where ${markOwner} is configured.`;
     } else if (marks.length === 1) {

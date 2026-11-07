@@ -313,7 +313,7 @@ function McpSignInProvider({ children }: { children: ReactNode }) {
     <>
       {children}
       {store.mcp.isDialogOpen && (
-        <div role="dialog" aria-label="Sign in to MCP servers">
+        <div role="dialog" aria-label="Sign in to connectors">
           <button
             onClick={() => {
               store.mcp = { ...store.mcp, isDialogOpen: false };
@@ -344,6 +344,7 @@ export function fakeInboxMusterExports() {
  */
 export function fakeInboxPluginExports() {
   return {
+    useOrganizationsAvailable: () => false,
     AgentPlatformProviders: ({ children }: { children: ReactNode }) => (
       <>{children}</>
     ),

@@ -39,6 +39,7 @@ import {
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
+  ConnectorNamesResponse,
   MusterAnswerCutError,
   MusterApi,
   MusterAuthProvidersApi,
@@ -304,6 +305,14 @@ export class MusterApiClient implements MusterApi {
 
   async listServers(installation?: string): Promise<McpServerListResponse> {
     return this.get<McpServerListResponse>('/servers', installation);
+  }
+
+  async listConnectorNames(
+    installation?: string,
+  ): Promise<ConnectorNamesResponse> {
+    return this.get<ConnectorNamesResponse>('/servers/names', installation, {
+      silent: true,
+    });
   }
 
   async filterTools(

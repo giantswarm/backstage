@@ -14,8 +14,12 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Model Manager tools are accessed through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
-import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  AGENT_SHELL_ON,
+  ORGANIZATIONS_FLAG,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   KagentApiClient,
@@ -300,14 +304,11 @@ const profilePage = PageBlueprint.make({
   },
 });
 
-// The shell's Organizations (`/organizations`): the Agent Platform
-// organizations the signed-in person belongs to, and one organization's page
-// with its Members, Models, Connectors and Egress, all read and written
-// through agent-manager's organization tools as the person. Shell only and
-// enabled by default, like `profilePage`.
 const organizationsPage = PageBlueprint.make({
   name: 'organizations',
-  if: AGENT_SHELL_ON,
+  if: {
+    $all: [AGENT_SHELL_ON, { featureFlags: { $contains: ORGANIZATIONS_FLAG } }],
+  },
   params: {
     // eslint-disable-next-line giantswarm/no-restricted-syntax -- the organizations page's route definition
     path: '/organizations',
@@ -471,6 +472,13 @@ const workflowEditAssist = createExtension({
 
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
+  featureFlags: [
+    {
+      name: ORGANIZATIONS_FLAG,
+      description:
+        'Enable the experimental Organizations pages on supported installations (takes effect after a reload)',
+    },
+  ],
   extensions: [
     sessionsPage,
     usagePage,

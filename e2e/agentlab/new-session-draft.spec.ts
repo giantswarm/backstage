@@ -46,8 +46,8 @@ test('a sign-in from the inbox and a reload keep the unsent prompt on New sessio
   const overlay = await openInbox(admin);
   const row = fixtureRow(overlay, label);
   await expect(row).toBeVisible({ timeout: 60_000 });
-  await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
-  const dialog = admin.getByRole('dialog', { name: 'Sign in to MCP servers' });
+  await row.getByRole('button', { name: 'Sign in to connectors' }).click();
+  const dialog = admin.getByRole('dialog', { name: 'Sign in to connectors' });
   const server = dialog.getByRole('listitem').filter({ hasText: label });
   const popup = admin.waitForEvent('popup');
   await server.getByRole('button', { name: 'Sign in' }).click();

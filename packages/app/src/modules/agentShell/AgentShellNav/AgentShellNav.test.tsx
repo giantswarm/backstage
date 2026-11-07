@@ -24,6 +24,7 @@ import { fakeInbox } from '../NotificationInbox/testing/fakeInbox';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
+const mockOrganizationsAvailable = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef, createSubRouteRef } = jest.requireActual(
@@ -35,6 +36,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const sessions = createRouteRef();
   return {
     ...fakeInboxPluginExports(),
+    useOrganizationsAvailable: () => mockOrganizationsAvailable(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     CommandPalette: ({
       renderTrigger,
@@ -90,6 +92,7 @@ async function renderNav({
   path = '/',
   profile = { displayName: 'Jane Doe', email: 'jane@example.com' },
   portals = { platformPortal: true, agentPlatform: true },
+  organizationsEnabled = false,
 }: {
   profile?: { displayName?: string; email?: string };
   bound?: boolean;
@@ -97,6 +100,7 @@ async function renderNav({
   isMobile?: boolean;
   path?: string;
   portals?: PortalsConfig;
+  organizationsEnabled?: boolean;
 } = {}) {
   await renderInTestApp(
     <RailWidthProvider>
@@ -134,6 +138,9 @@ async function renderNav({
           '/customize/connectors': musterPlugin.routes.mcpServers,
           '/customize/workflows': musterPlugin.routes.workflows,
           '/profile': agentPlatformPlugin.routes.profile,
+          ...(organizationsEnabled && {
+            '/organizations': agentPlatformPlugin.routes.organizations,
+          }),
         }),
       },
     },
@@ -153,9 +160,43 @@ beforeEach(() => {
   window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
+  mockOrganizationsAvailable.mockReturnValue(false);
 });
 
 describe('AgentShellNav', () => {
+  describe.each([
+    { isPinned: true, isMobile: false },
+    { isPinned: false, isMobile: false },
+    { isPinned: false, isMobile: true },
+  ])('Organizations in the profile menu, %j', layout => {
+    it.each([
+      [false, false],
+      [false, true],
+      [true, false],
+      [true, true],
+    ])(
+      'requires enabled=%s and supported=%s',
+      async (organizationsEnabled, supported) => {
+        mockOrganizationsAvailable.mockReturnValue(supported);
+        await renderNav({ ...layout, organizationsEnabled });
+
+        expect(
+          screen.queryByRole('link', { name: 'Organizations' }),
+        ).not.toBeInTheDocument();
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Profile and settings' }),
+        );
+
+        const organization = within(
+          await screen.findByRole('menu'),
+        ).queryByRole('menuitem', { name: 'Organizations' });
+        expect(organization?.getAttribute('href') ?? null).toBe(
+          organizationsEnabled && supported ? '/organizations' : null,
+        );
+      },
+    );
+  });
+
   it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
 
