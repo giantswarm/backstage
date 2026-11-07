@@ -1552,6 +1552,14 @@ use.
 
 ### What the timeline shows
 
+Each user input shows its authenticated sender when kagent records
+`kagent.dev/a2a/sender` on the message. Shared conversations can therefore show
+different senders on successive inputs, including replies on the same task and
+attachment-only messages. The sender label survives reload and export because
+it comes from task history. Older messages without this metadata stay
+unattributed; the portal does not infer their sender from the session owner or
+the person reading it. A portal-prepared opener keeps its separate caption.
+
 `lib/kagentTimeline.ts` builds the timeline from task history. Messages render
 in full; the agent's internal work folds into work summaries; older turns page
 behind "Show earlier activity".

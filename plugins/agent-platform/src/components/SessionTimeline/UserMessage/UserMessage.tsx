@@ -24,6 +24,11 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'flex-end',
     gap: theme.spacing(0.5),
   },
+  sender: {
+    maxWidth: '85%',
+    overflowWrap: 'anywhere',
+    textAlign: 'right',
+  },
   userBubble: {
     maxWidth: '85%',
     // The fill Send carries (a bui primary button), and its foreground: one
@@ -61,7 +66,7 @@ const useStyles = makeStyles(theme => ({
     overflowWrap: 'anywhere',
     font: 'inherit',
   },
-  // The bubble says "you" visually; this keeps saying it to assistive tech.
+  // Name recorded senders without guessing who wrote older messages.
   srOnly: {
     position: 'absolute',
     width: 1,
@@ -77,6 +82,8 @@ const useStyles = makeStyles(theme => ({
 
 export type UserMessageProps = {
   text: string;
+  /** The authenticated sender, when task history records one. */
+  sender?: string;
   /**
    * A line under the bubble saying who wrote it when it was not the person —
    * the portal's prepared opener of a hand-off session.
@@ -100,6 +107,7 @@ export type UserMessageProps = {
  */
 export function UserMessage({
   text,
+  sender,
   caption,
   expanded,
   onExpandedChange,
@@ -113,8 +121,21 @@ export function UserMessage({
 
   return (
     <div className={classes.userRow} data-testid="timeline-user-message">
+      {sender && (
+        <Text
+          as="p"
+          variant="body-x-small"
+          color="secondary"
+          className={classes.sender}
+          data-testid="timeline-user-message-sender"
+        >
+          {sender}
+        </Text>
+      )}
       <div className={classes.userBubble} data-testid="user-message-bubble">
-        <span className={classes.srOnly}>You</span>
+        <span className={classes.srOnly}>
+          {sender ? `Message from ${sender}` : 'User message'}
+        </span>
         <CollapsibleViewport state={collapsible}>
           <pre className={classes.userText}>{text}</pre>
         </CollapsibleViewport>
