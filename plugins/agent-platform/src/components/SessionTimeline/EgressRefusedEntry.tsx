@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -177,36 +177,42 @@ export function EgressRefusedEntry({
       data-host={item.host}
       data-port={item.port}
     >
-      <Alert
-        status="warning"
-        icon
-        title={EGRESS_ALERT_COPY.title(item.host)}
-        description={
-          <Flex direction="column" gap="1">
-            <Text variant="body-small">{facts}</Text>
-            <Text variant="body-small">{EGRESS_ALERT_COPY.impact}</Text>
-            {remedy}
-            <SimpleAccordion
-              title={EGRESS_ALERT_COPY.details.title}
-              headingLevel={4}
-            >
-              <Flex direction="column" gap="1">
-                <Text variant="body-small">
-                  {EGRESS_ALERT_COPY.details.destination}{' '}
-                  <span className={classes.value}>{destinationOf(item)}</span>
-                  {` (${item.scheme})`}
-                </Text>
-                {origin && (
-                  <Text variant="body-small">
-                    {EGRESS_ALERT_COPY.details.origin}{' '}
-                    <span className={classes.value}>{origin}</span>
-                  </Text>
-                )}
-              </Flex>
-            </SimpleAccordion>
+      <SimpleAccordion
+        headingLevel={3}
+        title={
+          <Flex gap="2" align="center">
+            <span>{EGRESS_ALERT_COPY.title(item.host)}</span>{' '}
+            <Text as="span" variant="body-small" color="secondary">
+              {' · '}
+              {EGRESS_ALERT_COPY.attempts(item.count)}
+            </Text>
           </Flex>
         }
-      />
+      >
+        <Flex direction="column" gap="1">
+          <Text variant="body-small">{facts}</Text>
+          <Text variant="body-small">{EGRESS_ALERT_COPY.impact}</Text>
+          {remedy}
+          <SimpleAccordion
+            title={EGRESS_ALERT_COPY.details.title}
+            headingLevel={4}
+          >
+            <Flex direction="column" gap="1">
+              <Text variant="body-small">
+                {EGRESS_ALERT_COPY.details.destination}{' '}
+                <span className={classes.value}>{destinationOf(item)}</span>
+                {` (${item.scheme})`}
+              </Text>
+              {origin && (
+                <Text variant="body-small">
+                  {EGRESS_ALERT_COPY.details.origin}{' '}
+                  <span className={classes.value}>{origin}</span>
+                </Text>
+              )}
+            </Flex>
+          </SimpleAccordion>
+        </Flex>
+      </SimpleAccordion>
     </div>
   );
 }

@@ -1853,6 +1853,9 @@ describe('egress refusals', () => {
     );
 
     const entry = screen.getByTestId('timeline-egress-refused');
+    await userEvent.click(
+      within(entry).getByRole('button', { name: /Outgoing connection/ }),
+    );
     expect(
       within(entry).getByText(
         'Outgoing connection to proxy.golang.org blocked',
