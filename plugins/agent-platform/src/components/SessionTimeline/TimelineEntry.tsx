@@ -386,6 +386,7 @@ export function TimelineEntry({
       <UserMessage
         text={item.text}
         caption={caption}
+        sender={item.sender}
         expanded={isMessageExpanded}
         onExpandedChange={onMessageExpandedChange}
       />

@@ -46,6 +46,17 @@ test('a session exports to a file from its actions menu, whole and verbatim', as
       admin.getByTestId('timeline-user-message').filter({ hasText: prompt }),
     ).toBeVisible({ timeout: 60_000 });
 
+    // Attribution comes from kagent's persisted input, including after a page
+    // reload; the optimistic message has no authority to name its sender.
+    await expect(admin.getByTestId('timeline-user-message-sender')).toHaveText(
+      lab.users.admin.email,
+      { timeout: 60_000 },
+    );
+    await admin.reload();
+    await expect(admin.getByTestId('timeline-user-message-sender')).toHaveText(
+      lab.users.admin.email,
+    );
+
     await admin.getByRole('button', { name: 'Session actions' }).click();
     const item = admin.getByRole('menuitem', {
       name: 'Export session',
@@ -74,6 +85,8 @@ test('a session exports to a file from its actions menu, whole and verbatim', as
     expect(saved.session.id).toBe(sessionId);
     expect(saved.tasks.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(saved.tasks[0])).toContain(prompt);
+    expect(JSON.stringify(saved.tasks[0])).toContain('kagent.dev/a2a/sender');
+    expect(JSON.stringify(saved.tasks[0])).toContain(lab.users.admin.email);
   } finally {
     await admin.keyboard.press('Escape');
     await deleteCurrentSession(admin);

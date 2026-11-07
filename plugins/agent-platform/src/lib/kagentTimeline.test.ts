@@ -34,6 +34,62 @@ function kinds(items: TimelineItem[]): string[] {
 }
 
 describe('buildTimeline', () => {
+  it('reads each input sender independently of the task owner', () => {
+    const tasks = ['alice@example.com', 'bob@example.com'].map((sender, i) => ({
+      id: `task-${i}`,
+      metadata: { 'kagent.dev/a2a/sender': 'not-the-sender' },
+      history: [
+        {
+          messageId: `input-${i}`,
+          role: 'user',
+          metadata: { 'kagent.dev/a2a/sender': sender },
+          parts: [{ kind: 'text', text: `Input ${i}` }],
+        },
+        {
+          messageId: `output-${i}`,
+          role: 'agent',
+          metadata: { 'kagent.dev/a2a/sender': 'not-the-sender' },
+          parts: [{ kind: 'text', text: 'Reply' }],
+        },
+      ],
+    }));
+    const { items } = buildTimeline(tasks);
+    expect(
+      items
+        .filter(item => item.kind === 'user-message')
+        .map(item => item.sender),
+    ).toEqual(['alice@example.com', 'bob@example.com']);
+    expect(
+      items
+        .filter(item => item.kind === 'agent-message')
+        .every(item => item.sender === undefined),
+    ).toBe(true);
+  });
+
+  it.each([undefined, null, 42, {}, '', '   '])(
+    'leaves an absent or malformed sender unknown: %p',
+    sender => {
+      const { items } = buildTimeline([
+        {
+          id: 'old-task',
+          history: [
+            {
+              messageId: 'input',
+              role: 'user',
+              metadata: { 'kagent.dev/a2a/sender': sender },
+              parts: [{ kind: 'text', text: 'Old input' }],
+            },
+          ],
+        },
+      ]);
+      expect(items[0]).toMatchObject({
+        kind: 'user-message',
+        text: 'Old input',
+      });
+      expect(items[0].sender).toBeUndefined();
+    },
+  );
+
   it('reads a realistic session into an ordered timeline', () => {
     const { items } = timelineFor(kagentPrefixed);
 

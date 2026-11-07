@@ -87,6 +87,73 @@ describe('SessionTimeline', () => {
   // test app backs with localStorage — shared across tests in this file.
   beforeEach(() => window.localStorage.clear());
 
+  it('shows both senders and preserves the portal opener caption', async () => {
+    const tasks = ['alice@example.com', 'bob@example.com'].map((sender, i) => ({
+      id: `task-${i}`,
+      history: [
+        {
+          messageId: `input-${i}`,
+          role: 'user',
+          metadata: { 'kagent.dev/a2a/sender': sender },
+          parts: [{ kind: 'text', text: `Input ${i}` }],
+        },
+      ],
+    }));
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={buildTimeline(tasks)}
+        agentName="Assistant"
+        firstMessageCaption="Prepared by the portal"
+      />,
+    );
+    const messages = screen.getAllByTestId('timeline-user-message');
+    expect(
+      within(messages[0]).getByTestId('timeline-user-message-sender'),
+    ).toHaveTextContent('alice@example.com');
+    expect(
+      within(messages[1]).getByTestId('timeline-user-message-sender'),
+    ).toHaveTextContent('bob@example.com');
+    expect(
+      within(messages[0]).getByText('Prepared by the portal'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('You')).not.toBeInTheDocument();
+  });
+
+  it('attributes an input that contains only an attachment', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        agentName="Assistant"
+        timeline={buildTimeline([
+          {
+            id: 'attachment-task',
+            history: [
+              {
+                messageId: 'attachment-input',
+                role: 'user',
+                metadata: { 'kagent.dev/a2a/sender': 'bob@example.com' },
+                parts: [
+                  {
+                    kind: 'file',
+                    file: {
+                      name: 'notes.txt',
+                      mimeType: 'text/plain',
+                      bytes: 'aGk=',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ])}
+      />,
+    );
+    expect(
+      within(screen.getByTestId('timeline-attachment')).getByText(
+        'bob@example.com',
+      ),
+    ).toBeVisible();
+  });
+
   it('renders the conversation', async () => {
     await render(tasksV099);
 
@@ -117,7 +184,7 @@ describe('SessionTimeline', () => {
   it('labels the user and the resolved agent', async () => {
     await render(tasksV099);
 
-    expect(screen.getAllByText('You').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('User message').length).toBeGreaterThan(0);
     // The display name from the Agent CR, not the raw `issue_tracker` identifier.
     expect(screen.getAllByText('Issue tracker').length).toBeGreaterThan(0);
   });

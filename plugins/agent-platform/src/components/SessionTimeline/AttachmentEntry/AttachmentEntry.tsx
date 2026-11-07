@@ -3,6 +3,7 @@ import {
   Dialog,
   DialogBody,
   DialogHeader,
+  Text,
   VisuallyHidden,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
@@ -150,9 +151,20 @@ export function AttachmentEntry({ item }: AttachmentEntryProps) {
     item.preview.byteSize === undefined
       ? undefined
       : formatBytes(item.preview.byteSize);
-  const sender = item.isUser ? (
-    <VisuallyHidden>You attached</VisuallyHidden>
-  ) : null;
+  const sender =
+    item.isUser &&
+    (item.sender ? (
+      <Text
+        as="span"
+        variant="body-x-small"
+        color="secondary"
+        className={classes.caption}
+      >
+        {item.sender}
+      </Text>
+    ) : (
+      <VisuallyHidden>User attachment</VisuallyHidden>
+    ));
 
   if (item.preview.kind === 'image' && failedUrl !== dataUrl) {
     const { dataUrl: src, type } = item.preview;
