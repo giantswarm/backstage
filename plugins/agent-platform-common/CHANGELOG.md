@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-agent-platform-common
 
+## 1.3.1
+
+### Patch Changes
+
+- d8b2289: Gate the Organizations pages behind the `agent-platform-organizations` feature flag, off by default. `agentPlatform.organizations.enabled` enables or disables the pages for everyone and overrides saved browser flags. Show their navigation entry only when the pages are enabled and an agent-manager reports support for Agent Platform organizations. Direct links to enabled pages show discovery failures as errors instead of reporting the feature unavailable.
+- 7b7780d: Preserve task completion and recorded tool-response activity when placing network refusals on session turns.
+- 3b113f7: Show session filesystem links as local paths instead of navigating to nonexistent portal pages. Use Agent Platform wording for request failures and clear an unconfirmed-answer error when a later session read confirms the answer.
+
+  Measure turn progress from recorded messages and tool outputs as well as state updates. Place network refusals on the matching turn and explain that a blocked connection alone does not establish task failure. Keep unconfirmed answers recoverable and avoid inferred causes in runtime notices.
+
 ## 1.3.0
 
 ### Minor Changes
