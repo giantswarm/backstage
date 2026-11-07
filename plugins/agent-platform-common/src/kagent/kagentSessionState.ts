@@ -255,7 +255,7 @@ export type NewestTaskState = {
 /**
  * The latest recorded activity on a task, including output between state changes.
  */
-function taskActivityAt(task: A2aTaskWire): number | undefined {
+export function taskActivityAt(task: A2aTaskWire): number | undefined {
   const timestamp = normalizeTimestamp(task.status?.timestamp);
   let latest = timestamp === undefined ? undefined : Date.parse(timestamp);
   for (const entry of [

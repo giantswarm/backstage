@@ -1,4 +1,5 @@
-import type { TimelineItem } from './kagentTimeline';
+import type { A2aTaskWire } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { buildTimeline, TimelineItem } from './kagentTimeline';
 import {
   egressOriginFor,
   egressRefusalsQuery,
@@ -216,4 +217,69 @@ describe('withEgressRefusals', () => {
       'a1',
     ]);
   });
+
+  it.each<[string, number | undefined, number, number]>([
+    ['completion', 100, 95, 96],
+    ['folded response', 10, 95, 60],
+    ['response without a task timestamp', undefined, 95, 60],
+  ])(
+    'uses %s to keep a refusal on its turn',
+    (_label, completed, responded, since) => {
+      const tasks: A2aTaskWire[] = [
+        {
+          status: {
+            state: 'completed',
+            timestamp: completed === undefined ? undefined : iso(completed),
+          },
+          history: [
+            {
+              role: 'agent',
+              messageId: 'call',
+              metadata: { 'kagent.dev/a2a/timeline-position': iso(10) },
+              parts: [
+                {
+                  kind: 'data',
+                  metadata: { kagent_type: 'function_call' },
+                  data: { id: 'call', name: 'shell', args: {} },
+                },
+              ],
+            },
+            {
+              role: 'agent',
+              messageId: 'response',
+              metadata: { 'kagent.dev/a2a/timeline-position': iso(responded) },
+              parts: [
+                {
+                  kind: 'data',
+                  metadata: { kagent_type: 'function_response' },
+                  data: { id: 'call', name: 'shell', response: { ok: false } },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          status: { state: 'completed', timestamp: iso(300) },
+          history: [{ role: 'user', parts: [{ text: 'Next turn' }] }],
+        },
+      ];
+      const timeline = buildTimeline(tasks);
+      expect(timeline.items).toHaveLength(2);
+      expect(timeline.items[0]).toMatchObject({
+        kind: 'tool-call',
+        at: iso(10),
+        isPending: false,
+      });
+      const result = withEgressRefusals(
+        timeline.items,
+        [refusal(99, since)],
+        tasks,
+      );
+      expect(result.map(item => [item.kind, item.taskIndex])).toEqual([
+        ['tool-call', 0],
+        ['egress-refused', 0],
+        ['user-message', 1],
+      ]);
+    },
+  );
 });
