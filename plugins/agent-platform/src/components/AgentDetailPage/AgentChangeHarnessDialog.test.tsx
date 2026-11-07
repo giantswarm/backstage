@@ -7,11 +7,19 @@ import userEvent from '@testing-library/user-event';
 import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 import type { AgentManagerAgent } from '../../lib/agentManager';
 import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
 
@@ -343,6 +351,47 @@ describe('AgentChangeHarnessDialog', () => {
     ).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  // The write's refusal for want of the sign-in used to hide the dialog's
+  // error and show no alert. Signed in, it is cleared; the person confirms
+  // again.
+  it('asks for the sign-in when the change is refused for want of it, and clears it once it lands', async () => {
+    const { callTool } = await renderDialog({
+      updateError: new MusterUnauthorizedError(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+      ),
+    });
+    await userEvent.click(
+      screen.getByRole('radio', { name: /Claude Code, Harness claude/ }),
+    );
+    await screen.findByText(/Every check passes/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Change Harness' }),
+    );
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Change Harness' }),
+    ).toBeEnabled();
+    expect(
+      callTool.mock.calls.filter(
+        ([tool]) => tool === 'x_agent-manager_update_agent',
+      ),
+    ).toHaveLength(1);
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it('says in plain words where the Harness is changed instead when agent-manager has no file for the release', async () => {

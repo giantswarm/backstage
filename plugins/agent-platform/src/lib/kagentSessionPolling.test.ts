@@ -104,6 +104,22 @@ describe('getSessionTasksRefetchInterval', () => {
     expect(getSessionTasksRefetchInterval(query([stuck]))).toBe(BASELINE);
   });
 
+  it('polls fast when output advances on a long-running task', () => {
+    const active = {
+      ...task('working', { ageMs: 12 * 60_000 }),
+      artifacts: [
+        {
+          metadata: {
+            'kagent.dev/a2a/timeline-position': new Date(
+              NOW - 1_000,
+            ).toISOString(),
+          },
+        },
+      ],
+    };
+    expect(getSessionTasksRefetchInterval(query([active]))).toBe(FAST);
+  });
+
   // `input-required` and `auth-required` are active but wait on a human, and this
   // page offers no way to answer. The age bound is what keeps them from polling
   // 500 KB forever; a reply elsewhere moves the timestamp and re-engages the fast

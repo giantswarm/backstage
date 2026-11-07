@@ -1,5 +1,25 @@
 # @giantswarm/backstage-plugin-analytics-react
 
+## 0.3.0
+
+### Minor Changes
+
+- db5c770: Agent Platform organizations. `/organizations` lists the organizations the signed-in person belongs to (agent-manager's `list_my_organizations`) and tells a person in none who can add them; an organization's page has Members, Models, Connectors and Egress tabs read from agent-manager's organization tools, adds a group (offered first) or a person to a role and removes one, showing agent-manager's refusal. On installations whose agent-manager reports `organizations`, the New agent form offers only the person's organizations, preselects a single one and has no Platform option; its models, with the organization's default preselected, and its connectors follow the organization. Every page names an agent's organization from agent-manager's answers, never from a namespace name prefix. New events `AgentPlatform.organizationMemberAdded` and `AgentPlatform.organizationMemberRemoved`; exports `ORGANIZATION_PAGE_TABS`.
+- a665a44: A namespace's default model is the ModelConfig annotated `agent-platform.giantswarm.io/is-default-model-config: "true"`; none or several annotated is no default. The New agent form preselects the default agent-manager reports (`list_model_configs` `default`) and otherwise asks the person to choose, badges it, and warns when the chosen model is not ready (`ResolvedRefs` not true). Outside an organization, `default-model-config` stays the default while no model there is annotated, as agent-manager resolves it; an organization is offered only its own models. Customize → Models shows which model is the default; a model's page says so and offers **Set as default**, which moves the annotation as the signed-in person and refuses when another model was marked meanwhile or when the current default is managed by Helm (`kagent.modelConfigs[].default`) or another tool. Connect a model marks a new model as the default when its namespace has none, offers **Make this the default model** otherwise, and lets an organization's admins add a model to their organization: its key goes into the Secret `tenant-credential-<model>`, it takes no base URL (the LLM gateway routes it), and only Anthropic and OpenAI are offered. New portal event `AgentPlatform.defaultModelSet`.
+- 6dee1f6: Usage data says how big what people work with is, as exact numbers and never
+  by name. Opening an agent's page sends `AgentPlatform.agentViewed` with its
+  number of skills and of tools; opening a session sends
+  `AgentPlatform.sessionViewed` with its number of turns; opening Customize sends
+  `AgentPlatform.customizeViewed` with its number of agents, skills, connectors,
+  models, workflows, workspaces and toolchains. Each goes once per opening of the
+  page, once its counts have finished loading; a count that could not be read is
+  left out. `AgentPlatform.messageSent` now carries the session's number of
+  turns.
+
+  `analytics-react` adds count attributes (`COUNT` in `portalEvents`, a whole
+  number of 0 or more, which the connector checks) and `useTrackedView`, which
+  reports a page's view event once per opening.
+
 ## 0.2.0
 
 ### Minor Changes

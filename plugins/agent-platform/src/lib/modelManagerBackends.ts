@@ -21,6 +21,7 @@ import {
   parseToolErrorCode,
   MODEL_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
 import { safeWebURL } from '@giantswarm/backstage-plugin-ui-react';
 
 import { looksNotConnected, type CommitAgentResult } from './agentManager';
@@ -288,6 +289,15 @@ export class ModelManagerToolError extends Error {
  */
 export class ModelManagerNotConnectedError extends Error {
   readonly name = 'ModelManagerNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to the server (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way, which a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**

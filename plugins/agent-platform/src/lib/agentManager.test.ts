@@ -11,6 +11,7 @@ import {
   missingReleaseFile,
   supportsTags,
 } from './agentManager';
+import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 
 describe('agentManagerToolName', () => {
   it('addresses the tool the way muster exposes an aggregated server', () => {
@@ -46,6 +47,31 @@ describe('classifyAgentManagerError', () => {
       ),
     );
     expect(error).toBeInstanceOf(AgentManagerNotConnectedError);
+  });
+
+  // muster's 401 for a person who has not signed in to agent-manager reads
+  // like agent-manager's own `auth_required` refusal: it is the sign-in the
+  // session start and the wizard offer, not a refusal in muster's words.
+  it("takes muster's sign-in request for not connected, not for agent-manager's auth_required", () => {
+    const original = new MusterUnauthorizedError(
+      "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+      'server_sign_in_required',
+      'agent-manager',
+      'gazelle',
+    );
+    const error = classifyAgentManagerError(original);
+    expect(error).toBeInstanceOf(AgentManagerNotConnectedError);
+    expect(error.cause).toBe(original);
+  });
+
+  it("keeps agent-manager's own auth_required a refusal", () => {
+    const error = classifyAgentManagerError(
+      new Error(
+        'auth_required: commit mode needs the person to sign in to GitHub: the commit is made with your GitHub authorization, and this call carries none',
+      ),
+    );
+    expect(error).toBeInstanceOf(AgentManagerError);
+    expect((error as AgentManagerError).code).toBe('auth_required');
   });
 
   it('passes an unrelated error through', () => {

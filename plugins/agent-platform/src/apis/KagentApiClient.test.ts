@@ -277,7 +277,7 @@ describe('KagentApiClient', () => {
       fetchMock.mockResolvedValue(jsonResponse({}, 500));
 
       await expect(buildClient().listSessions('gazelle')).rejects.toThrow(
-        /status 500/,
+        'The Agent Platform request failed with status 500.',
       );
     });
 

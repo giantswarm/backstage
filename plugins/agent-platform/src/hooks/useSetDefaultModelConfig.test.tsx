@@ -152,7 +152,9 @@ describe('useSetDefaultModelConfig', () => {
       expected: ['sonnet'],
     });
 
-    expect(error.message).toMatch(/kagent\.modelConfigs\[\]\.default/);
+    expect(error.message).toMatch(
+      /Move the default in that release's values\./,
+    );
     expect(mockPatchResource).not.toHaveBeenCalled();
   });
 

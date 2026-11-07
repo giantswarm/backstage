@@ -108,7 +108,7 @@ describe('ChatGptConnectPrompt', () => {
     expect(within(apps).getAllByRole('listitem')).toHaveLength(1);
     expect(apps).toHaveTextContent('ChatGPT');
     expect(
-      within(dialog).queryByRole('list', { name: 'MCP servers' }),
+      within(dialog).queryByRole('list', { name: 'Connectors' }),
     ).not.toBeInTheDocument();
   });
 });

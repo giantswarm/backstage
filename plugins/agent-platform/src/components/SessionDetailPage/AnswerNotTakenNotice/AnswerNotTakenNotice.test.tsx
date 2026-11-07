@@ -7,7 +7,7 @@ const continueButton = () =>
   screen.queryByRole('button', { name: 'Continue in a new session' });
 
 describe('AnswerNotTakenNotice', () => {
-  it('says the session cannot continue, shows the answer and offers the new session in itself', async () => {
+  it('keeps an unconfirmed answer visible and offers another session', async () => {
     const action = newSession();
     render(
       <AnswerNotTakenNotice
@@ -17,22 +17,24 @@ describe('AnswerNotTakenNotice', () => {
       />,
     );
 
-    expect(
-      screen.getByText('Could not resume this session'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /the question is still open and this session cannot continue/,
+        /The latest session read still showed an unanswered question/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /To carry on, continue in a new session with Grill master\. Its first message holds this conversation, with tools named but not their results, the open question and your answer\./,
+        /You can also continue in a new session with Grill master\. Its first message holds this conversation, with tools named but not their results, the open question and your answer\./,
       ),
     ).toBeInTheDocument();
-    // Terminal: nothing suggests sending it again.
-    expect(screen.queryByText(/retry|again/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Refresh the session before sending the answer again/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/kagent|cannot continue/),
+    ).not.toBeInTheDocument();
 
     await userEvent.click(continueButton()!);
     expect(action.onStart).toHaveBeenCalled();

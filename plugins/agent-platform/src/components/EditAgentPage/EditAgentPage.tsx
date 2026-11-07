@@ -262,6 +262,7 @@ export function EditAgentPage() {
           <ConnectAgentManagerAlert
             installation={installation}
             message={failure.message}
+            signInRequired={failure.signInRequired}
             action="Agents are edited"
           />
         ) : (
@@ -300,6 +301,7 @@ export function EditAgentPage() {
         <ConnectAgentManagerAlert
           installation={installation}
           message={commitCheck.message}
+          signInRequired={commitCheck.signInRequired}
           action="Agents applied from Git are edited"
           needsGitHub={commitCheck.github}
         />

@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import {
   MCPServer,
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -24,8 +25,14 @@ import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 
 const mockNavigate = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
@@ -880,6 +887,35 @@ describe('NewAgentReviewPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
     expect(deployButton()).toBeDisabled();
+  });
+
+  // The create's refusal is the mutation's, kept until the next write: once
+  // the sign-in lands it goes, and Create is the person's to press again.
+  it('clears the connect step of a refused create once the sign-in lands', async () => {
+    const user = userEvent.setup();
+    await renderReview({
+      createError: new MusterUnauthorizedError(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+      ),
+    });
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(deployButton()).toBeEnabled();
   });
 
   it('hides the pull-request alternative while agent-manager does not report the capability', async () => {

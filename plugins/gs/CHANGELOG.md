@@ -1,5 +1,132 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.72.0
+
+### Minor Changes
+
+- 2fb06f7: Make the cluster "Gateways" tab easier to scan on busy clusters.
+
+  - One row per Gateway, with its listeners listed in the row.
+  - Search HTTPRoutes by name, namespace, hostname or parent.
+  - Concrete hostnames link to the site; wildcards stay plain text.
+  - The tab is hidden on installations without Mimir, since everything on it
+    comes from metrics.
+  - If the Gateway API topology cannot be loaded, the Envoy Gateway policies
+    are still shown.
+
+- 36f0927: Show Envoy Gateway policies in the cluster "Gateways" tab.
+
+  - `SecurityPolicy`, `BackendTrafficPolicy`, `ClientTrafficPolicy` and
+    `EnvoyExtensionPolicy` with their targets (`spec.targetRefs`, and the
+    deprecated `spec.targetRef`; policies using `spec.targetSelectors` show
+    "Selected by labels") and the `Accepted` condition per Gateway or
+    ListenerSet they attach to. Rejected policies are listed first.
+  - A policy without any status on a cluster that exports policy status is
+    flagged as "No status reported": Envoy Gateway writes none when the target
+    doesn't exist, isn't managed by it, or before reconciling.
+  - Policy status and `spec.targetRefs` come from metrics added in
+    observability-bundle 3.6.0 (giantswarm/observability-bundle#467); the
+    deprecated `spec.targetRef` is read on older bundles too. On clusters with
+    an older bundle, or when they fail to load, they are shown as "Not
+    available", with a notice saying which of the two it is.
+  - `@giantswarm/backstage-plugin-gs-common` exports the Envoy Gateway policy
+    metrics (`EnvoyGateway*PolicyCreated`, `*Info`, `*TargetInfo`,
+    `*StatusAncestorAccepted`).
+
+- 148a689: Add a "Gateways" tab to the cluster detail page showing the cluster's Gateway
+  API setup from Mimir metrics.
+
+  - Gateways with their class, `Accepted`/`Programmed` conditions and listeners
+    (protocol, port, hostname, attached routes).
+  - HTTPRoutes with their hostnames and Gateway or ListenerSet parents, and the
+    `Accepted` and `ResolvedRefs` condition of each parent, with the reason when
+    it fails.
+  - Failing Gateways and routes are listed first, followed by those without a
+    reported status.
+  - Route conditions come from metrics added in observability-bundle 3.6.0
+    (giantswarm/observability-bundle#467). On clusters with an older bundle they
+    are shown as "Not available", never as healthy.
+
+- a85c17f: The installation name in the Deployments and Clusters tables and in the
+  workload details pane links to the installation's catalog page, wherever the
+  catalog has the installation's entity (a `Resource` of type `installation`).
+  Otherwise the name stays plain text. In the workload details pane the link now
+  shows the installation's name rather than its entity's title, and a `Resource`
+  of another type that shares the installation's name is no longer linked.
+
+### Patch Changes
+
+- 5bde8bf: Report a Mimir that cannot answer a query to Sentry once, under a fixed title,
+  and say on the page when older data is temporarily unavailable.
+
+  `MimirService` logs a Mimir that is down, slow or failing once as a warning
+  with a fixed message (`Mimir answered a query with HTTP <status>`,
+  `Mimir could not be reached`, or
+  `Mimir could not read older data: no healthy store-gateway`), with the
+  installation, the status and Mimir's own error text in the metadata, and throws
+  the new `MimirUnavailableError`. Its message no longer carries Mimir's body;
+  that stays in the warning (`mimirError`, left out of the answer to the
+  browser), and a connection error no longer names the query. A query Mimir
+  refused (a 4xx other than a refused token: bad PromQL, a range over its limits)
+  is an `InputError` (400) with Mimir's text instead, not logged and not retried
+  by the frontend. `query({ logFailures: false })` logs at `debug` for a caller
+  that handles the failure itself, as the model cost route does. The gs
+  backend's `/mimir/query` and `/mimir/query_range` routes answer a
+  `MimirUnavailableError` 503 themselves, so the error middleware no longer
+  reports it again. A Mimir without a healthy store-gateway answers
+  with `error.reason: 'older_data_unavailable'` (`MIMIR_UNAVAILABLE_REASONS` in
+  gs-common), and the model cost route answers `older-data-unavailable`.
+
+  gs-node's answer-it-in-the-router pattern is now generic:
+  `ReportedServiceUnavailableError` with `reportedErrorHandler()`, which replaces
+  `musterUnreachableErrorHandler()` (`MusterUnreachableError` is one), and
+  `errorResponseBody()` for a router that answers some other error with the body
+  the error middleware would send.
+
+  ui-react adds `MetricsUnavailableAlert` (with a `fallback` for a caller whose
+  generic failure is a line of text), `describeMimirFailure` and
+  `pickMimirError`, which every place that shows a failed Mimir read now uses: a
+  deployment's resource usage and hostnames, a cluster's gateways and node pool
+  nodes, the workload status summary, the Usage overview and cost pages, the
+  activity heatmap, an agent's and a model's Usage tab, and the cost estimate and
+  actual-cost hints.
+  `MimirClient` throws a `MimirQueryError` that carries the backend's `reason`.
+
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [36f0927]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [a665a44]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [ded8231]
+- Updated dependencies [0314965]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+- Updated dependencies [4c53a2b]
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.1.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+  - @giantswarm/backstage-plugin-gs-common@0.23.0
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.1
+  - @giantswarm/backstage-plugin-flux@0.10.1
+  - @giantswarm/backstage-plugin-flux-react@0.15.1
+  - @giantswarm/backstage-plugin-gs-react@0.1.1
+
 ## 0.71.1
 
 ### Patch Changes

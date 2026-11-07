@@ -102,19 +102,25 @@ export type BackendWriteFailure = {
   kind: 'refused' | 'not-connected';
   /** model-manager's answer, verbatim. */
   message: string;
+  /**
+   * A `not-connected` that is muster asking for the person's sign-in
+   * (`ModelManagerNotConnectedError.signInRequired`).
+   */
+  signInRequired?: boolean;
 };
 
 export function classifyBackendWriteFailure(
   error: unknown,
 ): BackendWriteFailure {
   const message = error instanceof Error ? error.message : String(error);
-  return {
-    kind:
-      error instanceof ModelManagerNotConnectedError
-        ? 'not-connected'
-        : 'refused',
-    message,
-  };
+  if (error instanceof ModelManagerNotConnectedError) {
+    return {
+      kind: 'not-connected',
+      message,
+      signInRequired: error.signInRequired,
+    };
+  }
+  return { kind: 'refused', message };
 }
 
 export type BackendWriteState = {
