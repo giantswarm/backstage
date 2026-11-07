@@ -71,6 +71,7 @@ export const SHELL_SPECS = [
   'sessions-unreadable-reason.spec.ts',
   'shell-sign-in.spec.ts',
   'telemetry.spec.ts',
+  'toolchains.spec.ts',
   'tenants.spec.ts',
   'usage-cost.spec.ts',
   'usage-older-data-unavailable.spec.ts',

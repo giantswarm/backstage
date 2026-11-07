@@ -68,15 +68,29 @@ async function goVersions(
     const popupEvent = page.waitForEvent('popup');
     await signIn.getByRole('button', { name: /Sign in/ }).click();
     const popup = await popupEvent;
+    // Muster may first renew its Dex login, then send the same popup on
+    // to GitHub. completeDexLogin closes that popup after leaving Dex, so
+    // remember the next hop before it does: the person's App grant needs
+    // the real browser even when the popup did not start on GitHub.
+    let needsGitHubSignIn = false;
+    popup.on('request', request => {
+      if (new URL(request.url()).hostname === 'github.com') {
+        needsGitHubSignIn = true;
+      }
+    });
+    const missingSignIn = {
+      missing:
+        'the admin has not signed in to the toolchain-manager through its GitHub App (a real GitHub sign-in, once per lab muster)',
+    };
     await popup.waitForURL(url => url.href !== 'about:blank');
     if (new URL(popup.url()).hostname === 'github.com') {
       await popup.close();
-      return {
-        missing:
-          'the admin has not signed in to the toolchain-manager through its GitHub App (a real GitHub sign-in, once per lab muster)',
-      };
+      return missingSignIn;
     }
     await completeDexLogin(popup, lab.users.admin);
+    if (needsGitHubSignIn) {
+      return missingSignIn;
+    }
     await expect(unavailable.or(grant).or(go).first()).toBeVisible({
       timeout: 2 * 60_000,
     });
@@ -233,7 +247,9 @@ test('a session started from the portal with an older go mounts that version', a
         response.url().includes('/api/muster/call') &&
         response.request().postDataJSON()?.name ===
           'x_agent-manager_start_session',
-      { timeout: 2 * 60_000 },
+      // agent-manager allows three minutes for a cold toolset's snapshot;
+      // leave room for its result instead of aborting that first start.
+      { timeout: 4 * 60_000 },
     );
     await dialog.getByRole('button', { name: 'Start', exact: true }).click();
     const response = await started;
@@ -254,7 +270,7 @@ test('a session started from the portal with an older go mounts that version', a
     const mounted = answer.toolchains ?? [];
     const go = mounted.find(toolchain => toolchain.name === 'go');
     expect(go, 'start_session mounts go').toBeDefined();
-    expect(go?.version).toBe(older);
+    expect(go?.version?.replace(/^v/, '')).toBe(older);
     expect(go?.image, 'pinned by digest').toMatch(/@sha256:[0-9a-f]{64}$/);
     await test.info().attach('start_session answer', {
       body: JSON.stringify(mounted, null, 2),

@@ -36,10 +36,23 @@ async function renderEntry(
       egressSettings={{ agentName, remedyFor: () => remedy }}
     />,
   );
+  await userEvent.click(
+    screen.getByRole('button', { name: /Outgoing connection/ }),
+  );
   return screen.getByTestId('timeline-egress-refused');
 }
 
 describe('EgressRefusedEntry', () => {
+  it('keeps network diagnostics collapsed without presenting a task failure', async () => {
+    await renderInTestApp(<EgressRefusedEntry item={npm} />);
+    expect(
+      screen.getByRole('button', {
+        name: /Outgoing connection to registry.npmjs.org blocked · 2 attempts/,
+      }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
   it('names the host and the agent in plain words, with the count', async () => {
     const entry = await renderEntry({ kind: 'pending' });
 
