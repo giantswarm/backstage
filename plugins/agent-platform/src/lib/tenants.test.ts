@@ -1,5 +1,6 @@
 import { organizationDirectory } from './organizations';
 import {
+  creatorOf,
   defaultTenant,
   organizationOf,
   ownerOf,
@@ -18,6 +19,23 @@ const directory = organizationDirectory([
   { namespace: 'agents-none-a1b2c', organization: 'none', parent: 'org-x' },
   { namespace: 'agents-pf-d4e5f', organization: 'platform', parent: 'org-x' },
 ]);
+
+describe('creatorOf', () => {
+  it.each([
+    ['ana@example.com', 'organization', 'ana@example.com'],
+    ['ana@example.com', 'platform', 'ana@example.com'],
+    [undefined, 'platform', 'Platform'],
+    [undefined, 'namespace', 'Platform'],
+    ['', 'platform', 'Platform'],
+    [undefined, 'organization', undefined],
+    ['', 'organization', undefined],
+  ] as const)(
+    '%p in a %s namespace reads as %p',
+    (createdBy, kind, expected) => {
+      expect(creatorOf(createdBy, kind)).toBe(expected);
+    },
+  );
+});
 
 describe('tenantOf', () => {
   it.each([

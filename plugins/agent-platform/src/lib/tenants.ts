@@ -126,6 +126,22 @@ export const TENANT_KIND_LABELS: Record<TenantKind, string> = {
   namespace: 'Other namespace',
 };
 
+/**
+ * Who an agent's creator reads as: the recorded email, else, outside an
+ * organization, the platform — such an agent was put there by GitOps
+ * automation (the meta agents), and is the platform's to maintain. An
+ * organization's agent without the annotation names no creator.
+ */
+export function creatorOf(
+  createdBy: string | undefined,
+  kind: TenantKind,
+): string | undefined {
+  if (createdBy) {
+    return createdBy;
+  }
+  return kind === 'organization' ? undefined : PLATFORM_LABEL;
+}
+
 /** The kind of place a namespace is. */
 export function tenantKindOf(
   namespace: string,

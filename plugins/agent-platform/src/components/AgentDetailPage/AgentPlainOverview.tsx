@@ -41,6 +41,7 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
+import { connectorMarks } from '../../lib/connectorMarks';
 import { bindsGateway } from '../../lib/toolset';
 import {
   describeReach,
@@ -56,7 +57,16 @@ import { ModelServingStatus } from '../ModelServingStatus';
 import { OwnerValue } from '../OwnerValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
-import { CREATED_BY_ANNOTATION, OWNER_LABEL } from '../../lib/tenants';
+import {
+  CREATED_BY_ANNOTATION,
+  creatorOf,
+  tenantKindOf,
+  OWNER_LABEL,
+} from '../../lib/tenants';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -292,16 +302,6 @@ function SkillsSection({
   );
 }
 
-/** One logo in the Connectors section's row. */
-type ConnectorMark = {
-  key: string;
-  name: string;
-  icon?: string;
-  detail?: string;
-  /** The binding pauses for the person's approval before every call. */
-  approval?: boolean;
-};
-
 /**
  * What the agent can reach, in the words the composer's reach line uses —
  * read from the toolset it declares; the exact tools are the Tools tab. The
@@ -336,13 +336,12 @@ function ConnectorsSection({
 
   const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
 
-  const marks: ConnectorMark[] = [
-    ...reached.map(name => ({
-      key: `server:${name}`,
-      name: muster.labels.get(name) ?? name,
-      icon: icons.get(name),
-    })),
-    ...direct.map((binding, index) => ({
+  const marks = connectorMarks({
+    toolset: hasGateway ? declared : undefined,
+    groups,
+    icons,
+    labels: muster.labels,
+    direct: direct.map((binding, index) => ({
       // The server name is not unique: two bindings may scope one server
       // differently.
       key: `${mcpBindingId(binding)}#${index}`,
@@ -352,7 +351,7 @@ function ConnectorsSection({
       }`,
       approval: Boolean(binding.requireApproval),
     })),
-  ];
+  });
   const asksFirst = [
     ...new Set(marks.filter(mark => mark.approval).map(mark => mark.name)),
   ];
@@ -716,6 +715,7 @@ export function agentFacts({
   harness,
   isReadingHarness = false,
   platformHarness,
+  directory = EMPTY_ORGANIZATION_DIRECTORY,
 }: {
   agent: Agent;
   installation: string;
@@ -729,6 +729,8 @@ export function agentFacts({
    * (or unless) `get_info` names it, so no Harness is marked on a guess.
    */
   platformHarness?: string;
+  /** Which namespace is which organization, for who created the agent. */
+  directory?: OrganizationDirectory;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
@@ -773,9 +775,12 @@ export function agentFacts({
   if (defaultWorkspace) {
     facts.push({ label: 'Default workspace', value: defaultWorkspace });
   }
-  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
-  if (createdBy) {
-    facts.push({ label: 'Created by', value: createdBy });
+  const creator = creatorOf(
+    agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim(),
+    tenantKindOf(agent.getNamespace() ?? '', directory),
+  );
+  if (creator) {
+    facts.push({ label: 'Created by', value: creator });
   }
   if (created) {
     facts.push({

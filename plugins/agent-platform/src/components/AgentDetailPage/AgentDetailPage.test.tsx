@@ -2406,7 +2406,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       );
       expect(await screen.findByText('Deployed by')).toBeInTheDocument();
       // The facts' alone: not under the name, not in Configuration.
-      expect(screen.getAllByText(/^Created\b/)).toEqual([
+      expect(screen.getAllByText(/^Created\b(?! by)/)).toEqual([
         within(facts).getByText('Created'),
       ]);
     });
@@ -3133,6 +3133,39 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByText('namespace agent-platform'),
       ).toBeInTheDocument();
       expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
+    });
+
+    it('names the platform as creator of an agent without a recorded one', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts)
+        .getByText('Created by')
+        .closest('dt')?.nextElementSibling;
+      expect(createdBy).toHaveTextContent(/^Platform$/);
+    });
+
+    it('names no creator of an organization’s agent without a recorded one', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(await within(facts).findByText('acme')).toBeInTheDocument();
+      expect(within(facts).queryByText('Created by')).not.toBeInTheDocument();
     });
 
     it('keeps the ModelConfig name without a display name, the model below it', async () => {

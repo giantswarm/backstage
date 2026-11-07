@@ -1,6 +1,6 @@
 import type { AgentRow } from '../components/AgentsDataProvider';
 import type { SessionRow } from '../components/SessionsDataProvider/helpers';
-import { recentAgents, recentAgentUses } from './recentAgents';
+import { agentLastUsedAt, recentAgents, recentAgentUses } from './recentAgents';
 
 function agent(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   return {
@@ -112,5 +112,128 @@ describe('recentAgentUses', () => {
     expect(
       recentAgentUses(sessions, agents).map(use => use.agent.name),
     ).toEqual(['a299', 'a298', 'a297']);
+  });
+});
+
+describe('recentAgentUses with session states', () => {
+  it('ranks by last turn where known, as the Last used sort does', () => {
+    const sessions = [
+      session('a', 'sre', '2026-10-01T10:00:00Z'),
+      session('b', 'issues', '2026-10-03T10:00:00Z'),
+      session('c', 'docs', '2026-10-02T10:00:00Z'),
+    ];
+    // A turn in sre's older session, after every start.
+    const states = new Map([
+      [
+        'gazelle/a',
+        {
+          sessionId: 'a',
+          state: 'completed',
+          changedAt: Date.parse('2026-10-05T10:00:00Z'),
+        },
+      ],
+    ]);
+
+    expect(recentAgentUses(sessions, [sre, issues, docs], { states })).toEqual([
+      { agent: sre, lastUsedAt: '2026-10-05T10:00:00.000Z' },
+      { agent: issues, lastUsedAt: '2026-10-03T10:00:00Z' },
+      { agent: docs, lastUsedAt: '2026-10-02T10:00:00Z' },
+    ]);
+  });
+
+  it("reads each session's use once over 300 sessions, not per comparison", () => {
+    const agents = Array.from({ length: 300 }, (_, i) => agent(`a${i}`));
+    const sessions = agents.map((each, i) =>
+      session(
+        `s${i}`,
+        each.technicalName,
+        new Date(Date.UTC(2026, 9, 1) + i * 60_000).toISOString(),
+      ),
+    );
+    // A turn in the oldest session, after every start.
+    let reads = 0;
+    class CountingMap<K, V> extends Map<K, V> {
+      get(key: K) {
+        reads += 1;
+        return super.get(key);
+      }
+    }
+    const states = new CountingMap([
+      [
+        'gazelle/s0',
+        {
+          sessionId: 's0',
+          state: 'completed',
+          changedAt: Date.parse('2026-12-01T10:00:00Z'),
+        },
+      ],
+    ]);
+
+    expect(
+      recentAgentUses(sessions, agents, { states }).map(use => use.agent.name),
+    ).toEqual(['a0', 'a299', 'a298']);
+    // One per session to rank, one per agent picked.
+    expect(reads).toBe(sessions.length + 3);
+  });
+
+  it('agrees with agentLastUsedAt on the order', () => {
+    const sessions = [
+      session('a', 'sre', '2026-10-01T10:00:00Z'),
+      session('b', 'issues', '2026-10-03T10:00:00Z'),
+    ];
+    const states = new Map([
+      [
+        'gazelle/a',
+        {
+          sessionId: 'a',
+          state: 'completed',
+          changedAt: Date.parse('2026-10-04T10:00:00Z'),
+        },
+      ],
+    ]);
+    const byUse = [...agentLastUsedAt(sessions, states)]
+      .sort(([, a], [, b]) => b - a)
+      .map(([id]) => id);
+
+    expect(
+      recentAgentUses(sessions, [sre, issues], { states }).map(
+        use => use.agent.id,
+      ),
+    ).toEqual(byUse);
+  });
+});
+
+describe('agentLastUsedAt', () => {
+  it('takes each agent’s latest session, by its last turn where known', () => {
+    const first = session('s1', 'sre', '2026-10-01T10:00:00Z');
+    const later = session('s2', 'sre', '2026-10-03T10:00:00Z');
+    const old = session('s3', 'docs', '2026-09-01T10:00:00Z');
+    // A turn in docs' old session, after every start.
+    const states = new Map([
+      [
+        old.id,
+        {
+          sessionId: 's3',
+          state: 'completed',
+          changedAt: Date.parse('2026-10-05T10:00:00Z'),
+        },
+      ],
+    ]);
+
+    expect(agentLastUsedAt([first, later, old], states)).toEqual(
+      new Map([
+        ['gazelle/kagent/sre', Date.parse('2026-10-03T10:00:00Z')],
+        ['gazelle/kagent/docs', Date.parse('2026-10-05T10:00:00Z')],
+      ]),
+    );
+  });
+
+  it('leaves out sessions with no known agent or time', () => {
+    expect(
+      agentLastUsedAt([
+        session('s1', undefined, '2026-10-01T10:00:00Z'),
+        session('s2', 'sre', ''),
+      ]).size,
+    ).toBe(0);
   });
 });
