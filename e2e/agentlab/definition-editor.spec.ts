@@ -1,6 +1,12 @@
 import type { Locator, Page } from '@playwright/test';
 import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
+import {
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+  PLATFORM_NAMESPACE,
+} from './kubectl';
 
 /**
  * The muster plugin's definition-editor dialog as the shell offers it: an
@@ -11,9 +17,46 @@ import { lab } from './lab';
  * so its YAML twin for workflows is offered nowhere there; `workflows.spec.ts`
  * pins that.)
  *
- * The server is the lab's `lab-oauth-fixture`, which other proofs sign in
- * to, so it is only validated, never saved.
+ * The shell offers Edit as JSON only for a connector its Add connector wizard
+ * cannot edit, and every connector the lab ships is one it can. So the spec
+ * applies its own: a remote server carrying a token-exchange block (disabled)
+ * the wizard has no field for, suspended so muster never dials it. muster
+ * finds its definition valid; it is only validated, never saved.
  */
+
+const SERVER = 'e2e-definition-editor';
+
+const FIXTURE = `
+apiVersion: muster.giantswarm.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: ${SERVER}
+  namespace: ${PLATFORM_NAMESPACE}
+spec:
+  type: streamable-http
+  url: http://${SERVER}.invalid/mcp
+  description: Edited as JSON by the definition-editor spec; never dialled
+  suspended: true
+  auth:
+    tokenExchange:
+      enabled: false
+`;
+
+const deleteFixture = () =>
+  kubectl([
+    '-n',
+    PLATFORM_NAMESPACE,
+    'delete',
+    'mcpserver',
+    SERVER,
+    '--ignore-not-found',
+  ]).catch(() => undefined);
+
+test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+test.beforeAll(async () => {
+  await kubectl(['apply', '-f', '-'], FIXTURE);
+});
+test.afterAll(deleteFixture);
 
 const MUSTER_CALL = /\/api\/muster\/call(\?|$)/;
 
@@ -51,7 +94,7 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
   admin,
 }) => {
   test.setTimeout(120_000);
-  const server = 'lab-oauth-fixture';
+  const server = SERVER;
   await open(admin, `/customize/connectors/${lab.installation}/${server}`);
   const moreActions = admin.getByRole('button', { name: 'More actions' });
   await connectToMuster(admin, moreActions);
@@ -59,19 +102,6 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
     await moreActions.click();
     await admin.getByRole('menuitem', { name: /^Edit as JSON/ }).click();
   };
-  // The shell offers Edit as JSON only for a connector its Add connector
-  // wizard cannot edit; a lab whose connectors the wizard covers has no way
-  // to the dialog, which is then not this lab's to prove.
-  await moreActions.click();
-  await admin.getByRole('menu', { name: 'More actions' }).waitFor();
-  const offered = await admin
-    .getByRole('menuitem', { name: /^Edit as JSON/ })
-    .isVisible();
-  await admin.keyboard.press('Escape');
-  test.skip(
-    !offered,
-    `${server}: its Edit is the Add connector wizard here, so Edit as JSON is not offered`,
-  );
   await editAsJson();
 
   const dialog = admin.getByRole('dialog');
@@ -87,15 +117,12 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
   await dialog.getByRole('button', { name: 'Validate' }).click();
   await expectLockedWhileBusy(dialog, admin);
   release();
-  await expect(
-    dialog
-      .getByText('Definition is valid.')
-      .or(dialog.getByRole('alert'))
-      .first(),
-  ).toBeVisible({ timeout: 30_000 });
-  // The call has settled (its buttons are back) before the text changes, so
-  // what follows is judged on the edited text alone.
-  await expect(dialog.getByRole('button', { name: 'Validate' })).toBeEnabled();
+  // The call settles (its buttons are back) before the text changes, so what
+  // follows is judged on the edited text alone.
+  await expect(dialog.getByRole('button', { name: 'Validate' })).toBeEnabled({
+    timeout: 30_000,
+  });
+  await expect(dialog.getByText('Definition is valid.')).toBeVisible();
   // Whatever muster answered, a call's outcome never marks the text invalid.
   await expect(editor).not.toHaveAttribute('aria-invalid', 'true');
 
