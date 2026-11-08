@@ -31,11 +31,12 @@ const ITEMS_TTL_MS = 5 * 60_000;
 /** The board schema (fields/options) rarely changes. */
 const SCHEMA_TTL_MS = 10 * 60_000;
 /**
- * A stored read older than this is never served, not even while it is
- * refreshed: the person waits for a fresh read instead. The store drops
- * such reads.
+ * How long a stored read nobody asks for again is kept. Any stored read is
+ * served, however old, while its refresh runs: a read is made anew whenever
+ * it is served past its TTL, so only reads no one has asked for since grow
+ * this old, and the plugin's prune task drops them.
  */
-export const MAX_READ_AGE_MS = 24 * 60 * 60_000;
+export const STORED_READ_RETENTION_MS = 30 * 24 * 60 * 60_000;
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -268,7 +269,7 @@ export async function createRouter(
       })();
       inflight.set(id, refresh);
     }
-    if (stored && age < MAX_READ_AGE_MS) {
+    if (stored) {
       refresh.catch(() => {});
       return stored.data;
     }

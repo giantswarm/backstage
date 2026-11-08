@@ -19,9 +19,10 @@ backend instance serves them, after a restart too: a board read paginates the
 project 100 items per sequential GitHub call, and a team's Done column takes
 40-55 s. A read is fresh for 5 minutes (the schema for 10); an older one is
 answered at once while one background refresh per instance replaces it
-(stale-while-revalidate). A read older than 24 hours is never served, and an
-hourly task drops it. Writes patch the person's stored lists in place. When
-the database fails, reads come from pro as on a cold start. A read made with
+(stale-while-revalidate), however old it is. An hourly task drops the reads
+nobody has asked for in 30 days. Writes patch the person's stored lists in place. When
+the database fails, reads come from pro as on a cold start, and writes
+answer with pro's result. A read made with
 one person's grant is never served to another person.
 
 A caller whose muster session has no grant yet gets `401` with

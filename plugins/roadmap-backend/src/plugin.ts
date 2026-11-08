@@ -4,7 +4,7 @@ import {
 } from '@backstage/backend-plugin-api';
 import { MusterServerClient } from '@giantswarm/backstage-plugin-gs-node';
 import { DatabaseBoardReadStore } from './BoardReadStore';
-import { createRouter, MAX_READ_AGE_MS } from './router';
+import { createRouter, STORED_READ_RETENTION_MS } from './router';
 
 /**
  * roadmapPlugin backend plugin
@@ -45,7 +45,9 @@ export const roadmapPlugin = createBackendPlugin({
           frequency: { hours: 1 },
           timeout: { minutes: 5 },
           fn: async () => {
-            const pruned = await store.prune(Date.now() - MAX_READ_AGE_MS);
+            const pruned = await store.prune(
+              Date.now() - STORED_READ_RETENTION_MS,
+            );
             logger.info('Pruned old roadmap board reads', { pruned });
           },
         });

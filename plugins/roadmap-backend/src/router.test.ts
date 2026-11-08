@@ -15,7 +15,11 @@ import {
 import express from 'express';
 import request from 'supertest';
 import { BoardReadStore, DatabaseBoardReadStore } from './BoardReadStore';
-import { createRouter, MAX_READ_AGE_MS, RouterOptions } from './router';
+import {
+  createRouter,
+  RouterOptions,
+  STORED_READ_RETENTION_MS,
+} from './router';
 
 const TOKEN_HEADER = 'backstage-muster-authorization';
 
@@ -732,20 +736,30 @@ describe('createRouter', () => {
       expect(readsOf('user:default/alice')).toHaveLength(2);
     });
 
-    it('reads anew instead of serving a read past its maximum age', async () => {
+    it('serves a read of weeks ago at once and refreshes it', async () => {
       const now = Date.now();
       await request(await instance())
         .get('/items')
         .query({ status: 'Done' });
-      jest.spyOn(Date, 'now').mockReturnValue(now + MAX_READ_AGE_MS + 60_000);
+      jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(now + STORED_READ_RETENTION_MS - 60_000);
       pro.answers.set('list_issues', {
         issues: [{ ...ITEM, title: 'Renamed' }],
       });
 
-      const res = await request(await instance())
+      const restarted = await instance();
+      const old = await request(restarted)
         .get('/items')
         .query({ status: 'Done' });
-      expect(res.body.items[0].title).toBe('Renamed');
+      expect(old.body.items[0].title).toBe(ITEM.title);
+
+      await new Promise(resolve => setImmediate(resolve));
+      const fresh = await request(restarted)
+        .get('/items')
+        .query({ status: 'Done' });
+      expect(fresh.body.items[0].title).toBe('Renamed');
+      expect(readsOf('user:default/alice')).toHaveLength(2);
     });
 
     it("serves two instances one person's board from one stored read", async () => {
@@ -824,6 +838,36 @@ describe('createRouter', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ items: [ITEM] });
+    });
+
+    it("answers writes with pro's result when the store fails", async () => {
+      for (const method of ['get', 'set', 'list', 'delete'] as const) {
+        jest.spyOn(store, method).mockRejectedValue(new Error('database down'));
+      }
+      pro.answers.set('update_issue_field', {
+        success: true,
+        field: 'Status',
+        value: 'Done ✅',
+      });
+      pro.answers.set('remove_sub_issue', { success: true, removed: 7 });
+      const portal = await instance();
+
+      const field = await request(portal)
+        .patch('/items/PVTI_1/field')
+        .send({ name: 'status', value: 'done' });
+      const unlink = await request(portal).delete(
+        '/issues/giantswarm/giantswarm/45/sub-issues/7',
+      );
+
+      expect(field.status).toBe(200);
+      expect(field.body).toEqual({ status: 'ok' });
+      expect(unlink.status).toBe(204);
+      expect(pro.calls.map(c => c.tool)).toEqual([
+        'update_issue_field',
+        'remove_sub_issue',
+      ]);
+      expect(store.list).toHaveBeenCalled();
+      expect(store.delete).toHaveBeenCalled();
     });
   });
 });
