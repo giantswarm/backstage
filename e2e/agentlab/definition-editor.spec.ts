@@ -93,6 +93,9 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
       .or(dialog.getByRole('alert'))
       .first(),
   ).toBeVisible({ timeout: 30_000 });
+  // The call has settled (its buttons are back) before the text changes, so
+  // what follows is judged on the edited text alone.
+  await expect(dialog.getByRole('button', { name: 'Validate' })).toBeEnabled();
   // Whatever muster answered, a call's outcome never marks the text invalid.
   await expect(editor).not.toHaveAttribute('aria-invalid', 'true');
 
