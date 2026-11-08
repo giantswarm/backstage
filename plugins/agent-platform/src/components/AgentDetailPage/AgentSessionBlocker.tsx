@@ -3,6 +3,22 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
 
+/** A failed agent whose git skills' credential Secret does not exist. */
+function skillsCredentialMissingText(
+  secret: string,
+  namespace: string,
+): string {
+  return `The credential Secret ${secret} that the agent fetches its private skills with is missing in the namespace ${namespace}. Once the Secret exists, the agent recovers on its own; there is nothing to edit.`;
+}
+
+/**
+ * An agent whose Harness has not finished booting the current revision. A
+ * boot that keeps failing stays in this state, so the text says where the
+ * reason is.
+ */
+const BOOT_PENDING_TEXT =
+  "The agent has not booted yet: its Harness is starting it for the first snapshot, which usually takes under a minute. If it stays here, the boot log of the agent's worker says why, such as a skill whose fetch GitHub refused for a wrong or expired token.";
+
 /**
  * Why sessions cannot be started with this agent, in place of the header's
  * **Use this agent**, which is offered only for a ready agent — on every tab,
@@ -10,9 +26,11 @@ import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
  *
  * A failed agent names the root cause and, when the viewer may edit the agent
  * and the cause is in its spec, offers **Edit agent**; a platform cause (the
- * Harness's WorkerPool) is not the author's to fix, so it offers nothing. An
- * agent still converging says so — unless the page is already following a
- * write to it, which `AgentCreationProgress` narrates.
+ * Harness's WorkerPool) is not the author's to fix, so it offers nothing, and
+ * neither does a missing skills credential Secret, which is fixed by creating
+ * the Secret. An agent still converging says so, a boot that has not finished
+ * pointing at the boot log — unless the page is already following a write to
+ * it, which `AgentCreationProgress` narrates.
  */
 export function AgentSessionBlocker({
   agent,
@@ -38,18 +56,24 @@ export function AgentSessionBlocker({
   if (readiness === 'failed') {
     const failure = agent.getFailure();
     const isPlatform = failure?.field === 'platform';
+    const isMissingCredential = Boolean(failure?.missingSecret);
     const reason = failure?.message ?? agent.getReadinessMessage();
     // Verbatim on its own; a sentence follows it only without its full stop.
     const sentence = reason?.replace(/\.$/, '');
     let description = reason;
-    if (isPlatform) {
+    if (isMissingCredential) {
+      description = skillsCredentialMissingText(
+        failure!.missingSecret!,
+        agent.getNamespace() ?? '',
+      );
+    } else if (isPlatform) {
       description = `${sentence}. This is a platform problem, not the agent's, and a platform admin has to fix it.`;
     } else if (isGitOpsOwned) {
       description = onEdit
         ? `${sentence}. It is deployed from GitOps, so a fix opens a pull request there.`
         : `${sentence}. It is deployed from GitOps, so fix it there.`;
     }
-    const canFix = onEdit && !isPlatform;
+    const canFix = onEdit && !isPlatform && !isMissingCredential;
 
     return (
       <Alert
@@ -82,6 +106,7 @@ export function AgentSessionBlocker({
       icon
       title="Sessions can start once the agent is ready"
       description={
+        (agent.isBootPending() ? BOOT_PENDING_TEXT : undefined) ??
         agent.getReadinessMessage() ??
         (readiness === 'pending'
           ? 'The controller has not reported on the current version of this agent yet.'

@@ -89,13 +89,20 @@ describe('discoverAgentSkills', () => {
       size?: number;
     }>,
     contents: Record<string, string>,
-    opts: { truncated?: boolean; failContentFor?: string } = {},
+    opts: {
+      truncated?: boolean;
+      failContentFor?: string;
+      private?: boolean;
+    } = {},
   ) {
     return jest.fn(async (url: string) => {
       if (/\/repos\/[^/]+\/[^/]+$/.test(url)) {
         return {
           ok: true,
-          json: async () => ({ default_branch: 'main' }),
+          json: async () => ({
+            default_branch: 'main',
+            private: Boolean(opts.private),
+          }),
         } as Response;
       }
       if (url.includes('/commits/')) {
@@ -307,6 +314,49 @@ describe('discoverAgentSkills', () => {
 
     expect(skills[0].ref).toBe('v1.2.0');
     expect(skills[0].commit).toBe(HEAD);
+  });
+
+  it.each([true, false])(
+    'reports the repository private as GitHub does (%p)',
+    async isPrivate => {
+      global.fetch = mockGitHub(
+        [{ path: 'demo/SKILL.md', type: 'blob' }],
+        { 'demo/SKILL.md': '---\nname: Demo\n---' },
+        { private: isPrivate },
+      ) as unknown as typeof fetch;
+
+      const result = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+        ref: 'v1.2.0',
+      });
+
+      expect(result.private).toBe(isPrivate);
+    },
+  );
+
+  it('keeps the private flag of the last snapshot at a named ref, without reading the repository', async () => {
+    const fetchMock = mockGitHub([{ path: 'demo/SKILL.md', type: 'blob' }], {
+      'demo/SKILL.md': '---\nname: Demo\n---',
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const previous = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      ref: 'main',
+    });
+    fetchMock.mockClear();
+
+    const result = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      ref: 'main',
+      previous: { ...previous, private: true },
+    });
+
+    expect(result.private).toBe(true);
+    const urls = fetchMock.mock.calls.map(call => String(call[0]));
+    expect(urls.some(url => /\/repos\/[^/]+\/[^/]+$/.test(url))).toBe(false);
   });
 
   it('falls back to the directory basename when frontmatter has no name', async () => {
