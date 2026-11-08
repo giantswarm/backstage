@@ -20,6 +20,7 @@ export const SHELL_SPECS = [
   'agent-egress-tls.spec.ts',
   'agent-lifecycle.spec.ts',
   'agent-platform-navigation.spec.ts',
+  'agents-harness-column.spec.ts',
   'agents-list-states.spec.ts',
   'agents-redirect.spec.ts',
   'agents.spec.ts',
