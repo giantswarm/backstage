@@ -50,6 +50,7 @@ import {
 } from '../../lib/magazine';
 import { HiveScopeNote } from '../HiveScopeNote';
 import { HiveSourceState } from '../HiveSourceState';
+import { HiveTeamEmptyState } from '../HiveTeamEmptyState';
 
 const useStyles = makeStyles({
   // Overlapping avatars, the first on top, like the catalog's owner stacks.
@@ -390,6 +391,9 @@ export function HiveNowTab() {
   }
 
   const { view: now, magazineTeam } = data;
+  if (!now) {
+    return <HiveTeamEmptyState team={team} what="what the team works on now" />;
+  }
   const figures = nowFigures(now);
   const lanes = sortLanes(now.lanes);
   const scope = team === ALL_TEAMS ? 'all teams' : teamName(team);
