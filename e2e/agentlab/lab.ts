@@ -49,6 +49,29 @@ function portalModeFromEnv(): PortalMode {
 }
 
 /**
+ * How the suite signs in, as `AGENTLAB_E2E_AUTH` says:
+ *
+ * - `dex` (the default): the lab's Dex card and popup, as each lab user
+ *   ({@link lab.users}).
+ * - `guest`: a local dev server without `gs.authProvider` (`yarn start`),
+ *   whose sign-in page signs the guest in through the proxy, without a card
+ *   or popup. Every user is that one guest, so a spec that tells users apart
+ *   (roles, Dex refusals) proves nothing there; the mode is for proving a
+ *   page in the UI without a lab.
+ */
+export type AuthMode = 'dex' | 'guest';
+
+function authModeFromEnv(): AuthMode {
+  const mode = process.env.AGENTLAB_E2E_AUTH ?? 'dex';
+  if (mode !== 'dex' && mode !== 'guest') {
+    throw new Error(
+      `AGENTLAB_E2E_AUTH must be "dex" or "guest", not "${mode}"`,
+    );
+  }
+  return mode;
+}
+
+/**
  * The parallel worker this process is: Playwright's `TEST_PARALLEL_INDEX`,
  * `0` in the first worker and in the runner. The one source of which lab users
  * the process signs in as ({@link forWorker}).
@@ -63,6 +86,8 @@ export const lab = {
   password: process.env.AGENTLAB_PASSWORD ?? 'password',
   /** Which portals the lab serves (`AGENTLAB_PORTAL_MODE`, see {@link PortalMode}). */
   portalMode: portalModeFromEnv(),
+  /** How the suite signs in (`AGENTLAB_E2E_AUTH`, see {@link AuthMode}). */
+  auth: authModeFromEnv(),
   /**
    * The installation name the portal's plugins address — the Helm release
    * name of the platform chart in the lab, not the kind cluster's name.
