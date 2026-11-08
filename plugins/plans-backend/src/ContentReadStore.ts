@@ -20,7 +20,16 @@ export interface StoredContent {
  */
 export interface ContentReadStore {
   get(user: string, key: string): Promise<StoredContent | undefined>;
-  set(user: string, key: string, read: StoredContent): Promise<void>;
+  /**
+   * Stores the read unless a newer one (a later `readAt`) is stored already,
+   * and answers the read that stands: a read that started earlier and
+   * finished later never replaces a newer one.
+   */
+  publish(
+    user: string,
+    key: string,
+    read: StoredContent,
+  ): Promise<StoredContent>;
   /** Drops every read made before `readBefore`; answers how many. */
   prune(readBefore: number): Promise<number>;
 }
@@ -41,8 +50,13 @@ export class MemoryContentReadStore implements ContentReadStore {
     return read && { ...read };
   }
 
-  async set(user: string, key: string, read: StoredContent) {
-    this.reads.set(MemoryContentReadStore.id(user, key), { ...read });
+  async publish(user: string, key: string, read: StoredContent) {
+    const id = MemoryContentReadStore.id(user, key);
+    const stored = this.reads.get(id);
+    if (!stored || stored.readAt < read.readAt) {
+      this.reads.set(id, { ...read });
+    }
+    return { ...this.reads.get(id)! };
   }
 
   async prune(readBefore: number) {
@@ -103,7 +117,7 @@ export class DatabaseContentReadStore implements ContentReadStore {
       : undefined;
   }
 
-  async set(user: string, key: string, read: StoredContent) {
+  async publish(user: string, key: string, read: StoredContent) {
     await this.db<ContentReadRow>(TABLE)
       .insert({
         user_ref: user,
@@ -113,7 +127,9 @@ export class DatabaseContentReadStore implements ContentReadStore {
         read_at: read.readAt,
       })
       .onConflict(['user_ref', 'key_hash'])
-      .merge(['content', 'read_at']);
+      .merge(['content', 'read_at'])
+      .where(`${TABLE}.read_at`, '<', read.readAt);
+    return (await this.get(user, key)) ?? read;
   }
 
   async prune(readBefore: number) {

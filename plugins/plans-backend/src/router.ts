@@ -56,6 +56,13 @@ const CONTENT_TTL_MS = 60_000;
 export const STORED_CONTENT_RETENTION_MS = 60 * 60_000;
 
 /**
+ * How long an instance serves its own copy of a read before it asks the
+ * shared store again: two instances whose reads overlapped a change agree on
+ * the stored read within this window.
+ */
+const MEMORY_RECHECK_MS = 5_000;
+
+/**
  * Reads shared per key within `ttlMs`, the concurrent ones included. A failed
  * read is not kept: the next request asks again. Expired entries are dropped
  * on the next miss.
@@ -586,8 +593,9 @@ export async function createRouter(
 
   /**
    * A person's read from the shared store while it is fresh, else from
-   * GitHub, then stored for every instance. Answers when the read expires:
-   * CONTENT_TTL_MS after it was made, on every instance alike.
+   * GitHub, then published for every instance. Answers the read that stands
+   * in the store: when another instance published a newer read meanwhile,
+   * that one, so an older read finishing last is neither stored nor served.
    */
   const readSharedContent = async (
     user: string,
@@ -604,19 +612,19 @@ export async function createRouter(
     }
     const readAt = Date.now();
     const content = await read();
-    await orWithoutStore(
+    return orWithoutStore(
       'keep a read',
-      () => contentStore.set(user, key, { content, readAt }),
-      undefined,
+      () => contentStore.publish(user, key, { content, readAt }),
+      { content, readAt },
     );
-    return { content, readAt };
   };
 
   /**
    * The first layer, this instance's copy of each read, in-flight ones
-   * included. A copy expires with the shared read it came from, not later:
-   * once a read expires, every instance asks the shared store again, so a
-   * changed file read anew by one instance replaces every instance's copy.
+   * included. A copy is served for MEMORY_RECHECK_MS at most, and never past
+   * the expiry of the shared read it came from: every instance asks the
+   * shared store again, so the read published there, a changed file read
+   * anew by any instance included, replaces every instance's copy.
    */
   const contentMemory = new Map<
     string,
@@ -654,13 +662,16 @@ export async function createRouter(
       getFileContent(gh, repo, path, ref),
     );
     const entry = {
-      expires: now + CONTENT_TTL_MS,
+      expires: now + MEMORY_RECHECK_MS,
       value: read.then(({ content }) => content),
     };
     contentMemory.set(id, entry);
     read.then(
       ({ readAt }) => {
-        entry.expires = readAt + CONTENT_TTL_MS;
+        entry.expires = Math.min(
+          Date.now() + MEMORY_RECHECK_MS,
+          readAt + CONTENT_TTL_MS,
+        );
       },
       () => {
         if (contentMemory.get(id) === entry) {

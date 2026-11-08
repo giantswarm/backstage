@@ -49,7 +49,7 @@ describe('ContentReadStore', () => {
     });
 
     it('answers a read with what was stored and when it was read', async () => {
-      await store.set(ALICE, KEY, { content: '# PRD', readAt: 1_000 });
+      await store.publish(ALICE, KEY, { content: '# PRD', readAt: 1_000 });
 
       expect(await store.get(ALICE, KEY)).toEqual({
         content: '# PRD',
@@ -59,29 +59,44 @@ describe('ContentReadStore', () => {
     });
 
     it("never answers one person's read for another", async () => {
-      await store.set(ALICE, KEY, { content: 'alice', readAt: 1 });
+      await store.publish(ALICE, KEY, { content: 'alice', readAt: 1 });
 
       expect(await store.get(BOB, KEY)).toBeUndefined();
     });
 
-    it('replaces a read with a newer one', async () => {
-      await store.set(ALICE, KEY, { content: 'v1', readAt: 1 });
-      await store.set(ALICE, KEY, { content: 'v2', readAt: 2 });
+    it('replaces a read with a newer one and answers it', async () => {
+      await store.publish(ALICE, KEY, { content: 'v1', readAt: 1 });
+      const published = await store.publish(ALICE, KEY, {
+        content: 'v2',
+        readAt: 2,
+      });
 
+      expect(published).toEqual({ content: 'v2', readAt: 2 });
+      expect(await store.get(ALICE, KEY)).toEqual({ content: 'v2', readAt: 2 });
+    });
+
+    it('never replaces a read with an older one, and answers the newer', async () => {
+      await store.publish(ALICE, KEY, { content: 'v2', readAt: 2 });
+      const published = await store.publish(ALICE, KEY, {
+        content: 'v1',
+        readAt: 1,
+      });
+
+      expect(published).toEqual({ content: 'v2', readAt: 2 });
       expect(await store.get(ALICE, KEY)).toEqual({ content: 'v2', readAt: 2 });
     });
 
     it('keeps a long key and a large file', async () => {
       const key = JSON.stringify(['o/r', 'main', `${'deep/'.repeat(200)}x.md`]);
       const content = 'ü'.repeat(300_000);
-      await store.set(ALICE, key, { content, readAt: 1 });
+      await store.publish(ALICE, key, { content, readAt: 1 });
 
       expect((await store.get(ALICE, key))?.content).toBe(content);
     });
 
     it('prunes the reads made before a time', async () => {
-      await store.set(ALICE, KEY, { content: 'old', readAt: 1_000 });
-      await store.set(BOB, KEY, { content: 'new', readAt: 3_000 });
+      await store.publish(ALICE, KEY, { content: 'old', readAt: 1_000 });
+      await store.publish(BOB, KEY, { content: 'new', readAt: 3_000 });
 
       expect(await store.prune(2_000)).toBe(1);
       expect(await store.get(ALICE, KEY)).toBeUndefined();

@@ -944,6 +944,72 @@ describe('createRouter', () => {
           expect(contentCalls()).toHaveLength(2);
         });
 
+        describe('reads overlapping a change', () => {
+          // GitHub answers each read only when the test resolves it.
+          let pending: Array<{ answer: (text: string) => void }>;
+          beforeEach(() => {
+            pending = [];
+            github.callContent = async (tool, args, authToken) => {
+              github.calls.push({ tool, args, authToken });
+              const text = await new Promise<string>(answer =>
+                pending.push({ answer }),
+              );
+              return fileContent(text);
+            };
+          });
+          const readsPending = async (count: number) => {
+            while (pending.length < count) {
+              await new Promise(resolve => setImmediate(resolve));
+            }
+          };
+          const started = (instance: express.Express) =>
+            readOn(instance, query).then(res => res);
+
+          it('an older read finishing last never replaces the newer one', async () => {
+            const onA = started(app);
+            await readsPending(1);
+            now += 1_000;
+            const onB = started(other);
+            await readsPending(2);
+
+            pending[1].answer('v2');
+            expect((await onB).body.content).toBe('v2');
+            pending[0].answer('v1');
+            expect((await onA).body.content).toBe('v2');
+
+            expect(
+              (
+                await store.get(
+                  'user:default/mock',
+                  JSON.stringify([REPO, 'main', query.path]),
+                )
+              )?.content,
+            ).toBe('v2');
+            now += 30_000;
+            expect((await readOn(app, query)).body.content).toBe('v2');
+            expect((await readOn(other, query)).body.content).toBe('v2');
+            expect(contentCalls()).toHaveLength(2);
+          });
+
+          it('an older read finishing first gives way to the newer one on every instance', async () => {
+            const onA = started(app);
+            await readsPending(1);
+            now += 1_000;
+            const onB = started(other);
+            await readsPending(2);
+
+            pending[0].answer('v1');
+            expect((await onA).body.content).toBe('v1');
+            pending[1].answer('v2');
+            expect((await onB).body.content).toBe('v2');
+
+            now += 5_001;
+            expect((await readOn(app, query)).body.content).toBe('v2');
+            expect((await readOn(other, query)).body.content).toBe('v2');
+            expect(contentCalls()).toHaveLength(2);
+          });
+        });
+
         it('keeps each person apart in the shared store', async () => {
           await read(query);
           await request(other)
@@ -963,7 +1029,7 @@ describe('createRouter', () => {
           get: async () => {
             throw new Error('database down');
           },
-          set: async () => {
+          publish: async () => {
             throw new Error('database down');
           },
           prune: async () => 0,
