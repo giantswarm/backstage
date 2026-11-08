@@ -38,6 +38,19 @@ parameter can be omitted.
 | `GET /api/plans/epics`                            | Epic references of merged and proposed plans                                                                                            |
 | `GET /api/plans/magazine`                         | The magazine repository and its data and knowledge refs, or `{ configured: false }`                                                     |
 
+## Stored file reads
+
+A file read through muster takes about 3 s, so `/content` reads are kept per
+person for a minute: first in the serving instance's memory, then in the
+plugin's database (table `plans_content_reads`, keyed by the person's user
+entity ref), which every backend instance shares. A person's second read of a
+file is warm on whichever replica serves it. Each instance's copy expires
+with the stored read it came from, so once a read is a minute old every
+instance asks the database again, and the first to read the changed file from
+GitHub replaces it for all. A read made with one person's grant is never
+served to another person. When the database fails, reads come from GitHub as
+on a cold start; an hourly task drops reads older than an hour.
+
 ## Configuration
 
 ```yaml

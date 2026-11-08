@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
+import { ContentReadStore, MemoryContentReadStore } from './ContentReadStore';
 import { createRouter, RouterOptions } from './router';
 
 const REPO = 'giantswarm/meadow-plans';
@@ -899,6 +900,85 @@ describe('createRouter', () => {
 
         expect(res.body.content).toBe('v2');
         expect(contentCalls()).toHaveLength(2);
+      });
+
+      describe('shared by every instance', () => {
+        const readOn = (
+          instance: express.Express,
+          query: Record<string, string>,
+        ) => request(instance).get('/content').query(query);
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+
+        let store: MemoryContentReadStore;
+        let other: express.Express;
+        beforeEach(async () => {
+          store = new MemoryContentReadStore();
+          app = await buildApp([REPO], { contentStore: store });
+          other = await buildApp([REPO], { contentStore: store });
+        });
+
+        it('answers the second read on another instance warm', async () => {
+          const first = await readOn(app, query);
+          now += 30_000;
+          const second = await readOn(other, query);
+
+          expect(first.body.content).toBe('v1');
+          expect(second.body.content).toBe('v1');
+          expect(contentCalls()).toHaveLength(1);
+        });
+
+        it("a changed file replaces every instance's copy at once", async () => {
+          await readOn(app, query);
+          now += 30_000;
+          await readOn(other, query);
+          github.contentAnswers.set('get_file_contents', fileContent('v2'));
+
+          // Both copies expire with the read they came from, the later
+          // copy included: one fresh read serves both instances.
+          now += 30_001;
+          const changed = await readOn(other, query);
+          const elsewhere = await readOn(app, query);
+
+          expect(changed.body.content).toBe('v2');
+          expect(elsewhere.body.content).toBe('v2');
+          expect(contentCalls()).toHaveLength(2);
+        });
+
+        it('keeps each person apart in the shared store', async () => {
+          await read(query);
+          await request(other)
+            .get('/content')
+            .query(query)
+            .set(
+              'authorization',
+              mockCredentials.user.header('user:default/someone-else'),
+            );
+
+          expect(contentCalls()).toHaveLength(2);
+        });
+      });
+
+      it('reads from GitHub when the store fails', async () => {
+        const failing: ContentReadStore = {
+          get: async () => {
+            throw new Error('database down');
+          },
+          set: async () => {
+            throw new Error('database down');
+          },
+          prune: async () => 0,
+        };
+        app = await buildApp([REPO], { contentStore: failing });
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+
+        const first = await read(query);
+        const again = await read(query);
+
+        expect(first.status).toBe(200);
+        expect(first.body.content).toBe('v1');
+        expect(again.body.content).toBe('v1');
+        // The instance's own copy still serves the repeated read.
+        expect(contentCalls()).toHaveLength(1);
       });
 
       it('keeps no failed read', async () => {
