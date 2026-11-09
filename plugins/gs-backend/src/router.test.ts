@@ -7,6 +7,11 @@ import request from 'supertest';
 import { createRouter } from './router';
 import { createSkillPullRequest } from './agentSkills/createSkillPullRequest';
 
+const mockReadSkillSources = jest.fn();
+jest.mock('./agentSkills/skillManagerSources', () => ({
+  ...jest.requireActual('./agentSkills/skillManagerSources'),
+  skillSourcesReader: () => mockReadSkillSources,
+}));
 // The route's own validation is under test; the GitHub conversation has its
 // own suite (createSkillPullRequest.test.ts).
 jest.mock('./agentSkills/createSkillPullRequest', () => ({
@@ -1735,7 +1740,7 @@ describe('POST /agent-skills/pull-request', () => {
   };
 
   /** An app with the skill repositories configured and the error handler on. */
-  async function buildSkillsApp() {
+  async function buildSkillsApp({ withLogger = false } = {}) {
     const router = await createRouter({
       config: makeConfig({
         agentPlatform: {
@@ -1749,6 +1754,7 @@ describe('POST /agent-skills/pull-request', () => {
       githubCredentialsProvider,
       httpAuth: mockServices.httpAuth(),
       managementClusterVersions,
+      ...(withLogger ? { logger: mockServices.logger.mock() } : {}),
     });
     const app = express();
     app.use(router);
@@ -1759,7 +1765,11 @@ describe('POST /agent-skills/pull-request', () => {
         res: express.Response,
         _next: express.NextFunction,
       ) => {
-        res.status(err.name === 'InputError' ? 400 : 500).json({
+        const status: Record<string, number> = {
+          InputError: 400,
+          NotAllowedError: 403,
+        };
+        res.status(status[err.name] ?? 500).json({
           error: { name: err.name, message: err.message },
         });
       },
@@ -1792,6 +1802,92 @@ describe('POST /agent-skills/pull-request', () => {
     expect(createSkillPullRequest).toHaveBeenCalledWith({
       ...body,
       token: 'gh-token',
+    });
+  });
+
+  describe('with the installation’s skill-manager', () => {
+    const withInstallation = { ...body, installation: 'graveler' };
+
+    beforeEach(() => {
+      mockReadSkillSources.mockReset().mockResolvedValue([
+        { url: 'https://github.com/acme/team-skills' },
+        {
+          url: 'https://github.com/giantswarm/agent-platform',
+          path: 'skills',
+          readOnly: true,
+        },
+      ]);
+    });
+
+    it('opens it in a writable source the person’s skill-manager lists', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send({
+          ...withInstallation,
+          repoUrl: 'https://github.com/acme/team-skills',
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockReadSkillSources).toHaveBeenCalledWith(
+        'graveler',
+        'muster-token',
+      );
+      expect(createSkillPullRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repoUrl: 'https://github.com/acme/team-skills',
+        }),
+      );
+    });
+
+    it('ignores the portal’s configured list', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send(withInstallation);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain(
+        "not one of the installation's skill sources",
+      );
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('refuses a read-only source', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send({
+          ...withInstallation,
+          repoUrl: 'https://github.com/giantswarm/agent-platform',
+          kind: 'update',
+          path: 'skills/x',
+          baseCommit: 'a'.repeat(40),
+        });
+
+      expect(response.status).toBe(403);
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('needs the person’s muster token', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .send(withInstallation);
+
+      expect(response.status).toBe(401);
+      expect(mockReadSkillSources).not.toHaveBeenCalled();
     });
   });
 

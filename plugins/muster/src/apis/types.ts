@@ -691,6 +691,12 @@ export interface MusterApi {
    */
   signIn(installation?: string): Promise<boolean>;
   /**
+   * The headers that carry the person's token for the installation's
+   * muster, for a backend plugin that calls muster as them: empty when the
+   * installation needs no token.
+   */
+  authHeaders(installation?: string): Promise<Record<string, string>>;
+  /**
    * Per-server authentication state for the user's muster session
    * (`auth://status`). Cheap enough to poll while a sign-in is in flight.
    * A status read is never the person's own action, so it never asks them to

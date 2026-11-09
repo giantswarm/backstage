@@ -6,6 +6,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import type { DiscoveredSkill, SkillFileContent } from '../lib/skills';
 import { skillReadError } from './useSkillContent';
+import { useSkillSource } from './useSkillSource';
 
 /**
  * Reads one file of a skill at the commit the catalog pinned it to, through
@@ -21,15 +22,20 @@ export function useSkillFile(
   skill:
     Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit' | 'ref'> | undefined,
   file: string | undefined,
+  installation?: string,
 ) {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
-  const enabled = Boolean(skill && file);
+  const source = useSkillSource(installation);
+  const sourceKey =
+    source.kind === 'skill-manager' ? source.installation : source.kind;
+  const enabled = Boolean(skill && file) && source.kind !== 'pending';
 
   const { data, error, isPending } = useQuery({
     queryKey: [
       'agent-platform',
       'skill-file',
+      sourceKey,
       skill?.repoUrl,
       skill?.path,
       skill?.commit,
@@ -40,6 +46,9 @@ export function useSkillFile(
     retry: false,
     queryFn: async (): Promise<SkillFileContent> => {
       const { repoUrl, path, commit, ref } = skill!;
+      if (source.kind === 'skill-manager') {
+        return source.client.getSkillFile({ repoUrl, path, commit }, file!);
+      }
       const baseUrl = await discoveryApi.getBaseUrl('gs');
       const params = new URLSearchParams({ repoUrl, path, commit });
       if (ref) {

@@ -520,6 +520,11 @@ export class MusterApiClient implements MusterApi {
    * a request this reports success/failure instead of throwing, so the UI
    * can re-run the mint from a button and re-probe afterwards.
    */
+  async authHeaders(installation?: string): Promise<Record<string, string>> {
+    const token = await this.resolveToken(installation);
+    return token ? { [MUSTER_AUTH_HEADER]: token } : {};
+  }
+
   async signIn(installation?: string): Promise<boolean> {
     if (!(await this.requiresToken(installation))) {
       return true;

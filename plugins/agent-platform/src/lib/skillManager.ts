@@ -1,0 +1,131 @@
+import type { DiscoveredSkill, SkillFile, SkillFileContent } from './skills';
+import type { DiscoveredPlugin, PluginFormat } from './plugins';
+
+/**
+ * skill-manager's name in muster: its tools are `x_skill-manager_<tool>`.
+ * It owns an installation's skill sources; the portal lists and reads skills
+ * through it as the signed-in person.
+ */
+export const SKILL_MANAGER_SERVER = 'skill-manager';
+
+export type SkillManagerTool =
+  'list_skills' | 'list_skill_sources' | 'get_skill' | 'get_skill_file';
+
+export function skillManagerToolName(tool: SkillManagerTool): string {
+  return `x_${SKILL_MANAGER_SERVER}_${tool}`;
+}
+
+/** One repository of `list_skills`. */
+export interface SkillManagerRepository {
+  repoUrl: string;
+  ref?: string;
+  path?: string;
+  readOnly?: boolean;
+  commit?: string;
+  private?: boolean;
+  truncated: boolean;
+  /**
+   * Why the repository could not be read, or why the person may not see it
+   * (a private repository: its skills and plugins are then empty).
+   */
+  error?: string;
+  /** The last good listing, kept while reads fail. */
+  stale?: boolean;
+  skills: {
+    name: string;
+    description: string;
+    path: string;
+    tags?: string[];
+  }[];
+  /** Absent from skill-manager releases before plugin listing. */
+  plugins?: {
+    name: string;
+    path: string;
+    format: PluginFormat;
+    skills: { name: string; description?: string }[];
+  }[];
+}
+
+export interface SkillManagerListing {
+  repositories: SkillManagerRepository[];
+}
+
+/** `get_skill`'s answer; the shape `GET /agent-skills/content` answers. */
+export interface SkillManagerSkill {
+  repoUrl: string;
+  path: string;
+  commit: string;
+  name: string;
+  description: string;
+  tags?: string[];
+  instructions: string;
+  files: SkillFile[];
+  filesTruncated?: boolean;
+}
+
+/** `get_skill_file`'s answer. */
+export type SkillManagerFile = SkillFileContent;
+
+/** The catalog as the portal's pages read it. */
+export interface SkillManagerCatalog {
+  skills: DiscoveredSkill[];
+  plugins: DiscoveredPlugin[];
+  hasRepositories: boolean;
+  failedRepositories: string[];
+  failureMessages: Record<string, string>;
+  truncated: boolean;
+}
+
+/**
+ * A `list_skills` answer as the catalog: every skill and plugin under the
+ * repository and commit it was read at. A repository with an error is
+ * failed, with its message, whether or not a stale listing is kept.
+ */
+export function catalogFromSkillManager(
+  listing: SkillManagerListing,
+): SkillManagerCatalog {
+  const catalog: SkillManagerCatalog = {
+    skills: [],
+    plugins: [],
+    hasRepositories: listing.repositories.length > 0,
+    failedRepositories: [],
+    failureMessages: {},
+    truncated: false,
+  };
+  for (const repo of listing.repositories) {
+    const at = {
+      repoUrl: repo.repoUrl,
+      ref: repo.ref ?? '',
+      commit: repo.commit ?? '',
+    };
+    if (repo.error) {
+      catalog.failedRepositories.push(repo.repoUrl);
+      catalog.failureMessages[repo.repoUrl] = repo.error;
+    }
+    catalog.truncated = catalog.truncated || repo.truncated;
+    for (const skill of repo.skills) {
+      catalog.skills.push({
+        name: skill.name,
+        description: skill.description,
+        ...(skill.tags ? { tags: skill.tags } : {}),
+        repoUrl: at.repoUrl,
+        path: skill.path,
+        ref: at.ref,
+        commit: at.commit,
+      });
+    }
+    for (const plugin of repo.plugins ?? []) {
+      catalog.plugins.push({
+        name: plugin.name,
+        ...at,
+        path: plugin.path,
+        format: plugin.format,
+        skills: plugin.skills.map(skill => ({
+          name: skill.name,
+          description: skill.description ?? '',
+        })),
+      });
+    }
+  }
+  return catalog;
+}

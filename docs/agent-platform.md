@@ -891,7 +891,17 @@ token nowhere else.
 
 ### Skill discovery
 
-Skills come from `agentPlatform.skills.repositories`: github.com through the
+Where the installation's muster lists skill-manager, the portal lists and
+reads skills only through it, as the signed-in person: `x_skill-manager_list_skills`
+(skills and plugins, with each plugin's `format`), `get_skill` and
+`get_skill_file` (`SkillManagerClient`, `useSkillSource`). skill-manager's
+sources are then the only skill list; a private repository the person's GitHub
+login cannot read lists nothing and carries the reason, which the skills step
+shows. The wizard and the agent pages read the agent's installation, the other
+pages the home installation.
+
+Where skill-manager is not deployed (deprecated): skills come from
+`agentPlatform.skills.repositories`: github.com through the
 REST API, any other http(s) host through a depth-1 git clone
 (`discoverAgentSkillsFromGit.ts`). A skill is any directory containing a
 `SKILL.md`; its frontmatter `name` and `description` drive the picker. Listings

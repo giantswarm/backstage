@@ -348,8 +348,9 @@ function NewAgentSkillsPageContent() {
     error,
     hasRepositories,
     failedRepositories,
+    failureMessages = {},
     truncated,
-  } = useSkillCatalog();
+  } = useSkillCatalog(state.installation);
 
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
@@ -521,7 +522,13 @@ function NewAgentSkillsPageContent() {
           <Alert
             status="warning"
             title="Could not read some skill repositories"
-            description={`Skipped: ${failedRepositories.join(', ')}.`}
+            description={failedRepositories
+              .map(repo =>
+                failureMessages[repo]
+                  ? `${repo}: ${failureMessages[repo]}`
+                  : repo,
+              )
+              .join('; ')}
           />
         )}
 

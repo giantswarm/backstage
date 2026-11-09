@@ -53,9 +53,14 @@ import {
 } from './agentSkills/skillFiles';
 import {
   containerRegistryServiceRef,
+  MUSTER_AUTH_HEADER,
   mimirServiceRef,
   reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  requireWritableSource,
+  skillSourcesReader,
+} from './agentSkills/skillManagerSources';
 import { readSignedInConfig } from './signedInConfig';
 import {
   isValidTag,
@@ -83,6 +88,9 @@ export async function createRouter({
   logger?: LoggerService;
 }): Promise<express.Router> {
   const router = Router();
+  const readSkillSources = logger
+    ? skillSourcesReader(config, logger)
+    : undefined;
   const isGitHubUrl = (repoUrl: string): boolean =>
     repoUrl.toLowerCase().startsWith('https://github.com/');
   // The skill pull request carries a whole SKILL.md (up to
@@ -946,6 +954,7 @@ export async function createRouter({
         .string()
         .regex(COMMIT_RE, { message: 'baseCommit must be a full commit id' })
         .optional(),
+      installation: z.string().min(1).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -973,26 +982,50 @@ export async function createRouter({
       );
     }
 
-    // Only the configured sources: the catalog lists these and nothing else,
-    // so a pull request anywhere else would add a skill no one can see.
-    const repositories =
-      config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-    const slugOf = (url: string) => {
-      const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
-      return `${owner}/${repo}`.toLowerCase();
-    };
-    const target = slugOf(repoUrl);
-    const configured = repositories.some(url => {
-      try {
-        return slugOf(url) === target;
-      } catch {
-        return false;
+    // Only the catalog's writable sources: a pull request anywhere else would
+    // add a skill no one can see. With an installation, its skill-manager's
+    // sources as the person sees them; without one, the portal's configured
+    // list (deprecated).
+    if (parsed.data.installation !== undefined) {
+      const musterToken = req.header(MUSTER_AUTH_HEADER);
+      if (!musterToken || !readSkillSources) {
+        res.status(401).json({
+          error: {
+            message: `Missing ${MUSTER_AUTH_HEADER} header: the skill sources are read from the installation's skill-manager as the signed-in person.`,
+          },
+        });
+        return;
       }
-    });
-    if (!configured) {
-      throw new InputError(
-        `${repoUrl} is not one of the configured skill repositories`,
+      requireWritableSource(
+        await readSkillSources(parsed.data.installation, musterToken),
+        {
+          repoUrl,
+          kind: kind ?? 'create',
+          skillName,
+          path: parsed.data.path,
+        },
       );
+    } else {
+      const repositories =
+        config.getOptionalStringArray('agentPlatform.skills.repositories') ??
+        [];
+      const slugOf = (url: string) => {
+        const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
+        return `${owner}/${repo}`.toLowerCase();
+      };
+      const target = slugOf(repoUrl);
+      const configured = repositories.some(url => {
+        try {
+          return slugOf(url) === target;
+        } catch {
+          return false;
+        }
+      });
+      if (!configured) {
+        throw new InputError(
+          `${repoUrl} is not one of the configured skill repositories`,
+        );
+      }
     }
 
     try {

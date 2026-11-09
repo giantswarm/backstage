@@ -8,6 +8,8 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { DiscoveredSkill } from '../lib/skills';
 import type { DiscoveredPlugin } from '../lib/plugins';
+import { catalogFromSkillManager } from '../lib/skillManager';
+import { useSkillSource } from './useSkillSource';
 
 export type SkillCatalog = {
   skills: DiscoveredSkill[];
@@ -26,12 +28,51 @@ export type SkillCatalog = {
 };
 
 /**
- * Discovers agent skills across every configured repository
- * (`agentPlatform.skills.repositories`) via the gs-backend `/agent-skills`
- * endpoint, and aggregates them with the plugins found alongside. One repository failing does not fail the
- * whole catalog — the others still load and the failed ones are reported.
+ * The skills and plugins an agent on `installation` (default: the portal's
+ * home installation) can use: the installation's skill-manager `list_skills`,
+ * as the person, so a private repository they cannot read lists no skills
+ * and names why. Where skill-manager is not deployed, gs-backend's
+ * `/agent-skills` discovery of `agentPlatform.skills.repositories` answers
+ * (deprecated). One repository failing does not fail the catalog.
  */
-export function useSkillCatalog(): SkillCatalog {
+export function useSkillCatalog(installation?: string): SkillCatalog {
+  const source = useSkillSource(installation);
+  const skillManager = useQuery({
+    queryKey: [
+      'agent-platform',
+      'skill-manager',
+      'skills',
+      source.kind === 'skill-manager' ? source.installation : '',
+    ],
+    enabled: source.kind === 'skill-manager',
+    queryFn: async () =>
+      source.kind === 'skill-manager'
+        ? catalogFromSkillManager(await source.client.listSkills())
+        : undefined,
+    retry: false,
+  });
+  const portal = usePortalSkillCatalog(source.kind === 'portal');
+  if (source.kind === 'pending') {
+    return { ...portal, isLoading: true };
+  }
+  if (source.kind === 'portal') {
+    return portal;
+  }
+  const data = skillManager.data;
+  return {
+    skills: data?.skills ?? [],
+    plugins: data?.plugins ?? [],
+    isLoading: isAwaitingData(skillManager),
+    error: (skillManager.error as Error) ?? null,
+    hasRepositories: data?.hasRepositories ?? false,
+    failedRepositories: data?.failedRepositories ?? [],
+    failureMessages: data?.failureMessages ?? {},
+    truncated: data?.truncated ?? false,
+  };
+}
+
+/** gs-backend discovery of the configured repositories, when `enabled`. */
+function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
   // The repository list is part of the signed-in config; discovery waits for
   // it rather than starting with an empty list.
   const { config, isLoading: configIsLoading } = useSignedInConfig();
@@ -43,7 +84,7 @@ export function useSkillCatalog(): SkillCatalog {
 
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['agent-platform', 'skills', repositories.join(',')],
-    enabled: !configIsLoading && repositories.length > 0,
+    enabled: enabled && !configIsLoading && repositories.length > 0,
     queryFn: async () => {
       const baseUrl = await discoveryApi.getBaseUrl('gs');
 

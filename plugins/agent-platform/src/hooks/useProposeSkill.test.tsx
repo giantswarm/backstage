@@ -9,6 +9,13 @@ import {
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useProposeSkill, type ProposedSkill } from './useProposeSkill';
+import { useMusterPluginApi } from './useMusterPluginApi';
+import { useSkillSource, type SkillSource } from './useSkillSource';
+
+jest.mock('./useSkillSource', () => ({
+  useSkillSource: jest.fn(),
+}));
+jest.mock('./useMusterPluginApi', () => ({ useMusterPluginApi: jest.fn() }));
 
 const analyticsApi = mockApis.analytics.mock();
 const discoveryApi = mockApis.discovery();
@@ -57,6 +64,8 @@ function renderUseProposeSkill() {
 
 beforeEach(() => {
   jest.mocked(analyticsApi.captureEvent).mockClear();
+  jest.mocked(useSkillSource).mockReturnValue({ kind: 'portal' });
+  jest.mocked(useMusterPluginApi).mockReturnValue(undefined);
   getAccessToken.mockReset();
   getAccessToken.mockResolvedValue('gh-token');
   fetchMock.mockReset();
@@ -132,5 +141,32 @@ describe('useProposeSkill', () => {
     });
 
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('useProposeSkill through skill-manager', () => {
+  it('names the installation and carries the person’s muster token', async () => {
+    const authHeaders = jest
+      .fn()
+      .mockResolvedValue({ 'backstage-muster-authorization': 'muster-token' });
+    jest.mocked(useMusterPluginApi).mockReturnValue({ authHeaders } as never);
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'skill-manager',
+      installation: 'graveler',
+      client: {},
+    } as unknown as SkillSource);
+
+    const { result } = renderUseProposeSkill();
+    await act(async () => {
+      await result.current.proposeSkill(skill);
+    });
+
+    expect(authHeaders).toHaveBeenCalledWith('graveler');
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers['backstage-muster-authorization']).toBe('muster-token');
+    expect(JSON.parse(init.body)).toEqual({
+      ...skill,
+      installation: 'graveler',
+    });
   });
 });
