@@ -41,3 +41,9 @@ export {
   usePhoneLayout,
   useTouchInput,
 } from './breakpoints';
+export { isPermanentReadError, pollingQueryOptions } from './polling';
+export type {
+  PollingQuery,
+  PollingQueryOptions,
+  PollInterval,
+} from './polling';

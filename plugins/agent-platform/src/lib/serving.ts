@@ -792,6 +792,14 @@ export type ServingSourceSnapshot = {
    * (unreachable, or the user lacks permission) — surfaced, never dropped.
    */
   unreachableInstallations: string[];
+  /**
+   * The installations of `unreachableInstallations` whose serving layer
+   * could not be read because muster asked for the person's sign-in to
+   * model-manager there (its 401 with `server_sign_in_required`): a sign-in
+   * fixes them, so a page offers it instead of a read warning. Optional; a
+   * source without a per-person sign-in leaves it out.
+   */
+  signInRequiredInstallations?: string[];
   servedModels: ServedModel[];
   gpuNodes: GpuNode[];
   /** Installations whose GPU capacity could not be read, with why. */
@@ -1126,6 +1134,7 @@ export function mergeServingSnapshots(
   const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
     {};
   const unreachable = new Set<string>();
+  const signInRequired = new Set<string>();
   const servedModels: ServedModel[] = [];
   const gpuNodes = new Map<string, GpuNode>();
   // Every installation any source lists, in source order — not the keys of
@@ -1196,6 +1205,9 @@ export function mergeServingSnapshots(
     }
     Object.assign(gpuCapacityUnavailable, snapshot.gpuCapacityUnavailable);
     snapshot.unreachableInstallations.forEach(name => unreachable.add(name));
+    snapshot.signInRequiredInstallations?.forEach(name =>
+      signInRequired.add(name),
+    );
     for (const [installation, flags] of Object.entries(
       snapshot.capabilities ?? {},
     )) {
@@ -1256,6 +1268,7 @@ export function mergeServingSnapshots(
     sharedHosts,
     gatewayHosts,
     unreachableInstallations: Array.from(unreachable).sort(),
+    signInRequiredInstallations: Array.from(signInRequired).sort(),
     servedModels,
     gpuNodes: Array.from(gpuNodes.values()).filter(isAcceleratorCapacityRow),
     gpuCapacityUnavailable,

@@ -74,6 +74,16 @@ jest.mock('../ModelBackends', () => ({
   }),
 }));
 
+// The sign-in itself is muster's (its own tests); here, only where it shows.
+jest.mock('../ModelManagerSignInAlerts', () => ({
+  ModelManagerSignInAlerts: ({
+    installations,
+  }: {
+    installations: string[];
+  }) => (
+    <div data-testid="model-manager-sign-in">{installations.join(',')}</div>
+  ),
+}));
 jest.mock('../ServingProvider', () => ({
   useServing: () => mockUseServing(),
 }));
@@ -1053,6 +1063,27 @@ describe('ServingPage', () => {
     expect(
       screen.getByText(/^The served models on inst-3 could not be read\./),
     ).toBeInTheDocument();
+  });
+
+  it('offers the sign-in to model-manager instead of the read warning where muster asked for it', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      unreachableInstallations: ['inst-3', 'inst-4'],
+      signInRequiredInstallations: ['inst-4'],
+    });
+
+    await renderSection();
+
+    expect(screen.getByTestId('model-manager-sign-in')).toHaveTextContent(
+      'inst-4',
+    );
+    // The warning names only the environment a sign-in does not fix.
+    expect(
+      screen.getByText(/^The served models on inst-3 could not be read\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/inst-4 could not be read/),
+    ).not.toBeInTheDocument();
   });
 
   describe('on an Ollama-backed model-manager installation (no node inventory)', () => {

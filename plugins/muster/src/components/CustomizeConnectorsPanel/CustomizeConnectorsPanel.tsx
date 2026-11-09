@@ -32,8 +32,10 @@ import {
   stopRowPress,
   useCatalogFilters,
   usePhoneLayout,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
+import { musterApiRef, type AuthStatusResponse } from '../../apis';
+import { musterPollingOptions } from '../../lib/musterPolling';
 import { ConnectorLogo } from '../ConnectorLogo';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
@@ -382,7 +384,11 @@ function ConnectorsTable({
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: hasSession,
-    refetchInterval: query => connectingPollInterval(query.state.data),
+    // While muster still connects a server; not from a hidden tab, not after
+    // muster refused the person.
+    ...musterPollingOptions((query: PollingQuery<AuthStatusResponse>) =>
+      connectingPollInterval(query.state.data),
+    ),
   });
 
   // Every connector, muster's own row among them.

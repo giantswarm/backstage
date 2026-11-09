@@ -759,6 +759,7 @@ describe('mergeServingSnapshots', () => {
       sharedHosts: {},
       gatewayHosts: {},
       unreachableInstallations: [],
+      signInRequiredInstallations: [],
       servedModels: [],
       gpuNodes: [],
       gpuCapacityUnavailable: {},

@@ -18,3 +18,13 @@ const TERMINAL_ERROR_NAMES = [
 export function mimirQueryRetry(failureCount: number, error: Error): boolean {
   return failureCount < 1 && !TERMINAL_ERROR_NAMES.includes(error.name);
 }
+
+/**
+ * Whether a Mimir query failed for good: a 400, 401, 403 or 404, which
+ * asking again answers the same way. A poll stops on it.
+ */
+export function isTerminalMimirError(error: unknown): boolean {
+  return TERMINAL_ERROR_NAMES.includes(
+    (error as { name?: unknown } | null)?.name as string,
+  );
+}

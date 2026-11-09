@@ -10,10 +10,12 @@ import {
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
-import type { ToolSummary } from '../../apis/types';
+import { musterPollingOptions } from '../../lib/musterPolling';
+import type { McpServerListResponse, ToolSummary } from '../../apis/types';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
 import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
@@ -161,14 +163,16 @@ export function NewConnectorTestPage() {
   }, [applying]);
 
   // Live per-session runtime view; shares the query key with the connector
-  // page's capability counts (`useServerCapabilityCounts`) so the two agree. Background refetch stays on: the
-  // connector takes up to a minute to connect, precisely the window where the
-  // person switches tabs.
+  // page's capability counts (`useServerCapabilityCounts`) so the two agree.
+  // Not from a hidden tab: the connector takes up to a minute to connect,
+  // the window where the person switches tabs, and the read made as this tab
+  // becomes visible again shows where it got to. Not after muster refused the
+  // person either.
   const { data: runtimeData } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(installation && serverName),
-    refetchInterval: query => {
+    ...musterPollingOptions((query: PollingQuery<McpServerListResponse>) => {
       if (applying) {
         return TEST_POLL_INTERVAL_MS;
       }
@@ -180,8 +184,7 @@ export function NewConnectorTestPage() {
         runtimeState === 'Awaiting Session'
         ? SETTLED_POLL_INTERVAL_MS
         : TEST_POLL_INTERVAL_MS;
-    },
-    refetchIntervalInBackground: true,
+    }),
   });
   const runtime = (runtimeData?.mcpServers ?? []).find(
     s => s.name === serverName,

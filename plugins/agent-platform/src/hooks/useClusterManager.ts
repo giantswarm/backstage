@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
@@ -231,11 +235,15 @@ export function useGpuNodePools(installations: string[]) {
         };
       },
       staleTime: 30_000,
-      // 10 s while a pool of the installation is unsettled, 60 s otherwise —
-      // in a tab that is not focused too: a pool's serve intent is served the
-      // moment its stack is ready, not when the person looks again.
-      refetchInterval: gpuNodePoolsRefetchInterval,
-      refetchIntervalInBackground: true,
+      // 10 s while a pool of the installation is unsettled, 60 s otherwise.
+      // Not from a hidden tab, and not after cluster-manager answered that the
+      // person is not signed in: a pool's serve intent is served the moment
+      // its stack is ready whichever tab is in front, and the read made as
+      // the tab becomes visible again shows it (giantswarm/backstage#2446).
+      ...musterPollingOptions(
+        (query: PollingQuery<GpuNodePoolsOfInstallation>) =>
+          gpuNodePoolsRefetchInterval(query),
+      ),
       retry: false,
     })),
   });
