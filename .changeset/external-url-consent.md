@@ -19,7 +19,8 @@ before the domain.
 - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
   `ExternalUrlConsentDialogHost`.
 - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
-  the app root.
+  the app root. A desktop notification whose link leads out of the portal
+  asks before it opens.
 - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
   to open the sign-in page once muster answers. `ServerSignInState` gains
   `openSignInPage` and loses `isPreparing`; the hook's options gain
@@ -27,7 +28,7 @@ before the domain.
   link.
 - gs: the GitHub auth API asks before it navigates to muster's connect; a
   connect not opened is a `no_grant` error and is not asked again for two
-  minutes.
+  minutes. Concurrent token requests share one prompt and its answer.
 - plans, roadmap, repositories, platform-capabilities: a missing grant offers
   Connect instead of navigating on first sight.
 - agent-platform: an agent's sign-in, a provider sign-in, a connector

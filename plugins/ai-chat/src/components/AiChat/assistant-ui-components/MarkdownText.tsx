@@ -19,7 +19,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import classNames from 'classnames';
-import { chatRehypePlugins } from './chatRehypePlugins';
+import {
+  chatRehypePlugins,
+  chatRemarkRehypeOptions,
+} from './chatRehypePlugins';
 
 export const useMarkdownStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -207,9 +210,21 @@ export const createMarkdownComponents = (
         {children}
       </Typography>
     ),
-    a: ({ href, children }) => {
+    a: ({ href, children, ...props }) => {
       if (!href) {
         return <>{children}</>;
+      }
+      // An in-page anchor, such as a footnote reference, keeps its id and
+      // footnote attributes.
+      if (href.startsWith('#')) {
+        const { node: _node, ...anchor } = props as typeof props & {
+          node?: unknown;
+        };
+        return (
+          <a href={href} {...anchor}>
+            {children}
+          </a>
+        );
       }
 
       let url: URL;
@@ -256,7 +271,8 @@ export const createMarkdownComponents = (
     ),
     ul: ({ children }) => <ul className={classes.list}>{children}</ul>,
     ol: ({ children }) => <ol className={classes.list}>{children}</ol>,
-    li: ({ children }) => <li>{children}</li>,
+    // A footnote's id is its references' target.
+    li: ({ children, id }) => <li id={id}>{children}</li>,
     hr: () => <hr className={classes.hr} />,
     table: ({ children }) => (
       <div className={classes.tableContainer}>
@@ -295,7 +311,7 @@ export const createMarkdownComponents = (
     },
     code: ({ children, className }) => {
       if (className && /\blanguage-mermaid\b/.test(className)) {
-        return <MermaidDiagram source={String(children)} />;
+        return <MermaidDiagram source={String(children)} images={false} />;
       }
       const content = String(children);
       if (content.includes('\n')) {
@@ -334,6 +350,7 @@ const MarkdownTextImpl = () => {
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
       rehypePlugins={chatRehypePlugins}
+      remarkRehypeOptions={chatRemarkRehypeOptions}
       components={components}
     />
   );

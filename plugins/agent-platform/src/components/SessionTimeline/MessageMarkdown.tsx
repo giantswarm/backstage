@@ -11,7 +11,10 @@ import {
   ConnectorSignInAction,
   useConnectorSignInLink,
 } from '../ConnectorSignInLinks';
-import { chatRehypePlugins } from './chatRehypePlugins';
+import {
+  chatRehypePlugins,
+  chatRemarkRehypeOptions,
+} from './chatRehypePlugins';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -272,9 +275,16 @@ export function useMarkdownComponents(): Components {
         {children}
       </Text>
     ),
-    a: ({ href, children }) => (
-      <MarkdownLink href={href}>{children}</MarkdownLink>
-    ),
+    a: ({ href, children, node: _node, ...props }) =>
+      // An in-page anchor, such as a footnote reference, keeps its id and
+      // footnote attributes.
+      href?.startsWith('#') ? (
+        <a href={href} {...props}>
+          {children}
+        </a>
+      ) : (
+        <MarkdownLink href={href}>{children}</MarkdownLink>
+      ),
     blockquote: ({ children }) => (
       <blockquote className={classes.blockquote}>{children}</blockquote>
     ),
@@ -331,6 +341,7 @@ function MessageMarkdownImpl({ text }: { text: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={chatRehypePlugins}
+        remarkRehypeOptions={chatRemarkRehypeOptions}
         components={components}
       >
         {text}

@@ -3,7 +3,10 @@ import { screen } from '@testing-library/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createMarkdownComponents, useMarkdownStyles } from './MarkdownText';
-import { chatRehypePlugins } from './chatRehypePlugins';
+import {
+  chatRehypePlugins,
+  chatRemarkRehypeOptions,
+} from './chatRehypePlugins';
 
 const loaders = 'img, picture, source, video, audio, iframe, [src], [srcset]';
 
@@ -13,6 +16,7 @@ const ChatMarkdown = ({ text }: { text: string }) => {
     <Markdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={chatRehypePlugins}
+      remarkRehypeOptions={chatRemarkRehypeOptions}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       components={createMarkdownComponents(classes) as any}
     >
@@ -59,5 +63,22 @@ describe('chat markdown', () => {
       'Logs',
     );
     expect(screen.getByText('line one')).toBeInTheDocument();
+  });
+
+  it('links a GFM footnote to its note and back', async () => {
+    const { container } = await renderInTestApp(
+      <ChatMarkdown text={'A claim.[^1]\n\n[^1]: The source.'} />,
+    );
+
+    const ref = container.querySelector('a[data-footnote-ref]');
+    const back = container.querySelector('a[data-footnote-backref]');
+    const note = ref?.getAttribute('href')?.slice(1);
+    const origin = back?.getAttribute('href')?.slice(1);
+    expect(note).toBe('user-content-fn-1');
+    expect(container.querySelector(`[id="${note}"]`)).toHaveTextContent(
+      'The source.',
+    );
+    expect(origin).toBe('user-content-fnref-1');
+    expect(container.querySelector(`[id="${origin}"]`)).toBe(ref);
   });
 });

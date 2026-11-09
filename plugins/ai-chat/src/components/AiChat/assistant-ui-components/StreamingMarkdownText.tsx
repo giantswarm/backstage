@@ -3,7 +3,10 @@ import { useMessagePartText } from '@assistant-ui/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createMarkdownComponents, useMarkdownStyles } from './MarkdownText';
-import { chatRehypePlugins } from './chatRehypePlugins';
+import {
+  chatRehypePlugins,
+  chatRemarkRehypeOptions,
+} from './chatRehypePlugins';
 import { AnimateContext } from '../AnimateContext';
 
 // Characters revealed per animation frame (~300 chars/sec at 60fps).
@@ -290,6 +293,7 @@ const StreamingMarkdownTextImpl = () => {
     <Markdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={chatRehypePlugins}
+      remarkRehypeOptions={chatRemarkRehypeOptions}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       components={components as any}
     >

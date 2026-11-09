@@ -68,4 +68,26 @@ describe('MermaidDiagram', () => {
     const [first, second] = mermaid.render.mock.calls.map(([id]) => id);
     expect(second).not.toBe(first);
   });
+
+  describe('an image node', () => {
+    const svg =
+      '<svg><g><image href="https://attacker.example/pixel.png"></image><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><img src="https://attacker.example/label.png"><span>Label</span></div></foreignObject></g></svg>';
+
+    it('is dropped from a diagram of untrusted text', async () => {
+      mermaid.render.mockResolvedValueOnce({ svg });
+      render(<MermaidDiagram source="graph TD; A@{ img: x }" images={false} />);
+
+      const diagram = await screen.findByTestId('mermaid-diagram');
+      expect(diagram.querySelector('image, img')).toBeNull();
+      expect(diagram).toHaveTextContent('Label');
+    });
+
+    it('is kept by default', async () => {
+      mermaid.render.mockResolvedValueOnce({ svg });
+      render(<MermaidDiagram source="graph TD; A@{ img: x }" />);
+
+      const diagram = await screen.findByTestId('mermaid-diagram');
+      expect(diagram.querySelector('image')).not.toBeNull();
+    });
+  });
 });

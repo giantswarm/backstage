@@ -84,12 +84,27 @@ describe('MessageMarkdown raw HTML', () => {
 
   it('drops inline styles and scripts from raw HTML', async () => {
     const { container } = await renderInTestApp(
-      <MessageMarkdown
-        text='<div style="background:url(https://attacker.example/bg)">x</div><script>alert(1)</script>'
-      />,
+      <MessageMarkdown text='<div style="background:url(https://attacker.example/bg)">x</div><script>alert(1)</script>' />,
     );
 
     expect(container.querySelector('[style*="attacker"]')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
+  });
+
+  it('links a GFM footnote to its note and back', async () => {
+    const { container } = await renderInTestApp(
+      <MessageMarkdown text={'A claim.[^1]\n\n[^1]: The source.'} />,
+    );
+
+    const ref = container.querySelector('a[data-footnote-ref]');
+    const back = container.querySelector('a[data-footnote-backref]');
+    const note = ref?.getAttribute('href')?.slice(1);
+    const origin = back?.getAttribute('href')?.slice(1);
+    expect(note).toBe('user-content-fn-1');
+    expect(container.querySelector(`[id="${note}"]`)).toHaveTextContent(
+      'The source.',
+    );
+    expect(origin).toBe('user-content-fnref-1');
+    expect(container.querySelector(`[id="${origin}"]`)).toBe(ref);
   });
 });
