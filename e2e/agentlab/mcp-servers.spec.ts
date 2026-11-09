@@ -499,7 +499,7 @@ test("a connector tool's page: Overview, Run it and its own Usage, reached from 
   await expect(facts.getByText('Connector', { exact: true })).toBeVisible({
     timeout: 60_000,
   });
-  await expect(facts.getByText('Exposed by muster as')).toBeVisible();
+  await expect(facts.getByText('Exposed by Muster as')).toBeVisible();
   await expect(facts.getByText('Annotations', { exact: true })).toBeVisible();
 
   // Usage: this tool's calls, or why they cannot be read.

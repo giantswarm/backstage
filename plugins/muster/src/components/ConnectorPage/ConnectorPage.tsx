@@ -100,8 +100,8 @@ import {
   serverStateLabel,
   StatusWithHint,
   SessionGate,
+  useConnectorIcon,
   useConnectorListPaths,
-  useMusterIcon,
   useServerSignIn,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
@@ -280,11 +280,7 @@ function ConnectorPageContent({
   const counts = useServerCapabilityCounts(representative, {
     enabled: authenticated,
   });
-  // muster is no MCPServer: its logo is the one it announces.
-  const musterIcon = useMusterIcon(
-    installation,
-    authenticated && row.kind === 'core',
-  );
+  const icon = useConnectorIcon(row, installation, authenticated);
   const fleetClusters = useMemo(
     () => fleetManagementClusters(familyGroups(partitionServers(servers))),
     [servers],
@@ -450,7 +446,7 @@ function ConnectorPageContent({
     <SessionGate
       session={session}
       installation={installation}
-      context="Tools need a muster session."
+      context="Tools need a Muster session."
     />
   );
   // An SSO connector that refused this person's sign-in hides its tools as a
@@ -643,14 +639,7 @@ function ConnectorPageContent({
         title={displayName}
         breadcrumbs={breadcrumbs}
         leading={
-          <ConnectorLogo
-            name={displayName}
-            icon={
-              row.kind === 'core' ? musterIcon : representative?.getStatusIcon()
-            }
-            size={56}
-            decorative
-          />
+          <ConnectorLogo name={displayName} icon={icon} size={56} decorative />
         }
         badges={
           <StatusBadge
@@ -724,7 +713,7 @@ function ConnectorPageContent({
                         <SessionGate
                           session={session}
                           installation={installation}
-                          context="Usage figures need a muster session."
+                          context="Usage figures need a Muster session."
                         />
                       )
                     }

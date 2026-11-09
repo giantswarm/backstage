@@ -879,10 +879,11 @@ export async function createRouter(
    * its page take their logo from.
    *
    * Read off the caller's cached MCP session, the one their tool listings
-   * use. A token that is missing or expired is the 401 the frontend refreshes
-   * on; any other failure answers `{}` -- the letter tile -- logged at
-   * `info`: the icon is cosmetic, and the caller's other reads report an
-   * unreachable muster.
+   * use. A token that is missing, expired or refused by muster is the 401 the
+   * frontend refreshes on. Any other failure answers `{ unavailable: true }`
+   * with HTTP 200, logged at `info` -- the letter tile, and the frontend asks
+   * again on its next read rather than keeping it: the icon is cosmetic, and
+   * the caller's other reads report an unreachable muster.
    */
   router.get('/server-info', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -891,10 +892,22 @@ export async function createRouter(
     try {
       icon = await client.serverIcon(callOptions);
     } catch (error) {
+      // muster refusing the bearer is the 401 the frontend refreshes the
+      // token on and reads again, as on `/servers/names`.
+      if (
+        toMusterUnauthorizedError(error, {
+          installation: installation.name,
+          authToken: callOptions.authToken,
+        })
+      ) {
+        throw error;
+      }
       logger.info('Muster could not be asked for its icon', {
         installation: installation.name,
         message: error instanceof Error ? error.message : String(error),
       });
+      res.json({ unavailable: true });
+      return;
     }
     res.json(icon ? { icon } : {});
   });

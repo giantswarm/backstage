@@ -9,6 +9,7 @@ import {
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
+import { stubImageLoad } from '../ConnectorLogo/stubImageLoad';
 import type { AuthStatusResponse } from '../../apis/types';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
@@ -727,7 +728,7 @@ describe('CustomizeConnectorsPanel', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent('Too many sign-in attempts');
     expect(tooltip).toHaveTextContent(
-      'Cannot read the muster auth status: muster answered 502',
+      'Cannot read the Muster auth status: muster answered 502',
     );
     open.mockRestore();
   });
@@ -929,7 +930,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       await screen.findByText(
-        'The tools of 2 connectors (github, web-search) were not searched: muster listed none of them.',
+        'The tools of 2 connectors (github, web-search) were not searched: Muster listed none of them.',
       ),
     ).toBeInTheDocument();
   });
@@ -946,7 +947,7 @@ describe('CustomizeConnectorsPanel', () => {
     expect(
       await screen.findByText(/Some tools were not searched/),
     ).toHaveTextContent(
-      'Some tools were not searched: muster returned only part of them. The tools of github were not searched: they need your sign-in.',
+      'Some tools were not searched: Muster returned only part of them. The tools of github were not searched: they need your sign-in.',
     );
   });
 
@@ -956,7 +957,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       await screen.findByText(
-        'Only connector names were searched: tools need a muster session.',
+        'Only connector names were searched: tools need a Muster session.',
       ),
     ).toBeInTheDocument();
   });
@@ -966,7 +967,7 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     expect(
-      screen.getByText(/Tool counts and sign-ins need a muster session/),
+      screen.getByText(/Tool counts and sign-ins need a Muster session/),
     ).toBeInTheDocument();
     expect(api.filterTools).not.toHaveBeenCalled();
   });
@@ -1564,7 +1565,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(within(muster).queryByText('No sign-in')).not.toBeInTheDocument();
     });
 
-    it('says muster is not connected without a session', async () => {
+    it('says Muster is not connected without a session', async () => {
       mockAuthenticated = false;
       await renderPanel();
       expect(
@@ -1574,20 +1575,11 @@ describe('CustomizeConnectorsPanel', () => {
 
     describe("muster's logo", () => {
       const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
-      const RealImage = window.Image;
-
-      // jsdom loads no image; bui's Avatar shows one once it has loaded.
+      let restoreImage: () => void;
       beforeEach(() => {
-        window.Image = class {
-          onload: (() => void) | null = null;
-          set src(_value: string) {
-            setTimeout(() => this.onload?.());
-          }
-        } as unknown as typeof Image;
+        restoreImage = stubImageLoad();
       });
-      afterEach(() => {
-        window.Image = RealImage;
-      });
+      afterEach(() => restoreImage());
 
       it('shows the icon muster announces, as an image', async () => {
         api.getServerInfo.mockImplementation(async () => ({ icon: SVG }));

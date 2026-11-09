@@ -59,6 +59,28 @@ describe('serverInfoIconOf', () => {
     ).toBe(PNG);
   });
 
+  it('prefers an icon without a theme, which reads on either', () => {
+    expect(
+      serverInfoIconOf({
+        icons: [
+          { src: PNG, theme: 'dark' },
+          { src: SVG, sizes: ['any'] },
+        ],
+      }),
+    ).toBe(SVG);
+  });
+
+  it('falls back to the first themed icon when every icon has one', () => {
+    expect(
+      serverInfoIconOf({
+        icons: [
+          { src: PNG, theme: 'light' },
+          { src: SVG, theme: 'dark' },
+        ],
+      }),
+    ).toBe(PNG);
+  });
+
   it.each([
     ['no icons (a muster before v5.59.0)', { name: 'muster', version: '1' }],
     ['only unusable icons', { icons: [{ src: SCRIPT_URL }] }],

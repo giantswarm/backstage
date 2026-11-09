@@ -34,9 +34,12 @@ export function connectorIconOf(icon: unknown): string | undefined {
 
 /**
  * The icon an MCP server announces in its `initialize` result's
- * `serverInfo.icons` (`[{ src, mimeType?, sizes?, theme? }]`): the first
- * whose `src` {@link connectorIconOf} accepts, else none. muster (v5.59.0
- * and later) announces one, the Giant Swarm logo, as an SVG `data:` URI.
+ * `serverInfo.icons` (`[{ src, mimeType?, sizes?, theme? }]`), among those
+ * whose `src` {@link connectorIconOf} accepts: the first without a `theme`,
+ * which reads on light and dark pages alike, else the first of all. The logo
+ * renders on either theme, and the server knows neither, so a `light` or
+ * `dark` variant is a fallback only. muster (v5.59.0 and later) announces
+ * one, the Giant Swarm logo, as an SVG `data:` URI without a theme.
  */
 export function serverInfoIconOf(serverInfo: unknown): string | undefined {
   const icons =
@@ -46,15 +49,13 @@ export function serverInfoIconOf(serverInfo: unknown): string | undefined {
   if (!Array.isArray(icons)) {
     return undefined;
   }
-  for (const icon of icons) {
-    const src = connectorIconOf(
-      icon && typeof icon === 'object'
-        ? (icon as { src?: unknown }).src
-        : undefined,
-    );
-    if (src) {
-      return src;
+  const usable = icons.flatMap(icon => {
+    if (!icon || typeof icon !== 'object') {
+      return [];
     }
-  }
-  return undefined;
+    const { src, theme } = icon as { src?: unknown; theme?: unknown };
+    const checked = connectorIconOf(src);
+    return checked ? [{ src: checked, themed: theme !== undefined }] : [];
+  });
+  return (usable.find(icon => !icon.themed) ?? usable[0])?.src;
 }

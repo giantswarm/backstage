@@ -862,13 +862,31 @@ describe('createRouter', () => {
       expect(response.body).toEqual({});
     });
 
-    it('answers no icon, not a 5xx, when muster cannot be asked', async () => {
+    it('answers unavailable, not a 5xx, when muster cannot be asked', async () => {
       serverIcon.mockRejectedValue(new Error('fetch failed'));
 
       const response = await readInfo();
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({});
+      expect(response.body).toEqual({ unavailable: true });
+    });
+
+    // The token refresh only follows a 401: a refused bearer must not read
+    // as "no icon" until the frontend's next read.
+    it('answers 401 when muster refuses the forwarded token', async () => {
+      serverIcon.mockRejectedValue(
+        Object.assign(
+          new Error(
+            'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): invalid_token',
+          ),
+          { name: 'MCPClientError', statusCode: 401 },
+        ),
+      );
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_rejected');
     });
 
     it('asks for the token muster needs before connecting', async () => {

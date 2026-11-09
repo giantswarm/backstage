@@ -213,7 +213,7 @@ function UsageBody({
       {totals.calls === 0 ? (
         <Text as="p" variant="body-medium" color="secondary">
           No tool calls were dispatched to connectors in {windowNoun}. If usage
-          is expected, this environment's muster may not export dispatch metrics
+          is expected, this environment's Muster may not export dispatch metrics
           yet.
         </Text>
       ) : (
@@ -250,7 +250,7 @@ function UsageBody({
           color="secondary"
           className={classes.note}
         >
-          Counted at muster's dispatch layer, so meta-tool wrapping (call_tool)
+          Counted at Muster's dispatch layer, so meta-tool wrapping (call_tool)
           is attributed to the resolved tool and connector. Queried through the{' '}
           {names.get(data.source.server) ?? data.source.server} connector.
         </Text>
@@ -313,7 +313,7 @@ function McpUsageBody() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="Usage metrics need a muster session."
+        context="Usage metrics need a Muster session."
       />
     );
   } else if (!activeInstallation || isLoading || isLoadingServers) {

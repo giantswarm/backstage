@@ -64,7 +64,7 @@ export function useConnectorLabels(
       const answer = await musterApi!.listConnectorNames(installation);
       if (answer.unavailable) {
         throw new ConnectorNamesUnavailableError(
-          `muster on ${installation} could not list its connectors`,
+          `Muster on ${installation} could not list its connectors`,
         );
       }
       return answer;

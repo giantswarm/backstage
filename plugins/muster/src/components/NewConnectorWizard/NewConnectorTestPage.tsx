@@ -294,7 +294,7 @@ export function NewConnectorTestPage() {
         )}
         <Text variant="body-small" color="secondary">
           {applying || !serverState
-            ? 'Registered. This updates automatically once muster connects it.'
+            ? 'Registered. This updates automatically once Muster connects it.'
             : (runtime?.statusMessage ?? cr?.getStateExplanation() ?? '')}
         </Text>
       </Flex>
@@ -333,7 +333,7 @@ export function NewConnectorTestPage() {
           title="This connector connects per session — that's normal"
           description={
             cr?.getStateExplanation() ??
-            'It connects with each person’s own identity; its tools appear once muster has connected it for your session.'
+            'It connects with each person’s own identity; its tools appear once Muster has connected it for your session.'
           }
         />
       )}

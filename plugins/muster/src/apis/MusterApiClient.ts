@@ -781,7 +781,7 @@ export class MusterApiClient implements MusterApi {
       throw new MusterTokenMintError(
         installation,
         'session-expired',
-        `Your portal session has expired; no sign-in token is available for muster${
+        `Your portal session has expired; no sign-in token is available for Muster${
           installation ? ` on ${installation}` : ''
         }.`,
       );

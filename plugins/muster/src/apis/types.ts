@@ -272,11 +272,12 @@ export interface ConnectorNamesResponse {
 /**
  * What muster says of itself in its `initialize` result. `icon` is the logo
  * it announces (muster v5.59.0 and later), already checked by gs-common's
- * `connectorIconOf`; absent from an older muster or when it could not be
- * read.
+ * `connectorIconOf`; absent from an older muster. `unavailable` when muster
+ * could not be asked: worth asking again soon.
  */
 export interface MusterServerInfoResponse {
   icon?: string;
+  unavailable?: boolean;
 }
 
 /**
