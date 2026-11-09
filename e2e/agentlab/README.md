@@ -42,6 +42,7 @@ the command that installs it.
 | `AGENTLAB_CLUSTER`       | `agentlab`                        | the lab's `clusterName`: its MCP server `<cluster>-mcp-kubernetes` and its kind node `<cluster>-control-plane`                                                                                                                          |
 | `AGENTLAB_KIND_NODE`     | `<cluster>-control-plane`         | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                                                                                                            |
 | `AGENTLAB_E2E_WORKERS`   | `1`                               | parallel workers, each with one sign-in as lab users of its own — see [How it signs in](#how-it-signs-in)                                                                                                                               |
+| `AGENTLAB_E2E_AUTH`      | `dex`                             | how the suite signs in: `dex` (the lab's Dex card and popup) or `guest` (a local dev server's guest sign-in) — see [Against a dev server](#against-a-dev-server)                                                                        |
 | `AGENTLAB_E2E_RUN`       | the run's start, base 36          | the run id `tenants.spec.ts` names its organization's agent with (`e2e-tenant-<run>`) and `harness-codex-card.spec.ts` its Harness; letters and digits only                                                                             |
 | `AGENTLAB_E2E_NETNS`     | `1`                               | `0` launches the browser in the host's network instead of [its own](#the-browsers-network)                                                                                                                                              |
 | `AGENTLAB_E2E_ORDER`     | `default`                         | the order of the spec files: `default` (by path), `shuffle` (a random order; the run prints its seed) or `shuffle:<seed>` (that order again) — see [Order](#order)                                                                      |
@@ -51,6 +52,50 @@ the command that installs it.
 | `AGENTLAB_WORKSPACE`     | unset                             | `<organization>/<name>` of a workspace the admin created in the portal on the lab (the real GitHub App grant), for `workspace-detail.spec.ts`; skipped without it                                                                       |
 
 The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
+
+## Against a dev server
+
+A page change can be proven in the UI without a lab, against a local dev
+server (`yarn start`) whose `gs.authProvider` is unset: its sign-in page signs
+the guest in through the proxy, without a card or a popup.
+`AGENTLAB_E2E_AUTH=guest` makes every sign-in wait for that instead of the Dex
+card.
+
+The browser's [network namespace](#the-browsers-network) carries IPv4 only,
+and the dev server's frontend on `localhost` binds `::1`, so start it on
+`127.0.0.1`, with the guest provider on (`ENABLE_GUEST_AUTH=1` adds it to the
+backend, `auth.providers.guest` configures it), from a config of your own on
+top of `app-config.yaml`; a spec that
+needs its plugin's pages names them in `app.extensions` there, as on a lab
+(Backstage replaces config arrays, so the list repeats `app-config.yaml`'s):
+
+```yaml
+# e2e-dev.yaml, outside the checkout
+app:
+  baseUrl: http://127.0.0.1:3000
+  listen:
+    host: 127.0.0.1
+    port: 3000
+  # extensions: app-config.yaml's list, plus page:plans, api:plans,
+  # page:roadmap, api:roadmap, page:plans/plans-redirect, page:plans/magazine
+backend:
+  cors:
+    origin: http://127.0.0.1:3000
+auth:
+  providers:
+    guest: {}
+```
+
+```bash
+ENABLE_GUEST_AUTH=1 yarn start --config "$PWD/app-config.yaml" --config /path/to/e2e-dev.yaml
+AGENTLAB_BACKSTAGE_URL=http://127.0.0.1:3000 AGENTLAB_E2E_AUTH=guest \
+  AGENTLAB_HIVE=1 yarn test:e2e:agentlab hive.spec.ts --project agentlab
+```
+
+Every user is the one guest, so only specs that need no lab behind the portal
+and do not tell users apart prove anything there: the ones that answer their
+backend routes in the browser, as `hive.spec.ts` does. Without the variable
+the suite signs in through Dex as before.
 
 ## Portal modes
 

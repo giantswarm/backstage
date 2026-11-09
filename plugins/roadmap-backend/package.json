@@ -33,7 +33,8 @@
     "@backstage/errors": "backstage:^",
     "@giantswarm/backstage-plugin-gs-node": "workspace:^",
     "express": "^5.0.0",
-    "express-promise-router": "^4.1.0"
+    "express-promise-router": "^4.1.0",
+    "knex": "^3.1.0"
   },
   "devDependencies": {
     "@backstage/backend-defaults": "backstage:^",
@@ -46,6 +47,7 @@
   },
   "files": [
     "dist",
+    "migrations",
     "config.d.ts"
   ]
 }
