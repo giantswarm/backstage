@@ -35,7 +35,8 @@ export {
   AGENT_MANAGER_AUTH_HEADER,
   AgentManagerCredentialsClient,
   agentManagerCredentialsApiRef,
-  CredentialOperationError,
-  isCredentialOperationError,
+  credentialOperationErrorCode,
+  credentialOperationErrorMessage,
+  credentialOperationErrorStatus,
   type AgentManagerCredentialsApi,
 } from './AgentManagerCredentialsApi';

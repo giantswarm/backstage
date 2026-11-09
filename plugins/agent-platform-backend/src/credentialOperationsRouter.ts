@@ -2,6 +2,7 @@ import { Config } from '@backstage/config';
 import { AuthenticationError, InputError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
+import { errorResponseBody } from '@giantswarm/backstage-plugin-gs-node';
 import { readInstallationBaseDomain } from './installationDomain';
 
 /**
@@ -28,13 +29,20 @@ const OPERATION_PATTERN = /^[a-f0-9]{48}$/;
 const MAX_VALUES = 16;
 const MAX_NAME_LENGTH = 253;
 const MAX_VALUE_LENGTH = 16 * 1024;
-const DEFAULT_TIMEOUT_MS = 30_000;
+const READ_TIMEOUT_MS = 30_000;
+/**
+ * Above agent-manager's own bound on a save (90 s, or the operation's
+ * expiry if sooner), so the portal never gives up on a save agent-manager
+ * still runs.
+ */
+const SAVE_TIMEOUT_MS = 120_000;
 
 export interface CredentialOperationsRouterOptions {
   config: Config;
   /** Overridable for tests. */
   fetchFn?: typeof fetch;
-  timeoutMs?: number;
+  readTimeoutMs?: number;
+  saveTimeoutMs?: number;
 }
 
 /**
@@ -145,11 +153,31 @@ function readIfMatch(req: express.Request): string {
 }
 
 /**
- * agent-manager's error answer, `{error: {code, message}}`, as the portal's
- * error body with the code kept, so the form can tell a stale confirmation
- * (`precondition_failed`) from a missing GitHub grant (`auth_required`).
+ * Answers an error in the backend's error body (`errorResponseBody`), with
+ * agent-manager's `code` on the serialized error, so the form can tell a
+ * stale confirmation (`precondition_failed`) from a missing GitHub grant
+ * (`auth_required`).
  */
-async function forwardError(res: express.Response, upstream: Response) {
+function answerError(
+  req: express.Request,
+  res: express.Response,
+  status: number,
+  code: string,
+  message: string,
+) {
+  const error = Object.assign(new Error(message), {
+    name: 'AgentManagerError',
+    code,
+  });
+  res.status(status).json(errorResponseBody(error, req, status));
+}
+
+/** agent-manager's error answer, `{error: {code, message}}`, passed on. */
+async function forwardError(
+  req: express.Request,
+  res: express.Response,
+  upstream: Response,
+) {
   let code = 'backend_error';
   let message = `agent-manager answered ${upstream.status}`;
   try {
@@ -168,10 +196,7 @@ async function forwardError(res: express.Response, upstream: Response) {
   }
   const status =
     upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
-  res.status(status).json({
-    error: { name: 'AgentManagerError', message, code },
-    response: { statusCode: status },
-  });
+  answerError(req, res, status, code, message);
 }
 
 export function createCredentialOperationsRouter(
@@ -179,7 +204,8 @@ export function createCredentialOperationsRouter(
 ): express.Router {
   const { config } = options;
   const fetchFn = options.fetchFn ?? fetch;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const readTimeoutMs = options.readTimeoutMs ?? READ_TIMEOUT_MS;
+  const saveTimeoutMs = options.saveTimeoutMs ?? SAVE_TIMEOUT_MS;
   const router = Router();
 
   const target = (req: express.Request) => {
@@ -198,10 +224,17 @@ export function createCredentialOperationsRouter(
     return `${base}/api/v1/credential-operations/${operation}`;
   };
 
+  /**
+   * One call to agent-manager. A save that does not answer in time may
+   * still complete there: it is answered `outcome_unknown` (504), never as a
+   * failure, and the form reads the operation again.
+   */
   const call = async (
+    req: express.Request,
     res: express.Response,
     url: string,
     init: { method: string; headers: Record<string, string>; body?: string },
+    timeoutMs: number,
   ): Promise<Response | undefined> => {
     res.set('Cache-Control', 'no-store');
     try {
@@ -210,17 +243,51 @@ export function createCredentialOperationsRouter(
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
-    } catch {
-      res.status(502).json({
-        error: {
-          name: 'AgentManagerError',
-          message: 'agent-manager could not be reached on this installation',
-          code: 'backend_error',
-        },
-        response: { statusCode: 502 },
-      });
+    } catch (error) {
+      if (
+        init.method === 'POST' &&
+        (error as Error | undefined)?.name === 'TimeoutError'
+      ) {
+        answerError(
+          req,
+          res,
+          504,
+          'outcome_unknown',
+          'agent-manager did not answer the save in time; it may still complete',
+        );
+      } else {
+        answerError(
+          req,
+          res,
+          502,
+          'backend_error',
+          'agent-manager could not be reached on this installation',
+        );
+      }
       return undefined;
     }
+  };
+
+  /** agent-manager's JSON answer, or a 502 when the body is not JSON. */
+  const answerJson = async (
+    req: express.Request,
+    res: express.Response,
+    upstream: Response,
+  ) => {
+    let body: unknown;
+    try {
+      body = await upstream.json();
+    } catch {
+      answerError(
+        req,
+        res,
+        502,
+        'backend_error',
+        'agent-manager answered something other than JSON',
+      );
+      return;
+    }
+    res.status(200).json(body);
   };
 
   const path = '/organizations/credential-operations/:operation';
@@ -228,20 +295,37 @@ export function createCredentialOperationsRouter(
   router.get(path, async (req, res) => {
     const url = target(req);
     const token = readToken(req);
-    const upstream = await call(res, url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
+    const upstream = await call(
+      req,
+      res,
+      url,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      },
+      readTimeoutMs,
+    );
     if (!upstream) return;
     if (!upstream.ok) {
-      await forwardError(res, upstream);
+      await forwardError(req, res, upstream);
       return;
     }
     const etag = upstream.headers.get('etag');
-    if (etag) {
-      res.set('ETag', etag);
+    if (!etag) {
+      answerError(
+        req,
+        res,
+        502,
+        'backend_error',
+        'agent-manager answered the confirmation without its version',
+      );
+      return;
     }
-    res.status(200).json(await upstream.json());
+    res.set('ETag', etag);
+    await answerJson(req, res, upstream);
   });
 
   router.post(path, async (req, res) => {
@@ -249,35 +333,47 @@ export function createCredentialOperationsRouter(
     const token = readToken(req);
     const ifMatch = readIfMatch(req);
     const values = readValues(req.body);
-    const upstream = await call(res, url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'If-Match': ifMatch,
+    const upstream = await call(
+      req,
+      res,
+      url,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'If-Match': ifMatch,
+        },
+        body: JSON.stringify({ values }),
       },
-      body: JSON.stringify({ values }),
-    });
+      saveTimeoutMs,
+    );
     if (!upstream) return;
     if (!upstream.ok) {
-      await forwardError(res, upstream);
+      await forwardError(req, res, upstream);
       return;
     }
-    res.status(200).json(await upstream.json());
+    await answerJson(req, res, upstream);
   });
 
   router.delete(path, async (req, res) => {
     const url = target(req);
     const token = readToken(req);
     const ifMatch = readIfMatch(req);
-    const upstream = await call(res, url, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}`, 'If-Match': ifMatch },
-    });
+    const upstream = await call(
+      req,
+      res,
+      url,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`, 'If-Match': ifMatch },
+      },
+      readTimeoutMs,
+    );
     if (!upstream) return;
     if (!upstream.ok) {
-      await forwardError(res, upstream);
+      await forwardError(req, res, upstream);
       return;
     }
     res.status(204).end();

@@ -116,7 +116,7 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/organizations/:installation/:parent/:name/credentials"
+              path="/organizations/:installation/:parent/:name/credentials/:operation"
               element={<LocationProbe />}
             />
             <Route
@@ -351,8 +351,51 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials?operation=${CREDENTIAL_OPERATION}`,
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
+  });
+
+  it('says what is missing before it asks agent-manager for a model', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(
+      await within(dialog).findByText('Enter a name for the model.'),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Enter the provider's model id."),
+    ).toBeInTheDocument();
+    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
+  });
+
+  it('says so when agent-manager links its request somewhere else than the portal’s form', async () => {
+    const user = userEvent.setup();
+    await renderPage('/models', {
+      ...SCENARIO,
+      formUrl: `https://elsewhere.example.com/form?operation=${CREDENTIAL_OPERATION}`,
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+
+    expect(
+      await within(dialog).findByText(
+        /its link is not this portal’s credential form/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('location')).not.toBeInTheDocument();
   });
 
   it('asks for a new key of a model on the credential form', async () => {
@@ -379,7 +422,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `credentials?operation=${CREDENTIAL_OPERATION}`,
+      `/credentials/${CREDENTIAL_OPERATION}`,
     );
   });
 

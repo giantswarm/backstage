@@ -8,6 +8,8 @@ import {
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
 
+import { ResponseError } from '@backstage/errors';
+
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
 import type {
   CredentialOperation,
@@ -22,33 +24,37 @@ export const AGENT_MANAGER_AUTH_HEADER =
 
 const PATH = '/organizations/credential-operations';
 
-export const CREDENTIAL_OPERATION_ERROR_NAME = 'CredentialOperationError';
-
 /**
- * A refusal of agent-manager (or the portal's backend), with agent-manager's
- * code: `precondition_failed` (the confirmation changed), `conflict` and
- * `gitops_owned` (what it writes changed), `auth_required` (no GitHub grant
- * for a commit), `not_found` (gone, expired, or someone else's).
+ * agent-manager's code on a refused credential operation, from the portal
+ * backend's error body (`ResponseError`): `precondition_failed` (the
+ * confirmation changed), `conflict` and `gitops_owned` (what it writes
+ * changed), `auth_required` (no GitHub grant for a commit), `not_found`
+ * (gone, expired, or someone else's), `outcome_unknown` (a save that did not
+ * answer in time and may still complete).
  */
-export class CredentialOperationError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = CREDENTIAL_OPERATION_ERROR_NAME;
-    this.status = status;
-    this.code = code;
+export function credentialOperationErrorCode(
+  error: unknown,
+): string | undefined {
+  if (!(error instanceof ResponseError)) {
+    return undefined;
   }
+  const code = error.body.error?.code;
+  return typeof code === 'string' ? code : undefined;
 }
 
-export function isCredentialOperationError(
+/** What agent-manager (or the portal's backend) said, in its own words. */
+export function credentialOperationErrorMessage(error: Error): string {
+  if (error instanceof ResponseError) {
+    return error.body.error?.message || error.message;
+  }
+  return error.message;
+}
+
+/** The HTTP status of a refused credential operation. */
+export function credentialOperationErrorStatus(
   error: unknown,
-): error is CredentialOperationError {
-  return (
-    (error as { name?: unknown } | null)?.name ===
-    CREDENTIAL_OPERATION_ERROR_NAME
-  );
+): number | undefined {
+  return error instanceof ResponseError ? error.statusCode : undefined;
 }
 
 export interface AgentManagerCredentialsApi {
@@ -108,15 +114,8 @@ export class AgentManagerCredentialsClient implements AgentManagerCredentialsApi
     const response = await this.request(installation, operation, {
       method: 'GET',
     });
-    const etag = response.headers.get('etag');
+    const etag = response.headers.get('etag') ?? '';
     const body = (await response.json()) as CredentialOperation;
-    if (!etag) {
-      throw new CredentialOperationError(
-        502,
-        'backend_error',
-        'agent-manager answered the confirmation without its version.',
-      );
-    }
     return { operation: body, etag };
   }
 
@@ -166,15 +165,7 @@ export class AgentManagerCredentialsClient implements AgentManagerCredentialsApi
       },
     );
     if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as {
-        error?: { code?: string; message?: string };
-      };
-      throw new CredentialOperationError(
-        response.status,
-        body.error?.code ?? 'backend_error',
-        body.error?.message ??
-          `The portal's backend answered ${response.status} for the credential operation on ${installation}.`,
-      );
+      throw await ResponseError.fromResponse(response);
     }
     return response;
   }

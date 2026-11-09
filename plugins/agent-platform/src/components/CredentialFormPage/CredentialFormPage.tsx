@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Link, PasswordField, Text } from '@backstage/ui';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   type BreadcrumbItem,
@@ -10,11 +9,14 @@ import {
   PageSection,
   ShellPage,
   ShellPageFactsSkeleton,
+  useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   agentManagerCredentialsApiRef,
-  isCredentialOperationError,
+  credentialOperationErrorCode,
+  credentialOperationErrorMessage,
+  credentialOperationErrorStatus,
 } from '../../apis';
 import {
   askingObjects,
@@ -31,7 +33,6 @@ import {
   organizationsRouteRef,
 } from '../../routes';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { SecretTextField } from '../ModelConfigForm/SecretTextField';
 
 export type CredentialFormPageProps = {
   installation: string;
@@ -39,6 +40,8 @@ export type CredentialFormPageProps = {
   parent: string;
   /** The organization's name. */
   name: string;
+  /** agent-manager's operation id, the request the form is for. */
+  operation: string;
 };
 
 type Read =
@@ -71,7 +74,10 @@ function useOperation(installation: string, operation: string | undefined) {
       return undefined;
     }
     let cancelled = false;
-    setState({ status: 'loading' });
+    // A read again keeps the confirmation on screen until the new one is in.
+    setState(current =>
+      current.status === 'loaded' ? current : { status: 'loading' },
+    );
     api.getOperation(installation, operation).then(
       read => !cancelled && setState({ status: 'loaded', read }),
       error => !cancelled && setState({ status: 'error', error }),
@@ -102,34 +108,31 @@ function Fact({
 }
 
 /**
- * What the save writes and where the value goes: the organization, the
- * object that asked, the other objects that read the same credential, the
- * origins it is sent to, and, in commit mode, the repository the pull
- * request goes to. Shown before any value can be typed.
+ * What the save writes and where the value goes: the organization (as
+ * agent-manager prepared it, never as the link names it), the object that
+ * asked, the other objects that read the same credential, where the value
+ * is sent, and, in commit mode, the repository the pull request goes to.
+ * Shown before any value can be typed.
  */
 function Confirmation({
   operation,
-  name,
-  parent,
   installation,
 }: {
   operation: CredentialOperation;
-  name: string;
-  parent: string;
   installation: string;
 }) {
   const asking = askingObjects(operation);
   const others = otherReferences(operation);
   const sentTo = destinations(operation);
-  const provider = operation.changes
-    ?.map(change => change.object?.spec?.provider)
-    .find((p): p is string => typeof p === 'string');
+  const { organization, parent, namespace } = operation.organization;
   return (
     <PageSection title="What you are about to save">
       <Flex direction="column" gap="3">
         <Fact label="Organization">
           <Text>
-            {name} · {parent} · {installation}
+            {[organization, parent, namespace, installation]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
         </Fact>
         <Fact label="Asked by">
@@ -157,19 +160,17 @@ function Confirmation({
           )}
         </Fact>
         <Fact label="Sent to">
-          {sentTo.length === 0 && !provider ? (
+          {sentTo.length === 0 ? (
             <Text>
-              No egress policy or connector of the organization names it.
+              No endpoint, egress policy or connector of the organization names
+              it.
             </Text>
           ) : (
-            <>
-              {provider ? <Text as="p">Model provider {provider}</Text> : null}
-              {sentTo.map(origin => (
-                <Text key={origin} as="p">
-                  {origin}
-                </Text>
-              ))}
-            </>
+            sentTo.map(destination => (
+              <Text key={destination} as="p">
+                {destination}
+              </Text>
+            ))
           )}
         </Fact>
         <Fact label="How it is saved">
@@ -225,48 +226,74 @@ function SaveError({
   error,
 }: {
   installation: string;
-  error: Error | undefined;
+  error: Error | null;
 }) {
   if (!error) {
     return null;
   }
-  if (isCredentialOperationError(error) && error.code === 'auth_required') {
+  if (credentialOperationErrorCode(error) === 'auth_required') {
     return (
       <ConnectAgentManagerAlert
         installation={installation}
-        message={error.message}
+        message={credentialOperationErrorMessage(error)}
         action="The pull request is opened"
         needsGitHub
       />
     );
   }
   return (
-    <Alert status="danger" title="Not saved" description={error.message} />
+    <Alert
+      status="danger"
+      title="Not saved"
+      description={credentialOperationErrorMessage(error)}
+    />
   );
 }
 
 /**
- * The Dev Portal's credential form of one organization: opened from the
- * Models, Connectors or Egress tab, or from the link an agent or a tool sends
- * (agent-manager's URL elicitation), with the operation's id as `?operation=`.
- * It reads the operation's confirmation before any value can be typed,
- * posts the values once with the confirmation's version, and never shows a
- * value back.
+ * Whether the operation was prepared for the organization the link names.
+ * The link is not trusted for it: a link to one organization with another's
+ * request would have the person enter a key for an organization they do not
+ * see.
+ */
+function sameOrganization(
+  operation: CredentialOperation,
+  parent: string,
+  name: string,
+) {
+  return (
+    operation.organization.parent === parent &&
+    operation.organization.organization === name
+  );
+}
+
+/**
+ * The Dev Portal's credential form of one organization's request: opened
+ * from the Models or Connectors tab, or from the link an agent or a tool
+ * sends (agent-manager's URL elicitation, `credentials.uiURL` with the
+ * operation's id as its last segment). It reads the operation's
+ * confirmation before any value can be typed, posts the values with the
+ * confirmation's version, and never shows a value back. A save interrupted
+ * on agent-manager's side (`saving`, `uncertain`) is finished from here as
+ * agent-manager's recovery rules say.
  */
 export function CredentialFormPage({
   installation,
   parent,
   name,
+  operation: operationParam,
 }: CredentialFormPageProps) {
-  const [params] = useSearchParams();
-  const raw = params.get('operation') ?? '';
-  const operationId = CREDENTIAL_OPERATION_PATTERN.test(raw) ? raw : undefined;
+  const operationId = CREDENTIAL_OPERATION_PATTERN.test(operationParam)
+    ? operationParam
+    : undefined;
   const api = useApi(agentManagerCredentialsApiRef);
   const { state, reload } = useOperation(installation, operationId);
   const [values, setValues] = useState<Record<string, string>>({});
   const [receipt, setReceipt] = useState<CredentialResourceResult>();
   const [cancelled, setCancelled] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
 
   const organizationsLink = useRouteRef(organizationsRouteRef);
   const organizationLink = useRouteRef(organizationDetailRouteRef);
@@ -298,22 +325,36 @@ export function CredentialFormPage({
       if (!loaded || !operationId) {
         throw new Error('The confirmation is not loaded.');
       }
-      const entered = pairs.map(pair => ({
-        secret: pair.secret,
-        key: pair.key,
-        value: values[pairId(pair)] ?? '',
-      }));
+      const recovering =
+        loaded.operation.state === 'saving' ||
+        (loaded.operation.state === 'uncertain' &&
+          loaded.operation.mode === 'commit');
+      const entered = recovering
+        ? []
+        : pairs.map(pair => ({
+            secret: pair.secret,
+            key: pair.key,
+            value: values[pairId(pair)] ?? '',
+          }));
       return api.saveOperation(installation, operationId, loaded.etag, entered);
     },
-    onSettled: () => setValues({}),
-    onSuccess: result => setReceipt(result),
+    onSuccess: result => {
+      setValues({});
+      setReceipt(result);
+    },
     onError: error => {
-      if (
-        isCredentialOperationError(error) &&
-        error.code === 'precondition_failed'
-      ) {
+      const code = credentialOperationErrorCode(error);
+      if (code === 'precondition_failed') {
+        setValues({});
         setNotice(
           'The request changed since you opened it. Check it again, then enter the value again.',
+        );
+        save.reset();
+        reload();
+      } else if (code === 'outcome_unknown') {
+        setValues({});
+        setNotice(
+          'agent-manager did not answer in time. The save may still complete: check the request again before you enter anything.',
         );
         save.reset();
         reload();
@@ -340,8 +381,8 @@ export function CredentialFormPage({
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <EmptyStateCard
-          title="Open this form from a request"
-          description={`A credential is entered for one request: from the Models, Connectors or Egress tab of ${name}, or from the link an agent sends you. This address names no request.`}
+          title="This link names no request"
+          description={`A credential is entered for one request: from the Models or Connectors tab of ${name}, or from the link an agent sends you.`}
           actions={backLink}
         />
       </ShellPage>
@@ -357,8 +398,7 @@ export function CredentialFormPage({
   }
 
   if (state.status === 'error') {
-    const notFound =
-      isCredentialOperationError(state.error) && state.error.status === 404;
+    const notFound = credentialOperationErrorStatus(state.error) === 404;
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <EmptyStateCard
@@ -370,7 +410,7 @@ export function CredentialFormPage({
           description={
             notFound
               ? 'It expired, was cancelled, or was started by someone else. Start again from the organization’s tab or ask the agent again.'
-              : state.error.message
+              : credentialOperationErrorMessage(state.error)
           }
           actions={
             <Flex gap="3" align="center">
@@ -388,18 +428,42 @@ export function CredentialFormPage({
   }
 
   const { operation } = state.read;
-  const pending = operation.state === 'pending' && !receipt && !cancelled;
+  if (!sameOrganization(operation, parent, name)) {
+    return (
+      <ShellPage title="Enter a credential" {...frame}>
+        <EmptyStateCard
+          title={`This request is not for ${name}`}
+          description={`The link names ${name} in ${parent}, but the request is for ${operation.organization.organization ?? 'another organization'} in ${operation.organization.parent ?? 'another parent'}. Nothing is shown or saved: open the request from that organization's tab, or ask the agent again.`}
+          actions={backLink}
+        />
+      </ShellPage>
+    );
+  }
+
+  const takesValues =
+    !receipt &&
+    !cancelled &&
+    (operation.state === 'pending' ||
+      (operation.state === 'uncertain' && operation.mode === 'apply'));
+  const finishes =
+    !receipt &&
+    !cancelled &&
+    (operation.state === 'saving' ||
+      (operation.state === 'uncertain' && operation.mode === 'commit'));
   const complete =
     receipt ?? (operation.state === 'complete' ? operation.result : undefined);
-  const missing = pairs.some(pair => !values[pairId(pair)]);
-  const saveError =
-    save.error &&
-    !(
-      isCredentialOperationError(save.error) &&
-      save.error.code === 'precondition_failed'
-    )
-      ? save.error
-      : undefined;
+  const busy = save.isPending || cancel.isPending;
+  const errors = Object.fromEntries(
+    pairs.map(pair => [
+      pairId(pair),
+      values[pairId(pair)] ? undefined : 'Enter the value.',
+    ]),
+  );
+  const shownSaveError = ['precondition_failed', 'outcome_unknown'].includes(
+    credentialOperationErrorCode(save.error) ?? '',
+  )
+    ? null
+    : save.error;
 
   return (
     <ShellPage
@@ -415,12 +479,7 @@ export function CredentialFormPage({
             description={notice}
           />
         ) : null}
-        <Confirmation
-          operation={operation}
-          name={name}
-          parent={parent}
-          installation={installation}
-        />
+        <Confirmation operation={operation} installation={installation} />
         {complete ? <Receipt result={complete} /> : null}
         {cancelled || operation.state === 'cancelled' ? (
           <Alert
@@ -429,26 +488,58 @@ export function CredentialFormPage({
             description="Nothing was saved. Start again from the organization’s tab or ask the agent again."
           />
         ) : null}
-        {operation.state === 'saving' || operation.state === 'uncertain' ? (
+        {operation.state === 'uncertain' && operation.mode === 'apply' ? (
           <Alert
             status="warning"
-            title="A save of this request is in progress or its outcome is unknown"
-            description="Check again in a moment before you enter anything."
+            title="An earlier save of this request did not finish"
+            description="Enter the value again to finish it."
           />
         ) : null}
-        {pending ? (
+        {finishes ? (
+          <PageSection title="Finish the save">
+            <Flex direction="column" gap="3" align="start">
+              <Text>
+                {operation.state === 'saving'
+                  ? 'A save of this request is under way or was interrupted.'
+                  : 'The pull request of an earlier save may not have been opened.'}{' '}
+                Finishing it needs no value: agent-manager completes what it
+                started.
+              </Text>
+              <SaveError installation={installation} error={shownSaveError} />
+              <Flex gap="3">
+                <Button variant="secondary" onPress={reload} isDisabled={busy}>
+                  Check again
+                </Button>
+                <Button
+                  variant="primary"
+                  onPress={() => save.mutate()}
+                  isDisabled={busy}
+                >
+                  {save.isPending ? 'Finishing…' : 'Finish the save'}
+                </Button>
+              </Flex>
+            </Flex>
+          </PageSection>
+        ) : null}
+        {takesValues ? (
           <PageSection title="Enter the value">
-            <Flex direction="column" gap="3">
+            <Flex direction="column" gap="3" ref={scope}>
               {pairs.length === 0 ? (
                 <Text color="secondary">The request asks for no value.</Text>
               ) : (
                 pairs.map(pair => (
-                  <SecretTextField
+                  <PasswordField
                     key={pairId(pair)}
                     label={
                       pairs.length === 1 ? 'Value' : `Value of ${pair.key}`
                     }
-                    description={`Secret ${pair.secret}, key ${pair.key}${pair.state === 'replace' ? ' (replaces the current value)' : ''}`}
+                    description={`Secret ${pair.secret}, key ${pair.key}${
+                      pair.state === 'replace'
+                        ? '. It replaces the current value once saved.'
+                        : ''
+                    }`}
+                    isRequired
+                    autoComplete="new-password"
                     value={values[pairId(pair)] ?? ''}
                     onChange={value =>
                       setValues(current => ({
@@ -456,35 +547,40 @@ export function CredentialFormPage({
                         [pairId(pair)]: value,
                       }))
                     }
-                    isDisabled={save.isPending || cancel.isPending}
+                    isDisabled={busy}
+                    {...validation.textFieldProps(
+                      pairId(pair),
+                      errors[pairId(pair)],
+                    )}
                   />
                 ))
               )}
-              <SaveError installation={installation} error={saveError} />
+              <SaveError installation={installation} error={shownSaveError} />
               {cancel.error ? (
                 <Alert
                   status="danger"
                   title="Not cancelled"
-                  description={cancel.error.message}
+                  description={credentialOperationErrorMessage(cancel.error)}
                 />
               ) : null}
               <Flex gap="3" justify="end">
                 <Button
                   variant="secondary"
                   onPress={() => cancel.mutate()}
-                  isDisabled={save.isPending || cancel.isPending}
+                  isDisabled={busy}
                 >
                   Cancel request
                 </Button>
                 <Button
                   variant="primary"
-                  onPress={() => save.mutate()}
-                  isDisabled={
-                    pairs.length === 0 ||
-                    missing ||
-                    save.isPending ||
-                    cancel.isPending
-                  }
+                  onPress={() => {
+                    if (pairs.some(pair => errors[pairId(pair)])) {
+                      validation.reveal();
+                      return;
+                    }
+                    save.mutate();
+                  }}
+                  isDisabled={busy || pairs.length === 0}
                 >
                   {save.isPending ? 'Saving…' : 'Save'}
                 </Button>
@@ -492,7 +588,7 @@ export function CredentialFormPage({
             </Flex>
           </PageSection>
         ) : null}
-        {!pending && backLink ? <Flex>{backLink}</Flex> : null}
+        {!takesValues && !finishes && backLink ? <Flex>{backLink}</Flex> : null}
       </Flex>
     </ShellPage>
   );

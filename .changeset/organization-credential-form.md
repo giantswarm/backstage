@@ -15,16 +15,20 @@ An Agent Platform organization's credentials are entered on the Dev Portal's cre
   chart's `agentManager.route`) or
   `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
   is validated and never logged or echoed; `If-Match` is required on POST and
-  DELETE; every answer is `Cache-Control: no-store`; refusals keep
-  agent-manager's `code`.
-- agent-platform: `/organizations/<installation>/<parent>/<name>/credentials?operation=<id>`,
-  the link agent-manager's `credentials.uiURL` names, shows what the value is
-  for (the object that asked, the other objects that read it, the origins it
-  is sent to, and the pull request's repository in commit mode) before it
-  takes a value, saves it once with the confirmation's version, and never
-  shows it back. A changed request is read again; a commit without the GitHub
-  grant offers the connection. The Models tab's Add model and Replace key,
-  and the Connectors tab's Replace credential, ask agent-manager as the person
-  and open the form for the request it prepares.
+  DELETE; every answer is `Cache-Control: no-store`; refusals are the
+  backend's error body with agent-manager's `code`. A save that runs past
+  120 s answers 504 `outcome_unknown`.
+- agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
+  the link agent-manager's `credentials.uiURL` names
+  (`…/credentials/{operation}`), shows what the value is for (the
+  organization agent-manager prepared it for, refusing a link that names
+  another, the object that asked, the other objects that read it, where it
+  is sent, and the pull request's repository in commit mode) before it takes
+  a value, saves it once with the confirmation's version, and never shows it
+  back. A changed request is read again; a save interrupted on
+  agent-manager's side is finished from the page; a commit without the
+  GitHub grant offers the connection. The Models tab's Add model and Replace
+  key, and the Connectors tab's Replace credential, ask agent-manager as the
+  person and open the form for the request it prepares.
 - analytics-react: `AgentPlatform.organizationCredentialSaved`.
-- app: the form's page view.
+- app: the form's page view, without the request's id.

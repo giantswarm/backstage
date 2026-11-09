@@ -787,11 +787,14 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       route = '/organizations';
       break;
 
-    // One organization's credential form; the request it is for is its
-    // query (`?operation=`), which no attribute carries.
-    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+\/credentials$/.test(pathname):
+    // The credential form of one organization's request; the request's id
+    // (agent-manager's operation) stays out of every attribute.
+    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+\/credentials\/[^/]+$/.test(
+      pathname,
+    ):
       payload = { page: 'Organization credential form' };
-      route = '/organizations/:installation/:parent/:name/credentials';
+      route =
+        '/organizations/:installation/:parent/:name/credentials/:operation';
       break;
 
     case /^\/organizations\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {

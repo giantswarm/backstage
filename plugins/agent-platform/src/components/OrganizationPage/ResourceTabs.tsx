@@ -93,22 +93,48 @@ function AddModelDialog({
   const [provider, setProvider] = useState<string>(LISTENER_PROVIDERS[0]);
   const [model, setModel] = useState('');
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
-  const nameError =
-    name && !NAME_PATTERN.test(name)
-      ? 'Lower-case letters, digits and dashes, starting and ending with a letter or a digit.'
-      : undefined;
+  const validation = useFieldValidation(scope, { isOpen });
+  const trimmedName = name.trim();
+  const trimmedModel = model.trim();
+  let nameError: string | undefined;
+  if (!trimmedName) {
+    nameError = 'Enter a name for the model.';
+  } else if (!NAME_PATTERN.test(trimmedName)) {
+    nameError =
+      'Lower-case letters, digits and dashes, starting and ending with a letter or a digit.';
+  }
+  const modelError = trimmedModel
+    ? undefined
+    : "Enter the provider's model id.";
+  const close = (open: boolean) => {
+    if (!open) {
+      setName('');
+      setModel('');
+      setProvider(LISTENER_PROVIDERS[0]);
+    }
+    onOpenChange(open);
+  };
   return (
     <ConfirmDialog
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
+      onOpenChange={close}
       title="Add a model"
       confirmLabel="Continue to the key"
       busyLabel="Preparing…"
       isBusy={request.isPending}
-      isConfirmDisabled={!name || !model || Boolean(nameError)}
       error={request.error?.message}
-      onConfirm={() => request.mutate({ kind: 'model', name, provider, model })}
+      onConfirm={() => {
+        if (nameError || modelError) {
+          validation.reveal();
+          return;
+        }
+        request.mutate({
+          kind: 'model',
+          name: trimmedName,
+          provider,
+          model: trimmedModel,
+        });
+      }}
     >
       <Flex direction="column" gap="3" ref={scope}>
         <TextField
@@ -136,6 +162,7 @@ function AddModelDialog({
           isRequired
           value={model}
           onChange={setModel}
+          {...validation.textFieldProps('model', modelError)}
         />
         <Text color="secondary">
           You enter the organization's key for it on the next page. It is never

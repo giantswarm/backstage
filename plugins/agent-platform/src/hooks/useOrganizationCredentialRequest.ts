@@ -28,7 +28,8 @@ export type CredentialRequest =
  * form link, and the person is taken to the portal's own form for it (the
  * operation's id only, never the link itself). An answer without a request
  * (the credential already exists) is a finished write: the lists are read
- * again.
+ * again. A request whose link is not the portal's form is a failure the
+ * person sees, never a silent no-op.
  */
 export function useOrganizationCredentialRequest(
   installation: string,
@@ -39,72 +40,88 @@ export function useOrganizationCredentialRequest(
   const navigate = useNavigate();
   const formLink = useRouteRef(organizationCredentialsRouteRef);
 
-  return useTrackedMutation<CredentialResourceResult, Error, CredentialRequest>(
-    {
-      event: null,
-      untrackedReason:
-        'prepares a credential request; the save on the credential form is the tracked write',
-      mutationFn: request => {
-        if (!client) {
-          throw new Error(
-            'agent-manager is not reachable on this installation.',
-          );
-        }
-        const { namespace } = organization;
-        const requestId = crypto.randomUUID();
-        switch (request.kind) {
-          case 'model':
-            return client.setOrganizationModel({
-              namespace,
-              name: request.name,
-              provider: request.provider,
-              model: request.model,
-              requestId,
-            });
-          case 'model-key':
-            return client.setOrganizationModel({
-              namespace,
-              name: request.name,
-              replaceCredential: true,
-              requestId,
-            });
-          default:
-            return client.setOrganizationConnector({
-              namespace,
-              name: request.name,
-              replaceCredential: true,
-              requestId,
-            });
-        }
-      },
-      onSuccess: result => {
-        const operation = (result.credentials ?? [])
-          .map(pair => operationOfFormUrl(pair.formUrl))
-          .find(Boolean);
-        const href = formLink?.({
+  const send = (request: CredentialRequest) => {
+    if (!client) {
+      throw new Error('agent-manager is not reachable on this installation.');
+    }
+    const { namespace } = organization;
+    const requestId = crypto.randomUUID();
+    switch (request.kind) {
+      case 'model':
+        return client.setOrganizationModel({
+          namespace,
+          name: request.name,
+          provider: request.provider,
+          model: request.model,
+          requestId,
+        });
+      case 'model-key':
+        return client.setOrganizationModel({
+          namespace,
+          name: request.name,
+          replaceCredential: true,
+          requestId,
+        });
+      default:
+        return client.setOrganizationConnector({
+          namespace,
+          name: request.name,
+          replaceCredential: true,
+          requestId,
+        });
+    }
+  };
+
+  return useTrackedMutation<
+    { result: CredentialResourceResult; form?: string },
+    Error,
+    CredentialRequest
+  >({
+    event: null,
+    untrackedReason:
+      'prepares a credential request; the save on the credential form is the tracked write',
+    mutationFn: async request => {
+      const result = await send(request);
+      const operation = (result.credentials ?? [])
+        .map(pair => operationOfFormUrl(pair.formUrl))
+        .find(Boolean);
+      const form =
+        operation &&
+        formLink?.({
           installation,
           parent: organization.parent,
           name: organization.organization,
+          operation,
         });
-        if (operation && href) {
-          navigate(`${href}?${new URLSearchParams({ operation })}`);
-          return undefined;
-        }
-        return Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: musterAgentManagerModelConfigsQueryKey(
-              installation,
-              organization.namespace,
-            ),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: musterOrganizationConnectorsQueryKey(
-              installation,
-              organization.namespace,
-            ),
-          }),
-        ]);
-      },
+      const asked = (result.credentials ?? []).some(
+        pair => pair.state === 'missing' || pair.state === 'replace',
+      );
+      if (!form && (result.pending || asked)) {
+        throw new Error(
+          'agent-manager prepared a credential request, but its link is not this portal’s credential form. agent-manager’s credentials.uiURL must end in /organizations/<installation>/{parent}/{organization}/credentials/{operation} of this portal.',
+        );
+      }
+      return { result, form };
     },
-  );
+    onSuccess: ({ form }) => {
+      if (form) {
+        navigate(form);
+        return undefined;
+      }
+      return Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: musterAgentManagerModelConfigsQueryKey(
+            installation,
+            organization.namespace,
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationConnectorsQueryKey(
+            installation,
+            organization.namespace,
+          ),
+        }),
+      ]);
+    },
+  });
 }

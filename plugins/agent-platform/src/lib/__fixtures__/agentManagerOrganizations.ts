@@ -30,6 +30,8 @@ export type OrganizationsScenario = {
     namespace: string;
     destinations: { origin: string; credentialHeader?: string }[];
   }[];
+  /** The form link a prepared credential request answers; the portal's own form by default. */
+  formUrl?: string;
   /** What `remove_organization_member` fails with, as muster passes it on. */
   removeError?: string;
 };
@@ -109,7 +111,9 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
                 secret: `tenant-credential-${String(args.name)}`,
                 key: kind === 'ModelConfig' ? 'apiKey' : 'token',
                 state: args.replaceCredential ? 'replace' : 'missing',
-                formUrl: `https://portal.example.com/organizations/gazelle/org-acme/payments/credentials?operation=${CREDENTIAL_OPERATION}`,
+                formUrl:
+                  scenario.formUrl ??
+                  `https://portal.example.com/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
               },
             ],
           };

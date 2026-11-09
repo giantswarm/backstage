@@ -136,12 +136,42 @@ export function otherReferences(
   );
 }
 
+/** Endpoint fields of a ModelConfig's provider block (`spec.<provider>.baseUrl`). */
+const ENDPOINT_FIELDS = new Set(['baseUrl', 'baseURL', 'endpoint']);
+
+function endpointsOf(spec: Record<string, unknown> | undefined): string[] {
+  const out: string[] = [];
+  for (const value of Object.values(spec ?? {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [field, inner] of Object.entries(value)) {
+        if (ENDPOINT_FIELDS.has(field) && typeof inner === 'string' && inner) {
+          out.push(inner);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /**
- * Where the value is sent, as far as the organization's objects say: the
- * origins of the egress policies and the URLs of the connectors that read it.
+ * Where the value is sent, as far as the organization's objects say: a
+ * model's provider and its endpoint, the URLs of the connectors and the
+ * origins of the egress policies that read it.
  */
 export function destinations(operation: CredentialOperation): string[] {
   const out = new Set<string>();
+  for (const change of operation.changes ?? []) {
+    const spec = change.object?.spec;
+    if (change.object?.kind === 'ModelConfig') {
+      const provider = spec?.provider;
+      const endpoints = endpointsOf(spec);
+      if (endpoints.length > 0) {
+        endpoints.forEach(endpoint => out.add(endpoint));
+      } else if (typeof provider === 'string') {
+        out.add(`${provider}'s default endpoint`);
+      }
+    }
+  }
   for (const ref of operation.references ?? []) {
     for (const origin of ref.origins ?? []) {
       out.add(origin);
@@ -153,10 +183,13 @@ export function destinations(operation: CredentialOperation): string[] {
   return [...out].sort();
 }
 
+/** The portal's form path, as `credentials.uiURL` names it: `…/credentials/<operation>`. */
+const FORM_PATH = /\/credentials\/([a-f0-9]{48})$/;
+
 /**
- * The operation id of an agent-manager form link (`credentials[].formUrl` or
- * a URL elicitation's url), from its `operation` query parameter. Only the id
- * is taken: the portal builds its own link, never follows the absolute URL.
+ * The operation id of an agent-manager form link (`credentials[].formUrl`),
+ * from the portal's own form path. Only the id is taken: the portal builds
+ * its own link, never follows the absolute URL.
  */
 export function operationOfFormUrl(
   url: string | undefined,
@@ -165,8 +198,7 @@ export function operationOfFormUrl(
     return undefined;
   }
   try {
-    const id = new URL(url).searchParams.get('operation') ?? undefined;
-    return id && CREDENTIAL_OPERATION_PATTERN.test(id) ? id : undefined;
+    return FORM_PATH.exec(new URL(url).pathname)?.[1];
   } catch {
     return undefined;
   }

@@ -29,7 +29,10 @@ const config = new ConfigReader({
 const OPERATION = 'a1'.repeat(24);
 const SECRET_VALUE = 'sk-ant-do-not-echo';
 
-function app(fetchFn: typeof fetch) {
+function app(
+  fetchFn: typeof fetch,
+  timeouts: { readTimeoutMs?: number; saveTimeoutMs?: number } = {},
+) {
   const logger = mockServices.logger.mock();
   const middleware = MiddlewareFactory.create({
     logger,
@@ -37,7 +40,7 @@ function app(fetchFn: typeof fetch) {
   });
   return express()
     .use(express.json({ limit: '256kb' }))
-    .use(createCredentialOperationsRouter({ config, fetchFn }))
+    .use(createCredentialOperationsRouter({ config, fetchFn, ...timeouts }))
     .use(middleware.error());
 }
 
@@ -161,6 +164,61 @@ describe('the credential operations', () => {
       .set(AGENT_MANAGER_AUTH_HEADER, 'id-token');
     expect(res.status).toBe(502);
     expect(res.body.error.code).toBe('backend_error');
+  });
+
+  it('answers a save that runs past its time as an unknown outcome, not a failure', async () => {
+    const fetchFn = jest.fn(
+      (_url: any, init: any) =>
+        new Promise<Response>((_resolve, reject) =>
+          init.signal.addEventListener('abort', () =>
+            reject(init.signal.reason),
+          ),
+        ),
+    );
+    const res = await request(
+      app(fetchFn as unknown as typeof fetch, { saveTimeoutMs: 20 }),
+    )
+      .post(path)
+      .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+      .set('If-Match', '"7"')
+      .send({
+        values: [
+          {
+            secret: 'tenant-credential-claude',
+            key: 'apiKey',
+            value: SECRET_VALUE,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(504);
+    expect(res.body.error).toMatchObject({
+      name: 'AgentManagerError',
+      code: 'outcome_unknown',
+    });
+    expect(res.body.response).toEqual({ statusCode: 504 });
+    expect(JSON.stringify(res.body)).not.toContain(SECRET_VALUE);
+  });
+
+  it('answers 502 for a confirmation without its version, or a body that is not JSON', async () => {
+    const noEtag = mockFetch(() => json(200, { id: OPERATION }));
+    const first = await request(app(noEtag as unknown as typeof fetch))
+      .get(path)
+      .set(AGENT_MANAGER_AUTH_HEADER, 'id-token');
+    expect(first.status).toBe(502);
+
+    const html = mockFetch(
+      () =>
+        new Response('<html>gateway</html>', {
+          status: 200,
+          headers: { ETag: '"7"' },
+        }),
+    );
+    const second = await request(app(html as unknown as typeof fetch))
+      .get(path)
+      .set(AGENT_MANAGER_AUTH_HEADER, 'id-token');
+    expect(second.status).toBe(502);
+    expect(second.body.error.code).toBe('backend_error');
   });
 
   it('cancels with If-Match', async () => {

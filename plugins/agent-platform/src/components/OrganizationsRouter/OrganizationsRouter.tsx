@@ -20,8 +20,8 @@ function OrganizationRoute() {
 }
 
 function CredentialFormRoute() {
-  const { installation, parent, name } = useParams();
-  if (!installation || !parent || !name) {
+  const { installation, parent, name, operation } = useParams();
+  if (!installation || !parent || !name || !operation) {
     return null;
   }
   return (
@@ -29,6 +29,7 @@ function CredentialFormRoute() {
       installation={installation}
       parent={parent}
       name={name}
+      operation={operation}
     />
   );
 }
@@ -36,8 +37,8 @@ function CredentialFormRoute() {
 /**
  * The pages under `/organizations`: the bare path lists the organizations
  * the person belongs to, `<installation>/<parent>/<name>` is one
- * organization's page (its tabs below it), and its `credentials` the
- * credential form of one request; anything else goes to the list.
+ * organization's page (its tabs below it), and its `credentials/<operation>`
+ * the credential form of one request; anything else goes to the list.
  * Its own `PageHeaderActionsProvider`, since the page renders without the
  * app's page layout (`noHeader`).
  */
@@ -49,7 +50,7 @@ export function OrganizationsRouter() {
           <Routes>
             <Route index element={<OrganizationsIndexPage />} />
             <Route
-              path=":installation/:parent/:name/credentials"
+              path=":installation/:parent/:name/credentials/:operation"
               element={<CredentialFormRoute />}
             />
             <Route
