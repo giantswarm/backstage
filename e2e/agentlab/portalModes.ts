@@ -45,6 +45,7 @@ export const SHELL_SPECS = [
   'mcp-servers.spec.ts',
   'mcp-sign-in-row.spec.ts',
   'notification-inbox.spec.ts',
+  'organization-credentials.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
   'new-agent-draft.spec.ts',
