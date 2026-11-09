@@ -165,7 +165,7 @@ describe('createSkillPullRequest', () => {
     const calls = mockGithub({
       ...happyHandlers,
       [`GET ${API}/git/ref/heads/develop`]: () => ({ status: 200, body: {} }),
-      [`GET ${API}/commits/develop`]: () => ({
+      [`GET ${API}/commits/refs%2Fheads%2Fdevelop`]: () => ({
         status: 200,
         body: { sha: HEAD_A },
       }),

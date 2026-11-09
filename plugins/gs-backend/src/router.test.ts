@@ -491,6 +491,9 @@ describe('GET /agent-skills', () => {
   /** What the route answers: the listing, when it was read, not the files. */
   const answered = {
     ...listing,
+    // github.com takes pull requests, the lab's git server does not.
+    proposable: expect.any(Boolean),
+    path: '',
     readAt: expect.any(String),
     stale: false,
   };
@@ -685,6 +688,8 @@ describe('GET /agent-skills', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         ...listing,
+        proposable: true,
+        path: '',
         readAt: new Date(start).toISOString(),
         stale: true,
       });
@@ -2120,6 +2125,34 @@ describe('skill repositories with ref, path and readOnly', () => {
     expect(response.body.readOnly).toBe(true);
     expect(response.body.commit).toBe(COMMIT);
     expect(response.body.skills).toEqual([{ ...skill, readOnly: true }]);
+  });
+
+  it('says which source takes pull requests, and where it scans', async () => {
+    const app = await buildSourcesApp();
+    const platform = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: PLATFORM });
+    const team = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: TEAM });
+    jest.mocked(discoverAgentSkills).mockResolvedValueOnce({
+      skills: [],
+      ref: 'v2',
+      refKind: 'tag',
+      commit: COMMIT,
+      truncated: false,
+      contents: new Map(),
+    });
+    const tagged = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: TEAM, ref: 'v2' });
+
+    expect([platform.body.proposable, platform.body.path]).toEqual([
+      false,
+      'skills',
+    ]);
+    expect([team.body.proposable, team.body.path]).toEqual([true, 'skills']);
+    expect(tagged.body.proposable).toBe(false);
   });
 
   it('refuses a skill outside the configured path', async () => {

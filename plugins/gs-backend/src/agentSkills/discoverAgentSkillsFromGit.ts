@@ -19,10 +19,11 @@ import {
   RefKind,
   SkillDiscoverySnapshot,
 } from './discoverAgentSkills';
-import { pluginManifestPaths, pluginsOf } from './discoverPlugins';
+import { pluginsOf } from './discoverPlugins';
 import {
   assignSkillFiles,
   gitBlobSha,
+  parseConfiguredRef,
   MAX_INLINE_FILE_BYTES,
   repositoryFilePath,
   SkillFileList,
@@ -76,34 +77,53 @@ export interface ServerRef {
   peeled?: string;
 }
 
-/** A full commit id (SHA-1 or SHA-256). */
-const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+/** A full SHA-1 commit id: isomorphic-git fetches no SHA-256 one. */
+const SHA1_RE = /^[0-9a-f]{40}$/;
 
 /**
- * What a configured ref is on the server and what to fetch for it: a commit
- * id is fetched as itself (the server must allow it, as GitHub and Gitea
- * do), a branch or tag by its full name, a branch winning over a tag of the
- * same name (as `git` does). Undefined when the server has no such ref.
+ * What a configured ref is on the server and what to fetch for it, by the
+ * rules the GitHub provider applies (`githubRefKind`): a full commit id is
+ * fetched as itself (the server must allow it, as GitHub and Gitea do);
+ * `refs/heads/<name>` and `refs/tags/<name>` must be that branch or tag; a
+ * plain name must be exactly one of them. Throws a `GitFetchError` for a
+ * name that is both, a SHA-256 commit id and a ref the server does not have.
  */
 export function classifyRemoteRef(
   refs: ServerRef[],
   ref: string,
-): { kind: RefKind; fetchRef: string; oid: string } | undefined {
-  if (COMMIT_RE.test(ref)) {
-    return { kind: 'commit', fetchRef: ref, oid: ref };
+  repoUrl: string,
+): { kind: RefKind; fetchRef: string; oid: string } {
+  const { form, name } = parseConfiguredRef(ref);
+  if (form === 'commit') {
+    if (!SHA1_RE.test(name)) {
+      throw new GitFetchError(
+        400,
+        `Ref ${ref} is a SHA-256 commit id, which is not supported for ${repoUrl}; configure a branch or tag.`,
+      );
+    }
+    return { kind: 'commit', fetchRef: name, oid: name };
   }
   const byName = new Map(refs.map(r => [r.ref, r] as const));
-  const branch = byName.get(`refs/heads/${ref}`);
+  const branch = form === 'tag' ? undefined : byName.get(`refs/heads/${name}`);
+  const tag = form === 'branch' ? undefined : byName.get(`refs/tags/${name}`);
+  if (branch && tag) {
+    throw new GitFetchError(
+      422,
+      `Ref ${ref} is both a branch and a tag of ${repoUrl}: configure refs/heads/${name} or refs/tags/${name}.`,
+    );
+  }
   if (branch) {
     return { kind: 'branch', fetchRef: branch.ref, oid: branch.oid };
   }
-  const tag = byName.get(`refs/tags/${ref}`);
   if (tag) {
     // An annotated tag's commit is its peeled id.
     const peeled = tag.peeled ?? byName.get(`${tag.ref}^{}`)?.oid;
     return { kind: 'tag', fetchRef: tag.ref, oid: peeled ?? tag.oid };
   }
-  return undefined;
+  throw new GitFetchError(
+    404,
+    `Ref ${ref} is not a branch, tag or full commit id of ${repoUrl}.`,
+  );
 }
 
 /**
@@ -170,8 +190,17 @@ function abortableBody(
 const isomorphicGitClient: GitClient = {
   async clone(dir, repoUrl, ref, signal) {
     const client = signal ? abortableHttp(signal) : http;
-    if (ref) {
-      const target = classifyRemoteRef(
+    // A commit id or a branch named in full is fetched at once; a plain name
+    // or a tag is looked up in the server's refs first (one more round trip),
+    // which a plain name needs to tell a branch from a tag of the same name.
+    const configured = ref ? parseConfiguredRef(ref) : undefined;
+    let target: { kind: RefKind; fetchRef: string; oid?: string } | undefined;
+    if (ref && configured?.form === 'commit') {
+      target = classifyRemoteRef([], ref, repoUrl);
+    } else if (ref && configured?.form === 'branch') {
+      target = { kind: 'branch', fetchRef: ref };
+    } else if (ref) {
+      target = classifyRemoteRef(
         await git.listServerRefs({
           http: client,
           url: repoUrl,
@@ -179,32 +208,34 @@ const isomorphicGitClient: GitClient = {
           peelTags: true,
         }),
         ref,
+        repoUrl,
       );
-      if (!target) {
+    }
+    if (ref && target && (target.kind !== 'branch' || !target.oid)) {
+      // Exactly that ref, depth 1, checked out detached: `git.clone` resolves
+      // a short name tag-first and only checks out branches.
+      await git.init({ fs, dir });
+      await git.addRemote({ fs, dir, remote: 'origin', url: repoUrl });
+      const { fetchHead } = await git.fetch({
+        fs,
+        http: client,
+        dir,
+        remote: 'origin',
+        ref: target.fetchRef,
+        singleBranch: true,
+        depth: 1,
+        tags: false,
+      });
+      const oid = target.oid ?? fetchHead;
+      if (!oid) {
         throw new GitFetchError(
           404,
-          `Ref ${ref} is not a branch or tag of ${repoUrl}.`,
+          `Ref ${ref} is not a branch of ${repoUrl}.`,
         );
       }
-      if (target.kind !== 'branch') {
-        // A tag or commit: fetch exactly it (depth 1) and check it out
-        // detached; `git.clone` only checks out branches.
-        await git.init({ fs, dir });
-        await git.addRemote({ fs, dir, remote: 'origin', url: repoUrl });
-        await git.fetch({
-          fs,
-          http: client,
-          dir,
-          remote: 'origin',
-          ref: target.fetchRef,
-          singleBranch: true,
-          depth: 1,
-          tags: false,
-        });
-        await git.checkout({ fs, dir, ref: target.oid, force: true });
-        const commit = await git.resolveRef({ fs, dir, ref: 'HEAD' });
-        return { commit, ref, refKind: target.kind };
-      }
+      await git.checkout({ fs, dir, ref: oid, force: true });
+      const commit = await git.resolveRef({ fs, dir, ref: 'HEAD' });
+      return { commit, ref, refKind: target.kind };
     }
     await git.clone({
       fs,
@@ -406,24 +437,18 @@ async function walkCheckout(
   }
 
   if (scanPath) {
-    // Only below `scanPath`, still reported repository-relative. A symlink on
-    // the way is not followed; a missing directory has no skills. A plugin
-    // rooted above it keeps its manifest (its skills can lie below).
+    // Only below `scanPath`, still reported repository-relative; nothing
+    // above it, plugin manifests included. A symlink on the way is not
+    // followed, and a missing directory is a configuration error.
     let dir = rootDir;
-    let rel = '';
     for (const segment of scanPath.split('/')) {
-      for (const manifest of pluginManifestPaths(rel)) {
-        const file = path.join(rootDir, ...manifest.split('/'));
-        const stat = await lstat(file).catch(() => undefined);
-        if (stat?.isFile()) {
-          files.push({ path: manifest, size: stat.size });
-        }
-      }
-      rel = rel ? `${rel}/${segment}` : segment;
       dir = path.join(dir, segment);
       const stat = await lstat(dir).catch(() => undefined);
       if (!stat?.isDirectory()) {
-        return { skills, files };
+        throw new GitFetchError(
+          404,
+          `${scanPath} does not exist in the repository.`,
+        );
       }
     }
     await walk(dir, scanPath);

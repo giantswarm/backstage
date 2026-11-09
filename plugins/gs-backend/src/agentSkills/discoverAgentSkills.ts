@@ -4,15 +4,13 @@ import { GithubCredentialsProvider } from '@backstage/integration';
 import { parseFrontmatter } from './frontmatter';
 import {
   assignSkillFiles,
+  COMMIT_ID_RE,
   isBelowPath,
+  parseConfiguredRef,
   SkillFile,
   SkillFileList,
 } from './skillFiles';
-import {
-  DiscoveredPlugin,
-  isPluginManifestAbove,
-  pluginsOf,
-} from './discoverPlugins';
+import { DiscoveredPlugin, pluginsOf } from './discoverPlugins';
 
 /**
  * A skill discovered in a GitHub repository. Each `SKILL.md` file defines one
@@ -85,9 +83,6 @@ export interface DiscoverAgentSkillsResult {
 
 /** What a skill source's ref is: only a branch can take a pull request. */
 export type RefKind = 'branch' | 'tag' | 'commit';
-
-/** A full commit id (SHA-1 or SHA-256). */
-const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
 /**
  * A discovery result plus what it read on the way: the raw `SKILL.md` of each
@@ -333,7 +328,7 @@ async function resolveHeadCommit(
     signal,
   );
   const sha = (await response.text()).trim();
-  if (!/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(sha)) {
+  if (!COMMIT_ID_RE.test(sha)) {
     // The body stays out of the answer: it is whatever GitHub served.
     logger?.debug('GitHub did not answer a commit id', {
       repository: `${owner}/${repo}`,
@@ -348,10 +343,22 @@ async function resolveHeadCommit(
   return sha;
 }
 
+/** The fully qualified ref a configured `ref` of `kind` is read at. */
+function qualifiedRef(ref: string, kind: RefKind): string {
+  const { name } = parseConfiguredRef(ref);
+  if (kind === 'commit') {
+    return name;
+  }
+  return kind === 'branch' ? `refs/heads/${name}` : `refs/tags/${name}`;
+}
+
 /**
- * Whether `ref` names a branch of the repository (`git/ref/heads/<ref>`
- * answers exactly that ref or 404). A commit id is never one; a ref that
- * resolved to a commit but is not a branch is a tag.
+ * What a configured `ref` is on GitHub (`git/ref/heads|tags/<name>` answers
+ * exactly that ref or 404). A full commit id is a commit; `refs/heads/<name>`
+ * and `refs/tags/<name>` must be that branch or tag; a plain name must be
+ * exactly one of them. A name that is both is refused, as is anything else
+ * (a short commit id): the git provider classifies the same way
+ * (`classifyRemoteRef`), so a configuration reads the same commit on both.
  */
 export async function githubRefKind(
   owner: string,
@@ -360,26 +367,51 @@ export async function githubRefKind(
   token: string | undefined,
   signal?: AbortSignal,
 ): Promise<RefKind> {
-  if (COMMIT_RE.test(ref)) {
+  const { form, name } = parseConfiguredRef(ref);
+  if (form === 'commit') {
     return 'commit';
   }
-  try {
-    await githubApiFetch(
-      `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${ref
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/')}`,
-      token,
-      undefined,
-      signal,
-    );
-    return 'branch';
-  } catch (error) {
-    if (error instanceof GitHubApiError && error.status === 404) {
-      return 'tag';
+  const exists = async (namespace: 'heads' | 'tags') => {
+    try {
+      const response = await githubApiFetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/ref/${namespace}/${name
+          .split('/')
+          .map(encodeURIComponent)
+          .join('/')}`,
+        token,
+        undefined,
+        signal,
+      );
+      // Only the status matters: release the connection.
+      await response.body?.cancel();
+      return true;
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.status === 404) {
+        return false;
+      }
+      throw error;
     }
-    throw error;
+  };
+  const [branch, tag] = await Promise.all([
+    form === 'tag' ? false : exists('heads'),
+    form === 'branch' ? false : exists('tags'),
+  ]);
+  if (branch && tag) {
+    throw new GitHubApiError(
+      422,
+      `${ref} is both a branch and a tag of ${owner}/${repo}: configure refs/heads/${name} or refs/tags/${name}.`,
+    );
   }
+  if (branch) {
+    return 'branch';
+  }
+  if (tag) {
+    return 'tag';
+  }
+  throw new GitHubApiError(
+    404,
+    `${ref} is not a branch, tag or full commit id of ${owner}/${repo}.`,
+  );
 }
 
 /**
@@ -525,29 +557,53 @@ export async function discoverAgentSkills(options: {
 
   const branch =
     ref ?? (await resolveDefaultBranch(owner, repo, token, signal));
-  const commit = await resolveHeadCommit(
-    owner,
-    repo,
-    branch,
-    token,
-    logger,
-    signal,
-  );
+  // The default branch is a branch. A configured ref is classified (and read
+  // fully qualified, so a branch and a tag of one name cannot be mixed up)
+  // again only when the commit it points at moved.
+  let refKind: RefKind = 'branch';
+  let commit: string;
+  if (ref === undefined) {
+    commit = await resolveHeadCommit(
+      owner,
+      repo,
+      branch,
+      token,
+      logger,
+      signal,
+    );
+  } else {
+    const known = previous?.ref === ref ? previous.refKind : undefined;
+    const atKnown = known
+      ? await resolveHeadCommit(
+          owner,
+          repo,
+          qualifiedRef(ref, known),
+          token,
+          logger,
+          signal,
+        ).catch(() => undefined)
+      : undefined;
+    if (known && atKnown !== undefined && atKnown === previous?.commit) {
+      refKind = known;
+      commit = atKnown;
+    } else {
+      refKind = await githubRefKind(owner, repo, ref, token, signal);
+      commit = await resolveHeadCommit(
+        owner,
+        repo,
+        qualifiedRef(ref, refKind),
+        token,
+        logger,
+        signal,
+      );
+    }
+  }
 
   const unchanged =
     previous !== undefined &&
     previous.commit === commit &&
     previous.ref === branch &&
     !previous.truncated;
-  // The default branch is a branch; a configured ref is asked about once per
-  // commit it points at.
-  let refKind: RefKind = 'branch';
-  if (ref !== undefined) {
-    refKind =
-      unchanged && previous.refKind
-        ? previous.refKind
-        : await githubRefKind(owner, repo, ref, token, signal);
-  }
 
   let skillDirs: string[];
   let files: Map<string, SkillFileList>;
@@ -562,18 +618,21 @@ export async function discoverAgentSkills(options: {
   } else {
     const tree = await readGitHubTree(owner, repo, commit, token, signal);
     const scanPath = options.scanPath ?? '';
+    // Nothing above or beside the scanned directory, plugin manifests
+    // included: a plugin rooted above it would pin the whole repository.
     const entries = tree.entries.filter(entry =>
       isBelowPath(entry.path, scanPath),
     );
+    if (scanPath && entries.length === 0 && !tree.truncated) {
+      // A misspelt `path` is a configuration error, not an empty source.
+      throw new GitHubApiError(
+        404,
+        `${scanPath} does not exist in ${owner}/${repo} at ${branch}.`,
+      );
+    }
     ({ skillDirs, files } = skillFilesFromTree(entries, tree.truncated));
-    // A plugin rooted above the scanned directory keeps its manifest.
-    treePaths = tree.entries
-      .filter(
-        entry =>
-          entry.type === 'blob' &&
-          (isBelowPath(entry.path, scanPath) ||
-            isPluginManifestAbove(entry.path, scanPath)),
-      )
+    treePaths = entries
+      .filter(entry => entry.type === 'blob')
       .map(entry => entry.path);
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing.

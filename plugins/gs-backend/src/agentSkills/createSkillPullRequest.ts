@@ -319,6 +319,7 @@ export async function createSkillPullRequest(
       token,
     );
     if (branchResponse.status === 404) {
+      await branchResponse.body?.cancel();
       throw new GitHubApiError(
         422,
         `${options.baseBranch} is not a branch of ${owner}/${repo}, so skills cannot be proposed to it.`,
@@ -327,13 +328,18 @@ export async function createSkillPullRequest(
     if (!branchResponse.ok) {
       await refuse(`resolve ${owner}/${repo}@${base}`, branchResponse);
     }
+    // Only the status matters: release the connection.
+    await branchResponse.body?.cancel();
   }
 
   // The head of the default branch, as a bare SHA whatever kind of ref it is.
   // Resolved first, so the file checked below and the branch created from it
   // are the same commit.
+  // A configured branch is named in full: a tag of the same name is not it.
   const headResponse = await githubRequest(
-    `${api}/commits/${encodeURIComponent(base)}`,
+    `${api}/commits/${encodeURIComponent(
+      options.baseBranch ? `refs/heads/${base}` : base,
+    )}`,
     token,
   );
   if (!headResponse.ok) {

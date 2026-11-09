@@ -55,28 +55,6 @@ function manifestRoot(path: string, manifest: string): string | undefined {
 }
 
 /**
- * Whether `path` is a plugin manifest whose plugin root is a directory above
- * `scanPath` (the repository root included): such a plugin's skills can lie
- * below the scanned directory, so its manifest is read with them.
- */
-export function isPluginManifestAbove(path: string, scanPath: string): boolean {
-  if (scanPath === '') {
-    return false;
-  }
-  const root =
-    manifestRoot(path, CLAUDE_MANIFEST) ??
-    manifestRoot(path, AGENT_PLUGINS_MANIFEST);
-  return root !== undefined && (root === '' || scanPath.startsWith(`${root}/`));
-}
-
-/** The plugin manifest paths a plugin rooted at `dir` may have. */
-export function pluginManifestPaths(dir: string): string[] {
-  return [AGENT_PLUGINS_MANIFEST, CLAUDE_MANIFEST].map(manifest =>
-    dir ? `${dir}/${manifest}` : manifest,
-  );
-}
-
-/**
  * The plugins of a repository from its file paths (a git tree or a checkout
  * walk, repository-relative) and the skills discovery found in it — no read
  * beyond the listing the skills came from. An Agent Plugins package's skills

@@ -1,10 +1,11 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import { JsonValue } from '@backstage/types';
+import { isBelowPath, parseConfiguredRef } from './skillFiles';
 import {
-  findSkillRepository,
-  isBelowPath,
   normalizeScanPath,
+  pullRequestBase,
   readSkillRepositories,
+  skillRepositoriesByKey,
 } from './skillRepositories';
 
 function configWith(repositories: JsonValue) {
@@ -62,11 +63,39 @@ describe('readSkillRepositories', () => {
         ]),
         logger,
       ),
-    ).toEqual([{ url: 'https://github.com/a/c', path: '', readOnly: false }]);
-    expect(logger.error).toHaveBeenCalledTimes(4);
-    expect(logger.error).toHaveBeenLastCalledWith(
-      'agentPlatform.skills.repositories[4] ignored: https://github.com/A/c.git/ is already listed',
+    ).toEqual([{ url: 'https://github.com/a/c', path: '', readOnly: true }]);
+    // A handled outcome: info, the URL and index in metadata.
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledTimes(4);
+    expect(logger.info).toHaveBeenLastCalledWith(
+      'Skill repository entry ignored',
+      expect.objectContaining({
+        index: 4,
+        url: 'https://github.com/A/c.git/',
+        reason: 'url is already listed',
+      }),
     );
+  });
+
+  it('keeps a URL read-only when any entry for it says so', () => {
+    expect(
+      readSkillRepositories(
+        configWith([
+          'https://github.com/giantswarm/agent-platform',
+          {
+            url: 'https://github.com/giantswarm/agent-platform',
+            path: 'skills',
+            readOnly: true,
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        url: 'https://github.com/giantswarm/agent-platform',
+        path: '',
+        readOnly: true,
+      },
+    ]);
   });
 
   it.each([
@@ -84,19 +113,44 @@ describe('readSkillRepositories', () => {
     expect(readSkillRepositories(mockServices.rootConfig())).toEqual([]);
   });
 
-  it('finds an entry by any spelling of its URL', () => {
-    const config = configWith([
-      { url: 'https://github.com/giantswarm/agent-platform', readOnly: true },
+  it('keys the entries the way the caches key a URL', () => {
+    const byKey = skillRepositoriesByKey(
+      configWith([
+        { url: 'https://github.com/GiantSwarm/agent-platform.git/' },
+      ]),
+    );
+    expect([...byKey.keys()]).toEqual([
+      'https://github.com/giantswarm/agent-platform',
     ]);
-    expect(
-      findSkillRepository(
-        config,
-        'https://github.com/GiantSwarm/agent-platform.git/',
-      )?.readOnly,
-    ).toBe(true);
-    expect(
-      findSkillRepository(config, 'https://github.com/x/y'),
-    ).toBeUndefined();
+  });
+});
+
+describe('pullRequestBase', () => {
+  const at = (ref?: string) => ({
+    url: 'https://github.com/a/b',
+    path: '',
+    readOnly: false,
+    ...(ref ? { ref } : {}),
+  });
+  it.each([
+    [undefined, undefined],
+    ['develop', 'develop'],
+    ['refs/heads/develop', 'develop'],
+    ['refs/tags/v1', null],
+    ['a'.repeat(40), null],
+  ])('%p takes pull requests into %p', (ref, expected) => {
+    expect(pullRequestBase(at(ref))).toBe(expected);
+  });
+});
+
+describe('parseConfiguredRef', () => {
+  it.each([
+    ['main', { form: 'name', name: 'main' }],
+    ['refs/heads/main', { form: 'branch', name: 'main' }],
+    ['refs/tags/v1', { form: 'tag', name: 'v1' }],
+    ['b'.repeat(40), { form: 'commit', name: 'b'.repeat(40) }],
+  ])('%p is %p', (ref, expected) => {
+    expect(parseConfiguredRef(ref)).toEqual(expected);
   });
 });
 

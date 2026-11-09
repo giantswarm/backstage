@@ -2,10 +2,8 @@ import type {
   LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
-import { isSkillFilePath } from './skillFiles';
+import { isSkillFilePath, parseConfiguredRef } from './skillFiles';
 import { repositoryKey } from './skillDiscoveryCache';
-
-export { isBelowPath } from './skillFiles';
 
 /** The config key of the skill sources. */
 export const SKILL_REPOSITORIES_KEY = 'agentPlatform.skills.repositories';
@@ -28,9 +26,6 @@ export interface SkillRepository {
   readOnly: boolean;
 }
 
-/** A full commit id (SHA-1 or SHA-256). */
-export const COMMIT_ID_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
-
 /**
  * A configured `path`, repository-relative: `.` and empty segments dropped
  * (`./skills//x/` is `skills/x`, `.` is the root); undefined for a path that
@@ -49,7 +44,10 @@ export function normalizeScanPath(path: string): string | undefined {
  * Every well-formed entry of `agentPlatform.skills.repositories`. A malformed
  * entry (no URL, a path with `..`) and a later entry for a URL already listed
  * (compared by `repositoryKey`) are left out rather than failing every skill
- * route; with `logger` each one left out is logged as an error.
+ * route; with `logger` each one is logged (at info: a handled outcome). Any
+ * entry's `readOnly: true` makes the kept entry for its URL read-only, so the
+ * order of merged config layers cannot open a read-only source to pull
+ * requests.
  */
 export function readSkillRepositories(
   config: RootConfigService,
@@ -61,8 +59,15 @@ export function readSkillRepositories(
   }
   const repositories: SkillRepository[] = [];
   const seen = new Set<string>();
-  const drop = (index: number, why: string) =>
-    logger?.error(`${SKILL_REPOSITORIES_KEY}[${index}] ignored: ${why}`);
+  // Any entry marking a URL read-only, the ones left out included.
+  const readOnlyKeys = new Set<string>();
+  const drop = (index: number, reason: string, url?: string) =>
+    logger?.info('Skill repository entry ignored', {
+      key: SKILL_REPOSITORIES_KEY,
+      index,
+      reason,
+      ...(url ? { url } : {}),
+    });
   raw.forEach((entry, index) => {
     let parsed: SkillRepository | undefined;
     if (typeof entry === 'string') {
@@ -71,9 +76,12 @@ export function readSkillRepositories(
         : undefined;
     } else if (typeof entry === 'object' && entry !== null) {
       const { url, ref, path, readOnly } = entry as Record<string, unknown>;
+      if (readOnly === true && typeof url === 'string' && url.trim()) {
+        readOnlyKeys.add(repositoryKey(url));
+      }
       const scanPath = normalizeScanPath(typeof path === 'string' ? path : '');
       if (scanPath === undefined) {
-        drop(index, `path ${String(path)} is not a relative directory`);
+        drop(index, 'path is not a relative directory', String(url));
         return;
       }
       parsed =
@@ -93,25 +101,47 @@ export function readSkillRepositories(
     }
     const key = repositoryKey(parsed.url);
     if (seen.has(key)) {
-      drop(index, `${parsed.url} is already listed`);
+      drop(index, 'url is already listed', parsed.url);
       return;
     }
     seen.add(key);
     repositories.push(parsed);
   });
-  return repositories;
+  return repositories.map(repository =>
+    readOnlyKeys.has(repositoryKey(repository.url))
+      ? { ...repository, readOnly: true }
+      : repository,
+  );
 }
 
 /**
- * The configured entry a caller-named repository URL is, compared the way the
- * caches key it (case-insensitive, tolerating `.git` and trailing slashes).
+ * The configured entries by `repositoryKey`, parsed once: the entry a
+ * caller-named repository URL is, compared the way the caches key it
+ * (case-insensitive, tolerating `.git` and trailing slashes).
  */
-export function findSkillRepository(
+export function skillRepositoriesByKey(
   config: RootConfigService,
-  repoUrl: string,
-): SkillRepository | undefined {
-  const target = repositoryKey(repoUrl);
-  return readSkillRepositories(config).find(
-    repository => repositoryKey(repository.url) === target,
+  logger?: LoggerService,
+): Map<string, SkillRepository> {
+  return new Map(
+    readSkillRepositories(config, logger).map(
+      repository => [repositoryKey(repository.url), repository] as const,
+    ),
   );
+}
+
+/**
+ * The branch pull requests into `repository` target: its configured branch,
+ * else the default branch (`undefined`). `null` when its ref is a commit or
+ * names a tag (`refs/tags/…`); a plain name that is a tag is refused by
+ * `createSkillPullRequest`, which asks GitHub.
+ */
+export function pullRequestBase(
+  repository: SkillRepository,
+): string | undefined | null {
+  if (!repository.ref) {
+    return undefined;
+  }
+  const { form, name } = parseConfiguredRef(repository.ref);
+  return form === 'branch' || form === 'name' ? name : null;
 }

@@ -101,9 +101,15 @@ describe('discoverAgentSkills', () => {
       if (url.includes('/commits/')) {
         return { ok: true, text: async () => `${HEAD}\n` } as Response;
       }
-      if (url.includes('/git/ref/heads/')) {
-        // Only `main` is a branch; any other ref is a tag.
-        return url.endsWith('/heads/main')
+      if (url.includes('/git/ref/')) {
+        // `main` (and `both`) are branches, `v1.2.3` (and `both`) tags.
+        const found = [
+          '/heads/main',
+          '/heads/both',
+          '/tags/v1.2.3',
+          '/tags/both',
+        ].some(ref => url.endsWith(ref));
+        return found
           ? ({ ok: true, json: async () => ({}) } as Response)
           : ({ ok: false, status: 404, statusText: 'Not Found' } as Response);
       }
@@ -140,7 +146,8 @@ describe('discoverAgentSkills', () => {
         { path: 'skills/overview/SKILL.md', type: 'blob' },
         { path: 'skills/overview/refs/a.md', type: 'blob' },
         { path: 'skillset/x/SKILL.md', type: 'blob' },
-        // A plugin rooted above the scanned directory, and one outside it.
+        // A plugin rooted above the scanned directory, and one outside it:
+        // neither is listed.
         { path: 'plugin.json', type: 'blob' },
         { path: 'other/.claude-plugin/plugin.json', type: 'blob' },
       ],
@@ -161,9 +168,7 @@ describe('discoverAgentSkills', () => {
     expect(refKind).toBe('tag');
     expect(skills[0].refKind).toBe('tag');
     expect(commit).toBe(HEAD);
-    expect(plugins?.map(p => [p.path, p.format, p.skills.length])).toEqual([
-      ['', 'agent-plugins', 1],
-    ]);
+    expect(plugins).toEqual([]);
     expect(skills.map(s => [s.path, s.commit, s.fileCount])).toEqual([
       ['skills/overview', HEAD, 2],
     ]);
@@ -172,8 +177,41 @@ describe('discoverAgentSkills', () => {
       fetchMock.mock.calls.some(([url]) => /\/repos\/[^/]+\/[^/]+$/.test(url)),
     ).toBe(false);
     expect(
-      fetchMock.mock.calls.some(([url]) => url.includes('/commits/v1.2.3')),
+      fetchMock.mock.calls.some(([url]) =>
+        url.includes('/commits/refs%2Ftags%2Fv1.2.3'),
+      ),
     ).toBe(true);
+  });
+
+  it('refuses a ref that is both a branch and a tag, or neither', async () => {
+    global.fetch = mockGitHub([{ path: 'a/SKILL.md', type: 'blob' }], {
+      'a/SKILL.md': '---\nname: a\n---\n',
+    }) as unknown as typeof fetch;
+    const discover = (ref: string) =>
+      discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/skills',
+        ref,
+        githubCredentialsProvider: credentialsProvider,
+      });
+
+    await expect(discover('both')).rejects.toMatchObject({ status: 422 });
+    await expect(discover('abc1234')).rejects.toMatchObject({ status: 404 });
+    // Named in full, it is exactly that one.
+    expect((await discover('refs/tags/both')).refKind).toBe('tag');
+  });
+
+  it('refuses a scanPath that does not exist', async () => {
+    global.fetch = mockGitHub([{ path: 'a/SKILL.md', type: 'blob' }], {
+      'a/SKILL.md': '---\nname: a\n---\n',
+    }) as unknown as typeof fetch;
+
+    await expect(
+      discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/skills',
+        scanPath: 'Skills',
+        githubCredentialsProvider: credentialsProvider,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it('says a configured branch is one, and a commit id is a commit', async () => {
@@ -371,10 +409,10 @@ describe('discoverAgentSkills', () => {
     const { skills } = await discoverAgentSkills({
       repoUrl: 'https://github.com/giantswarm/agent-skills',
       githubCredentialsProvider: credentialsProvider,
-      ref: 'v1.2.0',
+      ref: 'v1.2.3',
     });
 
-    expect(skills[0].ref).toBe('v1.2.0');
+    expect(skills[0].ref).toBe('v1.2.3');
     expect(skills[0].commit).toBe(HEAD);
   });
 

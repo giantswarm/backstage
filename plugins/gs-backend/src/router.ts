@@ -43,13 +43,13 @@ import {
 } from './agentSkills/skillDiscoveryCache';
 import { UpstreamReadGuard } from './agentSkills/upstreamReadGuard';
 import {
-  COMMIT_ID_RE,
-  findSkillRepository,
-  isBelowPath,
-  readSkillRepositories,
+  pullRequestBase,
+  skillRepositoriesByKey,
   SkillRepository,
 } from './agentSkills/skillRepositories';
 import {
+  COMMIT_ID_RE,
+  isBelowPath,
   isSkillFilePath,
   MAX_INLINE_FILE_BYTES,
   needsFileBytes,
@@ -106,23 +106,21 @@ export async function createRouter({
   // Every skill read upstream on a cache miss: misses remembered, concurrent
   // reads shared and capped (security audit 1, M2).
   const upstreamReads = new UpstreamReadGuard();
-  // Said once at start: the skill sources left out of the configuration (a
-  // malformed entry, a URL listed twice). The routes read the same list.
-  readSkillRepositories(config, logger);
-
   /**
-   * The entry of `agentPlatform.skills.repositories` a caller-named
-   * repository URL is, compared the way the caches key it (`repositoryKey`:
-   * case-insensitive, tolerating `.git` and trailing slashes); `undefined`
-   * for any other repository. The skill read routes act only on these, and
-   * read the configured URL rather than the caller's spelling of it: this
-   * backend can reach hosts the browser cannot, and reads with the portal's
-   * own GitHub token. An entry may be a plain URL or `{ url, ref, path,
-   * readOnly }` (see `readSkillRepositories`).
+   * The entries of `agentPlatform.skills.repositories`, parsed once (and the
+   * ones left out logged once), by `repositoryKey`. The skill routes act only
+   * on these, looked up the way the caches key a caller-named URL
+   * (case-insensitive, tolerating `.git` and trailing slashes), and read the
+   * configured URL rather than the caller's spelling of it: this backend can
+   * reach hosts the browser cannot, and reads with the portal's own GitHub
+   * token. An entry may be a plain URL or `{ url, ref, path, readOnly }` (see
+   * `readSkillRepositories`).
    */
+  const skillRepositories = skillRepositoriesByKey(config, logger);
   const configuredSkillRepository = (
     repoUrl: string,
-  ): SkillRepository | undefined => findSkillRepository(config, repoUrl);
+  ): SkillRepository | undefined =>
+    skillRepositories.get(repositoryKey(repoUrl));
 
   /** The 404 for a skill outside the configured `path` of its repository. */
   const outsideScanPath = (repository: SkillRepository, path: string) =>
@@ -136,9 +134,6 @@ export async function createRouter({
     new InputError(
       `${repoUrl} is not one of the configured skill repositories`,
     );
-
-  /** A full commit id (SHA-1 or SHA-256). */
-  const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
   /**
    * An optional git ref. Empty (`?ref=`) means the default branch, exactly
@@ -422,7 +417,10 @@ export async function createRouter({
    *   contentReadable } — `contentReadable` is false for a skill whose
    *   SKILL.md the portal could not read (listed from the tree, with the
    *   metadata at hand; the portal cannot show or edit it)
-   * - ref, commit: the ref read and the commit it resolved to
+   * - ref, commit: the ref read and the commit it resolved to; refKind:
+   *   branch, tag or commit, for a configured ref
+   * - proposable: whether the pull-request route takes a skill into this
+   *   source; path: the directory scanned ('' = the whole repository)
    * - truncated: true when some skills may be missing (repo too large)
    * - readAt: when the listing was read upstream (ISO time)
    * - stale: true when an older listing is served because upstream failed
@@ -475,8 +473,19 @@ export async function createRouter({
           ),
         scanPath,
       );
+      // Whether Add skill can target this source: the rules the pull-request
+      // route enforces, said here so the portal does not repeat them. Only
+      // for the configured ref; a caller's own `ref` takes no pull requests.
+      const proposable =
+        !readOnly &&
+        isGitHub &&
+        ref === repository.ref &&
+        (result.refKind ?? 'branch') === 'branch' &&
+        pullRequestBase(repository) !== null;
       res.json({
         ...result,
+        proposable,
+        path: scanPath,
         // A read-only source lists its skills; the portal proposes no
         // changes to them (the pull-request route refuses).
         ...(readOnly
@@ -516,7 +525,7 @@ export async function createRouter({
     path: z.string().default('').refine(isSkillDirectory, {
       message: 'path must be a relative skill directory',
     }),
-    commit: z.string().regex(COMMIT_RE, {
+    commit: z.string().regex(COMMIT_ID_RE, {
       message: 'commit must be a full commit id',
     }),
     ref: optionalRef,
@@ -996,7 +1005,7 @@ export async function createRouter({
         .optional(),
       baseCommit: z
         .string()
-        .regex(COMMIT_RE, { message: 'baseCommit must be a full commit id' })
+        .regex(COMMIT_ID_RE, { message: 'baseCommit must be a full commit id' })
         .optional(),
     });
     const parsed = schema.safeParse(req.body);
@@ -1039,11 +1048,13 @@ export async function createRouter({
       throw new InputError(`${repoUrl} is a read-only skill repository`);
     }
     // Pull requests target a branch: the configured one, else the default
-    // branch. A source pinned to a commit takes none (a tag is refused by
-    // `createSkillPullRequest`, which asks GitHub).
-    if (repository.ref && COMMIT_ID_RE.test(repository.ref)) {
+    // branch. A source read at a commit or a `refs/tags/` ref takes none (a
+    // plain name that is a tag is refused by `createSkillPullRequest`, which
+    // asks GitHub).
+    const baseBranch = pullRequestBase(repository);
+    if (baseBranch === null) {
       throw new InputError(
-        `${repoUrl} is read at commit ${repository.ref}, not a branch`,
+        `${repoUrl} is read at ${repository.ref}, not a branch`,
       );
     }
     if (
@@ -1066,7 +1077,7 @@ export async function createRouter({
           token,
           // A new skill goes where discovery scans.
           ...(repository.path ? { parentDir: repository.path } : {}),
-          ...(repository.ref ? { baseBranch: repository.ref } : {}),
+          ...(baseBranch ? { baseBranch } : {}),
           ...(kind === 'update'
             ? {
                 kind,
