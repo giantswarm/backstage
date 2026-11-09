@@ -85,7 +85,7 @@ export function suggestName(typed: string): string {
 export function nameProblem(typed: string): string | undefined {
   const name = typed.trim();
   if (!name) {
-    return 'Name is required';
+    return 'Enter a name';
   }
   if (name.length <= WORKSPACE_NAME_MAX && WORKSPACE_NAME_RE.test(name)) {
     return undefined;
@@ -233,6 +233,11 @@ export function toUpdateInput(
  */
 export type DraftField = string;
 
+/** An empty owner's problem, worded for the control that asks for it. */
+export function emptyOwnerProblem(control: 'select' | 'text'): string {
+  return control === 'select' ? 'Choose an owner' : 'Enter an owner';
+}
+
 /** The form's own checks, by field; the manager has the last word on save. */
 export function draftProblems(
   draft: WorkspaceDraft,
@@ -248,7 +253,7 @@ export function draftProblems(
       problems[`sources.${index}.provider`] = 'Choose a provider';
     }
     if (!source.owner.trim()) {
-      problems[`sources.${index}.owner`] = 'Choose an owner';
+      problems[`sources.${index}.owner`] = emptyOwnerProblem('select');
     } else if (!hasSelector(source)) {
       problems[`sources.${index}`] =
         'Pick repositories by name, or filter by language or topic';

@@ -13,7 +13,7 @@ import {
   useRepositoriesPage,
   useSourcePreview,
 } from '../../hooks/useWorkspaceEditor';
-import type { SourceDraft } from '../../lib/workspaceDraft';
+import { emptyOwnerProblem, type SourceDraft } from '../../lib/workspaceDraft';
 import { hasFilters, localSourceCount } from '../../lib/workspaceSelection';
 import {
   providerKindName,
@@ -43,8 +43,11 @@ export type WorkspaceSourceEditorProps = {
   onRemove?: () => void;
   /** The problem shown on each of the source's fields, by field. */
   errorFor: (field: string) => string | undefined;
-  /** Spread on a field so leaving it checks it. */
-  blurProps: (field: string) => FieldBlurProps;
+  /**
+   * Spread on a field so leaving it checks it; `problem` replaces the form's
+   * own problem for the field.
+   */
+  blurProps: (field: string, problem?: string) => FieldBlurProps;
   /**
    * The repository table opens on the source's picks by name: an edit shows
    * what the workspace holds before the owner's listing.
@@ -214,7 +217,6 @@ export function WorkspaceSourceEditor({
   const isConnected = provider?.connected ?? false;
   const field = (name: string) => errorFor(`sources.${index}.${name}`);
   const providerError = useSelectFieldError(field('provider'));
-  const ownerError = useSelectFieldError(field('owner'));
   const kind = provider?.kind;
   const counts = useSourceCounts(
     isConnected ? client : undefined,
@@ -237,6 +239,12 @@ export function WorkspaceSourceEditor({
     }
     return owner && !names.includes(owner) ? [owner, ...names] : names;
   }, [owners.data, source.owner]);
+  const ownerControl = ownerOptions.length > 0 ? 'select' : 'text';
+  const ownerProblem =
+    field('owner') === emptyOwnerProblem('select')
+      ? emptyOwnerProblem(ownerControl)
+      : field('owner');
+  const ownerError = useSelectFieldError(ownerProblem);
   const signedIn = provider && isConnected && (
     <Text variant="body-small" color="secondary">
       {signedInLine(provider)}
@@ -322,7 +330,9 @@ export function WorkspaceSourceEditor({
           {providerError.message}
         </div>
       ) : null}
-      {providers.length <= 1 && field('provider') && (
+      {/* With no provider to pick from, the page's warning says why: a
+          message here would name a field that is not on screen. */}
+      {providers.length === 1 && field('provider') && (
         <Text variant="body-small" color="danger">
           {field('provider')}
         </Text>
@@ -364,8 +374,11 @@ export function WorkspaceSourceEditor({
               )} this source picks from, e.g. giantswarm.`}
               value={source.owner}
               onChange={value => onChange({ ...source, owner: value })}
-              {...blurProps(`sources.${index}.owner`)}
-              {...fieldErrorProps(field('owner'))}
+              {...blurProps(
+                `sources.${index}.owner`,
+                source.owner.trim() ? undefined : emptyOwnerProblem('text'),
+              )}
+              {...fieldErrorProps(ownerProblem)}
             />
           )}
 

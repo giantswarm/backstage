@@ -1283,3 +1283,124 @@ describe('WorkspaceEditorPage in the edit flow', () => {
     );
   });
 });
+
+describe('WorkspaceEditorPage wording by control', () => {
+  it('asks to enter an owner when the owner is typed, and to enter a name', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('It cannot be changed later.'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name'),
+      ),
+    );
+    expect(name).toHaveFocus();
+    const owner = source(0).getByRole('textbox', { name: /^Owner/ });
+    expect(owner).toHaveAccessibleDescription(
+      expect.stringContaining('Enter an owner'),
+    );
+    expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceEditorPage without providers', () => {
+  function withoutListProviders(fake: WorkspaceManagerFake) {
+    const answer = fake.callTool.getMockImplementation()!;
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (name.endsWith('list_providers')) {
+        throw new Error(
+          'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+        );
+      }
+      return answer(name, args);
+    });
+  }
+
+  it('says why no source can be saved, names no provider field, and focuses the warning on a blocked save', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    withoutListProviders(fake);
+    await render(fake);
+
+    const warning = await screen.findByText('Could not read the providers');
+    expect(
+      screen.getByText(
+        'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Details: Tool execution failed: tool not found: x_workspace-manager_list_providers',
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'platform-mcp' },
+    });
+    fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
+      target: { value: 'acme' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    const holder = warning.closest('[tabindex="-1"]');
+    await waitFor(() => expect(holder).toHaveFocus());
+    expect(screen.queryByText('Choose a provider')).not.toBeInTheDocument();
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
+  });
+
+  it('focuses a field that can be fixed before the warning', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    withoutListProviders(fake);
+    await render(fake);
+    await screen.findByText('Could not read the providers');
+
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'platform-mcp' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    const owner = source(0).getByRole('textbox', { name: /^Owner/ });
+    await waitFor(() => expect(owner).toHaveFocus());
+    expect(owner).toHaveAccessibleDescription(
+      expect.stringContaining('Enter an owner'),
+    );
+  });
+
+  it('says so when no provider is configured', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    expect(
+      await screen.findByText('No provider to pick from'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A source needs a provider, and none is configured on lab. Ask your platform team to add one.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', { name: /^Name/ }),
+      ).toHaveAccessibleDescription(expect.stringContaining('Enter a name')),
+    );
+    expect(screen.queryByText('Choose a provider')).not.toBeInTheDocument();
+  });
+});

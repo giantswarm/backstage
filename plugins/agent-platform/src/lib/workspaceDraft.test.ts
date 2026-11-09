@@ -118,7 +118,7 @@ describe('draftProblems', () => {
 describe('nameProblem', () => {
   it.each([
     ['platform-mcp', undefined],
-    ['', 'Name is required'],
+    ['', 'Enter a name'],
     [
       'Platform MCP',
       'Use lowercase letters, digits and dashes only. Try “platform-mcp”.',

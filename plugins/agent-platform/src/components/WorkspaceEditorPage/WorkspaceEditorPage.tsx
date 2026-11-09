@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Skeleton, Text, TextField } from '@backstage/ui';
@@ -250,9 +250,15 @@ function WorkspaceEditor({
   );
   const validation = useFieldValidation();
   const blurProps = useCallback(
-    (field: string) => validation.blurProps(field, problems[field]),
+    (field: string, worded?: string) =>
+      validation.blurProps(field, worded ?? problems[field]),
     [validation, problems],
   );
+  // Read, and none to pick from: no source can name its provider.
+  const providersMissing =
+    (Boolean(providersQuery.data) || Boolean(providersQuery.error)) &&
+    providers.length === 0;
+  const providersAlert = useRef<HTMLDivElement>(null);
   // The name is checked once typing pauses too, and whether it is free.
   const typedName = draft?.name.trim() ?? '';
   const pausedName = useDebouncedValue(typedName, NAME_CHECK_DEBOUNCE_MS);
@@ -327,6 +333,20 @@ function WorkspaceEditor({
       nameAvailability.state === 'taken'
     ) {
       unfold(Object.keys(problems));
+      // No field can take the focus when only the missing providers block
+      // the save: the warning that says so takes it.
+      if (
+        providersMissing &&
+        nameAvailability.state !== 'taken' &&
+        !Object.keys(problems).some(
+          field =>
+            field === 'name' ||
+            field === 'sizing.minimum' ||
+            field.endsWith('.owner'),
+        )
+      ) {
+        providersAlert.current?.focus();
+      }
       validation.reveal();
       return;
     }
@@ -358,6 +378,7 @@ function WorkspaceEditor({
     problems,
     nameAvailability.state,
     unfold,
+    providersMissing,
     validation,
     save,
     organization,
@@ -512,6 +533,8 @@ function WorkspaceEditor({
             : null
         }
         providersError={providersQuery.error}
+        providersMissing={providersMissing}
+        providersAlert={providersAlert}
         previewPanel={previewPanel}
         diskLine={diskLine({
           isEdit,
@@ -581,8 +604,11 @@ type EditorBodyProps = {
   draft: WorkspaceDraft | undefined;
   problem: SaveProblem | undefined;
   errorFor: (field: string) => string | undefined;
-  /** Spread on a field so leaving it checks it. */
-  blurProps: (field: string) => FieldBlurProps;
+  /**
+   * Spread on a field so leaving it checks it; `problem` replaces the form's
+   * own problem for the field.
+   */
+  blurProps: (field: string, problem?: string) => FieldBlurProps;
   /** How many blocked saves opened Advanced options; 0 leaves it closed. */
   advancedOpenings: number;
   onNameBlur: () => void;
@@ -593,6 +619,9 @@ type EditorBodyProps = {
   onAddSource: () => void;
   sourceEditors: React.ReactNode;
   providersError: unknown;
+  /** The providers are read and there is none, so no source can be saved. */
+  providersMissing: boolean;
+  providersAlert: React.RefObject<HTMLDivElement>;
   previewPanel: React.ReactNode;
   diskLine: string;
 };
@@ -617,6 +646,8 @@ function EditorBody({
   onAddSource,
   sourceEditors,
   providersError,
+  providersMissing,
+  providersAlert,
   previewPanel,
   diskLine: disk,
 }: EditorBodyProps) {
@@ -666,7 +697,34 @@ function EditorBody({
           description={problem.message}
         />
       )}
-      {Boolean(providersError) && (
+      {providersMissing && (
+        <div ref={providersAlert} tabIndex={-1}>
+          <Alert
+            status="warning"
+            title={
+              providersError
+                ? 'Could not read the providers'
+                : 'No provider to pick from'
+            }
+            description={
+              <Flex direction="column" gap="1">
+                <Text variant="body-medium">
+                  {providersError
+                    ? 'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.'
+                    : `A source needs a provider, and none is configured on ${installation}. Ask your platform team to add one.`}
+                </Text>
+                {Boolean(providersError) && (
+                  <Text variant="body-small" color="secondary">
+                    Details:{' '}
+                    {classifyWorkspaceManagerError(providersError).message}
+                  </Text>
+                )}
+              </Flex>
+            }
+          />
+        </div>
+      )}
+      {Boolean(providersError) && !providersMissing && (
         <Alert
           status="warning"
           title="Could not read the providers"
@@ -679,7 +737,7 @@ function EditorBody({
           <TextField
             label="Name"
             isRequired
-            description="Lowercase letters, digits and dashes, up to 40 characters. It can’t be changed later."
+            description="Lowercase letters, digits and dashes, up to 40 characters. It cannot be changed later."
             value={draft.name}
             onChange={value => update({ ...draft, name: value })}
             onFocus={nameBlur.onFocus}
