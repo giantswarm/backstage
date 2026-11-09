@@ -123,6 +123,22 @@ describe('the main sign-in session end', () => {
     expect(providers.getMainSessionEnd().reason()).toBeUndefined();
   });
 
+  it('records a sign-in elsewhere when the sign-in page restores a claimed session', async () => {
+    const providers = GSAuthProviders.create({
+      configApi,
+      discoveryApi,
+      oauthRequestApi,
+    });
+    refreshAnswer = () => jsonResponse(401, { error: { message: CLAIMED } });
+
+    await expect(
+      providers.getMainAuthApi().getBackstageIdentity({ optional: true }),
+    ).resolves.toBeUndefined();
+
+    expect(providers.getMainSessionEnd().reason()).toBe('signed-in-elsewhere');
+    expect(openLoginPopup).not.toHaveBeenCalled();
+  });
+
   it('records nothing when the refresh failed otherwise', async () => {
     const providers = signedInProviders();
     const mainAuthApi = providers.getMainAuthApi();

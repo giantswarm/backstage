@@ -17,6 +17,10 @@ import {
   ContentColumn,
   PHONE_MEDIA,
 } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SIGNED_IN_ELSEWHERE_DESCRIPTION,
+  SIGNED_IN_ELSEWHERE_TITLE,
+} from '../SignedInElsewhereNotice';
 
 const useStyles = makeStyles({
   // The page's own gutters (`ShellPage`), so the banner lines up with the
@@ -89,8 +93,8 @@ export function SignedInElsewhereAlert() {
           role="alert"
           status="warning"
           icon
-          title="You signed in from another browser"
-          description="Sign in again here to keep working."
+          title={SIGNED_IN_ELSEWHERE_TITLE}
+          description={SIGNED_IN_ELSEWHERE_DESCRIPTION}
           customActions={
             <Button
               variant="secondary"
