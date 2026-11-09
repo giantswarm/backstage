@@ -67,6 +67,8 @@ export const AGENT_MANAGER_TOOLS = {
   addOrganizationMember: 'add_organization_member',
   removeOrganizationMember: 'remove_organization_member',
   listOrganizationConnectors: 'list_organization_connectors',
+  setOrganizationModel: 'set_organization_model',
+  setOrganizationConnector: 'set_organization_connector',
 } as const;
 
 export type AgentManagerTool =

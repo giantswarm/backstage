@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
@@ -9,6 +9,7 @@ import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  CREDENTIAL_OPERATION,
   fakeOrganizationsMuster,
   toolCalls,
   type OrganizationsScenario,
@@ -92,6 +93,13 @@ const SCENARIO: OrganizationsScenario = {
 
 const analyticsApi = mockApis.analytics.mock();
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+  );
+}
+
 async function renderPage(tab: string, scenario: OrganizationsScenario) {
   const { api, callTool } = fakeOrganizationsMuster(scenario);
   const queryClient = new QueryClient({
@@ -107,6 +115,10 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <Routes>
+            <Route
+              path="/organizations/:installation/:parent/:name/credentials"
+              element={<LocationProbe />}
+            />
             <Route
               path="/organizations/:installation/:parent/:name/*"
               element={
@@ -303,15 +315,98 @@ describe('OrganizationPage', () => {
     expect(within(gpt).queryByText('Default')).toBeNull();
   });
 
-  it("asks for the organization's own key when it has no model, linking the credential form", async () => {
-    await renderPage('/models', { ...SCENARIO, models: {} });
+  it("asks for the organization's own key when it has no model, on the credential form", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
 
     expect(
       await screen.findByText('This organization has no model yet'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Add model' })).toHaveAttribute(
-      'href',
-      '/organizations/gazelle/org-acme/payments/credentials',
+    await user.click(screen.getByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+      'claude',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Model/ }),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+        expect.objectContaining({
+          namespace: PAYMENTS.namespace,
+          name: 'claude',
+          provider: 'Anthropic',
+          model: 'claude-sonnet-4-6',
+          requestId: expect.any(String),
+        }),
+      ]),
+    );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `/organizations/gazelle/org-acme/payments/credentials?operation=${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('asks for a new key of a model on the credential form', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', SCENARIO);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    );
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Continue',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+        {
+          namespace: PAYMENTS.namespace,
+          name: 'gpt',
+          replaceCredential: true,
+          requestId: expect.any(String),
+        },
+      ]),
+    );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `credentials?operation=${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('asks for a new connector credential on the credential form', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/connectors', SCENARIO);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of jira',
+      }),
+    );
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Continue',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'set_organization_connector')).toEqual([
+        {
+          namespace: PAYMENTS.namespace,
+          name: 'jira',
+          replaceCredential: true,
+          requestId: expect.any(String),
+        },
+      ]),
     );
   });
 

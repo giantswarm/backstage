@@ -34,6 +34,9 @@ export type OrganizationsScenario = {
   removeError?: string;
 };
 
+/** The operation id the fake's credential requests link to. */
+export const CREDENTIAL_OPERATION = 'b2'.repeat(24);
+
 /** muster's `/installations` and server list with agent-manager on gazelle. */
 export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
   let mineFailures = scenario.mineFailures ?? 0;
@@ -88,6 +91,29 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           return { connectors: scenario.connectors ?? [] };
         case 'x_agent-manager_list_egress_policies':
           return { egressPolicies: scenario.egressPolicies ?? [] };
+        case 'x_agent-manager_set_organization_model':
+        case 'x_agent-manager_set_organization_connector': {
+          // A new model, or a replaced credential: agent-manager prepares a
+          // credential request and answers its form link.
+          const kind =
+            name === 'x_agent-manager_set_organization_model'
+              ? 'ModelConfig'
+              : 'RemoteMCPServer';
+          return {
+            namespace: args.namespace,
+            kind,
+            name: args.name,
+            pending: true,
+            credentials: [
+              {
+                secret: `tenant-credential-${String(args.name)}`,
+                key: kind === 'ModelConfig' ? 'apiKey' : 'token',
+                state: args.replaceCredential ? 'replace' : 'missing',
+                formUrl: `https://portal.example.com/organizations/gazelle/org-acme/payments/credentials?operation=${CREDENTIAL_OPERATION}`,
+              },
+            ],
+          };
+        }
         default:
           throw new Error(`unexpected tool ${name}`);
       }
