@@ -12,7 +12,10 @@ import {
 // The header the user's main Dex ID token travels in, which the backend
 // exchanges through the muster token broker.
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
-import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
+import type {
+  ExternalUrlConsentAnswer,
+  ExternalUrlConsentApi,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The backend route minting and revoking the GitHub token. */
 export const GITHUB_TOKEN_PATH = '/api/auth/github-token';
@@ -199,6 +202,7 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
   private readonly externalUrlConsentApi: Pick<ExternalUrlConsentApi, 'open'>;
   private readonly currentUrl: () => string;
   private readonly bounceGuard: BounceGuard;
+  private consentPrompt?: Promise<ExternalUrlConsentAnswer>;
 
   constructor(options: GithubGrantAuthConnectorOptions) {
     this.backendBaseUrl = options.backendBaseUrl;
@@ -220,23 +224,14 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
         error.reason === 'no_grant' &&
         error.authUrl
       ) {
-        if (!this.bounceGuard.allow()) {
+        const answer = await this.askToConnect(error.authUrl);
+        if (answer === undefined) {
           throw new GithubTokenError(
             'no_grant',
             'GitHub is not connected in muster. Connect GitHub in muster and reload.',
             error.authUrl,
           );
         }
-        const answer = await this.externalUrlConsentApi.open({
-          url: withRedirectBack(error.authUrl, this.currentUrl()),
-          requester: 'GitHub',
-          message:
-            'Connect your GitHub account in muster. The page comes back here once it is connected.',
-          target: 'page',
-        });
-        // Every token request retries the session: a refused connect is
-        // recorded too, or each one would ask again.
-        this.bounceGuard.record();
         if (answer !== 'accept') {
           throw new GithubTokenError(
             'no_grant',
@@ -249,6 +244,40 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
       }
       throw error;
     }
+  }
+
+  /**
+   * One consent prompt at a time: concurrent sessions share its answer, so a
+   * decline reaches all of them. Every answer is recorded in the bounce
+   * guard, or each token request would ask again. Resolves `undefined` when
+   * the guard refuses a new prompt.
+   */
+  private askToConnect(
+    authUrl: string,
+  ): Promise<ExternalUrlConsentAnswer | undefined> {
+    if (this.consentPrompt) {
+      return this.consentPrompt;
+    }
+    if (!this.bounceGuard.allow()) {
+      return Promise.resolve(undefined);
+    }
+    const prompt = this.externalUrlConsentApi
+      .open({
+        url: withRedirectBack(authUrl, this.currentUrl()),
+        requester: 'muster (GitHub connect)',
+        message:
+          'Connect your GitHub account in muster. The page comes back here once it is connected.',
+        target: 'page',
+      })
+      .then(answer => {
+        this.bounceGuard.record();
+        return answer;
+      })
+      .finally(() => {
+        this.consentPrompt = undefined;
+      });
+    this.consentPrompt = prompt;
+    return prompt;
   }
 
   async refreshSession(

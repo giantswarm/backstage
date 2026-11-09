@@ -59,7 +59,7 @@ export async function bounceToConnect(
 ): Promise<ExternalUrlConsentAnswer> {
   const answer = await consentApi.open({
     url: withRedirectBack(authUrl, back),
-    requester: 'GitHub',
+    requester: 'muster (GitHub connect)',
     message:
       'Connect your GitHub account in muster. The page comes back here once it is connected.',
     target: 'page',

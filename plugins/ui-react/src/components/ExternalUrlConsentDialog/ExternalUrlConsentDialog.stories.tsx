@@ -56,7 +56,7 @@ export const SameTab: Story = {
     request: {
       id: 3,
       url: 'https://muster.example.com/oauth/proxy/start?state=abc&redirect=https%3A%2F%2Fportal.example.com%2Fplans',
-      requester: 'GitHub',
+      requester: 'muster (GitHub connect)',
       message:
         'Connect your GitHub account in muster. The page comes back here once it is connected.',
       target: 'page',

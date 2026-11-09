@@ -240,6 +240,57 @@ describe('GithubGrantAuthConnector', () => {
       },
     );
 
+    it('asks once for concurrent sessions, and a decline answers all of them', async () => {
+      let answer: (value: string) => void = () => {};
+      const open = jest.fn().mockReturnValue(
+        new Promise(resolve => {
+          answer = resolve;
+        }),
+      );
+      const guard = new MemoryGuard();
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse(
+            {
+              reason: 'no_grant',
+              authUrl: 'https://muster.example.com/oauth/proxy/start?state=one',
+            },
+            401,
+          ),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(
+            {
+              reason: 'no_grant',
+              authUrl: 'https://muster.example.com/oauth/proxy/start?state=two',
+            },
+            401,
+          ),
+        );
+
+      const connector = createConnector(fetchMock, { open, guard });
+      const sessions = Promise.allSettled([
+        connector.createSession({ scopes: new Set(['repo']) }),
+        connector.createSession({ scopes: new Set(['read:org']) }),
+      ]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      answer('decline');
+
+      const [first, second] = await sessions;
+      expect(first).toMatchObject({
+        status: 'rejected',
+        reason: { reason: 'no_grant' },
+      });
+      expect(second).toMatchObject({
+        status: 'rejected',
+        reason: { reason: 'no_grant' },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(guard.recorded).toBe(1);
+    });
+
     it('does not bounce again when the last bounce came back without a grant', async () => {
       const open = jest.fn().mockResolvedValue('accept');
       const fetchMock = jest.fn().mockResolvedValue(
