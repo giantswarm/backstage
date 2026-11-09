@@ -424,6 +424,10 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     await renderPanel();
 
     expect(
+      screen.getByText('No skill repository takes new skills here.'),
+    ).toBeInTheDocument();
+
+    expect(
       screen.queryByRole('link', { name: /Add skill/ }),
     ).not.toBeInTheDocument();
     expect(

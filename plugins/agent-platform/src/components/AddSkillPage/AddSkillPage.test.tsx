@@ -72,6 +72,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
     skills: mockCatalogSkills,
     isLoading: mockCatalogLoading,
+    hasRepositories: mockRepositories.length > 0,
     // None while the catalog loads, as the hook answers.
     sources: (mockCatalogLoading ? [] : mockRepositories).map(entry => {
       const e = typeof entry === 'string' ? { url: entry } : entry;
@@ -456,6 +457,18 @@ describe('AddSkillPage', () => {
     expect(
       screen.getByText(/Only github.com repositories are offered/),
     ).toBeInTheDocument();
+  });
+
+  it('says so when no configured repository takes new skills', async () => {
+    mockRepositories = [
+      { url: 'https://github.com/giantswarm/agent-platform', readOnly: true },
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText('No skill repository takes new skills here.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No skill repositories')).not.toBeInTheDocument();
   });
 
   it('never offers a read-only repository', async () => {

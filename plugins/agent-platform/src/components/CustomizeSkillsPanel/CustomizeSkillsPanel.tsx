@@ -385,6 +385,13 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   // a skill to, and the reason is the configuration, not the person.
   const cannotAddHere =
     !skillCatalog.isLoading && offGitHub.length > 0 && proposable.length === 0;
+  // Sources configured, none taking new skills (read-only, or not read on a
+  // branch): Add skill is hidden, and this says why.
+  const noneTakesSkills =
+    !skillCatalog.isLoading &&
+    skillCatalog.hasRepositories &&
+    offGitHub.length === 0 &&
+    proposable.length === 0;
   const hasFilters = filters.dimensions.length > 0;
 
   return (
@@ -395,6 +402,11 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
         <Text as="p" variant="body-small" color="secondary">
           Adding skills here needs a github.com skill repository; add them in
           their own repository instead.
+        </Text>
+      )}
+      {noneTakesSkills && (
+        <Text as="p" variant="body-small" color="secondary">
+          No skill repository takes new skills here.
         </Text>
       )}
       {notes}

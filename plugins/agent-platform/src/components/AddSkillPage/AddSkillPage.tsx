@@ -131,6 +131,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     sources,
     skills: catalogSkills,
     isLoading: catalogLoading,
+    hasRepositories,
   } = useSkillCatalog();
   const editRepoUrl = edit?.skill.repoUrl;
   const targets = useMemo(() => proposableSources(sources ?? []), [sources]);
@@ -376,12 +377,25 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       {targetsLoading && (
         <LoadingIndicator label="Reading the skill repositories…" />
       )}
-      {!targetsLoading && repositories.length === 0 && skippedCount === 0 && (
-        <EmptyStateCard
-          title="No skill repositories"
-          description="A platform admin has to configure a skill repository first."
-        />
-      )}
+      {!targetsLoading &&
+        repositories.length === 0 &&
+        skippedCount === 0 &&
+        !hasRepositories && (
+          <EmptyStateCard
+            title="No skill repositories"
+            description="A platform admin has to configure a skill repository first."
+          />
+        )}
+      {/* Configured, but read-only or not read on a branch. */}
+      {!targetsLoading &&
+        repositories.length === 0 &&
+        skippedCount === 0 &&
+        hasRepositories && (
+          <EmptyStateCard
+            title="No repository to propose to"
+            description="No skill repository takes new skills here."
+          />
+        )}
       {!targetsLoading && repositories.length === 0 && skippedCount > 0 && (
         <EmptyStateCard
           title="No repository to propose to"
