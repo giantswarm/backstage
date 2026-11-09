@@ -6,6 +6,10 @@ import {
   type StatusLabelIntent,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../components/AgentsDataProvider';
+import {
+  newestFirst,
+  timestampValue,
+} from '../components/SessionsDataProvider/helpers';
 import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
 import { matches } from './search';
@@ -160,6 +164,40 @@ export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {
         ]),
       )
     : rows;
+}
+
+/** How the Agents list is ordered. */
+export type AgentSort = 'lastUsed' | 'recent' | 'name';
+
+export const AGENT_SORTS: ReadonlyArray<{ id: AgentSort; label: string }> = [
+  { id: 'lastUsed', label: 'Last used' },
+  { id: 'recent', label: 'Recently added' },
+  { id: 'name', label: 'Name' },
+];
+
+/**
+ * The rows in the list's order: by when the person last used each agent
+ * (`lastUsedAt`, epoch ms by row id; an agent never used goes last), by
+ * creation, newest first, or by name. The name breaks every tie.
+ */
+export function sortAgents(
+  rows: readonly AgentRow[],
+  sort: AgentSort,
+  lastUsedAt: ReadonlyMap<string, number> = new Map(),
+): AgentRow[] {
+  const byName = (a: AgentRow, b: AgentRow) => a.name.localeCompare(b.name);
+  return [...rows].sort((a, b) => {
+    let order = 0;
+    if (sort === 'lastUsed') {
+      order = newestFirst(lastUsedAt.get(a.id), lastUsedAt.get(b.id));
+    } else if (sort === 'recent') {
+      order = newestFirst(
+        timestampValue(a.createdAt),
+        timestampValue(b.createdAt),
+      );
+    }
+    return order || byName(a, b);
+  });
 }
 
 export function searchModels(rows: ModelRow[], search: string): ModelRow[] {

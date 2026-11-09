@@ -132,6 +132,11 @@ export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider
 export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
 export { ConnectorLogo } from './components/ConnectorLogo';
 export type { ConnectorLogoProps } from './components/ConnectorLogo';
+export { ConnectorLogoStack } from './components/ConnectorLogoStack';
+export type {
+  ConnectorLogoStackItem,
+  ConnectorLogoStackProps,
+} from './components/ConnectorLogoStack';
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';

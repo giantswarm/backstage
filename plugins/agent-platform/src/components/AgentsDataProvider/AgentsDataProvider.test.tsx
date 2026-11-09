@@ -208,6 +208,7 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getReadinessMessage: () => undefined,
     getHarnessWarnings: () => [],
     getAnnotations: () => undefined,
+    getCreatedTimestamp: () => undefined,
     getMcpBindings: () =>
       spec.bindsGateway ? [{ server: { name: spec.name } }] : [],
   };
