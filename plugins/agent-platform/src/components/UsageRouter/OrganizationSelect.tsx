@@ -1,7 +1,7 @@
 import { Select } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import type { OrganizationDirectory } from '../../lib/organizations';
-import { tenantKindOf, tenantOf } from '../../lib/tenants';
+import { organizationScopeLabelOf, tenantKindOf } from '../../lib/tenants';
 import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
@@ -14,11 +14,23 @@ export const ORGANIZATION_SELECT_CLASS_NAME =
 /** The option for every organization. Not a DNS label, so never a namespace. */
 const ALL_ORGANIZATIONS = '*';
 
+const ALL_ORGANIZATIONS_LABEL = 'All organizations';
+
+/**
+ * The select's width, whichever organization is selected: wide enough for
+ * "All organizations" beside its chevron. A longer name is cut short with an
+ * ellipsis (bui's `SelectValue`) rather than widening the header's row of
+ * controls until it wraps; the open list is at least this wide and grows to
+ * show every name in full.
+ */
+export const ORGANIZATION_SELECT_WIDTH = 200;
+
 const useStyles = makeStyles({
-  // Wide enough for an organization's name beside its chevron, and the same
-  // height and label as the Environment and Time range selects beside it.
+  // The same height and label as the Environment and Time range selects
+  // beside it; never wider than a narrow header row.
   root: {
-    minWidth: 200,
+    width: ORGANIZATION_SELECT_WIDTH,
+    maxWidth: '100%',
   },
 });
 
@@ -51,9 +63,11 @@ function describe(
 
 /**
  * The Usage screen's Organization scope: every organization, or one
- * namespace's agents. The options are namespaces, worded as the Agents list
- * words them under "Organization" (`tenantOf`): the organization's name,
- * `None` for the platform, `namespace <name>` for another namespace.
+ * namespace's agents. The options are namespaces, each named as an
+ * organization (`organizationScopeLabelOf`): the organization's name, `None`
+ * for the platform, a Giant Swarm organization's name for its `org-<name>`
+ * namespace, any other namespace as it is. The URL and the queries keep the
+ * namespace; only the text shown changes.
  *
  * A selection the options do not hold (a deep link to a namespace with no
  * calls and no agents) is kept as an option, so the control shows the scope
@@ -70,17 +84,25 @@ export function OrganizationSelect({
     value !== undefined && !namespaces.includes(value)
       ? [...namespaces, value]
       : namespaces;
+  const selectedLabel =
+    value === undefined
+      ? ALL_ORGANIZATIONS_LABEL
+      : organizationScopeLabelOf(value, directory);
 
   return (
-    <div className={`${classes.root} ${ORGANIZATION_SELECT_CLASS_NAME}`}>
+    <div
+      className={`${classes.root} ${ORGANIZATION_SELECT_CLASS_NAME}`}
+      // The whole name on hover, where the box cuts it short.
+      title={selectedLabel}
+    >
       <Select
         label="Organization"
         selectedKey={value ?? ALL_ORGANIZATIONS}
         options={[
-          { id: ALL_ORGANIZATIONS, label: 'All organizations' },
+          { id: ALL_ORGANIZATIONS, label: ALL_ORGANIZATIONS_LABEL },
           ...offered.map(namespace => ({
             id: namespace,
-            label: tenantOf(namespace, directory),
+            label: organizationScopeLabelOf(namespace, directory),
             description: describe(namespace, directory),
           })),
         ]}

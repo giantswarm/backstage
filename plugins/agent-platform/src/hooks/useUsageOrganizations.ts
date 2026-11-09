@@ -4,7 +4,7 @@ import { useAgents } from '../components/AgentsDataProvider';
 import { UNKNOWN_AGENT_LABEL } from '../lib/llmUsage';
 import { organizationsSeenQueryFor } from '../lib/llmUsageQueries';
 import type { OrganizationDirectory } from '../lib/organizations';
-import { tenantKindOf, tenantOf } from '../lib/tenants';
+import { organizationScopeLabelOf, tenantKindOf } from '../lib/tenants';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import type { UsageWindow } from '../lib/usageWindow';
 
@@ -29,7 +29,9 @@ function compareNamespaces(
   return (
     KIND_ORDER[tenantKindOf(a, directory)] -
       KIND_ORDER[tenantKindOf(b, directory)] ||
-    tenantOf(a, directory).localeCompare(tenantOf(b, directory))
+    organizationScopeLabelOf(a, directory).localeCompare(
+      organizationScopeLabelOf(b, directory),
+    )
   );
 }
 

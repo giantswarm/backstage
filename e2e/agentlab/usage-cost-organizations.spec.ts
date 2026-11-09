@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { expect, expectNoHorizontalScroll, open, test } from './fixtures';
 
 /**
  * The Cost page's roll-up by organization (giantswarm/backstage#2672, slice 8
@@ -107,6 +107,18 @@ function rowWith(page: Page, text: string) {
 
 function organizationSelect(page: Page) {
   return page.getByRole('main').getByRole('button', { name: /Organization/ });
+}
+
+/** Where the Organization select's box and the Time range select sit. */
+async function scopeBarGeometry(page: Page) {
+  const organization = await page
+    .locator('.agent-platform-usage-organization-select')
+    .boundingBox();
+  const timeRange = await page
+    .getByRole('main')
+    .getByRole('button', { name: /Time range/ })
+    .boundingBox();
+  return { organization, timeRange };
 }
 
 /** Opens the Cost page with the stub, or skips where the lab has no metrics. */
@@ -225,6 +237,56 @@ test.describe('Usage → Cost, by organization', () => {
         admin.getByText(/Shows the model use of the alpha organization/),
       ).toBeVisible();
     } finally {
+      await admin.unroute('**/api/gs/mimir/query?*');
+    }
+  });
+
+  test('a long organization name takes the box a short one does, so the header row does not wrap', async ({
+    admin,
+  }) => {
+    // A Giant Swarm organization no answer names, as a deep link keeps it.
+    const name = 'a-rather-long-organization-name-for-the-header';
+    await answerGatewayVectors(admin);
+    try {
+      await openCost(admin);
+      for (const width of [1440, 1280, 1024, 375]) {
+        await admin.setViewportSize({ width, height: 900 });
+
+        await open(admin, '/usage/cost?organization=org-alpha');
+        await expect(organizationSelect(admin)).toHaveText(/alpha/);
+        const short = await scopeBarGeometry(admin);
+
+        await open(admin, `/usage/cost?organization=org-${name}`);
+        // Named as the organization: no `org-`, no `namespace` qualifier.
+        await expect(organizationSelect(admin)).toContainText(name);
+        await expect(organizationSelect(admin)).not.toContainText('org-');
+        await expect(organizationSelect(admin)).not.toContainText('namespace');
+        await expect(
+          admin.locator('.agent-platform-usage-organization-select'),
+          'the whole name on hover',
+        ).toHaveAttribute('title', name);
+        expect(
+          await organizationSelect(admin).evaluate(trigger => {
+            const value = trigger.querySelector('.bui-SelectValue');
+            return value ? value.scrollWidth > value.clientWidth : false;
+          }),
+          `${width}px: the name is cut short inside the box`,
+        ).toBe(true);
+        expect(
+          await scopeBarGeometry(admin),
+          `${width}px: the controls sit where they sit with a short name`,
+        ).toEqual(short);
+        await expectNoHorizontalScroll(admin, `Usage → Cost at ${width}px`);
+
+        // The open list names it in full.
+        await organizationSelect(admin).click();
+        await expect(
+          admin.getByRole('listbox').getByRole('option', { name }),
+        ).toBeVisible();
+        await admin.keyboard.press('Escape');
+      }
+    } finally {
+      await admin.setViewportSize({ width: 1440, height: 900 });
       await admin.unroute('**/api/gs/mimir/query?*');
     }
   });

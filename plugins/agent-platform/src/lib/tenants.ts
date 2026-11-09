@@ -7,7 +7,9 @@
  * organization comes only from agent-manager's answers, which read the
  * namespace's `agent-platform.giantswarm.io/organization` and `/parent`
  * labels (an {@link OrganizationDirectory}); a namespace's name is never
- * parsed (giantswarm/giantswarm#38891). Kubernetes RBAC in the
+ * parsed to decide that (giantswarm/giantswarm#38891), only to shorten how a
+ * Giant Swarm organization's `org-<name>` namespace reads
+ * (`giantSwarmOrganizationNameOf`). Kubernetes RBAC in the
  * namespace decides who sees and changes its agents; the portal only names the
  * tenant. The portal never says "tenant": an agent's tenant is its owner,
  * shown under the label "Owner" as "Platform" (whose agents are available to
@@ -85,6 +87,57 @@ export function tenantOf(
   }
   return organization.toLowerCase() === NO_ORGANIZATION.toLowerCase()
     ? `organization ${organization}`
+    : organization;
+}
+
+/**
+ * The start of a Giant Swarm organization's namespace: an `Organization`
+ * resource `<name>` owns the namespace `org-<name>`.
+ */
+const GIANT_SWARM_ORGANIZATION_NAMESPACE_PREFIX = 'org-';
+
+/**
+ * The Giant Swarm organization a namespace names by convention
+ * (`org-marian` is `marian`), or `undefined` for any other namespace. For the
+ * text a namespace is shown with only: it never decides what a namespace is,
+ * which agent-manager's answers alone do.
+ */
+export function giantSwarmOrganizationNameOf(
+  namespace: string,
+): string | undefined {
+  if (!namespace.startsWith(GIANT_SWARM_ORGANIZATION_NAMESPACE_PREFIX)) {
+    return undefined;
+  }
+  return (
+    namespace.slice(GIANT_SWARM_ORGANIZATION_NAMESPACE_PREFIX.length) ||
+    undefined
+  );
+}
+
+/**
+ * A namespace as the Usage screen's Organization select names it, where every
+ * option is already an organization scope and needs no qualifier: `None` for
+ * the platform tenant, the organization's name for an organization
+ * namespace, the Giant Swarm organization's name for an `org-<name>`
+ * namespace, and any other namespace as it is. A name that would read as the
+ * platform's keeps the qualifier {@link tenantOf} gives it
+ * (`organization none`), or its namespace for an `org-` one, so the two never
+ * sit side by side as one word.
+ */
+export function organizationScopeLabelOf(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string {
+  if (
+    namespace === PLATFORM_TENANT_NAMESPACE ||
+    organizationNameOf(namespace, directory) !== undefined
+  ) {
+    return tenantOf(namespace, directory);
+  }
+  const organization = giantSwarmOrganizationNameOf(namespace);
+  return organization === undefined ||
+    organization.toLowerCase() === NO_ORGANIZATION.toLowerCase()
+    ? namespace
     : organization;
 }
 

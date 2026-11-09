@@ -1,7 +1,9 @@
 import { organizationDirectory } from './organizations';
 import {
   defaultTenant,
+  giantSwarmOrganizationNameOf,
   organizationOf,
+  organizationScopeLabelOf,
   ownerOf,
   tenantGroups,
   tenantInSentence,
@@ -31,6 +33,39 @@ describe('tenantOf', () => {
     ['agents-pf-d4e5f', 'platform'],
   ])('names namespace %s as %s', (namespace, tenant) => {
     expect(tenantOf(namespace, directory)).toBe(tenant);
+  });
+});
+
+describe('giantSwarmOrganizationNameOf', () => {
+  it.each([
+    ['org-marian', 'marian'],
+    ['org-agent-platform-test-b', 'agent-platform-test-b'],
+    ['team-a', undefined],
+    ['kagent', undefined],
+    // The prefix alone names nothing, and it only counts at the start.
+    ['org-', undefined],
+    ['agents-org-x', undefined],
+  ])('reads %s as %s', (namespace, organization) => {
+    expect(giantSwarmOrganizationNameOf(namespace)).toBe(organization);
+  });
+});
+
+describe('organizationScopeLabelOf', () => {
+  it.each([
+    ['kagent', 'None'],
+    ['agents-acme-x7k2q', 'acme'],
+    // A Giant Swarm organization's namespace reads as its name, without the
+    // `namespace` qualifier tenantOf gives it.
+    ['org-marian', 'marian'],
+    ['org-agent-platform-test-b', 'agent-platform-test-b'],
+    // Any other namespace reads as it is.
+    ['team-a', 'team-a'],
+    ['org-', 'org-'],
+    // Neither kind of organization called none reads as the platform's None.
+    ['agents-none-a1b2c', 'organization none'],
+    ['org-none', 'org-none'],
+  ])('names namespace %s as %s', (namespace, label) => {
+    expect(organizationScopeLabelOf(namespace, directory)).toBe(label);
   });
 });
 
