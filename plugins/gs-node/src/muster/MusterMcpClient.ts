@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import {
   type McpToolRefusal,
   mcpToolRefusalOf,
+  ORGANIZATION_NAMESPACE_PREFIX,
   readJwtClaims,
   serverInfoIconOf,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -479,9 +480,6 @@ export function musterToolErrorKindOf(
   return MUSTER_FAILURES.find(([pattern]) => pattern.test(message))?.[1];
 }
 
-/** The start of an Organization's namespace, whose servers' tools it prefixes. */
-const ORGANIZATION_PREFIX = 'org-';
-
 /**
  * The MCP server an aggregated tool belongs to: muster names it
  * `x_<server>_<tool>`, so the first `_`-delimited segment after `x_`. A prefix
@@ -496,7 +494,9 @@ export function musterServerOfTool(tool: string): string | undefined {
     return undefined;
   }
   const [first, second] = tool.slice('x_'.length).split('_');
-  const server = first?.startsWith(ORGANIZATION_PREFIX) ? second : first;
+  const server = first?.startsWith(ORGANIZATION_NAMESPACE_PREFIX)
+    ? second
+    : first;
   return server || undefined;
 }
 

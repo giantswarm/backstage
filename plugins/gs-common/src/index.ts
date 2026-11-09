@@ -11,3 +11,4 @@ export * from './shortSha';
 export * from './tags';
 export * from './connectorName';
 export * from './connectorIcon';
+export * from './organizationNamespace';

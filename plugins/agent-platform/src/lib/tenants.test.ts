@@ -2,6 +2,7 @@ import { organizationDirectory } from './organizations';
 import {
   defaultTenant,
   organizationOf,
+  namespacesSharingAName,
   ownerOf,
   tenantGroups,
   tenantInSentence,
@@ -10,8 +11,9 @@ import {
 
 // Which namespace is which organization, as agent-manager's
 // `list_my_organizations` answers it from the namespaces' labels. The
-// namespace's name says nothing: `org-legacy` is a Giant Swarm Organization's
-// namespace that no answer names, so it is no organization.
+// namespace's name decides nothing: `org-legacy` is a Giant Swarm
+// Organization's namespace that no answer names, so it is no Agent Platform
+// organization, only named as the Giant Swarm one.
 const directory = organizationDirectory([
   { namespace: 'agents-acme-x7k2q', organization: 'acme', parent: 'org-acme' },
   { namespace: 'agents-beta-p3m9z', organization: 'beta', parent: 'org-acme' },
@@ -23,14 +25,50 @@ describe('tenantOf', () => {
   it.each([
     ['kagent', 'None'],
     ['agents-acme-x7k2q', 'acme'],
-    ['team-a', 'namespace team-a'],
-    // A name prefix names no organization: only agent-manager's answer does.
-    ['org-legacy', 'namespace org-legacy'],
-    // An organization called none never reads as the platform's None.
+    // Any other namespace reads as it is, with no `namespace` qualifier.
+    ['team-a', 'team-a'],
+    // A Giant Swarm organization's namespace reads as the organization.
+    ['org-legacy', 'legacy'],
+    ['org-agent-platform-test-b', 'agent-platform-test-b'],
+    ['org-', 'org-'],
+    // Nothing reads as the platform's None: an organization called none, a
+    // namespace called none; a Giant Swarm organization called none keeps
+    // its namespace.
     ['agents-none-a1b2c', 'organization none'],
+    ['org-none', 'org-none'],
+    ['none', 'namespace none'],
+    ['NONE', 'namespace NONE'],
     ['agents-pf-d4e5f', 'platform'],
   ])('names namespace %s as %s', (namespace, tenant) => {
     expect(tenantOf(namespace, directory)).toBe(tenant);
+  });
+});
+
+describe('namespacesSharingAName', () => {
+  it('finds the namespaces another one reads the same as', () => {
+    expect(
+      namespacesSharingAName(
+        [
+          'kagent',
+          // The organization acme, and the Giant Swarm organization acme.
+          'agents-acme-x7k2q',
+          'org-acme',
+          'org-team-x',
+          'team-x',
+          'org-marian',
+          'TEAM-X',
+        ],
+        directory,
+      ),
+    ).toEqual(
+      new Set([
+        'agents-acme-x7k2q',
+        'org-acme',
+        'org-team-x',
+        'team-x',
+        'TEAM-X',
+      ]),
+    );
   });
 });
 
@@ -53,6 +91,10 @@ describe('tenantInSentence', () => {
     ['kagent', 'the platform'],
     ['agents-acme-x7k2q', 'the acme organization'],
     ['team-a', 'namespace team-a'],
+    // As tenantOf names them: a Giant Swarm organization by its name, unless
+    // that would read as the platform's None.
+    ['org-legacy', 'the legacy organization'],
+    ['org-none', 'namespace org-none'],
   ])('names namespace %s as %s in a sentence', (namespace, tenant) => {
     expect(tenantInSentence(namespace, directory)).toBe(tenant);
   });

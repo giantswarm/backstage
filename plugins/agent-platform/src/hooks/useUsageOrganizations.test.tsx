@@ -106,8 +106,9 @@ describe('useUsageOrganizations', () => {
       'kagent',
       'org-alpha',
       'org-marian',
-      'org-zulu',
+      // By the name the select shows: `org-zulu` reads as `zulu`.
       'team-x',
+      'org-zulu',
     ]);
   });
 
