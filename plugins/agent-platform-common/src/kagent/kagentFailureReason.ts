@@ -49,8 +49,10 @@ const TOOL_FAILED_TEXTS: RegExp[] = [
 
 /**
  * The words of a model provider's error, by source: kagent's model clients
- * prefix their errors by provider, the Claude Harness passes Claude Code's
- * `API Error: <n>` through, and Gemini answers `Error <n>, Message: …`. They
+ * prefix their errors by provider, the Go ADK's A2A server quotes a model
+ * client's error as `llm error response (code <code>): "<error>"`, the Claude
+ * Harness passes Claude Code's `API Error: <n>` through, and Gemini answers
+ * `Error <n>, Message: …`. They
  * say who answered, not why: the same prefixes carry a prompt that outgrew the
  * context window, so they count only together with one of the
  * {@link UNAVAILABLE_SIGNALS}.
@@ -59,6 +61,7 @@ const MODEL_PROVIDER_TEXTS: RegExp[] = [
   /\bOpenAI (chat completion|responses) request failed\b/i,
   /\banthropic API error\b/i,
   /\bSAP AI Core request failed\b/i,
+  /\bllm error response( \(code \w+\))?: "/,
   /\boperation error Bedrock Runtime\b/i,
   /\bAPI Error: \d{3}\b/,
   /^Error \d{3}, Message: /m,
@@ -85,7 +88,7 @@ const MODEL_UNAVAILABLE_TEXTS: RegExp[] = [
   /\bSAP AI Core requires\b/,
   /\bno running orchestration deployment found in SAP AI Core\b/i,
   /\blitellm\.(RateLimit|NotFound|Authentication|PermissionDenied|ServiceUnavailable|InternalServer|APIConnection|Timeout)Error\b/,
-  /\b(model_not_found|overloaded_error|rate_limit_error|RESOURCE_EXHAUSTED)\b/,
+  /\b(model_not_found|authentication_error|permission_error|overloaded_error|rate_limit_error|RESOURCE_EXHAUSTED)\b/,
 ];
 
 /**

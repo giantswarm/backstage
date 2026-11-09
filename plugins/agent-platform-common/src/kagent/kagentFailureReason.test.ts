@@ -52,6 +52,12 @@ describe('classifyFailureText', () => {
     ['Error 404, Message: Publisher Model `gemini-9` was not found'],
     ['{"code": "model_not_found"}'],
     ['anthropic API error: 401 Unauthorized invalid x-api-key'],
+    // the Go ADK's A2A server, quoting a model client's streamed error
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"},\\"request_id\\":\\"req_011CgszuDCqiu7fWDhLTw29G\\"}"',
+    ],
+    ['llm error response: "anthropic API error: 529 overloaded"'],
+    ['{"type":"error","error":{"type":"permission_error"}}'],
     ['litellm.ServiceUnavailableError: the model is overloaded'],
   ])('reads %s as model-unavailable', text => {
     expect(classifyFailureText(text)).toBe('model-unavailable');
@@ -93,6 +99,14 @@ describe('classifyFailureText', () => {
       'anthropic API error: 400 invalid_request_error: prompt is too long: 210000 tokens > 200000 maximum',
     ],
     ['API Error: 400 {"type":"invalid_request_error"}'],
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 400 Bad Request (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"max_tokens: must be greater than or equal to 1\\"}}"',
+    ],
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 400 Bad Request {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"prompt is too long: 210000 tokens > 200000 maximum\\"}}"',
+    ],
+    // A streamed error says who answered, not that the model is unavailable.
+    ['llm error response (code STREAM_ERROR): "unexpected EOF"'],
     [
       'OpenAI chat completion request failed: 404 maximum context length is 128000 tokens',
     ],
