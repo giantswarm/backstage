@@ -843,9 +843,10 @@ export async function createAgentInWizard(
   await page
     .getByRole('textbox', { name: 'Instructions' })
     .fill('You are a test agent. Answer with exactly what you are asked for.');
-  const model = page
-    .getByRole('radiogroup', { name: 'Model' })
-    .getByRole('radio', { name: options.model ?? /default-model-config/ });
+  const models = page.getByRole('radiogroup', { name: 'Model' });
+  const model = options.model
+    ? models.getByRole('radio', { name: options.model })
+    : models.getByRole('radio', { checked: true });
   // Platform beside the organizations: the Owner radio group, whose
   // Organization radio brings the organization dropdown. The organizations
   // alone: that dropdown, as the Owner field. A Select's name is its value

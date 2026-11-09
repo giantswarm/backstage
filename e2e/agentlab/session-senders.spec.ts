@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { expect, open, openReadyAgent, test } from './fixtures';
 import { lab } from './lab';
@@ -60,6 +61,18 @@ test('a shared conversation names each sender after reload', async ({
       lab.users.admin.email,
       lab.users.dev.email,
     ]);
+    await admin.getByRole('button', { name: 'Session actions' }).click();
+    const exported = admin.waitForEvent('download');
+    await admin
+      .getByRole('menuitem', { name: 'Export session', exact: true })
+      .click();
+    const download = await exported;
+    const saved = JSON.parse(await readFile((await download.path())!, 'utf8'));
+    expect(saved.session.id).toBe(sessionId);
+    const history = JSON.stringify(saved.tasks);
+    for (const sender of [lab.users.admin.email, lab.users.dev.email]) {
+      expect(history).toContain(`"kagent.dev/a2a/sender":"${sender}"`);
+    }
     await admin.setViewportSize({ width: 375, height: 812 });
     await expect(senders).toHaveText([
       lab.users.admin.email,
