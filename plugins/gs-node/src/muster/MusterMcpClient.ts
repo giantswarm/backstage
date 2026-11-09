@@ -27,6 +27,7 @@ import {
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
 import { MusterUnreachableError } from './musterUnreachable';
+import { createMusterFetch } from './musterFetch';
 import { markReported } from '../errors';
 import {
   FREQUENT_LOST_SESSIONS,
@@ -603,12 +604,16 @@ export interface ProgressCallClient {
   close(): Promise<void>;
 }
 
+/** One connection pool for every muster, with the connect timeout. */
+const musterFetch = createMusterFetch();
+
 async function connectProgressClient(
   url: string,
   headers: Record<string, string> | undefined,
 ): Promise<ProgressCallClient> {
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: { headers },
+    fetch: musterFetch,
   });
   const client = new SdkClient({ name: 'muster-backend', version: '1.0.0' });
   await client.connect(transport);
@@ -645,6 +650,7 @@ export class MusterMcpClient {
           type: 'http',
           url: installation.url,
           headers,
+          fetch: musterFetch,
         },
       }),
     private readonly progressClientFactory: (

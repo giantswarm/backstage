@@ -9341,6 +9341,7 @@ __metadata:
     "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
     "@modelcontextprotocol/sdk": "npm:1.32.1"
     node-fetch: "npm:^3.3.2"
+    undici: "npm:^8.10.2"
     zod: "npm:^4.4.3"
   languageName: unknown
   linkType: soft
