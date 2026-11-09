@@ -73,6 +73,11 @@ export function useNotifiableSessions(): NotifiableSessionsView {
     refetchIntervalMs: visible
       ? ACTIVE_REFETCH_INTERVAL_MS
       : BASELINE_REFETCH_INTERVAL_MS,
+    // Kept in a hidden tab, on the baseline tier: the inbox exists to say a
+    // session started waiting for the person, and from a background tab it
+    // says so through the document title and the desktop notification. The
+    // read goes to kagent through the portal's backend, not through muster,
+    // and stops on a 401 or 403 like every poll.
     refetchIntervalInBackground: true,
   });
 

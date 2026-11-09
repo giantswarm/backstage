@@ -1,5 +1,9 @@
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import {
+  pollingQueryOptions,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { repositoriesApiRef, Watch } from '../../apis';
 
 /**
@@ -18,10 +22,11 @@ const WATCH_RETRY_MS = 10_000;
 /**
  * Follows a repository just created to readiness: `watch_repository` with
  * the pull request `create_repository` opened, called again as soon as it
- * answers while the repository is neither ready nor failed -- in a tab that
- * is not focused too. The last answer is the state: the manager reports
- * every phase reached from the start on each call. A call that fails keeps
- * the last answer on screen and is tried again.
+ * answers while the repository is neither ready nor failed, and once more as
+ * a hidden tab becomes visible again. The last answer is the state: the
+ * manager reports every phase reached from the start on each call. A call
+ * that fails keeps the last answer on screen and is tried again, unless the
+ * failure is one asking again does not change (a 401, a 403, not connected).
  */
 export function useRepositoryWatch({
   repository,
@@ -40,13 +45,21 @@ export function useRepositoryWatch({
       }),
     enabled: repository !== undefined && pullRequest !== undefined,
     staleTime: 0,
-    refetchIntervalInBackground: true,
-    refetchInterval: query => {
-      const watch = query.state.data;
-      if (watch && (watch.ready || watch.failure)) {
-        return false;
-      }
-      return query.state.error ? WATCH_RETRY_MS : WATCH_AGAIN_MS;
-    },
+    // Not from a hidden tab: the manager reports every phase reached from
+    // the start on each call, so the next call, a second after the tab
+    // becomes visible again, catches up at once (no read on becoming
+    // visible on top: `staleTime` 0 would make it one per return). Not after
+    // the backend refused the person, or answered that they are not
+    // connected to the repo-manager.
+    ...pollingQueryOptions(
+      (query: PollingQuery<Watch>) => {
+        const watch = query.state.data;
+        if (watch && (watch.ready || watch.failure)) {
+          return false;
+        }
+        return query.state.error ? WATCH_RETRY_MS : WATCH_AGAIN_MS;
+      },
+      { refetchOnVisible: false },
+    ),
   });
 }
