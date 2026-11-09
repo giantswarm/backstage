@@ -9,7 +9,10 @@ import {
   MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  getRelativeDate,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   CacheSetting,
@@ -1443,7 +1446,7 @@ describe('AddGpuNodePoolPage — the model cache’s standing cost (giantswarm/b
       'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache.',
     );
     expect(kept).toHaveTextContent(
-      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · since',
+      `The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · created ${getRelativeDate(KEPT_CLAIM.created, new Date())} · Bound in eu-central-1b.`,
     );
     expect(kept).toHaveTextContent('Bound in eu-central-1b');
     expect(screen.queryByTestId('cache-consequence')).not.toBeInTheDocument();

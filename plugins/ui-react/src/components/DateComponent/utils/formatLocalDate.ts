@@ -40,3 +40,28 @@ export function formatLocalDateFull(date: string | Date): string {
   const stamp = format('d MMM yyyy, HH:mm:ss')(givenDate);
   return zone ? `${stamp} ${zone}` : stamp;
 }
+
+/**
+ * The local time of day in {@link formatLocalDate}'s clock: `17:50`. For a
+ * compact list cell whose date goes without saying.
+ */
+export function formatLocalTime(date: string | Date): string {
+  const givenDate = parseDate(date);
+  if (!isFinite(givenDate.getTime())) return date.toString();
+  return format('HH:mm')(givenDate);
+}
+
+/**
+ * The local day in {@link formatLocalDate}'s words: `11 Oct`, with the year
+ * (`11 Oct 2025`) only when it is not `currentYear`. For a compact list cell.
+ */
+export function formatLocalDay(
+  date: string | Date,
+  currentYear: number = new Date().getFullYear(),
+): string {
+  const givenDate = parseDate(date);
+  if (!isFinite(givenDate.getTime())) return date.toString();
+  return format(
+    givenDate.getFullYear() === currentYear ? 'd MMM' : 'd MMM yyyy',
+  )(givenDate);
+}

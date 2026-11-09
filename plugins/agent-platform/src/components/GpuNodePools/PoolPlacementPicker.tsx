@@ -8,6 +8,7 @@ import {
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { getRelativeDate } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   cacheKeptByCluster,
@@ -86,14 +87,10 @@ export const READING_PRICE = "Reading the claim's price from cluster-manager…"
 export const BILLED_STANDING =
   'billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.';
 
-/** How a claim stands in one line: `100 GiB gp3 at 500 MiB/s · $27.37/month · since 18 Sept 2026 · Bound in eu-central-1b`. */
+/** How a claim stands in one line: `100 GiB gp3 at 500 MiB/s · $27.37/month · created 2 months ago · Bound in eu-central-1b`. */
 export function describeClaimStanding(claim: CacheClaim): string {
-  const since = claim.created
-    ? `since ${new Date(claim.created).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })}`
+  const created = claim.created
+    ? `created ${getRelativeDate(claim.created, new Date())}`
     : undefined;
   let where: string | undefined;
   if (claim.error) {
@@ -106,7 +103,7 @@ export function describeClaimStanding(claim: CacheClaim): string {
   return [
     describeClaimSize(claim),
     describeMonthlyPrice(claim.price) ?? claim.priceNote,
-    since,
+    created,
     where,
   ]
     .filter(Boolean)
