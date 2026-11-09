@@ -2,6 +2,7 @@ export * from './types';
 export * from './GSAuthProviders';
 export * from './signInConnectorMemory';
 export * from './loginRequestCaller';
+export { useMainSessionEnd } from './mainSessionEnd';
 export {
   GithubGrantAuthConnector,
   GithubTokenError,

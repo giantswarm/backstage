@@ -48,6 +48,8 @@ import {
   ProviderCookieQueue,
   providerCookieQueue,
 } from './providerCookieQueue';
+import { sessionEndReasonOf } from './mainSessionEnd';
+import type { MainSessionEndReason } from './types';
 
 let warned = false;
 
@@ -158,6 +160,13 @@ type Options<AuthSession> = {
    * queue unless a test brings its own.
    */
   cookieQueue?: ProviderCookieQueue;
+  /**
+   * Told when the backend refuses a `/refresh` in a way that ends the
+   * session, with the reason (see `sessionEndReasonOf`). The session manager
+   * that called the refresh drops its error, so this is the only place the
+   * reason is seen.
+   */
+  onSessionEnded?: (reason: MainSessionEndReason) => void;
 };
 
 function defaultJoinScopes(scopes: Set<string>) {
@@ -187,6 +196,7 @@ export class DefaultAuthConnector<
   private readonly startParams: Record<string, string>;
   private readonly signInConnectorMemory?: SignInConnectorMemory;
   private readonly cookieQueue: ProviderCookieQueue;
+  private readonly onSessionEnded?: (reason: MainSessionEndReason) => void;
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -202,6 +212,7 @@ export class DefaultAuthConnector<
       startParams = {},
       signInConnectorMemory,
       cookieQueue = providerCookieQueue,
+      onSessionEnded,
     } = options;
 
     if (!warned && !configApi) {
@@ -238,6 +249,7 @@ export class DefaultAuthConnector<
     this.startParams = startParams;
     this.signInConnectorMemory = signInConnectorMemory;
     this.cookieQueue = cookieQueue;
+    this.onSessionEnded = onSessionEnded;
   }
 
   async createSession(
@@ -305,6 +317,13 @@ export class DefaultAuthConnector<
         `Auth refresh request failed, ${res.statusText}`,
       );
       error.status = res.status;
+      if (this.onSessionEnded && res.status === 401) {
+        const body = await res.json().catch(() => undefined);
+        const reason = sessionEndReasonOf(res.status, body);
+        if (reason) {
+          this.onSessionEnded(reason);
+        }
+      }
       throw error;
     }
 

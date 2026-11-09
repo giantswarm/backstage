@@ -148,6 +148,87 @@ describe('DefaultAuthConnector', () => {
       expect(session).toEqual(legacyRefreshResponse);
     });
 
+    describe('a refused refresh that ends the session', () => {
+      function refusedRefresh(status: number, message: string) {
+        jest.spyOn(global, 'fetch').mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: { name: 'AuthenticationError', message },
+              response: { statusCode: status },
+            }),
+            { status, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+
+      function connectorTelling(onSessionEnded: jest.Mock) {
+        return new DefaultAuthConnector({
+          cookieQueue: new ProviderCookieQueue(undefined),
+          configApi,
+          discoveryApi,
+          environment: 'development',
+          provider: { id: 'oidc-gazelle', title: 'gazelle', icon: () => null },
+          oauthRequestApi,
+          isMainProvider: true,
+          onSessionEnded,
+        });
+      }
+
+      it.each(['invalid_request', 'invalid_grant'])(
+        'says the person signed in elsewhere when Dex answers %s for a claimed token',
+        async dexError => {
+          refusedRefresh(
+            401,
+            `Refresh failed; caused by OPError: ${dexError} (Refresh token is invalid or has already been claimed by another client.)`,
+          );
+          const onSessionEnded = jest.fn();
+
+          await expect(
+            connectorTelling(onSessionEnded).refreshSession({
+              scopes: new Set(['openid']),
+            }),
+          ).rejects.toMatchObject({ status: 401 });
+
+          expect(onSessionEnded).toHaveBeenCalledWith('signed-in-elsewhere');
+        },
+      );
+
+      it.each([
+        [401, 'Refresh failed; caused by RPError: fetch failed'],
+        [400, 'Missing session cookie'],
+        [500, 'already been claimed by another client'],
+      ])(
+        'says nothing for another refusal (%s %s)',
+        async (status, message) => {
+          refusedRefresh(status, message);
+          const onSessionEnded = jest.fn();
+
+          await expect(
+            connectorTelling(onSessionEnded).refreshSession({
+              scopes: new Set(['openid']),
+            }),
+          ).rejects.toMatchObject({ status });
+
+          expect(onSessionEnded).not.toHaveBeenCalled();
+        },
+      );
+
+      it('says nothing for a 401 without a JSON body', async () => {
+        jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+        const onSessionEnded = jest.fn();
+
+        await expect(
+          connectorTelling(onSessionEnded).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+        ).rejects.toMatchObject({ status: 401 });
+
+        expect(onSessionEnded).not.toHaveBeenCalled();
+      });
+    });
+
     describe('cookie refreshes', () => {
       /** A fetch that answers after `ms`, counting the requests open at once. */
       function slowRefresh(ms = 5) {

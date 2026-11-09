@@ -3,6 +3,7 @@ import {
   AuthRequestOptions,
   ConfigApi,
   OAuthRequestApi,
+  SessionState,
 } from '@backstage/core-plugin-api';
 import {
   AuthApi,
@@ -11,7 +12,9 @@ import {
   GSAuthProvidersApi,
   GSAuthProvidersApiCreateOptions,
   gsAuthProvidersApiRef,
+  MainSessionEnd,
 } from './types';
+import { MainSessionEndStore } from './mainSessionEnd';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import {
   ClusterToken,
@@ -145,6 +148,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // mint open the main sign-in.
   private readonly hasUserGesture: () => boolean;
 
+  // Recorded by the main provider's connectors, cleared once the main sign-in
+  // holds a session again.
+  private readonly mainSessionEnd = new MainSessionEndStore();
+
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
@@ -156,6 +163,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     this.hasUserGesture = options.hasUserGesture ?? hasUserGesture;
 
     this.mainAuthApi = this.createMainAuthApi();
+    this.mainAuthApi?.sessionState$().subscribe(state => {
+      if (state === SessionState.SignedIn) {
+        this.mainSessionEnd.clear();
+      }
+    });
 
     this.mcpAuthProviders = this.getMCPAuthProvidersFromConfig();
     this.mcpAuthApis = this.createMCPAuthApis();
@@ -507,6 +519,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       signInConnectorMemory: isMainProvider
         ? this.signInConnectorMemory
         : undefined,
+      onSessionEnded: isMainProvider
+        ? reason => this.mainSessionEnd.record(reason)
+        : undefined,
       sessionTransform: toOAuth2Session,
       popupOptions: {
         size: {
@@ -607,6 +622,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     );
 
     return [...kubernetesAuthProviders, ...this.mcpAuthProviders];
+  }
+
+  getMainSessionEnd(): MainSessionEnd {
+    return this.mainSessionEnd;
   }
 
   getBrokerCoveredInstallations(): string[] {
