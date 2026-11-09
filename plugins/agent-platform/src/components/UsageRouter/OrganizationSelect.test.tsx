@@ -126,7 +126,31 @@ describe('OrganizationSelect', () => {
     expect(trigger()).not.toHaveTextContent('org-agent-platform-test-b');
   });
 
-  it('keeps its width whatever is selected, and names a long selection in full on hover', () => {
+  it('tells two namespaces that read the same apart by their namespace', async () => {
+    const user = userEvent.setup();
+    render(
+      <OrganizationSelect
+        // `org-acme` is a Giant Swarm organization no answer names, beside
+        // the organization acme; `org-team-x` and `team-x` read the same too.
+        namespaces={['org-acme', 'org-acme-x', 'org-team-x', 'team-x']}
+        value={undefined}
+        onChange={() => {}}
+      />,
+    );
+
+    await user.click(trigger());
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([
+      'All organizations',
+      'acmeorg-acme',
+      'acme-x',
+      'team-xorg-team-x',
+      'team-xteam-x',
+    ]);
+  });
+
+  it('keeps its width whatever is selected', () => {
     const name = 'a-rather-long-organization-name-that-would-widen-the-header';
     const { container, rerender } = render(
       <OrganizationSelect
@@ -140,7 +164,6 @@ describe('OrganizationSelect', () => {
     // A fixed box: bui's SelectValue cuts the name short with an ellipsis
     // inside it instead of the box growing with the name.
     expect(root).toHaveStyle({ width: `${ORGANIZATION_SELECT_WIDTH}px` });
-    expect(root).toHaveAttribute('title', name);
     expect(trigger()).toHaveTextContent(name);
 
     rerender(
@@ -151,6 +174,67 @@ describe('OrganizationSelect', () => {
       />,
     );
     expect(root).toHaveStyle({ width: `${ORGANIZATION_SELECT_WIDTH}px` });
-    expect(root).toHaveAttribute('title', 'All organizations');
+  });
+
+  describe('the whole name in a tooltip', () => {
+    // jsdom lays nothing out: the selected value measures as cut short when
+    // its text is longer than `fits` characters.
+    let fits = Infinity;
+    beforeAll(() => {
+      Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.textContent?.length ?? 0;
+        },
+      });
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return Math.min(fits, this.textContent?.length ?? 0);
+        },
+      });
+    });
+    afterAll(() => {
+      // jsdom keeps both on Element: dropping the overrides restores them.
+      const prototype = HTMLElement.prototype as unknown as Record<
+        string,
+        unknown
+      >;
+      delete prototype.scrollWidth;
+      delete prototype.clientWidth;
+    });
+
+    it('opens on keyboard focus when the box cuts the name short', async () => {
+      fits = 20;
+      const user = userEvent.setup();
+      const name = 'a-rather-long-organization-name';
+      render(
+        <OrganizationSelect
+          namespaces={['kagent', `org-${name}`]}
+          value={`org-${name}`}
+          onChange={() => {}}
+        />,
+      );
+
+      await user.tab();
+      expect(trigger()).toHaveFocus();
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(name);
+    });
+
+    it('stays shut when the whole name fits', async () => {
+      fits = 20;
+      const user = userEvent.setup();
+      render(
+        <OrganizationSelect
+          namespaces={['kagent', 'org-acme']}
+          value="org-acme"
+          onChange={() => {}}
+        />,
+      );
+
+      await user.tab();
+      expect(trigger()).toHaveFocus();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
   });
 });

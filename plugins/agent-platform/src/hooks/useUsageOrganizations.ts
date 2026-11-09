@@ -4,7 +4,7 @@ import { useAgents } from '../components/AgentsDataProvider';
 import { UNKNOWN_AGENT_LABEL } from '../lib/llmUsage';
 import { organizationsSeenQueryFor } from '../lib/llmUsageQueries';
 import type { OrganizationDirectory } from '../lib/organizations';
-import { organizationScopeLabelOf, tenantKindOf } from '../lib/tenants';
+import { tenantKindOf, tenantOf } from '../lib/tenants';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import type { UsageWindow } from '../lib/usageWindow';
 
@@ -21,18 +21,22 @@ export type UsageOrganizationsView = {
 /** Platform first, then organizations, then other namespaces; by name within. */
 const KIND_ORDER = { platform: 0, organization: 1, namespace: 2 } as const;
 
-function compareNamespaces(
-  a: string,
-  b: string,
+/**
+ * `namespaces` in that order, by the name the Organization select shows. Each
+ * namespace's kind and name are worked out once, not per comparison.
+ */
+function sortNamespaces(
+  namespaces: Iterable<string>,
   directory: OrganizationDirectory,
-): number {
-  return (
-    KIND_ORDER[tenantKindOf(a, directory)] -
-      KIND_ORDER[tenantKindOf(b, directory)] ||
-    organizationScopeLabelOf(a, directory).localeCompare(
-      organizationScopeLabelOf(b, directory),
-    )
-  );
+): string[] {
+  return [...namespaces]
+    .map(namespace => ({
+      namespace,
+      order: KIND_ORDER[tenantKindOf(namespace, directory)],
+      label: tenantOf(namespace, directory),
+    }))
+    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
+    .map(({ namespace }) => namespace);
 }
 
 /**
@@ -95,7 +99,7 @@ export function useUsageOrganizations(
         }
       }
     }
-    return [...set].sort((a, b) => compareNamespaces(a, b, directory));
+    return sortNamespaces(set, directory);
   }, [seenResult, agents, installation, directory]);
 
   return {
