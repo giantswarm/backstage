@@ -35,8 +35,6 @@ import {
   isModelManagerQueryOf,
   modelManagerBackendQueryKey,
   modelManagerBackendsQueryKey,
-  modelManagerModelsQueryKey,
-  modelManagerNodesQueryKey,
 } from '../../lib/queryKeys';
 
 const listBackends = jest.fn();
