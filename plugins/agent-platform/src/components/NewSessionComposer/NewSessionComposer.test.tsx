@@ -912,6 +912,25 @@ describe('opt-in picker options', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps the namespace headings when the leading agent is alone in its namespace', async () => {
+    renderComposer({
+      // sre alone in kagent, research in research: two namespaces on offer.
+      agents: [sre, research],
+      groupByNamespace: true,
+      leadingAgentId: sre.id,
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('SRE Agent');
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('lists the recent agents first, in their order', async () => {
     renderComposer({
       agents: [sre, research, issues],

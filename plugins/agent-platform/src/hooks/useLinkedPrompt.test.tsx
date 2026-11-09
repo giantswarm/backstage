@@ -14,11 +14,16 @@ function Probe() {
       <div data-testid="prompt">{prompt ?? ''}</div>
       <div data-testid="key">{key}</div>
       <div data-testid="search">{location.search}</div>
+      <div data-testid="hash">{location.hash}</div>
+      <div data-testid="state">{JSON.stringify(location.state)}</div>
     </>
   );
 }
 
-function renderAt(url: string) {
+function renderAt(
+  url:
+    string | { pathname: string; search: string; hash: string; state: unknown },
+) {
   return render(
     <MemoryRouter initialEntries={[url]}>
       <Probe />
@@ -52,5 +57,27 @@ describe('useLinkedPrompt', () => {
     expect(screen.getByTestId('prompt')).toHaveTextContent('Second');
     expect(screen.getByTestId('key')).toHaveTextContent('1');
     expect(screen.getByTestId('search')).toBeEmptyDOMElement();
+  });
+
+  it('keeps the fragment and the router state', () => {
+    renderAt({
+      pathname: '/',
+      search: '?prompt=Hi',
+      hash: '#composer',
+      state: { from: 'agents' },
+    });
+
+    expect(screen.getByTestId('search')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('hash')).toHaveTextContent('#composer');
+    expect(screen.getByTestId('state')).toHaveTextContent('{"from":"agents"}');
+  });
+
+  it('does not start over for a blank prompt a link brings', () => {
+    renderAt('/?prompt=First');
+
+    act(() => navigate('/?prompt=%20'));
+
+    expect(screen.getByTestId('prompt')).toHaveTextContent('First');
+    expect(screen.getByTestId('key')).toHaveTextContent('0');
   });
 });

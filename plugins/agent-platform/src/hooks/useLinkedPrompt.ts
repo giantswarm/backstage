@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
   linkedPromptOf,
@@ -22,8 +22,11 @@ export type LinkedPrompt = {
  * written since, not the link's prompt over it.
  */
 export function useLinkedPrompt(): LinkedPrompt {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const raw = searchParams.get(NEW_SESSION_PROMPT_PARAM);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const raw = new URLSearchParams(location.search).get(
+    NEW_SESSION_PROMPT_PARAM,
+  );
   const [linked, setLinked] = useState<LinkedPrompt>(() => ({
     prompt: linkedPromptOf(raw),
     key: 0,
@@ -39,20 +42,22 @@ export function useLinkedPrompt(): LinkedPrompt {
     }
     if (raw !== taken.current) {
       taken.current = raw;
-      setLinked(previous => ({
-        prompt: linkedPromptOf(raw),
-        key: previous.key + 1,
-      }));
+      // A blank prompt brings nothing: the composer is not started over.
+      const prompt = linkedPromptOf(raw);
+      if (prompt !== undefined) {
+        setLinked(previous => ({ prompt, key: previous.key + 1 }));
+      }
     }
-    setSearchParams(
-      previous => {
-        const next = new URLSearchParams(previous);
-        next.delete(NEW_SESSION_PROMPT_PARAM);
-        return next;
-      },
-      { replace: true },
+    // Only `prompt` leaves: the path, the other parameters, the fragment and
+    // the router state stay.
+    const search = new URLSearchParams(location.search);
+    search.delete(NEW_SESSION_PROMPT_PARAM);
+    const rest = search.toString();
+    navigate(
+      { ...location, search: rest ? `?${rest}` : '' },
+      { replace: true, state: location.state },
     );
-  }, [raw, setSearchParams]);
+  }, [raw, location, navigate]);
 
   return linked;
 }

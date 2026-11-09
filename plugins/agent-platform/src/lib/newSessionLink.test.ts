@@ -31,6 +31,14 @@ describe('linkedPromptOf', () => {
     ).toHaveLength(LINKED_PROMPT_MAX_LENGTH);
   });
 
+  it('never splits a character at the bound', () => {
+    const cut = linkedPromptOf(
+      `${'x'.repeat(LINKED_PROMPT_MAX_LENGTH - 1)}\u{1F600}tail`,
+    )!;
+    expect(cut.endsWith('\u{1F600}')).toBe(true);
+    expect(Array.from(cut)).toHaveLength(LINKED_PROMPT_MAX_LENGTH);
+  });
+
   it('reads no prompt from a missing or blank value', () => {
     expect(linkedPromptOf(null)).toBeUndefined();
     expect(linkedPromptOf('   ')).toBeUndefined();

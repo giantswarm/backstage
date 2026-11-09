@@ -137,8 +137,9 @@ const useStyles = makeStyles(theme => ({
 /**
  * Where a link in agent prose should go.
  *
- * Another origin opens in a new tab with the usual external affordance, a
- * catalog path becomes an entity link, a session filesystem path stays text,
+ * Another origin, or a backend `/api/…` URL, opens in a new tab with the usual
+ * external affordance, a fragment stays on the page, a catalog path becomes
+ * an entity link, a session filesystem path stays text,
  * and any other same-origin link navigates within the app, query and fragment
  * kept — an agent's link to start a session (`/?agent=…&prompt=…`) lands on
  * that screen in this tab. A connector sign-in muster issued in the session is
@@ -161,14 +162,25 @@ function MarkdownLink({
     return <>{children}</>;
   }
 
+  // A fragment (a footnote, a heading in the same reply) stays on this page.
+  if (href.startsWith('#')) {
+    return <a href={href}>{children}</a>;
+  }
+
   let url: URL;
   try {
-    url = new URL(href, window.location.origin);
+    // Relative to this page, as the browser would read it.
+    url = new URL(href, window.location.href);
   } catch {
     return <>{children}</>;
   }
 
-  if (url.origin !== window.location.origin) {
+  // Another origin, or a backend URL the app's router does not serve (an
+  // `/api/…` download): the browser fetches it, in a new tab.
+  if (
+    url.origin !== window.location.origin ||
+    /^\/+api(?:\/|$)/.test(url.pathname)
+  ) {
     return <ExternalLink href={href}>{children}</ExternalLink>;
   }
   // One leading slash: `//host` in a router link would leave the portal.

@@ -667,36 +667,33 @@ export function NewSessionComposer({
     const toOption = (agent: AgentRow) => optionsByAgentId.get(agent.id)!;
 
     if (groupByNamespace) {
-      // Out of its namespace's group, so it is listed once there; Recent and
-      // Favorites keep it, as they keep every agent of theirs.
-      const leading = isSearching
-        ? undefined
-        : listed.find(agent => agent.id === leadingAgentId);
-      const rest = leading ? listed.filter(agent => agent !== leading) : listed;
-      const recent = isSearching
-        ? []
-        : (shownRecentIds ?? [])
-            .map(id => listed.find(agent => agent.id === id))
-            .filter((agent): agent is AgentRow => agent !== undefined);
-      // Every favorite on offer, uncapped, in display order as Customize
-      // lists them: the person's own shortlist matters more than keeping the
-      // namespace groups near the top.
-      const favoriteIds = new Set(isSearching ? [] : shownFavoriteIds);
-      const favorites = listed.filter(agent => favoriteIds.has(agent.id));
-      const namespaces = [...new Set(rest.map(agent => agent.namespace))].sort(
-        (a, b) => a.localeCompare(b),
-      );
-      const leadingOptions = leading ? [toOption(leading)] : [];
       if (isSearching) {
         return matched.map(toOption);
       }
+      // Out of its namespace's group, so it is listed once there; Recent and
+      // Favorites keep it, as they keep every agent of theirs.
+      const leading = listed.find(agent => agent.id === leadingAgentId);
+      const rest = leading ? listed.filter(agent => agent !== leading) : listed;
+      const recent = (shownRecentIds ?? [])
+        .map(id => listed.find(agent => agent.id === id))
+        .filter((agent): agent is AgentRow => agent !== undefined);
+      // Every favorite on offer, uncapped, in display order as Customize
+      // lists them: the person's own shortlist matters more than keeping the
+      // namespace groups near the top.
+      const favoriteIds = new Set(shownFavoriteIds);
+      const favorites = listed.filter(agent => favoriteIds.has(agent.id));
+      const leadingOptions = leading ? [toOption(leading)] : [];
+      // Grouped or flat by every agent on offer, the leading one included.
       if (
         recent.length === 0 &&
         favorites.length === 0 &&
-        namespaces.length <= 1
+        new Set(listed.map(agent => agent.namespace)).size <= 1
       ) {
         return [...leadingOptions, ...rest.map(toOption)];
       }
+      const namespaces = [...new Set(rest.map(agent => agent.namespace))].sort(
+        (a, b) => a.localeCompare(b),
+      );
       const repeated = (title: string, prefix: string, group: AgentRow[]) =>
         group.length > 0
           ? [

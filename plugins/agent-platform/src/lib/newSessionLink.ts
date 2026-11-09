@@ -37,10 +37,15 @@ export function newSessionHref(
 
 /**
  * The prompt a `?prompt=` value prefills: trimmed and cut to
- * {@link LINKED_PROMPT_MAX_LENGTH}; `undefined` for none or a blank one.
+ * {@link LINKED_PROMPT_MAX_LENGTH} characters (code points); `undefined` for
+ * none or a blank one.
  */
 export function linkedPromptOf(raw: string | null): string | undefined {
-  const prompt = raw?.trim().slice(0, LINKED_PROMPT_MAX_LENGTH).trim();
+  // Cut by code points, so an emoji at the limit is not split in half.
+  const prompt = Array.from(raw?.trim() ?? '')
+    .slice(0, LINKED_PROMPT_MAX_LENGTH)
+    .join('')
+    .trim();
   return prompt ? prompt : undefined;
 }
 

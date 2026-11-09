@@ -67,6 +67,24 @@ describe('MessageMarkdown', () => {
     expect(screen.queryByRole('link', { name: 'Run' })).toBeNull();
   });
 
+  it('keeps a fragment link on this page', async () => {
+    await renderInTestApp(<MessageMarkdown text="[Details](#details)" />);
+
+    const link = screen.getByRole('link', { name: 'Details' });
+    expect(link).toHaveAttribute('href', '#details');
+    expect(link).not.toHaveAttribute('target');
+  });
+
+  it('lets the browser fetch a backend URL, in a new tab', async () => {
+    await renderInTestApp(
+      <MessageMarkdown text="[Report](/api/proxy/report.csv)" />,
+    );
+
+    const link = screen.getByRole('link', { name: /Report/ });
+    expect(link).toHaveAttribute('href', '/api/proxy/report.csv');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
   it('opens another origin in a new tab', async () => {
     await renderInTestApp(
       <MessageMarkdown text="[Docs](https://docs.giantswarm.io/)" />,

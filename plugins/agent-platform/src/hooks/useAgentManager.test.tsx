@@ -7,7 +7,7 @@ import {
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
-import { useCreatesAgentsNowhere } from './useAgentManager';
+import { useCreatesAgentsNowhere, useDefaultAgentIds } from './useAgentManager';
 
 /**
  * What agent-manager's `get_info` answers on an installation: the namespaces
@@ -70,4 +70,78 @@ describe('useCreatesAgentsNowhere', () => {
       expect(result.current.createsNowhere).toBe(createsNowhere);
     },
   );
+});
+
+describe('useDefaultAgentIds', () => {
+  /** agent-manager's `defaultAgent` per installation, or not registered. */
+  function renderDefaults(defaults: Record<string, string | 'absent'>) {
+    const asked: string[] = [];
+    const api = {
+      listInstallations: async () => ({
+        installations: Object.keys(defaults).map(name => ({
+          name,
+          requiresAuth: true,
+        })),
+      }),
+      listServers: async (installation: string) => ({
+        mcpServers:
+          defaults[installation] === 'absent'
+            ? []
+            : [{ name: 'agent-manager' }],
+      }),
+      callTool: async (_name: string, _args: unknown, installation: string) => {
+        asked.push(installation);
+        return { namespaces: {}, defaultAgent: defaults[installation] };
+      },
+    } as unknown as MusterApi;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[musterApiRef, api]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    const view = renderHook(() => useDefaultAgentIds(Object.keys(defaults)), {
+      wrapper,
+    });
+    return { ...view, asked };
+  }
+
+  it('asks only the home installation when it names one', async () => {
+    const { result, asked } = renderDefaults({
+      golem: 'kagent/default-agent',
+      lab: 'kagent/lab-default',
+    });
+
+    await waitFor(() =>
+      expect([...result.current]).toEqual(['golem/kagent/default-agent']),
+    );
+    expect(asked).toEqual(['golem']);
+  });
+
+  it('asks the others when the home installation names none', async () => {
+    const { result } = renderDefaults({
+      golem: '',
+      lab: 'kagent/lab-default',
+    });
+
+    await waitFor(() =>
+      expect([...result.current]).toEqual(['lab/kagent/lab-default']),
+    );
+  });
+
+  it('never asks where muster does not reach agent-manager', async () => {
+    const { result, asked } = renderDefaults({
+      golem: 'absent',
+      lab: 'kagent/lab-default',
+    });
+
+    await waitFor(() =>
+      expect([...result.current]).toEqual(['lab/kagent/lab-default']),
+    );
+    expect(asked).toEqual(['lab']);
+  });
 });
