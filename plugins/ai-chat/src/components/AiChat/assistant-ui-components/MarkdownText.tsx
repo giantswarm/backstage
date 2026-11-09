@@ -5,7 +5,6 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from '@assistant-ui/react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
 import { Link as BackstageLink } from '@backstage/core-components';
@@ -20,6 +19,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import classNames from 'classnames';
+import { chatRehypePlugins } from './chatRehypePlugins';
 
 export const useMarkdownStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -316,6 +316,14 @@ export const createMarkdownComponents = (
     summary: ({ children }) => (
       <summary className={classes.summary}>{children}</summary>
     ),
+    img: ({ src, alt }) => {
+      const label = `Image: ${alt || 'untitled'}`;
+      return typeof src === 'string' && src ? (
+        <ExternalLink href={src}>{label}</ExternalLink>
+      ) : (
+        <>{`[${label}]`}</>
+      );
+    },
   });
 
 const MarkdownTextImpl = () => {
@@ -325,7 +333,7 @@ const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeRaw]}
+      rehypePlugins={chatRehypePlugins}
       components={components}
     />
   );

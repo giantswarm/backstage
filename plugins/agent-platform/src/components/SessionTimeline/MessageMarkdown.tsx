@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { Link as BackstageLink } from '@backstage/core-components';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { makeStyles } from '@material-ui/core';
@@ -12,6 +11,7 @@ import {
   ConnectorSignInAction,
   useConnectorSignInLink,
 } from '../ConnectorSignInLinks';
+import { chatRehypePlugins } from './chatRehypePlugins';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -307,13 +307,21 @@ export function useMarkdownComponents(): Components {
     summary: ({ children }) => (
       <summary className={classes.summary}>{children}</summary>
     ),
+    img: ({ src, alt }) => {
+      const label = `Image: ${alt || 'untitled'}`;
+      return typeof src === 'string' && src ? (
+        <MarkdownLink href={src}>{label}</MarkdownLink>
+      ) : (
+        <>{`[${label}]`}</>
+      );
+    },
   };
 }
 
 /**
- * Agent prose. GFM (tables, task lists, strikethrough) plus raw HTML — agents
- * wrap long output in `<details>` blocks, which is the same trade the AI chat
- * plugin makes.
+ * Agent prose. GFM (tables, task lists, strikethrough) plus sanitised raw
+ * HTML for agents' `<details>` blocks. Images render as links, so a message
+ * never makes the browser fetch a URL.
  */
 function MessageMarkdownImpl({ text }: { text: string }) {
   const classes = useStyles();
@@ -322,7 +330,7 @@ function MessageMarkdownImpl({ text }: { text: string }) {
     <div className={`${STABLE_CLASS_NAMES.message} ${classes.root}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={chatRehypePlugins}
         components={components}
       >
         {text}
