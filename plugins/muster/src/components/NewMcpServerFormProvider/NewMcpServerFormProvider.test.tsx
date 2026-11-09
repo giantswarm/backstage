@@ -514,7 +514,7 @@ describe('NewMcpServerFormProvider', () => {
                   authorizationServer: {
                     issuer: 'https://idp',
                     clientCredentialsSecretRef: {
-                      name: 'weather-mcp-oauth-client-old01',
+                      name: 'weather-mcp-muster-client-old01old01',
                     },
                   },
                 },
@@ -527,7 +527,7 @@ describe('NewMcpServerFormProvider', () => {
       expect(
         result.current.definition.auth?.authorizationServer
           ?.clientCredentialsSecretRef,
-      ).toEqual({ name: 'weather-mcp-oauth-client-old01' });
+      ).toEqual({ name: 'weather-mcp-muster-client-old01old01' });
 
       act(() =>
         result.current.markSaved(result.current.definition, {
@@ -595,7 +595,7 @@ describe('NewMcpServerFormProvider', () => {
     });
 
     it.each([
-      ['a stored client', 'weather-mcp-oauth-client-x7k2p', false],
+      ['a stored client', 'weather-mcp-muster-client-x7k2p9m4qa', false],
       ['an existing Secret', 'weather-oauth-client', true],
     ])(
       'brings %s back when its side is chosen again, empty on the other',

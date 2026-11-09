@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
+  canonicalRepoUrl,
   canProposeSkillTo,
   DiscoveredSkill,
   type RefKind,
@@ -37,7 +38,15 @@ export type SkillCatalog = {
    * whether Add skill can target it, and where it scans.
    */
   sources?: SkillSource[];
+  /**
+   * The repositories GitHub reports private, by canonical URL
+   * (`canonicalRepoUrl`): only their collaborators read them, and an agent
+   * fetches their skills only with a credential.
+   */
+  privateRepositories: ReadonlySet<string>;
 };
+
+const NO_REPOSITORIES: ReadonlySet<string> = new Set();
 
 /**
  * Discovers agent skills across every configured repository
@@ -92,6 +101,8 @@ export function useSkillCatalog(): SkillCatalog {
             path?: string;
             readOnly?: boolean;
             ref?: string;
+            /** Absent from older backends and for non-GitHub hosts. */
+            private?: boolean;
           };
           return body;
         }),
@@ -102,6 +113,7 @@ export function useSkillCatalog(): SkillCatalog {
       const failedRepositories: string[] = [];
       const failureMessages: Record<string, string> = {};
       const sources: SkillSource[] = [];
+      const privateRepositories = new Set<string>();
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
@@ -117,6 +129,9 @@ export function useSkillCatalog(): SkillCatalog {
           skills.push(...result.value.skills);
           plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
+          if (result.value.private) {
+            privateRepositories.add(canonicalRepoUrl(repositories[index]));
+          }
         } else {
           failedRepositories.push(repositories[index]);
           failureMessages[repositories[index]] =
@@ -133,6 +148,7 @@ export function useSkillCatalog(): SkillCatalog {
         failureMessages,
         truncated,
         sources,
+        privateRepositories,
       };
     },
   });
@@ -148,5 +164,6 @@ export function useSkillCatalog(): SkillCatalog {
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
     sources: data?.sources ?? [],
+    privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
   };
 }

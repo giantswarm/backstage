@@ -49,6 +49,9 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
+import { PrivateSkillsNote } from '../PrivateSkillsNote';
+import { pickedSourcesOf } from '../../lib/agentSpec';
+import { agentSkillsSecretOf } from '../../lib/privateSkills';
 import {
   Notes,
   PlainRow,
@@ -391,6 +394,12 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             description="This agent can discover and call every tool the gateway exposes to whoever invokes it, platform tools included."
           />
         )}
+
+        <PrivateSkillsNote
+          installation={installation}
+          {...pickedSourcesOf(state)}
+          agentSecretName={agentSkillsSecretOf(agent)}
+        />
 
         {/* What decides whether Save is offered, in sight: agent-manager's dry
             run of exactly the change. */}

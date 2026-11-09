@@ -3,6 +3,7 @@ import { useQueries } from '@tanstack/react-query';
 import { mapQueriesToClusters } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
 import { k8sResponseError } from './utils/k8sResponseError';
+import { withPollingRule } from './utils/pollingOptions';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { Options, QueryOptions } from './types';
@@ -68,7 +69,7 @@ export function useListResources<T>(
 
           return list.items;
         },
-        ...queryOptions,
+        ...withPollingRule(queryOptions),
       };
     }),
     combine: results => mapQueriesToClusters(clusters, results),

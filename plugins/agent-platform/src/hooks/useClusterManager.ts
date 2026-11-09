@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
@@ -28,7 +32,10 @@ import {
   type CreateNodePoolSchema,
   type PlaceNoun,
 } from '../lib/clusterManager';
-import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
+import {
+  gpuNodePoolsRefetchInterval,
+  isPoolDeployInProgress,
+} from '../lib/poolLifecycle';
 import {
   musterCreateNodePoolSchemaQueryKey,
   musterClusterManagerInfoQueryKey,
@@ -188,56 +195,77 @@ type GpuNodePoolsOfInstallation = {
  * installation without the Cluster API contributes no rows and its note.
  */
 export function useGpuNodePools(installations: string[]) {
+  const queryClient = useQueryClient();
   const musterApi = useMusterPluginApi();
   const queries = useQueries({
-    queries: installations.map(installation => ({
-      queryKey: [...musterClustersQueryKey(installation), 'pools'] as const,
-      enabled: Boolean(musterApi),
-      queryFn: async (): Promise<GpuNodePoolsOfInstallation> => {
-        const client = new ClusterManagerClient(musterApi!, installation);
-        const { clusters, clusterApi } = await client.listClusters();
-        const withPools = clusters.filter(
-          cluster => cluster.poolReleases.length > 0,
-        );
-        const results = await Promise.all(
-          withPools.map(cluster =>
-            client.listNodePools(cluster.name, cluster.namespace),
-          ),
-        );
-        const rows = results.flatMap((result, index) => {
-          const cluster = withPools[index];
-          return result.nodePools.filter(isManagedPool).map(pool => ({
-            id: `${installation}/${cluster.name}/${pool.name}`,
-            installation,
-            cluster,
-            poolName: poolNameOf(pool, cluster.name),
-            pool,
-          }));
-        });
-        const caches = clusters.flatMap(cluster =>
-          (cluster.serving.readiness?.cacheClaims ?? []).map(claim => ({
-            id: `${installation}/${cluster.name}/${claim.name}`,
-            installation,
-            cluster,
-            claim,
-          })),
-        );
-        // Agent-platform scope only (the GPU panel, model hosting): its noun.
-        return {
-          rows,
-          caches,
-          note: clusterApiNote(clusterApi, 'environment'),
-          hasClusters: clusters.length > 0,
-        };
-      },
-      staleTime: 30_000,
-      // 10 s while a pool of the installation is unsettled, 60 s otherwise —
-      // in a tab that is not focused too: a pool's serve intent is served the
-      // moment its stack is ready, not when the person looks again.
-      refetchInterval: gpuNodePoolsRefetchInterval,
-      refetchIntervalInBackground: true,
-      retry: false,
-    })),
+    queries: installations.map(installation => {
+      const queryKey = [
+        ...musterClustersQueryKey(installation),
+        'pools',
+      ] as const;
+      return {
+        queryKey,
+        enabled: Boolean(musterApi),
+        queryFn: async (): Promise<GpuNodePoolsOfInstallation> => {
+          const client = new ClusterManagerClient(musterApi!, installation);
+          const { clusters, clusterApi } = await client.listClusters();
+          const withPools = clusters.filter(
+            cluster => cluster.poolReleases.length > 0,
+          );
+          const results = await Promise.all(
+            withPools.map(cluster =>
+              client.listNodePools(cluster.name, cluster.namespace),
+            ),
+          );
+          const rows = results.flatMap((result, index) => {
+            const cluster = withPools[index];
+            return result.nodePools.filter(isManagedPool).map(pool => ({
+              id: `${installation}/${cluster.name}/${pool.name}`,
+              installation,
+              cluster,
+              poolName: poolNameOf(pool, cluster.name),
+              pool,
+            }));
+          });
+          const caches = clusters.flatMap(cluster =>
+            (cluster.serving.readiness?.cacheClaims ?? []).map(claim => ({
+              id: `${installation}/${cluster.name}/${claim.name}`,
+              installation,
+              cluster,
+              claim,
+            })),
+          );
+          // Agent-platform scope only (the GPU panel, model hosting): its noun.
+          return {
+            rows,
+            caches,
+            note: clusterApiNote(clusterApi, 'environment'),
+            hasClusters: clusters.length > 0,
+          };
+        },
+        staleTime: 30_000,
+        // 10 s while a pool of the installation is unsettled, 60 s otherwise;
+        // not after muster answered that the person is not signed in.
+        //
+        // From a hidden tab only while a pool is being deployed: the portal
+        // calls its serve intent's `load_model` from the read that shows the
+        // stack ready (`useServeIntentRunner`), and the person who deployed
+        // one and switched tabs expects the model to load meanwhile, not when
+        // they come back (giantswarm/backstage#2446). Read per render from the
+        // cache, so it stops with the read that shows the pool settled.
+        ...musterPollingOptions(
+          (query: PollingQuery<GpuNodePoolsOfInstallation>) =>
+            gpuNodePoolsRefetchInterval(query),
+          {
+            inBackground: isPoolDeployInProgress(
+              queryClient.getQueryData<GpuNodePoolsOfInstallation>(queryKey)
+                ?.rows,
+            ),
+          },
+        ),
+        retry: false,
+      };
+    }),
   });
 
   const rows = useMemo(

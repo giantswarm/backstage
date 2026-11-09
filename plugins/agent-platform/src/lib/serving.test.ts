@@ -408,6 +408,25 @@ describe('mergeServingSnapshots', () => {
     expect(merged.isLoading).toBe(true);
   });
 
+  it('names in the read warning only the installations some source could not read for a reason a sign-in does not fix', () => {
+    const modelManager: ServingSourceSnapshot = {
+      ...ollama,
+      isLoading: false,
+      installations: [],
+      backends: {},
+      // model-manager asked for a sign-in on both; KServe could not read
+      // gaggle either.
+      unreachableInstallations: ['gaggle', 'lab'],
+      signInRequiredInstallations: ['gaggle', 'lab'],
+    };
+
+    const merged = mergeServingSnapshots([kserve, modelManager]);
+
+    expect(merged.unreachableInstallations).toEqual(['gaggle', 'lab']);
+    expect(merged.signInRequiredInstallations).toEqual(['gaggle', 'lab']);
+    expect(merged.unreadableBeyondSignIn).toEqual(['gaggle']);
+  });
+
   it('keeps an installation whose serving layer runs no backend yet', () => {
     // A model-manager that answered with an empty backends list: nothing to
     // label the installation with, but a serving layer to register one on.
@@ -759,6 +778,8 @@ describe('mergeServingSnapshots', () => {
       sharedHosts: {},
       gatewayHosts: {},
       unreachableInstallations: [],
+      signInRequiredInstallations: [],
+      unreadableBeyondSignIn: [],
       servedModels: [],
       gpuNodes: [],
       gpuCapacityUnavailable: {},

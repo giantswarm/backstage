@@ -68,7 +68,8 @@ const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
  */
 export function directServerName(
   binding: AgentMcpBinding,
-  remotes: readonly RemoteMCPServer[] | undefined,
+  remotes:
+    readonly Pick<RemoteMCPServer, 'getName' | 'getAnnotations'>[] | undefined,
 ): string {
   const { kind, apiGroup, name } = binding.server;
   const remote =
