@@ -78,21 +78,24 @@ function inTeam(
 }
 
 /**
- * Now, scoped to one team: its lanes and blockers, and its plans and summary
- * when the magazine follows it. "Other teams, coming up" keeps only the
- * other teams' work, and is empty across all teams.
+ * Now, scoped to one team: its lanes and blockers, and its plans, summary
+ * and lane descriptions when the magazine follows it. "Other teams, coming
+ * up" keeps only the other teams' work, and is empty across all teams.
  */
 export function nowForTeam(now: Now, team: string, magazineTeam: string): Now {
   if (team === ALL_TEAMS) {
     return { ...now, upcoming: [] };
   }
   const follows = followsTeam(team, magazineTeam);
-  // A lane keeps its ranked `total` until the scope drops one of its cards.
+  // A lane keeps its ranked `total` until the scope drops one of its cards;
+  // its description is the magazine's team's.
   const lanes: Lane[] = now.lanes.map(lane => {
     const cards = lane.cards.filter(card => inTeam(card, team, magazineTeam));
-    return cards.length === lane.cards.length
-      ? lane
-      : { ...lane, cards, total: cards.length };
+    const scoped =
+      cards.length === lane.cards.length
+        ? lane
+        : { ...lane, cards, total: cards.length };
+    return follows ? scoped : { ...scoped, summary: '' };
   });
   return {
     ...now,

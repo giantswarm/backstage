@@ -482,9 +482,16 @@ test.describe('Hive', () => {
     await expect(admin.getByText('Phoenix setup work')).toBeVisible();
     await expect(admin.getByText('Customer request 1')).toHaveCount(0);
     await expect(admin.getByText('Two customer requests move')).toHaveCount(0);
+    // The lanes stay, without Bumblebee's descriptions of them.
+    await expect(
+      admin.getByRole('heading', { name: 'Customers', exact: true }),
+    ).toBeVisible();
+    await expect(admin.getByText('What customers wait for.')).toHaveCount(0);
+    await expect(admin.getByText('Keeping the lights on.')).toHaveCount(0);
 
     await open(admin, `/hive/now?team=${bumblebee}`);
     await expect(admin.getByText('Customer request 1')).toBeVisible();
+    await expect(admin.getByText('What customers wait for.')).toBeVisible();
     await expect(admin.getByText('Phoenix setup work')).toHaveCount(0);
     await expect(admin.getByText('Hive follows Team Bumblebee')).toHaveCount(0);
 

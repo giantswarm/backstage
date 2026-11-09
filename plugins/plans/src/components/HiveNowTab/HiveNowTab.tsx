@@ -222,7 +222,7 @@ function LaneTable(props: { lane: Lane; query: string }) {
         <SectionHeader
           id={`hive-lane-${lane.id}`}
           title={lane.title}
-          description={lane.summary}
+          description={lane.summary || undefined}
         />
         <Text variant="body-small" color="secondary">
           {query ? `${matching.length} of ${lane.total}` : `${lane.total} open`}
