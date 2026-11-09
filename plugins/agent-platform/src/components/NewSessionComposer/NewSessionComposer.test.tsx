@@ -265,6 +265,25 @@ describe('NewSessionComposer', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('keeps the agent shown while the person types when another default arrives', async () => {
+      const { rerender } = renderComposer({
+        agents: [sre, issues],
+        defaultAgent: sre,
+      });
+
+      await userEvent.type(field(), 'check');
+      rerender(
+        <NewSessionComposer
+          agents={[sre, issues]}
+          defaultAgent={issues}
+          isStarting={false}
+          onStart={onStart}
+        />,
+      );
+
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
+    });
+
     it('drops the message once an agent is chosen', async () => {
       renderComposer({ agents: [sre, issues] });
 

@@ -62,6 +62,9 @@ import { ToolchainPicker } from '../ToolchainPicker';
 import { toolchainEntry, type ToolchainPick } from '../../lib/toolchainManager';
 import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
 
+/** What the picker says on the installation's default agent (`leadingAgentId`). */
+const DEFAULT_AGENT_TAG = 'Default';
+
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
 const EXPANDED_ROWS = 3;
@@ -470,7 +473,11 @@ export function NewSessionComposer({
   const buildAvatarUrl = useAgentAvatarUrl();
   const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
   const prompt = controlledPrompt ?? ownPrompt;
+  // Whether the person has typed: a default that arrives later no longer
+  // replaces an agent they saw selected while typing.
+  const typed = useRef(false);
   const setPrompt = (next: string) => {
+    typed.current = true;
     if (controlledPrompt === undefined) {
       setOwnPrompt(next);
     }
@@ -528,12 +535,15 @@ export function NewSessionComposer({
   // routinely absent at mount and shows up a moment later. Seeding once meant the
   // picker still said "Select an agent", defeating the whole point of remembering.
   //
-  // Render-phase, and gated on the user not having touched the picker, so this can
-  // never overwrite a deliberate choice — including a deliberate *clearing*.
+  // Render-phase, and gated on the user not having touched the picker or typed,
+  // so this can never overwrite a deliberate choice — including a deliberate
+  // *clearing* — or switch the agent under someone writing to it.
   const touched = useRef(false);
   const adopted = useRef(effectiveDefault?.id);
   if (
     !touched.current &&
+    // Typing keeps the agent shown; an empty picker still takes one.
+    (!typed.current || selectedId === undefined) &&
     effectiveDefault &&
     adopted.current !== effectiveDefault.id
   ) {
@@ -682,7 +692,17 @@ export function NewSessionComposer({
       // namespace groups near the top.
       const favoriteIds = new Set(shownFavoriteIds);
       const favorites = listed.filter(agent => favoriteIds.has(agent.id));
-      const leadingOptions = leading ? [toOption(leading)] : [];
+      // Said on the option itself: the installation's default agent.
+      const leadingOptions = leading
+        ? [
+            {
+              ...toOption(leading),
+              description: [DEFAULT_AGENT_TAG, toOption(leading).description]
+                .filter(Boolean)
+                .join(' · '),
+            },
+          ]
+        : [];
       // Grouped or flat by every agent on offer, the leading one included.
       if (
         recent.length === 0 &&

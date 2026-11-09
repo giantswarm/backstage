@@ -2,8 +2,10 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import {
   findLinkedAgent,
   LINKED_PROMPT_MAX_LENGTH,
+  isNewSessionLink,
   linkedPromptOf,
   newSessionHref,
+  splitPromptFragment,
 } from './newSessionLink';
 
 const agent = (installation: string, namespace: string, name: string) =>
@@ -42,6 +44,33 @@ describe('linkedPromptOf', () => {
   it('reads no prompt from a missing or blank value', () => {
     expect(linkedPromptOf(null)).toBeUndefined();
     expect(linkedPromptOf('   ')).toBeUndefined();
+  });
+});
+
+describe('splitPromptFragment', () => {
+  it('takes the prompt out, keeping the other parts as written', () => {
+    expect(splitPromptFragment('#composer&prompt=Watch%20backups+now')).toEqual(
+      { prompt: 'Watch backups now', rest: '#composer' },
+    );
+    expect(splitPromptFragment('#prompt=Hi')).toEqual({
+      prompt: 'Hi',
+      rest: '',
+    });
+    expect(splitPromptFragment('#details')).toEqual({
+      prompt: null,
+      rest: '#details',
+    });
+  });
+});
+
+describe('isNewSessionLink', () => {
+  const at = (href: string) => new URL(href, 'https://portal.example');
+  it('is the home with an agent or a prompt', () => {
+    expect(isNewSessionLink(at('/?agent=a%2Fb'), '/')).toBe(true);
+    expect(isNewSessionLink(at('/#prompt=Hi'), '/')).toBe(true);
+    expect(isNewSessionLink(at('/'), '/')).toBe(false);
+    expect(isNewSessionLink(at('/sessions?agent=a'), '/')).toBe(false);
+    expect(isNewSessionLink(at('/?agent=a'), undefined)).toBe(false);
   });
 });
 

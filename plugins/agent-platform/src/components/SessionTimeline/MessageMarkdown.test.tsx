@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
+import { newSessionExternalRouteRef } from '../../routes';
 import { MessageMarkdown } from './MessageMarkdown';
 
 describe('MessageMarkdown', () => {
@@ -31,9 +32,10 @@ describe('MessageMarkdown', () => {
     });
   });
 
-  it('navigates in the app for a same-origin link, query kept', async () => {
+  it('starts a session in this tab from a new-session link', async () => {
     await renderInTestApp(
-      <MessageMarkdown text="[Start a session with General Assistant](/?agent=golem%2Fkagent%2Fdefault-agent&prompt=Watch%20backups)" />,
+      <MessageMarkdown text="[Start a session with General Assistant](/?agent=golem%2Fkagent%2Fdefault-agent#prompt=Watch%20backups)" />,
+      { mountedRoutes: { '/': newSessionExternalRouteRef } },
     );
 
     const link = screen.getByRole('link', {
@@ -41,9 +43,20 @@ describe('MessageMarkdown', () => {
     });
     expect(link).toHaveAttribute(
       'href',
-      '/?agent=golem%2Fkagent%2Fdefault-agent&prompt=Watch%20backups',
+      '/?agent=golem%2Fkagent%2Fdefault-agent#prompt=Watch%20backups',
     );
     expect(link).not.toHaveAttribute('target');
+  });
+
+  it('opens any other portal page in a new tab, query and fragment kept', async () => {
+    await renderInTestApp(
+      <MessageMarkdown text="[Sessions](/sessions?state=open#top)" />,
+      { mountedRoutes: { '/': newSessionExternalRouteRef } },
+    );
+
+    const link = screen.getByRole('link', { name: 'Sessions' });
+    expect(link).toHaveAttribute('href', '/sessions?state=open#top');
+    expect(link).toHaveAttribute('target', '_blank');
   });
 
   it('keeps a same-origin link with a doubled slash in the portal', async () => {

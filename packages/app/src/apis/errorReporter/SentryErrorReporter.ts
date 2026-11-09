@@ -18,6 +18,46 @@ export interface SentryErrorReporterConfig {
 }
 
 /**
+ * `url` with the value of every `prompt` parameter, in the query or the
+ * fragment, filtered out: the brief of an agent's new-session link
+ * (`/?agent=…#prompt=…`) is the person's own text and stays out of Sentry.
+ */
+export function scrubPromptFromUrl(url: string): string {
+  return url.replace(/([?#&]prompt=)[^&#]*/g, '$1[Filtered]');
+}
+
+/** A breadcrumb with every URL it carries scrubbed (`scrubPromptFromUrl`). */
+export function scrubBreadcrumb(
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb {
+  const data = breadcrumb.data;
+  if (!data) {
+    return breadcrumb;
+  }
+  const scrubbed = { ...data };
+  for (const key of ['from', 'to', 'url']) {
+    if (typeof scrubbed[key] === 'string') {
+      scrubbed[key] = scrubPromptFromUrl(scrubbed[key]);
+    }
+  }
+  return { ...breadcrumb, data: scrubbed };
+}
+
+/** An event with its request URL scrubbed (`scrubPromptFromUrl`). */
+export function scrubEvent<T extends Sentry.Event>(event: T): T {
+  if (event.request?.url) {
+    return {
+      ...event,
+      request: {
+        ...event.request,
+        url: scrubPromptFromUrl(event.request.url),
+      },
+    };
+  }
+  return event;
+}
+
+/**
  * A singleton error reporter that sends errors to Sentry.
  */
 export class SentryErrorReporter implements ErrorReporterApi {
@@ -94,6 +134,9 @@ export class SentryErrorReporter implements ErrorReporterApi {
       tracePropagationTargets: config.tracePropagationTargets,
       replaysSessionSampleRate: 0.1,
       replaysOnErrorSampleRate: 1.0,
+      beforeBreadcrumb: scrubBreadcrumb,
+      beforeSend: scrubEvent,
+      beforeSendTransaction: scrubEvent,
     });
 
     this.initialized = true;

@@ -2,12 +2,15 @@ import { memo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link as BackstageLink } from '@backstage/core-components';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { makeStyles } from '@material-ui/core';
 import { Text } from '@backstage/ui';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import { isNewSessionLink } from '../../lib/newSessionLink';
+import { newSessionExternalRouteRef } from '../../routes';
 import {
   ConnectorSignInAction,
   useConnectorSignInLink,
@@ -139,11 +142,11 @@ const useStyles = makeStyles(theme => ({
  *
  * Another origin, or a backend `/api/…` URL, opens in a new tab with the usual
  * external affordance, a fragment stays on the page, a catalog path becomes
- * an entity link, a session filesystem path stays text,
- * and any other same-origin link navigates within the app, query and fragment
- * kept — an agent's link to start a session (`/?agent=…&prompt=…`) lands on
- * that screen in this tab. A connector sign-in muster issued in the session is
- * the exception: a sign-in action.
+ * an entity link, a session filesystem path stays text, an agent's link to
+ * start a session (`/?agent=…#prompt=…`) lands on that screen in this tab, and
+ * any other same-origin link opens in the app in a new tab, query and fragment
+ * kept. A connector sign-in muster issued in the session is the exception: a
+ * sign-in action.
  */
 function MarkdownLink({
   href,
@@ -155,6 +158,7 @@ function MarkdownLink({
   // A connector sign-in muster issued in this session is shown as the action
   // it is, not as the opaque URL (giantswarm/giantswarm#38774).
   const signIn = useConnectorSignInLink(href);
+  const home = useRouteRef(newSessionExternalRouteRef)?.();
   if (signIn) {
     return <ConnectorSignInAction link={signIn} />;
   }
@@ -208,8 +212,14 @@ function MarkdownLink({
     );
   }
 
-  return (
-    <BackstageLink to={`${pathname}${url.search}${url.hash}`}>
+  const to = `${pathname}${url.search}${url.hash}`;
+  // A link to start a session (an agent's handover) lands on that screen in
+  // this tab; any other page opens in a new one, so the session and what is
+  // typed in it stay.
+  return isNewSessionLink(url, home) ? (
+    <BackstageLink to={to}>{children}</BackstageLink>
+  ) : (
+    <BackstageLink to={to} target="_blank" rel="noopener noreferrer">
       {children}
     </BackstageLink>
   );

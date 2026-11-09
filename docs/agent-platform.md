@@ -2943,11 +2943,16 @@ restored. The agent kept is the one the person picked, else the restored one,
 else the composer's preselection, which never replaces a restored agent that is
 not read yet. A `?agent=` link goes ahead of the restored agent, which goes
 ahead of the installation's default agent (agent-manager's `get_info`
-`defaultAgent`; also listed first in the picker), which goes ahead of the last
-agent used. `?agent=` takes an agent id (`<installation>/<namespace>/<name>`)
-or `<namespace>/<name>`. `?prompt=` prefills the prompt (trimmed, at most 2000
-characters, never sent by itself), wins over a stored draft, and is removed
-from the address once read. The images, the workspace and the toolchains are
+`defaultAgent`; listed first in the picker, marked Default), which goes ahead
+of the last agent used. A default that arrives after the person typed or
+picked does not replace the agent shown. `?agent=` takes an agent id
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. `#prompt=` (in
+the fragment, so the brief never reaches a server) prefills the prompt
+(trimmed, at most 2000 characters, never sent by itself, marked "From a
+link"), wins over a stored draft with a Restore offer, and is removed from the
+address once read; Sentry breadcrumbs and event URLs filter it. The link
+format: `/?agent=<id>#prompt=<url-encoded brief>`. In agent replies, such a
+link opens in the same tab; other portal links open in a new tab. The images, the workspace and the toolchains are
 not kept. The draft is removed once the session is created; a failed start
 keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
 never leaves the page: it opens the provider in a new tab

@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
+import CloseIcon from '@material-ui/icons/Close';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import {
   EmptyStateCard,
@@ -86,9 +87,10 @@ export type StartNewSessionProps = {
    */
   draftName?: string;
   /**
-   * A prompt a link brought (`?prompt=`): the field starts with it, and it
-   * wins over a stored draft, prompt and agent alike — the link is the newer
-   * intent. Without it the draft's precedence above holds.
+   * A prompt a link brought (`#prompt=`): the field starts with it, marked as
+   * coming from a link, and it wins over a stored draft, prompt and agent
+   * alike — the link is the newer intent; a note offers the draft back.
+   * Without it the draft's precedence above holds.
    */
   linkedPrompt?: string;
   /**
@@ -164,6 +166,10 @@ export function StartNewSession({
   const [draftPrompt, setDraftPrompt] = useState(
     linkedPrompt ?? composerProps?.initialPrompt ?? '',
   );
+  const linkedPromptRef = useRef(linkedPrompt);
+  // Whether the field still starts from a link's prompt: marked so, until
+  // the person brings their own draft back.
+  const [fromLink, setFromLink] = useState(linkedPrompt !== undefined);
   const [restoredAgentId, setRestoredAgentId] = useState<string>();
   const [pickedAgentId, setPickedAgentId] = useState<string>();
   const [preselectedAgentId, setPreselectedAgentId] = useState<string>();
@@ -179,8 +185,13 @@ export function StartNewSession({
   // A stored draft wins over `initialPrompt`: it is the person's own. A
   // linked prompt wins over the draft: following the link is newer.
   const isLinked = useRef(linkedPrompt !== undefined);
+  // The stored draft a linked prompt replaced, offered back until dismissed.
+  const [replacedDraft, setReplacedDraft] = useState<NewSessionDraft>();
   const onRestore = useCallback((stored: NewSessionDraft) => {
     if (isLinked.current) {
+      if (stored.prompt.trim() && stored.prompt !== linkedPromptRef.current) {
+        setReplacedDraft(stored);
+      }
       return;
     }
     if (!typedRef.current) {
@@ -454,8 +465,52 @@ export function StartNewSession({
     />
   );
 
+  const restoreReplacedDraft = () => {
+    if (replacedDraft) {
+      setDraftPrompt(replacedDraft.prompt);
+      setRestoredAgentId(replacedDraft.agentId);
+      setFromLink(false);
+      setReplacedDraft(undefined);
+    }
+  };
+  const withLinkNotes = (
+    <Flex direction="column" gap="2">
+      {replacedDraft && (
+        <Alert
+          status="info"
+          title="A link replaced your earlier draft."
+          customActions={
+            <Flex gap="1" align="center">
+              <Button
+                size="small"
+                variant="secondary"
+                onPress={restoreReplacedDraft}
+              >
+                Restore
+              </Button>
+              <ButtonIcon
+                variant="tertiary"
+                size="small"
+                icon={<CloseIcon fontSize="small" />}
+                aria-label="Close draft note"
+                onPress={() => setReplacedDraft(undefined)}
+              />
+            </Flex>
+          }
+        />
+      )}
+      {fromLink && (
+        <Text variant="body-small" color="secondary">
+          From a link — check before starting.
+        </Text>
+      )}
+      {composer}
+    </Flex>
+  );
+  const shown = replacedDraft || fromLink ? withLinkNotes : composer;
+
   if (layout === 'standalone') {
-    return composer;
+    return shown;
   }
 
   if (layout === 'firstRun') {
@@ -464,7 +519,7 @@ export function StartNewSession({
         title="Start your first session"
         description="Pick an agent and say what you need."
       >
-        {composer}
+        {shown}
       </EmptyStateCard>
     );
   }
@@ -474,7 +529,7 @@ export function StartNewSession({
       <Text as="h2" variant="title-x-small">
         Start a new session
       </Text>
-      {composer}
+      {shown}
     </Flex>
   );
 }

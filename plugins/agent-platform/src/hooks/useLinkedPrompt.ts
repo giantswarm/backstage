@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import {
-  linkedPromptOf,
-  NEW_SESSION_PROMPT_PARAM,
-} from '../lib/newSessionLink';
+import { linkedPromptOf, splitPromptFragment } from '../lib/newSessionLink';
 
 export type LinkedPrompt = {
-  /** The prompt the link brought (`linkedPromptOf`); `undefined` for none. */
+  /** The prompt the link brought (`#prompt=`); `undefined` for none. */
   prompt: string | undefined;
   /**
    * Changes when a link brings a prompt while the page is already open, so
@@ -17,16 +14,14 @@ export type LinkedPrompt = {
 };
 
 /**
- * Reads `?prompt=` once and takes it out of the address (a replace, so no
+ * Reads `#prompt=` once and takes it out of the address (a replace, so no
  * history entry keeps it): a reload then restores the draft the person has
  * written since, not the link's prompt over it.
  */
 export function useLinkedPrompt(): LinkedPrompt {
   const location = useLocation();
   const navigate = useNavigate();
-  const raw = new URLSearchParams(location.search).get(
-    NEW_SESSION_PROMPT_PARAM,
-  );
+  const { prompt: raw, rest } = splitPromptFragment(location.hash);
   const [linked, setLinked] = useState<LinkedPrompt>(() => ({
     prompt: linkedPromptOf(raw),
     key: 0,
@@ -48,16 +43,13 @@ export function useLinkedPrompt(): LinkedPrompt {
         setLinked(previous => ({ prompt, key: previous.key + 1 }));
       }
     }
-    // Only `prompt` leaves: the path, the other parameters, the fragment and
+    // Only `prompt` leaves: the path, the query, the rest of the fragment and
     // the router state stay.
-    const search = new URLSearchParams(location.search);
-    search.delete(NEW_SESSION_PROMPT_PARAM);
-    const rest = search.toString();
     navigate(
-      { ...location, search: rest ? `?${rest}` : '' },
+      { ...location, hash: rest },
       { replace: true, state: location.state },
     );
-  }, [raw, location, navigate]);
+  }, [raw, rest, location, navigate]);
 
   return linked;
 }

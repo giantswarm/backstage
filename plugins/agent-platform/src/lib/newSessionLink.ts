@@ -10,12 +10,55 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 export const NEW_SESSION_AGENT_PARAM = 'agent';
 
 /**
- * The home screen's query parameter that prefills the composer's prompt
- * (`linkedPromptOf`). Never sent by itself: the person reads, edits and
- * starts. Dropped from the address once read, so a reload does not bring it
- * back over what the person has written since.
+ * The home screen's fragment parameter that prefills the composer's prompt:
+ * `#prompt=<url-encoded brief>` (`linkedPromptOf`). In the fragment, so the
+ * brief never reaches a server or its access logs. Never sent by itself: the
+ * person reads, edits and starts. Dropped from the address once read, so a
+ * reload does not bring it back over what the person has written since.
  */
 export const NEW_SESSION_PROMPT_PARAM = 'prompt';
+
+/**
+ * A fragment's parts (`a=1&b`), each kept as written, and the prompt among
+ * them: the raw `#prompt=` value (`null` without one) and the fragment
+ * without it ('' when nothing else is left).
+ */
+export function splitPromptFragment(hash: string): {
+  prompt: string | null;
+  rest: string;
+} {
+  const parts = hash.replace(/^#/, '').split('&').filter(Boolean);
+  const key = `${NEW_SESSION_PROMPT_PARAM}=`;
+  const found = parts.find(part => part.startsWith(key));
+  let prompt: string | null = null;
+  if (found !== undefined) {
+    try {
+      prompt = decodeURIComponent(found.slice(key.length).replace(/\+/g, ' '));
+    } catch {
+      // A malformed escape: taken as written rather than dropped.
+      prompt = found.slice(key.length);
+    }
+  }
+  const rest = parts.filter(part => part !== found).join('&');
+  return { prompt, rest: rest ? `#${rest}` : '' };
+}
+
+/**
+ * Whether `url` (same origin) is a link to start a session: the home
+ * screen (`home`) with an agent or a prompt. Agent replies open these in the
+ * same tab; every other link opens a new one.
+ */
+export function isNewSessionLink(url: URL, home: string | undefined): boolean {
+  if (home === undefined) {
+    return false;
+  }
+  const trim = (path: string) => path.replace(/\/+$/, '') || '/';
+  return (
+    trim(url.pathname) === trim(home) &&
+    (url.searchParams.has(NEW_SESSION_AGENT_PARAM) ||
+      splitPromptFragment(url.hash).prompt !== null)
+  );
+}
 
 /** The longest prompt a link prefills; the rest is cut. */
 export const LINKED_PROMPT_MAX_LENGTH = 2000;
@@ -36,7 +79,7 @@ export function newSessionHref(
 }
 
 /**
- * The prompt a `?prompt=` value prefills: trimmed and cut to
+ * The prompt a `#prompt=` value prefills: trimmed and cut to
  * {@link LINKED_PROMPT_MAX_LENGTH} characters (code points); `undefined` for
  * none or a blank one.
  */

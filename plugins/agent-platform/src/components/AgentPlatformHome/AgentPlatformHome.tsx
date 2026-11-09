@@ -160,7 +160,7 @@ function AgentPlatformHomeContent({
     () => findLinkedAgent(agents, requestedAgentId, isStartableAgent),
     [agents, requestedAgentId],
   );
-  // `?prompt=` prefills the prompt; the person still starts the session.
+  // `#prompt=` prefills the prompt; the person still starts the session.
   const linkedPrompt = useLinkedPrompt();
   // The installation's default agent, as agent-manager names it: preselected
   // when nothing else is, and listed first. The home installation's wins.

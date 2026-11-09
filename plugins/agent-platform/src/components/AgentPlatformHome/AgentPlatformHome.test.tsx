@@ -1042,6 +1042,7 @@ describe('AgentPlatformHome', () => {
         const options = screen.getAllByRole('option');
 
         expect(options[0]).toHaveTextContent('General Assistant');
+        expect(options[0]).toHaveTextContent('Default');
         expect(
           options.filter(option =>
             option.textContent?.includes('General Assistant'),
@@ -1067,7 +1068,7 @@ describe('AgentPlatformHome', () => {
       });
     });
 
-    describe('with a ?prompt= link', () => {
+    describe('with a #prompt= link', () => {
       it('prefills the prompt, trimmed, without starting', async () => {
         const createSession = jest.fn();
         mockUseCreateSession.mockReturnValue({
@@ -1077,12 +1078,15 @@ describe('AgentPlatformHome', () => {
           reset: jest.fn(),
         });
         await render({
-          url: `/?agent=${encodeURIComponent(research.id)}&prompt=${encodeURIComponent('  Watch the nightly backups  ')}`,
+          url: `/?agent=${encodeURIComponent(research.id)}#prompt=${encodeURIComponent('  Watch the nightly backups  ')}`,
         });
 
         expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveValue(
           'Watch the nightly backups',
         );
+        expect(
+          screen.getByText('From a link — check before starting.'),
+        ).toBeInTheDocument();
         expect(agentPicker()).toHaveTextContent('Research Agent');
         expect(createSession).not.toHaveBeenCalled();
       });
@@ -1101,7 +1105,7 @@ describe('AgentPlatformHome', () => {
         );
         first.unmount();
 
-        await render({ url: '/?prompt=From%20the%20link' });
+        await render({ url: '/#prompt=From%20the%20link' });
 
         // The draft is read a moment later; it must not replace the link's.
         await act(async () => {
@@ -1110,6 +1114,17 @@ describe('AgentPlatformHome', () => {
         expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveValue(
           'From the link',
         );
+        // It says so, and gives the draft back.
+        expect(
+          screen.getByText('A link replaced your earlier draft.'),
+        ).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+        expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveValue(
+          'An older draft',
+        );
+        expect(
+          screen.queryByText('From a link — check before starting.'),
+        ).not.toBeInTheDocument();
       });
     });
 
