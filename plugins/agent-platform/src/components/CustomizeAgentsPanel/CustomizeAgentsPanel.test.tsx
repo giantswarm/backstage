@@ -2194,10 +2194,43 @@ describe('CustomizeAgentsPanel connectors', () => {
     );
   });
 
-  it('shows no logos for full access, as the agent page does', async () => {
+  it('shows no logos for implicit full access', async () => {
     await renderPanel();
     expect(
       within(rowOf('C full')).queryByRole('group', { name: /^Connectors/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the toolset's presets first, by label, then its connectors", async () => {
+    mockAgents.rows = [
+      withSelectors('E preset', ['server:jira', 'preset:read-only']),
+      withSelectors('F full', ['preset:full']),
+    ];
+    const filterTools = jest.fn().mockResolvedValue({
+      tools: [],
+      presets: [{ name: 'read-only', icon: 'data:image/png;base64,AA==' }],
+    });
+    await renderPanel('', mockApis.storage(), {
+      filterTools,
+    } as unknown as MusterApi);
+    const names = (name: string) =>
+      within(
+        within(rowOf(name)).getByRole('group', {
+          name: `Connectors of ${name}`,
+        }),
+      )
+        .getAllByRole('img')
+        .map(logo => logo.getAttribute('aria-label'));
+    expect(names('E preset')).toEqual(['Read-only tools', 'Jira']);
+    expect(names('F full')).toEqual(['Full gateway']);
+    // muster's presets, read once for the installation.
+    await waitFor(() =>
+      expect(filterTools).toHaveBeenCalledWith({
+        installation: 'golem',
+        includePresets: true,
+        limit: 1,
+      }),
+    );
+    expect(filterTools).toHaveBeenCalledTimes(1);
   });
 });

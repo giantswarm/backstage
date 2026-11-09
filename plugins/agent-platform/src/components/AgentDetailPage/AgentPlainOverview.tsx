@@ -41,7 +41,7 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { connectorMarks } from '../../lib/connectorMarks';
+import { connectorMarks, namedPresets } from '../../lib/connectorMarks';
 import { bindsGateway } from '../../lib/toolset';
 import {
   describeReach,
@@ -49,6 +49,7 @@ import {
   reachNeedsCatalogue,
 } from '../../lib/toolsetReach';
 import { useMusterServers } from '../../hooks/useMusterServers';
+import { useToolsetPresetIconsByInstallation } from '../../hooks/useToolsetPresets';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
@@ -334,6 +335,14 @@ function ConnectorsSection({
     reached.length > 0 ? agent.cluster : undefined,
   );
   const subAgents = agent.getSubAgentBindings();
+  // Muster's preset icons: read only when the toolset names a preset.
+  const presetScope =
+    hasGateway && namedPresets(declared).length > 0 ? agent.cluster : undefined;
+  const presetInstallations = useMemo(
+    () => (presetScope ? [presetScope] : []),
+    [presetScope],
+  );
+  const presetIcons = useToolsetPresetIconsByInstallation(presetInstallations);
 
   const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
 
@@ -342,6 +351,7 @@ function ConnectorsSection({
     groups,
     icons,
     labels: muster.labels,
+    presetIcons: presetScope ? presetIcons.get(presetScope) : undefined,
     direct: direct.map((binding, index) => ({
       // The server name is not unique: two bindings may scope one server
       // differently.

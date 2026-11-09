@@ -2,13 +2,19 @@ import { useMemo } from 'react';
 
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { connectorIcons } from '../components/AgentDetailPage/helpers';
-import { type ConnectorMark, connectorMarks } from '../lib/connectorMarks';
+import {
+  type ConnectorMark,
+  connectorMarks,
+  namedPresets,
+} from '../lib/connectorMarks';
 import { reachedConnectors, reachNeedsCatalogue } from '../lib/toolsetReach';
 import { useMusterServersByInstallation } from './useMusterServers';
 import { useReachCataloguesByInstallation } from './useReachCatalogue';
+import { useToolsetPresetIconsByInstallation } from './useToolsetPresets';
 
 const NO_ICONS: ReadonlyMap<string, string> = new Map();
 const NO_LABELS: ReadonlyMap<string, string> = new Map();
+const NO_PRESET_ICONS: ReadonlyMap<string, string> = new Map();
 
 /** Each installation once, in the order the rows first name it. */
 function installationsOf(rows: readonly AgentRow[]): string[] {
@@ -21,7 +27,8 @@ function installationsOf(rows: readonly AgentRow[]): string[] {
  * MCPServers (logos, display names) and, for a tool picked one by one, the
  * caller's catalogue are read and built once per installation — from the
  * agent page's cached queries — and only for an installation with a row whose
- * toolset names a connector.
+ * toolset names a connector; muster's preset icons likewise, only where a
+ * row's toolset names a preset.
  */
 export function useAgentListConnectors(
   rows: readonly AgentRow[],
@@ -36,6 +43,9 @@ export function useAgentListConnectors(
   const catalogueKey = installationsOf(
     rows.filter(row => reachNeedsCatalogue(row.toolset)),
   ).join('\n');
+  const presetKey = installationsOf(
+    rows.filter(row => namedPresets(row.toolset).length > 0),
+  ).join('\n');
   // Stable while the set holds, however often the rows change.
   const serverInstallations = useMemo(
     () => (serverKey ? serverKey.split('\n') : []),
@@ -45,7 +55,12 @@ export function useAgentListConnectors(
     () => (catalogueKey ? catalogueKey.split('\n') : []),
     [catalogueKey],
   );
+  const presetInstallations = useMemo(
+    () => (presetKey ? presetKey.split('\n') : []),
+    [presetKey],
+  );
   const muster = useMusterServersByInstallation(serverInstallations);
+  const presetIcons = useToolsetPresetIconsByInstallation(presetInstallations);
   const catalogues = useReachCataloguesByInstallation(
     catalogueInstallations,
     muster,
@@ -73,10 +88,11 @@ export function useAgentListConnectors(
               : undefined,
             icons: icons.get(row.installation) ?? NO_ICONS,
             labels: muster.get(row.installation)?.labels ?? NO_LABELS,
+            presetIcons: presetIcons.get(row.installation) ?? NO_PRESET_ICONS,
             direct: row.directServers,
           }),
         ]),
       ),
-    [rows, muster, catalogues, icons],
+    [rows, muster, catalogues, icons, presetIcons],
   );
 }

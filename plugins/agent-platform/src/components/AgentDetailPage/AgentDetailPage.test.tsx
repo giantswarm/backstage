@@ -294,6 +294,11 @@ const mockUseToolsetResolution = jest.fn(() => ({
 jest.mock('../../hooks/useToolsetResolution', () => ({
   useToolsetResolution: () => mockUseToolsetResolution(),
 }));
+// muster's preset icons, read through react-query; `lib/connectorMarks` covers
+// which icon a preset shows.
+jest.mock('../../hooks/useToolsetPresets', () => ({
+  useToolsetPresetIconsByInstallation: () => new Map(),
+}));
 // The catalogue that names individually picked tools by connector (T103);
 // `lib/toolsetReach` covers the words.
 jest.mock('../../hooks/useReachCatalogue', () => ({
