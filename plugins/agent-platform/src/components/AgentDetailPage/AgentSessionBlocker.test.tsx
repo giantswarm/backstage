@@ -6,6 +6,16 @@ import {
   AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
+import type { AgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
+
+let mockHandoff: AgentCreatedHandoff | undefined;
+jest.mock('../../hooks/useAgentCreatedHandoff', () => ({
+  useAgentCreatedHandoff: () => mockHandoff,
+}));
+
+beforeEach(() => {
+  mockHandoff = undefined;
+});
 
 const AT = '2026-11-08T12:00:00Z';
 
@@ -83,26 +93,37 @@ describe('AgentSessionBlocker', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('says the agent has not booted yet, pointing at the boot log', async () => {
-    const agent = agentWith([
-      accepted,
-      condition('ResolvedRefs', 'True', 'Resolved', 'resolved'),
-      condition('Compatible', 'True', 'Compatible', 'compatible'),
-      condition(
-        'Ready',
-        'False',
-        'ActorTemplatePending',
-        'waiting for the ActorTemplate golden snapshot',
-      ),
-    ]);
+  it.each([undefined, 'created', 'updated', 'skills-updated'] as const)(
+    'points at the boot log with handoff %s',
+    async action => {
+      if (action) {
+        mockHandoff = {
+          installation: 'gazelle',
+          namespace: 'kagent',
+          name: 'kyverno-policy-author',
+          action,
+        };
+      }
+      const agent = agentWith([
+        accepted,
+        condition('ResolvedRefs', 'True', 'Resolved', 'resolved'),
+        condition('Compatible', 'True', 'Compatible', 'compatible'),
+        condition(
+          'Ready',
+          'False',
+          'ActorTemplatePending',
+          'waiting for the ActorTemplate golden snapshot',
+        ),
+      ]);
 
-    await renderInTestApp(<AgentSessionBlocker agent={agent} />);
+      await renderInTestApp(<AgentSessionBlocker agent={agent} />);
 
-    expect(
-      screen.getByText('Sessions can start once the agent is ready'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/The agent has not booted yet.*the boot log/),
-    ).toBeInTheDocument();
-  });
+      expect(
+        screen.getByText('Sessions can start once the agent is ready'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/The agent has not booted yet.*the boot log/),
+      ).toBeInTheDocument();
+    },
+  );
 });

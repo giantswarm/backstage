@@ -29,8 +29,8 @@ const BOOT_PENDING_TEXT =
  * Harness's WorkerPool) is not the author's to fix, so it offers nothing, and
  * neither does a missing skills credential Secret, which is fixed by creating
  * the Secret. An agent still converging says so, a boot that has not finished
- * pointing at the boot log — unless the page is already following a write to
- * it, which `AgentCreationProgress` narrates.
+ * pointing at the boot log, including after a write: `AgentCreationProgress`
+ * narrates convergence but does not explain a boot that keeps failing.
  */
 export function AgentSessionBlocker({
   agent,
@@ -96,7 +96,7 @@ export function AgentSessionBlocker({
     handoff?.installation === agent.cluster &&
     handoff?.namespace === agent.getNamespace() &&
     handoff?.name === agent.getName();
-  if (isFollowingWrite) {
+  if (isFollowingWrite && !agent.isBootPending()) {
     return null;
   }
 
