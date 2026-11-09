@@ -75,7 +75,9 @@ import {
   materialize,
   needsIndividualTools,
   presetBaseOf,
+  toggleCatalogueSelector,
   withConnectorChoice,
+  withoutCovered,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
@@ -393,7 +395,7 @@ export function NewAgentToolsPage() {
       }
       setToolset(
         compactSelection(
-          next,
+          withoutCovered(next, groups),
           presetResolved && presetBase
             ? { preset: presetBase, resolved: presetResolution.tools }
             : undefined,
@@ -599,9 +601,16 @@ export function NewAgentToolsPage() {
       if (base.includes(selector)) {
         declineSignInTool([selector]);
       }
-      commit(toggleSelector(base, selector));
+      commit(toggleCatalogueSelector(base, selector, groups));
     },
-    [commit, base, isSignInToolAdded, setSignInToolDeclined, declineSignInTool],
+    [
+      commit,
+      base,
+      groups,
+      isSignInToolAdded,
+      setSignInToolDeclined,
+      declineSignInTool,
+    ],
   );
   // The rail and the bar list the toolset's own selectors (the preset among
   // them) beside the preset's part: removing one of its own takes just that
@@ -633,9 +642,9 @@ export function NewAgentToolsPage() {
   const copyToolset = useCallback(
     (toolset: string[]) => {
       setKeptBase(undefined);
-      setToolset(toolset);
+      setToolset(withoutCovered(toolset, groups));
     },
-    [setToolset, setKeptBase],
+    [setToolset, setKeptBase, groups],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.

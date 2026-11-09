@@ -40,11 +40,12 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1.25),
     gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
   },
+  // One layout for every card: the text, then the access choices. In a grid
+  // row the cards share a height, so the choices sit on one line at the foot.
   card: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: theme.spacing(1),
     padding: theme.spacing(1.25, 1.5),
     borderRadius: theme.shape.borderRadius,
@@ -56,7 +57,11 @@ const useStyles = makeStyles(theme => ({
   },
   name: {
     minWidth: 0,
+    maxWidth: '100%',
     overflowWrap: 'anywhere',
+  },
+  access: {
+    marginTop: 'auto',
   },
 }));
 
@@ -161,41 +166,43 @@ function ConnectorCard({
           </Text>
         )}
       </Flex>
-      <ToggleButtonGroup
-        aria-label={`Access to ${name}`}
-        selectionMode="single"
-        isDisabled={disabled}
-        selectedKeys={
-          choice === 'read-only' || choice === 'all' ? [choice] : []
-        }
-        onSelectionChange={keys => {
-          const next = [...keys][0];
-          onChoose(
-            bucket,
-            next === 'read-only' || next === 'all' ? next : 'none',
-          );
-        }}
-      >
-        <ToggleButton
-          id="read-only"
-          size="small"
-          iconStart={choice === 'read-only' ? checked : undefined}
-          // Read-only access is the tools that read today, one by one: none
-          // to list before a sign-in, none at all, or more than fit inline.
-          isDisabled={
-            bucket.needsSignIn || readOnlyCount === 0 || !readOnlyFits(bucket)
+      <div className={classes.access}>
+        <ToggleButtonGroup
+          aria-label={`Access to ${name}`}
+          selectionMode="single"
+          isDisabled={disabled}
+          selectedKeys={
+            choice === 'read-only' || choice === 'all' ? [choice] : []
           }
+          onSelectionChange={keys => {
+            const next = [...keys][0];
+            onChoose(
+              bucket,
+              next === 'read-only' || next === 'all' ? next : 'none',
+            );
+          }}
         >
-          Read-only
-        </ToggleButton>
-        <ToggleButton
-          id="all"
-          size="small"
-          iconStart={choice === 'all' ? checked : undefined}
-        >
-          All
-        </ToggleButton>
-      </ToggleButtonGroup>
+          <ToggleButton
+            id="read-only"
+            size="small"
+            iconStart={choice === 'read-only' ? checked : undefined}
+            // Read-only access is the tools that read today, one by one: none
+            // to list before a sign-in, none at all, or more than fit inline.
+            isDisabled={
+              bucket.needsSignIn || readOnlyCount === 0 || !readOnlyFits(bucket)
+            }
+          >
+            Read-only
+          </ToggleButton>
+          <ToggleButton
+            id="all"
+            size="small"
+            iconStart={choice === 'all' ? checked : undefined}
+          >
+            All
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </div>
     </div>
   );
 }

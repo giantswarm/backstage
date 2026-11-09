@@ -20,6 +20,7 @@ import {
   selectorForTool,
   type ServerBucket,
   serverSelector,
+  toggleSelector,
 } from '../../lib/toolset';
 
 /**
@@ -429,6 +430,47 @@ export function presetBaseOf(
  * unless a `server:` already holds it. Toolset selectors only union, so this
  * is exactly what the toolset selects.
  */
+/**
+ * The selection without the tool selectors a `server:` selector beside them
+ * already covers. Selectors only union, so those add nothing but still count
+ * against the inline cap.
+ */
+export function withoutCovered(
+  selection: readonly string[],
+  groups: readonly CatalogueGroup[],
+): string[] {
+  const owner = connectorOfSelector(groups);
+  const whole = new Set(
+    selection.filter(selector => parseSelector(selector)?.kind === 'server'),
+  );
+  return selection.filter(selector => {
+    const connector = owner.get(selector);
+    return !(connector && whole.has(serverSelector(connector)));
+  });
+}
+
+/**
+ * A tick in the individual tools. The whole connector replaces its single
+ * tools; a tool it covers shows ticked, and unticking it writes the
+ * connector out as its other tools, as a change to a preset does.
+ */
+export function toggleCatalogueSelector(
+  selection: readonly string[],
+  selector: string,
+  groups: readonly CatalogueGroup[],
+): string[] {
+  const connector = connectorOfSelector(groups).get(selector);
+  const whole = connector ? serverSelector(connector) : undefined;
+  if (whole && selection.includes(whole)) {
+    const bucket = connectorsOf(groups).find(entry => entry.name === connector);
+    const others = (bucket?.tools ?? [])
+      .map(selectorForTool)
+      .filter(entry => entry !== selector && !selection.includes(entry));
+    return [...selection.filter(entry => entry !== whole), ...others];
+  }
+  return withoutCovered(toggleSelector([...selection], selector), groups);
+}
+
 export function expandSelection(
   coverage: readonly string[],
   extras: readonly string[],
@@ -531,6 +573,7 @@ export function inlineCapProblem(
     .map(group => ({
       name: contributorName(group),
       count: group.selectors.length + (group.whole ? 1 : 0),
+      whole: group.whole !== undefined,
     }))
     .filter(entry => entry.count > 1)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
@@ -544,5 +587,12 @@ export function inlineCapProblem(
     names.length === 1
       ? names[0]
       : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  return `${need}; most come from ${list}, so choose All or fewer tools there.`;
+  const withAll = contributors.filter(entry => entry.whole).length;
+  if (withAll === 0) {
+    return `${need}; most come from ${list}, so choose All or fewer tools there.`;
+  }
+  if (withAll === contributors.length) {
+    return `${need}; most come from ${list}, where All already covers the single tools listed beside it, so remove those.`;
+  }
+  return `${need}; most come from ${list}, so choose All or fewer tools there, and remove single tools listed beside All, which covers them.`;
 }

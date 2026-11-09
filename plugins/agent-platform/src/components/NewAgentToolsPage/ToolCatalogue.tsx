@@ -55,18 +55,23 @@ function toolRowItem(
   });
 }
 
-/** Compact rows, the first few at once and the rest behind *Show all*. */
+/**
+ * Compact rows, the first few at once and the rest behind *Show all*. Under a
+ * whole connector every row is ticked, since the connector covers it.
+ */
 function ToolRows({
   tools,
   ariaLabel,
   noun,
   selected,
+  covered = false,
   onToggle,
 }: {
   tools: ToolSummary[];
   ariaLabel: string;
   noun: 'tool' | 'workflow';
   selected: ReadonlySet<string>;
+  covered?: boolean;
   onToggle: (selector: string) => void;
 }) {
   return (
@@ -76,7 +81,11 @@ function ToolRows({
           role="group"
           ariaLabel={ariaLabel}
           items={visible.map(tool =>
-            toolRowItem(tool, selected.has(selectorForTool(tool)), onToggle),
+            toolRowItem(
+              tool,
+              covered || selected.has(selectorForTool(tool)),
+              onToggle,
+            ),
           )}
         />
       )}
@@ -149,6 +158,7 @@ function ServerTools({
         ariaLabel={`Tools of ${bucketLabel(bucket)}`}
         noun="tool"
         selected={selected}
+        covered={wholeServerSelected}
         onToggle={onToggle}
       />
     );

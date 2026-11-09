@@ -965,6 +965,36 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('tool:x_kubernetes_get_pods');
     });
 
+    it('lets the whole connector replace its single tools in the catalogue', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+
+      await open(user, /^Infrastructure — /);
+      await open(user, /^kubernetes — 2 tools/);
+      const tool = (name: string) =>
+        screen.getByRole('checkbox', { name: `Tool ${name}` });
+      await user.click(tool('x_kubernetes_delete_pod'));
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Connector kubernetes' }),
+      );
+
+      expect(toolsetOutput()).toBe('server:kubernetes');
+      expect(tool('x_kubernetes_get_pods')).toBeChecked();
+      expect(tool('x_kubernetes_delete_pod')).toBeChecked();
+
+      // Unticking a tool the connector covers writes out the rest.
+      await user.click(tool('x_kubernetes_get_pods'));
+      expect(toolsetOutput()).toBe('tool:x_kubernetes_delete_pod');
+      expect(tool('x_kubernetes_get_pods')).not.toBeChecked();
+    });
+
     it('lists three connectors with a search, without paging (SEARCH_MIN)', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
