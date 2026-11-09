@@ -65,10 +65,27 @@ jest.mock('../../hooks/useCreateSession', () => ({
 
 // The catalog's skills, for the tags they already use.
 let mockCatalogSkills: DiscoveredSkill[] = [];
+let mockCatalogLoading = false;
+// The sources as gs-backend describes them: proposable when writable, on
+// github.com and read on a branch.
 jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
     skills: mockCatalogSkills,
-    refKinds: mockRefKinds,
+    isLoading: mockCatalogLoading,
+    // None while the catalog loads, as the hook answers.
+    sources: (mockCatalogLoading ? [] : mockRepositories).map(entry => {
+      const e = typeof entry === 'string' ? { url: entry } : entry;
+      return {
+        url: e.url,
+        path: e.path ?? '',
+        ...(e.ref ? { ref: e.ref } : {}),
+        readOnly: Boolean(e.readOnly),
+        proposable:
+          e.url.startsWith('https://github.com/') &&
+          !e.readOnly &&
+          (!e.ref || mockRefKinds[e.url] === 'branch'),
+      };
+    }),
   }),
 }));
 
@@ -139,6 +156,7 @@ beforeEach(() => {
   mockState = { isProposing: false, error: null };
   mockRepositories = [REPO];
   mockRefKinds = {};
+  mockCatalogLoading = false;
   mockMetaAgents = {};
   mockCatalogSkills = [];
   createSession.mockReset();
@@ -407,6 +425,19 @@ describe('AddSkillPage', () => {
     await renderPage();
 
     expect(screen.getByText('No skill repositories')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('waits for the catalog before saying there is no repository', async () => {
+    mockCatalogLoading = true;
+    await renderPage();
+
+    expect(screen.queryByText('No skill repositories')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('Reading the skill repositories…'),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).not.toBeInTheDocument();

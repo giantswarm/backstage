@@ -14,7 +14,10 @@ next to a plain URL:
   Add skill or edit pull requests into the source, and the pull-request route
   refuses them.
 
-A tag or commit `ref` (also on generic git hosts) is read but takes no pull
-requests; a branch `ref` is the pull-request base. A URL listed twice is read
-once, by its first entry. Evaluate works for every skill; one the portal
-cannot change gets a report-only evaluation.
+`ref` is a branch or tag name, `refs/heads/<name>`, `refs/tags/<name>` or a
+full commit id; a name that is both a branch and a tag is refused. A tag or
+commit `ref` is read but takes no pull requests; a branch `ref` is the
+pull-request base. A `path` that does not exist fails that source. A URL
+listed twice is read once, by its first entry, and is read-only when any entry
+says so. Evaluate works for every skill; one the portal cannot change gets a
+report-only evaluation.

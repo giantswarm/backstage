@@ -3,11 +3,19 @@ import {
   fetchApiRef,
   useApi,
 } from '@backstage/core-plugin-api';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import { DiscoveredSkill, type RefKind } from '../lib/skills';
-import { repositoryKey, skillRepositoriesFrom } from '../lib/skillRepositories';
+import {
+  canProposeSkillTo,
+  DiscoveredSkill,
+  type RefKind,
+} from '../lib/skills';
+import {
+  skillRepositoryUrls,
+  type SkillSource,
+} from '../lib/skillRepositories';
 import type { DiscoveredPlugin } from '../lib/plugins';
 
 export type SkillCatalog = {
@@ -25,10 +33,10 @@ export type SkillCatalog = {
   /** True when a repo's listing was capped, so some skills may be missing. */
   truncated: boolean;
   /**
-   * What each read repository's ref is, by `repositoryKey`: whether Add
-   * skill can target a source with a configured `ref`.
+   * Each source read, in configuration order, as the backend describes it:
+   * whether Add skill can target it, and where it scans.
    */
-  refKinds?: Record<string, RefKind>;
+  sources?: SkillSource[];
 };
 
 /**
@@ -44,12 +52,10 @@ export function useSkillCatalog(): SkillCatalog {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
 
-  const entries = skillRepositoriesFrom(config);
-  const repositories = entries.map(repository => repository.url);
+  const repositories = useMemo(() => skillRepositoryUrls(config), [config]);
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    // Every field of an entry changes what the backend lists.
-    queryKey: ['agent-platform', 'skills', JSON.stringify(entries)],
+    queryKey: ['agent-platform', 'skills', repositories.join(',')],
     enabled: !configIsLoading && repositories.length > 0,
     queryFn: async () => {
       const baseUrl = await discoveryApi.getBaseUrl('gs');
@@ -81,6 +87,11 @@ export function useSkillCatalog(): SkillCatalog {
             truncated?: boolean;
             /** Absent for the default branch and from older backends. */
             refKind?: RefKind;
+            /** Absent from older backends. */
+            proposable?: boolean;
+            path?: string;
+            readOnly?: boolean;
+            ref?: string;
           };
           return body;
         }),
@@ -90,12 +101,19 @@ export function useSkillCatalog(): SkillCatalog {
       const plugins: DiscoveredPlugin[] = [];
       const failedRepositories: string[] = [];
       const failureMessages: Record<string, string> = {};
-      const refKinds: Record<string, RefKind> = {};
+      const sources: SkillSource[] = [];
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
-          refKinds[repositoryKey(repositories[index])] =
-            result.value.refKind ?? 'branch';
+          const repoUrl = repositories[index];
+          sources.push({
+            url: repoUrl,
+            // An older backend takes any github.com source.
+            proposable: result.value.proposable ?? canProposeSkillTo(repoUrl),
+            path: result.value.path ?? '',
+            ...(result.value.ref ? { ref: result.value.ref } : {}),
+            readOnly: result.value.readOnly ?? false,
+          });
           skills.push(...result.value.skills);
           plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
@@ -114,7 +132,7 @@ export function useSkillCatalog(): SkillCatalog {
         failedRepositories,
         failureMessages,
         truncated,
-        refKinds,
+        sources,
       };
     },
   });
@@ -129,6 +147,6 @@ export function useSkillCatalog(): SkillCatalog {
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
-    refKinds: data?.refKinds ?? {},
+    sources: data?.sources ?? [],
   };
 }

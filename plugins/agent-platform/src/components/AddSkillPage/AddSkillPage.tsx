@@ -15,6 +15,7 @@ import {
   commitTagDraft,
   draftProblem,
   EmptyStateCard,
+  LoadingIndicator,
   sameTags,
   searchableIf,
   tagCounts,
@@ -27,7 +28,6 @@ import {
   WizardStepHeading,
   CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 import {
   SKILL_NAME_RE,
@@ -37,16 +37,11 @@ import {
 import type { SkillContent } from '../../hooks/useSkillContent';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { uniqueSkills } from '../../lib/customize';
+import { repoSlug, skillTags, type DiscoveredSkill } from '../../lib/skills';
 import {
-  canProposeSkillTo,
-  repoSlug,
-  skillTags,
-  type DiscoveredSkill,
-} from '../../lib/skills';
-import {
-  proposableRepositories,
+  offGitHubSources,
+  proposableSources,
   repositoryKey,
-  skillRepositoriesFrom,
 } from '../../lib/skillRepositories';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
@@ -128,30 +123,25 @@ function SkillPullRequestOutcome({
  */
 export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const navigate = useNavigate();
-  // The target repositories: the entries of the same signed-in-config list
-  // the catalog is discovered from that the pull-request endpoint accepts
-  // (`canProposeTo`: writable, github.com, read on a branch), so offering
-  // another would only end in an error. An edit targets the skill's own
-  // repository.
-  const { config } = useSignedInConfig();
-  const { refKinds, skills: catalogSkills } = useSkillCatalog();
+  // The target repositories: the sources the catalog read that the
+  // pull-request endpoint accepts (`proposable`, the backend's call), so
+  // offering another would only end in an error. An edit targets the skill's
+  // own repository.
+  const {
+    sources,
+    skills: catalogSkills,
+    isLoading: catalogLoading,
+  } = useSkillCatalog();
   const editRepoUrl = edit?.skill.repoUrl;
-  const configured = useMemo(() => skillRepositoriesFrom(config), [config]);
-  const targets = useMemo(
-    () => proposableRepositories(configured, refKinds),
-    [configured, refKinds],
-  );
+  const targets = useMemo(() => proposableSources(sources ?? []), [sources]);
   const repositories = useMemo(
     () => (editRepoUrl ? [editRepoUrl] : targets.map(target => target.url)),
     [targets, editRepoUrl],
   );
   /** Writable repositories left out of the targets for not being on github.com. */
-  const skippedCount = edit
-    ? 0
-    : configured.filter(
-        repository =>
-          !repository.readOnly && !canProposeSkillTo(repository.url),
-      ).length;
+  const skippedCount = edit ? 0 : offGitHubSources(sources ?? []).length;
+  // The targets are known once the catalog has read the sources.
+  const targetsLoading = !edit && catalogLoading;
   const { skills: customizeSkills } = useCustomizePaths();
   const skillsRoute = useRouteRef(skillsRouteRef);
   const closeHref = useCloseHref(
@@ -383,13 +373,16 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         </WizardStepHeading>
       )}
 
-      {repositories.length === 0 && skippedCount === 0 && (
+      {targetsLoading && (
+        <LoadingIndicator label="Reading the skill repositories…" />
+      )}
+      {!targetsLoading && repositories.length === 0 && skippedCount === 0 && (
         <EmptyStateCard
           title="No skill repositories"
           description="A platform admin has to configure a skill repository first."
         />
       )}
-      {repositories.length === 0 && skippedCount > 0 && (
+      {!targetsLoading && repositories.length === 0 && skippedCount > 0 && (
         <EmptyStateCard
           title="No repository to propose to"
           description="Skills are proposed as GitHub pull requests, but none of the configured repositories is on github.com. Add the skill in its repository instead."

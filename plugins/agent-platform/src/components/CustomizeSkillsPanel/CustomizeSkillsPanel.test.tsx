@@ -39,8 +39,28 @@ function skill(name: string) {
 }
 
 let mockCatalog: SkillCatalog;
+// What discovery found each configured ref to be, by URL.
+let mockRefKinds: Record<string, string> = {};
+// The catalog's sources as gs-backend describes them: proposable when
+// writable, on github.com and read on a branch.
 jest.mock('../CustomizeDataProvider', () => ({
-  useCustomizeData: () => ({ skillCatalog: mockCatalog }),
+  useCustomizeData: () => ({
+    skillCatalog: {
+      ...mockCatalog,
+      sources: mockRepositories.map(entry => {
+        const e = typeof entry === 'string' ? { url: entry } : entry;
+        return {
+          url: e.url,
+          path: e.path ?? '',
+          readOnly: Boolean(e.readOnly),
+          proposable:
+            e.url.startsWith('https://github.com/') &&
+            !e.readOnly &&
+            (!e.ref || mockRefKinds[e.url] === 'branch'),
+        };
+      }),
+    },
+  }),
 }));
 let mockAgentSkillIds: string[] = [];
 let mockAgentsLoading = false;
@@ -97,6 +117,7 @@ function listedRows(): HTMLElement[] {
 
 describe('CustomizeSkillsPanel', () => {
   beforeEach(() => {
+    mockRefKinds = {};
     mockAgentsLoading = false;
     mockCatalog = loaded;
     mockAgentSkillIds = [`${REPO}#triage`];
@@ -413,7 +434,7 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
 
   it('offers Add skill for a configured ref only once it is known to be a branch', async () => {
     mockRepositories = [{ url: REPO, ref: 'v1' }];
-    mockCatalog = { ...loaded, refKinds: { [REPO]: 'tag' } };
+    mockRefKinds = { [REPO]: 'tag' };
     await renderPanel();
     expect(
       screen.queryByRole('link', { name: /Add skill/ }),

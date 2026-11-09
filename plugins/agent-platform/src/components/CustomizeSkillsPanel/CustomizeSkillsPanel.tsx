@@ -10,7 +10,6 @@ import {
   ROW_TAGS_MAX,
   TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 import {
   agentsBySkill,
@@ -23,13 +22,12 @@ import {
 import {
   canonicalRepoUrl,
   canonicalSkillId,
-  canProposeSkillTo,
   repoSlug,
   skillTags,
 } from '../../lib/skills';
 import {
-  proposableRepositories,
-  skillRepositoriesFrom,
+  offGitHubSources,
+  proposableSources,
 } from '../../lib/skillRepositories';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
@@ -222,11 +220,9 @@ function SkillCard({ card }: { card: Row }) {
 export function useCanAddSkill(): boolean {
   const { skillCatalog } = useCustomizeData();
   const newSkillRoute = useRouteRef(newSkillRouteRef);
-  const { config } = useSignedInConfig();
   return (
     !skillCatalog.isLoading &&
-    proposableRepositories(skillRepositoriesFrom(config), skillCatalog.refKinds)
-      .length > 0 &&
+    proposableSources(skillCatalog.sources ?? []).length > 0 &&
     Boolean(newSkillRoute)
   );
 }
@@ -244,19 +240,14 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillPaths = useSkillPaths();
-  // The add form's target repositories (`canProposeTo`): skills are
-  // proposed as GitHub pull requests, and the endpoint refuses any other
-  // repository (T61), a read-only source and one not read on a branch.
-  const { config } = useSignedInConfig();
-  const repositories = skillRepositoriesFrom(config);
-  const proposable = proposableRepositories(
-    repositories,
-    skillCatalog.refKinds,
-  );
+  // The add form's target repositories (`proposable`, the backend's call):
+  // skills are proposed as GitHub pull requests, and the endpoint refuses
+  // any other repository (T61), a read-only source and one not read on a
+  // branch.
+  const sources = skillCatalog.sources ?? [];
+  const proposable = proposableSources(sources);
   // Writable sources left out for not being on github.com.
-  const offGitHub = repositories.filter(
-    repository => !repository.readOnly && !canProposeSkillTo(repository.url),
-  );
+  const offGitHub = offGitHubSources(sources);
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const unique = useMemo(
     () => uniqueSkills(skillCatalog.skills),
