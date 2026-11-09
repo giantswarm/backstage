@@ -171,7 +171,8 @@ function MarkdownLink({
   if (url.origin !== window.location.origin) {
     return <ExternalLink href={href}>{children}</ExternalLink>;
   }
-  const { pathname } = url;
+  // One leading slash: `//host` in a router link would leave the portal.
+  const pathname = url.pathname.replace(/^\/{2,}/, '/');
 
   if (/^\/(?:workspace|data\/workspace)(?:\/|$)/.test(pathname)) {
     return (

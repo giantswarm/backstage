@@ -46,6 +46,27 @@ describe('MessageMarkdown', () => {
     expect(link).not.toHaveAttribute('target');
   });
 
+  it('keeps a same-origin link with a doubled slash in the portal', async () => {
+    await renderInTestApp(
+      <MessageMarkdown
+        text={`[Away](${window.location.origin}//evil.example/x?a=1)`}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Away' })).toHaveAttribute(
+      'href',
+      '/evil.example/x?a=1',
+    );
+  });
+
+  it('drops a javascript: link', async () => {
+    await renderInTestApp(
+      <MessageMarkdown text="[Run](javascript:alert(1))" />,
+    );
+
+    expect(screen.queryByRole('link', { name: 'Run' })).toBeNull();
+  });
+
   it('opens another origin in a new tab', async () => {
     await renderInTestApp(
       <MessageMarkdown text="[Docs](https://docs.giantswarm.io/)" />,
