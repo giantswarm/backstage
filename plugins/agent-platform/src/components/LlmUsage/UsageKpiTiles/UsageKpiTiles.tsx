@@ -109,7 +109,7 @@ export function UsageKpiTiles({
       <Stat
         variant="tile"
         label="Tokens"
-        hint={`Counts all tokens the gateway proxied over ${windowNote}: input, output and both cache types.`}
+        hint={`Counts every token the gateway proxied over ${windowNote} once: fresh input, cache reads, cache writes and output.`}
         value={formatTokens(totals.tokens)}
         sub={`every user's, across ${formatCount(totals.calls)} model calls`}
       />
