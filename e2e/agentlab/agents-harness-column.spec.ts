@@ -1,69 +1,65 @@
 import type { Locator, Page, Route } from '@playwright/test';
-import {
-  expect,
-  open,
-  rosterLinkOf,
-  rosterRowOf,
-  searchRoster,
-  test,
-  type LabAgent,
-} from './fixtures';
+import { expect, open, rosterLinkOf, rosterRowOf, test } from './fixtures';
+import { RUN } from './lab';
 
 /**
  * Customize › Agents names each agent's Harness, and filters by it, only when
- * the list holds agents of more than one Harness. The lab runs every agent on
- * one, so the second is staged at the browser and everything else is real:
- * the roster's `AgentList` answer (`GET` through the portal's Kubernetes
- * proxy) gains a copy of the worker's own agent (`labAgent`) that names a
- * second Harness, or, for the single-Harness case, has every agent name the
- * worker's agent's Harness, whatever else a shared lab holds. The staged
- * Harness exists nowhere, so the row and the filter name it by its name.
+ * the list holds agents of more than one Harness. A default lab runs every
+ * agent on one, so the Harnesses are staged at the browser and everything
+ * else is real: the roster's `AgentList` answer (`GET` through the portal's
+ * Kubernetes proxy) gains two agents of this run, and every agent in it names
+ * one of two Harnesses no lab runs — both on the first for the single-Harness
+ * case, the second agent on the second Harness otherwise. Staging every agent,
+ * a shared lab's own included, keeps the Harness count exact whatever the lab
+ * holds. The staged Harnesses exist nowhere, so the rows and the filter name
+ * them by their names.
  *
- * Both rows are found by a search for the worker's agent's slug, which the
- * copy's technical name carries too: a shared lab's other agents stay out of
- * the way of the rows and their paging.
+ * The staged agents carry the run in their names, and the list is searched
+ * for it: a shared lab's other agents stay out of the way of the rows and
+ * their paging. No agent is created, so no wizard, model or organization of
+ * the lab is involved.
  */
 
 const rosterWait = 2 * 60_000;
 
-/** The Harness no lab runs, which the staged copy names. */
-const SECOND_HARNESS = 'e2e-second-harness';
+const FIRST_HARNESS = 'e2e-harness-one';
+const SECOND_HARNESS = 'e2e-harness-two';
 
-/** The copy's display and technical names, derived from the worker's agent. */
-function copyOf(agent: LabAgent) {
-  return {
-    name: `${agent.name} on a second Harness`,
-    slug: `${agent.slug}-h2`,
-  };
-}
+/** What the search narrows the list to: both staged agents and nothing else. */
+const SEARCH = `e2e-harness-${RUN}`;
+
+/** The staged agents: the first always on the first Harness. */
+const AGENTS = [
+  { slug: `${SEARCH}-a`, name: `E2E Harness ${RUN} A` },
+  { slug: `${SEARCH}-b`, name: `E2E Harness ${RUN} B` },
+] as const;
 
 type KubeAgent = {
-  metadata: {
-    name: string;
-    uid?: string;
-    annotations?: Record<string, string>;
-    [key: string]: unknown;
-  };
   spec?: { harnessRef?: { name: string }; [key: string]: unknown };
   [key: string]: unknown;
 };
 
-/** What the staged answers saw of the worker's agent. */
-type Staged = { harness?: string };
+/** The namespace an `AgentList` request reads, or `undefined` for all of them. */
+function namespaceOf(route: Route): string | undefined {
+  const match = new URL(route.request().url()).pathname.match(
+    /\/namespaces\/([^/]+)\/agents$/,
+  );
+  return match?.[1];
+}
 
 /**
- * Stages the roster's `AgentList` answers on `page`. `harnesses: 2` adds a
- * copy of `agent` on {@link SECOND_HARNESS}; `harnesses: 1` sets every agent
- * that names a Harness to `agent`'s. Returns what the answers carried for
- * `agent`, so the test can tell a staged answer from one that never came.
+ * Stages the roster's `AgentList` answers on `page`: every agent names
+ * {@link FIRST_HARNESS}, and the first list answered — the same one on every
+ * poll — gains the two {@link AGENTS}, the second on {@link SECOND_HARNESS}
+ * when `harnesses` is 2. Returns the answers staged so far, so the test can
+ * tell a staged list from one that never came.
  */
 async function stageHarnesses(
   page: Page,
-  agent: LabAgent,
   harnesses: 1 | 2,
-): Promise<Staged> {
-  const staged: Staged = {};
-  const copy = copyOf(agent);
+): Promise<{ count: number }> {
+  const staged = { count: 0 };
+  let carrier: string | undefined;
   await page.route('**/api/kubernetes/proxy/**', async (route: Route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
@@ -71,107 +67,91 @@ async function stageHarnesses(
     }
     const response = await route.fetch();
     const body = await response.json().catch(() => undefined);
-    const items: KubeAgent[] | undefined =
-      body?.kind === 'AgentList' ? body.items : undefined;
-    const own = items?.find(item => item.metadata.name === agent.slug);
-    const harness = own?.spec?.harnessRef?.name;
-    if (!items || !own || !harness) {
+    if (body?.kind !== 'AgentList' || !Array.isArray(body.items)) {
       await route.fulfill({ response });
       return;
     }
-    staged.harness = harness;
-    const answer =
-      harnesses === 2
-        ? [
-            ...items,
-            {
-              ...own,
-              metadata: {
-                ...own.metadata,
-                name: copy.slug,
-                uid: `${own.metadata.uid ?? 'e2e'}-h2`,
-                annotations: {
-                  ...own.metadata.annotations,
-                  'ui.giantswarm.io/display-name': copy.name,
-                },
-              },
-              spec: { ...own.spec, harnessRef: { name: SECOND_HARNESS } },
+    const path = new URL(route.request().url()).pathname;
+    carrier ??= path;
+    const items: KubeAgent[] = body.items.map((item: KubeAgent) => ({
+      ...item,
+      spec: { ...item.spec, harnessRef: { name: FIRST_HARNESS } },
+    }));
+    if (path === carrier) {
+      const namespace =
+        namespaceOf(route) ??
+        (body.items[0]?.metadata?.namespace as string | undefined) ??
+        'kagent';
+      const kind = String(body.kind).replace(/List$/, '');
+      AGENTS.forEach((agent, index) => {
+        items.push({
+          apiVersion: body.apiVersion,
+          kind,
+          metadata: {
+            name: agent.slug,
+            namespace,
+            uid: `${agent.slug}-uid`,
+            creationTimestamp: new Date().toISOString(),
+            annotations: { 'ui.giantswarm.io/display-name': agent.name },
+          },
+          spec: {
+            description: 'Staged by agents-harness-column.spec.ts.',
+            harnessRef: {
+              name:
+                harnesses === 2 && index === 1 ? SECOND_HARNESS : FIRST_HARNESS,
             },
-          ]
-        : items.map(item =>
-            item.spec?.harnessRef
-              ? {
-                  ...item,
-                  spec: { ...item.spec, harnessRef: { name: harness } },
-                }
-              : item,
-          );
-    await route.fulfill({ response, json: { ...body, items: answer } });
+          },
+        });
+      });
+      staged.count += 1;
+    }
+    await route.fulfill({ response, json: { ...body, items } });
   });
   return staged;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** A row's Harness fact: its tooltip is `Harness: <title> (<name>)` or `Harness: <name>`. */
+/** A row's Harness fact: its tooltip is `Harness: <name>`. */
 function harnessFact(row: Locator): Locator {
   return row.getByTestId('agent-facts').locator('[title^="Harness: "]');
-}
-
-/** The tooltip of the Harness fact naming `harness`, with or without its title. */
-function harnessTooltip(harness: string): RegExp {
-  const name = escapeRegExp(harness);
-  return new RegExp(`^Harness: (${name}|.+ \\(${name}\\))$`);
 }
 
 function harnessFilter(page: Page): Locator {
   return page.getByRole('button', { name: /^Filter by harness/ });
 }
 
-/** The filter's option for `harness`, labelled `<title> (<name>)` or `<name>`. */
 function harnessOption(page: Page, harness: string): Locator {
-  const name = escapeRegExp(harness);
   return page
     .getByRole('listbox')
-    .getByRole('option', { name: new RegExp(`(^${name}|\\(${name}\\))`) });
+    .getByRole('option', { name: new RegExp(`^${harness}\\b`) });
+}
+
+async function openStagedRoster(page: Page) {
+  await open(page, '/customize/agents');
+  await page.getByRole('searchbox', { name: 'Search agents' }).fill(SEARCH);
+  await expect(
+    rosterLinkOf(page, AGENTS[0].name),
+    'the roster lists the staged agents',
+  ).toBeVisible({ timeout: rosterWait });
+  await expect(rosterLinkOf(page, AGENTS[1].name)).toBeVisible();
 }
 
 test.describe('the Agents list’s Harness column and filter', () => {
   test('with two Harnesses, each row names its Harness and the filter narrows the list to one', async ({
     admin,
-    labAgent,
   }) => {
     test.setTimeout(rosterWait + 60_000);
-    const copy = copyOf(labAgent);
-    const staged = await stageHarnesses(admin, labAgent, 2);
-    await open(admin, '/customize/agents');
-    await searchRoster(admin, labAgent.slug);
-    await expect(
-      rosterLinkOf(admin, labAgent.name),
-      'the roster lists the fixture agent',
-    ).toBeVisible({ timeout: rosterWait });
-    await expect(
-      rosterLinkOf(admin, copy.name),
-      'the roster lists the staged copy',
-    ).toBeVisible();
-    expect(
-      staged.harness,
-      'the roster answer was staged with the fixture agent’s Harness',
-    ).toBeTruthy();
-    const labHarness = staged.harness!;
+    const staged = await stageHarnesses(admin, 2);
+    await openStagedRoster(admin);
+    expect(staged.count, 'the roster answer was staged').toBeGreaterThan(0);
 
     // The column: every row names its own Harness.
-    await expect(
-      harnessFact(rosterRowOf(admin, labAgent.name)),
-    ).toHaveAttribute('title', harnessTooltip(labHarness));
-    const copyFact = harnessFact(rosterRowOf(admin, copy.name));
-    await expect(copyFact).toHaveAttribute(
-      'title',
-      harnessTooltip(SECOND_HARNESS),
+    const [first, second] = AGENTS.map(agent =>
+      harnessFact(rosterRowOf(admin, agent.name)),
     );
-    await expect(copyFact).toHaveText(SECOND_HARNESS);
+    await expect(first).toHaveText(FIRST_HARNESS);
+    await expect(first).toHaveAttribute('title', `Harness: ${FIRST_HARNESS}`);
+    await expect(second).toHaveText(SECOND_HARNESS);
+    await expect(second).toHaveAttribute('title', `Harness: ${SECOND_HARNESS}`);
 
     // The filter: all Harnesses until one is picked, and it lists both.
     const filter = harnessFilter(admin);
@@ -179,18 +159,18 @@ test.describe('the Agents list’s Harness column and filter', () => {
     await expect(filter).toContainText('All');
     await filter.click();
     await expect(admin.getByRole('listbox').getByRole('option')).toHaveCount(2);
-    await expect(harnessOption(admin, labHarness)).toBeVisible();
+    await expect(harnessOption(admin, FIRST_HARNESS)).toBeVisible();
     await harnessOption(admin, SECOND_HARNESS).click();
     await admin.keyboard.press('Escape');
 
     await expect(filter).toContainText(SECOND_HARNESS);
     await expect(
-      rosterLinkOf(admin, copy.name),
+      rosterLinkOf(admin, AGENTS[1].name),
       'the second Harness keeps its agent',
     ).toBeVisible();
     await expect(
-      rosterLinkOf(admin, labAgent.name),
-      'the fixture agent runs on another Harness',
+      rosterLinkOf(admin, AGENTS[0].name),
+      'the first Harness’s agent is filtered out',
     ).toHaveCount(0);
 
     // Clearing the filter brings every Harness's agents back.
@@ -199,34 +179,28 @@ test.describe('the Agents list’s Harness column and filter', () => {
       .getByRole('button', { name: 'Clear filters' })
       .click();
     await expect(filter).toContainText('All');
-    await expect(rosterLinkOf(admin, labAgent.name)).toBeVisible();
-    await expect(rosterLinkOf(admin, copy.name)).toBeVisible();
+    await expect(rosterLinkOf(admin, AGENTS[0].name)).toBeVisible();
+    await expect(rosterLinkOf(admin, AGENTS[1].name)).toBeVisible();
   });
 
   test('with one Harness, neither the column nor the filter shows', async ({
     admin,
-    labAgent,
   }) => {
     test.setTimeout(rosterWait + 60_000);
-    const staged = await stageHarnesses(admin, labAgent, 1);
-    await open(admin, '/customize/agents');
-    await searchRoster(admin, labAgent.slug);
-    const row = rosterRowOf(admin, labAgent.name);
-    await expect(row, 'the roster lists the fixture agent').toBeVisible({
-      timeout: rosterWait,
-    });
-    expect(
-      staged.harness,
-      'the roster answer was staged with the fixture agent’s Harness',
-    ).toBeTruthy();
+    const staged = await stageHarnesses(admin, 1);
+    await openStagedRoster(admin);
+    expect(staged.count, 'the roster answer was staged').toBeGreaterThan(0);
 
-    await expect(
-      harnessFact(row),
-      'one Harness for every agent: no row names it',
-    ).toHaveCount(0);
-    await expect(row.getByTestId('agent-facts')).not.toContainText(
-      staged.harness!,
-    );
+    for (const agent of AGENTS) {
+      const row = rosterRowOf(admin, agent.name);
+      await expect(
+        harnessFact(row),
+        'one Harness for every agent: no row names it',
+      ).toHaveCount(0);
+      await expect(row.getByTestId('agent-facts')).not.toContainText(
+        FIRST_HARNESS,
+      );
+    }
     await expect(
       harnessFilter(admin),
       'one Harness for every agent: nothing to filter by',
