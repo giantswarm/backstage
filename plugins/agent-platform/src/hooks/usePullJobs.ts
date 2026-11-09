@@ -57,11 +57,15 @@ export function usePullJobs(installations: string[]): PullJobs {
       queryFn: () => modelManagerApi.listJobs(installation),
       staleTime: 0,
       // Not from a hidden tab, not after muster answered that the person is
-      // not signed in to model-manager.
-      ...musterPollingOptions((query: PollingQuery<ModelManagerJob[]>) =>
-        (query.state.data ?? []).some(isJobActive)
-          ? JOBS_POLL_ACTIVE_MS
-          : JOBS_POLL_IDLE_MS,
+      // not signed in to model-manager. No read on becoming visible: with
+      // `staleTime` 0 every return to the tab would read it; the next tick,
+      // within seconds while a pull runs, does.
+      ...musterPollingOptions(
+        (query: PollingQuery<ModelManagerJob[]>) =>
+          (query.state.data ?? []).some(isJobActive)
+            ? JOBS_POLL_ACTIVE_MS
+            : JOBS_POLL_IDLE_MS,
+        { refetchOnVisible: false },
       ),
     })),
   });

@@ -793,13 +793,20 @@ export type ServingSourceSnapshot = {
    */
   unreachableInstallations: string[];
   /**
-   * The installations of `unreachableInstallations` whose serving layer
-   * could not be read because muster asked for the person's sign-in to
-   * model-manager there (its 401 with `server_sign_in_required`): a sign-in
-   * fixes them, so a page offers it instead of a read warning. Optional; a
-   * source without a per-person sign-in leaves it out.
+   * The installations where muster asked for the person's sign-in to
+   * model-manager on a read of the serving layer (its 401 with
+   * `server_sign_in_required`): a sign-in fixes that read, so a page offers
+   * it. Optional; a source without a per-person sign-in leaves it out.
    */
   signInRequiredInstallations?: string[];
+  /**
+   * The installations of `unreachableInstallations` that some source could
+   * not read for a reason other than a sign-in it asked for (a cluster out
+   * of reach, a refusal): a page names these in its read warning, the
+   * others only get the sign-in. Set by {@link mergeServingSnapshots}, which
+   * alone knows which source failed where; a single source leaves it out.
+   */
+  unreadableBeyondSignIn?: string[];
   servedModels: ServedModel[];
   gpuNodes: GpuNode[];
   /** Installations whose GPU capacity could not be read, with why. */
@@ -1135,6 +1142,7 @@ export function mergeServingSnapshots(
     {};
   const unreachable = new Set<string>();
   const signInRequired = new Set<string>();
+  const unreadableBeyondSignIn = new Set<string>();
   const servedModels: ServedModel[] = [];
   const gpuNodes = new Map<string, GpuNode>();
   // Every installation any source lists, in source order — not the keys of
@@ -1204,7 +1212,12 @@ export function mergeServingSnapshots(
       );
     }
     Object.assign(gpuCapacityUnavailable, snapshot.gpuCapacityUnavailable);
-    snapshot.unreachableInstallations.forEach(name => unreachable.add(name));
+    snapshot.unreachableInstallations.forEach(name => {
+      unreachable.add(name);
+      if (!snapshot.signInRequiredInstallations?.includes(name)) {
+        unreadableBeyondSignIn.add(name);
+      }
+    });
     snapshot.signInRequiredInstallations?.forEach(name =>
       signInRequired.add(name),
     );
@@ -1269,6 +1282,7 @@ export function mergeServingSnapshots(
     gatewayHosts,
     unreachableInstallations: Array.from(unreachable).sort(),
     signInRequiredInstallations: Array.from(signInRequired).sort(),
+    unreadableBeyondSignIn: Array.from(unreadableBeyondSignIn).sort(),
     servedModels,
     gpuNodes: Array.from(gpuNodes.values()).filter(isAcceleratorCapacityRow),
     gpuCapacityUnavailable,

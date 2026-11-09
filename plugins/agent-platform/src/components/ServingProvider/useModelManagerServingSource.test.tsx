@@ -24,11 +24,14 @@ import {
   modelManagerModelSchema,
   modelManagerNodeSchema,
   parseModelManagerList,
+  type ModelManagerModel,
 } from '../../lib/modelManager';
 import { NO_SERVING_CAPABILITIES } from '../../lib/serving';
 import { classifyModelManagerToolError } from '../../lib/modelManagerBackends';
+import { MODEL_POLL_ACTIVE_MS } from '../../lib/modelLifecycle';
 import {
   BACKEND_REFETCH_MS,
+  MODELS_REFETCH_MS,
   useModelManagerServingSource,
 } from './useModelManagerServingSource';
 import {
@@ -485,6 +488,85 @@ describe('useModelManagerServingSource', () => {
       expect(
         listModels.mock.calls.filter(([name]) => name === 'gpu'),
       ).toHaveLength(2);
+    });
+
+    it('does not read a query stopped on a sign-in again as the tab becomes visible', async () => {
+      listBackends.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          throw signInRequired();
+        }
+        return [ollama];
+      });
+      const { result } = renderSource();
+      await waitFor(() =>
+        expect(result.current.signInRequiredInstallations).toEqual(['gpu']),
+      );
+
+      act(() => focusManager.setFocused(false));
+      await advance(2 * BACKEND_REFETCH_MS);
+      act(() => focusManager.setFocused(true));
+      await advance(0);
+
+      // Only the sign-in reads it again.
+      expect(backendCallsOn('gpu')).toBe(1);
+    });
+
+    it('offers the sign-in where list_models asks for it while the backends still read, and stops that poll', async () => {
+      listModels.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          throw signInRequired();
+        }
+        return ollamaModels;
+      });
+
+      const { result } = renderSource();
+      await waitFor(() =>
+        expect(result.current.signInRequiredInstallations).toEqual(['gpu']),
+      );
+      expect(result.current.unreachableInstallations).toEqual(['gpu']);
+
+      await advance(10 * MODELS_REFETCH_MS);
+      expect(
+        listModels.mock.calls.filter(([name]) => name === 'gpu'),
+      ).toHaveLength(1);
+    });
+
+    it('keeps reading the inventory from a hidden tab while a served model is on its way in, and stops once it answers (giantswarm/backstage#2446)', async () => {
+      const [model] = kserveModels;
+      const loading = {
+        ...model,
+        running: {
+          ...model.running!,
+          phase: 'downloading',
+          steps: [{ name: 'downloading', state: 'inProgress' }],
+        },
+      } as ModelManagerModel;
+      let answered = false;
+      listModels.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          return answered ? kserveModels : [loading];
+        }
+        return ollamaModels;
+      });
+      const modelCallsOn = (installation: string) =>
+        listModels.mock.calls.filter(([name]) => name === installation).length;
+      const { result } = renderSource();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => focusManager.setFocused(false));
+      await advance(3 * MODEL_POLL_ACTIVE_MS);
+      expect(modelCallsOn('gpu')).toBe(4);
+      // Nothing else from the hidden tab: lab's inventory is settled, and
+      // the descriptors wait for the person.
+      expect(modelCallsOn('lab')).toBe(1);
+      expect(backendCallsOn('gpu')).toBe(1);
+
+      // The read that shows the model answering ends it.
+      answered = true;
+      await advance(MODEL_POLL_ACTIVE_MS);
+      const settled = modelCallsOn('gpu');
+      await advance(10 * MODELS_REFETCH_MS);
+      expect(modelCallsOn('gpu')).toBe(settled);
     });
   });
 

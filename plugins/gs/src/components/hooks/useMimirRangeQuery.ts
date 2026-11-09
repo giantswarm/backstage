@@ -5,13 +5,10 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import {
-  isAwaitingData,
-  pollingQueryOptions,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { mimirApiRef } from '../../apis/mimir';
 import { MimirRangeQueryResponse } from '../../apis/mimir/types';
-import { isTerminalMimirError, mimirQueryRetry } from './mimirRetry';
+import { mimirPollingOptions, mimirQueryRetry } from './mimirRetry';
 import { useMimirAvailable } from './useMimirAvailable';
 
 /**
@@ -110,12 +107,7 @@ export function useMimirRangeQuery(options: {
     enabled: wanted && isAvailable === true,
     staleTime: 30_000,
     retry: mimirQueryRetry,
-    // Not from a hidden tab, not after a 400, 401, 403 or 404.
-    ...(refetchInterval
-      ? pollingQueryOptions(refetchInterval, {
-          stopOnError: isTerminalMimirError,
-        })
-      : {}),
+    ...mimirPollingOptions(refetchInterval),
     placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });

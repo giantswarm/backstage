@@ -111,6 +111,10 @@ export function useMcpServersAwaitingSignIn(
         (query: PollingQuery<AuthStatusResponse>) =>
           connectingPollInterval(query.state.data) || AUTH_STATUS_REFRESH_MS,
       ),
+      // On every return to the tab, a stopped poll too: this read never
+      // asks the person to sign in (no sign-in challenge per call), and the
+      // return from the IdP's tab is when a sign-in lands.
+      refetchOnWindowFocus: true,
       refetchOnMount,
       retry: false,
     });

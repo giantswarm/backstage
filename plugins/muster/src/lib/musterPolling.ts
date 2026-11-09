@@ -3,6 +3,7 @@ import {
   pollingQueryOptions,
   type PollingQuery,
   type PollingQueryOptions,
+  type PollingRuleOptions,
   type PollInterval,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { isMusterAuthFailure } from '../apis/musterUnauthorized';
@@ -26,15 +27,16 @@ export function isPermanentMusterReadError(error: unknown): boolean {
  * tab, a read when it becomes visible again, and no polling after a
  * permanent error ({@link isPermanentMusterReadError}) until a read succeeds
  * again — after the person signed in, say. `stopOnError` adds errors of the
- * caller's own that are permanent too.
+ * caller's own that are permanent too; the other options pass through.
  */
 export function musterPollingOptions<
   TQuery extends PollingQuery = PollingQuery,
 >(
   interval: PollInterval<TQuery>,
-  { stopOnError }: { stopOnError?: (error: unknown) => boolean } = {},
+  { stopOnError, ...options }: PollingRuleOptions = {},
 ): PollingQueryOptions<TQuery> {
   return pollingQueryOptions(interval, {
+    ...options,
     stopOnError: error =>
       isPermanentMusterReadError(error) || Boolean(stopOnError?.(error)),
   });

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   isAwaitingData,
   type PollingQuery,
@@ -16,7 +16,10 @@ import type {
   ModelManagerModel,
   ModelManagerNode,
 } from '../../lib/modelManager';
-import { modelsRefetchInterval } from '../../lib/modelLifecycle';
+import {
+  isModelLoadInProgress,
+  modelsRefetchInterval,
+} from '../../lib/modelLifecycle';
 import {
   sharedHostsOf,
   toGpuNodeFromManager,
@@ -133,6 +136,7 @@ export function useModelManagerServingSource(
   reachableInstallations: string[],
 ): ServingSourceSnapshot {
   const modelManagerApi = useApi(modelManagerApiRef);
+  const queryClient = useQueryClient();
   const { installations, isLoading: isListing } = useModelManagerInstallations(
     reachableInstallations,
   );
@@ -141,15 +145,13 @@ export function useModelManagerServingSource(
   // The three reads poll while the tab is visible, and stop once the last
   // read failed for good (`musterPollingOptions`): a person who is not
   // signed in to model-manager there gets the same answer every time, and
-  // each call makes muster create another sign-in challenge. The sign-in on
-  // the Serving view reads them again once it lands, and polling resumes.
+  // each call makes muster create another sign-in challenge. Nor are they
+  // read again as the tab becomes visible then: the sign-in on the Serving
+  // view reads them again once it lands, and polling resumes.
   //
   // Not from a hidden tab: a tab left open in the background would otherwise
-  // call model-manager every minute for as long as it stays open. The
-  // person waiting for a served model's timeline (the pool panel's nested
-  // steps, the Serving view's row) still sees it move when they look
-  // (giantswarm/backstage#2446): the reads are made again as the tab becomes
-  // visible, where stale.
+  // call model-manager every minute for as long as it stays open. The one
+  // exception is the inventory while a served model is on its way in (below).
   const backendQueries = useQueries({
     queries: installations.map(installation => ({
       queryKey: modelManagerBackendsQueryKey(installation),
@@ -214,8 +216,23 @@ export function useModelManagerServingSource(
       // 10 s while a served model is on its way or being deleted, so its
       // timeline moves as model-manager reports the steps; the inventory's
       // own rate otherwise.
-      ...musterPollingOptions((query: PollingQuery<ModelManagerModel[]>) =>
-        modelsRefetchInterval(query.state.data, MODELS_REFETCH_MS),
+      //
+      // From a hidden tab too while a served model is on its way in: a GPU
+      // pool's serve intent loads one without anybody looking, and its
+      // timeline (the pool panel's nested steps, the Serving view's row)
+      // keeps moving there until the model answers
+      // (giantswarm/backstage#2446). Read per render from the cache, so it
+      // stops with the read that shows the model settled.
+      ...musterPollingOptions(
+        (query: PollingQuery<ModelManagerModel[]>) =>
+          modelsRefetchInterval(query.state.data, MODELS_REFETCH_MS),
+        {
+          inBackground: isModelLoadInProgress(
+            queryClient.getQueryData<ModelManagerModel[]>(
+              modelManagerModelsQueryKey(installation),
+            ),
+          ),
+        },
       ),
     })),
   });
@@ -275,14 +292,21 @@ export function useModelManagerServingSource(
       const nodeQuery = nodeQueries[index];
       const descriptors = backends[installation];
 
+      // muster asked for the person's sign-in to model-manager (its 401,
+      // kept as the cause) on any of the three reads — the descriptors may
+      // still be fresh from the cache, or the grant lapsed between their
+      // polls: the page offers the sign-in, and the reads stop polling until
+      // it lands.
+      if (
+        [backendQuery, modelQuery, nodeQuery].some(query =>
+          musterSignInRequiredOf(query?.error),
+        )
+      ) {
+        signInRequired.add(installation);
+      }
+
       if (backendQuery?.isError) {
         unreachable.add(installation);
-        // muster asked for the person's sign-in to model-manager (its 401,
-        // kept as the cause): the page offers it, and the reads stop polling
-        // until it lands.
-        if (musterSignInRequiredOf(backendQuery.error)) {
-          signInRequired.add(installation);
-        }
         return;
       }
       if (!descriptors) {

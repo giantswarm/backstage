@@ -23,15 +23,38 @@ export type PollInterval<TQuery extends PollingQuery = PollingQuery> =
 
 export type PollingQueryOptions<TQuery extends PollingQuery = PollingQuery> = {
   refetchInterval: (query: TQuery) => number | false | undefined;
-  refetchIntervalInBackground: false;
-  refetchOnWindowFocus: true;
+  refetchIntervalInBackground: boolean;
+  /** Left out with `refetchOnVisible: false`: the client's own setting then. */
+  refetchOnWindowFocus?: (query: TQuery) => boolean;
+};
+
+export type PollingRuleOptions = {
+  /**
+   * Errors of the caller's own that stop the poll; {@link isPermanentReadError}
+   * by default.
+   */
+  stopOnError?: (error: unknown) => boolean;
+  /**
+   * Poll from a hidden tab too. Only with a concrete reason, written in a
+   * comment beside it, and only while that reason holds (computed per render:
+   * something on its way that the page acts on without anybody looking).
+   */
+  inBackground?: boolean;
+  /**
+   * Read the query as the tab becomes visible again, where its data is stale
+   * (default). `false` for a query whose data is always stale (`staleTime`
+   * 0) on a client that keeps focus refetches off: every return to the tab
+   * would read it, and the next tick does it anyway.
+   */
+  refetchOnVisible?: boolean;
 };
 
 /**
  * `error` and the errors it was made from (`cause`): the plugins wrap the
  * errors of their clients in their own and keep the original as the cause.
+ * Five deep at most, so a cycle ends.
  */
-function* causeChain(error: unknown): Generator<unknown> {
+export function* causeChain(error: unknown): Generator<unknown> {
   let current = error;
   for (let depth = 0; current && depth < 5; depth++) {
     yield current;
@@ -83,36 +106,43 @@ export function isPermanentReadError(error: unknown): boolean {
  *
  * - **Not from a hidden tab.** Nothing polls while the tab is in the
  *   background (`refetchIntervalInBackground: false`). When it becomes
- *   visible again, a read whose data is stale is made at once
- *   (`refetchOnWindowFocus: true` per query, over the clients'
- *   `refetchOnWindowFocus: false`); one that is not stale yet is read at the
- *   next tick, as if the tab had stayed in front. The person looking at the
- *   page again sees it current within seconds, and a tab left open in the
- *   background calls nothing.
+ *   visible again, a polling read whose data is stale is made at once
+ *   (`refetchOnWindowFocus` per query, over the clients' `false`); one that
+ *   is not stale yet is read at the next tick, as if the tab had stayed in
+ *   front. A tab left open in the background calls nothing. `inBackground`
+ *   keeps a poll going there while the caller has a concrete reason.
  * - **Not after a permanent error.** Once the last read failed with an error
  *   `stopOnError` calls permanent ({@link isPermanentReadError} unless said
- *   otherwise), the interval stops: asking again gets the same answer. It
- *   resumes by itself once a read succeeds again — the page's sign-in
- *   invalidating the query, the tab becoming visible again, a remount.
+ *   otherwise), the interval stops, and so does the read on becoming
+ *   visible: asking again gets the same answer, and for a read through
+ *   muster each call makes it create another sign-in challenge. It resumes
+ *   once a read succeeds again: the page's sign-in invalidating the query,
+ *   a remount.
  *
- * A poll that has a concrete reason to run in a hidden tab (waiting for a
- * sign-in that completes in another tab) sets `refetchIntervalInBackground`
- * after the spread, with the reason in a comment beside it.
+ * A query whose interval returned `false` by itself (a build that finished,
+ * a watch that settled) is not read on becoming visible either.
  */
 export function pollingQueryOptions<TQuery extends PollingQuery = PollingQuery>(
   interval: PollInterval<TQuery>,
   {
     stopOnError = isPermanentReadError,
-  }: { stopOnError?: (error: unknown) => boolean } = {},
+    inBackground = false,
+    refetchOnVisible = true,
+  }: PollingRuleOptions = {},
 ): PollingQueryOptions<TQuery> {
+  const refetchInterval = (query: TQuery) => {
+    if (query.state.status === 'error' && stopOnError(query.state.error)) {
+      return false;
+    }
+    return typeof interval === 'function' ? interval(query) : interval;
+  };
+  const polls = (query: TQuery) => {
+    const next = refetchInterval(query);
+    return typeof next === 'number' && next > 0;
+  };
   return {
-    refetchInterval: query => {
-      if (query.state.status === 'error' && stopOnError(query.state.error)) {
-        return false;
-      }
-      return typeof interval === 'function' ? interval(query) : interval;
-    },
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
+    refetchInterval,
+    refetchIntervalInBackground: inBackground,
+    ...(refetchOnVisible ? { refetchOnWindowFocus: polls } : {}),
   };
 }

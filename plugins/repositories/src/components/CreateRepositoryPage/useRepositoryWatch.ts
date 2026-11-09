@@ -46,15 +46,20 @@ export function useRepositoryWatch({
     enabled: repository !== undefined && pullRequest !== undefined,
     staleTime: 0,
     // Not from a hidden tab: the manager reports every phase reached from
-    // the start on each call, so the call made as the tab becomes visible
-    // again catches up at once. Not after the backend refused the person, or
-    // answered that they are not connected to the repo-manager.
-    ...pollingQueryOptions((query: PollingQuery<Watch>) => {
-      const watch = query.state.data;
-      if (watch && (watch.ready || watch.failure)) {
-        return false;
-      }
-      return query.state.error ? WATCH_RETRY_MS : WATCH_AGAIN_MS;
-    }),
+    // the start on each call, so the next call, a second after the tab
+    // becomes visible again, catches up at once (no read on becoming
+    // visible on top: `staleTime` 0 would make it one per return). Not after
+    // the backend refused the person, or answered that they are not
+    // connected to the repo-manager.
+    ...pollingQueryOptions(
+      (query: PollingQuery<Watch>) => {
+        const watch = query.state.data;
+        if (watch && (watch.ready || watch.failure)) {
+          return false;
+        }
+        return query.state.error ? WATCH_RETRY_MS : WATCH_AGAIN_MS;
+      },
+      { refetchOnVisible: false },
+    ),
   });
 }

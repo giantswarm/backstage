@@ -385,9 +385,12 @@ function ConnectorsTable({
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: hasSession,
     // While muster still connects a server; not from a hidden tab, not after
-    // muster refused the person.
-    ...musterPollingOptions((query: PollingQuery<AuthStatusResponse>) =>
-      connectingPollInterval(query.state.data),
+    // muster refused the person. No read on becoming visible: the client
+    // keeps focus refetches off and `staleTime` at 0.
+    ...musterPollingOptions(
+      (query: PollingQuery<AuthStatusResponse>) =>
+        connectingPollInterval(query.state.data),
+      { refetchOnVisible: false },
     ),
   });
 

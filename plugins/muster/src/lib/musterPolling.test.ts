@@ -52,15 +52,31 @@ describe('isPermanentMusterReadError', () => {
       ),
     ).toBe(false);
   });
+
+  it('passes the background and visibility choices through', () => {
+    const options = musterPollingOptions(60_000, {
+      inBackground: true,
+      refetchOnVisible: false,
+    });
+
+    expect(options.refetchIntervalInBackground).toBe(true);
+    expect(options).not.toHaveProperty('refetchOnWindowFocus');
+  });
 });
 
 describe('musterPollingOptions', () => {
-  it('stops after a sign-in answer, polls otherwise, and never from a hidden tab', () => {
+  it('stops after a sign-in answer, also on becoming visible, polls otherwise, and never from a hidden tab', () => {
     const options = musterPollingOptions(60_000);
 
     expect(options.refetchIntervalInBackground).toBe(false);
-    expect(options.refetchOnWindowFocus).toBe(true);
     expect(options.refetchInterval(errored(signInRequired()))).toBe(false);
+    // The sign-in reads it again, not the return to the tab.
+    expect(options.refetchOnWindowFocus?.(errored(signInRequired()))).toBe(
+      false,
+    );
+    expect(
+      options.refetchOnWindowFocus?.(errored(new Error('timed out'))),
+    ).toBe(true);
     expect(options.refetchInterval(errored(new Error('timed out')))).toBe(
       60_000,
     );
@@ -81,5 +97,15 @@ describe('musterPollingOptions', () => {
         errored(Object.assign(new Error('gone'), { name: 'NotFoundError' })),
       ),
     ).toBe(false);
+  });
+
+  it('passes the background and visibility choices through', () => {
+    const options = musterPollingOptions(60_000, {
+      inBackground: true,
+      refetchOnVisible: false,
+    });
+
+    expect(options.refetchIntervalInBackground).toBe(true);
+    expect(options).not.toHaveProperty('refetchOnWindowFocus');
   });
 });

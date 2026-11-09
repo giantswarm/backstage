@@ -6,7 +6,12 @@ import {
   QueryClientProvider,
   useQuery,
 } from '@tanstack/react-query';
-import { isPermanentReadError, pollingQueryOptions } from './polling';
+import {
+  causeChain,
+  isPermanentReadError,
+  pollingQueryOptions,
+  type PollingRuleOptions,
+} from './polling';
 
 const INTERVAL_MS = 10_000;
 
@@ -27,7 +32,11 @@ function wrapped(cause: Error) {
   return error;
 }
 
-function renderPoll(queryFn: () => Promise<string>) {
+function renderPoll(
+  queryFn: () => Promise<string>,
+  options: PollingRuleOptions = {},
+  interval: Parameters<typeof pollingQueryOptions>[0] = INTERVAL_MS,
+) {
   const queryClient = new QueryClient({
     // As the portal's clients: no retries here, nothing on focus by default.
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -41,7 +50,7 @@ function renderPoll(queryFn: () => Promise<string>) {
         queryKey: ['poll'],
         queryFn,
         staleTime: INTERVAL_MS,
-        ...pollingQueryOptions(INTERVAL_MS),
+        ...pollingQueryOptions(interval, options),
       }),
     { wrapper },
   );
@@ -90,6 +99,17 @@ describe('isPermanentReadError', () => {
     ['nothing', undefined],
   ])('is false for %s', (_, error) => {
     expect(isPermanentReadError(error)).toBe(false);
+  });
+});
+
+describe('causeChain', () => {
+  it('walks the causes, five deep at most', () => {
+    const cyclic = new Error('cycle') as Error & { cause?: unknown };
+    cyclic.cause = cyclic;
+
+    expect(Array.from(causeChain(wrapped(signInRequired())))).toHaveLength(2);
+    expect(Array.from(causeChain(cyclic))).toHaveLength(5);
+    expect(Array.from(causeChain(undefined))).toEqual([]);
   });
 });
 
@@ -168,26 +188,66 @@ describe('pollingQueryOptions', () => {
     expect(queryFn).toHaveBeenCalledTimes(2);
   });
 
-  it('reads a query stopped on a sign-in again as the tab becomes visible', async () => {
-    // The sign-in may have landed in another tab meanwhile.
-    let connected = false;
+  it('does not read a query stopped on a sign-in as the tab becomes visible', async () => {
+    // Each read would make muster create another sign-in challenge; the
+    // page's sign-in reads it again.
     const queryFn = jest.fn(async () => {
-      if (!connected) {
-        throw signInRequired();
-      }
-      return 'answer';
+      throw signInRequired();
     });
     const { result } = renderPoll(queryFn);
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     act(() => focusManager.setFocused(false));
-    connected = true;
-    act(() => focusManager.setFocused(true));
-    await waitFor(() => expect(result.current.data).toBe('answer'));
-    expect(queryFn).toHaveBeenCalledTimes(2);
-
     await advance(INTERVAL_MS);
+    act(() => focusManager.setFocused(true));
+    await advance(INTERVAL_MS);
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not read a query whose interval stopped by itself as the tab becomes visible', async () => {
+    const queryFn = jest.fn(async () => 'done');
+    renderPoll(queryFn, {}, () => false);
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+
+    act(() => focusManager.setFocused(false));
+    await advance(2 * INTERVAL_MS);
+    act(() => focusManager.setFocused(true));
+    await advance(0);
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps polling from a hidden tab where the caller says so', async () => {
+    const queryFn = jest.fn(async () => 'answer');
+    renderPoll(queryFn, { inBackground: true });
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+
+    act(() => focusManager.setFocused(false));
+    await advance(2 * INTERVAL_MS);
+
     expect(queryFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('leaves the read on becoming visible to the next tick with refetchOnVisible: false', async () => {
+    const options = pollingQueryOptions(INTERVAL_MS, {
+      refetchOnVisible: false,
+    });
+    expect(options).not.toHaveProperty('refetchOnWindowFocus');
+
+    const queryFn = jest.fn(async () => 'answer');
+    renderPoll(queryFn, { refetchOnVisible: false });
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+
+    act(() => focusManager.setFocused(false));
+    await advance(INTERVAL_MS + 1_000);
+    act(() => focusManager.setFocused(true));
+    await advance(0);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    // The next tick reads it.
+    await advance(INTERVAL_MS);
+    expect(queryFn).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the interval a function of the query', () => {

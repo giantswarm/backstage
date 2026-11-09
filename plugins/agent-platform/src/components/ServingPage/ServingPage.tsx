@@ -545,11 +545,12 @@ export function ServingPage() {
       unreadable: serving.unreachableInstallations,
     });
   // Where muster asked for the person's sign-in to model-manager, the page
-  // offers it in place of the read warning: a sign-in fixes the read.
+  // offers it; the read warning names only the installations some source
+  // could not read for another reason (KServe's read of the same
+  // installation failing, say), which a sign-in would not fix.
   const signInRequired = serving.signInRequiredInstallations ?? [];
-  const unreadableNotSignInRequired = serving.unreachableInstallations.filter(
-    installation => !signInRequired.includes(installation),
-  );
+  const readWarningInstallations =
+    serving.unreadableBeyondSignIn ?? serving.unreachableInstallations;
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
@@ -616,7 +617,7 @@ export function ServingPage() {
           {!openedRow && lifecyclePanel}
 
           <UnreachableInstallationsAlert
-            installations={unreadableNotSignInRequired}
+            installations={readWarningInstallations}
             resourceName="served models"
             isLoading={isReadingServedModels}
           />

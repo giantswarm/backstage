@@ -2,6 +2,7 @@ import type { ManagedCluster, NodePool } from './clusterManager';
 import { stepTiming } from './lifecycle';
 import {
   gpuNodePoolsRefetchInterval,
+  isPoolDeployInProgress,
   isPoolSettled,
   POOL_POLL_ACTIVE_MS,
   POOL_POLL_IDLE_MS,
@@ -339,6 +340,39 @@ describe('gpuNodePoolsRefetchInterval', () => {
         state: { data: { rows: [{ pool: READY_POOL, cluster: halfway }] } },
       }),
     ).toBe(POOL_POLL_ACTIVE_MS);
+  });
+});
+
+describe('isPoolDeployInProgress', () => {
+  it('is true while a pool is being deployed, not once it settled, failed or is being removed', () => {
+    expect(
+      isPoolDeployInProgress([
+        { pool: pool({ phase: 'creating' }), cluster: READY_CLUSTER },
+      ]),
+    ).toBe(true);
+    expect(
+      isPoolDeployInProgress([{ pool: READY_POOL, cluster: READY_CLUSTER }]),
+    ).toBe(false);
+    expect(
+      isPoolDeployInProgress([
+        { pool: pool({ phase: 'failed' }), cluster: READY_CLUSTER },
+        { pool: pool({ phase: 'removing' }), cluster: READY_CLUSTER },
+      ]),
+    ).toBe(false);
+    expect(isPoolDeployInProgress(undefined)).toBe(false);
+  });
+
+  it('is true while the pool is ready but its serving stack is not', () => {
+    const halfway = cluster({
+      ...READY_CLUSTER,
+      serving: {
+        ...READY_CLUSTER.serving,
+        readiness: { ...READY_CLUSTER.serving.readiness!, modelsGateway: null },
+      },
+    });
+    expect(
+      isPoolDeployInProgress([{ pool: READY_POOL, cluster: halfway }]),
+    ).toBe(true);
   });
 });
 
