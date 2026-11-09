@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { MimirQueryResponse } from '../../apis/mimir/types';
-import { mimirQueryRetry } from './mimirRetry';
+import { mimirPollingOptions, mimirQueryRetry } from './mimirRetry';
 import { useMimirAvailable } from './useMimirAvailable';
 import { useMimirQueryFn } from './useMimirQueryFn';
 
@@ -49,7 +49,7 @@ export function useMimirQuery(options: {
     enabled: wanted && isAvailable === true,
     staleTime: 30_000,
     retry: mimirQueryRetry,
-    refetchInterval,
+    ...mimirPollingOptions(refetchInterval),
     placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });

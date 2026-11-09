@@ -605,7 +605,7 @@ describe('SessionsTable in the shell layout', () => {
 
     await openNotifications('Release notes');
     expect(
-      screen.getByRole('menuitemradio', { name: 'Default' }),
+      screen.getByRole('menuitemradio', { name: 'When action is required' }),
     ).toHaveAttribute('aria-checked', 'true');
     await user.click(screen.getByRole('menuitemradio', { name: 'Muted' }));
 
@@ -633,7 +633,7 @@ describe('SessionsTable in the shell layout', () => {
     // Each row has its own level.
     await openNotifications('Triage this week');
     expect(
-      screen.getByRole('menuitemradio', { name: 'Default' }),
+      screen.getByRole('menuitemradio', { name: 'When action is required' }),
     ).toHaveAttribute('aria-checked', 'true');
   });
 

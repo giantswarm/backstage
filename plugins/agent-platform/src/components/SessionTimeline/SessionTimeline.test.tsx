@@ -9,13 +9,18 @@ import {
   TimelineItem,
 } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import {
+  RECENT_TURNS,
+  STATUS_ROW_ATTRIBUTE,
+  SessionTimeline,
+} from './SessionTimeline';
 import { applyStreamEvent, createStreamTurn } from '../../lib/kagentStreamTurn';
 import {
   NOTICE_STALE,
   sessionWithNotices,
 } from '../../lib/__fixtures__/workspaceNotice';
 import { TimelineEntry } from './TimelineEntry';
+import { groupIntoTurns } from './helpers';
 
 import {
   attachmentPngV2,
@@ -1022,6 +1027,40 @@ describe('a lost stream', () => {
   });
 });
 
+describe('status rows', () => {
+  // The session page's jump button skips these when it measures where the
+  // conversation ends: a spinner is not something new to read.
+  it.each([
+    ['Working…', { isAgentWorking: true }, 'Working…'],
+    [
+      'a lost stream',
+      { isAgentWorking: true, streamLost: 'reconnecting' as const },
+      /Reconnecting/,
+    ],
+    [
+      'a stall',
+      { stalledSince: Date.parse('2026-09-13T13:52:00Z') },
+      /last reported progress/,
+    ],
+  ])('marks %s as a status row', async (_row, props, text) => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        {...props}
+      />,
+    );
+
+    const row = document.querySelector(`[${STATUS_ROW_ATTRIBUTE}]`);
+    expect(row).toContainElement(screen.getByText(text));
+    // Only the row: no content of the conversation is inside it.
+    expect(document.querySelectorAll(`[${STATUS_ROW_ATTRIBUTE}]`)).toHaveLength(
+      1,
+    );
+    expect(row?.querySelector('[data-turn-index]')).toBeNull();
+  });
+});
+
 describe('SessionTimeline — a turn the runtime failed', () => {
   it('says the runtime could not be reached, in the portal’s words', async () => {
     // On gazelle the person read `actor "ai-…" request timed out` and nothing
@@ -1814,6 +1853,9 @@ describe('egress refusals', () => {
     );
 
     const entry = screen.getByTestId('timeline-egress-refused');
+    await userEvent.click(
+      within(entry).getByRole('button', { name: /Outgoing connection/ }),
+    );
     expect(
       within(entry).getByText(
         'Outgoing connection to proxy.golang.org blocked',
@@ -1930,5 +1972,49 @@ describe('workspace setup notices', () => {
     expect(
       screen.queryByTestId('timeline-agent-message'),
     ).not.toBeInTheDocument();
+  });
+
+  describe('the turn the person just sent', () => {
+    /** The `messageId` of the person's message in turn `index`. */
+    const sentIn = (index: number) => {
+      const turns = groupIntoTurns(timelineFor(tasksV099).items);
+      const turn = turns[index < 0 ? turns.length + index : index];
+      const message = turn.items.find(item => item.kind === 'user-message');
+      expect(message?.messageId).toBeDefined();
+      return message!.messageId!;
+    };
+    const renderReserved = async (reservedMessageId: string) => {
+      const timeline = timelineFor(tasksV099);
+      await renderInTestApp(
+        <SessionTimeline
+          timeline={timeline}
+          agentName="Issue tracker"
+          isAgentWorking
+          reservedMessageId={reservedMessageId}
+        />,
+      );
+      const turns = document.querySelectorAll<HTMLElement>('[data-turn-index]');
+      return { turns, newest: turns[turns.length - 1] };
+    };
+
+    it('holds the room for its reply, with the Working row inside it', async () => {
+      const { turns, newest } = await renderReserved(sentIn(-1));
+      expect(newest).toHaveAttribute('data-reserved-turn');
+      expect(
+        [...turns].filter(turn => turn.hasAttribute('data-reserved-turn')),
+      ).toHaveLength(1);
+      expect(within(newest).getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('holds no room once a later turn is the newest', async () => {
+      const { turns, newest } = await renderReserved(sentIn(0));
+      expect(turns.length).toBeGreaterThan(1);
+      for (const turn of turns) {
+        expect(turn).not.toHaveAttribute('data-reserved-turn');
+      }
+      // The Working row stays after the conversation, as without a reserve.
+      expect(within(newest).queryByText('Working…')).not.toBeInTheDocument();
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
   });
 });

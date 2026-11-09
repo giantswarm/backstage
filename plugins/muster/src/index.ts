@@ -61,6 +61,10 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
+  isPermanentMusterReadError,
+  musterPollingOptions,
+} from './lib/musterPolling';
+export {
   connectorDisplayNames,
   connectorNameSource,
   mcpServerDisplayNames,

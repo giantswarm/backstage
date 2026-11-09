@@ -20,6 +20,7 @@ import {
   DateComponent,
   EmptyStateCard,
   LoadingIndicator,
+  SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
@@ -60,7 +61,6 @@ import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
-import { useStickToEnd } from '../../hooks/useStickToEnd';
 import { useWorkspaceNames } from '../../hooks/useWorkspaceNames';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
@@ -122,7 +122,14 @@ import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
-import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
+import {
+  RESERVED_TURN_ATTRIBUTE,
+  SessionTimeline,
+  StreamLossPhase,
+  TURN_RESERVE_VAR,
+} from '../SessionTimeline';
+import { COLUMN_GAP, JumpToBottom } from './JumpToBottom';
+import { END_CHROME_ATTRIBUTE, useJumpToBottom } from './hooks/useJumpToBottom';
 import { SessionCostPopover } from '../SessionCostPopover';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
@@ -149,6 +156,15 @@ const AVATAR_SIZE: AvatarSize = 48;
  */
 const CONTINUED_TITLE_PREFIX = 'Continued: ';
 const CONTINUED_TITLE_PATTERN = /^(?:Continued: )+/;
+
+/**
+ * The room the turn just sent holds for its reply, from the view's height:
+ * the view, less the compact header, the dock and the shell's mobile bar
+ * under it, and the gaps between them.
+ */
+function turnReserve(viewHeight: string, gaps: number): string {
+  return `calc(${viewHeight} - var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) - var(${DOCK_HEIGHT_VAR}, 0px) - var(--agent-shell-mobile-bar-height, 0px) - ${gaps}px)`;
+}
 
 const useStyles = makeStyles(theme => ({
   // bui's Switch has one size, sized for forms. On the meta line it takes the
@@ -196,6 +212,14 @@ const useStyles = makeStyles(theme => ({
     // JSS puts the fallback first, so browsers without dvh keep vh.
     fallbacks: {
       minHeight: `calc(100vh - var(${COLUMN_RESERVE_VAR}, 100vh))`,
+    },
+    // The room the turn just sent holds for its reply (`turnReserve`). A
+    // custom property takes any value, so a `fallbacks` entry would never
+    // apply: where `dvh` is unknown, the `min-height` reading the variable
+    // would be invalid and hold no room. So `vh` unless `dvh` is supported.
+    [TURN_RESERVE_VAR]: turnReserve('100vh', theme.spacing(3)),
+    '@supports (height: 100dvh)': {
+      [TURN_RESERVE_VAR]: turnReserve('100dvh', theme.spacing(3)),
     },
     // A control in the conversation that the browser scrolls into view — a
     // fold-out opened from the keyboard, a tab stop — lands clear of the dock
@@ -878,9 +902,9 @@ export function SessionDetailPage() {
   const shownTimeline = useMemo(
     () => ({
       ...timelineWithLive,
-      items: withEgressRefusals(shownItems, egressRefusals),
+      items: withEgressRefusals(shownItems, egressRefusals, tasks),
     }),
-    [timelineWithLive, shownItems, egressRefusals],
+    [timelineWithLive, shownItems, egressRefusals, tasks],
   );
   // What a refusal's alert offers for this agent: read once there is one
   // that needs it, since it takes agent-manager's reading of the agent and
@@ -966,10 +990,21 @@ export function SessionDetailPage() {
   const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
   useDockedComposerLayout(columnElement, dockElement);
 
-  // Stick to the end: the page follows the reply as it streams in while the
-  // reader is at the end, and leaves them alone once they scroll away — up
-  // through the history, mid-stream included — until they come back to it.
-  const { stickToEnd, markReaderChange } = useStickToEnd(columnElement);
+  // The reading position is the reader's: content from the agent never moves
+  // it. What lands below the visible part shows "Jump to bottom" instead; a
+  // session opens at its end, and a message sent is put at the top of the
+  // view with room under it for the reply.
+  const { hasNewBelow, jumpToBottom, openAtEnd, revealTurn, markReaderChange } =
+    useJumpToBottom(columnElement, dockElement, shownTimeline);
+
+  // The message sent from this page's composer, by its `messageId`: its turn
+  // holds the room its reply streams into (SessionTimeline's
+  // `reservedMessageId`) and goes to the top of the view. `revealNextSend`
+  // says the next message that goes out is one; every send has an id of its
+  // own, so a message sent again after a failure is revealed again too.
+  const [reservedMessageId, setReservedMessageId] = useState<string>();
+  const revealNextSend = useRef(false);
+  const revealedMessageId = useRef<string>();
 
   // Adding or removing the work summaries around the place being read must
   // not move it: from the compact header the switch is pressed mid-session.
@@ -978,7 +1013,7 @@ export function SessionDetailPage() {
     (show: boolean) => {
       captureReadingAnchor();
       // The summaries it adds or removes are the reader's change: they keep
-      // their place, and follow the end only if it is still in view.
+      // their place, and do not count as new content below.
       markReaderChange();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
@@ -1271,15 +1306,50 @@ export function SessionDetailPage() {
   // conversation first renders — the column exists only then. Later scrolling
   // is the reader's: "Show earlier activity" adds turns above without coming
   // back here. Before paint, so the top never flashes; layout that lands after
-  // (the dock's measured min-height) is followed by `useStickToEnd`.
+  // (the dock's measured min-height) lands at the end too, while it settles
+  // (`useJumpToBottom`'s `openAtEnd`).
   const openedAtEndFor = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (!columnElement || openedAtEndFor.current === sessionId) {
+    if (
+      !columnElement ||
+      !isToolActivityKnown ||
+      openedAtEndFor.current === sessionId
+    ) {
       return;
     }
     openedAtEndFor.current = sessionId;
-    stickToEnd();
-  }, [columnElement, sessionId, stickToEnd]);
+    revealNextSend.current = false;
+    setReservedMessageId(undefined);
+    openAtEnd();
+  }, [columnElement, isToolActivityKnown, sessionId, openAtEnd]);
+
+  // A message sent from the composer: its echo is on screen with the same
+  // render that holds it as pending, so its turn takes the room for its
+  // reply, and then the top of the view. Before paint, so the echo never
+  // shows at the bottom first.
+  const pendingMessageId = send.pending?.messageId;
+  useLayoutEffect(() => {
+    if (pendingMessageId && revealNextSend.current) {
+      revealNextSend.current = false;
+      setReservedMessageId(pendingMessageId);
+    }
+  }, [pendingMessageId]);
+  useLayoutEffect(() => {
+    if (
+      !columnElement ||
+      !reservedMessageId ||
+      revealedMessageId.current === reservedMessageId
+    ) {
+      return;
+    }
+    revealedMessageId.current = reservedMessageId;
+    const turn = columnElement.querySelector<HTMLElement>(
+      `[${RESERVED_TURN_ATTRIBUTE}]`,
+    );
+    if (turn) {
+      revealTurn(turn);
+    }
+  }, [columnElement, reservedMessageId, revealTurn]);
 
   // The loaded page's header from the first paint, with skeletons where the
   // read will fill in: the title and the badge row (T95).
@@ -1505,6 +1575,7 @@ export function SessionDetailPage() {
         ref={setDockElement}
         className={classes.bottomDock}
         data-testid="session-dock"
+        {...{ [END_CHROME_ATTRIBUTE]: '' }}
       >
         <ChatGptConnectDialog
           installation={installation}
@@ -1622,10 +1693,14 @@ export function SessionDetailPage() {
             onSubmit={(text, images) => {
               // Errors are surfaced through the hook's `error`, which the composer
               // renders beside the text it hands back.
-              send.sendMessage(text, images).catch(() => {});
-              // The optimistic echo appears at the very bottom; go where it is,
-              // and follow the reply from there.
-              stickToEnd();
+              // The optimistic echo's turn goes to the top of the view once
+              // it renders (see `reservedMessageId`); a failed send drops
+              // its room with the echo.
+              revealNextSend.current = true;
+              send.sendMessage(text, images).catch(() => {
+                revealNextSend.current = false;
+                setReservedMessageId(undefined);
+              });
             }}
           />
         )}
@@ -1837,7 +1912,7 @@ export function SessionDetailPage() {
         <Flex
           ref={setColumnElement}
           direction="column"
-          gap="4"
+          gap={COLUMN_GAP}
           className={classes.column}
         >
           {/* A refresh that failed after the page had loaded. Shown rather than
@@ -1881,9 +1956,15 @@ export function SessionDetailPage() {
               isAwaitingPerson={Boolean(
                 state && AWAITING_INPUT_STATES.has(state.key),
               )}
+              reservedMessageId={reservedMessageId}
             />
           )}
 
+          <JumpToBottom
+            isShown={hasNewBelow}
+            onJump={jumpToBottom}
+            dock={dockElement}
+          />
           {bottomControl}
         </Flex>
       </ConnectorSignInLinks>

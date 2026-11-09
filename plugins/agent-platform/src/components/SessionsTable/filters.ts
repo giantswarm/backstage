@@ -13,7 +13,7 @@ import {
   EMPTY_ORGANIZATION_DIRECTORY,
   type OrganizationDirectory,
 } from '../../lib/organizations';
-import { tenantOf } from '../../lib/tenants';
+import { namespacesSharingAName, tenantOf } from '../../lib/tenants';
 import {
   SessionTableRow,
   STATE_IDLE_LABEL,
@@ -221,17 +221,36 @@ export function sessionAgentOptions(
 }
 
 /**
- * The organization a row's agent belongs to, as the Agents tab's
- * Organization filter names it ({@link tenantOf} the Agent CR's namespace).
- * Undefined for a row no Agent CR matched.
+ * The namespace a row's agent runs in, the Organization filter's value: two
+ * namespaces that read the same are still two choices. Undefined for a row no
+ * Agent CR matched.
  */
-export function sessionOrganization(
-  row: SessionTableRow,
+export function sessionOrganization(row: SessionTableRow): string | undefined {
+  return row.agentNamespace || undefined;
+}
+
+/**
+ * How the Organization filter names each namespace of `rows`: as every
+ * Organization label does ({@link tenantOf}), with the namespace beside a
+ * name another namespace reads too (`team-x (org-team-x)`).
+ */
+function sessionOrganizationLabels(
+  rows: SessionTableRow[],
   directory: OrganizationDirectory,
-): string | undefined {
-  return row.agentNamespace
-    ? tenantOf(row.agentNamespace, directory)
-    : undefined;
+): Map<string, string> {
+  const namespaces = rows
+    .map(row => sessionOrganization(row))
+    .filter((namespace): namespace is string => namespace !== undefined);
+  const sharingAName = namespacesSharingAName(namespaces, directory);
+  return new Map(
+    namespaces.map(namespace => {
+      const name = tenantOf(namespace, directory);
+      return [
+        namespace,
+        sharingAName.has(namespace) ? `${name} (${namespace})` : name,
+      ];
+    }),
+  );
 }
 
 /**
@@ -275,7 +294,8 @@ function sessionFacetSpecs(
     {
       id: SESSION_ORGANIZATION_FACET,
       label: 'Organization',
-      value: row => sessionOrganization(row, directory),
+      value: row => sessionOrganization(row),
+      optionLabel: value => tenantOf(value, directory),
     },
     {
       id: SESSION_AGENT_FACET,
@@ -314,17 +334,30 @@ export function sessionFacets(
   const agentLabels = new Map(
     sessionAgentOptions(rows).map(option => [option.id, option.label]),
   );
+  const organizationLabels = sessionOrganizationLabels(rows, directory);
   return sessionFacetSpecs(directory)
     .filter(
       facet =>
         (showStates || facet.id !== SESSION_STATE_FACET) &&
         (showAgents || facet.id !== SESSION_AGENT_FACET),
     )
-    .map(facet =>
-      facet.id === SESSION_AGENT_FACET
-        ? { ...facet, optionLabel: value => agentLabels.get(value) ?? value }
-        : facet,
-    );
+    .map(facet => {
+      switch (facet.id) {
+        case SESSION_AGENT_FACET:
+          return {
+            ...facet,
+            optionLabel: (value: string) => agentLabels.get(value) ?? value,
+          };
+        case SESSION_ORGANIZATION_FACET:
+          return {
+            ...facet,
+            optionLabel: (value: string) =>
+              organizationLabels.get(value) ?? tenantOf(value, directory),
+          };
+        default:
+          return facet;
+      }
+    });
 }
 
 /** The rows every facet's picks keep — the shell table's `filterFn`. */

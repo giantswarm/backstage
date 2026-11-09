@@ -3,8 +3,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
+  agentPlatformPlugin,
   CommandPalette,
   RecentSessions,
+  useOrganizationsAvailable,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
 import { makeStyles } from '@material-ui/core/styles';
@@ -223,13 +225,25 @@ function AgentShellRail() {
   const classes = useStyles();
   const { isPinned, toggleSidebarPinState, isMobile } = useSidebarPinState();
   const portals = usePortals();
+  const organizationsAvailable = useOrganizationsAvailable();
+  const organizationsRoute = useRouteRef(
+    agentPlatformPlugin.routes.organizations,
+  );
   const homeRoute = useRouteRef(homeRouteRef);
   // A cross-link into the other portal only while the deployment serves it.
   const items = agentShellNavItems.filter(
-    item => !item.crossLinkTo || portals[item.crossLinkTo],
+    item =>
+      (!item.crossLinkTo || portals[item.crossLinkTo]) &&
+      (item.id !== 'organizations' ||
+        (organizationsRoute && organizationsAvailable)),
   );
   const top = items.filter(item => item.position === 'top');
   const bottom = items.filter(item => item.position === 'bottom');
+  const inProfileMenu = items.filter(
+    item =>
+      item.position === 'profileMenu' ||
+      (isMobile && item.phone === 'profileMenu'),
+  );
 
   // The skip link sits outside the rail, fixed to the top left of the
   // viewport: inside the bottom-anchored mobile bar its hidden state floated
@@ -243,7 +257,6 @@ function AgentShellRail() {
     const inBar = [...top, ...bottom].filter(
       item => item.phone !== 'profileMenu',
     );
-    const inProfileMenu = items.filter(item => item.phone === 'profileMenu');
     return (
       <>
         <SkipLink />
@@ -350,7 +363,12 @@ function AgentShellRail() {
           <Box pt="2" className={classes.bottom}>
             <ul className={listClassName}>
               {bottom.map(item => (
-                <RailItem key={item.id} item={item} layout={layout} />
+                <RailItem
+                  key={item.id}
+                  item={item}
+                  layout={layout}
+                  menuItems={'menu' in item ? inProfileMenu : undefined}
+                />
               ))}
             </ul>
           </Box>

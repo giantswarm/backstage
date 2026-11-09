@@ -97,6 +97,19 @@ export function modelManagerBackendsQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'backends', installation] as const;
 }
 
+/**
+ * Every model-manager read of one installation: the
+ * `['agent-platform', 'model-manager', <read>, installation]` keys above —
+ * the prefix is shared, the installation is the last segment. What a write
+ * or a sign-in reads again.
+ */
+export function isModelManagerQueryOf(installation: string) {
+  return (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey[0] === 'agent-platform' &&
+    query.queryKey[1] === 'model-manager' &&
+    query.queryKey[3] === installation;
+}
+
 export function modelManagerModelsQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'models', installation] as const;
 }

@@ -44,6 +44,8 @@ export const EGRESS_ALERT_COPY = {
     `${subject} is not allowed to reach this address`,
   tcpReason: 'Raw TCP connections are not available to agents',
   attempts: (count: number) => countNoun(count, 'attempt'),
+  impact:
+    'A blocked connection does not necessarily stop the task. Check the agent’s reply before changing network access.',
 
   remedy: {
     /**

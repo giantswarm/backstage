@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns the shared installation query key.
 import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -32,6 +33,8 @@ export type OrganizationDirectoryValue = {
    * in the order the portal lists them.
    */
   installations: string[];
+  /** Failures checking whether installations serve organizations. */
+  discoveryErrors: string[];
   /** The person's organizations on one installation, once answered. */
   organizationsOf: (installation: string) => MyOrganizations | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
@@ -45,6 +48,7 @@ export type OrganizationDirectoryValue = {
 const EMPTY: OrganizationDirectoryValue = {
   directory: EMPTY_ORGANIZATION_DIRECTORY,
   installations: [],
+  discoveryErrors: [],
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},
@@ -115,6 +119,28 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     (_, index) =>
       infos[index]?.data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true,
   );
+  const discoveryErrors = [
+    ...(musterInstallations.error ? [musterInstallations.error.message] : []),
+    ...names.flatMap(installation => {
+      const presence = availability.presenceOf(installation);
+      if (presence === 'unknown' && !availability.isLoading) {
+        return [
+          `Could not reach agent-manager on ${installation}. Check your connector sign-in and try again.`,
+        ];
+      }
+      if (presence === 'sharedIdentity') {
+        return [
+          `${installation} needs a per-user connector sign-in to read organizations.`,
+        ];
+      }
+      return [];
+    }),
+    ...available.flatMap((installation, index) =>
+      infos[index]?.error
+        ? [`${installation}: ${infos[index].error.message}`]
+        : [],
+    ),
+  ];
   const mine = useQueries({
     queries: supported.map(installation => ({
       queryKey: musterMyOrganizationsQueryKey(installation),
@@ -139,6 +165,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       mine[index]?.error ? String(mine[index].error.message) : null,
     ]),
   );
+  const discoverySignature = JSON.stringify(discoveryErrors);
 
   const value = useMemo<OrganizationDirectoryValue>(() => {
     const entries = JSON.parse(signature) as [
@@ -161,6 +188,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     return {
       directory,
       installations: [...answers.keys()],
+      discoveryErrors: JSON.parse(discoverySignature) as string[],
       organizationsOf: installation => answers.get(installation) ?? undefined,
       failureOf: installation => failures.get(installation) ?? undefined,
       recheck: installation =>
@@ -169,7 +197,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
         }),
       isLoading,
     };
-  }, [signature, isLoading, queryClient]);
+  }, [signature, discoverySignature, isLoading, queryClient]);
 
   return (
     <OrganizationDirectoryContext.Provider value={value}>
@@ -181,4 +209,9 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
 /** The organizations the person belongs to, as the provider above read them. */
 export function useOrganizationDirectory(): OrganizationDirectoryValue {
   return useContext(OrganizationDirectoryContext);
+}
+
+/** Whether any installation reports support for Agent Platform organizations. */
+export function useOrganizationsAvailable(): boolean {
+  return useOrganizationDirectory().installations.length > 0;
 }

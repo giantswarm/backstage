@@ -4,15 +4,8 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Link as BackstageLink } from '@backstage/core-components';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import {
-  makeStyles,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-} from '@material-ui/core';
+import { makeStyles } from '@material-ui/core';
+import { Text } from '@backstage/ui';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 import {
@@ -22,7 +15,7 @@ import {
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
- * both chat surfaces read the same: MUI tables, code blocks on a neutral
+ * both chat surfaces read the same: semantic tables, code blocks on a neutral
  * surface, inline code as chips, quiet blockquotes.
  */
 const useStyles = makeStyles(theme => ({
@@ -87,7 +80,13 @@ const useStyles = makeStyles(theme => ({
     margin: theme.spacing(2, 0),
     overflowX: 'auto',
   },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+  },
   tableCell: {
+    fontSize: '0.875rem',
+    textAlign: 'left',
     borderBottom: `1px solid ${theme.palette.divider}`,
     lineHeight: 1.6,
     wordBreak: 'initial',
@@ -140,7 +139,8 @@ const useStyles = makeStyles(theme => ({
  *
  * Same routing the AI chat makes: another origin opens externally with the
  * usual warning affordance, a catalog path becomes an entity link, and any
- * other same-origin path navigates within the app. A connector sign-in muster
+ * other same-origin web path navigates within the app. Session filesystem
+ * paths remain text. A connector sign-in muster
  * issued in the session is the exception: a sign-in action.
  */
 function MarkdownLink({
@@ -169,6 +169,14 @@ function MarkdownLink({
 
   if (url.origin !== window.location.origin) {
     return <ExternalLink href={href}>{children}</ExternalLink>;
+  }
+
+  if (/^\/(?:workspace|data\/workspace)(?:\/|$)/.test(url.pathname)) {
+    return (
+      <span title="This path is inside the agent session, not a portal page.">
+        {children} (<code>{url.pathname}</code>, session file)
+      </span>
+    );
   }
 
   const catalogMatch = url.pathname.match(
@@ -206,57 +214,63 @@ export function useMarkdownComponents(): Components {
   const classes = useStyles();
   return {
     h1: ({ children }) => (
-      <Typography
-        variant="h4"
+      <Text
+        as="h1"
+        variant="title-small"
         className={`${classes.heading} ${classes.heading1}`}
       >
         {children}
-      </Typography>
+      </Text>
     ),
     h2: ({ children }) => (
-      <Typography
-        variant="h5"
+      <Text
+        as="h2"
+        variant="title-x-small"
         className={`${classes.heading} ${classes.heading2}`}
       >
         {children}
-      </Typography>
+      </Text>
     ),
     h3: ({ children }) => (
-      <Typography
-        variant="h6"
+      <Text
+        as="h3"
+        variant="body-large"
         className={`${classes.heading} ${classes.heading3}`}
       >
         {children}
-      </Typography>
+      </Text>
     ),
     h4: ({ children }) => (
-      <Typography
-        variant="subtitle1"
+      <Text
+        as="h4"
+        variant="body-large"
         className={`${classes.heading} ${classes.heading4}`}
       >
         {children}
-      </Typography>
+      </Text>
     ),
     h5: ({ children }) => (
-      <Typography
-        variant="subtitle2"
+      <Text
+        as="h5"
+        variant="body-medium"
         className={`${classes.heading} ${classes.heading5}`}
       >
         {children}
-      </Typography>
+      </Text>
     ),
     h6: ({ children }) => (
-      <Typography
-        variant="body2"
+      <Text
+        as="h6"
+        variant="body-medium"
         className={`${classes.heading} ${classes.heading6}`}
       >
         {children}
-      </Typography>
+      </Text>
     ),
     p: ({ children }) => (
-      <Typography variant="body2" className={classes.paragraph}>
+      <Text as="p" variant="body-small" className={classes.paragraph}>
         {children}
-      </Typography>
+      </Text>
     ),
     a: ({ href, children }) => (
       <MarkdownLink href={href}>{children}</MarkdownLink>
@@ -269,20 +283,14 @@ export function useMarkdownComponents(): Components {
     hr: () => <hr className={classes.hr} />,
     table: ({ children }) => (
       <div className={classes.tableContainer}>
-        <Table size="small">{children}</Table>
+        <table className={classes.table}>{children}</table>
       </div>
     ),
-    thead: ({ children }) => <TableHead>{children}</TableHead>,
-    tbody: ({ children }) => <TableBody>{children}</TableBody>,
-    tr: ({ children }) => <TableRow>{children}</TableRow>,
-    th: ({ children }) => (
-      <TableCell className={classes.tableCell} component="th">
-        {children}
-      </TableCell>
-    ),
-    td: ({ children }) => (
-      <TableCell className={classes.tableCell}>{children}</TableCell>
-    ),
+    thead: ({ children }) => <thead>{children}</thead>,
+    tbody: ({ children }) => <tbody>{children}</tbody>,
+    tr: ({ children }) => <tr>{children}</tr>,
+    th: ({ children }) => <th className={classes.tableCell}>{children}</th>,
+    td: ({ children }) => <td className={classes.tableCell}>{children}</td>,
     pre: ({ children }) => <pre className={classes.codeBlock}>{children}</pre>,
     code: ({ children, className }) => {
       const content = String(children);

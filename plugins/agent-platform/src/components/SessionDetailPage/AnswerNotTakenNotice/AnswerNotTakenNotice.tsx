@@ -53,20 +53,7 @@ export type AnswerNotTakenNoticeProps = {
   startError?: string;
 };
 
-/**
- * The words for an answer kagent did not take (`isAnswerNotTakenError`): the
- * agent could not resume, the question is still open, and sending the answer
- * again goes the same way. It takes the place of the question card and of the
- * message box, so nothing on the page invites a retry, and offers the new
- * session under its text.
- *
- * The answer is shown here, and the new session carries it: the notice goes
- * when a late resume moves the task on, and the answer goes with it.
- *
- * Danger, like a reported runtime loss: this session cannot go on. Unlike that
- * notice it names no cause, because kagent reports none; it says what the page
- * saw.
- */
+/** An unconfirmed answer stays visible until a session read confirms receipt. */
 export function AnswerNotTakenNotice({
   agentName,
   newSession,
@@ -82,21 +69,21 @@ export function AnswerNotTakenNotice({
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (newSession) {
-    wayOut = `To carry on, continue in a new session with ${agent}. ${describeContinuationStart(
+    wayOut = `You can also continue in a new session with ${agent}. ${describeContinuationStart(
       { continuation, hasQuestion: true, hasAnswer: Boolean(answer) },
     )}`;
   }
 
   return (
     <Alert
-      status="danger"
-      title="Could not resume this session"
+      status="warning"
+      title="Answer not yet confirmed"
       description={
         <span className={classes.description}>
           <span>
-            kagent did not take your answer: the agent could not pick up where
-            it stopped, so the question is still open and this session cannot
-            continue. The transcript above is complete. {wayOut}
+            The latest session read still showed an unanswered question. This
+            notice will clear if the session confirms receipt. Refresh the
+            session before sending the answer again. {wayOut}
           </span>
           {answer && (
             <span className={classes.answer}>Your answer: {answer}</span>

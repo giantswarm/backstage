@@ -7,7 +7,10 @@
  * organization comes only from agent-manager's answers, which read the
  * namespace's `agent-platform.giantswarm.io/organization` and `/parent`
  * labels (an {@link OrganizationDirectory}); a namespace's name is never
- * parsed (giantswarm/giantswarm#38891). Kubernetes RBAC in the
+ * parsed to decide that (giantswarm/giantswarm#38891), only to name a Giant
+ * Swarm organization's `org-<name>` namespace by the organization under
+ * "Organization" and in a sentence (`tenantOf`, `tenantInSentence`).
+ * Kubernetes RBAC in the
  * namespace decides who sees and changes its agents; the portal only names the
  * tenant. The portal never says "tenant": an agent's tenant is its owner,
  * shown under the label "Owner" as "Platform" (whose agents are available to
@@ -16,6 +19,7 @@
  * "Organization" instead (`tenantOf`).
  */
 
+import { organizationNameOfNamespace } from '@giantswarm/backstage-plugin-gs-common';
 import type {
   OrganizationDirectory,
   OrganizationNamespace,
@@ -70,14 +74,47 @@ const PLATFORM_LABEL = 'Platform';
  */
 const NO_ORGANIZATION = 'None';
 
+/** Whether a name would read as the platform's `None` under "Organization". */
+function readsAsNoOrganization(name: string): boolean {
+  return name.toLowerCase() === NO_ORGANIZATION.toLowerCase();
+}
+
 /**
- * The tenant a namespace is, as a value under the label "Organization":
- * `None` for the platform tenant, which is no organization, the
- * organization's plain name for an organization namespace, and
- * `namespace <name>` for any other namespace agents live in, which is no
- * organization either. An organization whose plain name would read as the
- * platform's keeps its qualifier (`organization none`), so the two never sit
- * side by side as one word.
+ * The organization's name a namespace reads as under "Organization" and in a
+ * sentence: the organization agent-manager names it, else the Giant Swarm
+ * organization its `org-<name>` namespace names (`org-marian` is `marian`,
+ * `organizationNameOfNamespace`). The `org-` reading only names it: which
+ * namespace is an Agent Platform organization ({@link tenantKindOf}) still
+ * comes from agent-manager's answers alone. A Giant Swarm organization whose
+ * name would read as the platform's `None` is left a namespace.
+ */
+function organizationReadOf(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string | undefined {
+  const organization = organizationNameOf(namespace, directory);
+  if (organization !== undefined) {
+    return organization;
+  }
+  const giantSwarmOrganization = organizationNameOfNamespace(namespace);
+  return giantSwarmOrganization === undefined ||
+    readsAsNoOrganization(giantSwarmOrganization)
+    ? undefined
+    : giantSwarmOrganization;
+}
+
+/**
+ * The tenant a namespace is, as a value under the label "Organization", one
+ * rule for every place that says it (the Usage screen's Organization select,
+ * its By organization rows, the sessions list's Organization filter):
+ * `None` for the platform tenant, which is no organization; the
+ * organization's name for an organization namespace, and for a Giant Swarm
+ * organization's `org-<name>` namespace; any other namespace as it is. A name
+ * that would read as the platform's keeps a qualifier
+ * (`organization none`, `namespace none`; `org-none` keeps its prefix), so the two
+ * never sit side by side as one word. Two namespaces can still read the same
+ * (`org-team-x` and `team-x`): {@link namespacesSharingAName} finds them, so
+ * a list can tell them apart by their namespace.
  */
 export function tenantOf(
   namespace: string,
@@ -86,13 +123,33 @@ export function tenantOf(
   if (namespace === PLATFORM_TENANT_NAMESPACE) {
     return NO_ORGANIZATION;
   }
-  const organization = organizationNameOf(namespace, directory);
-  if (organization === undefined) {
-    return `namespace ${namespace}`;
+  const organization = organizationReadOf(namespace, directory);
+  if (organization !== undefined) {
+    return readsAsNoOrganization(organization)
+      ? `organization ${organization}`
+      : organization;
   }
-  return organization.toLowerCase() === NO_ORGANIZATION.toLowerCase()
-    ? `organization ${organization}`
-    : organization;
+  return readsAsNoOrganization(namespace)
+    ? `namespace ${namespace}`
+    : namespace;
+}
+
+/**
+ * The namespaces of `namespaces` that read the same as another one under
+ * "Organization" ({@link tenantOf}, ignoring case): `org-acme` beside the
+ * organization acme, `org-team-x` beside `team-x`. A list names these by
+ * their namespace too, so the two never look like one.
+ */
+export function namespacesSharingAName(
+  namespaces: Iterable<string>,
+  directory: OrganizationDirectory,
+): Set<string> {
+  const byName = new Map<string, string[]>();
+  for (const namespace of new Set(namespaces)) {
+    const name = tenantOf(namespace, directory).toLowerCase();
+    byName.set(name, [...(byName.get(name) ?? []), namespace]);
+  }
+  return new Set([...byName.values()].filter(group => group.length > 1).flat());
 }
 
 /**
@@ -203,7 +260,9 @@ export function defaultTenant(
 
 /**
  * The tenant a namespace is, inside a sentence: `the platform`, `the <name>
- * organization`, or `namespace <name>`.
+ * organization` for an organization and for a Giant Swarm organization's
+ * `org-<name>` namespace (as {@link tenantOf} names them), or
+ * `namespace <name>`.
  */
 export function tenantInSentence(
   namespace: string,
@@ -212,7 +271,7 @@ export function tenantInSentence(
   if (namespace === PLATFORM_TENANT_NAMESPACE) {
     return 'the platform';
   }
-  const organization = organizationNameOf(namespace, directory);
+  const organization = organizationReadOf(namespace, directory);
   return organization
     ? `the ${organization} organization`
     : `namespace ${namespace}`;

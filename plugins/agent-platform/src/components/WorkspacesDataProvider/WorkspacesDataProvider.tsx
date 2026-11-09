@@ -16,8 +16,14 @@ import {
   useInstallationInventory,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
-import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  musterPollingOptions,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
+import {
+  isAwaitingData,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
@@ -186,8 +192,11 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
         return list;
       },
       retry: false,
-      refetchInterval: (query: { state: { data?: WorkspaceList } }) =>
+      // While a sync or a deletion is under way; not from a hidden tab, not
+      // after workspace-manager answered that the person is not signed in.
+      ...musterPollingOptions((query: PollingQuery<WorkspaceList>) =>
         refetchInterval(installation, query.state.data),
+      ),
       refetchOnWindowFocus: (query: { state: { data?: WorkspaceList } }) =>
         refetchInterval(installation, query.state.data) ? 'always' : false,
     })),
