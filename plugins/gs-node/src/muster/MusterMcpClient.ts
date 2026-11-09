@@ -11,6 +11,7 @@ import {
   type McpToolRefusal,
   mcpToolRefusalOf,
   readJwtClaims,
+  serverInfoIconOf,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   describeMcpFailure,
@@ -1215,6 +1216,22 @@ export class MusterMcpClient {
       this.noteAuthStatus(parsed, options);
     }
     return parsed;
+  }
+
+  /**
+   * The icon muster announces in its `initialize` result (`serverInfo.icons`,
+   * since muster v5.59.0), when `serverInfoIconOf` accepts one; none from an
+   * older muster. Read off the caller's cached session -- the one their tool
+   * listings use -- so it opens no connection of its own where one is open.
+   *
+   * A failure to connect is thrown as it is, not explained: the icon is a
+   * nicety, and the caller's other reads report an unreachable muster.
+   */
+  async serverIcon(options?: {
+    authToken?: string;
+  }): Promise<string | undefined> {
+    const { client } = await this.connect(options);
+    return serverInfoIconOf(client.serverInfo);
   }
 
   async dispose(): Promise<void> {

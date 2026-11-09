@@ -101,6 +101,7 @@ import {
   StatusWithHint,
   SessionGate,
   useConnectorListPaths,
+  useMusterIcon,
   useServerSignIn,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
@@ -279,6 +280,11 @@ function ConnectorPageContent({
   const counts = useServerCapabilityCounts(representative, {
     enabled: authenticated,
   });
+  // muster is no MCPServer: its logo is the one it announces.
+  const musterIcon = useMusterIcon(
+    installation,
+    authenticated && row.kind === 'core',
+  );
   const fleetClusters = useMemo(
     () => fleetManagementClusters(familyGroups(partitionServers(servers))),
     [servers],
@@ -639,7 +645,9 @@ function ConnectorPageContent({
         leading={
           <ConnectorLogo
             name={displayName}
-            icon={representative?.getStatusIcon()}
+            icon={
+              row.kind === 'core' ? musterIcon : representative?.getStatusIcon()
+            }
             size={56}
             decorative
           />

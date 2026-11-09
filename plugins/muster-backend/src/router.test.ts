@@ -62,6 +62,7 @@ describe('createRouter', () => {
   const describeTool = jest.fn();
   const listCoreTools = jest.fn();
   const getResource = jest.fn();
+  const serverIcon = jest.fn();
 
   const mockClient = {
     callTool,
@@ -74,6 +75,7 @@ describe('createRouter', () => {
     describeTool,
     listCoreTools,
     getResource,
+    serverIcon,
   } as unknown as MusterMcpClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -130,6 +132,7 @@ describe('createRouter', () => {
     describeTool.mockReset();
     listCoreTools.mockReset();
     getResource.mockReset();
+    serverIcon.mockReset();
     app = await buildApp();
   });
 
@@ -825,6 +828,61 @@ describe('createRouter', () => {
       { showAll: true, verbose: true },
       {},
     );
+  });
+
+  describe('GET /server-info', () => {
+    const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    const TOKEN = 'user-token';
+
+    async function readInfo() {
+      const authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+      return request(authApp)
+        .get('/server-info?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, TOKEN);
+    }
+
+    it("answers the icon from muster's initialize result, as the person", async () => {
+      serverIcon.mockResolvedValue(SVG);
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ icon: SVG });
+      expect(serverIcon).toHaveBeenCalledWith({ authToken: TOKEN });
+    });
+
+    it('answers no icon for a muster that announces none', async () => {
+      serverIcon.mockResolvedValue(undefined);
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({});
+    });
+
+    it('answers no icon, not a 5xx, when muster cannot be asked', async () => {
+      serverIcon.mockRejectedValue(new Error('fetch failed'));
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({});
+    });
+
+    it('asks for the token muster needs before connecting', async () => {
+      const authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+
+      const response = await request(authApp).get(
+        '/server-info?installation=gazelle',
+      );
+
+      expect(response.status).toBe(401);
+      expect(serverIcon).not.toHaveBeenCalled();
+    });
   });
 
   /**

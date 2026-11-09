@@ -177,6 +177,7 @@ function makeApi() {
       mcpServers: [{ name: 'jira', resourcesCount: 2 }],
     })),
     getAuthStatus: jest.fn(async () => ({ servers: [] })),
+    getServerInfo: jest.fn(async (): Promise<{ icon?: string }> => ({})),
     describeTool: jest.fn(async (name: string) => ({
       name,
       description: 'A tool.',
@@ -361,7 +362,7 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/muster`);
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'muster' }),
+      screen.getByRole('heading', { level: 1, name: 'Muster' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
@@ -392,6 +393,54 @@ describe('ConnectorPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("muster's logo", () => {
+    const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    const RealImage = window.Image;
+
+    // jsdom loads no image; bui's Avatar shows one once it has loaded.
+    beforeEach(() => {
+      window.Image = class {
+        onload: (() => void) | null = null;
+        set src(_value: string) {
+          setTimeout(() => this.onload?.());
+        }
+      } as unknown as typeof Image;
+    });
+    afterEach(() => {
+      window.Image = RealImage;
+    });
+
+    it('shows the icon muster announces in the header, as an image', async () => {
+      const api = makeApi();
+      api.getServerInfo.mockImplementation(async () => ({ icon: SVG }));
+      await renderAt(`${BASE}/muster`, { api });
+
+      await waitFor(() =>
+        expect(document.querySelector(`img[src="${SVG}"]`)).not.toBeNull(),
+      );
+      expect(api.getServerInfo).toHaveBeenCalledWith('gazelle');
+    });
+
+    it('shows the letter tile when muster announces no icon', async () => {
+      const api = makeApi();
+      await renderAt(`${BASE}/muster`, { api });
+
+      await waitFor(() => expect(api.getServerInfo).toHaveBeenCalled());
+      expect(document.querySelector('img')).toBeNull();
+      expect(screen.getByText('M')).toBeInTheDocument();
+    });
+
+    it("does not ask muster for its icon on another connector's page", async () => {
+      const api = makeApi();
+      await renderAt(`${BASE}/jira`, { api });
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'jira' }),
+      ).toBeInTheDocument();
+      expect(api.getServerInfo).not.toHaveBeenCalled();
+    });
   });
 
   it('names the connector in the document title', async () => {

@@ -872,6 +872,34 @@ export async function createRouter(
   });
 
   /**
+   * What muster says of itself in its `initialize` result: `icon`, the logo
+   * it announces in `serverInfo.icons` (muster v5.59.0 and later), when
+   * gs-common's `serverInfoIconOf` accepts one. muster is no MCPServer, so it
+   * has no `.status.icon`; this is where its row in the Connectors list and
+   * its page take their logo from.
+   *
+   * Read off the caller's cached MCP session, the one their tool listings
+   * use. A token that is missing or expired is the 401 the frontend refreshes
+   * on; any other failure answers `{}` -- the letter tile -- logged at
+   * `info`: the icon is cosmetic, and the caller's other reads report an
+   * unreachable muster.
+   */
+  router.get('/server-info', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const callOptions = readCallOptions(req, installation);
+    let icon: string | undefined;
+    try {
+      icon = await client.serverIcon(callOptions);
+    } catch (error) {
+      logger.info('Muster could not be asked for its icon', {
+        installation: installation.name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    res.json(icon ? { icon } : {});
+  });
+
+  /**
    * What people call the installation's connectors: each server's name, its
    * family and its `ui.giantswarm.io/display-name` (`displayName`), from
    * `core_mcpserver_list` as the person. muster lists exactly the servers the

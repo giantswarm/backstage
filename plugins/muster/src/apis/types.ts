@@ -270,6 +270,16 @@ export interface ConnectorNamesResponse {
 }
 
 /**
+ * What muster says of itself in its `initialize` result. `icon` is the logo
+ * it announces (muster v5.59.0 and later), already checked by gs-common's
+ * `connectorIconOf`; absent from an older muster or when it could not be
+ * read.
+ */
+export interface MusterServerInfoResponse {
+  icon?: string;
+}
+
+/**
  * One entry from the `filter_tools` discovery tier. In discovery mode only
  * `summary` (a one-line excerpt) is populated; `description`/`inputSchema`
  * arrive with `include_schema=true` or via `describe_tool`. `score` is set
@@ -632,6 +642,11 @@ export interface MusterApi {
    * sign-in prompt. A background read: it never asks the person to sign in.
    */
   listConnectorNames(installation?: string): Promise<ConnectorNamesResponse>;
+  /**
+   * What muster says of itself (its logo), for its own row and page. A
+   * background read: it never asks the person to sign in.
+   */
+  getServerInfo(installation?: string): Promise<MusterServerInfoResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
   filterResources(

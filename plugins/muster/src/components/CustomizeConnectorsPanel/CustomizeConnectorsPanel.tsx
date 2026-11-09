@@ -54,6 +54,7 @@ import {
   StatusWithHint,
   type ExplainedStatusText,
   useServerPageLinks,
+  useMusterIcon,
   useServerSignInStatus,
   useToolCatalogue,
 } from '../shared';
@@ -92,7 +93,10 @@ type Row = {
   signInGate?: string;
   reach?: ConnectorReach;
   tags: string[];
-  /** The MCPServer's `.status.icon`, for the connector's logo. */
+  /**
+   * The connector's logo: its MCPServer's `.status.icon`, or for muster the
+   * icon it announces (`useMusterIcon`).
+   */
   icon?: string;
 };
 
@@ -378,6 +382,7 @@ function ConnectorsTable({
   const musterApi = useApi(musterApiRef);
 
   const catalogue = useToolCatalogue(installation, hasSession);
+  const musterIcon = useMusterIcon(installation, hasSession);
   const authStatus = useQuery({
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
@@ -435,6 +440,7 @@ function ConnectorsTable({
           status: musterStatus(musterSession),
           ...(reach ? { reach } : {}),
           tags: entry.tags,
+          icon: musterIcon,
         };
       }
       const server = rowServer(entry, installation);
@@ -466,7 +472,7 @@ function ConnectorsTable({
         tags: entry.tags,
       };
     },
-    [installation, authStatus.data, musterSession],
+    [installation, authStatus.data, musterSession, musterIcon],
   );
   // The whole list decides which filters can tell connectors apart; the
   // searched one is what they then narrow.
