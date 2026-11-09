@@ -2,7 +2,11 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen } from '@testing-library/react';
-import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The provider reads organizations through the Muster API.
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -13,8 +17,12 @@ import { organizationsRouteRef } from '../../routes';
 import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 import { OrganizationsIndexPage } from './OrganizationsIndexPage';
 
-async function renderList(scenario: OrganizationsScenario) {
+async function renderList(
+  scenario: OrganizationsScenario,
+  configure?: (api: MusterApi) => void,
+) {
   const { api } = fakeOrganizationsMuster(scenario);
+  configure?.(api);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -33,6 +41,67 @@ async function renderList(scenario: OrganizationsScenario) {
 }
 
 describe('OrganizationsIndexPage', () => {
+  it('reports unavailable only after agent-manager answers without organization support', async () => {
+    await renderList({}, api => {
+      jest.spyOn(api, 'callTool').mockResolvedValue({
+        capabilities: { organizations: false },
+      });
+    });
+
+    expect(
+      await screen.findByText('Organizations are not available here'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows a failed capability read instead of claiming organizations are unavailable', async () => {
+    await renderList({}, api => {
+      jest
+        .spyOn(api, 'callTool')
+        .mockRejectedValue(new Error('Sign in to Agent Manager on gazelle.'));
+    });
+
+    expect(
+      await screen.findByText('Could not check organization availability'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Sign in to Agent Manager on gazelle/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Organizations are not available here'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a failed installation inventory instead of claiming organizations are unavailable', async () => {
+    await renderList({}, api => {
+      jest
+        .spyOn(api, 'listInstallations')
+        .mockRejectedValue(new Error('Portal inventory is unavailable.'));
+    });
+
+    expect(
+      await screen.findByText('Portal inventory is unavailable.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Organizations are not available here'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a failed connector discovery instead of claiming organizations are unavailable', async () => {
+    await renderList({}, api => {
+      jest
+        .spyOn(api, 'listServers')
+        .mockRejectedValue(new Error('Connector discovery failed.'));
+    });
+
+    expect(
+      await screen.findByText(/Could not reach agent-manager on gazelle/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Organizations are not available here'),
+    ).not.toBeInTheDocument();
+  });
+
   it("lists the person's organizations, each linking to its page", async () => {
     await renderList({
       mine: {

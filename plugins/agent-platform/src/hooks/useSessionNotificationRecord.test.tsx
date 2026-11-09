@@ -140,7 +140,7 @@ afterEach(() => {
 });
 
 describe('useSessionNotificationSettings', () => {
-  it('reads Default and not portal-started for a session without an entry', () => {
+  it('reads `default` and not portal-started for a session without an entry', () => {
     const { result } = renderHook(() => useSessionNotificationSettings(), {
       wrapper: wrapperFor(mockApis.storage()),
     });
@@ -210,7 +210,7 @@ describe('useSessionNotificationSettings', () => {
     );
   });
 
-  it('unmutes with Default', async () => {
+  it('unmutes with `default`', async () => {
     const storage = mockApis.storage();
     await storage.forBucket(BUCKET).set(SETTINGS, {
       sessions: { 'gazelle/abc': { level: 'muted', at: 1 } },

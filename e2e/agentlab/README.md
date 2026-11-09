@@ -36,6 +36,7 @@ the command that installs it.
 | `AGENTLAB_CLUSTER`       | `agentlab`                        | the lab's `clusterName`: its MCP server `<cluster>-mcp-kubernetes` and its kind node `<cluster>-control-plane`                                                                                                                          |
 | `AGENTLAB_KIND_NODE`     | `<cluster>-control-plane`         | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                                                                                                            |
 | `AGENTLAB_E2E_WORKERS`   | `1`                               | parallel workers, each with one sign-in as lab users of its own — see [How it signs in](#how-it-signs-in)                                                                                                                               |
+| `AGENTLAB_E2E_AUTH`      | `dex`                             | how the suite signs in: `dex` (the lab's Dex card and popup) or `guest` (a local dev server's guest sign-in) — see [Against a dev server](#against-a-dev-server)                                                                        |
 | `AGENTLAB_E2E_RUN`       | the run's start, base 36          | the run id `tenants.spec.ts` names its organization's agent with (`e2e-tenant-<run>`) and `harness-codex-card.spec.ts` its Harness; letters and digits only                                                                             |
 | `AGENTLAB_E2E_NETNS`     | `1`                               | `0` launches the browser in the host's network instead of [its own](#the-browsers-network)                                                                                                                                              |
 | `AGENTLAB_E2E_ORDER`     | `default`                         | the order of the spec files: `default` (by path), `shuffle` (a random order; the run prints its seed) or `shuffle:<seed>` (that order again) — see [Order](#order)                                                                      |
@@ -45,6 +46,50 @@ the command that installs it.
 | `AGENTLAB_WORKSPACE`     | unset                             | `<organization>/<name>` of a workspace the admin created in the portal on the lab (the real GitHub App grant), for `workspace-detail.spec.ts`; skipped without it                                                                       |
 
 The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
+
+## Against a dev server
+
+A page change can be proven in the UI without a lab, against a local dev
+server (`yarn start`) whose `gs.authProvider` is unset: its sign-in page signs
+the guest in through the proxy, without a card or a popup.
+`AGENTLAB_E2E_AUTH=guest` makes every sign-in wait for that instead of the Dex
+card.
+
+The browser's [network namespace](#the-browsers-network) carries IPv4 only,
+and the dev server's frontend on `localhost` binds `::1`, so start it on
+`127.0.0.1`, with the guest provider on (`ENABLE_GUEST_AUTH=1` adds it to the
+backend, `auth.providers.guest` configures it), from a config of your own on
+top of `app-config.yaml`; a spec that
+needs its plugin's pages names them in `app.extensions` there, as on a lab
+(Backstage replaces config arrays, so the list repeats `app-config.yaml`'s):
+
+```yaml
+# e2e-dev.yaml, outside the checkout
+app:
+  baseUrl: http://127.0.0.1:3000
+  listen:
+    host: 127.0.0.1
+    port: 3000
+  # extensions: app-config.yaml's list, plus page:plans, api:plans,
+  # page:roadmap, api:roadmap, page:plans/plans-redirect, page:plans/magazine
+backend:
+  cors:
+    origin: http://127.0.0.1:3000
+auth:
+  providers:
+    guest: {}
+```
+
+```bash
+ENABLE_GUEST_AUTH=1 yarn start --config "$PWD/app-config.yaml" --config /path/to/e2e-dev.yaml
+AGENTLAB_BACKSTAGE_URL=http://127.0.0.1:3000 AGENTLAB_E2E_AUTH=guest \
+  AGENTLAB_HIVE=1 yarn test:e2e:agentlab hive.spec.ts --project agentlab
+```
+
+Every user is the one guest, so only specs that need no lab behind the portal
+and do not tell users apart prove anything there: the ones that answer their
+backend routes in the browser, as `hive.spec.ts` does. Without the variable
+the suite signs in through Dex as before.
 
 ## Portal modes
 
@@ -162,7 +207,7 @@ out of this suite's reach.
 | `agent-edit-commit.spec.ts`            | the Edit agent page on the worker's own agent: written live, a changed field's dry run and Save, no Commit; applied from git (`get_agent`'s `managed: gitops`, `get_info`'s `capabilities.commit` and `update_agent`'s pull request staged at the browser in agent-manager's shape, since the lab's agent-manager writes live only), the dry run asked in mode `commit`, Commit in place of Save opening one pull request, then locked so a second click opens none; the agent detail page's actions menu, Skills tab Add skills and failure blocker (a failed status staged on the Agent read) each opening that commit-mode page, and none of the three offered without the commit capability                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `session-images.spec.ts`               | images in a session message, on the worker's own agent with its ModelConfig provider set at the browser: with an OpenAI provider the home composer attaches a pasted image as a removable thumbnail named "Pasted image.png" (the focus back in the prompt after removing it), refuses a dropped PDF, saying which types it takes, and a file dropped beside the box does not open in place of the page; with an Ollama provider it says the agent cannot take images; a session started with text, with an image added to its first message in the conversation read, shows it as a thumbnail that opens at full size; the session deleted through the portal. Sends no image to a model                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `session-runtime-lost.spec.ts`         | a session whose runtime kagent cannot bring back (#2388), with kagent's answers for that one session stubbed at the browser: the failed turn and the notice worded in the portal's words with the runtime's text as evidence, Send kept, with **Continue in a new session** in the notice; after kagent's `RUNTIME_LOST` mark the header badge, no message box and the button in the notice (also at 375px), the Sessions list's mark; the new session opened for real, carrying the conversation, its "Continued session" banner linking back; both sessions deleted through the portal. Needs an agent on the installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `session-stick-to-end.spec.ts`         | (`shell` mode) stick to the end while a turn streams, with the session's first stream answered at the browser by a reply that writes a paragraph every 150 ms until stopped: at the end the page follows it; scrolled up with the wheel (also one line up from the end) the page keeps its place while the reply grows; back at the end it follows again; the same at 375px by touch (a swipe up keeps its place, a swipe back to the end follows); the session deleted through the portal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `session-jump-to-bottom.spec.ts`       | (`shell` mode) the reading position while a turn streams, with the session's first stream answered at the browser by a reply that writes a paragraph every 150 ms until paused or stopped: the page never follows it, at the very end included, and Jump to bottom appears once content is below the view; reaching the end with the wheel takes it away until more arrives; scrolled up the page keeps its place; Jump to bottom lands at the very bottom and goes; the same at 375px by touch (a swipe up keeps its place, the button sits above the composer, a tap jumps); the session deleted through the portal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `session-stream-resubscribe.spec.ts`   | a turn's stream cut mid-turn as a kagent controller rollout cuts it (giantswarm/giantswarm#38777), with kagent's answers for that one session stubbed at the browser: "The live view was interrupted. Reconnecting…" while the page resubscribes (no sideways scroll at 375px), then the reply continued through the resubscription with nothing shown twice; and with every resubscription refused, four tries, "Could not restore the live view", and the result arriving through the poll. Needs an agent on the installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `kagent-denial-reason.spec.ts`         | a refused kagent token names its reason (#2360): the person's per-installation token swapped at the browser for one signed with a key the lab Dex never published, then the portal's backend, the lab edge's JWT policy and the **Session not started** panel for real — the panel carries the edge's `authentication failure: token uses the unknown key "bogus"` after the portal's wording, the prompt kept. Needs an agent on the installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `installations-capabilities.spec.ts`   | with `AGENTLAB_PLATFORM_MANAGER=1`: the Installations page has a column per platform capability with every installation's state; an installation's Capabilities tab shows the state, the last action and the history, Enable/Reconcile opens the dry run with the inputs form from the definition's schema, Commit is disabled without the manager grant, an installation with nothing on record offers Enable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -230,8 +275,21 @@ the user's muster session, per-server sign-ins and Notification inbox are one.
 A lab for `AGENTLAB_E2E_WORKERS=<w>` carries workers 1 to _w_-1's users in its
 `agentlab.yaml`, each in its original's groups and with the fixture password,
 then `agentlab platform`, which adds them to the lab Dex and to the portal's
-catalog (`agentlab reload` reaches Dex only, and Settings then names no user
-entity for them):
+catalog. These local Dex accounts sign in as external identities: Settings
+shows the name and email from their OIDC profile, and `User Entity:
+oidc/<subject hash>`. They do not resolve to the catalog's `default` users;
+the resolver reserves those for the staff connectors. `sign-in.spec.ts`
+checks both the profile and the separate identity namespace.
+
+To check all three roles sequentially and in three separate browser workers:
+
+```bash
+yarn test:e2e:agentlab 'sign-in.spec.ts' --project agentlab -g 'signs in as the lab' --workers 1
+yarn test:e2e:agentlab 'sign-in.spec.ts' --project agentlab -g 'signs in as the lab' --workers 3 --fully-parallel
+```
+
+The parallel run needs the worker users below; `--fully-parallel` makes the
+three tests in the same spec run in separate workers.
 
 ```yaml
 users:

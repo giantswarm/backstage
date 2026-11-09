@@ -1031,7 +1031,7 @@ export class KagentApiClient implements KagentApi {
       const message = unavailable
         ? KAGENT_UNAVAILABLE_MESSAGE
         : (bodyMessage ??
-          `kagent request failed with status ${response.status}`);
+          `The Agent Platform request failed with status ${response.status}.`);
       const error = Object.assign(
         new Error(message),
         fields,

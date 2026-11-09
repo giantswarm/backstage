@@ -51,10 +51,9 @@ export const ANSWER_TAKEN_WAIT_MS = 15_000;
 export const ANSWER_TAKEN_POLL_MS = 3_000;
 
 /**
- * The error an answer fails with when kagent did not take it: the question is
- * still open and the answer is not in the session. Terminal for this session:
- * sending it again goes the same way, so the page offers a new session instead
- * of a retry.
+ * The answer's stream supplied no acknowledgement and the last successful read
+ * still showed the same unanswered question. Keep the person's words until a
+ * later read confirms the answer or the person starts another session.
  */
 export const ANSWER_NOT_TAKEN_ERROR_NAME = 'AnswerNotTakenError';
 
@@ -64,7 +63,7 @@ export function isAnswerNotTakenError(error: unknown): boolean {
 
 function answerNotTakenError(): Error {
   const error = new Error(
-    'kagent did not take the answer: the agent could not resume, and the question is still open.',
+    'We could not confirm that the agent received your answer. Refresh the session before trying again.',
   );
   error.name = ANSWER_NOT_TAKEN_ERROR_NAME;
   return error;
@@ -237,6 +236,23 @@ export function useAnswerConfirmation(
   });
 
   const { mutateAsync, reset } = mutation;
+
+  useEffect(() => {
+    if (!failed) {
+      return undefined;
+    }
+    const reconcile = () => {
+      const tasks = queryClient.getQueryData<A2aTaskWire[]>(
+        sessionTasksQueryKey(installation, sessionId),
+      );
+      if (tasks && readAnswerOutcome(tasks, failed) === 'taken') {
+        setFailed(null);
+        reset();
+      }
+    };
+    reconcile();
+    return queryClient.getQueryCache().subscribe(reconcile);
+  }, [failed, queryClient, installation, sessionId, reset]);
 
   const answer = useCallback(
     async (submitted: ConfirmationAnswer) => {

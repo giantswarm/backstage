@@ -1,3 +1,7 @@
+import {
+  A2aTaskWire,
+  taskActivityAt,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { TimelineItem } from './kagentTimeline';
 
 /**
@@ -138,28 +142,41 @@ export type EgressRefusedItem = Extract<
  * answer (the answer that says what the agent made of it), or at the turn's
  * end.
  *
- * Every item carries its task's timestamp, which is when the turn last moved,
- * so a turn ends at its `at`: a refusal belongs to the first turn that ended
- * after it happened (after its `since`), and to the newest turn when none did
- * — the turn still running.
+ * Turn boundaries include task completion and recorded activity, even when
+ * folding or filtering leaves that activity without a rendered item. Live
+ * items can extend a boundary beyond the latest task read. A refusal belongs
+ * to the first turn that ended after its `since`, or the newest turn.
  */
 export function withEgressRefusals(
   items: readonly TimelineItem[],
   refusals: readonly EgressRefusal[],
+  tasks: readonly A2aTaskWire[] = [],
 ): TimelineItem[] {
   if (refusals.length === 0 || items.length === 0) {
     return items as TimelineItem[];
   }
   const turnEnds: { taskIndex: number; at?: string }[] = [];
   for (const item of items) {
-    if (turnEnds[turnEnds.length - 1]?.taskIndex !== item.taskIndex) {
-      turnEnds.push({ taskIndex: item.taskIndex, at: item.at });
+    const last = turnEnds[turnEnds.length - 1];
+    if (last?.taskIndex !== item.taskIndex) {
+      const activity = tasks[item.taskIndex]
+        ? taskActivityAt(tasks[item.taskIndex])
+        : undefined;
+      turnEnds.push({
+        taskIndex: item.taskIndex,
+        at:
+          activity === undefined ? undefined : new Date(activity).toISOString(),
+      });
+    }
+    const end = turnEnds[turnEnds.length - 1];
+    if (item.at && (!end.at || Date.parse(item.at) > Date.parse(end.at))) {
+      end.at = item.at;
     }
   }
   const turnOf = (refusal: EgressRefusal): number => {
     const happened = refusal.since ?? refusal.at;
     const turn = turnEnds.find(
-      end => end.at !== undefined && end.at >= happened,
+      end => end.at !== undefined && Date.parse(end.at) >= Date.parse(happened),
     );
     return (turn ?? turnEnds[turnEnds.length - 1]).taskIndex;
   };
