@@ -20,6 +20,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     '@backstage/frontend-plugin-api',
   );
   return {
+    useOrganizationsAvailable: () => false,
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     agentPlatformPlugin: {
       routes: {
@@ -29,6 +30,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         skills: createRouteRef(),
         models: createRouteRef(),
         profile: createRouteRef(),
+        organizations: createRouteRef(),
       },
     },
     RecentSessions: () => <div data-testid="recent-sessions" />,

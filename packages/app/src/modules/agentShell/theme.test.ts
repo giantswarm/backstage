@@ -61,6 +61,23 @@ function contrast(a: string, b: string): number {
 }
 
 describe('agentShellLightColors', () => {
+  it('keeps secondary text at 4.5:1 or more on a surface and on a highlighted row', () => {
+    // The search palette's descriptions and key hints (issue #39049): the
+    // dialog's surface, and the row the arrow keys or the pointer are on.
+    expect(
+      contrast(
+        agentShellLightColors.textSecondary,
+        agentShellLightColors.surface,
+      ),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(
+        agentShellLightColors.textSecondary,
+        agentShellLightColors.railItemHover,
+      ),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('marks the current rail item at 3:1 or more against its background', () => {
     expect(
       contrast(

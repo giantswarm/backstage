@@ -7,11 +7,19 @@ import userEvent from '@testing-library/user-event';
 import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 import type { AgentManagerAgent } from '../../lib/agentManager';
 import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
 
@@ -57,7 +65,7 @@ const AGENT: AgentManagerAgent = {
 };
 
 const CODEX_REFUSAL =
-  'modelConfig default-model-config (provider Anthropic, model claude-sonnet-4-6): Harness codex runs Codex, which speaks the OpenAI Responses API only: pick an OpenAI ModelConfig with openAI.apiFormat responses, or a Bedrock gpt-* one';
+  'modelConfig anthropic-main (provider Anthropic, model claude-sonnet-4-6): Harness codex runs Codex, which speaks the OpenAI Responses API only: pick an OpenAI ModelConfig with openAI.apiFormat responses, or a Bedrock gpt-* one';
 
 type Scenario = {
   /** validate_agent's violations, per Harness. */
@@ -345,6 +353,47 @@ describe('AgentChangeHarnessDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
+  // The write's refusal for want of the sign-in used to hide the dialog's
+  // error and show no alert. Signed in, it is cleared; the person confirms
+  // again.
+  it('asks for the sign-in when the change is refused for want of it, and clears it once it lands', async () => {
+    const { callTool } = await renderDialog({
+      updateError: new MusterUnauthorizedError(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+      ),
+    });
+    await userEvent.click(
+      screen.getByRole('radio', { name: /Claude Code, Harness claude/ }),
+    );
+    await screen.findByText(/Every check passes/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Change Harness' }),
+    );
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Change Harness' }),
+    ).toBeEnabled();
+    expect(
+      callTool.mock.calls.filter(
+        ([tool]) => tool === 'x_agent-manager_update_agent',
+      ),
+    ).toHaveLength(1);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it('says in plain words where the Harness is changed instead when agent-manager has no file for the release', async () => {
     await renderDialog({
       commit: true,
@@ -366,7 +415,7 @@ describe('AgentChangeHarnessDialog', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', {
-        name: 'giantswarm/giantswarm-management-clusters',
+        name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
       }),
     ).toHaveAttribute(
       'href',

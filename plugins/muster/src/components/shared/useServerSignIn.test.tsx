@@ -425,6 +425,139 @@ describe('useServerSignIn', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  describe('onSignedIn', () => {
+    // A sign-in finished in another tab: nothing started here, and returning
+    // to this tab re-reads the status (simulated by refetching it).
+    it('is called when the status moves to connected, with no sign-in started here', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      const queryClient = newQueryClient();
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, queryClient) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+      expect(onSignedIn).not.toHaveBeenCalled();
+
+      api.getAuthStatus.mockResolvedValue({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: ['muster', 'auth-status', 'gazelle'],
+        });
+      });
+
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      // Made in another tab: nothing this tab started.
+      expect(onSignedIn).toHaveBeenCalledWith({ here: false });
+    });
+
+    it('is called when the sign-in started here lands', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () =>
+          useServerSignIn('pro', 'gazelle', { onSignedIn, pollIntervalMs: 20 }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+      await act(async () => result.current.signIn());
+      await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+      api.getAuthStatus.mockResolvedValue({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+
+      await waitFor(() => expect(result.current.isWaiting).toBe(false));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
+    });
+
+    // muster's "already authenticated and connected": the sign-in holds, so
+    // what waits on it goes ahead, whatever the status read said before.
+    it('is called when a sign-in click finds the server connected already', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+      api.signInServer.mockResolvedValue({
+        status: 'connected',
+        message: "Server 'pro' is already authenticated and connected.",
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() =>
+        expect(result.current.status?.status).toBe('connected'),
+      );
+      // A server connected on first sight says nothing about a refusal.
+      expect(onSignedIn).not.toHaveBeenCalled();
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
+      expect(result.current.error).toBeUndefined();
+    });
+
+    // The click reports the landing; the status read it causes, moving from
+    // waiting to connected, is the same landing, not a second one.
+    it('is called once when a click finds the server connected while the status still waits', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockImplementation(async () => {
+        api.getAuthStatus.mockResolvedValue({
+          servers: [{ name: 'pro', status: 'connected' }],
+        });
+        return {
+          status: 'connected',
+          message: "Server 'pro' is already authenticated and connected.",
+        };
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not called while the sign-in is refused', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockResolvedValue({
+        status: 'error',
+        message: 'Rate limit exceeded.',
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() =>
+        expect(result.current.error).toBe('Rate limit exceeded.'),
+      );
+      expect(onSignedIn).not.toHaveBeenCalled();
+    });
+  });
+
   /**
    * The inverse flow: a completed logout must invalidate every muster query so
    * the server's tools re-gate and the sign-in affordance comes back -- there
@@ -540,6 +673,359 @@ describe('useServerSignIn', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
     );
     await waitFor(() => expect(result.current.needsLogin).toBe(true));
+  });
+});
+
+/**
+ * The tab a Sign in click opens, before muster's answer says what to show in
+ * it. jsdom has no real windows, so this stands in for one.
+ */
+interface FakeTab {
+  closed: boolean;
+  opener: unknown;
+  close: jest.Mock;
+  location: { href: string };
+  document: { title: string; body: { textContent: string } };
+}
+
+function makeTab(): FakeTab {
+  const tab: FakeTab = {
+    closed: false,
+    opener: window,
+    close: jest.fn(() => {
+      tab.closed = true;
+    }),
+    location: { href: 'about:blank' },
+    document: { title: '', body: { textContent: '' } },
+  };
+  return tab;
+}
+
+/** A sign-in answer muster has not given yet. */
+function deferredAnswer(api: jest.Mocked<Api>) {
+  let resolve: ((result: ServerSignInResult) => void) | undefined;
+  let reject: ((error: Error) => void) | undefined;
+  api.signInServer.mockImplementationOnce(
+    () =>
+      new Promise<ServerSignInResult>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      }),
+  );
+  // The request goes out a few ticks after the click.
+  const asked = () => waitFor(() => expect(resolve).toBeDefined());
+  return {
+    resolve: async (result: ServerSignInResult) => {
+      await asked();
+      await act(async () => resolve!(result));
+    },
+    reject: async (error: Error) => {
+      await asked();
+      await act(async () => reject!(error));
+    },
+  };
+}
+
+/**
+ * muster's `core_auth_login` can take a while to answer. Meanwhile the tab
+ * the click opened has nothing to show, and a blank tab reads as a broken
+ * sign-in: people close it, or go back to the portal. Either way the answer
+ * that finally arrives finds no tab to navigate, and the portal offered no
+ * way in until then, only the Sign in button's spinner.
+ */
+describe('useServerSignIn, while muster has not answered yet', () => {
+  let windowOpen: jest.SpyInstance;
+  let tab: FakeTab;
+
+  beforeEach(() => {
+    tab = makeTab();
+    windowOpen = jest
+      .spyOn(window, 'open')
+      .mockReturnValue(tab as unknown as Window);
+  });
+
+  afterEach(() => {
+    windowOpen.mockRestore();
+  });
+
+  async function renderSignIn(
+    api: jest.Mocked<Api>,
+    options: { tabWaitMs?: number } = {},
+  ) {
+    const rendered = renderHook(
+      () => useServerSignIn('pro', 'gazelle', options),
+      { wrapper: wrapper(api, newQueryClient()) },
+    );
+    await waitFor(() => expect(rendered.result.current.needsLogin).toBe(true));
+    return rendered;
+  }
+
+  it('navigates the tab its click opened once the answer arrives in time', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api);
+
+    act(() => result.current.signIn());
+    expect(windowOpen).toHaveBeenCalledWith('', '_blank');
+    expect(tab.opener).toBeNull();
+    // Not a bare about:blank while it waits.
+    expect(tab.document.body.textContent).toBe('Opening the sign-in page…');
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(tab.location.href).toBe(AUTH_URL));
+    expect(tab.close).not.toHaveBeenCalled();
+    expect(result.current.signInTabOpened).toBe(true);
+  });
+
+  it('closes the blank tab when the answer outlasts the wait, and offers the page as a link', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+
+    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+    // The sign-in is offered in the portal at once, not behind a spinner
+    // that lasts until muster answers.
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+    expect(result.current.signInTabOpened).toBe(false);
+    expect(result.current.isPending).toBe(true);
+    // Nothing for the person to finish yet: muster is preparing the page.
+    expect(result.current.isPreparing).toBe(true);
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+    expect(result.current.signInTabOpened).toBe(false);
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.isPreparing).toBe(false);
+    // The closed tab is not navigated: the link is the way in.
+    expect(tab.location.href).toBe('about:blank');
+  });
+
+  it('offers the sign-in in the portal as soon as the person closes the blank tab', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api);
+
+    act(() => result.current.signIn());
+    expect(result.current.isWaiting).toBe(false);
+
+    tab.closed = true;
+
+    await waitFor(() => expect(result.current.isWaiting).toBe(true), {
+      timeout: 3_000,
+    });
+    expect(result.current.signInTabOpened).toBe(false);
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+    expect(tab.location.href).toBe('about:blank');
+  });
+
+  it('navigates only the tab of its own click when an earlier answer arrives late', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const late = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    // The fallback's button asks again, with a tab of its own.
+    const secondTab = makeTab();
+    windowOpen.mockReturnValue(secondTab as unknown as Window);
+    api.signInServer.mockResolvedValueOnce({
+      ...CHALLENGE,
+      authUrl: FRESH_AUTH_URL,
+    });
+    act(() => result.current.signIn());
+    await waitFor(() => expect(secondTab.location.href).toBe(FRESH_AUTH_URL));
+
+    await late.resolve(CHALLENGE);
+
+    // The late answer finds its own tab closed and leaves the second alone,
+    // and the second click's sign-in stays the one on offer.
+    expect(secondTab.location.href).toBe(FRESH_AUTH_URL);
+    expect(tab.location.href).toBe('about:blank');
+    expect(result.current.authUrl).toBe(FRESH_AUTH_URL);
+    expect(result.current.signInTabOpened).toBe(true);
+  });
+
+  it("leaves a later click's sign-in alone when an earlier click whose tab was given up then fails", async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const late = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isPreparing).toBe(true));
+
+    const secondTab = makeTab();
+    windowOpen.mockReturnValue(secondTab as unknown as Window);
+    api.signInServer.mockResolvedValueOnce({
+      ...CHALLENGE,
+      authUrl: FRESH_AUTH_URL,
+    });
+    act(() => result.current.signIn());
+    await waitFor(() => expect(secondTab.location.href).toBe(FRESH_AUTH_URL));
+
+    await late.reject(new Error('Gateway Timeout'));
+
+    // The person is finishing the second sign-in: its wait goes on.
+    expect(result.current.isWaiting).toBe(true);
+    expect(result.current.authUrl).toBe(FRESH_AUTH_URL);
+    expect(result.current.signInTabOpened).toBe(true);
+  });
+
+  it('puts the outstanding flow back when a reopen whose tab was given up is refused', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(tab.location.href).toBe(AUTH_URL));
+    expect(result.current.signInTabOpened).toBe(true);
+
+    // The reopen's own tab outlasts the wait: the earlier page, still
+    // honoured, is offered as a link meanwhile.
+    const reopenTab = makeTab();
+    windowOpen.mockReturnValue(reopenTab as unknown as Window);
+    const reopen = deferredAnswer(api);
+    act(() => result.current.signIn());
+    await waitFor(() => expect(reopenTab.close).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.signInTabOpened).toBe(false));
+    expect(result.current.authUrl).toBe(AUTH_URL);
+    expect(result.current.isPreparing).toBe(false);
+
+    await reopen.resolve({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+
+    // The first tab is still open on the sign-in: the row says so again.
+    await waitFor(() => expect(result.current.signInTabOpened).toBe(true));
+    expect(result.current.isWaiting).toBe(true);
+    expect(result.current.authUrl).toBe(AUTH_URL);
+  });
+
+  it('leaves a tab the person took elsewhere open, and does not navigate it', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 5_000 });
+
+    act(() => result.current.signIn());
+    // The person typed an address into the waiting tab: another origin,
+    // whose location the portal cannot read.
+    Object.defineProperty(tab, 'location', {
+      get: () => {
+        throw new DOMException('Blocked a frame', 'SecurityError');
+      },
+    });
+
+    // Given up at once, without closing their page.
+    await waitFor(() => expect(result.current.isWaiting).toBe(true), {
+      timeout: 3_000,
+    });
+    expect(tab.close).not.toHaveBeenCalled();
+
+    await answer.resolve(CHALLENGE);
+
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+    expect(result.current.signInTabOpened).toBe(false);
+    expect(tab.close).not.toHaveBeenCalled();
+  });
+
+  it("keeps a provider App's sign-in on its button when its tab is given up", async () => {
+    const api = makeApi({
+      servers: [],
+      providerApps: [{ name: 'github', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = renderHook(
+      () => useServerSignIn('github', 'gazelle', { app: true, tabWaitMs: 50 }),
+      { wrapper: wrapper(api, newQueryClient()) },
+    );
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+
+    // An App's wait offers Cancel, which cannot stop the request in flight:
+    // no wait until muster answered with a code.
+    expect(result.current.isWaiting).toBe(false);
+    expect(result.current.isPending).toBe(true);
+
+    await answer.resolve({
+      status: 'pending',
+      message: 'Enter the code.',
+      deviceCode: {
+        userCode: 'ABCD-1234',
+        verificationUrl: 'https://github.example.test/login/device',
+      },
+    });
+
+    await waitFor(() =>
+      expect(result.current.deviceCode?.userCode).toBe('ABCD-1234'),
+    );
+    expect(result.current.signInTabOpened).toBe(false);
+  });
+
+  it('returns to Sign in when the request fails after the tab was given up', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    await answer.reject(new Error('Failed to fetch'));
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Sign-in request failed: Failed to fetch',
+      ),
+    );
+    // No flow was ever started, so there is nothing to wait for.
+    expect(result.current.isWaiting).toBe(false);
+  });
+
+  it('returns to Sign in when muster refuses after the tab was given up', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answer = deferredAnswer(api);
+    const { result } = await renderSignIn(api, { tabWaitMs: 50 });
+
+    act(() => result.current.signIn());
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    await answer.resolve({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Rate limit exceeded. Too many authentication attempts.',
+      ),
+    );
+    expect(result.current.isWaiting).toBe(false);
   });
 });
 

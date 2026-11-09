@@ -33,6 +33,7 @@ import {
 } from '../LlmUsage';
 import { ContentColumn } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionCountForWindow } from '../AgentUsageSection/helpers';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -125,6 +126,7 @@ function topAgentRows(usage: LlmUsage): TopAgentsRow[] {
  * place a reader needs it.
  */
 export function UsageOverviewPage() {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const { window, days } = useUsageWindow();
   const month = window.kind === 'month' ? window.month : undefined;
@@ -142,7 +144,7 @@ export function UsageOverviewPage() {
     dailyCalls: true,
   });
   const whose = namespace
-    ? `the model use of ${tenantInSentence(namespace)}`
+    ? `the model use of ${tenantInSentence(namespace, directory)}`
     : "everyone's model use";
   const costRoute = useRouteRef(usageCostRouteRef);
   // The Cost link keeps the screen's scope, as the tabs do.
@@ -246,7 +248,10 @@ export function UsageOverviewPage() {
             {/* The headline trend beside who drives it. */}
             <div className={classes.row}>
               {usage.callsPerDay === null ? (
-                <ActivityHeatmapUnavailable title={HEATMAP_TITLE} />
+                <ActivityHeatmapUnavailable
+                  title={HEATMAP_TITLE}
+                  error={view.callsPerDayError}
+                />
               ) : (
                 callDays && (
                   <ActivityHeatmap
@@ -272,7 +277,9 @@ export function UsageOverviewPage() {
                 reliability={usage.reliability}
                 windowDays={usage.windowDays}
                 windowLabel={windowNoun}
-                narrowedTo={namespace ? tenantInSentence(namespace) : undefined}
+                narrowedTo={
+                  namespace ? tenantInSentence(namespace, directory) : undefined
+                }
               />
             </UsageCard>
 

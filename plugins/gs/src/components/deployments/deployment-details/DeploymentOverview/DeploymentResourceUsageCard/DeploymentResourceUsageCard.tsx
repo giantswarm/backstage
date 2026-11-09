@@ -1,7 +1,9 @@
 import { Progress } from '@backstage/core-components';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  MetricsUnavailableAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Box, LinearProgress, Typography, makeStyles } from '@material-ui/core';
-import Alert from '@material-ui/lab/Alert';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { findTargetClusterName } from '../../../utils/findTargetCluster';
 import {
@@ -147,7 +149,7 @@ export function DeploymentResourceUsageCard() {
   if (error) {
     return (
       <InfoCard title="Resource Usage">
-        <Alert severity="warning">Metrics unavailable</Alert>
+        <MetricsUnavailableAlert error={error} />
       </InfoCard>
     );
   }

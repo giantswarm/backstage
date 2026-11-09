@@ -4,10 +4,12 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  CodeBlock,
+  CommitSha,
+  FileView,
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
-  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
@@ -47,7 +49,6 @@ import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useRuntimeChoices } from '../HarnessPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { EditAgentReview } from './EditAgentReview';
@@ -399,6 +400,7 @@ function CreateAgentReview() {
           <ConnectAgentManager
             installation={state.installation!}
             message={validation.failure.message}
+            signInRequired={validation.failure.signInRequired}
           />
         )}
         {validation.failure?.kind === 'refused' && (
@@ -428,6 +430,11 @@ function CreateAgentReview() {
           <ConnectAgentManager
             installation={state.installation!}
             message={creation.failure.message}
+            signInRequired={creation.failure.signInRequired}
+            // The create's refusal is the mutation's, kept until the next
+            // write: cleared once signed in, so the person creates again
+            // (the dry run re-reads by itself, with every muster query).
+            onSignedIn={creation.reset}
           />
         )}
         {creation.failure?.kind === 'refused' && (
@@ -677,7 +684,7 @@ function CreateAgentReview() {
                     content={valuesYaml}
                     language="yaml"
                   />
-                  <FileView content={helmInstallCommand(spec, chart)} />
+                  <CodeBlock text={helmInstallCommand(spec, chart)} />
                 </div>
               </details>
             )}

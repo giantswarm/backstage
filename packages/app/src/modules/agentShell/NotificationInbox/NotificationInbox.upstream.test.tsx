@@ -49,6 +49,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         skills: createRouteRef(),
         models: createRouteRef(),
         profile: createRouteRef(),
+        organizations: createRouteRef(),
       },
     },
     RecentSessions: () => null,
@@ -299,7 +300,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           .getAllByRole('listitem')
           .map(row => row.textContent),
       ).toEqual([
-        expect.stringContaining('1 MCP server needs your sign-in'),
+        expect.stringContaining('1 connector needs your sign-in'),
         expect.stringContaining('Template run finished'),
         expect.stringContaining('SRE Agent needs your input'),
       ]);

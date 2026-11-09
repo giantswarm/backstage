@@ -94,6 +94,7 @@ import type { SessionsTableProps } from './SessionsTable';
 import { sessionStackedRow } from './stackedRows';
 import { sessionStateDotVar } from '../../lib/stableClassNames';
 import { isSearchableList } from '@giantswarm/backstage-plugin-ui-react';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** No picks: every facet keeps everything. */
 const NO_SELECTION: CatalogFilterSelection = {};
@@ -653,9 +654,10 @@ function ShellFilterBar({
   showStates: boolean;
   showAgents: boolean;
 }) {
+  const { directory } = useOrganizationDirectory();
   const facets = useMemo(
-    () => sessionFacets(rows, { showStates, showAgents }),
-    [rows, showStates, showAgents],
+    () => sessionFacets(rows, { showStates, showAgents, directory }),
+    [rows, showStates, showAgents, directory],
   );
   // Known undercount (platform follow-up, list-scale-inventory #7): the
   // backend evaluates states only for the newest sessions per installation
@@ -738,6 +740,12 @@ export function ShellSessionsTable({
   );
 
   const { isPinned, togglePin } = usePinnedSessions();
+  const { directory: organizations } = useOrganizationDirectory();
+  const filterSessions = useCallback(
+    (all: SessionTableRow[], selection: CatalogFilterSelection) =>
+      filterSessionsBySelection(all, selection, organizations),
+    [organizations],
+  );
 
   // The workspaces' names: one list per installation with a session in one.
   const installationsWithWorkspaces = useMemo(
@@ -803,7 +811,7 @@ export function ShellSessionsTable({
     searchDebounceMs,
     initialSearch: opening.query,
     initialFilter: sessionSelectionOf(opening.filter),
-    filterFn: filterSessionsBySelection,
+    filterFn: filterSessions,
     sortFn: sortPinnedFirst,
     initialSort: { column: 'lastActiveAt', direction: 'descending' },
     paginationOptions: { type: 'none' },

@@ -22,6 +22,7 @@ import {
   selectKagentMissing,
   selectUnknownPin,
 } from './helpers';
+import { organizationDirectory } from '../../lib/organizations';
 
 function makeAgent(
   partial: {
@@ -259,7 +260,13 @@ describe('toAgentRow', () => {
       'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
     };
 
-    expect(toAgentRow(agent, [])).toMatchObject({
+    // The organization as agent-manager names the namespace.
+    const organizations = organizationDirectory([
+      { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
+    ]);
+    expect(
+      toAgentRow(agent, [], undefined, undefined, undefined, organizations),
+    ).toMatchObject({
       tenant: 'acme',
       createdBy: 'ana@acme.example',
     });
@@ -747,12 +754,12 @@ describe('toAgentRow model fields', () => {
 
   it('labels the model by spec.model when the ModelConfig has no display name', () => {
     // Without the annotation `getDisplayName()` is the resource name
-    // (`default-model-config`), which says nothing about the model.
+    // (`anthropic-main`), which says nothing about the model.
     const row = toAgentRow(
-      makeAgent({ name: 'chef', modelConfig: 'default-model-config' }),
+      makeAgent({ name: 'chef', modelConfig: 'anthropic-main' }),
       [
         makeModelConfig({
-          name: 'default-model-config',
+          name: 'anthropic-main',
           namespace: 'team-a',
           model: 'claude-sonnet-4-6',
         }),

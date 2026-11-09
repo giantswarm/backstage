@@ -3,10 +3,11 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  CommitSha,
+  FileView,
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
-  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -43,7 +44,6 @@ import {
 } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { FileView } from '../FileView';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';
@@ -75,10 +75,16 @@ function WriteFailure({
   installation,
   failure,
   title,
+  onSignedIn,
 }: {
   installation: string;
   failure: AgentWriteFailure;
   title: string;
+  /**
+   * Clears the refusal once the person is signed in to agent-manager; a dry
+   * run's re-reads by itself, with every muster query.
+   */
+  onSignedIn?: () => void;
 }) {
   const refused = classifyCommitFailure(failure);
   if (refused?.kind === 'connect') {
@@ -86,8 +92,10 @@ function WriteFailure({
       <ConnectAgentManagerAlert
         installation={installation}
         message={refused.message}
+        signInRequired={refused.signInRequired}
         action="Agents are edited"
         needsGitHub={refused.github}
+        onSignedIn={onSignedIn}
       />
     );
   }
@@ -408,6 +416,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <WriteFailure
             installation={installation}
             failure={updating.failure}
+            // The save's refusal is kept until the next write: cleared once
+            // signed in, so the person saves again on the re-read dry run.
+            onSignedIn={updating.reset}
             title={
               viaPullRequest
                 ? 'Could not propose the change'

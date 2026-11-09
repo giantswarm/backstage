@@ -1,4 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor } from '@testing-library/react';
@@ -9,6 +10,13 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type { ClusterWriteResult } from '../../lib/clusterManager';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 import { DeleteClusterDialog } from './DeleteClusterDialog';
 import { REMOVAL_CHECK_INTERVAL_MS } from './removalPasses';
 
@@ -172,7 +180,44 @@ type Scenario = {
   passes?: Answer[];
   /** The answers to the dry runs after a pass, in order; the last repeats. */
   checks?: Answer[];
+  /** The dialog's opening dry run in mode apply; `DRY_RUN` by default. */
+  opening?: ClusterWriteResult;
+  /**
+   * The objects, by name, whose deletion was requested before the dialog
+   * opened, as the person reads them on the installation's API; the others
+   * read as not being removed.
+   */
+  beingRemoved?: string[];
+  /** Of those, the releases into the gone cluster that are not suspended yet (giantswarm/cluster-manager#210). */
+  unsuspended?: string[];
+  /** The reads answer only once this settles: a slow Kubernetes proxy. */
+  holdReads?: Promise<void>;
+  /** The Kubernetes proxy cannot reach the installation: every read answers 500. */
+  proxyDown?: boolean;
 };
+
+/** The installation's API as the person reads it: GET of one object. */
+function makeKubernetesApi(scenario: Scenario = {}) {
+  const proxy = jest.fn(async ({ path }: { path: string }) => {
+    await scenario.holdReads;
+    if (scenario.proxyDown) {
+      return { ok: false, status: 500, json: async () => ({}) } as Response;
+    }
+    const name = path.split('/').filter(Boolean).at(-1)!;
+    const terminating = scenario.beingRemoved?.includes(name);
+    const unsuspended = scenario.unsuspended?.includes(name);
+    const body = {
+      metadata: terminating
+        ? { deletionTimestamp: '2026-11-03T10:00:00Z' }
+        : {},
+      spec: unsuspended
+        ? { kubeConfig: { secretRef: { name: 'demo1-kubeconfig' } } }
+        : {},
+    };
+    return { ok: true, status: 200, json: async () => body } as Response;
+  });
+  return { proxy };
+}
 
 function answer(answers: Answer[], index: number): ClusterWriteResult {
   const next = answers[Math.min(index, answers.length - 1)];
@@ -221,7 +266,7 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.inGit) {
             throw new Error(IN_GIT);
           }
-          return DRY_RUN;
+          return scenario.opening ?? DRY_RUN;
         }
         return answer(checks, dryRuns - 2);
       }
@@ -239,11 +284,17 @@ async function renderDialog(
   musterApi = makeMusterApi(scenario),
 ) {
   const { api, callTool } = musterApi;
+  const kubernetesApi = makeKubernetesApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [kubernetesApiRef, kubernetesApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <DeleteClusterDialog
           isOpen
@@ -256,7 +307,7 @@ async function renderDialog(
       </QueryClientProvider>
     </TestApiProvider>,
   );
-  return { callTool };
+  return { callTool, proxy: kubernetesApi.proxy };
 }
 
 /** Types the name and presses Delete cluster, once the dry runs answered. */
@@ -269,6 +320,11 @@ async function deleteCluster(user: ReturnType<typeof userEvent.setup>) {
 const writesOf = (callTool: jest.Mock) =>
   callTool.mock.calls.filter(
     call => !(call[1] as Record<string, unknown>).dryRun,
+  );
+
+const dryRunsOf = (callTool: jest.Mock) =>
+  callTool.mock.calls.filter(
+    call => (call[1] as Record<string, unknown>).dryRun,
   );
 
 describe('DeleteClusterDialog', () => {
@@ -451,6 +507,258 @@ describe('DeleteClusterDialog', () => {
     expect(writesOf(callTool)).toHaveLength(2);
   });
 
+  describe('reopened mid-removal', () => {
+    it('shows what is being removed already, and a pass deleting it again as not removing it anew', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderDialog(
+        {
+          // An earlier opening's Finish removal deleted demo1-llm-d: it is
+          // suspended and terminating. demo1-observability is new.
+          opening: LEFTOVERS,
+          beingRemoved: ['demo1-llm-d'],
+          passes: [LEFTOVERS_REMOVED],
+          checks: [ORPHAN_GOING],
+        },
+        false,
+      );
+
+      const whatGoes = await screen.findByTestId('what-goes');
+      await waitFor(() =>
+        expect(whatGoes).toHaveTextContent(
+          'Still being removed: HelmRelease org-acme/demo1-llm-d.',
+        ),
+      );
+      expect(whatGoes).toHaveTextContent(
+        'HelmRelease org-acme/demo1-observability: would-delete',
+      );
+      expect(whatGoes).not.toHaveTextContent('demo1-llm-d: would-delete');
+      await deleteCluster(user);
+
+      const first = await screen.findByTestId('delete-pass');
+      expect(first).toHaveTextContent('Removed as you: 1 object');
+      expect(first).toHaveTextContent(
+        'Still being removed: HelmRelease org-acme/demo1-llm-d.',
+      );
+      expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Finish removal' }),
+      ).not.toBeInTheDocument();
+      expect(writesOf(callTool)).toHaveLength(1);
+    });
+
+    it('does not offer Finish removal for an object being removed that no pass of this opening deleted', async () => {
+      const user = userEvent.setup();
+      await renderDialog(
+        {
+          // Reopened while the Cluster was still going: Delete writes nothing.
+          opening: CLUSTER_GOING,
+          passes: [pass([], { nextStep: BEING_REMOVED })],
+          // Then the Cluster is gone, and a source the uninstall deleted is
+          // still terminating.
+          checks: [
+            dryRun([
+              {
+                ...object(
+                  'OCIRepository',
+                  'demo1-observability',
+                  'would-delete',
+                ),
+                apiVersion: 'source.toolkit.fluxcd.io/v1',
+              },
+            ]),
+          ],
+          beingRemoved: ['demo1-observability'],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(await screen.findByTestId('delete-pass')).toHaveTextContent(
+        'Nothing could be removed yet',
+      );
+      expect(
+        await screen.findByText(
+          '1 object is still being removed: OCIRepository org-acme/demo1-observability.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Finish removal' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('waits for the opening read when Delete is pressed before it answers', async () => {
+      let release!: () => void;
+      const user = userEvent.setup();
+      const { callTool } = await renderDialog(
+        {
+          opening: LEFTOVERS,
+          beingRemoved: ['demo1-llm-d'],
+          passes: [LEFTOVERS_REMOVED],
+          checks: [ORPHAN_GOING],
+          holdReads: new Promise(resolve => {
+            release = resolve;
+          }),
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      // The pass waits for what the person reads before it writes.
+      expect(screen.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+      expect(writesOf(callTool)).toHaveLength(0);
+      release();
+
+      const first = await screen.findByTestId('delete-pass');
+      expect(first).toHaveTextContent('Removed as you: 1 object');
+      expect(first).toHaveTextContent(
+        'Still being removed: HelmRelease org-acme/demo1-llm-d.',
+      );
+      expect(writesOf(callTool)).toHaveLength(1);
+    });
+
+    it('does not read again what it read as going, so a failed read cannot bring Finish removal back', async () => {
+      jest.useFakeTimers();
+      try {
+        const user = userEvent.setup({ delay: null });
+        const source = {
+          ...object('OCIRepository', 'demo1-observability', 'would-delete'),
+          apiVersion: 'source.toolkit.fluxcd.io/v1',
+        };
+        const { proxy } = await renderDialog(
+          {
+            opening: CLUSTER_GOING,
+            passes: [pass([], { nextStep: BEING_REMOVED })],
+            checks: [dryRun([source])],
+            beingRemoved: ['demo1-observability'],
+          },
+          false,
+        );
+        await deleteCluster(user);
+        expect(
+          await screen.findByText(
+            '1 object is still being removed: OCIRepository org-acme/demo1-observability.',
+          ),
+        ).toBeInTheDocument();
+        expect(proxy).toHaveBeenCalledTimes(1);
+        // From now on every read would fail.
+        proxy.mockRejectedValue(new Error('proxy down'));
+
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+
+        expect(proxy).toHaveBeenCalledTimes(1);
+        expect(
+          screen.queryByRole('button', { name: 'Finish removal' }),
+        ).not.toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('stops reading for the rest of the opening once a round of reads fails in the proxy', async () => {
+      jest.useFakeTimers();
+      try {
+        const user = userEvent.setup({ delay: null });
+        const { callTool, proxy } = await renderDialog(
+          {
+            opening: dryRun([
+              object('HelmRelease', 'demo1-observability', 'would-delete'),
+            ]),
+            // The pass deletes the release; the checks still list it while
+            // it goes, so each would read it again.
+            passes: [
+              pass([object('HelmRelease', 'demo1-observability', 'delete')]),
+            ],
+            checks: [
+              dryRun([
+                object('HelmRelease', 'demo1-observability', 'would-delete'),
+              ]),
+            ],
+            proxyDown: true,
+          },
+          false,
+        );
+        await deleteCluster(user);
+        expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
+        // The opening read failed: the pass went ahead without it.
+        expect(proxy).toHaveBeenCalledTimes(1);
+
+        const checksBefore = dryRunsOf(callTool).length;
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(REMOVAL_CHECK_INTERVAL_MS);
+        });
+
+        // The checks go on; the reads do not.
+        expect(dryRunsOf(callTool).length).toBe(checksBefore + 2);
+        expect(proxy).toHaveBeenCalledTimes(1);
+        expect(
+          screen.queryByRole('button', { name: 'Finish removal' }),
+        ).not.toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('offers Finish removal for a release a pass of this opening deleted when a pass would still suspend it', async () => {
+      const user = userEvent.setup();
+      await renderDialog(
+        {
+          // Delete removed the slice child while the cluster still stood;
+          // the cluster gone, it hangs unsuspended on helm-controller's
+          // finalizer.
+          passes: [pass([object('HelmRelease', 'demo1-llm-d', 'delete')])],
+          checks: [
+            dryRun([object('HelmRelease', 'demo1-llm-d', 'would-delete')]),
+          ],
+          beingRemoved: ['demo1-llm-d'],
+          unsuspended: ['demo1-llm-d'],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(
+        await screen.findByRole('button', { name: 'Finish removal' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('removal-next')).toHaveTextContent(
+        '1 object is left to remove now: HelmRelease org-acme/demo1-llm-d.',
+      );
+    });
+
+    it('still offers Finish removal for a terminating release into the gone cluster that a pass would suspend', async () => {
+      const user = userEvent.setup();
+      await renderDialog(
+        {
+          opening: CLUSTER_GOING,
+          passes: [pass([], { nextStep: BEING_REMOVED })],
+          checks: [
+            dryRun([object('HelmRelease', 'demo1-llm-d', 'would-delete')]),
+          ],
+          // Deleted with the serving slice while its install ran: terminating,
+          // held by helm-controller's finalizer, not suspended.
+          beingRemoved: ['demo1-llm-d'],
+          unsuspended: ['demo1-llm-d'],
+        },
+        false,
+      );
+      await deleteCluster(user);
+
+      expect(
+        await screen.findByRole('button', { name: 'Finish removal' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('removal-next')).toHaveTextContent(
+        '1 object is left to remove now: HelmRelease org-acme/demo1-llm-d.',
+      );
+    });
+  });
+
   it('commits the removal where git owns the cluster, then runs the live step after the merge', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderDialog({ inGit: true });
@@ -480,6 +788,62 @@ describe('DeleteClusterDialog', () => {
         'apply',
       ]),
     );
+  });
+
+  // The dry runs ask again once the sign-in lands; a deletion is never sent
+  // by itself.
+  it('asks the dry runs again once the sign-in lands, and deletes nothing by itself', async () => {
+    const user = userEvent.setup();
+    const signIn = { done: false };
+    const muster = makeMusterApi({});
+    const scripted = muster.callTool.getMockImplementation()!;
+    muster.callTool.mockImplementation(async (name, args) => {
+      if (!signIn.done) {
+        throw new Error('tool not found: x_cluster-manager_delete_cluster');
+      }
+      return scripted(name, args);
+    });
+    const { callTool } = await renderDialog({}, false, undefined, muster);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    signIn.done = true;
+    await signInLands(user);
+
+    expect(await screen.findByTestId('what-goes')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Connect to cluster-manager'),
+    ).not.toBeInTheDocument();
+    expect(writesOf(callTool)).toHaveLength(0);
+  });
+
+  it('clears a deletion refused for want of the sign-in once it lands, without deleting again', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog(
+      {
+        passes: [
+          () => new Error('tool not found: x_cluster-manager_delete_cluster'),
+        ],
+      },
+      false,
+    );
+    await deleteCluster(user);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands(user);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Connect to cluster-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(writesOf(callTool)).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Delete cluster' }),
+    ).toBeEnabled();
   });
 
   it('shows the refusal with its reason and checks again', async () => {

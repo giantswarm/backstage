@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   EmptyStateCard,
+  ExternalLink,
   SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -101,16 +102,15 @@ export function MissingReleaseFileAlert({
   const copy = COPY[action];
   const tint = variant === 'alert' ? classes.inherit : undefined;
 
+  // Inline, it takes the size of the sentence it sits in (the empty state's
+  // is larger) and wraps with it.
   const repository = (
-    <Link
+    <ExternalLink
       href={`https://github.com/${missing.repository}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      // The size of the sentence it sits in: the empty state's is larger.
-      variant={variant === 'page' ? 'body-large' : 'body-medium'}
+      display="inline"
     >
       <span className={classes.code}>{missing.repository}</span>
-    </Link>
+    </ExternalLink>
   );
   const explanation = (
     <>

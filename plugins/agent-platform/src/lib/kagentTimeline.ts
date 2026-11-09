@@ -21,6 +21,7 @@ import {
   readFunctionCall,
   readFunctionResponse,
   readKagentMetadataString,
+  readKagentTimelinePosition,
   readMessageText,
   readAttachment,
   readAttachmentPreview,
@@ -351,14 +352,8 @@ function readTurnEnding(
  * - **Nothing throws.** A malformed message is counted in `skippedMessages` and
  *   the rest of the timeline renders.
  *
- * **On timestamps:** every item takes its *task's* timestamp, because A2A
- * messages carry none of their own and there is no finer-grained source. The
- * session's stored events looked like one, but a real payload from an internal
- * installation showed each
- * event's `data` to be a serialized ADK event with no `messageId` — nothing to
- * join on — and its `invocation_id` only distinguishes turns, which the task
- * already does. So items within a turn deliberately share a time, and the UI
- * should present it per turn rather than implying per-message precision.
+ * Items use their recorded timeline position when present, falling back to
+ * the task timestamp on controllers that supply no per-entry position.
  *
  * @param tasks - kagent's tasks, already in chronological order (it returns them
  *   `ORDER BY created_at ASC`).
@@ -385,11 +380,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   let openApprovalIndex: number | undefined;
 
   tasks.forEach((task, taskIndex) => {
-    // Through `normalizeTimestamp` like every other kagent timestamp: these are
-    // non-pointer Go `time.Time`, so an unset one arrives as `0001-01-01T00:00:00Z`
-    // and renders as "Dec 31, 0000". It matters more here than anywhere else,
-    // because this is now the *only* timestamp source — it becomes `at` for every
-    // item in the task.
     const taskTimestamp = normalizeTimestamp(task.status?.timestamp);
     const status = readTurnStatus(task);
     const entries = historyWithPendingPrompt(task, status);
@@ -440,7 +430,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         seenMessageIds.add(message.messageId);
       }
 
-      const at = taskTimestamp;
+      const position = readKagentTimelinePosition(message.metadata);
+      const at =
+        position === undefined
+          ? taskTimestamp
+          : new Date(position).toISOString();
       const author = readKagentMetadataString(message.metadata, 'author');
       const isUser = message.role === 'user';
       const opensTurn =

@@ -18,6 +18,8 @@ describe('isAgentArea', () => {
     '/usage',
     '/usage/cost',
     '/profile',
+    '/organizations',
+    '/organizations/gazelle/org-acme/payments/models',
     '/customize',
     '/customize/connectors',
     '/customize/agents/gazelle/kagent/sre',

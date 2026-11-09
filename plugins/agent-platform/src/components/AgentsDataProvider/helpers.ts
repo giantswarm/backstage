@@ -38,7 +38,7 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
-import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
+import { CREATED_BY_ANNOTATION, ownerOf } from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -48,6 +48,10 @@ import {
   defaultToolchainsOf,
   type ToolchainPick,
 } from '../../lib/toolchainManager';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -264,8 +268,8 @@ export type AgentRow = {
    */
   isSessionPending?: boolean;
   /**
-   * The tenant the agent belongs to ({@link tenantOf} its namespace):
-   * `platform`, `organization <name>`, or `namespace <name>`.
+   * The tenant the agent belongs to, as its owner ({@link ownerOf} its
+   * namespace): `Platform`, the organization's name, or `namespace <name>`.
    */
   tenant?: string;
   /**
@@ -372,6 +376,8 @@ function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
  * toolset read off the agent's own carrier; without them it does not. With
  * `harnesses`, the installation's Harnesses, it carries its Harness's title.
+ * Its owner is named by `organizations`, which namespace is which
+ * organization as agent-manager answered it.
  */
 export function toAgentRow(
   agent: Agent,
@@ -379,6 +385,7 @@ export function toAgentRow(
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
   harnesses?: readonly Harness[],
+  organizations: OrganizationDirectory = EMPTY_ORGANIZATION_DIRECTORY,
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -440,7 +447,7 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
-    tenant: tenantOf(namespace),
+    tenant: ownerOf(namespace, organizations),
     ...(createdBy ? { createdBy } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),

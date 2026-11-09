@@ -1,3 +1,8 @@
+export {
+  connectorNamesQueryKey,
+  useConnectorLabel,
+  useConnectorLabels,
+} from './useConnectorLabels';
 export { useServerSignInStatus } from './useServerSignInStatus';
 export type {
   ExplainedStatusText,
@@ -8,6 +13,7 @@ export type {
 export { useConnectorListPaths } from './useConnectorListPaths';
 export {
   toolArgumentsQuery,
+  useToolArgumentSupport,
   useToolTakesArgument,
 } from './useToolTakesArgument';
 export type { ConnectorListPaths } from './useConnectorListPaths';

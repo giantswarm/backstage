@@ -8,6 +8,15 @@ export interface Config {
    * agent-manager's to report (`get_info`) and are not configured here.
    */
   agentPlatform?: {
+    organizations?: {
+      /**
+       * Enable Organizations for everyone in this portal. An explicit false
+       * disables the pages even with a saved browser opt-in. Unset uses the
+       * browser's agent-platform-organizations flag, off by default.
+       * @visibility frontend
+       */
+      enabled?: boolean;
+    };
     /** Model metadata the platform itself does not report. */
     models?: {
       /**

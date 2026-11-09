@@ -176,11 +176,20 @@ describe('SkillFiles', () => {
     expect(
       within(tree()).getByRole('link', { name: 'references/setup.md' }),
     ).toHaveAttribute('aria-current', 'page');
-    expect(
-      within(shown).getByRole('link', { name: /View on GitHub/ }),
-    ).toHaveAttribute(
+    // The external link: it says it opens a new tab, with no text arrow, at
+    // the size of the line beside it.
+    const onGitHub = within(shown).getByRole('link', {
+      name: 'View on GitHub (opens in a new tab)',
+    });
+    expect(onGitHub).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/blob/${COMMIT}/ticket-triage/references/setup.md`,
+    );
+    expect(onGitHub).toHaveAttribute('target', '_blank');
+    expect(onGitHub).not.toHaveTextContent('↗');
+    expect(onGitHub.closest('[data-variant]')).toHaveAttribute(
+      'data-variant',
+      'body-small',
     );
 
     // A relative link back resolves against the file's own folder.
@@ -259,14 +268,32 @@ describe('SkillFiles', () => {
     expect(
       within(shown).getByText(/binary file, so the portal does not show it/),
     ).toBeInTheDocument();
+    // One link, the button in the body, which says it opens a new tab; its
+    // arrow is not read out.
     const links = within(shown).getAllByRole('link', {
       name: /View on GitHub/,
     });
     expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAccessibleName(
+      'View on GitHub (opens in a new tab)',
+    );
+    expect(links[0]).toHaveAttribute('target', '_blank');
     expect(links[0]).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/blob/${COMMIT}/ticket-triage/images/flow.png`,
     );
+  });
+
+  it('offers no link to GitHub while a file is read, which may turn out binary', async () => {
+    await renderFiles({ at: `${PAGE}?file=images/flow.png` });
+
+    const shown = viewer('images/flow.png');
+    // Still being read: neither the header's link nor the body's button.
+    expect(mockUseSkillFile).toHaveBeenLastCalledWith(skill, 'images/flow.png');
+    expect(within(shown).queryByText(/binary file/)).not.toBeInTheDocument();
+    expect(
+      within(shown).queryByRole('link', { name: /View on GitHub/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('links an oversize file to GitHub, and says its size', async () => {

@@ -23,6 +23,12 @@ export type CreateAgentFailure = {
   kind: 'refused' | 'not-connected' | 'error';
   code?: AgentManagerError['code'];
   message: string;
+  /**
+   * A `not-connected` that is muster asking for the person's sign-in
+   * (`AgentManagerNotConnectedError.signInRequired`), not one a sign-in may
+   * not fix.
+   */
+  signInRequired?: boolean;
 };
 
 export type CreateAgentState = {
@@ -39,7 +45,11 @@ export type CreateAgentState = {
 export function classifyCreateFailure(error: unknown): CreateAgentFailure {
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof AgentManagerNotConnectedError) {
-    return { kind: 'not-connected', message };
+    return {
+      kind: 'not-connected',
+      message,
+      signInRequired: error.signInRequired,
+    };
   }
   if (error instanceof AgentManagerError) {
     return { kind: 'refused', code: error.code, message };

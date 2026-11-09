@@ -11,6 +11,15 @@ import {
 } from '../NewAgentFormProvider';
 import { EgressPolicyPicker } from './EgressPolicyPicker';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 const GITHUB: AgentManagerEgressPolicy = {
   name: 'github',
   namespace: 'org-otter',

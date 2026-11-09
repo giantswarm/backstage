@@ -46,9 +46,10 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
   },
 }));
 
-jest.mock('../FileView', () => ({
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   // The editor does not lay text out in jsdom; the document as plain text.
-  FileView: ({ filename, content }: { filename?: string; content: string }) => (
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid="code-block" data-filename={filename}>
       {content}
     </pre>
@@ -59,12 +60,20 @@ jest.mock('../ConnectAgentManagerAlert', () => ({
   ConnectAgentManagerAlert: ({
     server,
     message,
+    onSignedIn,
   }: {
     server: string;
     message: string;
+    onSignedIn?: () => void;
   }) => (
     <div>
       connect {server}: {message}
+      {/* What the alert's sign-in calls once it lands. */}
+      {onSignedIn && (
+        <button type="button" onClick={onSignedIn}>
+          Sign-in lands
+        </button>
+      )}
     </div>
   ),
 }));
@@ -437,6 +446,78 @@ describe('AddModelBackendPage', () => {
     expect(
       await screen.findByText(/connect model-manager: tool not found/),
     ).toBeInTheDocument();
+  });
+
+  // A Review is a dry run: once the sign-in lands the refusal is cleared and
+  // it asks again. A Deploy is the person's to press again.
+  it('clears the connect step and asks the review again once the sign-in lands', async () => {
+    write.dryRunAdd.mockResolvedValue(review);
+    write.dryRunAdd.mockImplementationOnce(async () => {
+      write.failure = {
+        kind: 'not-connected',
+        message: 'tool not found: x_model-manager_add_backend',
+      };
+      throw new Error(write.failure.message);
+    });
+    write.reset.mockImplementation(() => {
+      write.failure = undefined;
+    });
+    renderPage();
+    await pickKind('Ollama');
+    await userEvent.type(
+      screen.getByLabelText(/^Endpoint/),
+      'http://ollama.lab:11434',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByText(/connect model-manager: tool not found/);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Sign-in lands' }),
+    );
+
+    expect(write.reset).toHaveBeenCalled();
+    await waitFor(() => expect(write.dryRunAdd).toHaveBeenCalledTimes(2));
+    expect(write.add).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/connect model-manager: tool not found/),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('clears a refused Deploy once the sign-in lands, without deploying again', async () => {
+    write.dryRunAdd.mockResolvedValue(review);
+    write.add.mockImplementationOnce(async () => {
+      write.failure = {
+        kind: 'not-connected',
+        message: 'tool not found: x_model-manager_add_backend',
+      };
+      throw new Error(write.failure.message);
+    });
+    write.reset.mockImplementation(() => {
+      write.failure = undefined;
+    });
+    renderPage();
+    await pickKind('Ollama');
+    await userEvent.type(
+      screen.getByLabelText(/^Endpoint/),
+      'http://ollama.lab:11434',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Deploy' }),
+    );
+    await screen.findByText(/connect model-manager: tool not found/);
+    const reviews = write.dryRunAdd.mock.calls.length;
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Sign-in lands' }),
+    );
+
+    expect(write.reset).toHaveBeenCalled();
+    expect(write.add).toHaveBeenCalledTimes(1);
+    // The review stands: nothing to ask again.
+    expect(write.dryRunAdd).toHaveBeenCalledTimes(reviews);
   });
 });
 

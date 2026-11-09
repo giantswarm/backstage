@@ -217,8 +217,43 @@ When a Sentry issue needs a code change you won't make inline, file a tracking i
 1. **Link the Sentry issue.** Put at least one Sentry issue URL in the body so the GitHub issue is traceable back to its source. When one root cause spans several projects, link a representative issue (or all affected ones).
 2. **Set the `ui/backstage` label** — always — alongside the owning team label (e.g. `team/bumblebee`). This is what marks it as Backstage work and routes it.
 3. **No pseudo-labels in the title.** Don't prefix the title with `[backstage]` or similar bracketed tags — that's the `ui/backstage` label's job. Use a plain, descriptive title.
+4. **Assess the impact on users.** Give the body an **Impact** section built from data — see "Assessing user impact" below.
 
 Keep the body customer-agnostic where possible (file paths, root cause, fix options) rather than naming customers — `giantswarm/giantswarm` issues are widely visible.
+
+### Assessing user impact
+
+The Impact section lets whoever picks the issue up rank it without redoing the research. Answer:
+
+- **Who** — which deployments. The project prefix tells you: `devportal` means Giant Swarm staff only, `backstage-<customer>` means a customer.
+- **How often** — events *and* people, over a stated time window.
+- **What a person loses** — the symptom, in the UI's own words.
+- **Side effects nobody sees** — data not written, runs not recorded, retries.
+- **Severity** — one line, e.g. "low for people, mostly Sentry noise".
+
+Say what you checked and its limits: the window, which installations, whether a number is a lower bound.
+
+**Sentry**
+
+- **"Users Impacted" is always 0 on `-backend` projects** — backend events carry no user. Count people with TelemetryDeck instead.
+- **One Sentry issue can hold several causes.** Sentry groups an exception by its stack trace, so, for example, every `MusterToolError` the muster backend turns into a 500 lands in the same issue whatever its message. Size only your cause — `search_issue_events` with a message filter — not the issue's total.
+- **Count page loads, not events.** A page that sends one request per row reports several events with the same timestamp per load; distinct timestamps are page loads.
+- **`search_issue_events` returns at most 100 events.** If you get exactly 100, query again for events older than the oldest one, to know whether you saw the whole window.
+
+**TelemetryDeck** (the `mcp__telemetrydeck__*` tools; one app per Backstage deployment)
+
+- **Page views carry the route template, not the URL**, in `path` — e.g. `/customize/workflows/:installation/:name`. Find the affected page's template in `getTelemetryPageViewPayload` (`packages/app/src/utils/telemetry.ts`) and filter on it.
+- **So you can count visits to a page, never to one entity** (which workflow, which cluster). Say so rather than guess.
+- **A query that works:** `topN` on `path`, filtered on `type` = `pageview`, `isTestMode` = `false` and a `regex` on `path`, aggregating `eventCount` and `userCount`.
+- **Compare page views with Sentry's page loads** to say what share of visits hits the error.
+
+**Mimir** (backend side effects)
+
+- **Query through Muster's `x_prometheus_execute_query`**, with `management_cluster: <mc>-mcp-prometheus` and `org_id: giantswarm`. The repo's `mimir-metrics` skill is about registering the metrics the app queries, not about ad-hoc queries.
+- **Look for the failing service's own failure counters.** Find the name in its code; an OpenTelemetry counter `a.b_c` appears as `a_b_c_total`.
+- **Rare events need `last_over_time`.** An instant query finds nothing once the series has gone stale, and `increase(…[30d])` misses the first increment of a counter that appears already at 1. `sum(last_over_time(metric[30d]))` over the pods works.
+- **Counters reset when a pod restarts**, so that sum is a lower bound — say so.
+- **When it first happened:** `min_over_time(timestamp(metric)[30d:10m])`.
 
 ---
 

@@ -14,8 +14,12 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Model Manager tools are accessed through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
-import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  AGENT_SHELL_ON,
+  ORGANIZATIONS_FLAG,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   KagentApiClient,
@@ -68,6 +72,9 @@ import {
   newToolchainRouteRef,
   toolchainDetailRouteRef,
   newWorkspaceRouteRef,
+  organizationCredentialsRouteRef,
+  organizationDetailRouteRef,
+  organizationsRouteRef,
 } from './routes';
 
 /**
@@ -297,6 +304,30 @@ const profilePage = PageBlueprint.make({
   },
 });
 
+const organizationsPage = PageBlueprint.make({
+  name: 'organizations',
+  if: {
+    $all: [AGENT_SHELL_ON, { featureFlags: { $contains: ORGANIZATIONS_FLAG } }],
+  },
+  params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the organizations page's route definition
+    path: '/organizations',
+    routeRef: organizationsRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const [{ OrganizationsRouter }, { ShellPageRoot }] = await Promise.all([
+        import('./components/OrganizationsRouter'),
+        import('./components/ShellPageRoot'),
+      ]);
+      return (
+        <ShellPageRoot title="Organizations">
+          <OrganizationsRouter />
+        </ShellPageRoot>
+      );
+    },
+  },
+});
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -441,10 +472,18 @@ const workflowEditAssist = createExtension({
 
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
+  featureFlags: [
+    {
+      name: ORGANIZATIONS_FLAG,
+      description:
+        'Enable the experimental Organizations pages on supported installations (takes effect after a reload)',
+    },
+  ],
   extensions: [
     sessionsPage,
     usagePage,
     profilePage,
+    organizationsPage,
     agentsSubPage,
     skillsSubPage,
     modelsSubPage,
@@ -471,6 +510,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     skills: skillsRouteRef,
     newSkill: newSkillRouteRef,
     profile: profileRouteRef,
+    organizations: organizationsRouteRef,
+    organizationDetail: organizationDetailRouteRef,
+    organizationCredentials: organizationCredentialsRouteRef,
     usage: usageRouteRef,
     usageCost: usageCostRouteRef,
     usageConversations: usageConversationsRouteRef,

@@ -14,6 +14,7 @@ import {
   SHELL_SESSION_STATE_FILTERS,
 } from './filters';
 import { withSessionStates } from './helpers';
+import { organizationDirectory } from '../../lib/organizations';
 
 function row(
   id: string,
@@ -282,23 +283,34 @@ describe('the shell list’s dropdown filters (T92)', () => {
   });
 
   it('names a session’s organization as the Agents tab does', () => {
+    // As agent-manager's `list_my_organizations` names the namespace.
+    const directory = organizationDirectory([
+      {
+        namespace: 'agents-acme-x7k2q',
+        organization: 'acme',
+        parent: 'org-acme',
+      },
+    ]);
     const fleet = withSessionStates(
       [
-        row('a', 'Issue tracker', { namespace: 'org-acme', name: 'tracker' }),
+        row('a', 'Issue tracker', {
+          namespace: 'agents-acme-x7k2q',
+          name: 'tracker',
+        }),
         row('b', 'SRE Agent', { namespace: 'kagent', name: 'sre-agent' }),
-        row('c', 'Helper', { namespace: 'org-acme', name: 'helper' }),
+        row('c', 'Helper', { namespace: 'agents-acme-x7k2q', name: 'helper' }),
         row('d', 'Unmatched'),
       ],
       undefined,
     );
-    expect(fleet.map(sessionOrganization)).toEqual([
+    expect(fleet.map(r => sessionOrganization(r, directory))).toEqual([
       'acme',
       'None',
       'acme',
       undefined,
     ]);
-    expect(ids(filterSessionsBySelection(fleet, { tenant: ['acme'] }))).toEqual(
-      ['a', 'c'],
-    );
+    expect(
+      ids(filterSessionsBySelection(fleet, { tenant: ['acme'] }, directory)),
+    ).toEqual(['a', 'c']);
   });
 });

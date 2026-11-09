@@ -66,7 +66,7 @@ function namespaces(
     async ({ namespace }: { namespace: string }) => {
       switch (rbac[namespace] ?? 'forbidden') {
         case 'read':
-          return [modelConfigJson('default-model-config', namespace)];
+          return [modelConfigJson('anthropic-main', namespace)];
         case 'empty':
           return [];
         case 'broken':
@@ -157,7 +157,7 @@ describe('useNamespacedResources', () => {
     expect(result.current.clustersData).toEqual([
       {
         cluster: 'gazelle',
-        data: [modelConfigJson('default-model-config', 'kagent')],
+        data: [modelConfigJson('anthropic-main', 'kagent')],
       },
     ]);
     expect(listedNamespaces()).toEqual(['kagent', 'team-a']);
@@ -208,7 +208,7 @@ describe('useNamespacedResources', () => {
     mockFetchResourceList.mockImplementation(
       ({ namespace }: { namespace: string }) =>
         namespace === 'kagent'
-          ? Promise.resolve([modelConfigJson('default-model-config', 'kagent')])
+          ? Promise.resolve([modelConfigJson('anthropic-main', 'kagent')])
           : new Promise(resolve => {
               answerTeamA = resolve;
             }),

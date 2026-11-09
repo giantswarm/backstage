@@ -120,6 +120,16 @@ jest.mock('../SessionsDataProvider', () => ({
 jest.mock('../../hooks/useReachCatalogue', () => ({
   useReachCatalogue: () => undefined,
 }));
+// Connector names from the MCPServer CRs: none here.
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: [],
+    resources: [],
+    labels: new Map(),
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
 
 const mockUseCreateSession = jest.fn();
 jest.mock('../../hooks/useCreateSession', () => ({
@@ -282,6 +292,12 @@ function render({
           identityApiRef,
           mockApis.identity.mock({
             getProfileInfo: async () => ({ displayName }),
+            // Whose the composer's draft is.
+            getBackstageIdentity: async () => ({
+              type: 'user',
+              userEntityRef: 'user:default/jane',
+              ownershipEntityRefs: ['user:default/jane'],
+            }),
           }),
         ],
         [storageApiRef, storage],
@@ -305,6 +321,7 @@ const agentPicker = () =>
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 9, 8, 15, 0), advanceTimers: true });
   window.localStorage.clear();
+  window.sessionStorage.clear();
   mockNavigate.mockClear();
   mockUseAgents.mockClear();
   mockUseCreateSession.mockReset();
@@ -780,6 +797,34 @@ describe('AgentPlatformHome', () => {
         screen.getByText('Choose an agent, then say what you need.'),
       ).toBeInTheDocument();
       expect(screen.getByText('Required to start')).toBeInTheDocument();
+    });
+
+    // giantswarm/giantswarm#39043: a sign-in from the inbox, a reload or a
+    // link followed in the tab must not cost the person their prompt.
+    it('keeps the unsent prompt and the chosen agent when the page is opened again', async () => {
+      const first = await render();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Research Agent' }),
+      );
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Prompt' }),
+        'Compare the two runbooks',
+      );
+      await waitFor(() =>
+        expect(Object.keys(window.sessionStorage)).toHaveLength(1),
+      );
+      first.unmount();
+
+      await render();
+
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveValue(
+          'Compare the two runbooks',
+        ),
+      );
+      expect(
+        screen.getByText("You're starting a session with Research Agent."),
+      ).toBeInTheDocument();
     });
 
     it('names the chosen agent and what it can use, without its model', async () => {

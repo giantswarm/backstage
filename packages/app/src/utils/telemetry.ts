@@ -2,6 +2,7 @@ import sha256 from 'crypto-js/sha256';
 import {
   AGENT_PAGE_TABS,
   MODEL_PAGE_TABS,
+  ORGANIZATION_PAGE_TABS,
   WORKSPACE_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import {
@@ -42,6 +43,14 @@ function toolTabs(server: string): ReadonlySet<string> {
  */
 const WORKSPACE_TABS: ReadonlySet<string> = new Set(
   WORKSPACE_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
+
+/**
+ * An organization page's tabs below its own address (Members, the index,
+ * left out), a fixed set too.
+ */
+const ORGANIZATION_TABS: ReadonlySet<string> = new Set(
+  ORGANIZATION_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
 /**
@@ -766,6 +775,39 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       route = tabRoute('/usage', view, USAGE_PATHS);
       break;
     }
+
+    // The shell's Organizations: the list of the person's organizations (the
+    // bare path) and one organization's page
+    // (`/organizations/<installation>/<parent>/<name>`), whose segments name
+    // an organization and stay out of every attribute; its tab goes in
+    // `view`, a closed set, Members, the index, carrying none. Any other
+    // address only redirects to the list.
+    case pathname === '/organizations':
+      payload = { page: 'Organizations' };
+      route = '/organizations';
+      break;
+
+    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
+      const tab = segments.slice(4).join('/');
+      payload =
+        tab === ''
+          ? { page: 'Organization detail' }
+          : {
+              page: 'Organization detail',
+              view: ORGANIZATION_TABS.has(tab) ? tab : 'redirect',
+            };
+      route = tabRoute(
+        '/organizations/:installation/:parent/:name',
+        tab,
+        ORGANIZATION_TABS,
+      );
+      break;
+    }
+
+    case pathname.startsWith('/organizations/'):
+      payload = { page: 'Organizations redirect' };
+      route = '/organizations/*';
+      break;
 
     // The shell's minimal "Profile and settings" page: who is signed in, with
     // sign out — the rail's profile menu links here instead of the classic

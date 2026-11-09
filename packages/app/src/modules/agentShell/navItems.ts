@@ -3,6 +3,7 @@ import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import BarChartIcon from '@material-ui/icons/BarChart';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
+import GroupIcon from '@material-ui/icons/Group';
 import LaunchIcon from '@material-ui/icons/Launch';
 import SettingsIcon from '@material-ui/icons/Settings';
 import TuneIcon from '@material-ui/icons/Tune';
@@ -12,7 +13,7 @@ type AgentShellNavItemBase = {
   id: string;
   title: string;
   icon: IconComponent;
-  position: 'top' | 'bottom';
+  position: 'top' | 'bottom' | 'profileMenu';
   /** The label under the icon in the phone's bottom bar, when shorter. */
   barTitle?: string;
   /**
@@ -74,6 +75,15 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     position: 'top',
     // The least-used destination on a phone (T22 D1).
     phone: 'profileMenu',
+  },
+  {
+    // The Agent Platform organizations the person belongs to, and each
+    // one's members, models, connectors and egress.
+    id: 'organizations',
+    title: 'Organizations',
+    icon: GroupIcon,
+    routeRef: agentPlatformPlugin.routes.organizations,
+    position: 'profileMenu',
   },
   {
     // The way back into the classic portal, whose own routes render classic

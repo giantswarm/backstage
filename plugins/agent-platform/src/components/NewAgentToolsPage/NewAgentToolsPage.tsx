@@ -23,7 +23,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
-import { useMusterServers } from '../../hooks/useMusterServers';
+import {
+  connectorsForTenant,
+  useMusterServers,
+} from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -227,8 +230,15 @@ export function NewAgentToolsPage() {
   const musterApi = useMusterPluginApi();
   const presets = useToolsetPresets(installation);
   const catalogue = useMusterToolCatalogue(installation);
-  const { servers, isLoading: isLoadingServers } =
+  const { servers: installationServers, isLoading: isLoadingServers } =
     useMusterServers(installation);
+  // The connectors follow the agent's organization: another one's servers
+  // are not offered. Editing, the agent's own namespace.
+  const tenant = edit ? edit.agent.namespace : state.tenant;
+  const { servers, tools: catalogueTools } = useMemo(
+    () => connectorsForTenant(installationServers, catalogue.tools, tenant),
+    [installationServers, catalogue.tools, tenant],
+  );
   // A connector muster signs in to per session or per person needs muster's
   // sign-in tool in the toolset, or the agent cannot start that sign-in
   // (giantswarm/giantswarm#38774): the step adds it, and what is resolved
@@ -267,8 +277,8 @@ export function NewAgentToolsPage() {
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
   const groups = useMemo(
     () =>
-      buildCatalogue(catalogue.tools, servers, catalogue.serversRequiringAuth),
-    [catalogue.tools, servers, catalogue.serversRequiringAuth],
+      buildCatalogue(catalogueTools, servers, catalogue.serversRequiringAuth),
+    [catalogueTools, servers, catalogue.serversRequiringAuth],
   );
   const connectors = useMemo(() => connectorsOf(groups), [groups]);
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);

@@ -6,11 +6,19 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 import type {
   AgentManagerAgent,
   AgentSkillEntry,
@@ -353,6 +361,46 @@ describe('AgentUpdateSkillsDialog', () => {
     );
   });
 
+  // The write's refusal for want of the sign-in used to hide the dialog's
+  // error and show no alert. Signed in, it is cleared; the person confirms
+  // again.
+  it('asks for the sign-in when the update is refused for want of it, and clears it once it lands', async () => {
+    const { callTool } = await renderDialog({
+      updateError: new MusterUnauthorizedError(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+      ),
+    });
+    await screen.findByTestId('skill-refresh-pr-review');
+    const confirm = screen.getByRole('button', { name: 'Update all skills' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await userEvent.click(confirm);
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Update all skills' }),
+    ).toBeEnabled();
+    // Not sent again by itself.
+    expect(
+      callTool.mock.calls.filter(
+        ([tool, args]) =>
+          tool === 'x_agent-manager_update_agent' && !args.dryRun,
+      ),
+    ).toHaveLength(1);
+    expect(onUpdated).not.toHaveBeenCalled();
+  });
+
   describe('for an agent applied from git (commit mode)', () => {
     it('asks the dry run in commit mode, lists old → new commits and says it is a pull request', async () => {
       const { callTool } = await renderDialog({ commit: true });
@@ -478,7 +526,7 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(screen.getByText(MISSING_PATH)).toBeVisible();
       expect(
         screen.getByRole('link', {
-          name: 'giantswarm/giantswarm-management-clusters',
+          name: 'giantswarm/giantswarm-management-clusters (opens in a new tab)',
         }),
       ).toHaveAttribute(
         'href',

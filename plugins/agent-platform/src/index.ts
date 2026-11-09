@@ -1,6 +1,7 @@
 export { agentPlatformPlugin as default } from './plugin';
 export { agentPlatformPlugin } from './plugin';
 export { AgentPlatformProviders } from './components/AgentPlatformProviders';
+export { useOrganizationsAvailable } from './components/OrganizationDirectoryProvider';
 export { AgentTagSource, SkillTagSource } from './components/TagSources';
 export { RecentSessions } from './components/RecentSessions';
 export type { RecentSessionsProps } from './components/RecentSessions';
@@ -70,6 +71,7 @@ export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPane
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { MODEL_PAGE_TABS } from './components/ModelDetailPage';
 export { WORKSPACE_PAGE_TABS } from './components/WorkspaceDetailPage';
+export { ORGANIZATION_PAGE_TABS } from './components/OrganizationPage';
 export { AGENT_PAGE_TABS } from './components/AgentDetailPage';
 export { parseSkillDetailPath } from './lib/skills';
 export {

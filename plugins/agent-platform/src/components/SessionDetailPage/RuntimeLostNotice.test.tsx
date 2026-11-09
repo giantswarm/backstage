@@ -64,7 +64,7 @@ describe('RuntimeLostNotice', () => {
       ),
     ).toBeInTheDocument();
     // No words from the runtime, and no second count of the attempts.
-    expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Platform details:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/times in a row/)).not.toBeInTheDocument();
 
     await userEvent.click(continueButton()!);
@@ -93,10 +93,10 @@ describe('RuntimeLostNotice', () => {
       />,
     );
 
-    const cause = screen.getByText(/kagent reported:/);
+    const cause = screen.getByText(/Platform details:/);
     expect(cause).toHaveTextContent(ATENET);
     // The raw text sits in its own line under the explanation.
-    expect(cause.textContent).toBe(`kagent reported: ${ATENET}`);
+    expect(cause.textContent).toBe(`Platform details: ${ATENET}`);
   });
 
   it('counts repeated attempts', () => {
@@ -129,7 +129,7 @@ describe('RuntimeLostNotice', () => {
       screen.getByText('This session cannot continue'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/kagent marked this session’s runtime as lost/),
+      screen.getByText(/The platform marked this session’s runtime as lost/),
     ).toBeInTheDocument();
     // No retry on offer: a send fails the same way every time.
     expect(screen.queryByText(/send again/)).not.toBeInTheDocument();
@@ -200,7 +200,7 @@ describe('RuntimeLostNotice', () => {
       ),
     ).toBeInTheDocument();
     expect(continueButton()).not.toBeInTheDocument();
-    expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Platform details:/)).not.toBeInTheDocument();
   });
 
   it('names why no new session can start from this portal', () => {

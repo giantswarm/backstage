@@ -12,8 +12,10 @@ import {
 import {
   type BreadcrumbItem,
   EmptyStateCard,
+  ExternalLink,
   type Fact,
   FactList,
+  FileView,
   getRelativeDate,
   PageSection,
   ShellPage,
@@ -35,7 +37,6 @@ import {
   type ToolchainTool,
 } from '../../lib/toolchainManager';
 import { toolchainsRouteRef } from '../../routes';
-import { FileView } from '../FileView';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
@@ -139,9 +140,9 @@ function Described({
     {
       label: 'Source',
       value: sourceURL ? (
-        <Link href={sourceURL} target="_blank" rel="noopener">
+        <ExternalLink href={sourceURL} display="inline">
           {toolchain.repository}
-        </Link>
+        </ExternalLink>
       ) : (
         toolchain.repository
       ),

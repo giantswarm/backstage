@@ -19,6 +19,15 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
@@ -596,7 +605,7 @@ describe('SessionsTable in the shell layout', () => {
 
     await openNotifications('Release notes');
     expect(
-      screen.getByRole('menuitemradio', { name: 'Default' }),
+      screen.getByRole('menuitemradio', { name: 'When action is required' }),
     ).toHaveAttribute('aria-checked', 'true');
     await user.click(screen.getByRole('menuitemradio', { name: 'Muted' }));
 
@@ -624,7 +633,7 @@ describe('SessionsTable in the shell layout', () => {
     // Each row has its own level.
     await openNotifications('Triage this week');
     expect(
-      screen.getByRole('menuitemradio', { name: 'Default' }),
+      screen.getByRole('menuitemradio', { name: 'When action is required' }),
     ).toHaveAttribute('aria-checked', 'true');
   });
 

@@ -132,7 +132,7 @@ export const portalEvents = defineEvents({
   },
   'AgentPlatform.sessionNotificationLevelChanged': {
     description:
-      "A session's notification level was set: default, all activity or muted.",
+      "A session's notification level was set: `default`, `all` or `muted`.",
     attributes: { level: ['default', 'all', 'muted'] },
   },
   'AgentPlatform.notificationOpened': {
@@ -179,6 +179,24 @@ export const portalEvents = defineEvents({
   'AgentPlatform.modelDeleted': {
     description:
       "A model (a kagent ModelConfig) was deleted in the Agent Platform, on its page. The models a model backend's removal takes along are not counted.",
+    attributes: {},
+  },
+  'AgentPlatform.organizationMemberAdded': {
+    description:
+      "A group or a person was added to an Agent Platform organization with a role, on the organization's page, as the signed-in person.",
+    attributes: {
+      kind: ['group', 'person'],
+      role: ['admin', 'editor', 'user'],
+    },
+  },
+  'AgentPlatform.organizationMemberRemoved': {
+    description:
+      "A group or a person was removed from an Agent Platform organization's roles, on the organization's page, as the signed-in person.",
+    attributes: { kind: ['group', 'person'] },
+  },
+  'AgentPlatform.defaultModelSet': {
+    description:
+      "A model (a kagent ModelConfig) was made its namespace's default in the Agent Platform, on its page, as the signed-in person. A model the model form marks as it is created is not counted.",
     attributes: {},
   },
   'AgentPlatform.clusterCreated': {

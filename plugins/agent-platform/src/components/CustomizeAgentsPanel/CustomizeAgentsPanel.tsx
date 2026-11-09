@@ -29,7 +29,14 @@ import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
-import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
+import { useWarmNewAgentForm } from '../../hooks/useWarmNewAgentForm';
+import {
+  ACCESS_GRANT_HINT,
+  ownerOf,
+  OWNER_LABEL,
+  tenantKindOf,
+} from '../../lib/tenants';
+import type { OrganizationDirectory } from '../../lib/organizations';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
@@ -51,6 +58,7 @@ import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Twice the rendered 32px (bui's medium avatar), for sharp 2x displays. */
 const ROW_AVATAR_SIZE: AvatarSize = 96;
@@ -176,29 +184,29 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
-  // Where the rows name organizations: room for one beside the name, or the
+  // Where the rows name owners: room for one beside the name, or the
   // facts move under the name rather than squeeze them. A list without them
   // keeps its rows on one line down to the narrower 220px.
-  mainWithOrganization: {
+  mainWithOwner: {
     flexBasis: 320,
   },
-  // The name, its organization and its state on one baseline, as the facts.
+  // The name, its owner and its state on one baseline, as the facts.
   nameLine: {
     display: 'flex',
     alignItems: 'baseline',
     columnGap: 'var(--bui-space-2)',
     rowGap: 2,
     minWidth: 0,
-    // A phone's name takes two lines: its organization goes under it.
+    // A phone's name takes two lines: its owner goes under it.
     [PHONE_MEDIA]: {
       flexWrap: 'wrap',
     },
   },
   // Whose agent it is, beside its name: never more than half the line, so a
-  // long name and a long organization each keep some of it, and never
+  // long name and a long owner each keep some of it, and never
   // squeezed out by the name.
   // On a phone it shrinks to its line and wraps there instead.
-  organization: {
+  owner: {
     flex: 'none',
     maxWidth: '50%',
     [PHONE_MEDIA]: {
@@ -256,14 +264,14 @@ export type CustomizeAgentsPanelProps = {
 };
 
 /**
- * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
+ * The Agents tab's facets (T49): the agent's owner (its tenant), the model it
  * runs on, its Harness, who created it, the person's favorites and its tags,
  * last as on every catalog tab. The environment is not one of them: the
  * page's Environment select already scopes the tab to one installation, and
  * shows only where there is more than one — a second control for the same
  * thing would be two answers to one question.
  *
- * The bar draws a facet only when it can narrow the list (one organization,
+ * The bar draws a facet only when it can narrow the list (one owner,
  * model or Harness among the agents that have one is no choice:
  * `catalogFilterDimensions`); an agent without a Harness is one not read yet,
  * not a second choice.
@@ -279,7 +287,7 @@ export function agentFacets(
   { isMine }: { isMine?: (row: AgentRow) => boolean } = {},
 ): CatalogFacet<AgentRow>[] {
   return [
-    { id: 'tenant', label: 'Organization', value: row => row.tenant },
+    { id: 'tenant', label: OWNER_LABEL, value: row => row.tenant },
     { id: 'model', label: 'Model', value: row => row.model || undefined },
     {
       id: 'harness',
@@ -320,30 +328,32 @@ type AgentFact = {
 };
 
 /**
- * A row's organization, beside its name, where the list's agents belong to
- * more than one tenant, in the words of the Organization filter's options
- * (`tenantOf`). A row has no labels, so an organization reads
- * "Organization: acme", as the agent's page has it, and is not taken for the
- * environment among the facts.
- * An agent of the platform belongs to no organization and has no text there:
- * a "None" without its label says nothing (its page says "None", and what
- * that means). Another namespace already says what it is
+ * A row's owner, beside its name, where the list's agents belong to more
+ * than one tenant, in the words of the Owner filter's options (`ownerOf`). A
+ * row has no labels, so an organization reads "Owner: acme", as the agent's
+ * page has it, and is not taken for the environment among the facts.
+ * An agent of the platform, the usual owner, has no text there: the rows
+ * that name one stand out as an organization's (its page says "Platform",
+ * and what that means). Another namespace already says what it is
  * (`namespace sre-team`).
  */
-function organizationText(namespace: string): string {
-  const kind = tenantKindOf(namespace);
+function ownerText(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string {
+  const kind = tenantKindOf(namespace, directory);
   if (kind === 'platform') {
     return '';
   }
   return kind === 'organization'
-    ? `Organization: ${tenantOf(namespace)}`
-    : tenantOf(namespace);
+    ? `${OWNER_LABEL}: ${ownerOf(namespace, directory)}`
+    : ownerOf(namespace, directory);
 }
 
 /**
- * One agent as the prototype's list row: avatar, name — with its organization
+ * One agent as the prototype's list row: avatar, name — with its owner
  * and, only when it is not Ready, its state — and what it is for, then its
- * tags, its Harness and its environment, the organization, Harness and
+ * tags, its Harness and its environment, the owner, Harness and
  * environment when the list has more than one of each. The model, skills and
  * connectors are technical detail, on the agent's own page.
  */
@@ -370,31 +380,32 @@ function AgentListItem({
   isFavorite: boolean;
   onToggleFavorite: () => void;
 }) {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const organization = showTenant ? organizationText(row.namespace) : '';
-  const organizationId = useId();
+  const owner = showTenant ? ownerText(row.namespace, directory) : '';
+  const ownerId = useId();
   const tagsId = useId();
-  // The name's tooltip, with the organization beside it on a line of its own:
+  // The name's tooltip, with the owner beside it on a line of its own:
   // the name link's hit area covers the row, so the row shows this tooltip
-  // wherever it is pointed at, the organization's text included, and either
+  // wherever it is pointed at, the owner's text included, and either
   // can be read in full however it is cut. A phone has no hover.
   const nameTitle = isPhone
     ? undefined
     : [
         row.name,
-        organization,
+        owner,
         row.tags.length > 0 ? `Tags: ${row.tags.join(', ')}` : '',
       ]
         .filter(Boolean)
         .join('\n');
-  // The link names the agent; its organization and tags describe it.
+  // The link names the agent; its owner and tags describe it.
   const describedBy =
-    [organization && organizationId, row.tags.length > 0 && tagsId]
+    [owner && ownerId, row.tags.length > 0 && tagsId]
       .filter(Boolean)
       .join(' ') || undefined;
   const facts: AgentFact[] = [
@@ -427,7 +438,7 @@ function AgentListItem({
         <div
           className={
             showTenant
-              ? `${classes.main} ${classes.mainWithOrganization}`
+              ? `${classes.main} ${classes.mainWithOwner}`
               : classes.main
           }
         >
@@ -469,16 +480,16 @@ function AgentListItem({
                 every row keeps the same fact columns, and a platform agent's
                 row has nothing here. Its tooltip is the name's (above): a
                 title of its own would sit under the link's hit area. */}
-            {organization && (
+            {owner && (
               <Text
                 as="span"
-                id={organizationId}
+                id={ownerId}
                 variant="body-small"
                 color="secondary"
                 truncate={truncate}
-                className={classes.organization}
+                className={classes.owner}
               >
-                {organization}
+                {owner}
               </Text>
             )}
             {/* The state shows only when it needs a look, as in the
@@ -624,6 +635,9 @@ function AgentGroup({
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
+  // The New agent form’s reads, started from here so its Owner field
+  // does not arrive a moment after the form opens.
+  useWarmNewAgentForm();
   const {
     rows,
     installations,

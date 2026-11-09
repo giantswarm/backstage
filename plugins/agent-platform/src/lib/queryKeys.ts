@@ -312,6 +312,60 @@ export function musterAgentManagerEgressPoliciesQueryKey(
   ] as const;
 }
 
+/** `list_my_organizations` on one installation: the person's organizations. */
+export function musterMyOrganizationsQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-my-organizations',
+    installation,
+  ] as const;
+}
+
+/** `get_organization` of one organization. */
+export function musterOrganizationQueryKey(
+  installation: string,
+  parent: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-organization',
+    installation,
+    parent,
+    name,
+  ] as const;
+}
+
+/** `list_organization_members` of one organization namespace. */
+export function musterOrganizationMembersQueryKey(
+  installation: string,
+  namespace: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-organization-members',
+    installation,
+    namespace,
+  ] as const;
+}
+
+/** `list_organization_connectors` of one organization namespace. */
+export function musterOrganizationConnectorsQueryKey(
+  installation: string,
+  namespace: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-organization-connectors',
+    installation,
+    namespace,
+  ] as const;
+}
+
 export function musterValidateAgentUpdateQueryKey(
   installation: string,
   updateSignature: string,

@@ -18,8 +18,15 @@ import {
   takesArgument,
   tagsArgument,
   mcpServerDetailsProblems,
+  clientBindingChanged,
+  clientCredentialsArgument,
+  clientCredentialsProblems,
+  hasStoredClientSecret,
+  isStoredClientSecret,
+  mcpServerAuthProblems,
   validateMcpServerAuth,
   validateMcpServerDetails,
+  withoutClientSecretRef,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
 import { toMcpServerDefinition } from './gitops';
@@ -150,6 +157,7 @@ describe('composeMcpServerDefinition', () => {
           scopes: 'repo read:user',
           authorizationEndpoint: 'https://github.com/login/oauth/authorize',
           tokenEndpoint: 'https://github.com/login/oauth/access_token',
+          useExistingSecret: true,
           clientSecretName: 'github-oauth-client',
           clientSecretNamespace: 'muster',
           clientIdKey: 'clientId',
@@ -184,6 +192,7 @@ describe('composeMcpServerDefinition', () => {
           // Only one endpoint typed so far: composing just it would compose a
           // definition the CRD's set-together rule rejects.
           authorizationEndpoint: 'https://auth.example.com/authorize',
+          useExistingSecret: true,
           clientSecretName: 'oauth-client',
           grantScope: 'session',
         }),
@@ -470,7 +479,7 @@ describe('validateNewMcpServerForm', () => {
   it('rejects the advanced authorization-server settings without an issuer', () => {
     for (const overrides of [
       { tokenEndpoint: 'https://idp/token' },
-      { clientSecretName: 'oauth-client' },
+      { useExistingSecret: true, clientSecretName: 'oauth-client' },
     ]) {
       expect(
         validateNewMcpServerForm(
@@ -507,18 +516,182 @@ describe('validateNewMcpServerForm', () => {
     ).toEqual([]);
   });
 
-  it('requires a name for a client-credentials Secret whose keys are set', () => {
+  it('requires a name for an existing client-credentials Secret', () => {
     expect(
       validateNewMcpServerForm(
         state({
           authMode: 'own-account',
           issuer: 'https://auth.example.com',
+          useExistingSecret: true,
           clientIdKey: 'clientId',
         }),
       ),
-    ).toContainEqual(
-      expect.stringContaining('client-credentials Secret needs a name'),
+    ).toEqual(["Enter the Secret's name, e.g. github-oauth-client."]);
+  });
+
+  describe('an existing Secret, checked as Kubernetes names', () => {
+    const existing = (overrides: Partial<NewMcpServerFormState>) =>
+      mcpServerAuthProblems(
+        state({
+          authMode: 'own-account',
+          issuer: 'https://auth.example.com',
+          useExistingSecret: true,
+          clientSecretName: 'github-oauth-client',
+          ...overrides,
+        }),
+      );
+
+    it('accepts DNS subdomain names, a DNS label namespace and data keys, trimmed', () => {
+      expect(
+        existing({
+          clientSecretName: ' oauth.github-client ',
+          clientSecretNamespace: ' muster ',
+          clientIdKey: 'CLIENT_ID',
+          clientSecretKey: '.client-secret',
+        }),
+      ).toEqual([]);
+      expect(existing({ clientSecretName: 'a'.repeat(253) })).toEqual([]);
+    });
+
+    it.each([
+      ['a blank', 'github oauth'],
+      ['upper case', 'GitHub-Client'],
+      ['an underscore', 'github_client'],
+      ['a leading hyphen', '-github'],
+      ['a trailing dot', 'github.'],
+      ['more than 253 characters', 'a'.repeat(254)],
+    ])('rejects a Secret name with %s', (_, clientSecretName) => {
+      expect(existing({ clientSecretName })).toEqual([
+        {
+          field: 'clientSecretName',
+          message: expect.stringContaining(
+            'Use lowercase letters, numbers, hyphens and dots',
+          ),
+        },
+      ]);
+    });
+
+    it.each([
+      ['a dot', 'kube.system'],
+      ['a blank', 'my namespace'],
+      ['more than 63 characters', 'a'.repeat(64)],
+    ])('rejects a namespace with %s', (_, clientSecretNamespace) => {
+      expect(existing({ clientSecretNamespace })).toEqual([
+        {
+          field: 'clientSecretNamespace',
+          message: expect.stringContaining(
+            'Use lowercase letters, numbers and hyphens',
+          ),
+        },
+      ]);
+    });
+
+    it('rejects data keys the API server would refuse, each on its field', () => {
+      expect(
+        existing({
+          clientIdKey: 'client id',
+          clientSecretKey: 'client/secret',
+        }),
+      ).toEqual([
+        {
+          field: 'clientIdKey',
+          message:
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-id.',
+        },
+        {
+          field: 'clientSecretKey',
+          message:
+            'Use letters, numbers, hyphens, underscores and dots (at most 253 characters, not starting with two dots), e.g. client-secret.',
+        },
+      ]);
+    });
+
+    it.each(['.', '..', '..data'])(
+      'rejects the data key %j, which no Secret can hold',
+      clientIdKey => {
+        expect(existing({ clientIdKey })).toEqual([
+          expect.objectContaining({ field: 'clientIdKey' }),
+        ]);
+      },
     );
+
+    it('asks for nothing while all four fields are empty: no client, as with New Secret', () => {
+      expect(existing({ clientSecretName: '' })).toEqual([]);
+      expect(
+        composeMcpServerDefinition(
+          state({
+            authMode: 'own-account',
+            issuer: 'https://auth.example.com',
+            useExistingSecret: true,
+          }),
+        ).auth?.authorizationServer,
+      ).not.toHaveProperty('clientCredentialsSecretRef');
+    });
+
+    it('wants the name once another of the fields is filled in', () => {
+      expect(
+        existing({ clientSecretName: '', clientSecretNamespace: 'muster' }),
+      ).toEqual([
+        {
+          field: 'clientSecretName',
+          message: "Enter the Secret's name, e.g. github-oauth-client.",
+        },
+      ]);
+    });
+
+    it("refuses a name of the form muster keeps for this connector's stored client", () => {
+      expect(
+        existing({
+          slug: 'github',
+          clientSecretName: 'github-oauth-client-prod1',
+        }),
+      ).toEqual([
+        {
+          field: 'clientSecretName',
+          message:
+            'Names like github-oauth-client-a1b2c are kept for the client muster stores; choose another name.',
+        },
+      ]);
+      // Another connector's prefix, or another length, is an ordinary name.
+      expect(
+        existing({ slug: 'github', clientSecretName: 'github-oauth-client' }),
+      ).toEqual([]);
+      expect(
+        existing({
+          slug: 'github',
+          clientSecretName: 'gitlab-oauth-client-prod1',
+        }),
+      ).toEqual([]);
+    });
+
+    it('leaves empty optional fields to their defaults', () => {
+      expect(
+        existing({
+          clientSecretNamespace: '  ',
+          clientIdKey: '',
+          clientSecretKey: ' ',
+        }),
+      ).toEqual([]);
+    });
+
+    it('checks nothing of a Secret name typed before New Secret was chosen', () => {
+      expect(
+        existing({ useExistingSecret: false, clientSecretName: 'not valid' }),
+      ).toEqual([]);
+    });
+  });
+
+  it('ignores Secret fields of the other source when New Secret is chosen', () => {
+    const leftOver = state({
+      authMode: 'own-account',
+      issuer: 'https://auth.example.com',
+      clientSecretName: 'oauth-client',
+      clientIdKey: 'clientId',
+    });
+    expect(validateNewMcpServerForm(leftOver)).toEqual([]);
+    expect(
+      composeMcpServerDefinition(leftOver).auth?.authorizationServer,
+    ).toEqual({ issuer: 'https://auth.example.com', grantScope: 'subject' });
   });
 
   it('requires a signing region for AWS SigV4', () => {
@@ -600,23 +773,17 @@ describe('sigv4Advisories', () => {
 });
 
 describe('authFieldAvailability', () => {
-  it('offers the issuer override and scopes only for "own account"', () => {
+  it('offers the issuer override only for "own account"', () => {
     const withIssuer = authFieldAvailability(
       state({ authMode: 'own-account', issuer: 'https://auth.example.com' }),
     );
     expect(withIssuer.authorizationServer.available).toBe(true);
-    expect(withIssuer.scopes.available).toBe(true);
     expect(withIssuer.requiredAudiences.available).toBe(false);
 
     const withoutIssuer = authFieldAvailability(
       state({ authMode: 'own-account' }),
     );
     expect(withoutIssuer.authorizationServer.available).toBe(true);
-    // Scopes belong to the override, so they stay disabled until an issuer is set.
-    expect(withoutIssuer.scopes).toEqual({
-      available: false,
-      reason: expect.stringContaining('set an issuer first'),
-    });
   });
 
   it('offers required audiences only for Platform SSO, and explains the exclusion', () => {
@@ -626,13 +793,11 @@ describe('authFieldAvailability', () => {
       available: false,
       reason: expect.stringContaining('the CRD rejects both together'),
     });
-    expect(sso.scopes.available).toBe(false);
   });
 
   it('disables every auth field for a server without authentication', () => {
     const none = authFieldAvailability(state({ authMode: 'none' }));
     expect(none.authorizationServer.available).toBe(false);
-    expect(none.scopes.available).toBe(false);
     expect(none.requiredAudiences.available).toBe(false);
     expect(none.authorizationServer.reason).toContain(
       'needs no authentication',
@@ -666,7 +831,6 @@ describe('authFieldAvailability', () => {
       available: false,
       reason: expect.stringContaining("muster's own machine identity"),
     });
-    expect(sigv4.scopes.available).toBe(false);
     expect(sigv4.requiredAudiences).toEqual({
       available: false,
       reason: expect.stringContaining('AWS SigV4 forwards no token at all'),
@@ -952,6 +1116,7 @@ describe('CRD conformance', () => {
         scopes: 'repo',
         authorizationEndpoint: 'https://github.com/login/oauth/authorize',
         tokenEndpoint: 'https://github.com/login/oauth/access_token',
+        useExistingSecret: true,
         clientSecretName: 'github-oauth-client',
         clientSecretNamespace: 'muster',
         clientIdKey: 'clientId',
@@ -1232,6 +1397,7 @@ describe('editing a registered server in the wizard', () => {
       issuer: 'https://github.com',
       authorizationEndpoint: 'https://github.com/login/oauth/authorize',
       tokenEndpoint: 'https://github.com/login/oauth/access_token',
+      useExistingSecret: true,
       clientSecretName: 'github-oauth-client',
       clientSecretNamespace: 'muster',
       clientIdKey: 'clientId',
@@ -1502,6 +1668,279 @@ describe('editing a registered server in the wizard', () => {
       expect(wizardEditBlocker(registered(spec))).toBeUndefined();
       expect(wizardEditBlocker(registered(stored(spec)))).toBeUndefined();
     }
+  });
+});
+
+describe('client credentials typed into the wizard', () => {
+  const ownAccount = (overrides: Partial<NewMcpServerFormState> = {}) =>
+    state({
+      authMode: 'own-account',
+      issuer: 'https://app.hubspot.com',
+      ...overrides,
+    });
+  const typed = { clientId: ' id-1 ', clientSecret: ' s3cret ' };
+  const none = { clientId: '', clientSecret: '' };
+
+  it('tells the Secret muster stored for the server from any other', () => {
+    expect(isStoredClientSecret('hubspot', 'hubspot-oauth-client-a1b2c')).toBe(
+      true,
+    );
+    for (const name of [
+      'hubspot-oauth-client',
+      'hubspot-oauth-client-a1b2',
+      'hubspot-oauth-client-A1B2C',
+      'hubspot-oauth-client-a1b2c3',
+      'other-oauth-client-a1b2c',
+      'github-oauth-client',
+    ]) {
+      expect(isStoredClientSecret('hubspot', name)).toBe(false);
+    }
+    // muster cuts a long server name so the Secret's name stays a DNS label.
+    const long = 'a'.repeat(60);
+    expect(
+      isStoredClientSecret(long, `${'a'.repeat(44)}-oauth-client-zz999`),
+    ).toBe(true);
+  });
+
+  it('wants both values and an issuer, or neither', () => {
+    expect(clientCredentialsProblems(ownAccount(), none)).toEqual([]);
+    expect(clientCredentialsProblems(ownAccount(), typed)).toEqual([]);
+    expect(
+      clientCredentialsProblems(ownAccount(), { ...typed, clientSecret: ' ' }),
+    ).toEqual([
+      { field: 'clientSecret', message: 'Enter the client secret too.' },
+    ]);
+    expect(
+      clientCredentialsProblems(ownAccount(), { ...typed, clientId: '' }),
+    ).toEqual([{ field: 'clientId', message: 'Enter the client ID too.' }]);
+    expect(
+      clientCredentialsProblems(ownAccount({ issuer: '' }), typed),
+    ).toEqual([{ field: 'issuer', message: 'Enter an issuer too.' }]);
+  });
+
+  it('asks for both values when they are required, typed or not', () => {
+    expect(
+      clientCredentialsProblems(ownAccount(), none, { required: true }),
+    ).toEqual([
+      { field: 'clientId', message: 'Enter the client ID.' },
+      { field: 'clientSecret', message: 'Enter the client secret.' },
+    ]);
+    expect(
+      clientCredentialsProblems(ownAccount(), typed, { required: true }),
+    ).toEqual([]);
+  });
+
+  it('tells a stored client is pointed at another authorization server', () => {
+    const saved = {
+      issuer: 'https://idp',
+      authorizationEndpoint: 'https://idp/authorize',
+      tokenEndpoint: 'https://idp/token',
+      revocationEndpoint: 'https://idp/revoke',
+    };
+    expect(clientBindingChanged({ ...saved, scopes: 'read' }, saved)).toBe(
+      false,
+    );
+    expect(
+      clientBindingChanged({ ...saved, grantScope: 'subject' }, saved),
+    ).toBe(false);
+    for (const changed of [
+      { issuer: 'https://other' },
+      { authorizationEndpoint: 'https://idp/oauth/authorize' },
+      { tokenEndpoint: 'https://idp/oauth/token' },
+      { revocationEndpoint: undefined },
+    ]) {
+      expect(clientBindingChanged({ ...saved, ...changed }, saved)).toBe(true);
+    }
+    expect(clientBindingChanged(undefined, saved)).toBe(true);
+  });
+
+  it('keeps a revocation endpoint the wizard does not show on an edit', () => {
+    const server = registered({
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://idp',
+          revocationEndpoint: 'https://idp/revoke',
+          clientCredentialsSecretRef: {
+            name: 'weather-mcp-oauth-client-x7k2p',
+          },
+        },
+      },
+    });
+    expect(wizardEditBlocker(server)).toBeUndefined();
+    const form = formStateFromServer(server);
+    const existing = toMcpServerDefinition(server);
+
+    const edited = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({ ...form, scopes: 'read' }),
+    );
+    expect(edited.auth?.authorizationServer).toEqual({
+      issuer: 'https://idp',
+      scopes: 'read',
+      revocationEndpoint: 'https://idp/revoke',
+      clientCredentialsSecretRef: { name: 'weather-mcp-oauth-client-x7k2p' },
+    });
+    expect(
+      clientBindingChanged(
+        edited.auth?.authorizationServer,
+        server.getAuth()?.authorizationServer,
+      ),
+    ).toBe(false);
+
+    // Another issuer is another server: its endpoints are discovered.
+    const moved = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({ ...form, issuer: 'https://other' }),
+    );
+    expect(moved.auth?.authorizationServer).not.toHaveProperty(
+      'revocationEndpoint',
+    );
+  });
+
+  it('keeps the revocation endpoint of pinned endpoints when only the issuer changes', () => {
+    const pinned = {
+      authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+      tokenEndpoint: 'https://github.com/login/oauth/access_token',
+    };
+    const server = registered({
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://github.com',
+          ...pinned,
+          revocationEndpoint: 'https://github.com/revoke',
+        },
+      },
+    });
+    const form = formStateFromServer(server);
+    const existing = toMcpServerDefinition(server);
+
+    // The same provider under a corrected issuer: muster cannot discover its
+    // revocation endpoint, so it stays.
+    const corrected = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({ ...form, issuer: 'https://github.com/' }),
+    );
+    expect(corrected.auth?.authorizationServer).toMatchObject({
+      issuer: 'https://github.com/',
+      ...pinned,
+      revocationEndpoint: 'https://github.com/revoke',
+    });
+
+    // Other endpoints are another provider: the old endpoint must not get
+    // its tokens.
+    const otherProvider = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition({
+        ...form,
+        issuer: 'https://gitlab.com',
+        authorizationEndpoint: 'https://gitlab.com/oauth/authorize',
+        tokenEndpoint: 'https://gitlab.com/oauth/token',
+      }),
+    );
+    expect(otherProvider.auth?.authorizationServer).not.toHaveProperty(
+      'revocationEndpoint',
+    );
+  });
+
+  it('lets an issuer be cleared on a connector with a stored client', () => {
+    const form = ownAccount({
+      issuer: '',
+      clientSecretName: 'weather-mcp-oauth-client-x7k2p',
+    });
+    expect(validateNewMcpServerForm(form)).toEqual([]);
+    expect(composeMcpServerDefinition(form).auth).toEqual({ type: 'oauth' });
+  });
+
+  it('sends no half client: an ID without its secret is none', () => {
+    expect(
+      clientCredentialsArgument(ownAccount(), {
+        clientId: 'hubspot-client',
+        clientSecret: ' ',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('sends only complete, applicable credentials, trimmed', () => {
+    expect(clientCredentialsArgument(ownAccount(), typed)).toEqual({
+      clientId: 'id-1',
+      clientSecret: 's3cret',
+    });
+    expect(
+      clientCredentialsArgument(ownAccount(), { ...typed, clientId: '' }),
+    ).toBeUndefined();
+    expect(
+      clientCredentialsArgument(ownAccount({ issuer: '' }), typed),
+    ).toBeUndefined();
+    expect(
+      clientCredentialsArgument(ownAccount({ useExistingSecret: true }), typed),
+    ).toBeUndefined();
+    expect(
+      clientCredentialsArgument(state({ authMode: 'none' }), typed),
+    ).toBeUndefined();
+  });
+
+  it('never puts typed values into the form state or the definition', () => {
+    const form = ownAccount();
+    expect(JSON.stringify(form)).not.toContain('s3cret');
+    expect(JSON.stringify(composeMcpServerDefinition(form))).not.toContain(
+      's3cret',
+    );
+  });
+
+  it('reads a stored client back as stored, and keeps its reference on an edit', () => {
+    const ref = { name: 'weather-mcp-oauth-client-x7k2p' };
+    const server = registered({
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://idp',
+          clientCredentialsSecretRef: ref,
+        },
+      },
+    });
+    const form = formStateFromServer(server);
+
+    expect(form.useExistingSecret).toBe(false);
+    expect(hasStoredClientSecret(form)).toBe(true);
+    expect(validateNewMcpServerForm(form)).toEqual([]);
+    // An ordinary edit sends the stored reference back as it was.
+    const edited = mergeOntoExisting(
+      toMcpServerDefinition(server),
+      composeMcpServerDefinition({ ...form, scopes: 'read' }),
+    );
+    expect(edited.auth?.authorizationServer).toEqual({
+      issuer: 'https://idp',
+      scopes: 'read',
+      clientCredentialsSecretRef: ref,
+    });
+    // A replacement goes without it: muster sets the reference itself.
+    expect(withoutClientSecretRef(edited).auth?.authorizationServer).toEqual({
+      issuer: 'https://idp',
+      scopes: 'read',
+    });
+  });
+
+  it('reads any other named Secret back as an existing one', () => {
+    const form = formStateFromServer(
+      registered({
+        auth: {
+          type: 'oauth',
+          authorizationServer: {
+            issuer: 'https://idp',
+            clientCredentialsSecretRef: { name: 'github-oauth-client' },
+          },
+        },
+      }),
+    );
+    expect(form.useExistingSecret).toBe(true);
+    expect(hasStoredClientSecret(form)).toBe(false);
+  });
+
+  it('leaves a definition without a reference as it is', () => {
+    const definition = composeMcpServerDefinition(ownAccount());
+    expect(withoutClientSecretRef(definition)).toBe(definition);
   });
 });
 

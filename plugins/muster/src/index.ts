@@ -14,6 +14,8 @@ export {
   toolErrorDetails,
 } from './apis';
 export type {
+  ConnectorName,
+  ConnectorNamesResponse,
   MusterApi,
   MusterAuthProvidersApi,
   MusterUnauthorizedReason,
@@ -65,6 +67,7 @@ export {
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
 export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
+export { connectorIconOf } from './lib/connectorLogo';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
@@ -91,6 +94,8 @@ export {
   ToolMarkers,
   hasMarkers,
   ServerSignIn,
+  useConnectorLabel,
+  useConnectorLabels,
   useServerSignIn,
   useServerNeedsSignIn,
   toneColors,
@@ -109,6 +114,7 @@ export type {
   ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
+  SignedIn,
   DeviceCode,
   SignInNoun,
   Tone,
@@ -120,6 +126,8 @@ export {
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
 export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export { ConnectorLogo } from './components/ConnectorLogo';
+export type { ConnectorLogoProps } from './components/ConnectorLogo';
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';

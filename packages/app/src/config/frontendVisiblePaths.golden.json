@@ -1,4 +1,5 @@
 [
+  "agentPlatform.organizations.enabled",
   "app.baseUrl",
   "app.branding.logo.height",
   "app.branding.theme.dark.backgroundColor",

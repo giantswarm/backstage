@@ -11,10 +11,17 @@
  * — the portal composes nothing of its own.
  */
 
+import {
+  AGENT_MANAGER_REFUSAL_CODES,
+  type AgentManagerRefusalCode,
+  parseToolErrorCode,
+  AGENT_MANAGER_SERVER,
+} from '@giantswarm/backstage-plugin-gs-common';
+import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
 import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
 
 /** The MCPServer name muster registers agent-manager under. */
-export const AGENT_MANAGER_SERVER = 'agent-manager';
+export { AGENT_MANAGER_SERVER };
 
 /**
  * Why agent-manager cannot be used on an installation, in one sentence, from
@@ -54,6 +61,12 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
+  listMyOrganizations: 'list_my_organizations',
+  getOrganization: 'get_organization',
+  listOrganizationMembers: 'list_organization_members',
+  addOrganizationMember: 'add_organization_member',
+  removeOrganizationMember: 'remove_organization_member',
+  listOrganizationConnectors: 'list_organization_connectors',
 } as const;
 
 export type AgentManagerTool =
@@ -387,34 +400,22 @@ export function hasReachedWrittenRevision(
 
 /**
  * agent-manager's error codes, as its MCP tools prefix them
- * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
- * (a viewer's Deploy), `conflict` an existing name or a suspended release,
- * `gitops_owned` a live write to a release applied from git,
- * `auth_required` a write in mode `commit` without the person's GitHub
- * authorization, `invalid_request` a schema violation or an unpinnable skill,
- * `unsupported` an operation this installation does not offer.
+ * (`<code>: <message>`): its refusals (`AGENT_MANAGER_REFUSAL_CODES`, which
+ * the backend answers with a 4xx), and `auth_required` a write in mode
+ * `commit` without the person's GitHub authorization, `unauthenticated` and
+ * `backend_error`.
  */
 export type AgentManagerErrorCode =
-  | 'not_found'
-  | 'invalid_request'
-  | 'conflict'
-  | 'gitops_owned'
+  | AgentManagerRefusalCode
   | 'auth_required'
-  | 'forbidden'
   | 'unauthenticated'
-  | 'unsupported'
   | 'backend_error'
   | 'unknown';
 
 const ERROR_CODES: readonly AgentManagerErrorCode[] = [
-  'not_found',
-  'invalid_request',
-  'conflict',
-  'gitops_owned',
+  ...AGENT_MANAGER_REFUSAL_CODES,
   'auth_required',
-  'forbidden',
   'unauthenticated',
-  'unsupported',
   'backend_error',
 ];
 
@@ -543,6 +544,16 @@ export function codingEgressRefusal(
  */
 export class AgentManagerNotConnectedError extends Error {
   readonly name = 'AgentManagerNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to the server (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way (a tool not found, a server down), which
+   * a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**
@@ -563,9 +574,12 @@ export function looksNotConnected(message: string): boolean {
 }
 
 /**
- * Classifies what a tool call threw. agent-manager's refusals become
- * {@link AgentManagerError} with their code; muster's "not connected" answers
- * become {@link AgentManagerNotConnectedError}; anything else is passed on.
+ * Classifies what a tool call threw. muster's "not connected" answers become
+ * {@link AgentManagerNotConnectedError}, its 401 asking for the person's
+ * sign-in first: that one reads `auth_required: …` like agent-manager's own
+ * refusal of a commit without a GitHub authorization, and would otherwise be
+ * taken for it and shown in muster's words. agent-manager's refusals become
+ * {@link AgentManagerError} with their code; anything else is passed on.
  */
 export function classifyAgentManagerError(error: unknown): Error {
   if (
@@ -575,11 +589,15 @@ export function classifyAgentManagerError(error: unknown): Error {
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
-  const match = message.match(/^([a-z_]+):\s*([\s\S]*)$/);
-  if (match && (ERROR_CODES as readonly string[]).includes(match[1])) {
+  if (musterSignInRequiredOf(error)) {
+    return new AgentManagerNotConnectedError(message, { cause: error });
+  }
+  // The parser gs-node's MusterMcpClient reads a refusal's code with.
+  const parsed = parseToolErrorCode(message);
+  if (parsed && (ERROR_CODES as readonly string[]).includes(parsed.code)) {
     return new AgentManagerError(
-      match[1] as AgentManagerErrorCode,
-      match[2] || message,
+      parsed.code as AgentManagerErrorCode,
+      parsed.text || message,
       { cause: error },
     );
   }
@@ -672,8 +690,18 @@ export type AgentManagerModelConfig = {
   provider?: string;
   model?: string;
   accepted: boolean | null;
+  /** The ResolvedRefs condition (its key Secret found, say); null while unreported. */
+  resolvedRefs?: boolean | null;
+  /** The Accepted condition's message. */
   message?: string;
   managedBy?: string;
+  /**
+   * The namespace's default model, as agent-manager resolves it (in an
+   * organization namespace, the organization's default): the one ModelConfig
+   * marked as the default; none or several marked is no default. The portal
+   * reads this field and never the annotation, whose key agent-manager owns.
+   */
+  default?: boolean;
 };
 
 /**

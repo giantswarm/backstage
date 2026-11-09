@@ -1,11 +1,24 @@
 import { useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
-import { TenantPicker } from '../TenantPicker';
+import {
+  NewAgentFormProvider,
+  useNewAgentForm,
+  useTenantChoicesSync,
+} from '../NewAgentFormProvider';
+import { useOwnerField } from '../NewAgentPage/hooks/useOwnerField';
 import { ModelConfigPicker } from './ModelConfigPicker';
+
+// The organizations agent-manager names for the person
+// (`list_my_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
 
 type FakeModelConfig = {
   getName: () => string;
@@ -13,15 +26,30 @@ type FakeModelConfig = {
   getDisplayName: () => string;
   getModel: () => string;
   getProvider: () => string;
+  getReadiness: () => 'accepted' | 'notAccepted';
+  getReadinessMessage: () => string | undefined;
 };
 
-function modelConfig(name: string, displayName: string): FakeModelConfig {
+/** The Owner field, wherever the page would put it, fed as a step feeds it. */
+function OwnerFieldHarness() {
+  useTenantChoicesSync();
+  return <>{useOwnerField().field}</>;
+}
+
+function modelConfig(
+  name: string,
+  displayName: string,
+  { namespace = 'kagent', rejected = false } = {},
+): FakeModelConfig {
   return {
     getName: () => name,
-    getNamespace: () => 'kagent',
+    getNamespace: () => namespace,
     getDisplayName: () => displayName,
     getModel: () => `${name}-model`,
     getProvider: () => 'Anthropic',
+    getReadiness: () => (rejected ? 'notAccepted' : 'accepted'),
+    getReadinessMessage: () =>
+      rejected ? `Secret ${namespace}/${name}-key not found` : undefined,
   };
 }
 
@@ -34,9 +62,9 @@ jest.mock('../ModelConfigsProvider', () => ({
   }),
 }));
 
-// What agent-manager answers for an Organization's editor: the one tenant
-// they may create in, unless a test says otherwise.
-let mockManaged = ['org-acme'];
+// What agent-manager answers: the namespaces the person may create in, and
+// per namespace its models with the one it resolves as the default.
+let mockManaged = ['kagent'];
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: (installation: string | undefined) => ({
     info: installation
@@ -47,6 +75,23 @@ jest.mock('../../hooks/useAgentManager', () => ({
   }),
 }));
 
+let mockDefaults: Record<string, string> = {};
+let mockUnresolved: string[] = [];
+jest.mock('../../hooks/useAgentManagerModelConfigs', () => ({
+  useAgentManagerModelConfigs: (_installation: string, namespace: string) => ({
+    modelConfigs: mockModelConfigs
+      .filter(mc => mc.getNamespace() === namespace)
+      .map(mc => ({
+        name: mc.getName(),
+        namespace,
+        accepted: true,
+        resolvedRefs: !mockUnresolved.includes(mc.getName()),
+        default: mockDefaults[namespace] === mc.getName(),
+      })),
+    isLoading: false,
+  }),
+}));
+
 function WithInstallation({ error }: { error?: string }) {
   const { state, setInstallation } = useNewAgentForm();
   useEffect(() => {
@@ -54,7 +99,12 @@ function WithInstallation({ error }: { error?: string }) {
       setInstallation('gazelle');
     }
   }, [state.installation, setInstallation]);
-  return state.installation ? <ModelConfigPicker error={error} /> : null;
+  return state.installation ? (
+    <>
+      <OwnerFieldHarness />
+      <ModelConfigPicker error={error} />
+    </>
+  ) : null;
 }
 
 async function renderPicker(error?: string) {
@@ -67,14 +117,20 @@ async function renderPicker(error?: string) {
 
 describe('ModelConfigPicker', () => {
   beforeEach(() => {
-    mockManaged = ['org-acme'];
+    mockManaged = ['kagent'];
+    mockDefaults = {};
+    mockUnresolved = [];
   });
 
-  it('waits for who the agent belongs to, without steering towards Organization', async () => {
+  it('preselects the default agent-manager reports for the owner picked, Platform', async () => {
     mockManaged = ['kagent', 'org-acme'];
-    mockModelConfigs = [modelConfig('default-model-config', 'Claude Sonnet')];
+    mockModelConfigs = [
+      modelConfig('sonnet', 'Claude Sonnet'),
+      modelConfig('acme-opus', 'Acme Opus', { namespace: 'org-acme' }),
+    ];
+    mockDefaults = { kagent: 'sonnet', 'org-acme': 'acme-opus' };
 
-    function WithTenantPicker() {
+    function WithOwnerField() {
       const { state, setInstallation } = useNewAgentForm();
       useEffect(() => {
         if (!state.installation) {
@@ -83,41 +139,35 @@ describe('ModelConfigPicker', () => {
       }, [state.installation, setInstallation]);
       return state.installation ? (
         <>
-          <TenantPicker />
+          <OwnerFieldHarness />
           <ModelConfigPicker />
         </>
       ) : null;
     }
     await renderInTestApp(
       <NewAgentFormProvider>
-        <WithTenantPicker />
+        <WithOwnerField />
       </NewAgentFormProvider>,
     );
 
     expect(
-      await screen.findByText('Choose who the agent belongs to first'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('The models offered depend on it.'),
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      within(
-        screen.getByRole('radiogroup', { name: 'Who the agent belongs to' }),
-      ).getByRole('radio', { name: /^Platform/ }),
-    );
+      await screen.findByRole('radio', {
+        name: 'Select model Claude Sonnet, default',
+      }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radio', { name: /Acme Opus/ })).toBeNull();
     expect(
       screen.queryByText('Choose who the agent belongs to first'),
     ).toBeNull();
-    expect(
-      await screen.findByRole('radio', {
-        name: 'Select model Claude Sonnet, environment default',
-      }),
-    ).toHaveAttribute('aria-checked', 'true');
   });
 
-  it("preselects the tenant's model when the tenant is known in the same render as the models", async () => {
-    mockModelConfigs = [modelConfig('default-model-config', 'Claude Sonnet')];
+  it("offers an organization only its own models, the platform's not copied in", async () => {
+    mockManaged = ['org-acme'];
+    mockModelConfigs = [
+      modelConfig('sonnet', 'Claude Sonnet'),
+      modelConfig('acme-opus', 'Acme Opus', { namespace: 'org-acme' }),
+    ];
+    mockDefaults = { kagent: 'sonnet', 'org-acme': 'acme-opus' };
 
     function WithTenant() {
       const { state, setInstallation } = useNewAgentForm();
@@ -128,7 +178,7 @@ describe('ModelConfigPicker', () => {
       }, [state.installation, setInstallation]);
       return state.installation ? (
         <>
-          <TenantPicker />
+          <OwnerFieldHarness />
           <ModelConfigPicker />
         </>
       ) : null;
@@ -139,33 +189,39 @@ describe('ModelConfigPicker', () => {
       </NewAgentFormProvider>,
     );
 
-    // The tenant's copy of the platform's default model, not the platform's
-    // own, which would create the agent in the platform tenant.
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model Claude Sonnet, environment default',
+        name: 'Select model Acme Opus, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radio', { name: /Claude Sonnet/ })).toBeNull();
+    expect(
+      screen.getByText(
+        'Preselected: Acme Opus, the default model for the acme organization.',
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("preselects the installation's default model and says so", async () => {
+  it('preselects the default and says so, badging it among the others', async () => {
     mockModelConfigs = [
       modelConfig('haiku', 'Claude Haiku'),
-      modelConfig('default-model-config', 'Claude Sonnet'),
+      modelConfig('sonnet', 'Claude Sonnet'),
     ];
+    mockDefaults = { kagent: 'sonnet' };
 
     await renderPicker();
 
     expect(
       await screen.findByText(
-        'Preselected: Claude Sonnet, the default model on gazelle.',
+        'Preselected: Claude Sonnet, the default model for the platform.',
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('radio', {
-        name: 'Select model Claude Sonnet, environment default',
+        name: 'Select model Claude Sonnet, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getAllByText('Default')).toHaveLength(1);
   });
 
   it('shows the form’s validation problem under its label and ties it to the choices', async () => {
@@ -179,38 +235,71 @@ describe('ModelConfigPicker', () => {
     expect(group.closest('[data-invalid]')).not.toBeNull();
   });
 
-  it('preselects the only model and says so', async () => {
+  it('makes the person pick without a default, even the only model', async () => {
     mockModelConfigs = [modelConfig('sonnet', 'Claude Sonnet')];
 
     await renderPicker();
 
     expect(
       await screen.findByText(
-        'Preselected: Claude Sonnet, the only model on gazelle.',
+        'No default model is set for the platform. Choose the model this agent runs on.',
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', { name: 'Select model Claude Sonnet' }),
+    ).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('falls back to the first model when there is no default', async () => {
+  it('gives default-model-config no special meaning', async () => {
     mockModelConfigs = [
-      modelConfig('haiku', 'Claude Haiku'),
+      modelConfig('default-model-config', 'Claude Sonnet'),
       modelConfig('opus', 'Claude Opus'),
     ];
 
     await renderPicker();
 
     expect(
-      await screen.findByText(
-        'Preselected: Claude Haiku, the first one listed, since gazelle has no default model.',
+      await screen.findByText(/^No default model is set for the platform/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Default')).toBeNull();
+  });
+
+  it('warns when the picked model does not resolve, and marks it in the list', async () => {
+    mockModelConfigs = [
+      modelConfig('sonnet', 'Claude Sonnet', { rejected: true }),
+      modelConfig('opus', 'Claude Opus'),
+    ];
+    mockDefaults = { kagent: 'sonnet' };
+    mockUnresolved = ['sonnet'];
+
+    await renderPicker();
+
+    expect(
+      await screen.findByText('Claude Sonnet is not ready'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Agents on this model fail until an admin fixes it: Secret kagent/sonnet-key not found You can still create the agent, or choose another model.',
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', {
+        name: 'Select model Claude Sonnet, default, not accepted',
+      }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Select model Claude Opus' }),
+    );
+    expect(screen.queryByText('Claude Sonnet is not ready')).toBeNull();
   });
 
   it('keeps a pick of the person’s own and drops the preselection note', async () => {
     mockModelConfigs = [
-      modelConfig('default-model-config', 'Claude Sonnet'),
+      modelConfig('sonnet', 'Claude Sonnet'),
       modelConfig('opus', 'Claude Opus'),
     ];
+    mockDefaults = { kagent: 'sonnet' };
 
     await renderPicker();
     await screen.findByText(/^Preselected: Claude Sonnet/);
@@ -262,19 +351,16 @@ describe('ModelConfigPicker', () => {
 
     it('keeps the picked model on screen when it is listed past the first page', async () => {
       mockModelConfigs = manyModels(300);
-      mockModelConfigs[200] = modelConfig(
-        'default-model-config',
-        'Claude Sonnet',
-      );
+      mockModelConfigs[200] = modelConfig('sonnet', 'Claude Sonnet');
+      mockDefaults = { kagent: 'sonnet' };
 
       await renderPicker();
 
       expect(
         await screen.findByRole('radio', {
-          name: 'Select model Claude Sonnet, environment default',
+          name: 'Select model Claude Sonnet, default',
         }),
       ).toHaveAttribute('aria-checked', 'true');
-      // The first page, and the picked one after it.
       expect(screen.getAllByRole('radio')).toHaveLength(13);
     });
   });

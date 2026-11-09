@@ -51,7 +51,7 @@ gate's logic is a pure, unit-tested function in `src/storybook/storyCoverage.ts`
 
 `AsyncValue`, `Autocomplete`, `CodeBlock`, `ContentColumn`, `ContentRow`,
 `DateComponent`, `DetailsPane`, `DraftRestoredAlert`, `ErrorStatus`,
-`ExternalLink`, `GSMarkdownContent`, `InfoCard`, `JsonHighlight`,
+`ExternalLink`, `FileView`, `GSMarkdownContent`, `InfoCard`, `JsonHighlight`,
 `MultiplePicker`, `MultipleSelect`, `NotAvailable`, `PageHeaderActions`,
 `PinIcon`, `SingleSelect`, `StackedBarChart`, `StructuredMetadataList`,
 `YamlEditor`, `YamlEditorFormField`, `display/ConditionMessage`,

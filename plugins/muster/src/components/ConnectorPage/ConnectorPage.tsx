@@ -18,8 +18,15 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import {
+  Alert,
+  Button,
+  ButtonIcon,
+  Flex,
+  Link,
+  Skeleton,
+  Text,
+} from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
@@ -98,7 +105,8 @@ import {
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
-import { addedAt, callsLine, healthLine, signInLabel } from './connectorFacts';
+import { addedAt, healthLine, signInLabel } from './connectorFacts';
+import { CallsFactValue } from './CallsFactValue';
 import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
@@ -106,6 +114,7 @@ import {
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 import { ConnectorCannotConnect } from './ConnectorCannotConnect';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
+import { ConnectorLogo } from '../ConnectorLogo';
 import { ConnectorUsageTab } from './ConnectorUsageTab';
 import { useConnectorUsage } from './hooks/useConnectorUsage';
 import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
@@ -113,23 +122,6 @@ import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
-
-const useStyles = makeStyles({
-  tile: {
-    flex: 'none',
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    border: '1px solid var(--bui-border-1)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 20,
-    fontWeight: 700,
-    color: 'var(--bui-fg-secondary)',
-    textTransform: 'uppercase',
-  },
-});
 
 /**
  * muster's endpoint, the address an MCP client connects to, with its copy
@@ -153,15 +145,6 @@ function MusterEndpoint({ endpoint }: { endpoint: string }) {
         <CopyButton text={endpoint} label="Copy endpoint" size="compact" />
       </span>
     </>
-  );
-}
-
-function ConnectorTile({ name }: { name: string }) {
-  const classes = useStyles();
-  return (
-    <span className={classes.tile} aria-hidden>
-      {name.charAt(0)}
-    </span>
   );
 }
 
@@ -309,7 +292,9 @@ function ConnectorPageContent({
   // none for muster itself, whose own tools no connector counts. Only on
   // those two tabs: Tools, where a connector opens, shows no usage, and
   // each connector's read repeats the installation-wide `data_start` query.
-  const { '*': tabPath = '' } = useParams();
+  const { '*': splat = '' } = useParams();
+  // A trailing slash names the same tab, which the nested routes render.
+  const tabPath = splat.replace(/\/+$/, '');
   // The Usage tab's window follows the `?window=` Usage → Connectors links
   // with, so a row's figures and the tab it opens agree. Details keeps its 30
   // days, which its label names.
@@ -322,7 +307,6 @@ function ConnectorPageContent({
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
   });
-  const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
   // The person's own sign-in to the connector. Signing in is offered where its
   // absence shows — the Tools tab's gate, in place of the hidden tools — so
@@ -572,10 +556,12 @@ function ConnectorPageContent({
   if (members.length > 0) {
     facts.push({ label: 'Health', value: healthLine(members) });
   }
-  if (calls !== undefined) {
+  // From the first paint, with a skeleton while the session and the read are
+  // pending, so the facts below it do not move when the figure lands.
+  if (hasUsage) {
     facts.push({
       label: `Calls, ${lastDaysLabel(CONNECTOR_USAGE_DAYS)}`,
-      value: calls,
+      value: <CallsFactValue usage={usage} session={session} />,
     });
   }
   const added = addedAt(members);
@@ -650,7 +636,14 @@ function ConnectorPageContent({
       <ShellPage
         title={displayName}
         breadcrumbs={breadcrumbs}
-        leading={<ConnectorTile name={displayName} />}
+        leading={
+          <ConnectorLogo
+            name={displayName}
+            icon={representative?.getStatusIcon()}
+            size={56}
+            decorative
+          />
+        }
         badges={
           <StatusBadge
             row={row}
@@ -880,7 +873,8 @@ function ConnectorPageBody({
           { label: 'Connectors', href: listPath },
           { label: shownName },
         ]}
-        leading={<ConnectorTile name={shownName} />}
+        // The logo's place held: the letter, then the icon, would flicker.
+        leading={<Skeleton width={56} height={56} />}
         badges={<ShellPageBadgeSkeleton />}
         // Tools with its count's place held, so the tab keeps its width as
         // the page and then the tools land.

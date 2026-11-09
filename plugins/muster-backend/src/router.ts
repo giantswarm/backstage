@@ -16,11 +16,13 @@ import {
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
   isTokenExpired,
+  type ConnectorName,
   musterTokenExpiredError,
   musterTokenMissingError,
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   MusterInstallationConfig,
@@ -215,6 +217,50 @@ function loginTarget(
     );
   }
   return hasServer ? { server: server as string } : { app: app as string };
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== ''
+    ? value.trim()
+    : undefined;
+}
+
+/**
+ * The name, family and display name of each server in a `core_mcpserver_list`
+ * answer (`{ mcpServers: [...] }`), and nothing else of it. A server is named
+ * by muster's key for it: `key`, `<namespace>/<name>`, for a server outside
+ * muster's namespace (a tenant's, muster#1508), as `auth://status`, the
+ * `core_auth_*` tools and `server:` selectors name it; its `name` otherwise.
+ * `displayName` is the `ui.giantswarm.io/display-name` annotation (muster
+ * #1518, v5.53.1); an older muster answers none. An entry without a name is
+ * left out.
+ */
+export function connectorNamesOf(result: unknown): ConnectorName[] {
+  const servers = (result as { mcpServers?: unknown } | null)?.mcpServers;
+  if (!Array.isArray(servers)) {
+    return [];
+  }
+  return servers.flatMap((server): ConnectorName[] => {
+    const entry = server as {
+      name?: unknown;
+      key?: unknown;
+      family?: { name?: unknown };
+      displayName?: unknown;
+    } | null;
+    const name = nonEmptyString(entry?.key) ?? nonEmptyString(entry?.name);
+    if (!name) {
+      return [];
+    }
+    const family = nonEmptyString(entry?.family?.name);
+    const displayName = nonEmptyString(entry?.displayName);
+    return [
+      {
+        name,
+        ...(family ? { family } : {}),
+        ...(displayName ? { displayName } : {}),
+      },
+    ];
+  });
 }
 
 export async function createRouter(
@@ -578,6 +624,11 @@ export async function createRouter(
     }
     assertRunsAsPerson(name, installation);
 
+    // A tool error carries its status from the client: a refusal (agent-
+    // manager's, or muster's of a connector write) answers 4xx, below the
+    // 500 at which the error middleware sends it to Sentry. The error holds
+    // muster's message and text blocks only, never the request's arguments
+    // (which may carry a client secret).
     const result = await client.callTool(
       name,
       (toolArgs as Record<string, unknown>) ?? {},
@@ -818,6 +869,56 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  /**
+   * What people call the installation's connectors: each server's name, its
+   * family and its `ui.giantswarm.io/display-name` (`displayName`), from
+   * `core_mcpserver_list` as the person. muster lists exactly the servers the
+   * person may see, the ones `auth://status` reports for them, so the sign-in
+   * prompts can name every connector they list, for people without
+   * Kubernetes access to the MCPServer objects too.
+   *
+   * A refusal of the list answers 200 with `unavailable: true`, and the
+   * prompts keep the servers' own names. A token that is missing, expired or
+   * refused by muster is still the 401 the frontend refreshes on, and an
+   * infrastructure fault (muster unreachable) its 5xx, as on `/auth/login`:
+   * the names are read once per installation, not polled.
+   */
+  router.get('/servers/names', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const callOptions = readCallOptions(req, installation);
+    let result: unknown;
+    try {
+      result = await client.callTool(
+        'core_mcpserver_list',
+        { showAll: true },
+        callOptions,
+      );
+    } catch (error) {
+      // muster refusing the bearer, or reporting it expired, is the 401 the
+      // frontend refreshes the token on and reads again.
+      if (
+        toMusterUnauthorizedError(error, {
+          installation: installation.name,
+          authToken: callOptions.authToken,
+        })
+      ) {
+        throw error;
+      }
+      // An outage is not hidden behind an answer: read once per installation
+      // (not polled like `/auth/status`), so a 5xx is what reports it.
+      if (isInfrastructureError(error)) {
+        throw error;
+      }
+      logger.info('Muster could not list the connectors to name them', {
+        installation: installation.name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      res.json({ servers: [], unavailable: true });
+      return;
+    }
+    res.json({ servers: connectorNamesOf(result) });
   });
 
   // --- MCP usage (derived from muster's own Prometheus metrics) ------------
@@ -1062,11 +1163,14 @@ export async function createRouter(
           reason: unauthorized.reason,
           ...(unauthorized.server ? { server: unauthorized.server } : {}),
         },
-        request: { method: req.method, url: req.url },
+        request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
     },
   );
+
+  // Last, so that the handlers above see the error first.
+  router.use(reportedErrorHandler());
 
   return router;
 }

@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import {
   MCPServer,
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -24,8 +25,14 @@ import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 
 const mockNavigate = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
@@ -76,9 +83,10 @@ jest.mock('../../hooks/useAgentIconUrl', () => ({
 
 // CodeMirror does not lay out in jsdom; a plain block exposes the YAML the
 // page hands it, which is what the assertions read.
-jest.mock('../FileView', () => ({
-  FileView: ({ content, filename }: { content: string; filename?: string }) => (
-    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
 
@@ -269,6 +277,7 @@ function Seed({
     setSystemMessage,
     setEgressText,
     setInstallation,
+    setTenantChoices,
     selectModelConfig,
     selectHarness,
     toggleSkill,
@@ -284,6 +293,7 @@ function Seed({
       setEgressText(egressText);
     }
     setInstallation('gazelle');
+    setTenantChoices(['kagent']);
     selectModelConfig('opus-4-7', 'kagent');
     selectHarness(harness);
     if (withSkill) {
@@ -666,7 +676,7 @@ describe('NewAgentReviewPage', () => {
   it("leads a refusal it does not recognise plainly, with the dry run's violations folded, and withholds Deploy", async () => {
     await renderReview({
       violations: [
-        'modelConfig "opus-4-7" not found in namespace kagent; valid: default-model-config',
+        'modelConfig "opus-4-7" not found in namespace kagent; valid: anthropic-main',
         'skills[0].git.commit: must be a full commit id',
       ],
     });
@@ -682,7 +692,7 @@ describe('NewAgentReviewPage', () => {
     );
     const list = within(alert).getByRole('list', { name: 'Violations' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
-    expect(list).toHaveTextContent('valid: default-model-config');
+    expect(list).toHaveTextContent('valid: anthropic-main');
     expect(deployButton()).toBeDisabled();
   });
 
@@ -879,6 +889,35 @@ describe('NewAgentReviewPage', () => {
     expect(deployButton()).toBeDisabled();
   });
 
+  // The create's refusal is the mutation's, kept until the next write: once
+  // the sign-in lands it goes, and Create is the person's to press again.
+  it('clears the connect step of a refused create once the sign-in lands', async () => {
+    const user = userEvent.setup();
+    await renderReview({
+      createError: new MusterUnauthorizedError(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+      ),
+    });
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(deployButton()).toBeEnabled();
+  });
+
   it('hides the pull-request alternative while agent-manager does not report the capability', async () => {
     await renderReview();
     await screen.findByTestId('code-agent.yaml');
@@ -985,7 +1024,8 @@ describe('NewAgentReviewPage', () => {
     expect(values).toHaveTextContent('name: go-service-reviewer');
     expect(values).toHaveTextContent('harness: kagent');
     expect(values).not.toHaveTextContent('skills');
-    const command = screen.getByTestId('code-command').textContent ?? '';
+    const command =
+      screen.getByText(/^helm install /, { selector: 'pre' }).textContent ?? '';
     expect(command).toContain('helm install go-service-reviewer');
     expect(command).toContain('oci://gsoci.azurecr.io/charts/giantswarm/agent');
     expect(command).toContain('--version 1.0.0');

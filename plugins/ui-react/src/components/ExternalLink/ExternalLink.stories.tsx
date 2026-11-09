@@ -61,3 +61,25 @@ export const Flex: Story = {
     },
   },
 };
+
+export const Inline: Story = {
+  args: {
+    display: 'inline',
+    href: 'https://github.com/example-org/example-repository',
+    children: 'example-org/a-long-repository-name-that-wraps',
+  },
+  render: args => (
+    <p style={{ maxWidth: 280 }}>
+      Change it in the file that defines it in <ExternalLink {...args} />.
+    </p>
+  ),
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Inline `inline` display — for a link in running text: a long ' +
+          'link text wraps with the sentence and the icon follows its last word.',
+      },
+    },
+  },
+};

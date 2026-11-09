@@ -2,10 +2,11 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
@@ -70,15 +71,29 @@ type Scenario = {
   canCommit?: boolean;
   /** Holds every agent read until it settles, to see the rows still checked. */
   heldReads?: Promise<void>;
+  /**
+   * Whether the person is signed in to agent-manager: muster refuses its
+   * calls without, and reports it in `auth://status`. Signed in by default.
+   */
+  signIn?: { done: boolean };
 };
 
 function makeMusterApi({
   gitops = [],
   canCommit = true,
   heldReads,
+  signIn = { done: true },
 }: Scenario = {}) {
   const callTool = jest.fn(
     async (tool: string, args: Record<string, unknown>) => {
+      if (!signIn.done) {
+        throw new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        );
+      }
       switch (tool) {
         case 'x_agent-manager_get_info':
           return { capabilities: { commit: canCommit } };
@@ -112,7 +127,19 @@ function makeMusterApi({
       }
     },
   );
-  return { api: { callTool } as unknown as MusterApi, callTool };
+  const getAuthStatus = jest.fn(async () => ({
+    servers: [
+      {
+        name: 'agent-manager',
+        status: signIn.done ? 'connected' : 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+    ],
+  }));
+  return {
+    api: { callTool, getAuthStatus } as unknown as MusterApi,
+    callTool,
+  };
 }
 
 const analyticsApi = mockApis.analytics.mock();
@@ -141,7 +168,7 @@ async function renderDialog(agents: BehindAgent[], scenario: Scenario = {}) {
       </QueryClientProvider>
     </TestApiProvider>,
   );
-  return { callTool };
+  return { callTool, queryClient };
 }
 
 function writes(callTool: jest.Mock) {
@@ -199,6 +226,36 @@ describe('SkillUpdateAgentsDialog', () => {
     expect(
       screen.queryByRole('button', { name: /Update \d agent/ }),
     ).not.toBeInTheDocument();
+  });
+
+  // The connect alert stands for agent reads muster refused: once the
+  // sign-in lands (here or in another tab), every muster query is read again
+  // (`useServerSignIn`), those reads with them, and the alert goes.
+  it('asks for the sign-in where the agents cannot be read, and reads them again once it lands', async () => {
+    const signIn = { done: false };
+    const { queryClient } = await renderDialog(behind(row('triage-bot')), {
+      signIn,
+    });
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeVisible(),
+    );
+
+    signIn.done = true;
+    await act(() =>
+      queryClient.invalidateQueries({
+        queryKey: ['muster', 'auth-status', 'gazelle'],
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await confirmButton('Update 1 agent')).toBeEnabled();
   });
 
   it('lays a row still being checked out as the updatable row it becomes', async () => {
