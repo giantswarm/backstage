@@ -1,4 +1,5 @@
 import {
+  getMcpToolLatency,
   getMcpUsage,
   usageWindow,
   pickPrometheusServer,
@@ -233,6 +234,11 @@ describe('getMcpUsage', () => {
 
     const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
 
+    // The per-tool latency, the slowest query, is not part of this read.
+    expect(
+      calls.some(call => String(call.args.query).includes('sum by (tool, le)')),
+    ).toBe(false);
+
     // Every prometheus query is routed to the installation's own server via
     // the family routing parameter.
     const promCalls = calls.filter(call =>
@@ -284,8 +290,8 @@ describe('getMcpUsage', () => {
         tool: 'x_kubernetes_list_pods',
         calls: 26,
         errors: 1,
-        // le1=50, le5=100 → rank 95 → 1 + 4 * (45/50).
-        p95_seconds: 4.6,
+        // Every tool's p95 is getMcpToolLatency's.
+        p95_seconds: null,
       },
       {
         tool: 'x_prometheus_execute_query',
@@ -408,7 +414,7 @@ describe('getMcpUsage', () => {
       expect(coverage?.start).toBe('2026-09-09T00:00:00.000Z');
       // Every other query, narrowed and over the window alone.
       const narrowed = seen.filter(args => args !== coverage);
-      expect(narrowed).toHaveLength(6);
+      expect(narrowed).toHaveLength(5);
       for (const args of narrowed) {
         expect(String(args.query)).toContain(selector);
         expect(args.start).toBe('2026-09-16T00:00:00.000Z');
@@ -734,5 +740,70 @@ describe('getMcpUsage', () => {
     const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(/upstream exploded/);
+  });
+});
+
+describe('getMcpToolLatency', () => {
+  it('answers each tool’s p95 from the one per-tool histogram query, narrowed to the connectors', async () => {
+    const queries: string[] = [];
+    const client = fakeClient((tool, args) => {
+      if (tool === 'core_mcpserver_list') {
+        return SERVER_LIST;
+      }
+      queries.push(String(args.query));
+      const end = Date.parse(String(args.end)) / 1000;
+      return [
+        'Result Type: matrix',
+        'Result: {le="1", tool="x_kubernetes_list_pods"} =>',
+        `50 @[${end}]`,
+        '{le="5", tool="x_kubernetes_list_pods"} =>',
+        `100 @[${end}]`,
+        '{le="+Inf", tool="x_kubernetes_list_pods"} =>',
+        `100 @[${end}]`,
+        '{le="+Inf", tool="x_kubernetes_idle"} =>',
+        `0 @[${end}]`,
+      ].join('\n');
+    });
+
+    const latency = await getMcpToolLatency(client, INSTALLATION, {}, 24, [
+      'gazelle-mcp-kubernetes',
+    ]);
+
+    expect(queries).toEqual([
+      'sum by (tool, le) (increase(muster_downstream_tool_call_duration_seconds_bucket{mcpserver_name="gazelle-mcp-kubernetes"}[1h]))',
+    ]);
+    expect(latency).toEqual({
+      available: true,
+      range_hours: 24,
+      tools: [
+        // No observations: no quantile, not a confident zero.
+        { tool: 'x_kubernetes_idle', p95_seconds: null },
+        // le1=50, le5=100 → rank 95 → 1 + 4 * (45/50).
+        { tool: 'x_kubernetes_list_pods', p95_seconds: 4.6 },
+      ],
+    });
+  });
+
+  it('reports unavailable when the query fails', async () => {
+    const client = fakeClient(tool => {
+      if (tool === 'core_mcpserver_list') {
+        return SERVER_LIST;
+      }
+      throw new Error('mimir 504');
+    });
+
+    const latency = await getMcpToolLatency(client, INSTALLATION, {}, 720);
+
+    expect(latency).toMatchObject({ available: false, tools: [] });
+    expect(latency.reason).toMatch(/gazelle-mcp-prometheus.*mimir 504/);
+  });
+
+  it('reports unavailable when no prometheus server is registered', async () => {
+    const client = fakeClient(() => ({ mcpServers: [] }));
+
+    const latency = await getMcpToolLatency(client, INSTALLATION, {}, 24);
+
+    expect(latency.available).toBe(false);
+    expect(latency.reason).toMatch(/no prometheus mcp server/i);
   });
 });

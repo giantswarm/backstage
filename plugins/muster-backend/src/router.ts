@@ -32,7 +32,13 @@ import {
   reachabilityFields,
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { getMcpUsage } from './mcpUsage';
+import {
+  getMcpToolLatency,
+  getMcpUsage,
+  type McpToolLatencyResponse,
+  type McpUsageResponse,
+} from './mcpUsage';
+import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -76,6 +82,8 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /** The clock of the usage caches. Overridable for tests. */
+  now?: () => number;
 }
 
 /**
@@ -935,8 +943,13 @@ export async function createRouter(
    * family's instances included, and lists every tool they were called with.
    * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
    */
-  router.get('/usage', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
+  const usageCache = new UsageCache<McpUsageResponse>({ now: options.now });
+  const toolLatencyCache = new UsageCache<McpToolLatencyResponse>({
+    now: options.now,
+  });
+
+  /** The window and the narrowing `/usage` and `/usage/tool-latency` take. */
+  const readUsageParams = (req: express.Request) => {
     // Refused rather than ignored: a frontend loaded before `window=month`
     // went would otherwise read 24 hours as the month.
     if (req.query.window !== undefined) {
@@ -961,14 +974,75 @@ export async function createRouter(
     if (tool !== undefined && !isToolLabel(tool)) {
       throw new InputError('tool must be a tool name');
     }
+    return { hours: hours ?? 24, servers, tool };
+  };
+
+  /**
+   * Usage statistics for the installation's muster: tool calls per bucket by
+   * outcome, top tools, and per-server rollups. Sourced from muster's
+   * downstream dispatch metrics via the prometheus MCP server federated
+   * behind the same muster (no separate Prometheus access path). Answers
+   * `available: false` with a reason instead of erroring when the
+   * installation has no queryable prometheus server.
+   *
+   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
+   * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
+   * Each tool's p95 is `/usage/tool-latency`'s, except that one tool's.
+   *
+   * An available answer is reused for five minutes per installation, window,
+   * narrowing and token (`usageCacheKey`), and concurrent identical reads
+   * share one: past daily buckets do not change, and a 30-day read costs
+   * Mimir seconds.
+   */
+  router.get('/usage', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { hours, servers, tool } = readUsageParams(req);
+    const callOptions = readCallOptions(req, installation);
     res.json(
-      await getMcpUsage(
-        client,
-        installation,
-        readCallOptions(req, installation),
-        hours ?? 24,
-        servers,
-        tool,
+      await usageCache.read(
+        usageCacheKey({
+          route: 'usage',
+          installation: installation.name,
+          hours,
+          servers,
+          tool,
+          authToken: callOptions.authToken,
+        }),
+        () =>
+          getMcpUsage(client, installation, callOptions, hours, servers, tool),
+        answer => answer.available,
+      ),
+    );
+  });
+
+  /**
+   * The p95 latency of every tool called in the window, narrowed by
+   * `?server=` as `/usage` is: the slowest of the usage queries, read apart
+   * so the figures do not wait for it. No `?tool=`: narrowed to one tool,
+   * `/usage` answers its p95 itself. Cached as `/usage` is.
+   */
+  router.get('/usage/tool-latency', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { hours, servers, tool } = readUsageParams(req);
+    if (tool !== undefined) {
+      throw new InputError(
+        "tool is not supported here; /usage answers one tool's p95",
+      );
+    }
+    const callOptions = readCallOptions(req, installation);
+    res.json(
+      await toolLatencyCache.read(
+        usageCacheKey({
+          route: 'tool-latency',
+          installation: installation.name,
+          hours,
+          servers,
+          authToken: callOptions.authToken,
+        }),
+        () =>
+          getMcpToolLatency(client, installation, callOptions, hours, servers),
+        answer => answer.available,
       ),
     );
   });

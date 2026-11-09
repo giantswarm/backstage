@@ -24,6 +24,10 @@ export interface McpUsageToolRow {
   tool: string;
   calls: number;
   errors: number;
+  /**
+   * Set only where the read is narrowed to this one tool, as the totals'.
+   * Every tool's comes from {@link getMcpToolLatency}.
+   */
   p95_seconds: number | null;
 }
 
@@ -69,6 +73,15 @@ export interface McpUsageResponse {
    */
   top_tools: McpUsageToolRow[];
   servers: McpUsageServerRow[];
+}
+
+export interface McpToolLatencyResponse {
+  available: boolean;
+  /** Human-readable reason when `available` is false. */
+  reason?: string;
+  range_hours: number;
+  /** p95 per tool called in the window, by the name muster exposes it as. */
+  tools: Array<{ tool: string; p95_seconds: number | null }>;
 }
 
 /**
@@ -369,14 +382,31 @@ export function usageSelector(
  * either way: it says where muster's records start, and a quiet connector's
  * first call is not that.
  */
-export async function getMcpUsage(
+/** The queries one usage read runs, against the window it covers. */
+interface UsageQueries {
+  promServer: string;
+  startSeconds: number;
+  endSeconds: number;
+  stepSeconds: number;
+  rangeHours: number;
+  stepHours: number;
+  step: string;
+  lookbackStart: number;
+  rangeQuery: (query: string) => Promise<PromSeries[]>;
+  rangeQueryFrom: (query: string, fromSeconds: number) => Promise<PromSeries[]>;
+}
+
+/**
+ * Find the prometheus MCP server for the installation and bind the range
+ * queries to the window the last `hours` cover, or say why usage cannot be
+ * read there.
+ */
+async function openUsageQueries(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
   hours: number,
-  servers: readonly string[] = [],
-  onlyTool?: string,
-): Promise<McpUsageResponse> {
+): Promise<UsageQueries | { reason: string; rangeHours: number }> {
   const { startSeconds, endSeconds, stepSeconds } = usageWindow(
     hours,
     Math.floor(Date.now() / 1000),
@@ -384,21 +414,6 @@ export async function getMcpUsage(
   const rangeHours = (endSeconds - startSeconds) / HOUR_SECONDS;
   const stepHours = stepSeconds / HOUR_SECONDS;
   const step = `${stepHours}h`;
-  const selector = usageSelector(servers, onlyTool);
-  const filtered = selector !== '';
-  const serverCount = new Set(servers).size;
-  // The per-server rollups only where a row is shown for them: unnarrowed,
-  // the Usage page's connector table shows calls and errors, not latency; a
-  // family's Instances table shows all three. Narrowed to one server, its row
-  // is the totals, so neither query runs.
-  const serverOutcomes = serverCount !== 1;
-  const serverLatency = serverCount > 1;
-  // The per-tool rollups only where they can name more than one tool:
-  // narrowed to one, its row is the totals, as for one server.
-  const toolRollups = onlyTool === undefined;
-  const none = Promise.resolve<PromSeries[]>([]);
-  const calls = `${METRIC_CALLS}${selector}`;
-  const duration = `${METRIC_DURATION}${selector}`;
 
   const listed = (await client.callTool(
     'core_mcpserver_list',
@@ -409,10 +424,11 @@ export async function getMcpUsage(
 
   const promServer = pickPrometheusServer(registered, installation);
   if (!promServer) {
-    return unavailable(
+    return {
       rangeHours,
-      'No prometheus MCP server is registered on this installation, so usage metrics cannot be queried.',
-    );
+      reason:
+        'No prometheus MCP server is registered on this installation, so usage metrics cannot be queried.',
+    };
   }
 
   const runQuery = async (
@@ -467,17 +483,135 @@ export async function getMcpUsage(
       withinWindow(series, startSeconds, endSeconds),
     );
   const lookbackStart = startSeconds - DATA_START_LOOKBACK_SECONDS;
+
+  return {
+    promServer,
+    startSeconds,
+    endSeconds,
+    stepSeconds,
+    rangeHours,
+    stepHours,
+    step,
+    lookbackStart,
+    rangeQuery,
+    rangeQueryFrom,
+  };
+}
+
+function queryFailure(promServer: string, error: unknown): string {
+  return `Querying prometheus MCP server '${promServer}' failed: ${
+    error instanceof Error ? error.message : String(error)
+  }`;
+}
+
+/**
+ * p95 latency per tool over the last `hours` on one installation, narrowed to
+ * `servers` as {@link getMcpUsage} is. Read apart from it because
+ * `sum by (tool, le)` is the largest and slowest of the usage queries, so the
+ * figures do not wait for it.
+ */
+export async function getMcpToolLatency(
+  client: MusterMcpClient,
+  installation: MusterInstallationConfig,
+  callOptions: { authToken?: string },
+  hours: number,
+  servers: readonly string[] = [],
+): Promise<McpToolLatencyResponse> {
+  const queries = await openUsageQueries(
+    client,
+    installation,
+    callOptions,
+    hours,
+  );
+  if ('reason' in queries) {
+    return {
+      available: false,
+      reason: queries.reason,
+      range_hours: queries.rangeHours,
+      tools: [],
+    };
+  }
+  const duration = `${METRIC_DURATION}${usageSelector(servers)}`;
+  let series: PromSeries[];
+  try {
+    series = await queries.rangeQuery(
+      `sum by (tool, le) (increase(${duration}[${queries.step}]))`,
+    );
+  } catch (error) {
+    return {
+      available: false,
+      reason: queryFailure(queries.promServer, error),
+      range_hours: queries.rangeHours,
+      tools: [],
+    };
+  }
+  const tools: McpToolLatencyResponse['tools'] = [];
+  for (const [tool, buckets] of bucketTotals(series, 'tool')) {
+    if (tool) {
+      tools.push({ tool, p95_seconds: quantileFromBuckets(0.95, buckets) });
+    }
+  }
+  return {
+    available: true,
+    range_hours: queries.rangeHours,
+    tools: tools.sort((a, b) => a.tool.localeCompare(b.tool)),
+  };
+}
+
+export async function getMcpUsage(
+  client: MusterMcpClient,
+  installation: MusterInstallationConfig,
+  callOptions: { authToken?: string },
+  hours: number,
+  servers: readonly string[] = [],
+  onlyTool?: string,
+): Promise<McpUsageResponse> {
+  const queries = await openUsageQueries(
+    client,
+    installation,
+    callOptions,
+    hours,
+  );
+  if ('reason' in queries) {
+    return unavailable(queries.rangeHours, queries.reason);
+  }
+  const {
+    promServer,
+    startSeconds,
+    endSeconds,
+    stepSeconds,
+    rangeHours,
+    stepHours,
+    step,
+    lookbackStart,
+    rangeQuery,
+    rangeQueryFrom,
+  } = queries;
+  const selector = usageSelector(servers, onlyTool);
+  const filtered = selector !== '';
+  const serverCount = new Set(servers).size;
+  // The per-server rollups only where a row is shown for them: unnarrowed,
+  // the Usage page's connector table shows calls and errors, not latency; a
+  // family's Instances table shows all three. Narrowed to one server, its row
+  // is the totals, so neither query runs.
+  const serverOutcomes = serverCount !== 1;
+  const serverLatency = serverCount > 1;
+  // The per-tool rollups only where they can name more than one tool:
+  // narrowed to one, its row is the totals, as for one server.
+  const toolRollups = onlyTool === undefined;
+  const none = Promise.resolve<PromSeries[]>([]);
   // The secondary rollups degrade to empty on failure instead of taking the
   // whole view down.
   const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>
     promise.catch(() => []);
+  const calls = `${METRIC_CALLS}${selector}`;
+  const duration = `${METRIC_DURATION}${selector}`;
 
   let coverage: PromSeries[];
   let byOutcomeOverTime: PromSeries[];
   let byToolOutcome: PromSeries[];
   let byServerOutcome: PromSeries[];
   let latencyBuckets: PromSeries[];
-  let latencyBucketsByTool: PromSeries[];
   let latencyBucketsByServer: PromSeries[];
   try {
     // Every call muster recorded, from a week before the window: the extra
@@ -505,7 +639,6 @@ export async function getMcpUsage(
       byToolOutcome,
       byServerOutcome,
       latencyBuckets,
-      latencyBucketsByTool,
       latencyBucketsByServer,
     ] = await Promise.all([
       coverageQuery,
@@ -523,11 +656,6 @@ export async function getMcpUsage(
           )
         : none,
       optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
-      toolRollups
-        ? optional(
-            rangeQuery(`sum by (tool, le) (increase(${duration}[${step}]))`),
-          )
-        : none,
       serverLatency
         ? optional(
             rangeQuery(
@@ -537,12 +665,7 @@ export async function getMcpUsage(
         : none,
     ]);
   } catch (error) {
-    return unavailable(
-      rangeHours,
-      `Querying prometheus MCP server '${promServer}' failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    return unavailable(rangeHours, queryFailure(promServer, error));
   }
 
   const recordedBeforeWindow = coverage.some(
@@ -622,15 +745,6 @@ export async function getMcpUsage(
       row.errors += value;
     }
     toolRows.set(tool, row);
-  }
-  for (const [toolName, toolBuckets] of bucketTotals(
-    latencyBucketsByTool,
-    'tool',
-  )) {
-    const row = toolRows.get(toolName);
-    if (row) {
-      row.p95_seconds = quantileFromBuckets(0.95, toolBuckets);
-    }
   }
 
   // Per-server rollup.

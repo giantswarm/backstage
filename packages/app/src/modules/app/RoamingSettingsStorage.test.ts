@@ -3,7 +3,10 @@ import { mockApis } from '@backstage/frontend-test-utils';
 import type { StorageValueSnapshot } from '@backstage/core-plugin-api';
 import type { SignalApi } from '@backstage/plugin-signals-react';
 import type { JsonValue } from '@backstage/types';
-import { RoamingSettingsStorage } from './RoamingSettingsStorage';
+import {
+  ABSENT_FRESH_MS,
+  RoamingSettingsStorage,
+} from './RoamingSettingsStorage';
 
 const BASE_URL = 'http://localhost:7007/api/user-settings';
 const KEY_URL = `${BASE_URL}/buckets/default.agent-platform/keys/someSetting`;
@@ -31,7 +34,11 @@ const json = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-function setup({ signedIn = true }: { signedIn?: boolean } = {}) {
+function setup({
+  signedIn = true,
+  withSignals = true,
+  now,
+}: { signedIn?: boolean; withSignals?: boolean; now?: () => number } = {}) {
   const signals = fakeSignals();
   const fetch = jest.fn<Promise<Response>, [string, RequestInit?]>();
   const fallback = WebStorage.create({
@@ -42,7 +49,8 @@ function setup({ signedIn = true }: { signedIn?: boolean } = {}) {
     fetchApi: { fetch } as any,
     identityApi: mockApis.identity(signedIn ? { token: 'a-token' } : {}),
     fallback,
-    signalApi: signals.signalApi,
+    signalApi: withSignals ? signals.signalApi : undefined,
+    now,
   }).forBucket('agent-platform');
   return { storage, fetch, fallback, ...signals };
 }
@@ -105,6 +113,78 @@ describe('RoamingSettingsStorage', () => {
       ]);
     },
   );
+
+  describe('a key the backend does not hold', () => {
+    const notFound = () => Promise.resolve(json({ error: 'not found' }, 404));
+
+    it('answers another subscription from the 404 for a minute', async () => {
+      let now = 0;
+      const { storage, fetch } = setup({ now: () => now });
+      fetch.mockImplementation(notFound);
+
+      watch(storage);
+      await settle();
+      now = ABSENT_FRESH_MS - 1;
+      const { seen } = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(seen).toEqual([{ key: 'someSetting', presence: 'absent' }]);
+
+      now = ABSENT_FRESH_MS;
+      watch(storage);
+      await settle();
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('reads again once a change is announced', async () => {
+      const { storage, fetch, send } = setup({ now: () => 0 });
+      fetch.mockImplementationOnce(notFound);
+      watch(storage);
+      await settle();
+
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      send({ type: 'key-changed', key: 'someSetting' });
+      await settle();
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      const { seen } = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(seen.at(-1)).toEqual({
+        key: 'someSetting',
+        presence: 'present',
+        value: 'Muted',
+      });
+    });
+
+    it('reads again after a write here', async () => {
+      const { storage, fetch } = setup({ now: () => 0 });
+      fetch.mockImplementationOnce(notFound);
+      watch(storage);
+      await settle();
+
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      await storage.set('someSetting', 'Muted');
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('reads every time without the signals channel to announce a store', async () => {
+      const { storage, fetch } = setup({ withSignals: false, now: () => 0 });
+      fetch.mockImplementation(notFound);
+
+      watch(storage);
+      await settle();
+      watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
 
   it('reads the key afresh when another tab’s change is announced, right after a read', async () => {
     const { storage, fetch, send } = setup();

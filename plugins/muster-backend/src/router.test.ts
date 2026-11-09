@@ -21,11 +21,13 @@ import {
 } from './router';
 
 const mockGetMcpUsage = jest.fn();
+const mockGetMcpToolLatency = jest.fn();
 jest.mock('./mcpUsage', () => {
   const actual = jest.requireActual('./mcpUsage');
   return {
     ...actual,
     getMcpUsage: (...args: unknown[]) => mockGetMcpUsage(...args),
+    getMcpToolLatency: (...args: unknown[]) => mockGetMcpToolLatency(...args),
   };
 });
 
@@ -122,6 +124,7 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     mockGetMcpUsage.mockReset();
+    mockGetMcpToolLatency.mockReset();
     callTool.mockReset();
     callToolWithProgress.mockReset();
     callToolWithStructured.mockReset();
@@ -328,6 +331,114 @@ describe('createRouter', () => {
       servers,
       undefined,
     );
+  });
+
+  describe('usage caching', () => {
+    const available = { available: true, range_hours: 720 };
+
+    it('answers a repeated read from the cache until five minutes have passed', async () => {
+      let now = 0;
+      app = await buildApp({ now: () => now });
+      mockGetMcpUsage.mockResolvedValue(available);
+
+      await request(app).get('/usage?hours=720');
+      now = 5 * 60_000 - 1;
+      const cached = await request(app).get('/usage?hours=720');
+      expect(cached.body).toEqual(available);
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(1);
+
+      now = 5 * 60_000;
+      await request(app).get('/usage?hours=720');
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps windows and narrowings apart', async () => {
+      mockGetMcpUsage.mockResolvedValue(available);
+
+      await request(app).get('/usage?hours=720');
+      await request(app).get('/usage?hours=168');
+      await request(app).get('/usage?hours=720&server=kagi');
+      await request(app).get('/usage?hours=720&server=kagi&tool=x_kagi_search');
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(4);
+    });
+
+    it('reads again after an unavailable answer', async () => {
+      mockGetMcpUsage.mockResolvedValue({ available: false });
+
+      await request(app).get('/usage?hours=720');
+      await request(app).get('/usage?hours=720');
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it("never answers one person's read from another's", async () => {
+      const multi = await buildMultiApp([
+        {
+          name: 'graveler',
+          url: 'https://muster.graveler.example/mcp',
+          authProvider: 'oidc-graveler',
+        },
+      ]);
+      mockGetMcpUsage.mockResolvedValue(available);
+      const token = (sub: string) =>
+        [
+          Buffer.from('{"alg":"none"}').toString('base64url'),
+          Buffer.from(
+            JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 600 }),
+          ).toString('base64url'),
+          'sig',
+        ].join('.');
+
+      for (const sub of ['ada', 'ada', 'grace']) {
+        const response = await request(multi)
+          .get('/usage?installation=graveler&hours=720')
+          .set(MUSTER_AUTH_HEADER, token(sub));
+        expect(response.status).toBe(200);
+      }
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('/usage/tool-latency', () => {
+    it('reads every tool’s p95 over the window and connectors, and caches it', async () => {
+      const latency = {
+        available: true,
+        range_hours: 720,
+        tools: [{ tool: 'x_kagi_search', p95_seconds: 1.2 }],
+      };
+      mockGetMcpToolLatency.mockResolvedValue(latency);
+
+      const response = await request(app).get(
+        '/usage/tool-latency?hours=720&server=kagi',
+      );
+      await request(app).get('/usage/tool-latency?hours=720&server=kagi');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(latency);
+      expect(mockGetMcpToolLatency).toHaveBeenCalledTimes(1);
+      expect(mockGetMcpToolLatency).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        720,
+        ['kagi'],
+      );
+      expect(mockGetMcpUsage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a tool, which /usage answers itself', '/usage/tool-latency?tool=x'],
+      ['a window out of range', '/usage/tool-latency?hours=0'],
+      ['a server that is no MCPServer name', '/usage/tool-latency?server=A_B'],
+      ['the retired window parameter', '/usage/tool-latency?window=month'],
+    ])('rejects %s', async (_, path) => {
+      const response = await request(app).get(path);
+
+      expect(response.status).toBe(400);
+      expect(mockGetMcpToolLatency).not.toHaveBeenCalled();
+    });
   });
 
   it('proxies execution detail with steps', async () => {
