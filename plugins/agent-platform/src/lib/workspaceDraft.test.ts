@@ -91,9 +91,18 @@ describe('draftProblems', () => {
     expect(draftProblems(draft, false)).toEqual({
       name: 'Use lowercase letters, digits and dashes only. Try “bad-name”.',
       'sources.0.provider': 'Choose a provider',
-      'sources.0.owner': 'Owner is required',
-      'sources.0': 'Pick repositories by name, or filter by language or topic',
+      'sources.0.owner': 'Choose an owner',
       'sizing.minimum': 'Enter a whole number of GiB, such as 20',
+    });
+  });
+
+  it('asks for repositories only once the source has an owner', () => {
+    const draft = {
+      ...emptyDraft('github'),
+      sources: [{ ...emptySource('github'), owner: 'acme' }],
+    };
+    expect(draftProblems(draft, true)).toEqual({
+      'sources.0': 'Pick repositories by name, or filter by language or topic',
     });
   });
 

@@ -248,9 +248,8 @@ export function draftProblems(
       problems[`sources.${index}.provider`] = 'Choose a provider';
     }
     if (!source.owner.trim()) {
-      problems[`sources.${index}.owner`] = 'Owner is required';
-    }
-    if (!hasSelector(source)) {
+      problems[`sources.${index}.owner`] = 'Choose an owner';
+    } else if (!hasSelector(source)) {
       problems[`sources.${index}`] =
         'Pick repositories by name, or filter by language or topic';
     }

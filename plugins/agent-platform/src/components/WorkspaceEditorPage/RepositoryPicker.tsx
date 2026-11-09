@@ -124,6 +124,8 @@ export type RepositoryPickerProps = {
   /** How many repositories the source selects, exclusions applied. */
   count: SourceCount;
   providerKind: string | undefined;
+  /** Opens on "selected only", the picks and exclusions, instead of the listing. */
+  startsOnPicks?: boolean;
 };
 
 /**
@@ -143,6 +145,7 @@ export function RepositoryPicker({
   filterMatches,
   count,
   providerKind,
+  startsOnPicks = false,
 }: RepositoryPickerProps) {
   const [search, setSearch] = useState('');
   // The page, back to the first whenever the filters change.
@@ -153,7 +156,7 @@ export function RepositoryPicker({
     (next: number) => setPaging({ filterKey, page: next }),
     [filterKey],
   );
-  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [selectedOnly, setSelectedOnly] = useState(startsOnPicks);
   const [selectAll, setSelectAll] = useState<{
     busy: boolean;
     error?: string;

@@ -3,6 +3,8 @@ import { Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import {
   fieldErrorProps,
   searchableIf,
+  useSelectFieldError,
+  type FieldBlurProps,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
@@ -41,8 +43,13 @@ export type WorkspaceSourceEditorProps = {
   onRemove?: () => void;
   /** The problem shown on each of the source's fields, by field. */
   errorFor: (field: string) => string | undefined;
-  /** Marks a field the person left, so its problem shows at once. */
-  touch: (field: string) => void;
+  /** Spread on a field so leaving it checks it. */
+  blurProps: (field: string) => FieldBlurProps;
+  /**
+   * The repository table opens on the source's picks by name: an edit shows
+   * what the workspace holds before the owner's listing.
+   */
+  showsPicksFirst?: boolean;
   /**
    * Set when the source shows collapsed, as a summary with Edit source:
    * the edit flow opens one source at a time.
@@ -198,13 +205,16 @@ export function WorkspaceSourceEditor({
   onChange,
   onRemove,
   errorFor,
-  touch,
+  blurProps,
+  showsPicksFirst,
   onExpand,
   draftCount,
 }: WorkspaceSourceEditorProps) {
   const provider = providers.find(p => p.name === source.provider);
   const isConnected = provider?.connected ?? false;
   const field = (name: string) => errorFor(`sources.${index}.${name}`);
+  const providerError = useSelectFieldError(field('provider'));
+  const ownerError = useSelectFieldError(field('owner'));
   const kind = provider?.kind;
   const counts = useSourceCounts(
     isConnected ? client : undefined,
@@ -292,22 +302,25 @@ export function WorkspaceSourceEditor({
       }
     >
       {providers.length > 1 ? (
-        <Select
-          label="Provider"
-          isRequired
-          searchable={searchableIf(providers)}
-          options={providers.map(p => ({
-            id: p.name,
-            label: providerOptionLabel(p),
-          }))}
-          selectedKey={source.provider || null}
-          onSelectionChange={key => {
-            if (key && String(key) !== source.provider) {
-              onChange({ ...source, provider: String(key), owner: '' });
-            }
-          }}
-          {...fieldErrorProps(field('provider'))}
-        />
+        <div>
+          <Select
+            label="Provider"
+            isRequired
+            searchable={searchableIf(providers)}
+            options={providers.map(p => ({
+              id: p.name,
+              label: providerOptionLabel(p),
+            }))}
+            selectedKey={source.provider || null}
+            onSelectionChange={key => {
+              if (key && String(key) !== source.provider) {
+                onChange({ ...source, provider: String(key), owner: '' });
+              }
+            }}
+            {...providerError.selectProps}
+          />
+          {providerError.message}
+        </div>
       ) : null}
       {providers.length <= 1 && field('provider') && (
         <Text variant="body-small" color="danger">
@@ -323,20 +336,22 @@ export function WorkspaceSourceEditor({
       ) : (
         <>
           {ownerOptions.length > 0 ? (
-            <Select
-              label="Owner"
-              isRequired
-              searchable={searchableIf(ownerOptions)}
-              options={ownerOptions.map(name => ({ id: name, label: name }))}
-              selectedKey={source.owner.trim() || null}
-              onSelectionChange={key => {
-                if (key) {
-                  onChange({ ...source, owner: String(key) });
-                  touch(`sources.${index}.owner`);
-                }
-              }}
-              {...fieldErrorProps(field('owner'))}
-            />
+            <div>
+              <Select
+                label="Owner"
+                isRequired
+                searchable={searchableIf(ownerOptions)}
+                options={ownerOptions.map(name => ({ id: name, label: name }))}
+                selectedKey={source.owner.trim() || null}
+                onSelectionChange={key => {
+                  if (key) {
+                    onChange({ ...source, owner: String(key) });
+                  }
+                }}
+                {...ownerError.selectProps}
+              />
+              {ownerError.message}
+            </div>
           ) : (
             <TextField
               label="Owner"
@@ -349,7 +364,7 @@ export function WorkspaceSourceEditor({
               )} this source picks from, e.g. giantswarm.`}
               value={source.owner}
               onChange={value => onChange({ ...source, owner: value })}
-              onBlur={() => touch(`sources.${index}.owner`)}
+              {...blurProps(`sources.${index}.owner`)}
               {...fieldErrorProps(field('owner'))}
             />
           )}
@@ -381,6 +396,9 @@ export function WorkspaceSourceEditor({
                 filterMatches={counts.filterMatches}
                 count={counts.count}
                 providerKind={kind}
+                startsOnPicks={
+                  showsPicksFirst === true && source.repositories.length > 0
+                }
               />
               {field('repositories') && (
                 <Text variant="body-small" color="danger">

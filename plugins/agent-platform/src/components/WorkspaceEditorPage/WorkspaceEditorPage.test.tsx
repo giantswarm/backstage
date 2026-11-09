@@ -357,7 +357,7 @@ describe('WorkspaceEditorPage', () => {
       await screen.findByText(/Use lowercase letters, digits and dashes only/),
     ).toBeInTheDocument();
     // A field not yet left stays quiet.
-    expect(screen.queryByText('Owner is required')).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
   });
 
   it('names no provider when there is only one to choose', async () => {
@@ -828,10 +828,10 @@ describe('WorkspaceEditorPage exclusions', () => {
     expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
       '1 repository left out.',
     );
-    // The picker shows an excluded pick as out.
+    // The picker, open on the picks, shows an excluded pick as out.
     await user.keyboard('{Escape}');
     expect(
-      source(0).getByRole('checkbox', { name: 'app-2' }),
+      source(0).getByRole('checkbox', { name: 'Include app-2' }),
     ).not.toBeChecked();
 
     // Add a name the source does not select: the manager keeps it.
@@ -995,6 +995,9 @@ describe('WorkspaceEditorPage exclusion counts the form cannot know', () => {
     await render(fake, { name: 'portal' });
     await screen.findByTestId('workspace-source-0');
     fireEvent.click(
+      await source(0).findByRole('switch', { name: /Show selected only/ }),
+    );
+    fireEvent.click(
       await source(0).findByRole('checkbox', { name: 'operator' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -1065,5 +1068,218 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
     const selectAll = listings.filter(call => call.pageSize === 200);
     expect(selectAll).toHaveLength(1);
     expect(selectAll[0]).toMatchObject({ search: 'repo-04' });
+  });
+});
+
+describe('WorkspaceEditorPage blocked save', () => {
+  it('leaves an empty Owner quiet when tabbed through, then names it and focuses it on save', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      owners: { github: ['acme'] },
+    });
+    await render(fake);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'platform-mcp' },
+    });
+    const owner = await source(0).findByRole('button', { name: /Owner/ });
+    act(() => owner.focus());
+    await user.tab();
+    expect(owner).not.toHaveFocus();
+    expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Create workspace' }));
+    expect(await source(0).findByText('Choose an owner')).toBeInTheDocument();
+    await waitFor(() => expect(owner).toHaveFocus());
+    expect(owner).toHaveAccessibleDescription(
+      expect.stringContaining('Choose an owner'),
+    );
+    // Nothing can be picked before the owner is chosen.
+    expect(
+      screen.queryByText(
+        'Pick repositories by name, or filter by language or topic',
+      ),
+    ).not.toBeInTheDocument();
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
+
+    await user.click(owner);
+    await user.click(await screen.findByRole('option', { name: 'acme' }));
+    expect(source(0).queryByText('Choose an owner')).not.toBeInTheDocument();
+    expect(
+      await source(0).findByText(
+        'Pick repositories by name, or filter by language or topic',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('names an empty Provider when there are several and focuses it', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB, GITLAB],
+      repositories: [...ACME, ...LAB],
+    });
+    await render(fake);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'mixed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    expect(await source(0).findByText('Choose a provider')).toBeInTheDocument();
+    const provider = source(0).getByRole('button', { name: /Provider/ });
+    await waitFor(() => expect(provider).toHaveFocus());
+    expect(provider).toHaveAccessibleDescription(
+      expect.stringContaining('Choose a provider'),
+    );
+  });
+
+  it('opens Advanced options and focuses Minimum size when only it holds a problem', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    const advanced = screen.getByRole('button', { name: 'Advanced options' });
+    fireEvent.click(advanced);
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'Minimum size' }),
+      { target: { value: '2O' } },
+    );
+    fireEvent.click(advanced);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('textbox', { name: 'Minimum size' }),
+      ).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const minimum = await screen.findByRole('textbox', {
+      name: 'Minimum size',
+    });
+    await waitFor(() => expect(minimum).toHaveFocus());
+    expect(minimum).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a whole number of GiB, such as 20'),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Advanced options' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(fake.callsOf('update_workspace')).toHaveLength(0);
+  });
+
+  it('opens the source a refusal names when another source is open', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB, GITLAB],
+      repositories: [...ACME, ...LAB],
+      workspaces: [
+        {
+          ...storedWorkspace({ repositories: ['portal'] }),
+          sources: [
+            { provider: 'github', owner: 'acme', repositories: ['portal'] },
+            {
+              provider: 'gitlab-lab',
+              owner: 'platform',
+              repositories: ['charts'],
+            },
+          ],
+        },
+      ],
+    });
+    fake.onWrite('update_workspace', () => {
+      throw new Error(
+        'update_workspace: invalid workspace: Workspace.workspace-manager.giantswarm.io "portal" is invalid: spec.sources[0].owner: Invalid value: "acme": owner must be a provider account name',
+      );
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-1');
+    fireEvent.click(
+      await source(1).findByRole('button', { name: 'Edit source' }),
+    );
+    expect(
+      await source(0).findByRole('button', { name: 'Edit source' }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const owner = await source(0).findByRole('textbox', { name: /^Owner/ });
+    await waitFor(() =>
+      expect(owner).toHaveAccessibleDescription(
+        expect.stringContaining('owner must be a provider account name'),
+      ),
+    );
+  });
+});
+
+describe('WorkspaceEditorPage in the edit flow', () => {
+  it('opens the repository table on the picks by name', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal', 'operator'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    expect(
+      picker.getByRole('switch', { name: 'Show selected only (2)' }),
+    ).toBeChecked();
+    expect(picker.getByRole('checkbox', { name: 'portal' })).toBeChecked();
+    expect(picker.getByRole('checkbox', { name: 'operator' })).toBeChecked();
+    expect(picker.queryByRole('searchbox')).not.toBeInTheDocument();
+
+    fireEvent.click(picker.getByRole('switch', { name: /Show selected only/ }));
+    expect(await picker.findByRole('searchbox')).toBeInTheDocument();
+  });
+
+  it('opens a source without picks by name on the owner listing', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ filters: { languages: ['Go'] } })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    expect(
+      picker.getByRole('switch', { name: /Show selected only/ }),
+    ).not.toBeChecked();
+    expect(picker.getByRole('searchbox')).toBeInTheDocument();
+  });
+
+  it('closes and cancels to the workspace page', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    for (const name of ['Close', 'Cancel']) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute(
+        'href',
+        '/customize/workspaces/lab/acme/portal',
+      );
+    }
+  });
+
+  it('cancels a new workspace to the Workspaces tab', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    await screen.findByTestId('workspace-source-0');
+
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/customize/workspaces?organization=acme',
+    );
   });
 });
