@@ -106,7 +106,9 @@ describe('useRegisterMcpServer', () => {
         type: 'oauth',
         authorizationServer: {
           issuer: 'https://app.hubspot.com',
-          clientCredentialsSecretRef: { name: 'github-oauth-client-ab12c' },
+          clientCredentialsSecretRef: {
+            name: 'github-muster-client-ab12c3d4e5',
+          },
         },
       },
     };

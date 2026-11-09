@@ -70,11 +70,34 @@ describe('reduceByOrganization', () => {
       expect.objectContaining({
         id: 'team-x',
         kind: 'namespace',
-        label: 'namespace team-x',
+        label: 'team-x',
         description: undefined,
         costUsd: 1,
         sharePct: 10,
       }),
+    ]);
+  });
+
+  it('names a Giant Swarm organization by its name, and puts the namespace under a name two rows share', () => {
+    const marian = { agent_namespace: 'org-marian', agent: 'a' };
+    const teamOrg = { agent_namespace: 'org-team-x', agent: 'b' };
+    const rows = reduceByOrganization({
+      ...options,
+      cost: [],
+      tokens: [
+        sample(marian, '30'),
+        sample(teamOrg, '20'),
+        sample(elsewhere, '10'),
+      ],
+      calls: [],
+    });
+
+    expect(
+      rows.map(row => [row.namespace, row.kind, row.label, row.description]),
+    ).toEqual([
+      ['org-marian', 'namespace', 'marian', undefined],
+      ['org-team-x', 'namespace', 'team-x', 'org-team-x'],
+      ['team-x', 'namespace', 'team-x', 'team-x'],
     ]);
   });
 
@@ -117,11 +140,7 @@ describe('reduceByOrganization', () => {
       calls: [],
     });
 
-    expect(rows.map(row => row.label)).toEqual([
-      'alpha',
-      'None',
-      'namespace team-x',
-    ]);
+    expect(rows.map(row => row.label)).toEqual(['alpha', 'None', 'team-x']);
   });
 
   it('gives no spend and no share to a namespace nothing was priced in', () => {

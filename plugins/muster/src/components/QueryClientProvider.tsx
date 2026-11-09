@@ -3,14 +3,16 @@ import {
   QueryClient,
   QueryClientProvider as TanstackQueryClientProvider,
 } from '@tanstack/react-query';
-import { isMusterAuthFailure } from '../apis/musterUnauthorized';
+import { isPermanentMusterReadError } from '../lib/musterPolling';
 
 /**
  * Whether a failed muster read is tried again (up to three times): never a
- * muster auth failure (a 401 asks for a sign-in, or the client already sent
- * the call again with a refreshed token; a gone portal session would re-run
- * the single main re-login, a popup, for one probe), a missing object, a
- * refusal or an unavailable dependency. None of them is transient from a
+ * permanent read error, the one a poll stops on too
+ * ({@link isPermanentMusterReadError}: a muster auth failure — a 401 asks
+ * for a sign-in, or the client already sent the call again with a refreshed
+ * token; a gone portal session would re-run the single main re-login, a
+ * popup, for one probe — a 403, a server the session is not connected to),
+ * a missing object, a refusal or an unavailable dependency. None of them is transient from a
  * query's point of view, but for a call a rollout of muster interrupted
  * (`kind: interrupted`, a 503). A tool error the backend answered 4xx with
  * its `kind` is a refusal (agent-manager's, muster's of a connector write):
@@ -36,9 +38,8 @@ export function shouldRetryMusterQuery(failureCount: number, error: unknown) {
     return false;
   }
   if (
-    isMusterAuthFailure(error) ||
+    isPermanentMusterReadError(error) ||
     name === 'NotFoundError' ||
-    name === 'ForbiddenError' ||
     name === 'ServiceUnavailableError'
   ) {
     return false;

@@ -5,6 +5,7 @@ import {
   createPluginQueryPersister,
   shouldPersistQuery,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { isPermanentReadError } from '@giantswarm/backstage-plugin-ui-react';
 
 const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
@@ -17,11 +18,12 @@ const queryOptions: QueryClientConfig = {
       retry: (failureCount, error) => {
         const name = (error as Error).name;
 
+        // A permanent read error (a 401, a 403: the one a poll stops on,
+        // `isPermanentReadError`), and what this client adds to it.
         if (
+          isPermanentReadError(error) ||
           name === 'RejectedError' ||
-          name === 'NotFoundError' ||
-          name === 'UnauthorizedError' ||
-          name === 'ForbiddenError'
+          name === 'NotFoundError'
         ) {
           return false;
         }

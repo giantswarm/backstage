@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { expect, expectNoHorizontalScroll, open, test } from './fixtures';
 
 /**
  * The Cost page's roll-up by organization (giantswarm/backstage#2672, slice 8
@@ -107,6 +107,26 @@ function rowWith(page: Page, text: string) {
 
 function organizationSelect(page: Page) {
   return page.getByRole('main').getByRole('button', { name: /Organization/ });
+}
+
+const ORGANIZATION_SELECT = '.agent-platform-usage-organization-select';
+
+/**
+ * The Organization select's box, and how far its top sits from the Time
+ * range select's (0 on one row), rounded to whole pixels.
+ */
+async function scopeBarGeometry(page: Page) {
+  const organization = await page.locator(ORGANIZATION_SELECT).boundingBox();
+  const timeRange = await page
+    .locator('.agent-platform-usage-window-select')
+    .boundingBox();
+  if (!organization || !timeRange) {
+    return undefined;
+  }
+  return {
+    width: Math.round(organization.width),
+    rowOffset: Math.round(Math.abs(organization.y - timeRange.y)),
+  };
 }
 
 /** Opens the Cost page with the stub, or skips where the lab has no metrics. */
@@ -225,6 +245,85 @@ test.describe('Usage → Cost, by organization', () => {
         admin.getByText(/Shows the model use of the alpha organization/),
       ).toBeVisible();
     } finally {
+      await admin.unroute('**/api/gs/mimir/query?*');
+    }
+  });
+
+  test('keeps a long organization name to the box a short one takes, beside the Time range select, with the whole name a hover or a press away', async ({
+    admin,
+  }) => {
+    // A Giant Swarm organization no answer names, as a deep link keeps it.
+    const name = 'a-rather-long-organization-name-for-the-header';
+    await answerGatewayVectors(admin);
+    try {
+      await openCost(admin);
+      for (const width of [1440, 1280, 1024, 375]) {
+        await admin.setViewportSize({ width, height: 900 });
+        // At phone width the two selects need more than the page's width
+        // side by side, so they may sit one under the other there.
+        const oneRow = width >= 1024;
+
+        await open(admin, '/usage/cost?organization=org-alpha');
+        await expect(organizationSelect(admin)).toHaveText(/alpha/);
+        await expect
+          .poll(() => scopeBarGeometry(admin), {
+            message: `${width}px: a short name`,
+          })
+          .toEqual(
+            oneRow
+              ? { width: 200, rowOffset: 0 }
+              : expect.objectContaining({ width: 200 }),
+          );
+
+        await open(admin, `/usage/cost?organization=org-${name}`);
+        // Named as the organization: no `org-`, no `namespace` qualifier.
+        await expect(organizationSelect(admin)).toContainText(name);
+        await expect(organizationSelect(admin)).not.toContainText('org-');
+        await expect(organizationSelect(admin)).not.toContainText('namespace');
+        await expect
+          .poll(() => scopeBarGeometry(admin), {
+            message: `${width}px: the long name keeps the box and the row`,
+          })
+          .toEqual(
+            oneRow
+              ? { width: 200, rowOffset: 0 }
+              : expect.objectContaining({ width: 200 }),
+          );
+        expect(
+          await organizationSelect(admin).evaluate(trigger => {
+            const value = trigger.querySelector('.bui-SelectValue');
+            return value ? value.scrollWidth > value.clientWidth : false;
+          }),
+          `${width}px: the name is cut short inside the box`,
+        ).toBe(true);
+        await expectNoHorizontalScroll(admin, `Usage → Cost at ${width}px`);
+
+        // Hover: the whole name in a tooltip, as the box cuts it short.
+        await organizationSelect(admin).hover();
+        await expect(admin.getByRole('tooltip')).toHaveText(name);
+        await admin.mouse.move(0, 0);
+        await expect(admin.getByRole('tooltip')).toHaveCount(0);
+
+        // A press, as on a touch screen: the open list names it in full,
+        // wrapped where the screen is too narrow, never cut short.
+        await organizationSelect(admin).click();
+        const option = admin.getByRole('listbox').getByRole('option', { name });
+        await expect(option).toBeVisible();
+        expect(
+          await option.evaluate(element => {
+            const title = element.querySelector('.bui-SelectItemTitle');
+            const box = element.getBoundingClientRect();
+            return {
+              cutShort: title ? title.scrollWidth > title.clientWidth : true,
+              onScreen: box.left >= 0 && box.right <= window.innerWidth,
+            };
+          }),
+          `${width}px: the option shows the whole name, on screen`,
+        ).toEqual({ cutShort: false, onScreen: true });
+        await admin.keyboard.press('Escape');
+      }
+    } finally {
+      await admin.setViewportSize({ width: 1440, height: 900 });
       await admin.unroute('**/api/gs/mimir/query?*');
     }
   });

@@ -2,6 +2,7 @@ import {
   isMusterUnauthorizedReason,
   type MusterUnauthorizedReason,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { causeChain } from '@giantswarm/backstage-plugin-ui-react';
 import { isMusterTokenMintError } from './installationToken';
 
 export type { MusterUnauthorizedReason } from '@giantswarm/backstage-plugin-gs-common';
@@ -37,19 +38,6 @@ export function unauthorizedBodyOf(body: unknown): {
     reason: isMusterUnauthorizedReason(reason) ? reason : undefined,
     server: typeof server === 'string' && server !== '' ? server : undefined,
   };
-}
-
-/**
- * `error` and the errors it was made from (`cause`): the plugins that call
- * muster wrap its errors in their own (`ClusterManagerError`, ...) and keep
- * the original as the cause.
- */
-function* causeChain(error: unknown): Generator<unknown> {
-  let current = error;
-  for (let depth = 0; current && depth < 5; depth++) {
-    yield current;
-    current = (current as { cause?: unknown }).cause;
-  }
 }
 
 /**

@@ -465,9 +465,10 @@ shown yet.
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by organization, agent and model. The
   **By organization** table has one row per organization whose agents the
-  gateway recorded calls for: the organization's name, `None` for the
-  platform's shared agents, `namespace <name>` for another namespace agents
-  run in, and Unattributed for calls the gateway placed in no namespace; each
+  gateway recorded calls for, named as the Organization select names it (see
+  below), with the namespace under the name where it is an organization's or
+  two rows read the same, and Unattributed for calls the gateway placed in no
+  namespace; each
   row carries its model calls, tokens, spend and share of spend. A row opens
   the same page narrowed to that organization. In a calendar month, Cost
   also shows a **By person** table: spend, tokens and share of spend by the
@@ -500,7 +501,18 @@ organization's agents, by the namespace they run in (the gateway's
 and is left out for every organization. Its options are the namespaces the
 gateway recorded calls for in the window, so a removed organization keeps its
 spend, plus the namespaces the roster's agents run in; a deep link to any other
-namespace is kept as the selection. Error rate, Rate limited and the
+namespace is kept as the selection. An option reads as every Organization
+label in the portal does (`tenantOf`; the Cost and Overview captions, the By
+organization rows and the sessions list's Organization filter alike): the
+organization's name, `None` for the platform, a Giant Swarm organization's
+name for its `org-<name>` namespace (`the marian organization` in a caption),
+and any other namespace as it is. Where two read the same (`org-team-x` and
+`team-x`), the namespace is under the name, or beside it in the sessions
+filter; the URL keeps the namespace.
+The select keeps one width and cuts a long name short with an ellipsis, so it
+never widens the header's row of controls: the whole name is in a tooltip on
+hover and keyboard focus while it is cut short, and in the open list, which
+wraps a name too wide for the screen. Error rate, Rate limited and the
 unpriced-models warning cannot follow the scope, because their metrics carry
 no organization: narrowed, they say they are every organization's. The Cost
 caption says whose spend the page shows and for whom: every organization's, for everyone who can read the
@@ -928,8 +940,24 @@ A selected skill becomes a chart 1.x `skills[]` entry,
 `{ name, path: <skill dir>, git: { url: repo, commit } }` (`lib/agentSpec.ts`,
 `skillEntryOf`). The portal sends the commit, never a branch, so what the
 person picked runs until they update it. Root-level skills omit `path`; agents
-without skills omit `skills`. There is no per-skill credential (private skill
-repositories are separate platform work).
+without skills omit `skills`. There is no per-skill credential.
+
+**Private skill repositories.** Discovery reads GitHub's `private` flag of
+each repository (`GET /agent-skills` answers `private`), and the Skills step
+marks a private repository and its skills. agent-manager gives every agent
+with a git skill the installation's credential Secret (key `token`, in the
+agent's namespace; `get_info.skillsGitAuthSecretName`, kept filled with a
+GitHub App token when `get_info.skillsGitAuthMint` reports it) unless the agent
+names its own `gitAuthSecretName`, so the wizard asks for nothing: with a
+private skill picked, the Skills step and the review name the credential the
+agent fetches it with, and warn without blocking when the installation has
+none or its token failed to refresh (`PrivateSkillsNote`, `lib/privateSkills.ts`).
+Edit and Update skills send no `gitAuthSecretName`, so the agent keeps its
+credential. On the agent's page, a `ResolvedRefs=False` naming a Secret of the
+agent's skill `credentialRef`s reads as the credential Secret missing (the
+agent recovers once it exists; `Agent.getFailure().missingSecret`), apart from
+`Ready=False ActorTemplatePending`, the boot not finished, which points at the
+worker's boot log (where a wrong token's refusal shows).
 
 ### Adding, editing and evaluating a skill
 
@@ -3884,9 +3912,9 @@ The portal does not carry the values shape.
 
 - **Name-conflict pre-check.** A taken name is refused only at Deploy
   (`conflict`). Asking `get_agent` from step 1 would surface it earlier.
-- **Skills.** Private skill repositories need a platform answer (the create
-  contract has no per-skill credential). Discovery reads the **default branch**
-  and offers no per-skill `ref`.
+- **Skills.** Discovery reads the **default branch** and offers no per-skill
+  `ref`. The wizard offers no per-agent credential Secret: agents use the
+  installation's.
 - **An empty session is possible** between create and send. Avoiding it needs
   a server-side route that dispatches a turn without waiting.
 - **The agent version is not pinned to the session.** The prototype's

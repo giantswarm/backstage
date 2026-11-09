@@ -1,6 +1,8 @@
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { isStartableAgent } from '../components/NewSessionComposer';
+import type { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
+  lastActiveAt,
   sortSessionRows,
   type SessionRow,
 } from '../components/SessionsDataProvider/helpers';
@@ -8,19 +10,24 @@ import {
 /** How many recent agents the home screen offers. */
 export const RECENT_AGENTS_LIMIT = 3;
 
-/** A recent agent, and when the person's latest session with it started. */
+/** A recent agent, and when the person last used it. */
 export type RecentAgentUse = {
   agent: AgentRow;
-  /** The latest session's `createdAt`, when kagent reported one. */
+  /**
+   * The latest session's last turn where its state is known, its `createdAt`
+   * otherwise, when kagent reported one.
+   */
   lastUsedAt?: string;
 };
 
 /**
- * The agents of the most recently started sessions, newest first, each once,
- * with when each was last used. A session counts only when it matched an
- * `Agent` on the fleet, since only then is its agent known by identity.
- * Sessions are walked newest first and stop at `limit` agents, so a person
- * with hundreds of sessions costs no more than the few it takes.
+ * The agents of the most recently used sessions, newest first, each once,
+ * with when each was last used. A session's use is its last turn where
+ * `states` (keyed by session row id) knows it, its start otherwise
+ * ({@link lastActiveAt}), as {@link agentLastUsedAt} orders the Agents list.
+ * A session counts only when it matched an `Agent` on the fleet, since only
+ * then is its agent known by identity. Every session is ranked once, each
+ * one's use read once, then walked newest first until `limit` agents.
  *
  * `startableOnly` (the default) skips an agent no session can start on now,
  * for a list that starts one; a list that opens the agent's page keeps it,
@@ -32,11 +39,32 @@ export function recentAgentUses(
   {
     limit = RECENT_AGENTS_LIMIT,
     startableOnly = true,
-  }: { limit?: number; startableOnly?: boolean } = {},
+    states,
+  }: {
+    limit?: number;
+    startableOnly?: boolean;
+    states?: ReadonlyMap<string, SessionStateEntry>;
+  } = {},
 ): RecentAgentUse[] {
   const byId = new Map(agents.map(agent => [agent.id, agent]));
   const picked: RecentAgentUse[] = [];
-  for (const session of sortSessionRows(sessions)) {
+  let ranked = sortSessionRows(sessions);
+  if (states && states.size > 0) {
+    // Each session's use once, not once per comparison. Stable: sessions
+    // with the same use keep the start order.
+    ranked = ranked
+      .map(
+        session =>
+          [
+            session,
+            lastActiveAt(session, states.get(session.id)) ??
+              Number.MIN_SAFE_INTEGER,
+          ] as const,
+      )
+      .sort(([, a], [, b]) => b - a)
+      .map(([session]) => session);
+  }
+  for (const session of ranked) {
     if (picked.length >= limit) {
       break;
     }
@@ -51,7 +79,13 @@ export function recentAgentUses(
       (!startableOnly || isStartableAgent(agent)) &&
       !picked.some(use => use.agent === agent)
     ) {
-      picked.push({ agent, lastUsedAt: session.createdAt });
+      const state = states?.get(session.id);
+      const at = state && lastActiveAt(session, state);
+      picked.push({
+        agent,
+        lastUsedAt:
+          at !== undefined ? new Date(at).toISOString() : session.createdAt,
+      });
     }
   }
   return picked;
@@ -67,4 +101,28 @@ export function recentAgents(
   limit: number = RECENT_AGENTS_LIMIT,
 ): AgentRow[] {
   return recentAgentUses(sessions, agents, { limit }).map(use => use.agent);
+}
+
+/**
+ * When the person last used each agent, epoch ms by agent id: the latest
+ * activity of its sessions ({@link lastActiveAt}, with `states` keyed by
+ * session row id). An agent without a dated session has no entry.
+ */
+export function agentLastUsedAt(
+  sessions: readonly SessionRow[],
+  states?: ReadonlyMap<string, SessionStateEntry>,
+): Map<string, number> {
+  const latest = new Map<string, number>();
+  for (const session of sessions) {
+    if (!session.agentNamespace || !session.agentTechnicalName) {
+      continue;
+    }
+    const at = lastActiveAt(session, states?.get(session.id));
+    if (at === undefined) {
+      continue;
+    }
+    const id = `${session.installation}/${session.agentNamespace}/${session.agentTechnicalName}`;
+    latest.set(id, Math.max(at, latest.get(id) ?? at));
+  }
+  return latest;
 }
