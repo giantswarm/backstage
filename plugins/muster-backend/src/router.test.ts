@@ -670,6 +670,131 @@ describe('createRouter', () => {
       expect(response.body.installations[0]).not.toHaveProperty('reason');
     });
 
+    describe('a call to an installation', () => {
+      const golemProbe =
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource';
+      const gazelleProbe =
+        'https://muster.gazelle.example.io/.well-known/oauth-protected-resource';
+      const token = [
+        Buffer.from('{"alg":"none"}').toString('base64url'),
+        Buffer.from(
+          JSON.stringify({
+            sub: 'ada',
+            exp: Math.floor(Date.now() / 1000) + 600,
+          }),
+        ).toString('base64url'),
+        'sig',
+      ].join('.');
+
+      async function settled(golem: EndpointProbeResult | undefined) {
+        const { cache, pending } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
+        if (golem) {
+          pending.get(golemProbe)!(golem);
+        }
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return probing;
+      }
+
+      it('the probe reports unreachable fails at once with the probe reason, without calling muster', async () => {
+        const probing = await settled({
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+          checkedAt: 1,
+        });
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(response.body.error.message).toBe(
+          'golem did not answer: not reachable from this portal (no answer within 3000 ms)',
+        );
+        expect(callTool).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['while the first probe is in flight', undefined],
+        ['the probe reports reachable', { reachable: true, checkedAt: 1 }],
+      ])('is made %s', async (_label, golem) => {
+        const probing = await settled(golem as EndpointProbeResult | undefined);
+        callTool.mockResolvedValueOnce({ mcpServers: [] });
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(200);
+        expect(callTool).toHaveBeenCalledTimes(1);
+      });
+
+      it('the probe reports unreachable still lists it, and its status as unavailable, at once', async () => {
+        const probing = await settled({
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+          checkedAt: 1,
+        });
+
+        const installations = await request(probing).get('/installations');
+        const status = await request(probing)
+          .get('/auth/status?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(installations.body.installations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'golem', reachable: false }),
+          ]),
+        );
+        expect(status.status).toBe(200);
+        expect(status.body).toEqual({
+          servers: [],
+          unavailable: true,
+          message:
+            'golem did not answer: not reachable from this portal (no answer within 3000 ms)',
+        });
+        expect(getResource).not.toHaveBeenCalled();
+      });
+
+      it('logs nothing for the refused call: the probe logged the state change', async () => {
+        const logger = mockServices.logger.mock();
+        const { cache, pending } = controlledCache();
+        const router = await createRouter({
+          logger,
+          config: mockServices.rootConfig({
+            data: { muster: { installations: twoMusters } },
+          }),
+          client: mockClient,
+          reachability: cache,
+        });
+        const probing = expressApp();
+        probing.use(router);
+        probing.use(
+          MiddlewareFactory.create({
+            logger,
+            config: mockServices.rootConfig(),
+          }).error(),
+        );
+        pending.get(golemProbe)!({
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+          checkedAt: 1,
+        });
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+    });
+
     it('derives the probe URL next to the /mcp endpoint', () => {
       expect(musterProbeUrl('https://muster.golem.example.io/mcp')).toBe(
         'https://muster.golem.example.io/.well-known/oauth-protected-resource',

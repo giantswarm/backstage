@@ -9343,6 +9343,7 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:1.32.1"
     "@modelcontextprotocol/server": "npm:2.4.0"
     node-fetch: "npm:^3.3.2"
+    undici: "npm:^8.10.2"
     zod: "npm:^4.4.3"
   languageName: unknown
   linkType: soft

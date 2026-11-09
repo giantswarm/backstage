@@ -24,6 +24,7 @@ import {
   type MusterUrlElicitation,
   musterTokenExpiredError,
   musterTokenMissingError,
+  MusterUnreachableError,
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
@@ -408,12 +409,35 @@ export async function createRouter(
   });
 
   /**
+   * The error a call to the installation fails with at once, without a
+   * connection attempt, when the probe reports its muster unreachable from
+   * this portal: a 503 that is neither logged nor sent to Sentry, as the probe
+   * logs each state change itself. Nothing while the probe has not settled
+   * (`'unknown'`), or says it is reachable.
+   */
+  const unreachableError = (
+    installation: MusterInstallationConfig,
+  ): MusterUnreachableError | undefined => {
+    const state = reachability.get(musterProbeUrl(installation.url));
+    if (state.reachable !== false) {
+      return undefined;
+    }
+    return new MusterUnreachableError(
+      installation.name,
+      `not reachable from this portal (${state.reason ?? 'no answer'})`,
+    );
+  };
+
+  /**
    * Resolve the target installation for a request from `?installation=`.
    * Defaults to the only installation when exactly one is configured;
-   * otherwise the parameter is required.
+   * otherwise the parameter is required. Throws {@link unreachableError}
+   * for an installation the probe reports unreachable, unless
+   * `allowUnreachable` leaves that to the route.
    */
   const resolveInstallation = (
     req: express.Request,
+    { allowUnreachable = false }: { allowUnreachable?: boolean } = {},
   ): { config: MusterInstallationConfig; client: MusterMcpClient } => {
     if (clients.size === 0) {
       throw new ServiceUnavailableError(
@@ -442,6 +466,12 @@ export async function createRouter(
           ...clients.keys(),
         ].join(', ')}`,
       );
+    }
+    const unreachable = allowUnreachable
+      ? undefined
+      : unreachableError(installationConfig);
+    if (unreachable) {
+      throw unreachable;
     }
     return { config: installationConfig, client };
   };
@@ -794,13 +824,24 @@ export async function createRouter(
    * still be waiting for the user.
    */
   router.get('/auth/status', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
+    const { config: installation, client } = resolveInstallation(req, {
+      allowUnreachable: true,
+    });
     if (!hasPerUserSession(installation)) {
       res.json({ servers: [] });
       return;
     }
 
     const callOptions = readCallOptions(req, installation);
+    const unreachable = unreachableError(installation);
+    if (unreachable) {
+      res.json({
+        servers: [],
+        unavailable: true,
+        message: unreachable.message,
+      });
+      return;
+    }
 
     try {
       res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
