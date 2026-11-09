@@ -115,8 +115,9 @@ function harnessFact(row: Locator): Locator {
   return row.getByTestId('agent-facts').locator('[title^="Harness: "]');
 }
 
+/** The filter's trigger, named by its value and then its field: "All Filter by harness". */
 function harnessFilter(page: Page): Locator {
-  return page.getByRole('button', { name: /^Filter by harness/ });
+  return page.getByRole('button', { name: /\bFilter by harness$/ });
 }
 
 function harnessOption(page: Page, harness: string): Locator {
