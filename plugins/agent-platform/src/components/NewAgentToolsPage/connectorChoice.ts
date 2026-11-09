@@ -1,7 +1,13 @@
 import {
+  CONNECTOR_REACH_LABELS,
+  type ConnectorReach,
+  mcpServerStateSeverity,
+  type MCPServerState,
+  type MCPServerSeverity,
   toolEffect,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
+import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   bucketLabel,
@@ -101,6 +107,47 @@ export function readOnlySelectors(bucket: ServerBucket): string[] {
 /** Whether read-only access to a connector fits inline at all. */
 export function readOnlyFits(bucket: ServerBucket): boolean {
   return readOnlySelectors(bucket).length <= MAX_INLINE_SELECTORS;
+}
+
+export type ConnectorStatus = {
+  reach: Extract<ConnectorReach, 'connected' | 'sign-in' | 'not-connected'>;
+  label: string;
+  tone: StatusDotTone;
+};
+
+const SEVERITY_TONE: Record<MCPServerSeverity, StatusDotTone> = {
+  ok: 'success',
+  warning: 'warning',
+  error: 'danger',
+  unknown: 'neutral',
+};
+
+/**
+ * Whether this person can reach the connector's tools now, in the words of
+ * the Customize connectors list (`CONNECTOR_REACH_LABELS`): listed tools mean
+ * it answers, whatever its resource's state says.
+ */
+export function connectorStatus(bucket: ServerBucket): ConnectorStatus {
+  if (bucket.needsSignIn) {
+    return {
+      reach: 'sign-in',
+      label: CONNECTOR_REACH_LABELS['sign-in'],
+      tone: 'warning',
+    };
+  }
+  const severity = mcpServerStateSeverity(bucket.state as MCPServerState);
+  if (bucket.tools.length > 0 || severity === 'ok') {
+    return {
+      reach: 'connected',
+      label: CONNECTOR_REACH_LABELS.connected,
+      tone: 'success',
+    };
+  }
+  return {
+    reach: 'not-connected',
+    label: CONNECTOR_REACH_LABELS['not-connected'],
+    tone: SEVERITY_TONE[severity],
+  };
 }
 
 export type ConnectorChoice = 'none' | 'read-only' | 'all' | 'partial';

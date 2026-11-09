@@ -168,6 +168,25 @@ function connectorsHint({
 }
 
 /**
+ * The line by Continue while the toolset blocks it: what is wrong, in one
+ * sentence, and where it is fixed.
+ */
+function blockedLine(
+  toolset: readonly string[],
+  problems: readonly string[],
+): string {
+  if (toolset.length > MAX_INLINE_SELECTORS) {
+    return `This toolset lists ${toolset.length} selectors but an agent may list at most ${MAX_INLINE_SELECTORS}, so remove ${
+      toolset.length - MAX_INLINE_SELECTORS
+    } or more under Selected, or choose All for a connector instead of single tools.`;
+  }
+  const invalid = Math.max(problems.length, 1);
+  return invalid === 1
+    ? 'One selector in this toolset is not valid, so remove it under Selected.'
+    : `${invalid} selectors in this toolset are not valid, so remove them under Selected.`;
+}
+
+/**
  * The summary bar where the frame has no room for the rail: below the
  * two-column tier, or in a frame too narrow for it beside the step.
  */
@@ -642,6 +661,19 @@ export function NewAgentToolsPage() {
   // each pick, since a pick is complete when made (the `forms` skill).
   const blockedNote = useRef<HTMLDivElement>(null);
   const problemsAlert = useRef<HTMLDivElement>(null);
+  // The problems alert sits in the individual tools, mounted only once they
+  // are open: the focus moves after the render that opens them.
+  const [problemFocusRequest, setProblemFocusRequest] = useState(0);
+  useEffect(() => {
+    if (problemFocusRequest > 0) {
+      problemsAlert.current?.scrollIntoView?.({ block: 'center' });
+      problemsAlert.current?.focus();
+    }
+  }, [problemFocusRequest]);
+  const showProblems = useCallback(() => {
+    setShowIndividual(true);
+    setProblemFocusRequest(count => count + 1);
+  }, []);
   const onContinue = useCallback(() => {
     if (!isToolsetValid) {
       const target = problemsAlert.current ?? blockedNote.current;
@@ -963,11 +995,22 @@ export function NewAgentToolsPage() {
 
         {/* The rail says why too; this sits by Continue, where it is blocked. */}
         {!isToolsetValid && (
-          <div ref={blockedNote} tabIndex={-1}>
+          <Flex
+            ref={blockedNote}
+            tabIndex={-1}
+            direction="column"
+            align="start"
+            gap="1"
+          >
             <Text as="p" color="danger">
-              Fix the toolset to continue.
+              {blockedLine(state.toolset, toolsetProblems)}
             </Text>
-          </div>
+            {!selectionOff && (
+              <Button variant="tertiary" size="small" onPress={showProblems}>
+                Show the problem
+              </Button>
+            )}
+          </Flex>
         )}
       </Flex>
     </AgentWizardFrame>

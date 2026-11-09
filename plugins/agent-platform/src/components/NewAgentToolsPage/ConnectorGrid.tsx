@@ -7,17 +7,26 @@ import {
   ToggleButtonGroup,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import CheckIcon from '@material-ui/icons/Check';
 import {
   CatalogNoMatch,
   matchesQuery,
   isSearchableList,
   ShowMore,
+  StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { bucketLabel, countNoun, type ServerBucket } from '../../lib/toolset';
+import {
+  bucketLabel,
+  countNoun,
+  MAX_INLINE_SELECTORS,
+  type ServerBucket,
+} from '../../lib/toolset';
 import {
   type ConnectorChoice,
   connectorState,
+  connectorStatus,
+  type ConnectorStatus,
   readOnlyFits,
   readOnlySelectors,
 } from './connectorChoice';
@@ -51,25 +60,60 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-/** What sits under a connector's name: its tools, and how much is picked. */
-function connectorLine(
+/** What the connector offers, or why it lists no tools. */
+function toolsLine(
+  bucket: ServerBucket,
+  status: ConnectorStatus,
+  readOnlyCount: number,
+): string {
+  if (bucket.needsSignIn) {
+    return 'Its tools are listed once you sign in; All works without a sign-in.';
+  }
+  if (bucket.tools.length === 0) {
+    return status.reach === 'connected'
+      ? 'It lists no tools right now.'
+      : 'It lists no tools while it is not connected.';
+  }
+  const total = countNoun(bucket.tools.length, 'tool');
+  return readOnlyCount > 0 ? `${total}, ${readOnlyCount} read-only` : total;
+}
+
+/** Why *Read-only* cannot be picked, where the tools line does not say it. */
+function readOnlyUnavailable(
+  bucket: ServerBucket,
+  readOnlyCount: number,
+): string | undefined {
+  if (bucket.needsSignIn || bucket.tools.length === 0) {
+    return undefined;
+  }
+  if (readOnlyCount === 0) {
+    return 'None of its tools only read, so Read-only is not offered.';
+  }
+  if (!readOnlyFits(bucket)) {
+    return `Its read-only tools are more than the ${MAX_INLINE_SELECTORS} an agent may list one by one, so choose All.`;
+  }
+  return undefined;
+}
+
+/** How much of the connector the toolset holds, or nothing when none. */
+function selectionLine(
   bucket: ServerBucket,
   choice: ConnectorChoice,
   picked: number,
-) {
-  if (bucket.needsSignIn) {
-    return choice === 'all'
-      ? 'All, once signed in'
-      : 'Sign in to list its tools';
+): string | undefined {
+  switch (choice) {
+    case 'all':
+      return 'Selected: all tools, including ones added later.';
+    case 'read-only':
+      return `Selected: ${countNoun(picked, 'read-only tool')}.`;
+    case 'partial':
+      return `Selected: ${picked} of ${countNoun(
+        bucket.tools.length,
+        'tool',
+      )}.`;
+    default:
+      return undefined;
   }
-  const total = countNoun(bucket.tools.length, 'tool');
-  if (choice === 'all') {
-    return `${total}, including ones added later`;
-  }
-  if (choice === 'partial') {
-    return `${picked} of ${total} selected`;
-  }
-  return total;
 }
 
 function ConnectorCard({
@@ -90,17 +134,32 @@ function ConnectorCard({
   const { choice, picked } = connectorState(bucket, selected);
   const readOnlyCount = readOnlySelectors(bucket).length;
   const name = bucketLabel(bucket);
+  const status = connectorStatus(bucket);
+  const unavailable = readOnlyUnavailable(bucket, readOnlyCount);
+  const selection = selectionLine(bucket, choice, picked);
+  const checked = <CheckIcon aria-hidden />;
   return (
     <div
       role="group"
       aria-label={`Connector ${name}`}
       className={`${classes.card} ${choice === 'none' ? '' : classes.chosen}`}
     >
-      <Flex direction="column" gap="0" className={classes.name}>
+      <Flex direction="column" gap="1" className={classes.name}>
         <Text weight="bold">{name}</Text>
+        <StatusDot tone={status.tone} label={status.label} />
         <Text variant="body-small" color="secondary">
-          {connectorLine(bucket, choice, picked)}
+          {toolsLine(bucket, status, readOnlyCount)}
         </Text>
+        {unavailable && (
+          <Text variant="body-small" color="secondary">
+            {unavailable}
+          </Text>
+        )}
+        {selection && (
+          <Text variant="body-small" weight="bold">
+            {selection}
+          </Text>
+        )}
       </Flex>
       <ToggleButtonGroup
         aria-label={`Access to ${name}`}
@@ -120,6 +179,7 @@ function ConnectorCard({
         <ToggleButton
           id="read-only"
           size="small"
+          iconStart={choice === 'read-only' ? checked : undefined}
           // Read-only access is the tools that read today, one by one: none
           // to list before a sign-in, none at all, or more than fit inline.
           isDisabled={
@@ -128,7 +188,11 @@ function ConnectorCard({
         >
           Read-only
         </ToggleButton>
-        <ToggleButton id="all" size="small">
+        <ToggleButton
+          id="all"
+          size="small"
+          iconStart={choice === 'all' ? checked : undefined}
+        >
           All
         </ToggleButton>
       </ToggleButtonGroup>
@@ -137,11 +201,11 @@ function ConnectorCard({
 }
 
 /**
- * *Which apps?*: every connector with its tool count and two choices —
- * *Read-only* picks the tools it marks read-only today, *All* the whole
- * connector (`server:x`, so tools it adds later too). Tools picked one by one
- * in the catalogue show as a count, neither choice checked. A page at a time,
- * with a search (names and tags) from `SEARCH_MIN` connectors on.
+ * *Which apps?*: every connector with its state, its tool count and two
+ * choices. *Read-only* picks the tools it marks read-only today, *All* the
+ * whole connector (`server:x`, so tools it adds later too). Tools picked one
+ * by one in the catalogue show as a count, neither choice checked. A page at a
+ * time, with a search (names and tags) from `SEARCH_MIN` connectors on.
  */
 export function ConnectorGrid({
   connectors,
