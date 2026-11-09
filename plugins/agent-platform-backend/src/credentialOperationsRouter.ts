@@ -183,7 +183,7 @@ export function createCredentialOperationsRouter(
   const router = Router();
 
   const target = (req: express.Request) => {
-    const { operation } = req.params;
+    const operation = String(req.params.operation);
     if (!OPERATION_PATTERN.test(operation)) {
       throw new InputError('operation must be an agent-manager operation id');
     }

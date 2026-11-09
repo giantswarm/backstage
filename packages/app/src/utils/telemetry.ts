@@ -787,6 +787,13 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       route = '/organizations';
       break;
 
+    // One organization's credential form; the request it is for is its
+    // query (`?operation=`), which no attribute carries.
+    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+\/credentials$/.test(pathname):
+      payload = { page: 'Organization credential form' };
+      route = '/organizations/:installation/:parent/:name/credentials';
+      break;
+
     case /^\/organizations\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
       const tab = segments.slice(4).join('/');
       payload =

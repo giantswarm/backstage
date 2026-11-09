@@ -315,6 +315,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/organizations/:installation/:parent/:name/models',
     ],
     [
+      '/organizations/acme-prod/org-acme/payments/credentials',
+      { page: 'Organization credential form' },
+      '/organizations/:installation/:parent/:name/credentials',
+    ],
+    [
       '/organizations/acme-prod/org-acme/payments/whatever',
       { page: 'Organization detail', view: 'redirect' },
       '/organizations/:installation/:parent/:name/*',
