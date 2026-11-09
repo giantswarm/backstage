@@ -26,6 +26,10 @@ import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-muster', () =>
@@ -318,7 +322,12 @@ async function renderReview(
     },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         {/* The step's actions land in the wizard frame's footer through the
             page-header slot, which is what is driven. */}

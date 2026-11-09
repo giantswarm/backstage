@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Flex, Link, Text } from '@backstage/ui';
+import { Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '../shared';
 
 /**
@@ -148,17 +148,18 @@ export function ProviderAppSignIn({
         {code ? (
           <ol style={{ margin: 0, paddingInlineStart: '1.25rem' }}>
             <li>
-              <Text variant="body-small">
-                Open{' '}
-                <Link
-                  href={code.verificationUrl}
-                  target="_blank"
-                  rel="noopener"
+              <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+                <Text variant="body-small">
+                  Open the sign-in page and sign in.
+                </Text>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onPress={signIn.openSignInPage}
                 >
-                  {code.verificationUrl}
-                </Link>{' '}
-                and sign in.
-              </Text>
+                  Open sign-in page
+                </Button>
+              </Flex>
             </li>
             <li>
               <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>

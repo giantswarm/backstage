@@ -34,17 +34,30 @@ describe('connectBounce', () => {
     );
   });
 
-  it('navigates to the connect URL with the current page as redirect and records the bounce', () => {
-    const navigate = jest.fn();
-    bounceToConnect(
+  it('asks to open the connect URL with the current page as redirect and records the bounce on accept', async () => {
+    const open = jest.fn().mockResolvedValue('accept');
+
+    await bounceToConnect(
+      { open },
       'https://muster.example.com/oauth/proxy/start?state=abc',
-      navigate,
       'https://portal/plans',
     );
-    expect(navigate).toHaveBeenCalledTimes(1);
+
     expect(
-      new URL(navigate.mock.calls[0][0]).searchParams.get('redirect'),
+      new URL(open.mock.calls[0][0].url).searchParams.get('redirect'),
     ).toBe('https://portal/plans');
     expect(bounceAllowed()).toBe(false);
+  });
+
+  it('records nothing when the person does not open it', async () => {
+    const open = jest.fn().mockResolvedValue('decline');
+
+    await bounceToConnect(
+      { open },
+      'https://muster.example.com/oauth/proxy/start?state=abc',
+      'https://portal/plans',
+    );
+
+    expect(bounceAllowed()).toBe(true);
   });
 });

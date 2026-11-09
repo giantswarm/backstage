@@ -9828,6 +9828,7 @@ __metadata:
     rehype-raw: "npm:^6.0.0"
     rehype-sanitize: "npm:^5.0.0"
     remark-gfm: "npm:^3.0.1"
+    tldts: "npm:^7.0.5"
     use-local-storage-state: "npm:^19.5.0"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0

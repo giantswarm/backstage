@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -173,22 +173,6 @@ function MusterGrant({
     );
   }
 
-  if (signIn.isPreparing) {
-    // The tab the click opened is gone (closed, or closed for taking too
-    // long) and muster has not issued the page yet: there is no other tab to
-    // finish in, and the link appears here once there is a page.
-    return (
-      <Flex direction="column" gap="2">
-        <Text variant="body-small" weight="bold">
-          Preparing the {kind} sign-in…
-        </Text>
-        <Text variant="body-small" color="secondary">
-          The sign-in page opens from here once it is ready.
-        </Text>
-      </Flex>
-    );
-  }
-
   if (signIn.isWaiting) {
     return (
       <Flex direction="column" gap="2">
@@ -210,9 +194,15 @@ function MusterGrant({
             </Button>
           </div>
         ) : (
-          <Link href={signIn.authUrl} target="_blank" rel="noopener">
-            Open the {kind} sign-in
-          </Link>
+          <div>
+            <Button
+              variant="secondary"
+              size="small"
+              onPress={signIn.openSignInPage}
+            >
+              Open the {kind} sign-in
+            </Button>
+          </div>
         )}
       </Flex>
     );

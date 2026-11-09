@@ -14,6 +14,10 @@ import { mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 import { toolCountsLine } from './NewConnectorTestPage';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // Each test walks the real multi-step flow with plenty of typing, which gets
 // slow when the whole plugin suite runs in parallel (same as BotPrsPage).
@@ -82,7 +86,12 @@ function renderWizard(path: string) {
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <Routes>

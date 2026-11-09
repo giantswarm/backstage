@@ -43,13 +43,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function createConnector(
   fetchMock: jest.Mock,
-  options: { guard?: BounceGuard; navigate?: jest.Mock } = {},
+  options: { guard?: BounceGuard; open?: jest.Mock } = {},
 ) {
   return new GithubGrantAuthConnector({
     backendBaseUrl: 'http://backend',
     mainAuthApi: mainAuthApi as any,
     fetch: fetchMock as unknown as typeof fetch,
-    navigate: options.navigate ?? jest.fn(),
+    externalUrlConsentApi: {
+      open: options.open ?? jest.fn().mockResolvedValue('accept'),
+    },
     currentUrl: () =>
       'https://portal.example.com/catalog/default/component/x/ci-cd',
     bounceGuard: options.guard ?? new MemoryGuard(),
@@ -103,7 +105,7 @@ describe('GithubGrantAuthConnector', () => {
     });
 
     it("surfaces a missing grant as a typed no_grant error carrying muster's connect URL and never navigates", async () => {
-      const navigate = jest.fn();
+      const open = jest.fn().mockResolvedValue('accept');
       const fetchMock = jest.fn().mockResolvedValue(
         jsonResponse(
           {
@@ -117,7 +119,7 @@ describe('GithubGrantAuthConnector', () => {
       );
 
       await expect(
-        createConnector(fetchMock, { navigate }).refreshSession({
+        createConnector(fetchMock, { open }).refreshSession({
           scopes: new Set(['repo']),
         }),
       ).rejects.toMatchObject({
@@ -125,7 +127,7 @@ describe('GithubGrantAuthConnector', () => {
         reason: 'no_grant',
         authUrl: 'https://muster.example.com/oauth/proxy/start?state=abc',
       });
-      expect(navigate).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
     });
 
     it('maps broker faults to their reasons', async () => {
@@ -166,8 +168,8 @@ describe('GithubGrantAuthConnector', () => {
   });
 
   describe('createSession', () => {
-    it("bounces the browser through muster's connect and back to the current page when there is no grant", async () => {
-      const navigate = jest.fn();
+    it("asks to open muster's connect, back to the current page, when there is no grant", async () => {
+      const open = jest.fn().mockResolvedValue('accept');
       const guard = new MemoryGuard();
       const fetchMock = jest.fn().mockResolvedValue(
         jsonResponse(
@@ -180,7 +182,7 @@ describe('GithubGrantAuthConnector', () => {
       );
 
       const pending = createConnector(fetchMock, {
-        navigate,
+        open,
         guard,
       }).createSession({
         scopes: new Set(['repo']),
@@ -195,8 +197,8 @@ describe('GithubGrantAuthConnector', () => {
       ]);
       expect(settled).toBe('pending');
 
-      expect(navigate).toHaveBeenCalledTimes(1);
-      const target = new URL(navigate.mock.calls[0][0]);
+      expect(open).toHaveBeenCalledTimes(1);
+      const target = new URL(open.mock.calls[0][0].url);
       expect(target.origin + target.pathname).toBe(
         'https://muster.example.com/oauth/proxy/start',
       );
@@ -207,8 +209,35 @@ describe('GithubGrantAuthConnector', () => {
       expect(guard.recorded).toBe(1);
     });
 
+    it.each(['decline', 'cancel'])(
+      'opens nothing and reports no_grant when the person answers %s',
+      async answer => {
+        const open = jest.fn().mockResolvedValue(answer);
+        const guard = new MemoryGuard();
+        const fetchMock = jest.fn().mockResolvedValue(
+          jsonResponse(
+            {
+              reason: 'no_grant',
+              authUrl: 'https://muster.example.com/oauth/proxy/start?state=abc',
+            },
+            401,
+          ),
+        );
+
+        await expect(
+          createConnector(fetchMock, { open, guard }).createSession({
+            scopes: new Set(['repo']),
+          }),
+        ).rejects.toMatchObject({
+          reason: 'no_grant',
+          authUrl: 'https://muster.example.com/oauth/proxy/start?state=abc',
+        });
+        expect(guard.recorded).toBe(0);
+      },
+    );
+
     it('does not bounce again when the last bounce came back without a grant', async () => {
-      const navigate = jest.fn();
+      const open = jest.fn().mockResolvedValue('accept');
       const fetchMock = jest.fn().mockResolvedValue(
         jsonResponse(
           {
@@ -221,17 +250,17 @@ describe('GithubGrantAuthConnector', () => {
 
       await expect(
         createConnector(fetchMock, {
-          navigate,
+          open,
           guard: new MemoryGuard(false),
         }).createSession({
           scopes: new Set(['repo']),
         }),
       ).rejects.toMatchObject({ reason: 'no_grant' });
-      expect(navigate).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
     });
 
     it('mints directly when a grant exists', async () => {
-      const navigate = jest.fn();
+      const open = jest.fn().mockResolvedValue('accept');
       const fetchMock = jest
         .fn()
         .mockResolvedValue(
@@ -239,25 +268,25 @@ describe('GithubGrantAuthConnector', () => {
         );
 
       const session = await createConnector(fetchMock, {
-        navigate,
+        open,
       }).createSession({
         scopes: new Set(['repo']),
       });
       expect(session.providerInfo.accessToken).toBe('ghu_live');
-      expect(navigate).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
     });
 
     it('does not bounce on other failures', async () => {
-      const navigate = jest.fn();
+      const open = jest.fn().mockResolvedValue('accept');
       const fetchMock = jest
         .fn()
         .mockResolvedValue(jsonResponse({ reason: 'exchange_failed' }, 502));
       await expect(
-        createConnector(fetchMock, { navigate }).createSession({
+        createConnector(fetchMock, { open }).createSession({
           scopes: new Set(['repo']),
         }),
       ).rejects.toBeInstanceOf(GithubTokenError);
-      expect(navigate).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
     });
   });
 

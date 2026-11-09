@@ -19,6 +19,10 @@ import {
   SETTLE_REREAD_UNTIL_MS,
   SETTLE_WINDOW_MS,
 } from './hooks/useSettledWaiting';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The installation's connectors as muster names them, per test; none by default. */
 let mockNames: ConnectorName[] = [];
@@ -124,7 +128,12 @@ async function renderProvider(api: Api) {
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <McpSignInProvider>
           <Status />
@@ -489,7 +498,12 @@ describe('McpSignInProvider', () => {
     mockInstallation = { installation: undefined, isLoading: true };
     const api = makeApi({ servers: [waitingFor('workspace-manager')] });
     const { rerender } = await renderInTestApp(
-      <TestApiProvider apis={[[musterApiRef, api]]}>
+      <TestApiProvider
+        apis={[
+          [musterApiRef, api],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
+      >
         <QueryClientProvider client={new QueryClient()}>
           <McpSignInProvider>
             <Status />
@@ -501,7 +515,12 @@ describe('McpSignInProvider', () => {
 
     mockInstallation = { installation: undefined, isLoading: false };
     rerender(
-      <TestApiProvider apis={[[musterApiRef, api]]}>
+      <TestApiProvider
+        apis={[
+          [musterApiRef, api],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
+      >
         <QueryClientProvider client={new QueryClient()}>
           <McpSignInProvider>
             <Status />
