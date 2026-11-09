@@ -12,6 +12,8 @@ import {
   InfoCard,
   StatusLabel,
   isAwaitingData,
+  pollingQueryOptions,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { CI, HeadStatus, InventoryRecord, repositoriesApiRef } from '../apis';
 import {
@@ -180,10 +182,13 @@ export function RepositoryDetails({ repository }: { repository: string }) {
   const recordQuery = useQuery({
     queryKey,
     queryFn: () => api.getRepository(repository),
-    refetchInterval: query =>
+    // While the findings converge; not from a hidden tab, not after the
+    // backend refused the person.
+    ...pollingQueryOptions((query: PollingQuery<InventoryRecord>) =>
       query.state.data && converging(query.state.data)
         ? CONVERGING_POLL_MS
         : false,
+    ),
   });
 
   const refresh = useTrackedMutation({

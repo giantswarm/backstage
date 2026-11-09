@@ -26,7 +26,9 @@ import {
   useFieldValidation,
   useSelectFieldError,
   safeWebURL,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
@@ -116,10 +118,14 @@ function BuildStatus({
     queryFn: () => client!.buildStatus({ name, source, pull }),
     enabled: Boolean(client),
     retry: false,
-    refetchInterval: query => {
-      const state = query.state.data?.build?.state;
-      return state && isFinalBuildState(state) ? false : BUILD_POLL_MS;
-    },
+    // Until the build is final; not from a hidden tab, not after muster
+    // answered that the person is not signed in to the toolchain-manager.
+    ...musterPollingOptions(
+      (query: PollingQuery<{ build?: ToolchainBuild }>) => {
+        const state = query.state.data?.build?.state;
+        return state && isFinalBuildState(state) ? false : BUILD_POLL_MS;
+      },
+    ),
   });
   const build = status.data?.build;
   if (status.error) {

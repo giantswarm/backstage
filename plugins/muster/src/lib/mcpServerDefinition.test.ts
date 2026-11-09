@@ -643,23 +643,26 @@ describe('validateNewMcpServerForm', () => {
       expect(
         existing({
           slug: 'github',
-          clientSecretName: 'github-oauth-client-prod1',
+          clientSecretName: 'github-muster-client-prod01prod',
         }),
       ).toEqual([
         {
           field: 'clientSecretName',
           message:
-            'Names like github-oauth-client-a1b2c are kept for the client Muster stores; choose another name.',
+            'Names like github-muster-client-a1b2c3d4e5 are kept for the client Muster stores; choose another name.',
         },
       ]);
       // Another connector's prefix, or another length, is an ordinary name.
       expect(
-        existing({ slug: 'github', clientSecretName: 'github-oauth-client' }),
+        existing({
+          slug: 'github',
+          clientSecretName: 'github-muster-client-prod1',
+        }),
       ).toEqual([]);
       expect(
         existing({
           slug: 'github',
-          clientSecretName: 'gitlab-oauth-client-prod1',
+          clientSecretName: 'gitlab-muster-client-prod01prod',
         }),
       ).toEqual([]);
     });
@@ -1682,24 +1685,39 @@ describe('client credentials typed into the wizard', () => {
   const none = { clientId: '', clientSecret: '' };
 
   it('tells the Secret muster stored for the server from any other', () => {
-    expect(isStoredClientSecret('hubspot', 'hubspot-oauth-client-a1b2c')).toBe(
-      true,
-    );
+    expect(
+      isStoredClientSecret('hubspot', 'hubspot-muster-client-a1b2c3d4e5'),
+    ).toBe(true);
     for (const name of [
-      'hubspot-oauth-client',
-      'hubspot-oauth-client-a1b2',
-      'hubspot-oauth-client-A1B2C',
-      'hubspot-oauth-client-a1b2c3',
-      'other-oauth-client-a1b2c',
-      'github-oauth-client',
+      'hubspot-muster-client',
+      'hubspot-muster-client-a1b2c3d4e',
+      'hubspot-muster-client-A1B2C3D4E5',
+      'hubspot-muster-client-a1b2c3d4e5f',
+      'other-muster-client-a1b2c3d4e5',
+      'hubspot-oauth-client-a1b2c',
+      'jira-oauth-client-entra',
     ]) {
       expect(isStoredClientSecret('hubspot', name)).toBe(false);
     }
     // muster cuts a long server name so the Secret's name stays a DNS label.
     const long = 'a'.repeat(60);
     expect(
-      isStoredClientSecret(long, `${'a'.repeat(44)}-oauth-client-zz999`),
+      isStoredClientSecret(long, `${'a'.repeat(38)}-muster-client-zz999zz999`),
     ).toBe(true);
+    // ...and trims a '.' or '-' the cut ends on.
+    const cutOnDash = `${'a'.repeat(36)}--bbbb`;
+    expect(
+      isStoredClientSecret(
+        cutOnDash,
+        `${'a'.repeat(36)}-muster-client-zz999zz999`,
+      ),
+    ).toBe(true);
+    expect(
+      isStoredClientSecret(
+        cutOnDash,
+        `${'a'.repeat(36)}---muster-client-zz999zz999`,
+      ),
+    ).toBe(false);
   });
 
   it('wants both values and an issuer, or neither', () => {
@@ -1762,7 +1780,7 @@ describe('client credentials typed into the wizard', () => {
           issuer: 'https://idp',
           revocationEndpoint: 'https://idp/revoke',
           clientCredentialsSecretRef: {
-            name: 'weather-mcp-oauth-client-x7k2p',
+            name: 'weather-mcp-muster-client-x7k2p9m4qa',
           },
         },
       },
@@ -1779,7 +1797,9 @@ describe('client credentials typed into the wizard', () => {
       issuer: 'https://idp',
       scopes: 'read',
       revocationEndpoint: 'https://idp/revoke',
-      clientCredentialsSecretRef: { name: 'weather-mcp-oauth-client-x7k2p' },
+      clientCredentialsSecretRef: {
+        name: 'weather-mcp-muster-client-x7k2p9m4qa',
+      },
     });
     expect(
       clientBindingChanged(
@@ -1847,7 +1867,7 @@ describe('client credentials typed into the wizard', () => {
   it('lets an issuer be cleared on a connector with a stored client', () => {
     const form = ownAccount({
       issuer: '',
-      clientSecretName: 'weather-mcp-oauth-client-x7k2p',
+      clientSecretName: 'weather-mcp-muster-client-x7k2p9m4qa',
     });
     expect(validateNewMcpServerForm(form)).toEqual([]);
     expect(composeMcpServerDefinition(form).auth).toEqual({ type: 'oauth' });
@@ -1890,7 +1910,7 @@ describe('client credentials typed into the wizard', () => {
   });
 
   it('reads a stored client back as stored, and keeps its reference on an edit', () => {
-    const ref = { name: 'weather-mcp-oauth-client-x7k2p' };
+    const ref = { name: 'weather-mcp-muster-client-x7k2p9m4qa' };
     const server = registered({
       auth: {
         type: 'oauth',

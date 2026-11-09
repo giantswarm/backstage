@@ -62,6 +62,7 @@ import {
 } from '../ModelHostingActions';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
+import { ModelManagerSignInAlerts } from '../ModelManagerSignInAlerts';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import {
   hasServedModelTimeline,
@@ -543,6 +544,13 @@ export function ServingPage() {
       installations,
       unreadable: serving.unreachableInstallations,
     });
+  // Where muster asked for the person's sign-in to model-manager, the page
+  // offers it; the read warning names only the installations some source
+  // could not read for another reason (KServe's read of the same
+  // installation failing, say), which a sign-in would not fix.
+  const signInRequired = serving.signInRequiredInstallations ?? [];
+  const readWarningInstallations =
+    serving.unreadableBeyondSignIn ?? serving.unreachableInstallations;
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
@@ -609,10 +617,13 @@ export function ServingPage() {
           {!openedRow && lifecyclePanel}
 
           <UnreachableInstallationsAlert
-            installations={serving.unreachableInstallations}
+            installations={readWarningInstallations}
             resourceName="served models"
             isLoading={isReadingServedModels}
           />
+          {!isReadingServedModels && signInRequired.length > 0 && (
+            <ModelManagerSignInAlerts installations={signInRequired} />
+          )}
 
           {!isReadingServedModels && downloadRows.errors.length > 0 && (
             <Alert
