@@ -49,7 +49,12 @@ export function describeExternalUrl(
   }
 
   const { href, hostname, protocol } = url;
-  const domain = getDomain(hostname, { allowPrivateDomains: true }) ?? hostname;
+  const registrable = getDomain(hostname, { allowPrivateDomains: true });
+  // tldts drops a trailing dot (`evil.com.` gives `evil.com`); the highlight
+  // must be a suffix of the host as written, or the shown address differs
+  // from the opened one.
+  const domain =
+    registrable && hostname.endsWith(registrable) ? registrable : hostname;
   const authorityStart = protocol.length + 2;
   // Serialized user info percent-encodes its own `@`, so the first one in
   // the authority ends it.

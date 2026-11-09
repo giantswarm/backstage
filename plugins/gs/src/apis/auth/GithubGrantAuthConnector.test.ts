@@ -15,6 +15,7 @@ class MemoryGuard implements BounceGuard {
   }
   record() {
     this.recorded++;
+    this.allowed = false;
   }
   clear() {
     this.cleared++;
@@ -210,11 +211,11 @@ describe('GithubGrantAuthConnector', () => {
     });
 
     it.each(['decline', 'cancel'])(
-      'opens nothing and reports no_grant when the person answers %s',
+      'opens nothing, reports no_grant and does not ask again when the person answers %s',
       async answer => {
         const open = jest.fn().mockResolvedValue(answer);
         const guard = new MemoryGuard();
-        const fetchMock = jest.fn().mockResolvedValue(
+        const fetchMock = jest.fn().mockImplementation(async () =>
           jsonResponse(
             {
               reason: 'no_grant',
@@ -224,15 +225,18 @@ describe('GithubGrantAuthConnector', () => {
           ),
         );
 
+        const connector = createConnector(fetchMock, { open, guard });
         await expect(
-          createConnector(fetchMock, { open, guard }).createSession({
-            scopes: new Set(['repo']),
-          }),
+          connector.createSession({ scopes: new Set(['repo']) }),
         ).rejects.toMatchObject({
           reason: 'no_grant',
           authUrl: 'https://muster.example.com/oauth/proxy/start?state=abc',
         });
-        expect(guard.recorded).toBe(0);
+        await expect(
+          connector.createSession({ scopes: new Set(['repo']) }),
+        ).rejects.toMatchObject({ reason: 'no_grant' });
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(guard.recorded).toBe(1);
       },
     );
 

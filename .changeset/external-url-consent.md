@@ -16,9 +16,8 @@ person agrees in one dialog that shows the full address with its domain
 highlighted and warns about a punycode domain, plain http and a user name
 before the domain.
 
-- ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager` and
-  `openExternalUrl`; `ExternalUrlConsentDialog` and
-  `ExternalUrlConsentDialogHost`; `describeExternalUrl`.
+- ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+  `ExternalUrlConsentDialogHost`.
 - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
   the app root.
 - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
@@ -27,8 +26,10 @@ before the domain.
   `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
   link.
 - gs: the GitHub auth API asks before it navigates to muster's connect; a
-  connect not opened is a `no_grant` error.
+  connect not opened is a `no_grant` error and is not asked again for two
+  minutes.
 - plans, roadmap, repositories, platform-capabilities: a missing grant offers
   Connect instead of navigating on first sight.
-- agent-platform: an agent's sign-in, a provider sign-in and a connector
-  sign-in link in a message are buttons that ask first.
+- agent-platform: an agent's sign-in, a provider sign-in, a connector
+  sign-in link in a message and the toolchain-manager's App install page are
+  buttons that ask first.

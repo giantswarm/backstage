@@ -53,6 +53,27 @@ describe('describeExternalUrl', () => {
     });
   });
 
+  it('highlights the whole host when it ends in a dot', () => {
+    expect(describeExternalUrl('https://ab.evil.com./x')).toMatchObject({
+      before: 'https://',
+      domain: 'ab.evil.com.',
+      after: '/x',
+    });
+  });
+
+  it.each([
+    'https://login.github.com.evil.co.uk/oauth?state=1',
+    'https://ab.evil.com./x',
+    'https://user:pw@evil.example:8443/x#y',
+    'http://[::1]:8080/cb',
+    'https://аpple.com/sign-in',
+  ])('shows exactly the address it opens: %s', raw => {
+    const described = describeExternalUrl(raw)!;
+    expect(described.before + described.domain + described.after).toBe(
+      described.href,
+    );
+  });
+
   it.each([
     // eslint-disable-next-line no-script-url
     'javascript:alert(1)',

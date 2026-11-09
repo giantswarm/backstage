@@ -223,7 +223,7 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
         if (!this.bounceGuard.allow()) {
           throw new GithubTokenError(
             'no_grant',
-            'GitHub is not connected in muster: the connect did not produce a grant. Connect GitHub in muster and reload.',
+            'GitHub is not connected in muster. Connect GitHub in muster and reload.',
             error.authUrl,
           );
         }
@@ -234,6 +234,9 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
             'Connect your GitHub account in muster. The page comes back here once it is connected.',
           target: 'page',
         });
+        // Every token request retries the session: a refused connect is
+        // recorded too, or each one would ask again.
+        this.bounceGuard.record();
         if (answer !== 'accept') {
           throw new GithubTokenError(
             'no_grant',
@@ -241,7 +244,6 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
             error.authUrl,
           );
         }
-        this.bounceGuard.record();
         // The page is navigating away; nothing to resolve.
         return new Promise(() => {});
       }

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import {
   Alert,
@@ -13,11 +13,13 @@ import { makeStyles } from '@material-ui/core/styles';
 import { BusyDialog } from '../BusyDialog';
 import {
   type ExternalUrlConsentAnswer,
-  type ExternalUrlWarning,
   type PendingExternalUrlConsent,
-  describeExternalUrl,
   externalUrlConsentApiRef,
 } from '../../apis/externalUrlConsent';
+import {
+  type ExternalUrlWarning,
+  describeExternalUrl,
+} from '../../apis/externalUrlConsent/describeExternalUrl';
 
 const useStyles = makeStyles({
   address: {
@@ -143,10 +145,11 @@ export function ExternalUrlConsentDialog({
  */
 export function ExternalUrlConsentDialogHost() {
   const api = useApi(externalUrlConsentApiRef);
-  const request = useSyncExternalStore(
-    listener => api.subscribe(listener),
-    () => api.current(),
+  const subscribe = useCallback(
+    (listener: () => void) => api.subscribe(listener),
+    [api],
   );
+  const request = useSyncExternalStore(subscribe, () => api.current());
   if (!request) {
     return null;
   }
