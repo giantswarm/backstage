@@ -104,6 +104,11 @@ function Session({
   );
 }
 
+/** The person's answer in the external URL consent dialog. */
+const consentOpen = jest.fn();
+/** The address the last sign-in asked the person to open. */
+const openedUrl = (): string => consentOpen.mock.lastCall[0].url;
+
 async function renderSession({
   text = `Sign in here: ${LINK}`,
   pending,
@@ -130,11 +135,6 @@ async function renderSession({
   );
   return { ...rendered, onAnswer };
 }
-
-/** The person's answer in the external URL consent dialog. */
-const consentOpen = jest.fn();
-/** The address the last sign-in asked the person to open. */
-const openedUrl = (): string => consentOpen.mock.lastCall[0].url;
 
 const signInLink = () =>
   screen.getByRole('button', { name: 'Sign in to Grafana Cloud' });

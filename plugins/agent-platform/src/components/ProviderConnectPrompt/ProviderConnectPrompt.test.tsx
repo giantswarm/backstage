@@ -84,6 +84,12 @@ function Host({ onConnected }: { onConnected: (name: string) => void }) {
   );
 }
 
+/** The external URL consent dialog's queue; nothing answers unless a test does. */
+let consent: ExternalUrlConsentManager;
+beforeEach(() => {
+  consent = new ExternalUrlConsentManager(jest.fn());
+});
+
 function renderHost(fake: WorkspaceManagerFake) {
   const onConnected = jest.fn();
   const musterApi = {
@@ -131,11 +137,6 @@ function twoProviders() {
   });
 }
 
-/** The external URL consent dialog's queue; nothing answers unless a test does. */
-let consent: ExternalUrlConsentManager;
-beforeEach(() => {
-  consent = new ExternalUrlConsentManager(jest.fn());
-});
 afterEach(() => {
   focusManager.setFocused(undefined);
 });
