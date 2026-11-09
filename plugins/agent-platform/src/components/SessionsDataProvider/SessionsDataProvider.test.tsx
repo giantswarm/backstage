@@ -114,6 +114,7 @@ function renderProvider(
     defaultOptions: { queries: { retry: false } },
   }),
   storage: StorageApi = mockApis.storage(),
+  { enabled }: { enabled?: boolean } = {},
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <TestApiProvider
@@ -123,7 +124,9 @@ function renderProvider(
       ]}
     >
       <QueryClientProvider client={queryClient}>
-        <SessionsDataProvider>{children}</SessionsDataProvider>
+        <SessionsDataProvider enabled={enabled}>
+          {children}
+        </SessionsDataProvider>
       </QueryClientProvider>
     </TestApiProvider>
   );
@@ -226,6 +229,20 @@ describe('SessionsDataProvider', () => {
     await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
     expect(listSessions).toHaveBeenCalledWith('gazelle');
     expect(listSessions).not.toHaveBeenCalledWith('golem');
+  });
+
+  it('reads nothing, and lists nothing, while not enabled', async () => {
+    listSessions.mockResolvedValue([session()]);
+
+    const { result } = renderProvider(undefined, undefined, {
+      enabled: false,
+    });
+
+    await waitFor(() => expect(listInstallations).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(listSessions).not.toHaveBeenCalled();
+    expect(result.current.rows).toEqual([]);
+    expect(result.current.isLoadingMore).toBe(false);
   });
 
   it('queries nothing until the allowlist resolves', async () => {

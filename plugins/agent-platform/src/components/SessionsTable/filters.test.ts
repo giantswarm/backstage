@@ -282,7 +282,7 @@ describe('the shell list’s dropdown filters (T92)', () => {
     ).toEqual(['tenant', 'agent', 'pinned']);
   });
 
-  it('names a session’s organization as the Agents tab does', () => {
+  it('filters by the namespace and names it as every Organization label does', () => {
     // As agent-manager's `list_my_organizations` names the namespace.
     const directory = organizationDirectory([
       {
@@ -300,17 +300,49 @@ describe('the shell list’s dropdown filters (T92)', () => {
         row('b', 'SRE Agent', { namespace: 'kagent', name: 'sre-agent' }),
         row('c', 'Helper', { namespace: 'agents-acme-x7k2q', name: 'helper' }),
         row('d', 'Unmatched'),
+        row('e', 'Marian’s', { namespace: 'org-marian', name: 'm' }),
+        row('f', 'Team', { namespace: 'team-x', name: 't' }),
+        row('g', 'Team org', { namespace: 'org-team-x', name: 't' }),
       ],
       undefined,
     );
-    expect(fleet.map(r => sessionOrganization(r, directory))).toEqual([
-      'acme',
-      'None',
-      'acme',
+    expect(fleet.map(r => sessionOrganization(r))).toEqual([
+      'agents-acme-x7k2q',
+      'kagent',
+      'agents-acme-x7k2q',
       undefined,
+      'org-marian',
+      'team-x',
+      'org-team-x',
     ]);
     expect(
-      ids(filterSessionsBySelection(fleet, { tenant: ['acme'] }, directory)),
+      ids(
+        filterSessionsBySelection(
+          fleet,
+          { tenant: ['agents-acme-x7k2q'] },
+          directory,
+        ),
+      ),
     ).toEqual(['a', 'c']);
+    // Two namespaces that read the same are still two choices.
+    expect(
+      ids(filterSessionsBySelection(fleet, { tenant: ['team-x'] }, directory)),
+    ).toEqual(['f']);
+
+    const organization = sessionFacets(fleet, {
+      showStates: false,
+      directory,
+    }).find(facet => facet.id === 'tenant')!;
+    expect(
+      ['agents-acme-x7k2q', 'kagent', 'org-marian', 'team-x', 'org-team-x'].map(
+        namespace => organization.optionLabel?.(namespace),
+      ),
+    ).toEqual([
+      'acme',
+      'None',
+      'marian',
+      'team-x (team-x)',
+      'team-x (org-team-x)',
+    ]);
   });
 });

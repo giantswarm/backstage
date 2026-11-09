@@ -57,6 +57,7 @@ const loaded: SkillCatalog = {
   hasRepositories: true,
   failedRepositories: [],
   truncated: false,
+  privateRepositories: new Set(),
 };
 
 /**

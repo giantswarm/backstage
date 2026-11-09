@@ -3,16 +3,16 @@ import { makeStyles } from '@material-ui/core';
 import { HintTooltip } from '@giantswarm/backstage-plugin-ui-react';
 import { connectorIconOf } from '../../lib/connectorLogo';
 
-type StyleProps = { size: number };
+type StyleProps = { size: number; round: boolean };
 
 const useStyles = makeStyles({
   // The letter tile's frame, which every logo keeps.
-  tile: ({ size }: StyleProps) => ({
+  tile: ({ size, round }: StyleProps) => ({
     flex: 'none',
     boxSizing: 'border-box',
     width: size,
     height: size,
-    borderRadius: size / 4,
+    borderRadius: round ? '50%' : size / 4,
     border: '1px solid var(--bui-border-1)',
     backgroundColor: 'transparent',
     display: 'inline-flex',
@@ -36,8 +36,8 @@ const useStyles = makeStyles({
     },
   }),
   // The focus ring follows the tile's corners.
-  trigger: ({ size }: StyleProps) => ({
-    borderRadius: size / 4,
+  trigger: ({ size, round }: StyleProps) => ({
+    borderRadius: round ? '50%' : size / 4,
   }),
 });
 
@@ -48,6 +48,8 @@ export type ConnectorLogoProps = {
   name: string;
   /** Width and height in px; the list's tile is 36, a page header's 56. */
   size?: number;
+  /** A circle rather than the letter tile's rounded square, as in a stack. */
+  round?: boolean;
   /** Hidden from assistive technology, where the name is written beside it. */
   decorative?: boolean;
   /**
@@ -68,11 +70,12 @@ export function ConnectorLogo({
   name,
   icon,
   size = 36,
+  round = false,
   decorative = false,
   tooltip = false,
   detail,
 }: ConnectorLogoProps) {
-  const classes = useStyles({ size });
+  const classes = useStyles({ size, round });
   const src = connectorIconOf(icon);
   // With a tooltip, its focusable trigger carries the name instead.
   const hidden = decorative || tooltip;

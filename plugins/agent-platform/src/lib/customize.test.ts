@@ -12,6 +12,7 @@ import {
   searchAgents,
   searchModels,
   searchSkills,
+  sortAgents,
   usedByLabel,
 } from './customize';
 import type { DiscoveredSkill } from './skills';
@@ -253,5 +254,43 @@ describe('Harnesses', () => {
       'Claude Code (claude-code)',
     );
     expect(harnessLabel('codex')).toBe('codex');
+  });
+});
+
+describe('sortAgents', () => {
+  const alpha = agent({
+    id: 'a',
+    name: 'Alpha',
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+  const bravo = agent({
+    id: 'b',
+    name: 'bravo',
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+  const charlie = agent({ id: 'c', name: 'Charlie' });
+  const rows = [charlie, bravo, alpha];
+  const names = (sorted: AgentRow[]) => sorted.map(row => row.name);
+
+  it('sorts by name, A–Z', () => {
+    expect(names(sortAgents(rows, 'name'))).toEqual([
+      'Alpha',
+      'bravo',
+      'Charlie',
+    ]);
+  });
+
+  it('sorts by creation, newest first, an unknown one last', () => {
+    expect(names(sortAgents(rows, 'recent'))).toEqual([
+      'bravo',
+      'Alpha',
+      'Charlie',
+    ]);
+  });
+
+  it('sorts by last use, the never used last by name', () => {
+    expect(
+      names(sortAgents(rows, 'lastUsed', new Map([['c', 1_000]]))),
+    ).toEqual(['Charlie', 'Alpha', 'bravo']);
   });
 });

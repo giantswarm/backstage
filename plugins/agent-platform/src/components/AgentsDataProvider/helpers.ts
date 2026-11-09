@@ -10,6 +10,7 @@ import {
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
+  RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ALL_INSTALLATIONS,
@@ -31,14 +32,21 @@ import {
 import { canonicalSkillId } from '../../lib/skills';
 import { agentManagerBlocker } from '../../lib/agentManager';
 import type { AgentManagerAvailability } from '../../hooks/useAgentManager';
+import type { DirectServer } from '../../lib/connectorMarks';
+import { directServerName, mcpBindingId } from '../AgentDetailPage/helpers';
 import {
+  isGatewayBinding,
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
   type DeclaredToolset,
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
-import { CREATED_BY_ANNOTATION, ownerOf } from '../../lib/tenants';
+import {
+  CREATED_BY_ANNOTATION,
+  CREATED_BY_NAME_ANNOTATION,
+  ownerOf,
+} from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -246,6 +254,11 @@ export type AgentRow = {
    */
   toolset?: DeclaredToolset;
   /**
+   * The servers the agent binds directly rather than through the gateway,
+   * named as the agent page names them. Absent for none.
+   */
+  directServers?: DirectServer[];
+  /**
    * What the serving layer says about the model behind the agent's
    * ModelConfig — the served model's readiness, or that nothing answers for
    * it any more (`notServing`: the agent's turns fail). Independent of the
@@ -279,6 +292,13 @@ export type AgentRow = {
    * not through agent-manager.
    */
   createdBy?: string;
+  /**
+   * The creator's display name ({@link CREATED_BY_NAME_ANNOTATION}), shown in
+   * place of `createdBy`; display only. `undefined` where none was recorded.
+   */
+  createdByName?: string;
+  /** When the `Agent` was created (`metadata.creationTimestamp`). */
+  createdAt?: string;
   /**
    * The name of the agent's default workspace
    * ({@link DEFAULT_WORKSPACE_ANNOTATION}): what a new session's workspace
@@ -383,7 +403,8 @@ export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
   resolveServing?: ResolveModelServing,
-  carriers?: readonly ToolsetCarrier[],
+  carriers?: readonly (ToolsetCarrier &
+    Pick<RemoteMCPServer, 'getAnnotations'>)[],
   harnesses?: readonly Harness[],
   organizations: OrganizationDirectory = EMPTY_ORGANIZATION_DIRECTORY,
 ): AgentRow {
@@ -414,12 +435,31 @@ export function toAgentRow(
     }));
   const skillIds = gitSkills.map(skill => skill.id);
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  const createdByName = agent
+    .getAnnotations()
+    ?.[CREATED_BY_NAME_ANNOTATION]?.trim();
+  const createdAt = agent.getCreatedTimestamp();
   const defaultWorkspace = defaultWorkspaceName(
     agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
   );
   const defaultToolchains = defaultToolchainsOf(
     agent.getAnnotations()?.[DEFAULT_TOOLCHAINS_ANNOTATION],
   );
+  const directServers = agent
+    .getMcpBindings()
+    .filter(
+      binding => !isGatewayBinding(agent, binding, MUSTER_MCP_SERVER_NAME),
+    )
+    .map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      name: directServerName(
+        binding,
+        carriers?.filter(carrier => carrier.getNamespace() === namespace),
+      ),
+      ...(binding.requireApproval ? { approval: true } : {}),
+    }));
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -449,10 +489,13 @@ export function toAgentRow(
     readinessMessage: agent.getReadinessMessage(),
     tenant: ownerOf(namespace, organizations),
     ...(createdBy ? { createdBy } : {}),
+    ...(createdByName ? { createdByName } : {}),
+    ...(createdAt ? { createdAt } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
+    ...(directServers.length > 0 ? { directServers } : {}),
     ...(carriers
       ? { toolset: toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers) }
       : {}),
