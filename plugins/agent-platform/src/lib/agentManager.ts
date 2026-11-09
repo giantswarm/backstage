@@ -644,10 +644,12 @@ export function helmInstallCommand(
 /**
  * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
  * write live; `gitops` — the release is applied by a Flux Kustomization, its
- * desired state lives in git and a live write is refused; `none` — a bare
+ * desired state lives in git and a live write is refused; `platform` — the
+ * platform's own agent (labelled `agent-platform.giantswarm.io/managed-by:
+ * agent-platform`), refused in every mode, a pull request too; `none` — a bare
  * `Agent` object with no release behind it, refused as well.
  */
-export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
+export type AgentManagedBy = 'helmrelease' | 'gitops' | 'platform' | 'none';
 
 /** What `get_agent` says about the release that owns the agent. */
 export type AgentHelmReleaseRef = {
@@ -697,6 +699,8 @@ export type AgentManagerAgent = {
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
+  /** The installation's default agent (`get_info`'s `defaultAgent`). */
+  default?: boolean;
   helmRelease?: AgentHelmReleaseRef;
   /** The HelmRelease's inline values, when a release owns the agent. */
   values?: Record<string, unknown>;

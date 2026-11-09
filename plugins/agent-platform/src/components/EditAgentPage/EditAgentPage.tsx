@@ -146,6 +146,7 @@ export function EditAgentPage() {
     presence,
     isUnavailable: availability.isUnavailable,
     isGitOpsOwned,
+    isPlatformOwned: agent?.managed === 'platform',
     canCommit,
     isVerdictPending: isLoading || (isGitOpsOwned && isInfoLoading),
   };

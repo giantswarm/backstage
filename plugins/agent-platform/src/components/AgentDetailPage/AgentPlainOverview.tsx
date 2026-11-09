@@ -235,11 +235,13 @@ function SkillsSection({
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned = false,
 }: {
   agent: Agent;
   onUpdateSkills?: () => void;
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  isPlatformOwned?: boolean;
 }) {
   const classes = useStyles();
   const skills = agent.getSkills();
@@ -259,6 +261,11 @@ function SkillsSection({
           <Text variant="body-medium" color="secondary">
             No skills yet. Skills add know-how and procedures.
           </Text>
+          {isPlatformOwned && (
+            <Text variant="body-small" color="secondary">
+              It is owned by the platform, so it is read-only.
+            </Text>
+          )}
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
               {onAddSkills
@@ -490,6 +497,8 @@ export type AgentPlainOverviewProps = {
   /** Opens the edit page, where skills are added. Absent when not editable. */
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  /** The platform's own agent (`managed: 'platform'`): read-only. */
+  isPlatformOwned?: boolean;
 };
 
 /**
@@ -512,6 +521,7 @@ export function AgentPlainOverview({
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
   const failure = agent.getFailure();
@@ -547,6 +557,7 @@ export function AgentPlainOverview({
         onUpdateSkills={onUpdateSkills}
         onAddSkills={onAddSkills}
         isGitOpsOwned={isGitOpsOwned}
+        isPlatformOwned={isPlatformOwned}
       />
 
       <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />

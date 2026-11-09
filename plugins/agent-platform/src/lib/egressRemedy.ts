@@ -151,7 +151,12 @@ export function egressRemedyKind(facts: EgressRemedyFacts): EgressRemedyKind {
   if (agent === undefined) {
     return 'pending';
   }
-  if (agent === null || agent.managed === 'none') {
+  // Neither a bare Agent nor the platform's own agent can be edited.
+  if (
+    agent === null ||
+    agent.managed === 'none' ||
+    agent.managed === 'platform'
+  ) {
     return 'neutral';
   }
   if (agent.managed === 'gitops') {

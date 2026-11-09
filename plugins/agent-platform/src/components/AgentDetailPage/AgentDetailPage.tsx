@@ -349,6 +349,8 @@ function AgentDetailPageContent() {
   const { info: agentManagerInfo, isLoading: isReadingManagerInfo } =
     useAgentManagerInfo(presence === 'available' ? installation : undefined);
   const isGitOpsOwned = managerAgent?.managed === 'gitops';
+  // The platform's own agent (the default one, say): read-only in every mode.
+  const isPlatformOwned = managerAgent?.managed === 'platform';
   const canCommit = agentManagerInfo?.capabilities?.commit === true;
 
   // A live write runs as the person against the agent's HelmRelease in its
@@ -361,6 +363,7 @@ function AgentDetailPageContent() {
     isAgentManagerReachable &&
     !isReadingManagerAgent &&
     !isGitOpsOwned &&
+    !isPlatformOwned &&
     writesAsPerson;
   const helmRelease = {
     group: HelmRelease.group,
@@ -385,6 +388,7 @@ function AgentDetailPageContent() {
       presence,
       isUnavailable: availability.isUnavailable,
       isGitOpsOwned,
+      isPlatformOwned,
       canCommit,
       isVerdictPending:
         isReadingManagerAgent ||
@@ -397,6 +401,7 @@ function AgentDetailPageContent() {
       presence,
       availability.isUnavailable,
       isGitOpsOwned,
+      isPlatformOwned,
       canCommit,
       isReadingManagerAgent,
       isReadingManagerInfo,
@@ -903,6 +908,7 @@ function AgentDetailPageContent() {
         agent={agent}
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+        isPlatformOwned={isPlatformOwned}
       />
 
       {refusedWrites.length > 0 && (
@@ -1069,6 +1075,7 @@ function AgentDetailPageContent() {
                 onUpdateSkills={canEditAgent ? openUpdateSkills : undefined}
                 onAddSkills={canEditAgent ? openEdit : undefined}
                 isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+                isPlatformOwned={isPlatformOwned}
               />
             }
           />

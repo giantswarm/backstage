@@ -36,6 +36,7 @@ export function AgentSessionBlocker({
   agent,
   onEdit,
   isGitOpsOwned = false,
+  isPlatformOwned = false,
 }: {
   agent: Agent;
   /**
@@ -45,6 +46,8 @@ export function AgentSessionBlocker({
   onEdit?: () => void;
   /** The agent's HelmRelease is applied from git, so it is fixed there. */
   isGitOpsOwned?: boolean;
+  /** The platform's own agent: read-only, so a platform admin fixes it. */
+  isPlatformOwned?: boolean;
 }) {
   const handoff = useAgentCreatedHandoff();
   const readiness = agent.getReadiness();
@@ -68,6 +71,8 @@ export function AgentSessionBlocker({
       );
     } else if (isPlatform) {
       description = `${sentence}. This is a platform problem, not the agent's, and a platform admin has to fix it.`;
+    } else if (isPlatformOwned) {
+      description = `${sentence}. It is owned by the platform, so a platform admin has to fix it.`;
     } else if (isGitOpsOwned) {
       description = onEdit
         ? `${sentence}. It is deployed from GitOps, so a fix opens a pull request there.`

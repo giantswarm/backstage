@@ -214,6 +214,23 @@ describe('AgentActionsMenu', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('offers none of the three for the platform’s own agent, even when agent-manager can commit', async () => {
+    // `managed: 'platform'` (the default agent): agent-manager refuses every
+    // write with 409, a pull request too.
+    const gate = {
+      ...AVAILABLE,
+      isPlatformOwned: true,
+      canCommit: true,
+    };
+    await renderMenu(gate);
+    await openMenu();
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(agentManagerAbsenceReason(gate, 'gazelle')).toBe(
+      'It is owned by the platform, so it is read-only.',
+    );
+  });
+
   it("withholds the actions while agent-manager's verdict is still in flight", async () => {
     // Offering them for a muster round-trip and then taking them away is the
     // one window where a GitOps-owned agent could still be written to.

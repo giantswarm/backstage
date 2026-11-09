@@ -1394,6 +1394,21 @@ describe('AgentDetailPage', () => {
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
     });
 
+    it('says a platform admin fixes the platform’s own failed agent, offering no edit', async () => {
+      withAgentManager('platform');
+      canCommit = true;
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          /owned by the platform, so a platform admin has to fix it/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
     it('offers Edit agent for a failed agent applied from git when agent-manager can commit', async () => {
       withAgentManager('gitops');
       canCommit = true;
@@ -2505,6 +2520,27 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),
       ).toBeInTheDocument();
+    });
+
+    it('offers no Edit, Update skills or menu writes for the platform’s own agent', async () => {
+      // agent-manager's `managed: 'platform'` (the default agent): every write
+      // is refused with 409, a pull request too.
+      withAgentManager('platform');
+      canCommit = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Update all skills to latest…' }),
+      ).toBeNull();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Agent actions' }),
+      );
+      expect(
+        screen.getAllByRole('menuitem').map(item => item.textContent),
+      ).toEqual(['View manifest']);
     });
 
     it('offers a user of the agent’s namespace no Edit, and says whose editors may change the agent', async () => {
