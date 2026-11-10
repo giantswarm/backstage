@@ -17,7 +17,10 @@ export const MUSTER_CONNECT_TIMEOUT_MS = 5_000;
  * When the backend's global dispatcher is not undici's plain `Agent` (an
  * egress proxy, installed by `configureFetchProxy` of `backend-common`), the
  * requests go through it, at its own connect timeout: a dispatcher of this
- * module's own would go around the proxy.
+ * module's own would go around the proxy. The check relies on this undici
+ * having filled the global dispatcher slot first, which `@internal/backend-common`
+ * does when the backend imports it, before any plugin; another undici there
+ * fails safe, as the shared dispatcher at undici's 10 s default.
  */
 export function createMusterFetch(
   connectTimeoutMs: number = MUSTER_CONNECT_TIMEOUT_MS,

@@ -17,4 +17,3 @@ export type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
  * muster on the user's behalf (muster, plans, roadmap).
  */
 export const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
-export * from './musterFetch';

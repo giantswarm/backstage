@@ -15,10 +15,12 @@ function musterUnreachableMessage(
 }
 
 /**
- * The 503 {@link MusterMcpClient} throws when an installation's muster could
- * not be reached. The client has already logged the failure as a warning, with
- * the installation in the metadata; `reportedErrorHandler()` answers it so
- * that Backstage's error middleware does not log it a second time.
+ * The 503 for an installation whose muster could not be reached: thrown by
+ * {@link MusterMcpClient}, which has logged the failure as a warning with the
+ * installation in the metadata, and by muster-backend for an installation its
+ * reachability probe reports unreachable, whose state changes the probe logs.
+ * `reportedErrorHandler()` answers it so that Backstage's error middleware
+ * does not log it again.
  */
 export class MusterUnreachableError extends ReportedServiceUnavailableError {
   constructor(installation: string, reason: string) {
