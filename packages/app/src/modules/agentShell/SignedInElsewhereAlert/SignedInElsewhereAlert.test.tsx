@@ -29,6 +29,7 @@ async function renderAlert({
   requests?: PendingOAuthRequest[];
 }) {
   const signIn = jest.fn().mockResolvedValue(undefined);
+  const signOut = jest.fn().mockResolvedValue(undefined);
   const errorApi = { post: jest.fn(), error$: jest.fn() };
   await renderInTestApp(<SignedInElsewhereAlert />, {
     apis: [
@@ -39,7 +40,7 @@ async function renderAlert({
             reason: () => reason,
             subscribe: () => () => {},
           }),
-          getMainAuthApi: () => ({ signIn }),
+          getMainAuthApi: () => ({ signIn, signOut }),
         } as unknown as GSAuthProvidersApi,
       ],
       [
@@ -61,7 +62,7 @@ async function renderAlert({
       gs: { authProvider: 'oidc-gazelle' },
     },
   });
-  return { signIn, errorApi };
+  return { signIn, signOut, errorApi };
 }
 
 describe('SignedInElsewhereAlert', () => {
@@ -88,7 +89,7 @@ describe('SignedInElsewhereAlert', () => {
   it('opens the sign-in the main login already asked for', async () => {
     const other = pendingRequest('mcp-grafana');
     const main = pendingRequest('oidc-gazelle');
-    const { signIn } = await renderAlert({
+    const { signIn, signOut } = await renderAlert({
       reason: 'signed-in-elsewhere',
       requests: [other, main],
     });
@@ -100,16 +101,23 @@ describe('SignedInElsewhereAlert', () => {
     await waitFor(() => expect(main.trigger).toHaveBeenCalledTimes(1));
     expect(other.trigger).not.toHaveBeenCalled();
     expect(signIn).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 
-  it('asks the main login to sign in when nothing is pending', async () => {
-    const { signIn } = await renderAlert({ reason: 'signed-in-elsewhere' });
+  it('drops the ended session and asks the main login to sign in when nothing is pending', async () => {
+    const { signIn, signOut } = await renderAlert({
+      reason: 'signed-in-elsewhere',
+    });
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Sign in again' }),
     );
 
     await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(signOut.mock.invocationCallOrder[0]).toBeLessThan(
+      signIn.mock.invocationCallOrder[0],
+    );
   });
 
   it('reports a sign-in that failed', async () => {

@@ -36,7 +36,9 @@ const useStyles = makeStyles({
 /**
  * Signs the main login in again. A sign-in the session manager already asked
  * for (the Login Required dialog's request) is triggered at once, so the
- * press opens the provider's popup; without one, `signIn` asks for it.
+ * press opens the provider's popup. Without one, the session manager may
+ * still hold the ended session's last tokens, which `signIn` would return
+ * as they are: they are dropped first, so `signIn` asks for a new sign-in.
  */
 function useMainSignIn(): { signIn: () => void; isPending: boolean } {
   const oauthRequestApi = useApi(oauthRequestApiRef);
@@ -60,11 +62,15 @@ function useMainSignIn(): { signIn: () => void; isPending: boolean } {
     );
     setPending(true);
     Promise.resolve()
-      .then(() =>
-        request
-          ? request.trigger()
-          : apis.get(gsAuthProvidersApiRef)?.getMainAuthApi().signIn(),
-      )
+      .then(async () => {
+        if (request) {
+          await request.trigger();
+          return;
+        }
+        const mainAuthApi = apis.get(gsAuthProvidersApiRef)?.getMainAuthApi();
+        await mainAuthApi?.signOut();
+        await mainAuthApi?.signIn();
+      })
       .catch(error => errorApi.post(error))
       .finally(() => setPending(false));
   }, [configApi, apis, errorApi]);
