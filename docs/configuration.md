@@ -253,8 +253,9 @@ A `giantswarm-ad` sign-in is looked up in the catalog by email, and a
 graveler. Their sign-ins are looked up as if made through the connector the
 person used on that Dex, which the federated `user_id` names, so a person who
 signs in there with GitHub and a personal email still finds their catalog
-user. A sign-in through a Giant Swarm connector that matches no catalog user
-signs in as `user:default/guest`.
+user. A sign-in through a Giant Swarm connector that matches no catalog user,
+or whose token carries neither a username nor a verified email to look up, is
+refused, and the sign-in dialog shows why.
 
 A person who signs in through any other Dex connector, or through an issuer
 without `federated_claims`, resolves to `user:oidc/<name>`, where the name is

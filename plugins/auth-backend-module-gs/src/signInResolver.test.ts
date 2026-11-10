@@ -2,7 +2,7 @@ import {
   KubernetesValidatorFunctions,
   parseEntityRef,
 } from '@backstage/catalog-model';
-import { NotAllowedError } from '@backstage/errors';
+import { NotAllowedError, NotFoundError } from '@backstage/errors';
 import { AuthResolverContext } from '@backstage/plugin-auth-node';
 import { customSignInResolver } from './signInResolver';
 
@@ -184,57 +184,59 @@ describe('customSignInResolver', () => {
     ['without email_verified', {}],
     ['with email_verified false', { email_verified: false }],
   ])(
-    'falls back to the guest user when a giantswarm-ad email is %s',
+    'refuses a giantswarm-ad sign-in whose email is %s',
     async (_, verified) => {
       const ctx = makeContext();
 
-      await resolve(
-        {
-          federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u7' },
-          email: 'user@giantswarm.io',
-          ...verified,
-        },
-        ctx,
-      );
-
+      await expect(
+        resolve(
+          {
+            federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u7' },
+            email: 'user@giantswarm.io',
+            ...verified,
+          },
+          ctx,
+        ),
+      ).rejects.toThrow(NotAllowedError);
       expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
-      expect(ctx.issueToken).toHaveBeenCalledWith({
-        claims: { sub: 'user:default/guest', ent: ['user:default/guest'] },
-      });
+      expect(ctx.issueToken).not.toHaveBeenCalled();
     },
   );
 
-  it('falls back to the guest user when a giantswarm-ad token carries no email', async () => {
+  it('refuses a giantswarm-ad sign-in whose token carries no email', async () => {
     const ctx = makeContext();
 
-    await resolve(
-      { federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u5' } },
-      ctx,
-    );
-
-    expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
-    expect(ctx.issueToken).toHaveBeenCalledWith({
-      claims: { sub: 'user:default/guest', ent: ['user:default/guest'] },
-    });
+    await expect(
+      resolve(
+        { federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u5' } },
+        ctx,
+      ),
+    ).rejects.toThrow(NotAllowedError);
+    expect(ctx.issueToken).not.toHaveBeenCalled();
   });
 
-  it('falls back to the guest user when the catalog lookup fails', async () => {
-    const ctx = makeContext();
-    ctx.signInWithCatalogUser.mockRejectedValue(new Error('not found'));
+  it.each([
+    ['matches no catalog user', new NotFoundError('User not found')],
+    ['fails', new Error('catalog unavailable')],
+  ])(
+    'refuses a Giant Swarm sign-in when the catalog lookup %s',
+    async (_, error) => {
+      const ctx = makeContext();
+      ctx.signInWithCatalogUser.mockRejectedValue(error);
 
-    await resolve(
-      {
-        federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u3' },
-        email: 'user@giantswarm.io',
-        email_verified: true,
-      },
-      ctx,
-    );
-
-    expect(ctx.issueToken).toHaveBeenCalledWith({
-      claims: { sub: 'user:default/guest', ent: ['user:default/guest'] },
-    });
-  });
+      await expect(
+        resolve(
+          {
+            federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u3' },
+            email: 'user@giantswarm.io',
+            email_verified: true,
+          },
+          ctx,
+        ),
+      ).rejects.toBe(error);
+      expect(ctx.issueToken).not.toHaveBeenCalled();
+    },
+  );
 
   describe('identities from other connectors and issuers', () => {
     async function issuedRef(userinfo: object): Promise<string> {
