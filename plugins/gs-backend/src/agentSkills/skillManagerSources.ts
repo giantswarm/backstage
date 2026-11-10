@@ -4,7 +4,9 @@ import {
 } from '@backstage/backend-plugin-api';
 import { InputError, NotAllowedError } from '@backstage/errors';
 import {
+  asConnected,
   MusterMcpClient,
+  MusterServerClient,
   readMusterInstallationsFromConfig,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { parseRepoUrl } from './discoverAgentSkills';
@@ -29,23 +31,24 @@ export interface SkillTarget {
   path?: string;
 }
 
-const LIST_SOURCES_TOOL = 'x_skill-manager_list_skill_sources';
+const SKILL_MANAGER_SERVER = 'skill-manager';
 
 /**
  * Reads an installation's skill sources from its skill-manager, through the
- * installation's muster as the person whose muster token is given.
+ * installation's muster as the person whose muster token is given. A person
+ * not connected to skill-manager gets `MusterServerNotConnectedError`.
  */
 export function skillSourcesReader(
   config: RootConfigService,
   logger: LoggerService,
 ) {
-  const clients = new Map<string, MusterMcpClient>();
+  const gateways = new Map<string, MusterServerClient>();
   return async (
     installation: string,
     authToken: string,
   ): Promise<SkillSource[]> => {
-    let client = clients.get(installation);
-    if (!client) {
+    let gateway = gateways.get(installation);
+    if (!gateway) {
       const muster = readMusterInstallationsFromConfig(config, logger).get(
         installation,
       );
@@ -54,20 +57,34 @@ export function skillSourcesReader(
           `${installation} is not one of the portal's muster installations`,
         );
       }
-      client = new MusterMcpClient(muster, logger);
-      clients.set(installation, client);
+      gateway = new MusterServerClient(
+        new MusterMcpClient(muster, logger),
+        SKILL_MANAGER_SERVER,
+        SKILL_MANAGER_SERVER,
+      );
+      gateways.set(installation, gateway);
     }
-    const answer = (await client.callTool(
-      LIST_SOURCES_TOOL,
-      {},
-      { authToken },
-    )) as { sources?: SkillSource[] } | string;
-    const parsed = typeof answer === 'string' ? JSON.parse(answer) : answer;
-    return parsed?.sources ?? [];
+    const connected = gateway;
+    const answer = await asConnected(
+      connected,
+      connected.server,
+      authToken,
+      () => connected.call('list_skill_sources', {}, authToken),
+    );
+    if (
+      !answer ||
+      typeof answer !== 'object' ||
+      !Array.isArray((answer as { sources?: unknown }).sources)
+    ) {
+      throw new Error(
+        `skill-manager on ${installation} answered list_skill_sources without sources`,
+      );
+    }
+    return (answer as { sources: SkillSource[] }).sources;
   };
 }
 
-function slugOf(url: string): string {
+export function slugOf(url: string): string {
   const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
   return `${owner}/${repo}`.toLowerCase();
 }

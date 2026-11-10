@@ -4,6 +4,7 @@ import { GithubCredentialsProvider } from '@backstage/integration';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
+import { MusterServerNotConnectedError } from '@giantswarm/backstage-plugin-gs-node';
 import { createRouter } from './router';
 import { createSkillPullRequest } from './agentSkills/createSkillPullRequest';
 
@@ -1766,6 +1767,7 @@ describe('POST /agent-skills/pull-request', () => {
         _next: express.NextFunction,
       ) => {
         const status: Record<string, number> = {
+          AuthenticationError: 401,
           InputError: 400,
           NotAllowedError: 403,
         };
@@ -1888,6 +1890,31 @@ describe('POST /agent-skills/pull-request', () => {
 
       expect(response.status).toBe(401);
       expect(mockReadSkillSources).not.toHaveBeenCalled();
+    });
+
+    it('says how to connect skill-manager when the person is not connected', async () => {
+      mockReadSkillSources.mockRejectedValue(
+        new MusterServerNotConnectedError(
+          "Connect 'skill-manager' in muster to use this page.",
+          'skill-manager',
+          'https://muster.example/auth',
+        ),
+      );
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send(withInstallation);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterServerNotConnectedError',
+        server: 'skill-manager',
+        authUrl: 'https://muster.example/auth',
+      });
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
     });
   });
 

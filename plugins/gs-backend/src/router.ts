@@ -3,7 +3,7 @@ import {
   LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
-import { InputError } from '@backstage/errors';
+import { AuthenticationError, InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
 import express from 'express';
@@ -15,7 +15,6 @@ import {
 import {
   discoverAgentSkills,
   GitHubApiError,
-  parseRepoUrl,
   SkillDiscoverySnapshot,
 } from './agentSkills/discoverAgentSkills';
 import {
@@ -54,12 +53,15 @@ import {
 import {
   containerRegistryServiceRef,
   MUSTER_AUTH_HEADER,
+  MusterServerNotConnectedError,
   mimirServiceRef,
   reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   requireWritableSource,
   skillSourcesReader,
+  slugOf,
+  type SkillSource,
 } from './agentSkills/skillManagerSources';
 import { readSignedInConfig } from './signedInConfig';
 import {
@@ -987,32 +989,42 @@ export async function createRouter({
     // sources as the person sees them; without one, the portal's configured
     // list (deprecated).
     if (parsed.data.installation !== undefined) {
-      const musterToken = req.header(MUSTER_AUTH_HEADER);
-      if (!musterToken || !readSkillSources) {
-        res.status(401).json({
-          error: {
-            message: `Missing ${MUSTER_AUTH_HEADER} header: the skill sources are read from the installation's skill-manager as the signed-in person.`,
-          },
-        });
-        return;
+      if (!readSkillSources) {
+        throw new Error('gs-backend reads skill sources only with a logger');
       }
-      requireWritableSource(
-        await readSkillSources(parsed.data.installation, musterToken),
-        {
-          repoUrl,
-          kind: kind ?? 'create',
-          skillName,
-          path: parsed.data.path,
-        },
-      );
+      const musterToken = req.header(MUSTER_AUTH_HEADER);
+      if (!musterToken) {
+        throw new AuthenticationError(
+          `Missing ${MUSTER_AUTH_HEADER} header: the skill sources are read from the installation's skill-manager as the signed-in person.`,
+        );
+      }
+      let sources: SkillSource[];
+      try {
+        sources = await readSkillSources(parsed.data.installation, musterToken);
+      } catch (error) {
+        if (error instanceof MusterServerNotConnectedError) {
+          res.status(401).json({
+            error: {
+              name: error.name,
+              message: error.message,
+              server: error.server,
+              authUrl: error.authUrl,
+            },
+          });
+          return;
+        }
+        throw error;
+      }
+      requireWritableSource(sources, {
+        repoUrl,
+        kind: kind ?? 'create',
+        skillName,
+        path: parsed.data.path,
+      });
     } else {
       const repositories =
         config.getOptionalStringArray('agentPlatform.skills.repositories') ??
         [];
-      const slugOf = (url: string) => {
-        const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
-        return `${owner}/${repo}`.toLowerCase();
-      };
       const target = slugOf(repoUrl);
       const configured = repositories.some(url => {
         try {

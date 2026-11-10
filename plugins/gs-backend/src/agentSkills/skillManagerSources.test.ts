@@ -1,4 +1,62 @@
-import { requireWritableSource, type SkillSource } from './skillManagerSources';
+import { mockServices } from '@backstage/backend-test-utils';
+import {
+  requireWritableSource,
+  skillSourcesReader,
+  type SkillSource,
+} from './skillManagerSources';
+
+const mockCallTool = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-gs-node', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs-node'),
+  MusterMcpClient: jest.fn().mockImplementation(() => ({
+    callTool: mockCallTool,
+  })),
+}));
+
+function reader() {
+  return skillSourcesReader(
+    mockServices.rootConfig({
+      data: {
+        muster: {
+          installations: [{ name: 'graveler', url: 'https://muster.example' }],
+        },
+      },
+    }),
+    mockServices.logger.mock(),
+  );
+}
+
+describe('skillSourcesReader', () => {
+  beforeEach(() => mockCallTool.mockReset());
+
+  it('reads list_skill_sources as the person', async () => {
+    mockCallTool.mockResolvedValue({
+      sources: [{ url: 'https://github.com/acme/skills' }],
+    });
+    await expect(reader()('graveler', 'muster-token')).resolves.toEqual([
+      { url: 'https://github.com/acme/skills' },
+    ]);
+    expect(mockCallTool).toHaveBeenCalledWith(
+      'x_skill-manager_list_skill_sources',
+      {},
+      { authToken: 'muster-token' },
+    );
+  });
+
+  it('refuses an answer without sources', async () => {
+    mockCallTool.mockResolvedValue('upstream unavailable');
+    await expect(reader()('graveler', 'muster-token')).rejects.toThrow(
+      /without sources/,
+    );
+  });
+
+  it('refuses an installation the portal has no muster for', async () => {
+    await expect(reader()('elsewhere', 'muster-token')).rejects.toThrow(
+      /not one of the portal's muster installations/,
+    );
+    expect(mockCallTool).not.toHaveBeenCalled();
+  });
+});
 
 const sources: SkillSource[] = [
   {
