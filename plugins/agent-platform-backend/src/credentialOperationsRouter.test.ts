@@ -204,18 +204,21 @@ describe('the credential operations', () => {
     [
       'a dropped connection',
       () => Promise.reject(new TypeError('fetch failed')),
+      502,
     ],
     [
       'a gateway’s 502 page',
       async () => new Response('<html>bad gateway</html>', { status: 502 }),
+      502,
     ],
     [
       'a gateway’s 504 page',
       async () => new Response('upstream timeout', { status: 504 }),
+      504,
     ],
   ])(
     'answers a save that ends in %s as an unknown outcome',
-    async (_case, answer) => {
+    async (_case, answer, status) => {
       const fetchFn = jest.fn(answer);
       const res = await request(app(fetchFn as unknown as typeof fetch))
         .post(path)
@@ -231,7 +234,7 @@ describe('the credential operations', () => {
           ],
         });
 
-      expect(res.status).toBe(504);
+      expect(res.status).toBe(status);
       expect(res.body.error.code).toBe('outcome_unknown');
       expect(res.headers['cache-control']).toBe('no-store');
     },
@@ -258,6 +261,7 @@ describe('the credential operations', () => {
     const res = await request(app(fetchFn as unknown as typeof fetch))
       .post(path)
       .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+      .set('If-Match', '7')
       .send({ values: [] });
     expect(res.status).toBe(400);
     expect(res.headers['cache-control']).toBe('no-store');
@@ -285,6 +289,16 @@ describe('the credential operations', () => {
     expect(second.body.error.code).toBe('backend_error');
   });
 
+  it('refuses a cancellation without If-Match with 428', async () => {
+    const fetchFn = mockFetch(() => new Response(null, { status: 204 }));
+    const res = await request(app(fetchFn as unknown as typeof fetch))
+      .delete(path)
+      .set(AGENT_MANAGER_AUTH_HEADER, 'id-token');
+    expect(res.status).toBe(428);
+    expect(res.body.error.code).toBe('precondition_required');
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it('cancels with If-Match', async () => {
     const fetchFn = mockFetch(() => new Response(null, { status: 204 }));
     const res = await request(app(fetchFn as unknown as typeof fetch))
@@ -301,6 +315,12 @@ describe('the credential operations', () => {
     [
       'no If-Match',
       (r: request.Test) => r.set(AGENT_MANAGER_AUTH_HEADER, 't'),
+      428,
+    ],
+    [
+      'an unquoted If-Match',
+      (r: request.Test) =>
+        r.set(AGENT_MANAGER_AUTH_HEADER, 't').set('If-Match', '7'),
       400,
     ],
   ])(

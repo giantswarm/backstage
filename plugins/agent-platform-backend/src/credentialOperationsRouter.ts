@@ -142,8 +142,12 @@ function readToken(req: express.Request): string {
   return token;
 }
 
-function readIfMatch(req: express.Request): string {
+/** The request's `If-Match`, `undefined` when it has none. */
+function readIfMatch(req: express.Request): string | undefined {
   const ifMatch = req.headers['if-match'];
+  if (ifMatch === undefined || ifMatch === '') {
+    return undefined;
+  }
   if (typeof ifMatch !== 'string' || !/^"[^"]+"$/.test(ifMatch)) {
     throw new InputError(
       'If-Match must carry the confirmation’s ETag, as read from it',
@@ -181,7 +185,7 @@ const OUTCOME_UNKNOWN_MESSAGE =
 /**
  * agent-manager's error answer, `{error: {code, message}}`, passed on. A save
  * refused by a gateway in front of agent-manager (no agent-manager body) may
- * still have run, so it answers `outcome_unknown`, never a failure.
+ * still have run: the gateway's status, with code `outcome_unknown`.
  */
 async function forwardError(
   req: express.Request,
@@ -209,7 +213,13 @@ async function forwardError(
     req.method === 'POST' &&
     GATEWAY_STATUSES.has(upstream.status)
   ) {
-    answerError(req, res, 504, 'outcome_unknown', OUTCOME_UNKNOWN_MESSAGE);
+    answerError(
+      req,
+      res,
+      upstream.status,
+      'outcome_unknown',
+      OUTCOME_UNKNOWN_MESSAGE,
+    );
     return;
   }
   const status =
@@ -249,10 +259,10 @@ export function createCredentialOperationsRouter(
   };
 
   /**
-   * One call to agent-manager. A save that fails in transit (no answer in
-   * time, a dropped connection) may still complete there: it is answered
-   * `outcome_unknown` (504), never as a failure, and the form reads the
-   * operation again.
+   * One call to agent-manager. A save that fails in transit may still
+   * complete there: it is answered with code `outcome_unknown`, never as a
+   * failure, and the form reads the operation again. The status says what
+   * happened: 504 for no answer in time, 502 for a lost connection.
    */
   const call = async (
     req: express.Request,
@@ -267,9 +277,16 @@ export function createCredentialOperationsRouter(
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
-    } catch {
+    } catch (error) {
+      const timedOut = (error as Error | undefined)?.name === 'TimeoutError';
       if (init.method === 'POST') {
-        answerError(req, res, 504, 'outcome_unknown', OUTCOME_UNKNOWN_MESSAGE);
+        answerError(
+          req,
+          res,
+          timedOut ? 504 : 502,
+          'outcome_unknown',
+          OUTCOME_UNKNOWN_MESSAGE,
+        );
       } else {
         answerError(
           req,
@@ -306,6 +323,16 @@ export function createCredentialOperationsRouter(
   };
 
   const path = '/organizations/credential-operations/:operation';
+
+  /** 428 Precondition Required (RFC 6585 §3) for a write without `If-Match`. */
+  const answerIfMatchRequired = (req: express.Request, res: express.Response) =>
+    answerError(
+      req,
+      res,
+      428,
+      'precondition_required',
+      'If-Match with the confirmation’s ETag is required',
+    );
 
   // Every answer, refusals of the request itself included.
   router.use(path, (_req, res, next) => {
@@ -353,6 +380,10 @@ export function createCredentialOperationsRouter(
     const url = target(req);
     const token = readToken(req);
     const ifMatch = readIfMatch(req);
+    if (!ifMatch) {
+      answerIfMatchRequired(req, res);
+      return;
+    }
     const values = readValues(req.body);
     const upstream = await call(
       req,
@@ -382,6 +413,10 @@ export function createCredentialOperationsRouter(
     const url = target(req);
     const token = readToken(req);
     const ifMatch = readIfMatch(req);
+    if (!ifMatch) {
+      answerIfMatchRequired(req, res);
+      return;
+    }
     const upstream = await call(
       req,
       res,

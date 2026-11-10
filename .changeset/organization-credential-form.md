@@ -15,9 +15,9 @@ An Agent Platform organization's credentials are entered on the Dev Portal's cre
   chart's `agentManager.route`) or
   `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
   is validated and never logged or echoed; `If-Match` is required on POST and
-  DELETE; every answer is `Cache-Control: no-store`; refusals are the
+  DELETE (428 without it); every answer is `Cache-Control: no-store`; refusals are the
   backend's error body with agent-manager's `code`. A save that runs past
-  120 s, loses its connection or is refused by a gateway answers 504
+  120 s, loses its connection or is refused by a gateway answers code
   `outcome_unknown`.
 - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
   the link agent-manager's `credentials.uiURL` names
