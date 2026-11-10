@@ -15,7 +15,7 @@ const meta = {
       description: {
         component: componentDocs({
           summary:
-            'A link that opens in a new tab (`target="_blank"` + ' +
+            'bui’s `Link`, opening in a new tab (`target="_blank"` + ' +
             '`rel="noopener noreferrer"`) with a trailing “launch” icon that ' +
             'inherits the surrounding font size, and “(opens in a new tab)” ' +
             'for screen readers.',
@@ -25,7 +25,7 @@ const meta = {
             'following it leaves the form where it is. The icon signals “opens ' +
             'elsewhere”; the `rel` attributes are the safe default so callers ' +
             'don’t have to remember them.',
-          migration: 'mui-v4',
+          migration: 'mixed',
         }),
       },
     },
@@ -57,6 +57,19 @@ export const Flex: Story = {
         story:
           'Block-level `flex` display — use when the link must participate in a ' +
           'width-constraint chain (e.g. inside a flex/grid item that truncates text).',
+      },
+    },
+  },
+};
+
+export const Variant: Story = {
+  args: { variant: 'body-small', children: 'All portal settings' },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'With a bui `variant` the link sets its own size; without one it ' +
+          'takes the font of the text around it.',
       },
     },
   },

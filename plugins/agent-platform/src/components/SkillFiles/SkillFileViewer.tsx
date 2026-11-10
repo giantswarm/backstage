@@ -157,14 +157,17 @@ function folderSourceUrl(
 /** A file the portal does not show inline: why, and where it can be read. */
 function NotShown({
   skill,
+  commit,
   file,
   reason,
 }: {
   skill: DiscoveredSkill;
+  /** The commit the listing was read at; empty when it is not known. */
+  commit: string;
   file: SkillFile;
   reason: 'binary' | 'truncated';
 }) {
-  const url = skillFileUrl(skill, file.path);
+  const url = skillFileUrl({ ...skill, commit }, file.path);
   const why =
     reason === 'binary'
       ? 'This is a binary file, so the portal does not show it.'
@@ -182,8 +185,14 @@ function NotShown({
         </ExternalButtonLink>
       ) : (
         <Text as="p" variant="body-small" color="secondary">
-          {file.path} · {formatBytes(file.size)} — in the skill’s repository at{' '}
-          <CommitSha value={skill.commit} />.
+          {file.path} · {formatBytes(file.size)} — in the skill’s repository
+          {commit ? (
+            <>
+              {' '}
+              at <CommitSha value={commit} />
+            </>
+          ) : null}
+          .
         </Text>
       )}
     </Flex>
@@ -283,7 +292,8 @@ export function SkillFileViewer({
     error,
   } = useSkillFile(skill, isSkillMd ? undefined : file.path);
   const repoPath = skill.path ? `${skill.path}/${file.path}` : file.path;
-  const url = skillFileUrl(skill, file.path);
+  // At the commit the content was read at, the one the line above names.
+  const url = skillFileUrl({ ...skill, commit }, file.path);
   const notShown =
     read && (read.binary || read.truncated || read.content === undefined);
 
@@ -314,6 +324,7 @@ export function SkillFileViewer({
     body = (
       <NotShown
         skill={skill}
+        commit={commit}
         file={{ ...file, size: read.size }}
         reason={read.binary ? 'binary' : 'truncated'}
       />
@@ -334,19 +345,22 @@ export function SkillFileViewer({
       <Flex direction="column" gap="3">
         <div className={classes.header}>
           <Text as="p" variant="body-small" color="secondary">
-            {repoPath} at <CommitSha value={commit} /> ·{' '}
-            {formatBytes(file.size)}
+            {repoPath}
+            {commit ? (
+              <>
+                {' '}
+                at <CommitSha value={commit} />
+              </>
+            ) : null}{' '}
+            · {formatBytes(file.size)}
           </Text>
           {/* Not shown inline: the body offers the link instead. Not while
               the file is read either, which may turn out not shown inline.
-              At the size of the line beside it, which the link takes from
-              its parent. */}
+              At the size of the line beside it. */}
           {url && !isLoading && !notShown && (
-            <Text as="span" variant="body-small">
-              <ExternalLink href={url} display="inline">
-                View on GitHub
-              </ExternalLink>
-            </Text>
+            <ExternalLink href={url} display="inline" variant="body-small">
+              View on GitHub
+            </ExternalLink>
           )}
         </div>
         {body}

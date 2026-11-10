@@ -121,9 +121,11 @@ a screen reader, with `target="_blank"` and `rel="noopener noreferrer"`. Use
 - `ExternalButtonLink` for a bui `ButtonLink`;
 - `ExternalCellText` for a table cell.
 
-All three render `NewTabHint`; a `Button` that opens a tab from code (a
-sign-in) puts `NewTabHint` after its label. Never a text arrow ("↗") or
-another icon.
+All three are bui underneath (`ExternalLink` is bui's `Link`: pass a
+`variant` for its size, or none to take the surrounding font) and render
+`NewTabHint`. A `Button` that opens a tab from code (a sign-in) takes
+`NewTabLabel` as its label: the label and the hint in one box, so the button's
+gap does not set the icon apart. Never a text arrow ("↗") or another icon.
 
 ## Links in the Agent Platform shell
 

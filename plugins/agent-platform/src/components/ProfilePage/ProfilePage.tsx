@@ -185,11 +185,9 @@ export function ProfilePage() {
           </Text>
           {/* The one link that leaves the shell: a new tab, like the rail's
               Platform Portal item, so the shell stays where it is. */}
-          <Text variant="body-small">
-            <ExternalLink href="/settings" display="inline">
-              All portal settings
-            </ExternalLink>
-          </Text>
+          <ExternalLink href="/settings" variant="body-small">
+            All portal settings
+          </ExternalLink>
         </Flex>
       </ShellPage>
     </PageHeaderActionsProvider>

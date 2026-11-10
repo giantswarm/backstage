@@ -237,7 +237,7 @@ type StackedRowProps = Omit<StackedRowItem, 'id'>;
  * one hook call, so the answer to a click on the button reaches the state:
  * the state and its hint on line 1; the Sign in button in the row's actions;
  * an outstanding sign-in's way back into the page ("Reopen sign-in page",
- * "Open sign-in page ↗") on a line of its own under the description, since
+ * "Open sign-in page", which opens a new tab) on a line of its own under the description, since
  * at the end of line 1 it would squeeze the name to a few characters.
  */
 function SignInStackedRow({

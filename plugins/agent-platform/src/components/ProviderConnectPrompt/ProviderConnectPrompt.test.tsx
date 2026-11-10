@@ -321,12 +321,15 @@ describe('ProviderConnectPrompt', () => {
       }),
     );
 
-    expect(
-      await screen.findByRole('link', { name: 'Open the GitHub sign-in' }),
-    ).toHaveAttribute(
+    const link = await screen.findByRole('link', {
+      name: 'Open the GitHub sign-in (opens in a new tab)',
+    });
+    expect(link).toHaveAttribute(
       'href',
       'https://muster.lab.example.io/oauth/proxy/start?state=abc',
     );
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('starts a grant through the server the manager is pinned to', async () => {

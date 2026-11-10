@@ -1,2 +1,2 @@
 export { ExternalLink } from './ExternalLink';
-export { NewTabHint } from './NewTabHint';
+export type { ExternalLinkProps } from './ExternalLink';

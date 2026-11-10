@@ -217,8 +217,8 @@ them and never invent a palette.
   after its text and "(opens in a new tab)" for a screen reader, from
   `ui-react`'s `ExternalLink` (text), `ExternalButtonLink` (a bui
   `ButtonLink`) or `ExternalCellText` (a table cell). Never a text arrow
-  ("↗") or another icon; a `Button` that opens a tab from code puts
-  `NewTabHint` after its label.
+  ("↗") or another icon; a `Button` that opens a tab from code takes
+  `NewTabLabel` as its label.
 - Dark mode: the shell renders light, but a toast inverts the theme the person
   picked, so its links can sit on bui's dark surfaces. There the link colour is
   #bcdcff (`agentShellDarkColors`), which holds 4.5:1 against bui's dark app

@@ -275,8 +275,7 @@ describe('SkillDetailPage', () => {
       );
     }
     for (const link of [commit, source, path]) {
-      expect(link).not.toHaveAttribute('data-variant');
-      expect(link.className).not.toMatch(/MuiTypography-(body|caption|h\d)/);
+      expect(link.className).toMatch(/inheritFont/);
       expect(link.closest('dd')).toHaveStyle({
         fontSize: 'var(--bui-font-size-3)',
       });

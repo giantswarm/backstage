@@ -53,6 +53,8 @@ export * from './MoreActionsMenu';
 export * from './MoreOptions';
 export * from './MultiplePicker';
 export * from './MultipleSelect';
+export * from './NewTabHint';
+export * from './NewTabLabel';
 export * from './NotAvailable';
 export * from './PageHeaderActions';
 export * from './PageSection';

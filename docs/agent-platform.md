@@ -2799,16 +2799,16 @@ An agent that calls `core_auth_login` gets muster's sign-in link
 (`…/oauth/proxy/start?state=…`) and passes it on, in a message or an `ask_user`
 question. `ConnectorSignInLinks` (around the session column) shows such a link
 as **Sign in to <connector>**, with the new-tab icon, in place of the URL,
-wherever `MessageMarkdown` renders it. Only a link muster issued in this session counts: the answer of one
-of the session's `core_auth_login` calls, for a server among the installation's
-MCPServer CRs (`lib/connectorSignIn.ts`). The agent's own text never makes a
-link a sign-in. A link muster no longer honours (10 minutes) says so and asks
-for a new one, unless its sign-in is already under way: muster's limit is on
-starting the flow, so the wait stays (without the stale link to reopen). kagent
-stamps every item of a turn with the turn's latest time, so the age is counted
-from the earlier of that and when the tab first saw the link. A link first seen
-in history can still be older than it looks; muster's own page then says it
-expired.
+wherever `MessageMarkdown` renders it. Only a link muster issued in this session
+counts: the answer of one of the session's `core_auth_login` calls, for a server
+among the installation's MCPServer CRs (`lib/connectorSignIn.ts`). The agent's
+own text never makes a link a sign-in. A link muster no longer honours (10
+minutes) says so and asks for a new one, unless its sign-in is already under
+way: muster's limit is on starting the flow, so the wait stays (without the
+stale link to reopen). kagent stamps every item of a turn with the turn's latest
+time, so the age is counted from the earlier of that and when the tab first saw
+the link. A link first seen in history can still be older than it looks;
+muster's own page then says it expired.
 
 The link opens in a new tab with `redirect=<this session page>?connector-sign-in=<id>`.
 muster sends the browser there only after a successful callback, adding

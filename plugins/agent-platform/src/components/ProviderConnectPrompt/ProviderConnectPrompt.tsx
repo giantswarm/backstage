@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
-import { NewTabHint } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   providerDisplayName,
@@ -211,9 +214,9 @@ function MusterGrant({
             </Button>
           </div>
         ) : (
-          <Link href={signIn.authUrl} target="_blank" rel="noopener">
+          <ExternalLink href={signIn.authUrl} variant="body-medium">
             Open the {kind} sign-in
-          </Link>
+          </ExternalLink>
         )}
       </Flex>
     );
@@ -236,11 +239,7 @@ function MusterGrant({
           {signIn.isPending ? (
             'Opening…'
           ) : (
-            // One box, so the button's gap does not set the icon apart.
-            <span>
-              {copy.cta}
-              <NewTabHint />
-            </span>
+            <NewTabLabel>{copy.cta}</NewTabLabel>
           )}
         </Button>
       </div>

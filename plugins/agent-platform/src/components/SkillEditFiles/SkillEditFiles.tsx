@@ -71,11 +71,9 @@ export function SkillEditFiles({
             : `These ${count} files stay as they are`}
         </Text>
         {githubUrl && (
-          <Text variant="body-small">
-            <ExternalLink href={githubUrl} display="inline">
-              Edit on GitHub
-            </ExternalLink>
-          </Text>
+          <ExternalLink href={githubUrl} variant="body-small">
+            Edit on GitHub
+          </ExternalLink>
         )}
       </Flex>
       <ShowMore items={others} initial={USED_BY_ROWS} noun="file" revealAll>
