@@ -793,8 +793,8 @@ describe('createRouter', () => {
         const probing = await buildMultiApp(twoMusters, {
           reachability: cache,
         });
-        pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
-        pending.get(golemProbe)!({ reachable: true, checkedAt: 1 });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: Date.now() });
+        pending.get(golemProbe)!({ reachable: true, checkedAt: Date.now() });
         await new Promise(resolve => setTimeout(resolve, 0));
         callTool.mockRejectedValueOnce(
           new MusterUnreachableError(
@@ -808,6 +808,31 @@ describe('createRouter', () => {
           .set(MUSTER_AUTH_HEADER, token);
 
         expect(response.status).toBe(503);
+        expect(probe).toHaveBeenCalledTimes(3);
+        expect(probe).toHaveBeenLastCalledWith(golemProbe);
+      });
+
+      it('probes again at once when the status read fails while the probe still says reachable', async () => {
+        const { cache, pending, probe } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: Date.now() });
+        pending.get(golemProbe)!({ reachable: true, checkedAt: Date.now() });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        getResource.mockRejectedValueOnce(
+          new MusterUnreachableError(
+            'golem',
+            'the connection failed (ECONNREFUSED)',
+          ),
+        );
+
+        const response = await request(probing)
+          .get('/auth/status?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(200);
+        expect(response.body.unavailable).toBe(true);
         expect(probe).toHaveBeenCalledTimes(3);
         expect(probe).toHaveBeenLastCalledWith(golemProbe);
       });

@@ -420,43 +420,52 @@ export async function createRouter(
   });
 
   /**
-   * The error a call to the installation fails with at once, without a
-   * connection attempt, when {@link REFUSE_AFTER_FAILED_PROBES} probes in a
-   * row found its muster unreachable from this portal: a 503 that is neither
-   * logged nor sent to Sentry, as the probe logs each state change itself.
-   * Nothing while the probe has not settled (`'unknown'`), says it is
-   * reachable, or failed once: a distant muster that answered one probe late
-   * still gets its calls, and one that failed a call is probed again at once.
+   * Whether calls to the installation are refused without a connection
+   * attempt: {@link REFUSE_AFTER_FAILED_PROBES} probes in a row found its
+   * muster unreachable from this portal. Not while the probe has not settled
+   * (`'unknown'`), says it is reachable, or failed once, so a distant muster
+   * that answered one probe late still gets its calls.
    */
-  const refusals = new WeakSet<Error>();
-  const unreachableError = (
-    installation: MusterInstallationConfig,
-  ): MusterUnreachableError | undefined => {
+  const isRefused = (installation: MusterInstallationConfig): boolean => {
     const state = reachability.get(musterProbeUrl(installation.url));
-    if (
-      state.reachable !== false ||
-      (state.failures ?? 1) < REFUSE_AFTER_FAILED_PROBES
-    ) {
-      return undefined;
-    }
-    const refusal = new MusterUnreachableError(
-      installation.name,
-      `not reachable from this portal (${state.reason ?? 'no answer'})`,
+    return (
+      state.reachable === false &&
+      (state.failures ?? 1) >= REFUSE_AFTER_FAILED_PROBES
     );
-    refusals.add(refusal);
-    return refusal;
   };
-  /** The installation each request resolved to, for the error handler below. */
-  const resolvedInstallations = new WeakMap<
-    express.Request,
-    MusterInstallationConfig
-  >();
+  /**
+   * The 503 a refused call fails with: neither logged nor sent to Sentry, as
+   * the probe logs each state change itself.
+   */
+  const refusalOf = (installation: MusterInstallationConfig) =>
+    new MusterUnreachableError(
+      installation.name,
+      `not reachable from this portal (${
+        reachability.get(musterProbeUrl(installation.url)).reason ?? 'no answer'
+      })`,
+    );
+  /**
+   * Probes again at once after a call to the installation could not reach
+   * its muster, unless calls are already refused: a muster that stopped
+   * answering while its probe still says reachable would otherwise cost every
+   * call a connection attempt until the probe's positive answer expires.
+   * Deduplicated by the cache.
+   */
+  const reprobeAfter = (error: unknown) => {
+    if (!(error instanceof MusterUnreachableError)) {
+      return;
+    }
+    const installation = installations.get(error.installation);
+    if (installation && !isRefused(installation)) {
+      void reachability.refresh(musterProbeUrl(installation.url));
+    }
+  };
 
   /**
    * Resolve the target installation for a request from `?installation=`.
    * Defaults to the only installation when exactly one is configured;
-   * otherwise the parameter is required. Throws {@link unreachableError}
-   * for an installation the probe reports unreachable, unless
+   * otherwise the parameter is required. Throws {@link refusalOf} for an
+   * installation whose calls are refused ({@link isRefused}), unless
    * `allowUnreachable` leaves that to the route.
    */
   const resolveInstallation = (
@@ -491,12 +500,8 @@ export async function createRouter(
         ].join(', ')}`,
       );
     }
-    resolvedInstallations.set(req, installationConfig);
-    const unreachable = allowUnreachable
-      ? undefined
-      : unreachableError(installationConfig);
-    if (unreachable) {
-      throw unreachable;
+    if (!allowUnreachable && isRefused(installationConfig)) {
+      throw refusalOf(installationConfig);
     }
     return { config: installationConfig, client };
   };
@@ -858,12 +863,11 @@ export async function createRouter(
     }
 
     const callOptions = readCallOptions(req, installation);
-    const unreachable = unreachableError(installation);
-    if (unreachable) {
+    if (isRefused(installation)) {
       res.json({
         servers: [],
         unavailable: true,
-        message: unreachable.message,
+        message: refusalOf(installation).message,
       });
       return;
     }
@@ -871,6 +875,7 @@ export async function createRouter(
     try {
       res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
     } catch (error) {
+      reprobeAfter(error);
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`Muster ${AUTH_STATUS_RESOURCE} is unavailable`, {
         installation: installation.name,
@@ -1452,25 +1457,14 @@ export async function createRouter(
     },
   );
 
-  // A muster that stopped answering while its probe still says reachable
-  // would otherwise cost every call a connection attempt until the probe's
-  // positive answer expires: a failed call probes again at once (deduplicated
-  // by the cache). Not for the refusals above, which the probe already knows.
   router.use(
     (
       error: unknown,
-      req: express.Request,
+      _req: express.Request,
       _res: express.Response,
       next: express.NextFunction,
     ) => {
-      const installation = resolvedInstallations.get(req);
-      if (
-        installation &&
-        error instanceof MusterUnreachableError &&
-        !refusals.has(error)
-      ) {
-        void reachability.refresh(musterProbeUrl(installation.url));
-      }
+      reprobeAfter(error);
       next(error);
     },
   );
