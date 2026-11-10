@@ -34,6 +34,8 @@ import {
   MusterInstallationConfig,
   MusterMcpClient,
   musterInstallationRequiresAuth,
+  MUSTER_CONNECT_TIMEOUT_MS,
+  probeEndpoint,
   ReachabilityCache,
   reachabilityFields,
   resolveMusterInstallations,
@@ -49,6 +51,9 @@ import {
 import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
+
+/** Failed reachability probes in a row before calls are refused outright. */
+const REFUSE_AFTER_FAILED_PROBES = 2;
 
 /**
  * Header the muster frontend uses to forward the user's OAuth token for the
@@ -78,8 +83,9 @@ export interface RouterOptions {
   client?: MusterMcpClient;
   /**
    * The cache of unauthenticated reachability probes behind `/installations`.
-   * Overridable for tests; defaults to one that probes for real with a 3 s
-   * budget and a 5 min TTL (30 s for a negative answer).
+   * Overridable for tests; defaults to one that probes for real with the
+   * budget a muster call has to connect (`MUSTER_CONNECT_TIMEOUT_MS`) and a
+   * 5 min TTL (30 s for a negative answer).
    */
   reachability?: ReachabilityCache;
   /**
@@ -365,7 +371,12 @@ export async function createRouter(
   // until a probe settles. Results are logged at INFO, one line per endpoint
   // per state change.
   const reachability =
-    options.reachability ?? new ReachabilityCache({ logger });
+    options.reachability ??
+    new ReachabilityCache({
+      logger,
+      probe: url =>
+        probeEndpoint(url, { timeoutMs: MUSTER_CONNECT_TIMEOUT_MS }),
+    });
   const warmReachability = () => {
     for (const installation of installations.values()) {
       void reachability.refresh(musterProbeUrl(installation.url));
@@ -410,17 +421,22 @@ export async function createRouter(
 
   /**
    * The error a call to the installation fails with at once, without a
-   * connection attempt, when the probe reports its muster unreachable from
-   * this portal: a 503 that is neither logged nor sent to Sentry, as the probe
-   * logs each state change itself. Nothing while the probe has not settled
-   * (`'unknown'`), or says it is reachable.
+   * connection attempt, when {@link REFUSE_AFTER_FAILED_PROBES} probes in a
+   * row found its muster unreachable from this portal: a 503 that is neither
+   * logged nor sent to Sentry, as the probe logs each state change itself.
+   * Nothing while the probe has not settled (`'unknown'`), says it is
+   * reachable, or failed once: a distant muster that answered one probe late
+   * still gets its calls, and one that failed a call is probed again at once.
    */
   const refusals = new WeakSet<Error>();
   const unreachableError = (
     installation: MusterInstallationConfig,
   ): MusterUnreachableError | undefined => {
     const state = reachability.get(musterProbeUrl(installation.url));
-    if (state.reachable !== false) {
+    if (
+      state.reachable !== false ||
+      (state.failures ?? 1) < REFUSE_AFTER_FAILED_PROBES
+    ) {
       return undefined;
     }
     const refusal = new MusterUnreachableError(

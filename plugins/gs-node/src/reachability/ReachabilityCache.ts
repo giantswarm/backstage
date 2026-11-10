@@ -26,6 +26,12 @@ export type ReachabilityState = {
   reason?: string;
   /** Epoch milliseconds of the answer being served; absent while unknown. */
   checkedAt?: number;
+  /**
+   * How many probes in a row found the endpoint unreachable, when it is: one
+   * slow answer from a distant endpoint is not the same finding as an
+   * endpoint that never answers.
+   */
+  failures?: number;
 };
 
 /**
@@ -84,6 +90,7 @@ export type ReachabilityCacheOptions = {
  */
 export class ReachabilityCache {
   private readonly entries = new Map<string, EndpointProbeResult>();
+  private readonly failures = new Map<string, number>();
   private readonly inFlight = new Map<string, Promise<EndpointProbeResult>>();
   private readonly ttlMs: number;
   private readonly negativeTtlMs: number;
@@ -120,6 +127,7 @@ export class ReachabilityCache {
       reachable: entry.reachable,
       ...(entry.reason !== undefined && { reason: entry.reason }),
       checkedAt: entry.checkedAt,
+      ...(!entry.reachable && { failures: this.failures.get(url) ?? 1 }),
     };
   }
 
@@ -173,6 +181,10 @@ export class ReachabilityCache {
   private record(url: string, result: EndpointProbeResult) {
     const previous = this.entries.get(url);
     this.entries.set(url, result);
+    this.failures.set(
+      url,
+      result.reachable ? 0 : (this.failures.get(url) ?? 0) + 1,
+    );
     const changed =
       !previous ||
       previous.reachable !== result.reachable ||

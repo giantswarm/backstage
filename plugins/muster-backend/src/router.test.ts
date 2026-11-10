@@ -686,18 +686,47 @@ describe('createRouter', () => {
         'sig',
       ].join('.');
 
-      async function settled(golem: EndpointProbeResult | undefined) {
+      /** golem probed `times` times with the same answer, once by default. */
+      async function settled(
+        golem: EndpointProbeResult | undefined,
+        times = golem?.reachable === false ? 2 : 1,
+      ) {
         const { cache, pending } = controlledCache();
         const probing = await buildMultiApp(twoMusters, {
           reachability: cache,
         });
         pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
         if (golem) {
-          pending.get(golemProbe)!(golem);
+          for (let probe = 0; probe < times; probe += 1) {
+            if (probe > 0) {
+              void cache.refresh(golemProbe);
+            }
+            pending.get(golemProbe)!(golem);
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
         }
         await new Promise(resolve => setTimeout(resolve, 0));
         return probing;
       }
+
+      it('one failed probe still lets the call through: a distant muster may have answered late', async () => {
+        const probing = await settled(
+          {
+            reachable: false,
+            reason: 'no answer within 5000 ms',
+            checkedAt: 1,
+          },
+          1,
+        );
+        callTool.mockResolvedValueOnce({ mcpServers: [] });
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(200);
+        expect(callTool).toHaveBeenCalledTimes(1);
+      });
 
       it('the probe reports unreachable fails at once with the probe reason, without calling muster', async () => {
         const probing = await settled({
@@ -789,11 +818,15 @@ describe('createRouter', () => {
           reachability: cache,
         });
         pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
-        pending.get(golemProbe)!({
+        const unreachable = {
           reachable: false,
-          reason: 'no answer within 3000 ms',
+          reason: 'no answer within 5000 ms',
           checkedAt: Date.now(),
-        });
+        };
+        pending.get(golemProbe)!(unreachable);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        void cache.refresh(golemProbe);
+        pending.get(golemProbe)!(unreachable);
         await new Promise(resolve => setTimeout(resolve, 0));
 
         const response = await request(probing)
@@ -801,7 +834,7 @@ describe('createRouter', () => {
           .set(MUSTER_AUTH_HEADER, token);
 
         expect(response.status).toBe(503);
-        expect(probe).toHaveBeenCalledTimes(2);
+        expect(probe).toHaveBeenCalledTimes(3);
       });
 
       it('logs nothing for the refused call: the probe logged the state change', async () => {
@@ -824,12 +857,17 @@ describe('createRouter', () => {
             config: mockServices.rootConfig(),
           }).error(),
         );
-        pending.get(golemProbe)!({
-          reachable: false,
-          reason: 'no answer within 3000 ms',
-          checkedAt: 1,
-        });
-        await new Promise(resolve => setTimeout(resolve, 0));
+        for (let probe = 0; probe < 2; probe += 1) {
+          if (probe > 0) {
+            void cache.refresh(golemProbe);
+          }
+          pending.get(golemProbe)!({
+            reachable: false,
+            reason: 'no answer within 5000 ms',
+            checkedAt: 1,
+          });
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
 
         const response = await request(probing)
           .get('/servers?installation=golem')
