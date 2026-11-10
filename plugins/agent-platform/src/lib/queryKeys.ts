@@ -589,3 +589,20 @@ export function kagentAgentNamespacesQueryKey(installation: string) {
     installation,
   ] as const;
 }
+
+/**
+ * agent-manager's confirmation of one credential operation, read through the
+ * portal's backend. Never persisted (`meta: { persist: false }` on its query).
+ */
+export function agentManagerCredentialOperationQueryKey(
+  installation: string,
+  operation: string,
+) {
+  return [
+    'agent-platform',
+    'agent-manager',
+    'credential-operation',
+    installation,
+    operation,
+  ] as const;
+}
