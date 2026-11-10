@@ -50,7 +50,8 @@ test('the roster lists the agent under Customize · Agents', async ({
   // The lab runs every agent on one Harness: main's singleHarness rule (#2858)
   // shows neither a Harness filter nor a Harness per row.
   await expect(
-    admin.getByRole('button', { name: /^Filter by harness/ }),
+    // Named by its value, then its field: "All Filter by harness".
+    admin.getByRole('button', { name: /\bFilter by harness$/ }),
   ).toHaveCount(0);
   await expect(admin.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',

@@ -14,6 +14,8 @@ import {
   Now,
   PlanCard,
   statusTone,
+  TeamSet,
+  TeamSets,
 } from './magazine';
 
 /** `?team=` value, and the localStorage key's value, for every team at once. */
@@ -45,6 +47,16 @@ export function teamName(team: string): string {
  */
 export function sameTeam(a: string, b: string): boolean {
   return teamName(a).toLowerCase() === teamName(b).toLowerCase();
+}
+
+/**
+ * The data set the magazine writes for a team (`magazine/teams.json`),
+ * matched by name or board option; undefined for a team without one.
+ */
+export function teamSetFor(sets: TeamSets, team: string): TeamSet | undefined {
+  return sets.teams.find(
+    set => sameTeam(set.name, team) || sameTeam(set.boardTeam, team),
+  );
 }
 
 /**

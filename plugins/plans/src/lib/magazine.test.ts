@@ -17,6 +17,12 @@ describe('magazine helpers', () => {
   it('names the data file of each view', () => {
     expect(magazineFile('now')).toBe('magazine/now.json');
     expect(magazineFile('weeks')).toBe('magazine/history-weeks.json');
+    expect(magazineFile('now', 'magazine/teams/phoenix')).toBe(
+      'magazine/teams/phoenix/now.json',
+    );
+    expect(magazineFile('weeks', 'magazine/teams/phoenix')).toBe(
+      'magazine/teams/phoenix/history-weeks.json',
+    );
   });
 
   it('reads the three weeks of history', () => {

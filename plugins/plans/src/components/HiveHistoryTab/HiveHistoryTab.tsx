@@ -35,6 +35,7 @@ import {
 } from '../../lib/magazine';
 import { HiveScopeNote } from '../HiveScopeNote';
 import { HiveSourceState } from '../HiveSourceState';
+import { HiveTeamEmptyState } from '../HiveTeamEmptyState';
 
 const useStyles = makeStyles({
   summary: {
@@ -227,7 +228,10 @@ export function HiveHistoryTab() {
   const [query] = useHiveSearch();
   const { data, isFetching, error, refetch } = useHiveHistory(team);
 
-  return data ? (
+  if (data && !data.view) {
+    return <HiveTeamEmptyState team={team} what="what moved" />;
+  }
+  return data?.view ? (
     <HistoryView
       history={data.view}
       query={query}
