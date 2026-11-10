@@ -41,6 +41,7 @@ test('a shared conversation names each sender after reload', async ({
       ...common,
       '--session',
       sessionId!,
+      '--keep',
       '--share-with',
       lab.users.dev.email,
       'What word did the first person ask you to remember? Reply briefly.',
