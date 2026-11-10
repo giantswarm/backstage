@@ -113,6 +113,7 @@ export {
   useServerNeedsSignIn,
   toneColors,
   severityTone,
+  SEVERITY_DOT_TONE,
   VIOLET,
 } from './components/shared';
 export type {

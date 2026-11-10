@@ -3,7 +3,7 @@ import {
   type ConnectorReach,
   mcpServerStateSeverity,
   type MCPServerState,
-  type MCPServerSeverity,
+  SEVERITY_DOT_TONE,
   toolEffect,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
@@ -116,13 +116,6 @@ export type ConnectorStatus = {
   tone: StatusDotTone;
 };
 
-const SEVERITY_TONE: Record<MCPServerSeverity, StatusDotTone> = {
-  ok: 'success',
-  warning: 'warning',
-  error: 'danger',
-  unknown: 'neutral',
-};
-
 /**
  * Whether this person can reach the connector's tools now, in the words of
  * the Customize connectors list (`CONNECTOR_REACH_LABELS`): listed tools mean
@@ -147,7 +140,7 @@ export function connectorStatus(bucket: ServerBucket): ConnectorStatus {
   return {
     reach: 'not-connected',
     label: CONNECTOR_REACH_LABELS['not-connected'],
-    tone: SEVERITY_TONE[severity],
+    tone: SEVERITY_DOT_TONE[severity],
   };
 }
 
