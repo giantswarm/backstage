@@ -115,6 +115,12 @@ export const lab = {
    */
   organization: organizationFromEnv(),
   /**
+   * The name of the agents' default ModelConfig the lab provisions on its
+   * `aiModel` (`AGENTLAB_DEFAULT_MODEL`), in `kagent` and in every
+   * organization namespace.
+   */
+  defaultModel: process.env.AGENTLAB_DEFAULT_MODEL ?? 'anthropic',
+  /**
    * The MCPServer the lab registers for its own cluster: the `kubernetes`
    * family member `<cluster>-mcp-kubernetes`, the way every management
    * cluster registers itself (`agentlab-2-mcp-kubernetes` on a lab whose
