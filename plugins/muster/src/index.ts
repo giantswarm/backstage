@@ -78,6 +78,15 @@ export {
   isMcpTransportText,
 } from './lib/installationError';
 export {
+  musterServerListQueryKey,
+  useMusterServerAvailability,
+} from './hooks/useMusterServerAvailability';
+export type {
+  MusterServerAvailability,
+  MusterServerAvailabilityOptions,
+  MusterServerPresence,
+} from './hooks/useMusterServerAvailability';
+export {
   MusterInstanceProvider,
   useMusterInstance,
   useMusterInstallations,

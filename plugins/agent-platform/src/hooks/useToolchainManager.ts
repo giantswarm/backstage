@@ -17,7 +17,7 @@ import {
   type ToolchainList,
 } from '../lib/toolchainManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { useMusterServerAvailability } from './useMusterServerAvailability';
+import { useMusterServerAvailability } from '@giantswarm/backstage-plugin-muster';
 
 /**
  * The toolchain-manager's tools on one installation, as the signed-in person —

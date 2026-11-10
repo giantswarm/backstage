@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  musterApiRef,
   MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -193,6 +194,7 @@ function renderWorkspaces(extra: JSX.Element | null = null) {
         {extra}
       </WorkspacesDataProvider>
     </QueryClientProvider>,
+    { apis: [[musterApiRef, mockMusterApi as unknown as MusterApi]] },
   );
 }
 

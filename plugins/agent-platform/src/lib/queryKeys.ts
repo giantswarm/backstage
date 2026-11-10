@@ -80,7 +80,7 @@ export function modelCostQueryKey(installation: string, days: number) {
  * jobs are the same for every user, so they are prefixed `model-manager` (not
  * `kagent`, not `muster`) and `components/QueryClientProvider` persists them.
  * Whether an installation has a model-manager at all is the `muster` question
- * (`musterServersQueryKey` below).
+ * (the muster plugin's `musterServerListQueryKey`).
  */
 export function modelManagerBackendQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'backend', installation] as const;
@@ -208,17 +208,13 @@ export function musterToolsetResolutionQueryKey(
 
 /**
  * The agent-manager reads the create flow makes through muster as the
- * signed-in person: whether the installation's muster lists agent-manager at
- * all, what that agent-manager composes (`get_info`), the dry run of the
+ * signed-in person: what the installation's agent-manager composes
+ * (`get_info`), the dry run of the
  * agent under review and the readiness of the one just created. All per
  * person, all under the `muster` prefix for the same two reasons as above:
  * they are never persisted, and the muster plugin's sign-in invalidation
  * re-reads them once the person connects to agent-manager.
  */
-export function musterServersQueryKey(installation: string) {
-  return ['muster', 'agent-platform', 'mcp-servers', installation] as const;
-}
-
 export function musterAgentManagerInfoQueryKey(installation: string) {
   return [
     'muster',

@@ -8,7 +8,7 @@ import {
   type Workspace,
 } from '../lib/workspaceManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { useMusterServerAvailability } from './useMusterServerAvailability';
+import { useMusterServerAvailability } from '@giantswarm/backstage-plugin-muster';
 
 /**
  * A session's workspace as the person can see it: `named` with the workspace

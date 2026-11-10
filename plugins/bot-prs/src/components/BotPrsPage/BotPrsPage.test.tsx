@@ -28,15 +28,19 @@ jest.mock('../../hooks/useTeams', () => ({
   }),
 }));
 
+const reachableMarge = {
+  installation: 'gazelle' as string | undefined,
+  candidates: ['gazelle'],
+  isResolvedFromAll: false,
+  isLoading: false,
+  isUnavailable: false,
+  withoutPerUserSignIn: [] as string[],
+  installationsError: undefined as Error | undefined,
+};
+let mockMarge = reachableMarge;
 jest.mock('../../hooks/useMarge', () => ({
   ...jest.requireActual('../../hooks/useMarge'),
-  useMargeInstallation: () => ({
-    installation: 'gazelle',
-    candidates: ['gazelle'],
-    isResolvedFromAll: false,
-    isLoading: false,
-    isUnavailable: false,
-  }),
+  useMargeInstallation: () => mockMarge,
   useMargeServerName: () => 'marge',
 }));
 
@@ -120,6 +124,7 @@ const sweepCalls = () =>
   callTool.mock.calls.filter(([tool]) => tool === 'x_marge_sweep');
 
 beforeEach(() => {
+  mockMarge = reachableMarge;
   callTool.mockReset();
   listServers.mockReset();
   callTool.mockImplementation(
@@ -247,5 +252,41 @@ describe('BotPrsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
     await waitFor(() => expect(listCalls()).toBeGreaterThan(before));
+  });
+});
+
+describe('BotPrsPage without an installation to call marge on', () => {
+  it('says why where muster lists marge but has no per-user sign-in', async () => {
+    mockMarge = {
+      ...reachableMarge,
+      installation: undefined,
+      candidates: [],
+      withoutPerUserSignIn: ['gazelle'],
+    };
+
+    await renderPage();
+
+    expect(
+      await screen.findByText('marge needs a per-user sign-in to muster'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('marge is not reachable from this portal'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says the installations could not be read, not that marge is missing', async () => {
+    mockMarge = {
+      ...reachableMarge,
+      installation: undefined,
+      candidates: [],
+      installationsError: new Error('muster-backend answered 502'),
+    };
+
+    await renderPage();
+
+    expect(
+      await screen.findByText('Could not tell where marge is reachable'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/muster-backend answered 502/)).toBeInTheDocument();
   });
 });

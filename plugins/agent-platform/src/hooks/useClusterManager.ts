@@ -4,7 +4,11 @@ import {
   isAwaitingData,
   type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterPollingOptions,
+  type MusterServerAvailability,
+  useMusterServerAvailability,
+} from '@giantswarm/backstage-plugin-muster';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
@@ -43,10 +47,6 @@ import {
   musterClustersQueryKey,
 } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import {
-  useMusterServerAvailability,
-  type MusterServerAvailability,
-} from './useMusterServerAvailability';
 
 /**
  * cluster-manager's tools on one installation, as the signed-in person —

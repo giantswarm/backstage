@@ -33,7 +33,7 @@ import {
   useUpdateAgent,
   type UpdateAgentState,
 } from '../../hooks/useUpdateAgent';
-import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
+import type { MusterServerPresence } from '@giantswarm/backstage-plugin-muster';
 import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';

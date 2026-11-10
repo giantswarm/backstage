@@ -19,6 +19,7 @@ import {
 import {
   EmptyStateCard,
   FiltersLayout,
+  joinNames,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -659,6 +660,20 @@ export function BotPrsPage() {
     );
   } else if ((marge.isLoading && !marge.installation) || teams.isLoading) {
     body = <Progress />;
+  } else if (!marge.installation && marge.withoutPerUserSignIn.length > 0) {
+    body = (
+      <EmptyStateCard
+        title="marge needs a per-user sign-in to muster"
+        description={`muster on ${joinNames(marge.withoutPerUserSignIn)} lists marge but has no per-user sign-in in this portal, so marge would act under muster's shared identity instead of yours. A platform admin can give the installation's muster entry an authProvider.`}
+      />
+    );
+  } else if (!marge.installation && marge.installationsError) {
+    body = (
+      <EmptyStateCard
+        title="Could not tell where marge is reachable"
+        description={`The portal could not read its muster installations: ${marge.installationsError.message}. Reload the page to try again.`}
+      />
+    );
   } else if (!marge.installation) {
     body = (
       <EmptyStateCard

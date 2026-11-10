@@ -18,7 +18,9 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 import {
   musterPollingOptions,
+  musterServerListQueryKey,
   musterSignInRequiredOf,
+  useMusterServerAvailability,
 } from '@giantswarm/backstage-plugin-muster';
 import {
   isAwaitingData,
@@ -27,7 +29,6 @@ import {
 
 import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
-import { useMusterServerAvailability } from '../../hooks/useMusterServerAvailability';
 import { useAwaitedSyncs } from '../../hooks/useWorkspaceActions';
 import { forgetEndedSyncs } from '../../lib/awaitedSyncs';
 import { musterWorkspacesQueryKey } from '../../lib/queryKeys';
@@ -214,7 +215,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     // An installation whose muster did not answer is asked again whether it
     // has the workspace-manager.
     void queryClient.invalidateQueries({
-      queryKey: ['muster', 'agent-platform', 'mcp-servers'],
+      queryKey: musterServerListQueryKey(),
     });
   }, [queryClient, installations]);
 
