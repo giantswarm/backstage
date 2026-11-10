@@ -27,6 +27,7 @@ import {
   StackedRowList,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
@@ -560,7 +561,7 @@ export function useServerCapabilityCounts(
   const name = server?.getName();
 
   const { data, isSuccess } = useQuery({
-    queryKey: ['muster', 'servers', installation],
+    queryKey: musterServerListQueryKey(installation),
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(server) && (options.enabled ?? true),
   });

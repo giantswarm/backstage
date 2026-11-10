@@ -79,7 +79,6 @@ export {
 } from './lib/installationError';
 export {
   musterServerListQueryKey,
-  unavailableBackoff,
   useMusterServerAvailability,
 } from './hooks/useMusterServerAvailability';
 export type {

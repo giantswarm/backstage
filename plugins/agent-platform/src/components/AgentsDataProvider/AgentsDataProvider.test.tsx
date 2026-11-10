@@ -487,7 +487,7 @@ describe('AgentsDataProvider', () => {
     expect(keys).toEqual(
       expect.arrayContaining([
         ['muster', 'installations'],
-        ['muster', 'mcp-server-list', 'gaggle'],
+        ['muster', 'servers', 'gaggle'],
         ['muster', 'agent-platform', 'agent-manager-info', 'gaggle'],
         ['agent-platform', 'kagent', 'agent-namespaces', 'gaggle'],
       ]),

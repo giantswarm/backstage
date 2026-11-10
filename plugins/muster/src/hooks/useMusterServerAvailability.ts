@@ -20,8 +20,8 @@ import { musterInstallationsQueryKey } from '../components/MusterInstanceProvide
  */
 export function musterServerListQueryKey(installation?: string) {
   return installation === undefined
-    ? (['muster', 'mcp-server-list'] as const)
-    : (['muster', 'mcp-server-list', installation] as const);
+    ? (['muster', 'servers'] as const)
+    : (['muster', 'servers', installation] as const);
 }
 
 /**
@@ -136,6 +136,11 @@ export type MusterServerAvailability = {
   unreachable: string[];
   /** The first error a read met, for a page to show verbatim. */
   error: Error | undefined;
+  /**
+   * Why `/installations` could not be read, when the server is reached as the
+   * person: until it is, nothing is `available`.
+   */
+  installationsError: Error | undefined;
   presenceOf: (installation: string) => MusterServerPresence;
   /**
    * Whether the read that decides the installation's presence has failed
@@ -267,6 +272,7 @@ export function useMusterServerAvailability(
     .join('|');
 
   const firstError = queries.find(query => query.error)?.error ?? undefined;
+  const installationsError = (asPerson && installationInfo.error) || undefined;
 
   return useMemo(() => {
     const presence = new Map<string, MusterServerPresence>();
@@ -299,6 +305,7 @@ export function useMusterServerAvailability(
       ),
       unreachable: installations.filter(name => unreachable.has(name)),
       error: firstError,
+      installationsError,
       presenceOf: of,
       failedOf: (installation: string) => failed.has(installation),
       registeredNameOf: (installation: string) => registered.get(installation),
@@ -324,5 +331,12 @@ export function useMusterServerAvailability(
     };
     // `installations` is captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, musterApi, queryClient, isInstallationsUnknown, firstError]);
+  }, [
+    signature,
+    musterApi,
+    queryClient,
+    isInstallationsUnknown,
+    firstError,
+    installationsError,
+  ]);
 }
