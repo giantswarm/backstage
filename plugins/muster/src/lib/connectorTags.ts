@@ -77,7 +77,7 @@ export function rowTags(row: ServerPageRow): string[] {
 
 /**
  * Whether a row is a registered connector: no tool-group label, what the
- * installation or its users registered. The list shows these first.
+ * installation or its users registered.
  */
 export function isRegisteredRow(row: ServerPageRow): boolean {
   return row.kind !== 'core' && toolGroupOf(rowServers(row)) === 'registered';

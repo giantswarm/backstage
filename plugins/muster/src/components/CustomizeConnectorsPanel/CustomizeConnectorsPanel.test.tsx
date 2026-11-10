@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -177,14 +177,17 @@ let queryClient: QueryClient;
 const consentOpen = jest.fn();
 
 async function renderPanel(search = '') {
+  return renderInPanelApp(<CustomizeConnectorsPanel search={search} />);
+}
+
+/** Renders `ui` with the panel's query client, APIs and routes. */
+async function renderInPanelApp(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
   return renderInTestApp(
-    <QueryClientProvider client={client}>
-      <CustomizeConnectorsPanel search={search} />
-    </QueryClientProvider>,
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
     {
       apis: [
         [musterApiRef, api],
@@ -245,7 +248,7 @@ describe('CustomizeConnectorsPanel', () => {
     expect(
       within(rowOf('web-search')).getByText('No sign-in'),
     ).toBeInTheDocument();
-    // muster itself is listed too, after the registered connectors.
+    // Muster itself is listed too, by its name among the rest.
     expect(rowOf('Muster')).toBeInTheDocument();
   });
 
@@ -961,38 +964,154 @@ describe('CustomizeConnectorsPanel', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('draws the first 20 of 300 connectors, by name, and pages in the rest', async () => {
-      const user = userEvent.setup();
-      mockServers = manyServers(300).reverse();
+    it('draws all 60 connectors at once, by name, with no "Show more"', async () => {
+      mockServers = manyServers(60).reverse();
       await renderPanel();
 
-      expect(bodyRows()).toHaveLength(20);
+      // And muster itself.
+      expect(bodyRows()).toHaveLength(61);
       expect(
         within(bodyRows()[0]).getByText('connector-000'),
       ).toBeInTheDocument();
       expect(
-        screen.getByText('20 connectors shown, 281 more'),
+        within(bodyRows()[59]).getByText('connector-059'),
       ).toBeInTheDocument();
-
-      await user.click(
-        screen.getByRole('button', { name: 'Show 20 more connectors' }),
-      );
-
-      expect(bodyRows()).toHaveLength(40);
       expect(
-        screen.getByRole('button', { name: 'Show fewer' }),
-      ).toBeInTheDocument();
+        screen.queryByRole('button', { name: /^Show \d+ more|fewer/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
     });
 
-    it('pages a search of 300 connectors too', async () => {
-      mockServers = manyServers(300);
-      await renderPanel('connector-1');
+    it('draws every match of a search of 60 connectors', async () => {
+      mockServers = manyServers(60);
+      await renderPanel('connector-0');
 
-      // connector-100 .. connector-199
-      expect(bodyRows()).toHaveLength(20);
+      expect(bodyRows()).toHaveLength(60);
       expect(
-        screen.getByText('20 connectors shown, 80 more'),
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('order', () => {
+    const names = () =>
+      screen
+        .getAllByRole('rowheader')
+        .map(cell => within(cell).getByRole('link').textContent);
+    const header = (name: string) =>
+      screen.getByRole('columnheader', { name: new RegExp(`^${name}`) });
+
+    it('lists the connectors by display name, else by name, whatever the case', async () => {
+      mockServers = [
+        makeServer('z-crm', { displayName: 'Charlie' }),
+        makeServer('alpha'),
+        makeServer('y-search', { displayName: 'beta' }),
+        makeServer('acme', { displayName: 'MUSTER' }),
+        makeServer('delta', { toolGroup: 'infrastructure' }),
+      ];
+      await renderPanel();
+
+      expect(names()).toEqual([
+        'alpha',
+        'beta',
+        'Charlie',
+        'delta',
+        // Case aside, a tie with Muster's own row: the name breaks it, acme
+        // before muster.
+        'MUSTER',
+        'Muster',
+      ]);
+    });
+
+    it('sorts by a header click, and reverses on a second one', async () => {
+      const user = userEvent.setup();
+      await renderPanel();
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      expect(names()).toEqual(['github', 'kubernetes', 'Muster', 'web-search']);
+
+      await user.click(header('Connector'));
+      expect(names()).toEqual(['web-search', 'Muster', 'kubernetes', 'github']);
+      await user.click(header('Connector'));
+      expect(names()).toEqual(['github', 'kubernetes', 'Muster', 'web-search']);
+
+      await user.click(header('Tools'));
+      // muster's tools are its own core tools: none in this catalogue. The
+      // name breaks the ties.
+      expect(names()).toEqual(['Muster', 'web-search', 'kubernetes', 'github']);
+      await user.click(header('Tools'));
+      expect(names()).toEqual(['github', 'kubernetes', 'Muster', 'web-search']);
+    });
+
+    it('sorts by sign-in', async () => {
+      const user = userEvent.setup();
+      await renderPanel();
+      expect(
+        await within(rowOf('github')).findByText('Sign in needed'),
       ).toBeInTheDocument();
+
+      await user.click(header('Sign-in'));
+      const auths = () =>
+        screen
+          .getAllByRole('row')
+          .slice(1)
+          .map(row => within(row).getAllByRole('gridcell')[1].textContent);
+      expect(auths()).toEqual([...auths()].sort((a, b) => a.localeCompare(b)));
+    });
+
+    it('sorts by state, the most urgent first, and reverses it', async () => {
+      const user = userEvent.setup();
+      mockServers = [...servers(), makeServer('broken', { state: 'Failed' })];
+      await renderPanel();
+      expect(
+        await within(rowOf('github')).findByText('Sign in needed'),
+      ).toBeInTheDocument();
+      expect(
+        within(rowOf('Muster')).getByText('Connected'),
+      ).toBeInTheDocument();
+
+      // The sign-in this person can give, then the failure, then the healthy,
+      // each tier by name.
+      await user.click(header('Status'));
+      expect(names()).toEqual([
+        'github',
+        'broken',
+        'kubernetes',
+        'Muster',
+        'web-search',
+      ]);
+      await user.click(header('Status'));
+      expect(names()).toEqual([
+        'kubernetes',
+        'Muster',
+        'web-search',
+        'broken',
+        'github',
+      ]);
+    });
+
+    it('keeps the sort through a search', async () => {
+      const user = userEvent.setup();
+      // The search box is the Customize screen's; a stand-in feeds the panel.
+      function Searched() {
+        const [search, setSearch] = useState('');
+        return (
+          <>
+            <input
+              aria-label="Search"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+            />
+            <CustomizeConnectorsPanel search={search} />
+          </>
+        );
+      }
+      await renderInPanelApp(<Searched />);
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      await user.click(header('Connector'));
+      expect(names()).toEqual(['web-search', 'Muster', 'kubernetes', 'github']);
+
+      await user.type(screen.getByRole('textbox', { name: 'Search' }), 'u');
+      expect(names()).toEqual(['Muster', 'kubernetes', 'github']);
     });
   });
 
@@ -1088,6 +1207,22 @@ describe('CustomizeConnectorsPanel', () => {
       expect(bodyRows()).toHaveLength(2);
     });
 
+    it('keeps the sort a header click chose through a filter', async () => {
+      await renderPanel();
+      await screen.findByRole('button', { name: /Filter by connection/ });
+      await userEvent.click(
+        screen.getByRole('columnheader', { name: /^Connector/ }),
+      );
+      const names = () =>
+        screen
+          .getAllByRole('rowheader')
+          .map(cell => within(cell).getByRole('link').textContent);
+      expect(names()).toEqual(['web-search', 'Muster', 'kubernetes', 'github']);
+
+      await pickFilter('connection', 'Connected 3');
+      expect(names()).toEqual(['web-search', 'Muster', 'kubernetes']);
+    });
+
     it('filters by tags, after the type’s own facets, and searches them', async () => {
       mockServers = [
         makeServer('jira', { tags: 'ticketing,ops,support,triage' }),
@@ -1143,10 +1278,10 @@ describe('CustomizeConnectorsPanel', () => {
       expect(rowOf('github')).toBeInTheDocument();
     });
 
-    // 300 rows and a dozen menu round trips render far more than any other
+    // 30 rows and a dozen menu round trips render far more than any other
     // case here; on a loaded CI runner that outgrows jest's 5 s default.
-    it('filters 300 connectors, paging the result from its first page', async () => {
-      mockServers = Array.from({ length: 300 }, (_, i) =>
+    it('filters 30 connectors, drawing every one the filters keep', async () => {
+      mockServers = Array.from({ length: 30 }, (_, i) =>
         makeServer(`connector-${String(i).padStart(3, '0')}`, {
           ...(i % 3 === 0 ? { auth: { type: 'oauth' } } : {}),
           ...(i % 5 === 0 ? { state: 'Failed' as MCPServerState } : {}),
@@ -1156,40 +1291,30 @@ describe('CustomizeConnectorsPanel', () => {
 
       await screen.findByRole('button', { name: /Filter by connection/ });
       expect(await filterOptions('connection')).toEqual([
-        'Connected 241',
-        'Not connected 60',
+        'Connected 25',
+        'Not connected 6',
       ]);
       expect(await filterOptions('sign-in')).toEqual([
-        'No sign-in 200',
-        'Your own account 100',
+        'No sign-in 20',
+        'Your own account 10',
         'Company login 1',
       ]);
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Show 20 more connectors' }),
-      );
-      expect(bodyRows()).toHaveLength(40);
+      expect(bodyRows()).toHaveLength(31);
 
-      await pickFilter('connection', 'Not connected 60');
-      expect(bodyRows()).toHaveLength(20);
-      expect(
-        screen.getByText('20 connectors shown, 40 more'),
-      ).toBeInTheDocument();
+      await pickFilter('connection', 'Not connected 6');
+      expect(bodyRows()).toHaveLength(6);
       // The sign-in counts follow the connection pick.
       expect(await filterOptions('sign-in')).toEqual([
-        'No sign-in 40',
-        'Your own account 20',
+        'No sign-in 4',
+        'Your own account 2',
         'Company login 0',
       ]);
 
       // Both connection states: everything again; then one sign-in kind.
-      await pickFilter('connection', 'Connected 241');
-      expect(
-        screen.getByText('20 connectors shown, 281 more'),
-      ).toBeInTheDocument();
-      await pickFilter('sign-in', 'Your own account 100');
-      expect(
-        screen.getByText('20 connectors shown, 80 more'),
-      ).toBeInTheDocument();
+      await pickFilter('connection', 'Connected 25');
+      expect(bodyRows()).toHaveLength(31);
+      await pickFilter('sign-in', 'Your own account 10');
+      expect(bodyRows()).toHaveLength(10);
 
       await userEvent.click(
         within(screen.getByRole('group', { name: 'Filters' })).getByRole(
@@ -1197,9 +1322,7 @@ describe('CustomizeConnectorsPanel', () => {
           { name: 'Clear filters' },
         ),
       );
-      expect(
-        screen.getByText('20 connectors shown, 281 more'),
-      ).toBeInTheDocument();
+      expect(bodyRows()).toHaveLength(31);
     }, 20_000);
   });
 
@@ -1355,21 +1478,18 @@ describe('CustomizeConnectorsPanel', () => {
       expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
     });
 
-    it('windows 300 connectors by name, a page of stacked rows at a time', async () => {
-      mockServers = Array.from({ length: 300 }, (_, i) =>
+    it('stacks all 60 connectors at once, by name', async () => {
+      mockServers = Array.from({ length: 60 }, (_, i) =>
         makeServer(`connector-${String(i).padStart(3, '0')}`),
       ).reverse();
       await renderPanel();
 
-      expect(items()).toHaveLength(20);
+      // And muster itself.
+      expect(items()).toHaveLength(61);
       expect(within(items()[0]).getByText('connector-000')).toBeInTheDocument();
       expect(
-        screen.getByText('20 connectors shown, 281 more'),
-      ).toBeInTheDocument();
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Show 20 more connectors' }),
-      );
-      expect(items()).toHaveLength(40);
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
     });
 
     it('narrows the stacked rows with the filters', async () => {
@@ -1423,21 +1543,21 @@ describe('CustomizeConnectorsPanel', () => {
       mockServers = fleet();
     });
 
-    it('lists every connector, the registered ones first, each part by name', async () => {
+    it('lists every connector by name, the platform’s own among the rest', async () => {
       await renderPanel();
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
       const names = screen
         .getAllByRole('rowheader')
         .map(cell => within(cell).getByRole('link').textContent);
       expect(names).toEqual([
+        'agent-manager',
         'crm',
         'github',
         'kubernetes',
-        'web-search',
-        'agent-manager',
         'lone-capi',
         'Muster',
         'prometheus',
+        'web-search',
       ]);
     });
 

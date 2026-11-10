@@ -203,16 +203,19 @@ that pins an older commit.
 
 ### Connectors
 
-Connectors are muster's MCP servers, one list at `/customize/connectors`; a
-family (`spec.family`) is one row. The
+Connectors are muster's MCP servers, one list at `/customize/connectors`, every
+connector at once, by display name (else name, whatever the case); a header
+click sorts by Connector, Sign-in, Tools or Status (by urgency: Sign in needed
+first, then the other states that need attention, then the healthy ones), a
+second click reverses it. A family (`spec.family`) is one row. The
 `agent-platform.giantswarm.io/tool-group` label the shipping chart sets on the
 MCPServer adds a read-only tag, which the Tags filter and `?tags=` select:
 
-| Label            | Tag              | Servers                                                     |
-| ---------------- | ---------------- | ----------------------------------------------------------- |
-| none             | none             | what the installation or its users registered; listed first |
-| `infrastructure` | `infrastructure` | those for the management clusters the platform runs on      |
-| `agent-platform` | `agent-platform` | agent-manager, model-manager, cluster-manager, and muster   |
+| Label            | Tag              | Servers                                                   |
+| ---------------- | ---------------- | --------------------------------------------------------- |
+| none             | none             | what the installation or its users registered             |
+| `infrastructure` | `infrastructure` | those for the management clusters the platform runs on    |
+| `agent-platform` | `agent-platform` | agent-manager, model-manager, cluster-manager, and muster |
 
 Other tags come from the `ui.giantswarm.io/tags` annotation, which the edit
 form writes. The retired sub-tab addresses redirect until the end of 2026:
