@@ -706,6 +706,24 @@ export type AgentManagerAgent = {
   values?: Record<string, unknown>;
 };
 
+/**
+ * The platform's default agent waiting for a default model: platform-owned,
+ * no ModelConfig of its own and not ready. agent-manager points it at the
+ * default ModelConfig once one is marked, so the fix is adding a model.
+ */
+export function awaitsDefaultModel(
+  agent:
+    | Pick<AgentManagerAgent, 'default' | 'managed' | 'modelConfig' | 'ready'>
+    | undefined,
+): boolean {
+  return (
+    agent?.default === true &&
+    agent.managed === 'platform' &&
+    !agent.modelConfig &&
+    agent.ready !== true
+  );
+}
+
 /** `list_model_configs`: a ModelConfig an agent may reference. */
 export type AgentManagerModelConfig = {
   name: string;

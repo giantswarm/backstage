@@ -1,7 +1,22 @@
-import { Alert, Button } from '@backstage/ui';
+import { Alert, Button, Link, Text } from '@backstage/ui';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+
+/**
+ * The fix for the platform's default agent waiting for a default model
+ * (`awaitsDefaultModel`), linked to the Models page where it resolves.
+ */
+export function NoModelYetText() {
+  const { models } = useCustomizePaths();
+  return (
+    <Text variant="body-small">
+      No model yet. Add one under{' '}
+      {models ? <Link href={models}>Models</Link> : 'Models'}.
+    </Text>
+  );
+}
 
 /** A failed agent whose git skills' credential Secret does not exist. */
 function skillsCredentialMissingText(
@@ -37,6 +52,7 @@ export function AgentSessionBlocker({
   onEdit,
   isGitOpsOwned = false,
   isPlatformOwned = false,
+  awaitsModel = false,
 }: {
   agent: Agent;
   /**
@@ -48,12 +64,25 @@ export function AgentSessionBlocker({
   isGitOpsOwned?: boolean;
   /** The platform's own agent: read-only, so a platform admin fixes it. */
   isPlatformOwned?: boolean;
+  /** The default agent waits for a default model (`awaitsDefaultModel`). */
+  awaitsModel?: boolean;
 }) {
   const handoff = useAgentCreatedHandoff();
   const readiness = agent.getReadiness();
 
   if (readiness === 'ready') {
     return null;
+  }
+
+  if (awaitsModel) {
+    return (
+      <Alert
+        status={readiness === 'failed' ? 'danger' : 'info'}
+        icon
+        title="Sessions cannot start"
+        description={<NoModelYetText />}
+      />
+    );
   }
 
   if (readiness === 'failed') {

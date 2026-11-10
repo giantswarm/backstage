@@ -57,7 +57,10 @@ import {
 } from '../../hooks/useAgentManager';
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
-import type { CommitAgentResult } from '../../lib/agentManager';
+import {
+  awaitsDefaultModel,
+  type CommitAgentResult,
+} from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import {
   modelConfigNameOf,
@@ -909,6 +912,10 @@ function AgentDetailPageContent() {
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
         isPlatformOwned={isPlatformOwned}
+        // The live spec too: a model set since the read clears it at once.
+        awaitsModel={
+          awaitsDefaultModel(managerAgent) && !agent.getModelConfigName()
+        }
       />
 
       {refusedWrites.length > 0 && (

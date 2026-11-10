@@ -17,6 +17,7 @@ import {
   installationsExternalRouteRef,
   sessionsRouteRef,
 } from '../../routes';
+import type { AgentManagerAgent } from '../../lib/agentManager';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import {
   selectAgentsInventoryFailure,
@@ -137,6 +138,15 @@ jest.mock('../../hooks/useAgentManager', () => ({
   ...jest.requireActual('../../hooks/useAgentManager'),
   useDefaultAgentIds: (installations: string[]) =>
     mockDefaultAgentIds(installations),
+}));
+
+// What agent-manager's `get_agent` says about the agent asked for.
+const mockManagerAgent = jest.fn<AgentManagerAgent | undefined, []>();
+jest.mock('../../hooks/useAgentManagerAgent', () => ({
+  useAgentManagerAgent: () => ({
+    agent: mockManagerAgent(),
+    isLoading: false,
+  }),
 }));
 
 const mockUseCreateSession = jest.fn();
@@ -343,6 +353,7 @@ beforeEach(() => {
   mockSessions.mockReturnValue([]);
   mockDefaultAgentIds.mockReset();
   mockDefaultAgentIds.mockReturnValue(new Set());
+  mockManagerAgent.mockReturnValue(undefined);
   mockSlackConfigured = false;
 });
 
@@ -1055,6 +1066,54 @@ describe('AgentPlatformHome', () => {
         await render({ url: `/?agent=${encodeURIComponent(research.id)}` });
 
         expect(agentPicker()).toHaveTextContent('Research Agent');
+      });
+
+      describe('without a model', () => {
+        const noModel = { ...general, readiness: 'failed' as const };
+        const managed: AgentManagerAgent = {
+          name: 'default-agent',
+          namespace: 'kagent',
+          exists: true,
+          ready: false,
+          managed: 'platform',
+          default: true,
+        };
+        const noModelLine = 'No model yet. Add one under Models.';
+
+        beforeEach(() => {
+          mockUseAgents.mockReturnValue({
+            ...loadedAgents,
+            rows: [sre, research, docs, noModel],
+          });
+          mockManagerAgent.mockReturnValue(managed);
+        });
+
+        it('says to add one', async () => {
+          await render();
+
+          expect(
+            screen.getByText('General Assistant cannot start sessions'),
+          ).toBeInTheDocument();
+          expect(screen.getByText(noModelLine)).toBeInTheDocument();
+        });
+
+        it('says nothing once it has one', async () => {
+          mockManagerAgent.mockReturnValue({
+            ...managed,
+            modelConfig: 'claude',
+          });
+          await render();
+
+          expect(screen.queryByText(noModelLine)).not.toBeInTheDocument();
+        });
+
+        it('says nothing for an agent that is not the default', async () => {
+          mockDefaultAgentIds.mockReturnValue(new Set());
+          mockManagerAgent.mockReturnValue({ ...managed, default: false });
+          await render();
+
+          expect(screen.queryByText(noModelLine)).not.toBeInTheDocument();
+        });
       });
 
       it('preselects nothing when it cannot be started', async () => {
