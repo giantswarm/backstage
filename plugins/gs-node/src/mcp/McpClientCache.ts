@@ -2,11 +2,16 @@ import { createHash } from 'crypto';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { MCPClient } from '@ai-sdk/mcp';
 
-interface CacheEntry {
-  clientPromise: Promise<MCPClient>;
+/** What the cache needs of a client: a way to close it. */
+export interface ClosableMcpClient {
+  close(): Promise<void>;
+}
+
+interface CacheEntry<C> {
+  clientPromise: Promise<C>;
   // The resolved client, once the factory settled. Lets `markDead` tell the
   // client a caller failed on from a fresh one that has replaced it since.
-  client?: MCPClient;
+  client?: C;
   createdAt: number;
   // Refreshed on every getOrCreate hit. A stateful MCP server (agentgateway's
   // MCP proxy in front of muster) forgets a session that has been idle for
@@ -37,8 +42,8 @@ type HookableTransport = Partial<
   Record<TransportHook, (...args: unknown[]) => void>
 >;
 
-export class McpClientCache {
-  private readonly cache = new Map<string, CacheEntry>();
+export class McpClientCache<C extends ClosableMcpClient = MCPClient> {
+  private readonly cache = new Map<string, CacheEntry<C>>();
   private readonly ttlMs: number;
   private readonly idleTtlMs: number;
   private readonly sweepTimer: ReturnType<typeof setInterval>;
@@ -64,10 +69,7 @@ export class McpClientCache {
     return `${serverName}:${hash}`;
   }
 
-  async getOrCreate(
-    key: string,
-    factory: () => Promise<MCPClient>,
-  ): Promise<MCPClient> {
+  async getOrCreate(key: string, factory: () => Promise<C>): Promise<C> {
     const now = Date.now();
     const existing = this.cache.get(key);
     if (existing) {
@@ -89,9 +91,9 @@ export class McpClientCache {
       }
     }
 
-    const entry: CacheEntry = {
+    const entry: CacheEntry<C> = {
       // Filled in below once factory resolves.
-      clientPromise: undefined as unknown as Promise<MCPClient>,
+      clientPromise: undefined as unknown as Promise<C>,
       createdAt: now,
       lastUsedAt: now,
       alive: true,
@@ -124,7 +126,7 @@ export class McpClientCache {
    * a caller that failed on a session another caller has already replaced
    * must not kill the replacement.
    */
-  markDead(key: string, client?: MCPClient): void {
+  markDead(key: string, client?: C): void {
     const entry = this.cache.get(key);
     if (!entry) return;
     if (client && entry.client && entry.client !== client) return;
@@ -151,7 +153,7 @@ export class McpClientCache {
   }
 
   private staleReason(
-    entry: CacheEntry,
+    entry: CacheEntry<C>,
     now: number,
   ): 'closed' | 'expired' | 'idle' | undefined {
     if (!entry.alive) return 'closed';
@@ -162,14 +164,15 @@ export class McpClientCache {
 
   private installTransportHooks(
     key: string,
-    entry: CacheEntry,
-    client: MCPClient,
+    entry: CacheEntry<C>,
+    client: C,
   ): void {
     try {
-      // `transport` is private on MCPClient, but the chain hook is the only
-      // practical way to detect closure without polling. Cast through
-      // `unknown` to avoid lint complaints; runtime shape is stable across
-      // the @ai-sdk/mcp 1.x/2.x line.
+      // `transport` is private on @ai-sdk/mcp's MCPClient, and a client of
+      // the official SDK exposes the one it connected with, but the chain
+      // hook is the only practical way to detect closure without polling.
+      // Cast through `unknown` to avoid lint complaints; runtime shape is
+      // stable across the @ai-sdk/mcp 1.x/2.x line.
       const transport = (client as unknown as { transport?: HookableTransport })
         .transport;
       if (!transport) return;

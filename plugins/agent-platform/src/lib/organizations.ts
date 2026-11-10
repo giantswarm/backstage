@@ -166,3 +166,26 @@ export function memberKindLabel(kind: string): string {
       return kind;
   }
 }
+
+/**
+ * `set_organization_model` without a key: a new model of the organization,
+ * or `replaceCredential` on an existing one. A missing or replaced key is a
+ * credential request agent-manager prepares and links to the form.
+ */
+export type OrganizationModelRequest = {
+  namespace: string;
+  name: string;
+  provider?: string;
+  model?: string;
+  replaceCredential?: boolean;
+  /** Idempotency key: one per intended change. */
+  requestId: string;
+};
+
+/** `set_organization_connector` with `replaceCredential`: a new credential value for an existing connector. */
+export type OrganizationConnectorCredentialRequest = {
+  namespace: string;
+  name: string;
+  replaceCredential: true;
+  requestId: string;
+};

@@ -21,10 +21,18 @@ import {
   sessionExpiredError,
 } from './installationToken';
 import {
+  inputRequiredBodyOf,
+  MUSTER_INPUT_REQUIRED_STATUS,
   MUSTER_TOKEN_EXPIRED_TEXT,
   MUSTER_TOKEN_REASONS,
+  type MusterInputAnswer,
   readJwtClaims,
 } from '@giantswarm/backstage-plugin-gs-common';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  MusterInputRequiredError,
+  UrlElicitationAnswers,
+} from './urlElicitations';
 import {
   MusterUnauthorizedError,
   unauthorizedBodyOf,
@@ -170,6 +178,13 @@ function sameHolder(a: string, b: string): boolean {
   );
 }
 
+/**
+ * How many times a call is sent again with the person's answers to muster's
+ * URL elicitations before the last one is the caller's error: a sign-in the
+ * person accepted but did not finish is asked about again.
+ */
+const MAX_ELICITATION_ROUNDS = 3;
+
 /** A muster-backend answer; a failed one with its body, read once. */
 type Answer = { response: Response; errorData?: unknown };
 
@@ -217,6 +232,7 @@ export class MusterApiClient implements MusterApi {
   private readonly authProvidersApi?: MusterAuthProvidersApi;
   private readonly kubernetesApi?: KubernetesApi;
   private readonly kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
+  private readonly elicitations?: UrlElicitationAnswers;
   /**
    * The backend's `/installations`, read once per client for the token
    * decision on installations the frontend config does not list (derived
@@ -232,6 +248,10 @@ export class MusterApiClient implements MusterApi {
    * token for musters other than the home installation (see
    * {@link isHomeInstallation}); without them every installation is reached
    * with the `authProvidersApi` token, as before.
+   *
+   * `externalUrlConsentApi` puts muster's URL elicitations to the person
+   * (see {@link callTool}); without it a call muster answers with one fails
+   * with {@link MusterInputRequiredError}.
    */
   constructor(options: {
     discoveryApi: DiscoveryApi;
@@ -240,6 +260,7 @@ export class MusterApiClient implements MusterApi {
     authProvidersApi?: MusterAuthProvidersApi;
     kubernetesApi?: KubernetesApi;
     kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
+    externalUrlConsentApi?: ExternalUrlConsentApi;
   }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
@@ -247,6 +268,9 @@ export class MusterApiClient implements MusterApi {
     this.authProvidersApi = options.authProvidersApi;
     this.kubernetesApi = options.kubernetesApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
+    this.elicitations = options.externalUrlConsentApi
+      ? new UrlElicitationAnswers(options.externalUrlConsentApi)
+      : undefined;
   }
 
   async listInstallations(): Promise<MusterInstallationsResponse> {
@@ -428,12 +452,32 @@ export class MusterApiClient implements MusterApi {
     );
   }
 
+  /**
+   * Calls a tool as the person. The call declares URL mode elicitation (MCP
+   * 2026-07-28): when muster answers that the person must open a page first
+   * -- a sign-in to the tool's server, a server's own page such as a
+   * credential form -- the page is put to the person in the consent dialog,
+   * and the call is sent again with their answer. Declined or dismissed,
+   * muster answers the call's error. `signal` cancels the call, the retry
+   * muster holds until a sign-in completes included.
+   */
   async callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
+    options?: { signal?: AbortSignal },
   ): Promise<unknown> {
-    return this.post<unknown>('/call', { name, arguments: args }, installation);
+    return this.withElicitations(
+      name,
+      input =>
+        this.post<unknown>(
+          '/call',
+          { name, arguments: args, ...(input ? { input } : {}) },
+          installation,
+          options?.signal,
+        ),
+      options?.signal,
+    );
   }
 
   async callToolWithProgress(
@@ -445,12 +489,64 @@ export class MusterApiClient implements MusterApi {
       signal?: AbortSignal;
     },
   ): Promise<unknown> {
+    return this.withElicitations(
+      name,
+      input => this.runWithProgress(name, args, options, input),
+      options.signal,
+    );
+  }
+
+  /**
+   * Runs `call`, and while muster answers it with URL elicitations the
+   * person can be asked about, asks and runs it again with the answers.
+   */
+  private async withElicitations<T>(
+    name: string,
+    call: (input: MusterInputAnswer | undefined) => Promise<T>,
+    signal: AbortSignal | undefined,
+  ): Promise<T> {
+    let input: MusterInputAnswer | undefined;
+    for (let round = 0; ; round++) {
+      try {
+        return await call(input);
+      } catch (error) {
+        if (
+          !(error instanceof MusterInputRequiredError) ||
+          !this.elicitations ||
+          round >= MAX_ELICITATION_ROUNDS
+        ) {
+          throw error;
+        }
+        input = await this.elicitations.answer(
+          name,
+          error.elicitations,
+          error.requestState,
+        );
+        signal?.throwIfAborted();
+      }
+    }
+  }
+
+  private async runWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
+    input: MusterInputAnswer | undefined,
+  ): Promise<unknown> {
     const answer = await this.send(
       '/call/progress',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, arguments: args }),
+        body: JSON.stringify({
+          name,
+          arguments: args,
+          ...(input ? { input } : {}),
+        }),
         signal: options.signal,
       },
       options.installation,
@@ -499,6 +595,14 @@ export class MusterApiClient implements MusterApi {
             await reader.cancel();
             if (MUSTER_TOKEN_EXPIRED_TEXT.test(event.error.message)) {
               throw sessionExpiredError(options.installation);
+            }
+            const inputRequired = inputRequiredBodyOf(event);
+            if (inputRequired) {
+              throw new MusterInputRequiredError(
+                event.error.message,
+                inputRequired.elicitations,
+                inputRequired.requestState,
+              );
             }
             const error = new Error(event.error.message);
             error.name = event.error.name;
@@ -877,6 +981,7 @@ export class MusterApiClient implements MusterApi {
     path: string,
     body: unknown,
     installation?: string,
+    signal?: AbortSignal,
   ): Promise<T> {
     const answer = await this.send(
       path,
@@ -884,6 +989,7 @@ export class MusterApiClient implements MusterApi {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       },
       installation,
     );
@@ -972,6 +1078,17 @@ export class MusterApiClient implements MusterApi {
       }
       const text =
         message ?? `Muster request failed with status ${response.status}`;
+      const inputRequired =
+        response.status === MUSTER_INPUT_REQUIRED_STATUS
+          ? inputRequiredBodyOf(errorData)
+          : undefined;
+      if (inputRequired) {
+        throw new MusterInputRequiredError(
+          text,
+          inputRequired.elicitations,
+          inputRequired.requestState,
+        );
+      }
       const error: Error =
         response.status === 401
           ? new MusterUnauthorizedError(text, reason, server, installation)
