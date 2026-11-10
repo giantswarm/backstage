@@ -29,7 +29,9 @@ describe('ToolchainGrantPrompt', () => {
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Install the App' }),
+      screen.getByRole('button', {
+        name: 'Install the App (opens in a new tab)',
+      }),
     );
 
     expect(open).toHaveBeenCalledWith({

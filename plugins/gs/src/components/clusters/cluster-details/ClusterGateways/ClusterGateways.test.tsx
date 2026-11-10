@@ -109,7 +109,9 @@ describe('<ClusterGatewaysContent />', () => {
       { ...healthy, hostnames: ['healthy.example.com', '*.example.com'] },
     ]);
     expect(
-      screen.getByRole('link', { name: 'healthy.example.com' }),
+      screen.getByRole('link', {
+        name: 'healthy.example.com (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', 'https://healthy.example.com/');
     expect(
       screen.queryByRole('link', { name: '*.example.com' }),

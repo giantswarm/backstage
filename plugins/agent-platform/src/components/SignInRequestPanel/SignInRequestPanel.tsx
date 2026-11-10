@@ -1,6 +1,9 @@
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
-import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  externalUrlConsentApiRef,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 
@@ -115,7 +118,7 @@ export function SignInRequestPanel({
                 })
               }
             >
-              Sign in
+              <NewTabLabel>Sign in</NewTabLabel>
             </Button>
             <Button
               variant="secondary"

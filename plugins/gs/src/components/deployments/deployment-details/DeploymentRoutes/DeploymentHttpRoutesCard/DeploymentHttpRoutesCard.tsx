@@ -1,8 +1,9 @@
 import {
+  ExternalLink,
   InfoCard,
   MetricsUnavailableAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Cell, CellText, ColumnConfig, Link, Table } from '@backstage/ui';
+import { Cell, CellText, ColumnConfig, Table } from '@backstage/ui';
 import { Typography, makeStyles } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { findTargetClusterName } from '../../../utils/findTargetCluster';
@@ -39,13 +40,9 @@ const columnConfig: ColumnConfig<HostnameRow>[] = [
     isRowHeader: true,
     cell: row => (
       <Cell>
-        <Link
-          href={`https://${row.hostname}/`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <ExternalLink href={`https://${row.hostname}/`} variant="body-medium">
           {row.hostname}
-        </Link>
+        </ExternalLink>
       </Cell>
     ),
   },

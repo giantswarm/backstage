@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import { NewTabLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   providerDisplayName,
@@ -201,7 +202,7 @@ function MusterGrant({
               size="small"
               onPress={signIn.openSignInPage}
             >
-              Open the {kind} sign-in
+              <NewTabLabel>Open the {kind} sign-in</NewTabLabel>
             </Button>
           </div>
         )}
@@ -223,7 +224,11 @@ function MusterGrant({
           isDisabled={signIn.isPending}
           onPress={startSignIn}
         >
-          {signIn.isPending ? 'Opening…' : `${copy.cta} ↗`}
+          {signIn.isPending ? (
+            'Opening…'
+          ) : (
+            <NewTabLabel>{copy.cta}</NewTabLabel>
+          )}
         </Button>
       </div>
       <Text variant="body-small" color="secondary">

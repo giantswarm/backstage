@@ -412,10 +412,9 @@ describe('SkillUpdateAgentsDialog', () => {
     expect(
       await screen.findByText('1 agent updated, 1 pull request opened.'),
     ).toBeInTheDocument();
-    expect(within(gitLine).getByRole('link', { name: PR })).toHaveAttribute(
-      'href',
-      PR,
-    );
+    expect(
+      within(gitLine).getByRole('link', { name: `${PR} (opens in a new tab)` }),
+    ).toHaveAttribute('href', PR);
     expect(writes(callTool)).toEqual(
       expect.arrayContaining([
         { namespace: 'kagent', name: 'live-bot', refreshSkills: true },

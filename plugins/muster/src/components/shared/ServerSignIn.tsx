@@ -1,6 +1,9 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Button, Text } from '@backstage/ui';
-import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DisabledAction,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
   SignedIn,
@@ -338,7 +341,7 @@ export function SignInFlow({
           size="small"
           onPress={openSignInPage}
         >
-          Open sign-in page
+          <NewTabLabel>Open sign-in page</NewTabLabel>
         </Button>
         {waiting}
       </>
@@ -352,7 +355,11 @@ export function SignInFlow({
           isPending={isPending}
           onClick={signIn}
         >
-          {isPending ? 'Opening…' : 'Open sign-in page'}
+          {isPending ? (
+            'Opening…'
+          ) : (
+            <NewTabLabel>Open sign-in page</NewTabLabel>
+          )}
         </Button>
         {waiting}
       </>

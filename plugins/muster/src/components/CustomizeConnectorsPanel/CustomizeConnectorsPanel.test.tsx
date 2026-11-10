@@ -471,7 +471,9 @@ describe('CustomizeConnectorsPanel', () => {
       await within(github).findByRole('button', { name: 'Sign in' }),
     );
     await user.click(
-      await within(github).findByRole('button', { name: 'Open sign-in page' }),
+      await within(github).findByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     );
 
     expect(consentOpen).toHaveBeenCalledTimes(2);

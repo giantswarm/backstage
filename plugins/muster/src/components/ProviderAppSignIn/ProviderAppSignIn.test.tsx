@@ -114,7 +114,9 @@ describe('ProviderAppSignIn', () => {
       'WXYZ-1234',
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     );
     expect(consentOpen).toHaveBeenCalledWith(
       expect.objectContaining({

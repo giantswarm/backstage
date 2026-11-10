@@ -1,20 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Button,
-  ButtonLink,
-  Flex,
-  Select,
-  Text,
-  TextField,
-} from '@backstage/ui';
+import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import {
   addTags,
   commitTagDraft,
   draftProblem,
   EmptyStateCard,
+  ExternalButtonLink,
   sameTags,
   searchableIf,
   tagCounts,
@@ -74,15 +67,13 @@ function SkillPullRequestOutcome({
             before {isUpdate ? 'the change' : 'the skill'} reaches the catalog.
           </Text>
           <div>
-            <ButtonLink
+            <ExternalButtonLink
               href={result.pullRequestUrl}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="secondary"
               size="small"
             >
-              Review pull request ↗
-            </ButtonLink>
+              Review pull request
+            </ExternalButtonLink>
           </div>
         </Flex>
       }

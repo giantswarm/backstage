@@ -1,7 +1,10 @@
 import { Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
-import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  externalUrlConsentApiRef,
+  NewTabLabel,
+  SimpleAccordion,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { VerifyDimension, VerifyResult } from '../apis';
 import { count, notChecked, NotRun } from '../lib/comparison';
@@ -41,7 +44,7 @@ function ConnectButton({ url, server }: { url: string; server: string }) {
       size="small"
       onPress={() => void consentApi.open({ url, requester: server })}
     >
-      Connect {server} in muster
+      <NewTabLabel>Connect {server} in muster</NewTabLabel>
     </Button>
   );
 }

@@ -49,7 +49,9 @@ describe('SignInRequestPanel', () => {
       ),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Sign in (opens in a new tab)' }),
+    );
     expect(consentOpen).toHaveBeenCalledWith({
       url: SIGN_IN.signIn!.url,
       requester: 'muster',

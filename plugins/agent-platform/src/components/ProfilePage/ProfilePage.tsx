@@ -5,13 +5,14 @@ import {
   ProfileInfo,
   useApi,
 } from '@backstage/frontend-plugin-api';
-import { Avatar, Button, Flex, Link, Text } from '@backstage/ui';
+import { Avatar, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { ProviderAppConnections } from '@giantswarm/backstage-plugin-muster';
 import {
   PageHeaderActionsProvider,
+  ExternalLink,
   GSReleaseInfo,
   LoadingIndicator,
   SectionHeader,
@@ -184,14 +185,9 @@ export function ProfilePage() {
           </Text>
           {/* The one link that leaves the shell: a new tab, like the rail's
               Platform Portal item, so the shell stays where it is. */}
-          <Link
-            href="/settings"
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="body-small"
-          >
-            All portal settings ↗
-          </Link>
+          <ExternalLink href="/settings" variant="body-small">
+            All portal settings
+          </ExternalLink>
         </Flex>
       </ShellPage>
     </PageHeaderActionsProvider>

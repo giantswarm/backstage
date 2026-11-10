@@ -238,13 +238,3 @@ export function matchesSearch(
 export function cardHref(card: MagazineCard): string {
   return card.links.find(link => isPortalPath(link.url))?.url ?? card.url;
 }
-
-/** Anchor props for a link: a new tab for anything outside the portal. */
-export function linkTarget(url: string): {
-  target?: string;
-  rel?: string;
-} {
-  return isPortalPath(url)
-    ? {}
-    : { target: '_blank', rel: 'noopener noreferrer' };
-}

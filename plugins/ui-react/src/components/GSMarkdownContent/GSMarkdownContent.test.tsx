@@ -128,18 +128,36 @@ describe('GSMarkdownContent', () => {
       />,
     );
 
-    const valuesLink = screen.getByRole('link', { name: /the values/ });
+    // A link out of the portal opens a new tab, and says so.
+    const valuesLink = screen.getByRole('link', {
+      name: 'the values (opens in a new tab)',
+    });
     expect(valuesLink).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/trivy-app/blob/refs/tags/v0.18.1/helm/trivy/values.yaml',
     );
     expect(valuesLink).toHaveAttribute('target', '_blank');
-    expect(valuesLink).toHaveAttribute('rel', 'noopener');
+    expect(valuesLink).toHaveAttribute('rel', 'noopener noreferrer');
     // In-page anchors stay on the page; the router adds the current path.
     expect(screen.getByRole('link', { name: 'below' })).toHaveAttribute(
       'href',
       '/#configuration',
     );
+  });
+
+  it('opens every link out of the portal in a new tab, with the icon, and keeps the portal’s own in the tab', async () => {
+    await renderInTestApp(
+      <GSMarkdownContent content="Read [the docs](https://docs.example.com/a) or [the catalog](/catalog)." />,
+    );
+
+    const docs = screen.getByRole('link', {
+      name: 'the docs (opens in a new tab)',
+    });
+    expect(docs).toHaveAttribute('target', '_blank');
+    expect(docs).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(docs.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
+    const catalog = screen.getByRole('link', { name: 'the catalog' });
+    expect(catalog).not.toHaveAttribute('target');
   });
 
   it('leaves relative links alone without a source URL', async () => {

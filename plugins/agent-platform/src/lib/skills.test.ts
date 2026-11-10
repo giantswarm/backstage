@@ -6,6 +6,7 @@ import {
   parseSkillDetailPath,
   resolveSkillDetailPath,
   skillDetailPath,
+  skillFileUrl,
   skillSourceUrl,
 } from './skills';
 
@@ -245,6 +246,33 @@ describe('skillSourceUrl', () => {
         ...skill,
         repoUrl: 'http://gitea.lab.local/lab/skills',
       }),
+    ).toBeUndefined();
+  });
+});
+
+describe('skillFileUrl', () => {
+  const skill = {
+    repoUrl: 'https://github.com/giantswarm/skills',
+    path: 'ticket-triage',
+    commit: 'a1b2c3d4e5',
+  };
+
+  it('points at the file in the skill directory at the pinned commit', () => {
+    expect(skillFileUrl(skill, 'SKILL.md')).toBe(
+      'https://github.com/giantswarm/skills/blob/a1b2c3d4e5/ticket-triage/SKILL.md',
+    );
+    expect(skillFileUrl({ ...skill, path: '' }, 'references/a b.md')).toBe(
+      'https://github.com/giantswarm/skills/blob/a1b2c3d4e5/references/a%20b.md',
+    );
+  });
+
+  it('has nothing to point at without a commit or outside github.com', () => {
+    expect(skillFileUrl({ ...skill, commit: '' }, 'SKILL.md')).toBeUndefined();
+    expect(
+      skillFileUrl(
+        { ...skill, repoUrl: 'http://gitea.lab.local/lab/skills' },
+        'SKILL.md',
+      ),
     ).toBeUndefined();
   });
 });

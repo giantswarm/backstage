@@ -170,10 +170,10 @@ describe('RepositoriesPage', () => {
   it('links the repository set-up docs from the header, in a new tab', async () => {
     await renderPage(fakeApi());
 
-    // The label says where it goes; the portal's Link adds the new-window
-    // notice for screen readers and the external-link icon.
+    // The label says where it goes; the external-link icon and the hidden
+    // new-tab notice follow it.
     const docs = await screen.findByRole('link', {
-      name: /^Repository set-up docs\s*, Opens in a new window$/,
+      name: 'Repository set-up docs (opens in a new tab)',
     });
     expect(docs).toHaveAttribute('href', REPOSITORY_SETUP_DOCS_URL);
     expect(docs).toHaveAttribute('target', '_blank');

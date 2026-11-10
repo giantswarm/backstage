@@ -305,7 +305,9 @@ describe('ProviderConnectPrompt', () => {
     act(() => consent.answer(consent.current()!.id, 'decline'));
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Open the GitHub sign-in' }),
+      await screen.findByRole('button', {
+        name: 'Open the GitHub sign-in (opens in a new tab)',
+      }),
     );
 
     expect(consent.current()?.url).toBe(authUrl);

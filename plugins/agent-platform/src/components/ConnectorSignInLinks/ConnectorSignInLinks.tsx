@@ -11,7 +11,10 @@ import {
 import { useHref, useLocation, useSearchParams } from 'react-router-dom';
 import { Button, Text } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
-import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  externalUrlConsentApiRef,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 
@@ -457,7 +460,7 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
               void consentApi.open({ url: href, requester: link.label })
             }
           >
-            Open the sign-in page again
+            <NewTabLabel>Open the sign-in page again</NewTabLabel>
           </Button>
         )}
         <Button
@@ -495,7 +498,7 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
           }
         }}
       >
-        Sign in{target}
+        <NewTabLabel>Sign in{target}</NewTabLabel>
       </Button>
     </span>
   );

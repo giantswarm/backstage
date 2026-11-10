@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '../shared';
+import { NewTabLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * What a provider App is called and what connecting it is for, where its name
@@ -158,7 +159,7 @@ export function ProviderAppSignIn({
                   size="small"
                   onPress={signIn.openSignInPage}
                 >
-                  Open sign-in page
+                  <NewTabLabel>Open sign-in page</NewTabLabel>
                 </Button>
               </Flex>
             </li>

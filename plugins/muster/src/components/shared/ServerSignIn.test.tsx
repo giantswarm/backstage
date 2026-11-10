@@ -222,7 +222,9 @@ describe('ServerSignIn', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     );
 
     await waitFor(() => {
@@ -299,7 +301,7 @@ describe('ServerSignIn', () => {
       expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
     });
     const open = await screen.findByRole('button', {
-      name: 'Open sign-in page',
+      name: 'Open sign-in page (opens in a new tab)',
     });
     expect(
       screen.getByText(/Waiting for you to finish signing in/),
@@ -339,7 +341,9 @@ describe('ServerSignIn', () => {
     ).toHaveTextContent(/^This server's authorization server advertises/);
     // The sign-in link still works — the fallback often succeeds.
     expect(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 
@@ -368,7 +372,9 @@ describe('ServerSignIn', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 
@@ -429,7 +435,9 @@ describe('ServerSignIn', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    await screen.findByRole('button', { name: 'Open sign-in page' });
+    await screen.findByRole('button', {
+      name: 'Open sign-in page (opens in a new tab)',
+    });
     expect(
       screen.queryByText(/may be rejected as an unregistered client/),
     ).not.toBeInTheDocument();
@@ -721,7 +729,9 @@ describe('ServerAuthActions', () => {
       expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
     });
     expect(
-      await screen.findByRole('button', { name: 'Open sign-in page' }),
+      await screen.findByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 
@@ -740,7 +750,9 @@ describe('ServerAuthActions', () => {
       await screen.findByText(/Waiting for you to finish signing in/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 

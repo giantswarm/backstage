@@ -3,6 +3,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import {
   externalUrlConsentApiRef,
   safeWebURL,
+  NewTabLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -89,7 +90,7 @@ export function ToolchainGrantPrompt({
                   })
                 }
               >
-                Install the App
+                <NewTabLabel>Install the App</NewTabLabel>
               </Button>
             </div>
           )}

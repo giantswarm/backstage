@@ -960,7 +960,9 @@ describe('NewAgentReviewPage', () => {
       await screen.findByText(/Pull request #7 opened/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Review pull request ↗' }),
+      screen.getByRole('link', {
+        name: 'Review pull request (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
   });

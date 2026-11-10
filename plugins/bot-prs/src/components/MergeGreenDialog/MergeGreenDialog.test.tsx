@@ -277,7 +277,9 @@ describe('MergeGreenDialog', () => {
     ).not.toBeInTheDocument();
     // The PR's evidence comment on GitHub is the record of what marge did.
     expect(
-      screen.getByRole('link', { name: 'giantswarm/backstage#2250' }),
+      screen.getByRole('link', {
+        name: 'giantswarm/backstage#2250 (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/backstage/pull/2250',
