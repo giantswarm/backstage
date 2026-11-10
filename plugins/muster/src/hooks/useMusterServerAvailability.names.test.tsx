@@ -2,15 +2,17 @@ import { PropsWithChildren } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  musterApiRef,
-  type MusterApi,
-} from '@giantswarm/backstage-plugin-muster';
-
+import { musterApiRef, type MusterApi } from '../apis';
 import { useMusterServerAvailability } from './useMusterServerAvailability';
 
 const listServers = jest.fn();
-const musterApi = { listServers } as unknown as MusterApi;
+const listInstallations = jest.fn(async () => ({
+  installations: [
+    { name: 'gazelle', requiresAuth: true },
+    { name: 'glean', requiresAuth: true },
+  ],
+}));
+const musterApi = { listServers, listInstallations } as unknown as MusterApi;
 
 function render(serverName: string, installations: string[]) {
   const queryClient = new QueryClient({
@@ -31,7 +33,7 @@ beforeEach(() => {
   listServers.mockReset();
 });
 
-describe('useMusterServerAvailability', () => {
+describe('useMusterServerAvailability, by the name a server is addressed by', () => {
   it('matches the tool prefix, which is what the server is addressed by, not its name', async () => {
     listServers.mockResolvedValue({
       mcpServers: [
@@ -109,7 +111,7 @@ describe('useMusterServerAvailability', () => {
     const { result } = render('marge', ['gazelle']);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.presenceOf('gazelle')).toBe('unreachable');
+    expect(result.current.presenceOf('gazelle')).toBe('unknown');
     expect(result.current.unreachable).toEqual(['gazelle']);
     expect(result.current.missing).toEqual([]);
     expect(result.current.error?.message).toBe('muster answered 503');

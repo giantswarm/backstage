@@ -22,7 +22,8 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useInstallationScope: () => ({ scope: 'all' }),
   applyInstallationScope: (installations: string[]) => installations,
 }));
-jest.mock('./useMusterServerAvailability', () => ({
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
   useMusterServerAvailability: () => ({
     available: mockAvailable,
     sharedIdentity: [],

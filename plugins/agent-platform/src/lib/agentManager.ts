@@ -17,8 +17,10 @@ import {
   parseToolErrorCode,
   AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
-import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
+import {
+  type MusterServerPresence,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
 
 /** The MCPServer name muster registers agent-manager under. */
 export { AGENT_MANAGER_SERVER };

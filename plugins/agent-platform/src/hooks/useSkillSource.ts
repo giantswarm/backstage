@@ -4,7 +4,7 @@ import { useHomeInstallation } from '@giantswarm/backstage-plugin-gs';
 import { SkillManagerClient } from '../apis/SkillManagerClient';
 import { SKILL_MANAGER_SERVER } from '../lib/skillManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { useMusterServerAvailability } from './useMusterServerAvailability';
+import { useMusterServerAvailability } from '@giantswarm/backstage-plugin-muster';
 
 /**
  * Where the portal reads an installation's skills from:

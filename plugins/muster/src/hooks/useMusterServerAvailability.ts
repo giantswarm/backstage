@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useApiHolder } from '@backstage/core-plugin-api';
 import {
   useQueries,
   useQuery,
@@ -9,24 +10,30 @@ import {
   isAwaitingData,
   pollingQueryOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  musterInstallationsQueryKey,
-  type McpServerRuntime,
-} from '@giantswarm/backstage-plugin-muster';
 
-import { musterServersQueryKey } from '../lib/queryKeys';
-import { useMusterPluginApi } from './useMusterPluginApi';
+import { musterApiRef, type McpServerRuntime } from '../apis';
+import { musterInstallationsQueryKey } from '../components/MusterInstanceProvider/useMusterInstallations';
+
+/**
+ * The query key of an installation's `core_mcpserver_list`, as the person;
+ * without an installation, the prefix of every installation's.
+ */
+export function musterServerListQueryKey(installation?: string) {
+  return installation === undefined
+    ? (['muster', 'mcp-server-list'] as const)
+    : (['muster', 'mcp-server-list', installation] as const);
+}
 
 /**
  * Whether an installation's muster lists a server (`core_mcpserver_list`).
- * `unknown` while the read is in flight or failed; `missing` when muster
- * answered without it. `sharedIdentity`: the server is reached as the person
- * (the default) and the portal's muster entry for the installation has no
- * per-user sign-in (`requiresAuth: false` on `/installations`), so
- * muster-backend refuses the server's tools rather than run them under
- * muster's own identity, shared by every portal user. A caller treats it like
- * an absent server and says why (`sharedIdentityReason`). A `missing` server
- * wins over it: a per-user sign-in alone would not help.
+ * `unknown` while the read is in flight or failed, and for an installation
+ * the portal cannot reach; `missing` when muster answered without it.
+ * `sharedIdentity`: the server is reached as the person (the default) and the
+ * portal's muster entry for the installation has no per-user sign-in
+ * (`requiresAuth: false` on `/installations`), so muster-backend refuses the
+ * server's tools rather than run them under muster's own identity, shared by
+ * every portal user. A caller treats it like an absent server and says why. A
+ * `missing` server wins over it: a per-user sign-in alone would not help.
  */
 export type MusterServerPresence =
   'available' | 'missing' | 'unknown' | 'sharedIdentity';
@@ -40,6 +47,33 @@ export type MusterServerPresence =
  */
 function exposedNameOf(server: McpServerRuntime): string {
   return server.family?.name ?? server.toolPrefix ?? server.name;
+}
+
+function presenceIn(
+  servers: McpServerRuntime[] | null | undefined,
+  serverName: string,
+): MusterServerPresence {
+  if (!servers) {
+    return 'unknown';
+  }
+  return servers.some(server => exposedNameOf(server) === serverName)
+    ? 'available'
+    : 'missing';
+}
+
+/**
+ * The name muster's own session holds the server under: its CR name. The
+ * exposed name addresses a tool, `core_auth_login` and `auth://status` name
+ * the registered server, and the two differ under a `toolPrefix`, so a
+ * sign-in sent under the exposed name is refused ("Server 'marge' not
+ * found").
+ */
+function registeredIn(
+  servers: McpServerRuntime[] | null | undefined,
+  serverName: string,
+): string | undefined {
+  return (servers ?? []).find(server => exposedNameOf(server) === serverName)
+    ?.name;
 }
 
 /** The first read again after a 503, doubling with every further one. */
@@ -85,18 +119,6 @@ export function unavailableBackoff(
   );
 }
 
-function presenceIn(
-  servers: McpServerRuntime[] | null | undefined,
-  serverName: string,
-): MusterServerPresence {
-  if (!servers) {
-    return 'unknown';
-  }
-  return servers.some(server => exposedNameOf(server) === serverName)
-    ? 'available'
-    : 'missing';
-}
-
 export type MusterServerAvailability = {
   /** The installations whose muster lists the server. */
   available: string[];
@@ -107,6 +129,13 @@ export type MusterServerAvailability = {
    * the server's tools are refused there (not with `asPerson: false`).
    */
   sharedIdentity: string[];
+  /**
+   * The installations whose list could not be read, or whose muster the
+   * portal reports it cannot reach: nothing is known about the server there.
+   */
+  unreachable: string[];
+  /** The first error a read met, for a page to show verbatim. */
+  error: Error | undefined;
   presenceOf: (installation: string) => MusterServerPresence;
   /**
    * Whether the read that decides the installation's presence has failed
@@ -115,6 +144,12 @@ export type MusterServerAvailability = {
    * flight or has answered.
    */
   failedOf: (installation: string) => boolean;
+  /**
+   * The name this installation's muster registers the server under, for the
+   * calls that name a server rather than a tool. `undefined` until that
+   * muster has listed it.
+   */
+  registeredNameOf: (installation: string) => string | undefined;
   /** True while any installation's server list is still being read. */
   isLoading: boolean;
   /** The muster plugin is not installed: the server is reachable nowhere. */
@@ -140,18 +175,19 @@ export type MusterServerAvailabilityOptions = {
 };
 
 /**
- * The installations on which a manager (agent-manager, cluster-manager,
- * model-manager, workspace-manager) can be reached as the person: the ones whose muster registers it as an MCPServer. Read per
- * installation through the person's own muster session (`musterApi.listServers`),
- * which is also what the manager's tools will go through — so an installation
- * offered here is one the person can actually reach the server on.
+ * The installations on which an MCP server can be reached as the person: the
+ * ones whose muster registers it. Read per installation through the person's
+ * own muster session (`listServers`), which is also what the server's tools
+ * go through, so an installation offered here is one the person can actually
+ * reach the server on. Usable from any plugin: without the muster plugin
+ * every installation is `unknown` and `isUnavailable` is set.
  */
 export function useMusterServerAvailability(
   serverName: string,
   installations: string[],
   { asPerson = true }: MusterServerAvailabilityOptions = {},
 ): MusterServerAvailability {
-  const musterApi = useMusterPluginApi();
+  const musterApi = useApiHolder().get(musterApiRef);
   const queryClient = useQueryClient();
   // The muster plugin's own read of `/installations`, under its key, so the
   // page header's installation selector and this share one cache entry.
@@ -170,7 +206,7 @@ export function useMusterServerAvailability(
   // The portal cannot reach their muster: their lists are not asked for once
   // `/installations` says so, and their presence is `unknown` whatever a
   // read made before that answered.
-  const unreachable = new Set(
+  const notReachable = new Set(
     (installationInfo.data?.installations ?? [])
       .filter(info => info.reachable === false)
       .map(info => info.name),
@@ -180,8 +216,8 @@ export function useMusterServerAvailability(
   const isInstallationsUnknown = asPerson && !installationInfo.data;
   const queries = useQueries({
     queries: installations.map(installation => ({
-      queryKey: musterServersQueryKey(installation),
-      enabled: Boolean(musterApi) && !unreachable.has(installation),
+      queryKey: musterServerListQueryKey(installation),
+      enabled: Boolean(musterApi) && !notReachable.has(installation),
       queryFn: () => musterApi!.listServers(installation),
       staleTime: 60_000,
       retry: false,
@@ -197,9 +233,11 @@ export function useMusterServerAvailability(
   const signature = installations
     .map((installation, index) => {
       const query = queries[index];
-      const listed = unreachable.has(installation)
+      const servers = query.data?.mcpServers;
+      const isNotReachable = notReachable.has(installation);
+      const listed = isNotReachable
         ? 'unknown'
-        : presenceIn(query.data?.mcpServers, serverName);
+        : presenceIn(servers, serverName);
       let presence: MusterServerPresence = listed;
       if (listed !== 'missing' && shared.has(installation)) {
         presence = 'sharedIdentity';
@@ -207,24 +245,45 @@ export function useMusterServerAvailability(
         presence = 'unknown';
       }
       const loading =
-        (isAwaitingData(query) && !unreachable.has(installation)) ||
-        isReadingInstallations;
+        (isAwaitingData(query) && !isNotReachable) || isReadingInstallations;
+      const unreachable = isNotReachable || (!servers && Boolean(query.error));
       const failed =
         !loading &&
-        (unreachable.has(installation) ||
+        (isNotReachable ||
           query.isError ||
           (asPerson && installationInfo.isError));
-      return `${installation}:${presence}:${loading ? 'l' : ''}:${failed ? 'f' : ''}`;
+      const registered = isNotReachable
+        ? undefined
+        : registeredIn(servers, serverName);
+      return [
+        installation,
+        presence,
+        loading ? 'l' : '',
+        unreachable ? 'u' : '',
+        failed ? 'f' : '',
+        registered ?? '',
+      ].join(':');
     })
     .join('|');
 
+  const firstError = queries.find(query => query.error)?.error ?? undefined;
+
   return useMemo(() => {
     const presence = new Map<string, MusterServerPresence>();
+    const registered = new Map<string, string>();
+    const unreachable = new Set<string>();
     const failed = new Set<string>();
     let isLoading = false;
     for (const entry of signature ? signature.split('|') : []) {
-      const [installation, state, loading, failure] = entry.split(':');
+      const [installation, state, loading, cannotReach, failure, name] =
+        entry.split(':');
       presence.set(installation, state as MusterServerPresence);
+      if (cannotReach === 'u') {
+        unreachable.add(installation);
+      }
+      if (name) {
+        registered.set(installation, name);
+      }
       isLoading = isLoading || loading === 'l';
       if (failure === 'f') {
         failed.add(installation);
@@ -238,8 +297,11 @@ export function useMusterServerAvailability(
       sharedIdentity: installations.filter(
         name => of(name) === 'sharedIdentity',
       ),
+      unreachable: installations.filter(name => unreachable.has(name)),
+      error: firstError,
       presenceOf: of,
       failedOf: (installation: string) => failed.has(installation),
+      registeredNameOf: (installation: string) => registered.get(installation),
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,
       recheck: async () => {
@@ -247,7 +309,7 @@ export function useMusterServerAvailability(
         await Promise.all([
           ...unknown.map(installation =>
             queryClient.invalidateQueries({
-              queryKey: musterServersQueryKey(installation),
+              queryKey: musterServerListQueryKey(installation),
             }),
           ),
           ...(isInstallationsUnknown && unknown.length > 0
@@ -262,5 +324,5 @@ export function useMusterServerAvailability(
     };
     // `installations` is captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, musterApi, queryClient, isInstallationsUnknown]);
+  }, [signature, musterApi, queryClient, isInstallationsUnknown, firstError]);
 }

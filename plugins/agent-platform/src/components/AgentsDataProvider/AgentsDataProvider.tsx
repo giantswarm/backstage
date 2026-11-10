@@ -8,7 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import { useQueryClient, type Query } from '@tanstack/react-query';
-import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterInstallationsQueryKey,
+  musterServerListQueryKey,
+} from '@giantswarm/backstage-plugin-muster';
 import {
   Agent,
   Harness,
@@ -33,7 +36,6 @@ import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
   kagentAgentNamespacesQueryKey,
   musterAgentManagerInfoQueryKey,
-  musterServersQueryKey,
 } from '../../lib/queryKeys';
 import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -526,7 +528,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             queryKey[5] === plural,
         }),
         queryClient.invalidateQueries({
-          queryKey: musterServersQueryKey(installation),
+          queryKey: musterServerListQueryKey(installation),
         }),
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerInfoQueryKey(installation),

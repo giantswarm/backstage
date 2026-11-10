@@ -6,13 +6,15 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns the shared installation query key.
-import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterInstallationsQueryKey,
+  useMusterServerAvailability,
+} from '@giantswarm/backstage-plugin-muster';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../../apis/AgentManagerClient';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
-import { useMusterServerAvailability } from '../../hooks/useMusterServerAvailability';
 import {
   musterAgentManagerInfoQueryKey,
   musterMyOrganizationsQueryKey,

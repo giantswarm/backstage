@@ -27,7 +27,14 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 import { useMargeInstallation } from './useMarge';
 
 const listServers = jest.fn();
-const musterApi = { listServers } as unknown as MusterApi;
+// Both installations sign the person in: marge's tools act for them.
+const listInstallations = jest.fn(async () => ({
+  installations: [
+    { name: 'gazelle', requiresAuth: true },
+    { name: 'glean', requiresAuth: true },
+  ],
+}));
+const musterApi = { listServers, listInstallations } as unknown as MusterApi;
 
 function render() {
   const queryClient = new QueryClient({

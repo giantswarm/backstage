@@ -30,7 +30,7 @@ import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
   type MusterServerAvailability,
-} from './useMusterServerAvailability';
+} from '@giantswarm/backstage-plugin-muster';
 
 /**
  * marge's tools on one installation, as the signed-in person -- `undefined`
