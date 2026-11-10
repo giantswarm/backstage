@@ -65,6 +65,7 @@ export const SHELL_SPECS = [
   'serving-state.spec.ts',
   'session-expiry.spec.ts',
   'session-export.spec.ts',
+  'session-senders.spec.ts',
   'session-images.spec.ts',
   'session-jump-to-bottom.spec.ts',
   'session-runtime-lost.spec.ts',

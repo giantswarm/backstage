@@ -47,6 +47,8 @@ type TimelineItemBase = {
    * session involves several agents; usually the session's own agent.
    */
   author?: string;
+  /** Authenticated person who sent this input; absent on older history. */
+  sender?: string;
   /** Index of the task this belongs to, so the UI can group by turn. */
   taskIndex: number;
   /**
@@ -437,6 +439,13 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           : new Date(position).toISOString();
       const author = readKagentMetadataString(message.metadata, 'author');
       const isUser = message.role === 'user';
+      const rawSender = isRecord(message.metadata)
+        ? message.metadata['kagent.dev/a2a/sender']
+        : undefined;
+      const sender =
+        isUser && typeof rawSender === 'string' && rawSender.trim() !== ''
+          ? rawSender
+          : undefined;
       const opensTurn =
         !isUser &&
         !agentSpoke &&
@@ -509,6 +518,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
               at,
               taskIndex,
               text: decision.answers.join('\n\n'),
+              sender,
             });
           }
         }
@@ -544,6 +554,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           author,
           taskIndex,
           messageId: message.messageId,
+          sender,
           kind,
           text,
         });
@@ -657,6 +668,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             taskIndex,
             messageId: message.messageId,
             isUser,
+            sender,
             preview,
             ...(attachment.name === undefined ? {} : { name: attachment.name }),
             ...(attachment.declaredType === undefined

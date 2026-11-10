@@ -5,6 +5,12 @@ chat turn, against a running [agentlab](https://github.com/giantswarm/agentlab).
 It complements `agentlab backstage-test`, which checks the same routes and
 tokens headlessly. A change to a page ships with the spec that proves it.
 
+`session-senders.spec.ts` also uses the installed `agentlab` CLI to send two
+real turns as the admin and a read-write-share visitor. It then checks both
+senders in the portal after reload, at desktop and phone widths. The CLI and
+browser target the same lab (`AGENTLAB_CLUSTER`, default `agentlab`); the test
+deletes its kept session afterwards.
+
 ## Run
 
 ```bash
