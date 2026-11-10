@@ -120,6 +120,19 @@ export function OrganizationPage({
       </ShellPage>
     );
   }
+  // The read keeps the last organization it had; `not_found` after one that
+  // was deleting is the end of its erasure.
+  if (object?.deleting && details.failure?.code === 'not_found') {
+    return (
+      <ShellPage title={title} {...frame}>
+        <EmptyStateCard
+          title={`${title} is erased`}
+          description={`${name} in ${parent} on ${installation} is deleted and erased.`}
+          actions={backLink}
+        />
+      </ShellPage>
+    );
+  }
   if (!namespace) {
     if (mine.isLoading || details.isLoading || mine.supported === undefined) {
       return (

@@ -266,6 +266,77 @@ describe('OrganizationPage', () => {
       }
     });
 
+    it('says the organization is erased once its read answers not_found', async () => {
+      jest.useFakeTimers();
+      try {
+        const scenario: OrganizationsScenario = {
+          ...SCENARIO,
+          organization: { ...ORGANIZATION, deleting: true },
+        };
+        const { callTool } = await renderPage('', scenario);
+        await screen.findByText('Erasing');
+
+        scenario.organizationErased = true;
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        expect(
+          await screen.findByText('payments is erased'),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Erasing')).not.toBeInTheDocument();
+        expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+        const reads = toolCalls(callTool, 'get_organization').length;
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+        expect(toolCalls(callTool, 'get_organization')).toHaveLength(reads);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('keeps reading an organization being erased after a failed read', async () => {
+      jest.useFakeTimers();
+      try {
+        let failures = 1;
+        const scenario: OrganizationsScenario = {
+          ...SCENARIO,
+          organization: { ...ORGANIZATION, deleting: true },
+        };
+        const { callTool } = await renderPage('', scenario);
+        await screen.findByText('Erasing');
+        const fake = callTool.getMockImplementation()!;
+        callTool.mockImplementation(async (name: string, args) => {
+          if (name === 'x_agent-manager_get_organization' && failures > 0) {
+            failures -= 1;
+            throw new Error(
+              'backend_error: the API server did not answer in time',
+            );
+          }
+          return fake(name, args);
+        });
+        const reads = toolCalls(callTool, 'get_organization').length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        await waitFor(() =>
+          expect(toolCalls(callTool, 'get_organization')).toHaveLength(
+            reads + 2,
+          ),
+        );
+        expect(screen.getByText('Erasing')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('shows nothing while the organization is in git', async () => {
       await renderPage('', {
         ...SCENARIO,

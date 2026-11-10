@@ -36,6 +36,8 @@ export type OrganizationsScenario = {
    * without it the call is refused, as for a member.
    */
   organization?: AgentPlatformOrganization;
+  /** `get_organization` answers `not_found`, as once the operator erased it. */
+  organizationErased?: boolean;
   /** What `remove_organization_member` fails with, as muster passes it on. */
   removeError?: string;
 };
@@ -60,6 +62,11 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           }
           return scenario.mine ?? { organizations: [] };
         case 'x_agent-manager_get_organization':
+          if (scenario.organizationErased) {
+            throw new Error(
+              'not_found: get AgentPlatformOrganization org-acme/payments',
+            );
+          }
           if (scenario.organization) {
             return { organization: scenario.organization };
           }
