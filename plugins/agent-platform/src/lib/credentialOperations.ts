@@ -160,8 +160,11 @@ function endpointsOf(spec: Record<string, unknown> | undefined): string[] {
 
 /**
  * Where the value is sent, as far as the organization's objects say: a
- * model's provider and its endpoint, the URLs of the connectors and the
- * origins of the egress policies that read it.
+ * model's endpoint, else its provider, the URLs of the connectors and the
+ * origins of the egress policies that read it. A model without an endpoint
+ * names its provider alone: in an organization namespace admission routes it
+ * through the installation's LLM gateway, which passes the key to the
+ * provider unchanged.
  */
 export function destinations(operation: CredentialOperation): string[] {
   const out = new Set<string>();
@@ -173,7 +176,7 @@ export function destinations(operation: CredentialOperation): string[] {
       if (endpoints.length > 0) {
         endpoints.forEach(endpoint => out.add(endpoint));
       } else if (typeof provider === 'string') {
-        out.add(`${provider}'s default endpoint`);
+        out.add(provider);
       }
     }
   }
