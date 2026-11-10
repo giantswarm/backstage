@@ -969,7 +969,7 @@ describe('buildLlmUsage', () => {
   it('stacks the daily tokens as fresh input, cache reads, cache writes and output', () => {
     // A point at midnight of 10 Sep totals 9 Sep; today's row is the partial.
     const at = Date.UTC(2026, 8, 10) / 1000;
-    const day = (type: string, value: string) => ({
+    const day = (type: string, value: string): MimirMatrixSample => ({
       metric: { gen_ai_token_type: type },
       values: [[at, value]],
     });
@@ -982,7 +982,7 @@ describe('buildLlmUsage', () => {
         day('input_cache_read', '800'),
         day('input_cache_write', '150'),
         day('output', '20'),
-      ] as MimirMatrixSample[],
+      ],
       tokensToday: [
         sample({ gen_ai_token_type: 'input' }, '500'),
         sample({ gen_ai_token_type: 'input_cache_read' }, '450'),
