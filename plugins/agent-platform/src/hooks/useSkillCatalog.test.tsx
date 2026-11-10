@@ -136,4 +136,17 @@ describe('useSkillCatalog', () => {
     // The wizard decides on its skills step from it.
     expect(result.current.hasRepositories).toBe(true);
   });
+
+  it('names the failure and keeps the skills step when muster cannot be asked', () => {
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'unreachable',
+      installation: 'graveler',
+    });
+    const { result } = render('graveler');
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.hasRepositories).toBe(true);
+    expect(result.current.skills).toEqual([]);
+    expect(result.current.error?.message).toMatch(/muster on graveler/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

@@ -5,6 +5,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import type { DiscoveredSkill, SkillFileListing } from '../lib/skills';
+import { unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
 
 /**
@@ -71,7 +72,10 @@ export function useSkillContent(
       skill?.path,
       skill?.commit,
     ],
-    enabled: Boolean(skill) && source.kind !== 'pending',
+    enabled:
+      Boolean(skill) &&
+      source.kind !== 'pending' &&
+      source.kind !== 'unreachable',
     staleTime: Infinity,
     retry: false,
     queryFn: async (): Promise<SkillContent> => {
@@ -93,7 +97,10 @@ export function useSkillContent(
 
   return {
     content: data,
-    isLoading: Boolean(skill) && isPending,
-    error: error as Error | null,
+    isLoading: Boolean(skill) && source.kind !== 'unreachable' && isPending,
+    error:
+      source.kind === 'unreachable'
+        ? unreachableError(source.installation)
+        : (error as Error | null),
   };
 }

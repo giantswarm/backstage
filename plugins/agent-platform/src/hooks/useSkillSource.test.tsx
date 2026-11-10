@@ -68,10 +68,11 @@ describe('useSkillSource', () => {
     });
   });
 
-  it('waits while muster has not said whether it lists skill-manager, even between reads', () => {
+  it('is unreachable, not the portal’s own discovery, when muster’s server list failed', () => {
     given({ home: 'gazelle', presence: { gazelle: 'unknown' } });
     expect(renderHook(() => useSkillSource()).result.current).toEqual({
-      kind: 'pending',
+      kind: 'unreachable',
+      installation: 'gazelle',
     });
   });
 

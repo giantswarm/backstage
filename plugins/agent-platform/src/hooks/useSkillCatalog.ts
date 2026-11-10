@@ -8,7 +8,7 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { DiscoveredSkill } from '../lib/skills';
 import type { DiscoveredPlugin } from '../lib/plugins';
-import { catalogFromSkillManager } from '../lib/skillManager';
+import { catalogFromSkillManager, unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
 
 export type SkillCatalog = {
@@ -60,6 +60,16 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
   }
   if (source.kind === 'portal') {
     return portal;
+  }
+  if (source.kind === 'unreachable') {
+    return {
+      ...portal,
+      skills: [],
+      plugins: [],
+      isLoading: false,
+      error: unreachableError(source.installation),
+      hasRepositories: true,
+    };
   }
   const data = skillManager.data;
   return {

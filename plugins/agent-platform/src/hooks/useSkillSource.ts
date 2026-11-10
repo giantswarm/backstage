@@ -14,12 +14,15 @@ import { useMusterServerAvailability } from './useMusterServerAvailability';
  * - `portal`: it does not (an installation on an agent-platform release
  *   without skill-manager). gs-backend's own discovery of
  *   `agentPlatform.skills.repositories` answers, deprecated.
- * - `pending`: muster has not answered yet; also while its read fails, since
- *   skill-manager may be there.
+ * - `pending`: muster has not answered yet.
+ * - `unreachable`: muster's server list could not be read, so whether
+ *   skill-manager is there is unknown. Neither catalog answers: the portal's
+ *   own would be a second, different list.
  */
 export type SkillSource =
   | { kind: 'pending' }
   | { kind: 'portal' }
+  | { kind: 'unreachable'; installation: string }
   | {
       kind: 'skill-manager';
       installation: string;
@@ -41,15 +44,19 @@ export function useSkillSource(installation?: string): SkillSource {
   const presence = target ? availability.presenceOf(target) : undefined;
   // The portal's own discovery answers only once muster has said that it
   // lists no skill-manager (or runs under its shared identity), or there is
-  // no muster to ask: an `unknown` presence also occurs between two reads,
-  // and answering it from the portal would list a second catalog.
+  // no muster to ask.
+  const unknown = Boolean(musterApi) && presence === 'unknown';
   const pending =
     Boolean(musterApi) &&
-    ((!target && isHomeLoading) || presence === 'unknown');
+    ((!target && isHomeLoading) || (unknown && availability.isLoading));
+  const unreachable = unknown && !availability.isLoading;
 
   return useMemo((): SkillSource => {
     if (pending) {
       return { kind: 'pending' };
+    }
+    if (target && unreachable) {
+      return { kind: 'unreachable', installation: target };
     }
     if (target && musterApi && presence === 'available') {
       return {
@@ -59,5 +66,5 @@ export function useSkillSource(installation?: string): SkillSource {
       };
     }
     return { kind: 'portal' };
-  }, [pending, target, musterApi, presence]);
+  }, [pending, unreachable, target, musterApi, presence]);
 }

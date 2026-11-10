@@ -6,6 +6,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import type { DiscoveredSkill, SkillFileContent } from '../lib/skills';
 import { skillReadError } from './useSkillContent';
+import { unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
 
 /**
@@ -29,7 +30,10 @@ export function useSkillFile(
   const source = useSkillSource(installation);
   const sourceKey =
     source.kind === 'skill-manager' ? source.installation : source.kind;
-  const enabled = Boolean(skill && file) && source.kind !== 'pending';
+  const enabled =
+    Boolean(skill && file) &&
+    source.kind !== 'pending' &&
+    source.kind !== 'unreachable';
 
   const { data, error, isPending } = useQuery({
     queryKey: [
@@ -68,6 +72,9 @@ export function useSkillFile(
   return {
     file: data,
     isLoading: enabled && isPending,
-    error: error as Error | null,
+    error:
+      source.kind === 'unreachable'
+        ? unreachableError(source.installation)
+        : (error as Error | null),
   };
 }

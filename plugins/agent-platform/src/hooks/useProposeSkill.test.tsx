@@ -169,4 +169,20 @@ describe('useProposeSkill through skill-manager', () => {
       installation: 'graveler',
     });
   });
+
+  it('opens nothing while muster cannot be asked about skill-manager', async () => {
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'unreachable',
+      installation: 'graveler',
+    });
+
+    const { result } = renderUseProposeSkill();
+    await act(async () => {
+      await expect(result.current.proposeSkill(skill)).rejects.toThrow(
+        /muster on graveler/,
+      );
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

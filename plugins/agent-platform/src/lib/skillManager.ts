@@ -129,3 +129,10 @@ export function catalogFromSkillManager(
   }
   return catalog;
 }
+
+/** Why no skills are read where muster's server list could not be. */
+export function unreachableError(installation: string): Error {
+  return new Error(
+    `Could not ask muster on ${installation} whether it runs skill-manager; reload to try again.`,
+  );
+}

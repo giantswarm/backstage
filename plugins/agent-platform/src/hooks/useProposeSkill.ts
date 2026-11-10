@@ -6,6 +6,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useMusterPluginApi } from './useMusterPluginApi';
+import { unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
 
 /**
@@ -80,6 +81,14 @@ export function useProposeSkill(installation?: string) {
     mutationFn: async (skill: ProposedSkill): Promise<SkillPullRequest> => {
       // The person's own token: the branch and the pull request name them,
       // not a bot. Scope `repo` is what the portal's GitHub grant asks for.
+      if (source.kind === 'unreachable') {
+        throw unreachableError(source.installation);
+      }
+      if (source.kind === 'pending') {
+        throw new Error(
+          'Still reading where this installation keeps its skills; try again in a moment.',
+        );
+      }
       const token = await githubAuthApi.getAccessToken('repo');
       const baseUrl = await discoveryApi.getBaseUrl('gs');
       // From skill-manager, gs-backend checks the target against the
