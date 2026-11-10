@@ -162,12 +162,15 @@ describe('OrganizationPage', () => {
       expect(await screen.findByText('Missing from git')).toBeInTheDocument();
       expect(
         screen.getByRole('link', {
-          name: /Open the last commit that held its file/,
+          name: new RegExp(`main@sha1:${COMMIT.slice(0, 7)}`),
         }),
       ).toHaveAttribute(
         'href',
         `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
       );
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toBeInTheDocument();
       expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
     });
 
@@ -186,7 +189,7 @@ describe('OrganizationPage', () => {
         screen.getByText(`main@sha1:${COMMIT.slice(0, 7)}`),
       ).toHaveAttribute('title', `main@sha1:${COMMIT}`);
       expect(
-        screen.queryByRole('link', { name: /last commit/ }),
+        screen.queryByRole('link', { name: /main@sha1/ }),
       ).not.toBeInTheDocument();
     });
 
@@ -202,6 +205,21 @@ describe('OrganizationPage', () => {
 
       expect(await screen.findByText('Pending erase')).toBeInTheDocument();
       expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+    });
+
+    it('is Erasing once the organization is deleted', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+          deleting: true,
+        },
+      });
+
+      expect(await screen.findByText('Erasing')).toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
     });
 
     it('shows nothing while the organization is in git', async () => {

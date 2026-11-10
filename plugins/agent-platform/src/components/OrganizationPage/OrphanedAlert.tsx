@@ -32,13 +32,30 @@ export type OrphanedAlertProps = {
  * installation's git repository: Pending erase after its delete pull request
  * merged, Missing from git otherwise, with the last commit that held the file
  * so it can be restored from there. Nothing while the organization is in git,
- * or was not applied from git.
+ * or was not applied from git. Once deleted, the operator stops updating the
+ * condition and erases the organization, so it reads Erasing instead.
  */
 export function OrphanedAlert({ organization }: OrphanedAlertProps) {
   const classes = useStyles();
   const orphaned = organization.orphaned;
   if (orphaned?.status !== 'True') {
     return null;
+  }
+
+  if (organization.deleting) {
+    return (
+      <Alert
+        status="info"
+        icon
+        title="Erasing"
+        description={
+          <Text as="p" variant="body-medium" className={classes.inherit}>
+            This organization is deleted and is being erased. Its workers are
+            stopped.
+          </Text>
+        }
+      />
+    );
   }
 
   const technical = orphaned.message ? (
@@ -70,21 +87,20 @@ export function OrphanedAlert({ organization }: OrphanedAlertProps) {
   }
 
   const { lastAppliedRevision, lastAppliedRevisionUrl } = organization;
-  let lastCommit = null;
-  if (lastAppliedRevisionUrl) {
-    lastCommit = (
-      <ExternalLink href={lastAppliedRevisionUrl} display="inline">
-        Open the last commit that held its file
-      </ExternalLink>
-    );
-  } else if (lastAppliedRevision) {
-    lastCommit = (
-      <Text as="p" variant="body-medium" className={classes.inherit}>
-        The last commit that held its file:{' '}
+  // A `div`: the link's visually hidden "opens in a new tab" is one, which a
+  // `p` cannot hold.
+  const lastCommit = lastAppliedRevision ? (
+    <Text as="div" variant="body-medium" className={classes.inherit}>
+      The last commit that held its file:{' '}
+      {lastAppliedRevisionUrl ? (
+        <ExternalLink href={lastAppliedRevisionUrl} display="inline">
+          <CommitSha value={lastAppliedRevision} copy={false} />
+        </ExternalLink>
+      ) : (
         <CommitSha value={lastAppliedRevision} />
-      </Text>
-    );
-  }
+      )}
+    </Text>
+  ) : null;
 
   return (
     <Alert
