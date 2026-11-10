@@ -18,7 +18,7 @@ helm/backstage/zz_generated.app-platform.values.yaml
 # devctl-generated (DO NOT EDIT) -- formatting owned by the generator, not prettier
 renovate.json5
 .claude
-# Agent instructions and skills, kept out of prettier as they were under .claude; AGENTS.md starts with a devctl-managed block
+# Agent instructions and skills; AGENTS.md starts with a devctl-managed block
 .agents
 AGENTS.md
 
