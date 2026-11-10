@@ -1,4 +1,5 @@
 import {
+  HttpAuthService,
   LoggerService,
   RootLifecycleService,
 } from '@backstage/backend-plugin-api';
@@ -32,7 +33,15 @@ import {
   reachabilityFields,
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { getMcpUsage } from './mcpUsage';
+import {
+  findPrometheusServer,
+  getMcpToolLatency,
+  getMcpUsage,
+  isPartialUsage,
+  type McpToolLatencyResponse,
+  type McpUsageResponse,
+} from './mcpUsage';
+import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -76,6 +85,8 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /** Names the Backstage user a usage answer is cached for. */
+  httpAuth: HttpAuthService;
 }
 
 /**
@@ -923,20 +934,42 @@ export async function createRouter(
 
   // --- MCP usage (derived from muster's own Prometheus metrics) ------------
 
+  const usageCache = new UsageCache<McpUsageResponse>();
+  const toolLatencyCache = new UsageCache<McpToolLatencyResponse>();
+  const prometheusServerCache = new UsageCache<string | undefined>();
+
+  /** The Backstage user a usage answer is cached for. */
+  const usageReader = async (req: express.Request) => {
+    const { principal } = await options.httpAuth.credentials(req, {
+      allow: ['user'],
+    });
+    return principal.userEntityRef;
+  };
+
   /**
-   * Usage statistics for the installation's muster: tool calls per bucket by
-   * outcome, top tools, and per-server rollups. Sourced from muster's
-   * downstream dispatch metrics via the prometheus MCP server federated
-   * behind the same muster (no separate Prometheus access path). Answers
-   * `available: false` with a reason instead of erroring when the
-   * installation has no queryable prometheus server.
-   *
-   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
-   * family's instances included, and lists every tool they were called with.
-   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
+   * The installation with the prometheus server its usage is read through,
+   * found once per person for as long as a usage answer lasts, and shared by
+   * concurrent reads, so a usage read does not first wait on
+   * `core_mcpserver_list`.
    */
-  router.get('/usage', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
+  const withPrometheusServer = async (
+    installation: MusterInstallationConfig,
+    client: MusterMcpClient,
+    callOptions: { authToken?: string },
+    userEntityRef: string,
+  ): Promise<MusterInstallationConfig> => {
+    const prometheusServer = await prometheusServerCache.read(
+      JSON.stringify([installation.name, userEntityRef]),
+      () => findPrometheusServer(client, installation, callOptions),
+      found => found !== undefined,
+    );
+    return prometheusServer
+      ? { ...installation, prometheusServer }
+      : installation;
+  };
+
+  /** The window and the narrowing `/usage` and `/usage/tool-latency` take. */
+  const readUsageParams = (req: express.Request) => {
     // Refused rather than ignored: a frontend loaded before `window=month`
     // went would otherwise read 24 hours as the month.
     if (req.query.window !== undefined) {
@@ -961,14 +994,100 @@ export async function createRouter(
     if (tool !== undefined && !isToolLabel(tool)) {
       throw new InputError('tool must be a tool name');
     }
+    return { hours: hours ?? 24, servers, tool };
+  };
+
+  /**
+   * Usage statistics for the installation's muster: tool calls per bucket by
+   * outcome, top tools, and per-server rollups. Sourced from muster's
+   * downstream dispatch metrics via the prometheus MCP server federated
+   * behind the same muster (no separate Prometheus access path). Answers
+   * `available: false` with a reason instead of erroring when the
+   * installation has no queryable prometheus server.
+   *
+   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
+   * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
+   * Each tool's p95 is `/usage/tool-latency`'s, except that one tool's.
+   *
+   * A complete, available answer is reused for five minutes per
+   * installation, window, narrowing and Backstage user (`usageCacheKey`),
+   * and concurrent identical reads share one: past daily buckets do not
+   * change, and a 30-day read costs Mimir seconds.
+   */
+  router.get('/usage', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { hours, servers, tool } = readUsageParams(req);
+    const callOptions = readCallOptions(req, installation);
+    const userEntityRef = await usageReader(req);
     res.json(
-      await getMcpUsage(
-        client,
-        installation,
-        readCallOptions(req, installation),
-        hours ?? 24,
-        servers,
-        tool,
+      await usageCache.read(
+        usageCacheKey({
+          route: 'usage',
+          installation: installation.name,
+          hours,
+          servers,
+          tool,
+          userEntityRef,
+        }),
+        async () =>
+          getMcpUsage(
+            client,
+            await withPrometheusServer(
+              installation,
+              client,
+              callOptions,
+              userEntityRef,
+            ),
+            callOptions,
+            hours,
+            servers,
+            tool,
+          ),
+        answer => answer.available && !isPartialUsage(answer),
+      ),
+    );
+  });
+
+  /**
+   * The p95 latency of every tool called in the window, narrowed by
+   * `?server=` as `/usage` is: the slowest of the usage queries, read apart
+   * so the figures do not wait for it. No `?tool=`: narrowed to one tool,
+   * `/usage` answers its p95 itself. Cached as `/usage` is.
+   */
+  router.get('/usage/tool-latency', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { hours, servers, tool } = readUsageParams(req);
+    if (tool !== undefined) {
+      throw new InputError(
+        "tool is not supported here; /usage answers one tool's p95",
+      );
+    }
+    const callOptions = readCallOptions(req, installation);
+    const userEntityRef = await usageReader(req);
+    res.json(
+      await toolLatencyCache.read(
+        usageCacheKey({
+          route: 'tool-latency',
+          installation: installation.name,
+          hours,
+          servers,
+          userEntityRef,
+        }),
+        async () =>
+          getMcpToolLatency(
+            client,
+            await withPrometheusServer(
+              installation,
+              client,
+              callOptions,
+              userEntityRef,
+            ),
+            callOptions,
+            hours,
+            servers,
+          ),
+        answer => answer.available,
       ),
     );
   });

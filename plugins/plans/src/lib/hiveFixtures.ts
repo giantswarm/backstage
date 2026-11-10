@@ -19,6 +19,7 @@ import {
   Meta,
   Now,
   PlanCard,
+  TeamSets,
 } from './magazine';
 
 /** The team the fixture magazine follows; its items carry no `team`. */
@@ -688,6 +689,26 @@ function historyGroups(): Group[] {
     ]),
   };
   return [marge, apps, flux, chat, unbroken];
+}
+
+/**
+ * `magazine/teams.json`: the fixture magazine writes a data set for its own
+ * team only; every other team shows the empty state.
+ */
+export function fixtureTeamSets(): TeamSets {
+  return {
+    version: 1,
+    generatedAt: ago(12 * 60_000),
+    default: MAGAZINE_TEAM,
+    teams: [
+      {
+        name: MAGAZINE_TEAM,
+        boardTeam: 'Bumblebee🐝',
+        slug: 'bumblebee',
+        path: 'magazine/teams/bumblebee',
+      },
+    ],
+  };
 }
 
 /** `magazine/meta.json`: the board and the team the magazine follows. */
