@@ -124,17 +124,15 @@ describe('useSkillCatalog', () => {
           { repoUrl, private: true, truncated: false, skills: [] },
         ],
       });
-      jest
-        .mocked(useSkillSource)
-        .mockReturnValue(
-          kind === 'portal'
-            ? { kind }
-            : ({
-                kind,
-                installation: 'graveler',
-                client: { listSkills },
-              } as unknown as SkillSource),
-        );
+      jest.mocked(useSkillSource).mockReturnValue(
+        kind === 'portal'
+          ? { kind }
+          : ({
+              kind,
+              installation: 'graveler',
+              client: { listSkills },
+            } as unknown as SkillSource),
+      );
       fetchMock.mockResolvedValue({
         ok: true,
         json: async () => ({ skills: [], private: true }),
