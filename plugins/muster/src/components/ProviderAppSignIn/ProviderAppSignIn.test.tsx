@@ -119,6 +119,7 @@ describe('ProviderAppSignIn', () => {
     expect(consentOpen).toHaveBeenCalledWith(
       expect.objectContaining({
         url: DEVICE_PAGE,
+        requester: 'ChatGPT',
         message: 'Enter the code WXYZ-1234 on the page that opens.',
       }),
     );

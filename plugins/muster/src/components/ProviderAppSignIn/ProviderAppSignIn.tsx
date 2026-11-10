@@ -93,12 +93,13 @@ export function ProviderAppSignIn({
   pollIntervalMs,
   canDisconnect = true,
 }: ProviderAppSignInProps) {
+  const label = providerAppLabel(app);
   const signIn = useServerSignIn(app, installation, {
     noun: 'connector',
     app: true,
     pollIntervalMs,
+    displayName: label,
   });
-  const label = providerAppLabel(app);
   const minutesLeft = useMinutesLeft(signIn.deviceCode?.expiresAt);
 
   const lastFailure = signIn.providerApp?.last_failure;

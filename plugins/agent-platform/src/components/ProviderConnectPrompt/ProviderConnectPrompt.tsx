@@ -135,11 +135,12 @@ function MusterGrant({
   onConnected,
   waitingNote = 'Finish in the other tab. The owners and repositories appear here as soon as you are back.',
 }: ProviderConnectActionProps & { target: { name: string; app: boolean } }) {
+  const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const signIn = useServerSignIn(target.name, installation, {
     noun: 'connector',
     app: target.app,
+    displayName: kind,
   });
-  const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const copy = signInCopy(provider);
 
   // Granted is a sign-in this prompt started that muster now reports done; a

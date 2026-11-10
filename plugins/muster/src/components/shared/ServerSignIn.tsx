@@ -336,7 +336,7 @@ export function SignInFlow({
         <Button
           variant={prominent ? 'primary' : 'secondary'}
           size="small"
-          onClick={openSignInPage}
+          onPress={openSignInPage}
         >
           Open sign-in page
         </Button>
