@@ -254,7 +254,7 @@ describe('resource and prompt lists at scale', () => {
     expect(screen.getAllByText(/^doc:\/\/item-/)).toHaveLength(20);
     expect(
       screen.getByText(
-        'This list is incomplete: muster returned 200 of 300 resources.',
+        'This list is incomplete: Muster returned 200 of 300 resources.',
       ),
     ).toBeInTheDocument();
     expect(

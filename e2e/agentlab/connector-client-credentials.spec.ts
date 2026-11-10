@@ -284,7 +284,7 @@ test.describe('a connector whose client is typed into the wizard', () => {
       })
       .click();
     await admin
-      .getByText("Advanced: sign-in settings for apps muster can't look up")
+      .getByText("Advanced: sign-in settings for apps Muster can't look up")
       .click();
     const { authorizationServer } = fixture;
     await admin

@@ -79,13 +79,13 @@ export class MusterTokenMintError extends Error {
       return new MusterTokenMintError(
         installation,
         'session-expired',
-        `Your portal session has expired; no token could be minted for muster on ${installation}.`,
+        `Your portal session has expired; no token could be minted for Muster on ${installation}.`,
       );
     }
     return new MusterTokenMintError(
       installation,
       'mint-failed',
-      `Could not mint a token for muster on ${installation}: ${detail}`,
+      `Could not mint a token for Muster on ${installation}: ${detail}`,
     );
   }
 }
