@@ -546,6 +546,11 @@ export class MusterApiClient implements MusterApi {
     );
   }
 
+  async authHeaders(installation?: string): Promise<Record<string, string>> {
+    const token = await this.resolveToken(installation);
+    return token ? { [MUSTER_AUTH_HEADER]: token } : {};
+  }
+
   /**
    * Resolve (and if needed mint, via the single main re-login) the token for
    * the target installation's muster, the same way every request does. Unlike
