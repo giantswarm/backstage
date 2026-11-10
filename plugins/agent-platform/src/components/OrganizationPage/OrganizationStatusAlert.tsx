@@ -23,25 +23,23 @@ const useStyles = makeStyles({
   },
 });
 
-export type OrphanedAlertProps = {
+export type OrganizationStatusAlertProps = {
   organization: AgentPlatformOrganization;
 };
 
 /**
- * Why the organization's workers are stopped while its file is gone from the
+ * Why the organization's workers are stopped. Erasing once it is deleted,
+ * whether it was applied from git or not: the operator then erases it and no
+ * longer updates its conditions. Otherwise, while its file is gone from the
  * installation's git repository: Pending erase after its delete pull request
  * merged, Missing from git otherwise, with the last commit that held the file
  * so it can be restored from there. Nothing while the organization is in git,
- * or was not applied from git. Once deleted, the operator stops updating the
- * condition and erases the organization, so it reads Erasing instead.
+ * or was not applied from git.
  */
-export function OrphanedAlert({ organization }: OrphanedAlertProps) {
+export function OrganizationStatusAlert({
+  organization,
+}: OrganizationStatusAlertProps) {
   const classes = useStyles();
-  const orphaned = organization.orphaned;
-  if (orphaned?.status !== 'True') {
-    return null;
-  }
-
   if (organization.deleting) {
     return (
       <Alert
@@ -68,6 +66,11 @@ export function OrphanedAlert({ organization }: OrphanedAlertProps) {
         }
       />
     );
+  }
+
+  const orphaned = organization.orphaned;
+  if (orphaned?.status !== 'True') {
+    return null;
   }
 
   const technical = orphaned.message ? (

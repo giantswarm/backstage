@@ -229,6 +229,15 @@ describe('OrganizationPage', () => {
       expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
     });
 
+    it('is Erasing once deleted, also when it was not applied from git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: { ...ORGANIZATION, deleting: true },
+      });
+
+      expect(await screen.findByText('Erasing')).toBeInTheDocument();
+    });
+
     it('reads an organization being erased again every 10 s', async () => {
       jest.useFakeTimers();
       try {
