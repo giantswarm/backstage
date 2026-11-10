@@ -9,7 +9,12 @@ import {
   EMPTY_ORGANIZATION_DIRECTORY,
   type OrganizationDirectory,
 } from './organizations';
-import { tenantKindOf, tenantOf, type TenantKind } from './tenants';
+import {
+  namespacesSharingAName,
+  tenantKindOf,
+  tenantOf,
+  type TenantKind,
+} from './tenants';
 import {
   usageDataStart,
   type UsageDataStart,
@@ -524,10 +529,12 @@ function organizationKey(labels: Record<string, string>): string {
 /**
  * Roll the same three vectors up by the namespace the agents run in: the
  * organization's tenant, which is the cost centre (giantswarm/giantswarm#36698,
- * D8). An organization namespace reads as the organization, by the labels
- * agent-manager answered for it (`organizations`),
- * the `kagent` namespace as the platform (no organization), any other
- * namespace by its name, and traffic in no namespace as `unknownLabel`. No
+ * D8). Each namespace reads as `tenantOf` names it under "Organization": an
+ * organization namespace as the organization, by the labels agent-manager
+ * answered for it (`organizations`), a Giant Swarm organization's
+ * `org-<name>` namespace as that organization, the `kagent` namespace as the
+ * platform (no organization), any other namespace by its name; traffic in
+ * no namespace reads as `unknownLabel`. No
  * join is needed: the namespace is the identity.
  */
 export function reduceByOrganization(options: {
@@ -557,13 +564,22 @@ export function reduceByOrganization(options: {
     ...callsByNamespace.keys(),
   ]);
 
+  const sharingAName = namespacesSharingAName(
+    [...keys].filter(namespace => namespace !== ''),
+    directory,
+  );
   const rows: LlmOrganizationRow[] = [];
   for (const namespace of keys) {
     const costUsd = optionalTotal(costByNamespace, namespace);
     rows.push({
       id: namespace || 'unattributed',
       namespace,
-      ...identifyOrganization(namespace, unknownLabel, directory),
+      ...identifyOrganization(
+        namespace,
+        unknownLabel,
+        directory,
+        sharingAName.has(namespace),
+      ),
       tokens: tokensByNamespace.get(namespace) ?? 0,
       calls: callsByNamespace.get(namespace) ?? 0,
       costUsd,
@@ -579,11 +595,15 @@ export function reduceByOrganization(options: {
   );
 }
 
-/** What a namespace is under the label "Organization", and the name to show. */
+/**
+ * What a namespace is under the label "Organization", and the name to show.
+ * `sharesItsName`: another row reads the same ({@link namespacesSharingAName}).
+ */
 function identifyOrganization(
   namespace: string,
   unknownLabel: string,
   directory: OrganizationDirectory,
+  sharesItsName: boolean,
 ): Pick<LlmOrganizationRow, 'kind' | 'label' | 'description'> {
   if (namespace === '') {
     return { kind: 'unattributed', label: unknownLabel };
@@ -593,8 +613,10 @@ function identifyOrganization(
     kind,
     label: tenantOf(namespace, directory),
     // The organization's name is not its namespace, so the namespace goes
-    // under it; for the platform and another namespace the label says it.
-    description: kind === 'organization' ? namespace : undefined,
+    // under it, as it does under a name another row reads too; for the
+    // platform and any other namespace the label says it.
+    description:
+      kind === 'organization' || sharesItsName ? namespace : undefined,
   };
 }
 

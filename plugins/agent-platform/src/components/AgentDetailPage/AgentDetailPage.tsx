@@ -1043,6 +1043,7 @@ function AgentDetailPageContent() {
               // Named by get_info alone: until it answers, or where it names
               // none, no Harness is marked as the platform's on a guess.
               platformHarness: agentManagerInfo?.harness?.name,
+              directory,
             })}
           />
         ) : undefined

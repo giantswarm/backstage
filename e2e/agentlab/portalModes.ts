@@ -60,6 +60,7 @@ export const SHELL_SPECS = [
   'serving-feedback.spec.ts',
   'serving-llminferenceservice.spec.ts',
   'serving-order.spec.ts',
+  'serving-sign-in.spec.ts',
   'serving-state.spec.ts',
   'session-expiry.spec.ts',
   'session-export.spec.ts',

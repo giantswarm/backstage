@@ -1,5 +1,6 @@
 import { stepTiming } from './lifecycle';
 import {
+  isModelLoadInProgress,
   isServedModelSettled,
   MODEL_POLL_ACTIVE_MS,
   modelLifecycleSteps,
@@ -204,5 +205,44 @@ describe('polling', () => {
       modelsRefetchInterval([{ running: { phase: 'ready' } }, {}], 30_000),
     ).toBe(30_000);
     expect(modelsRefetchInterval(undefined, 30_000)).toBe(30_000);
+  });
+});
+
+describe('isModelLoadInProgress', () => {
+  it('is true only while a served model is on its way in', () => {
+    expect(
+      isModelLoadInProgress([{ running: { phase: 'downloadingWeights' } }]),
+    ).toBe(true);
+    expect(
+      isModelLoadInProgress([
+        {
+          running: {
+            phase: 'ready',
+            steps: [{ name: 'ready', state: 'inProgress' }],
+          },
+        },
+      ]),
+    ).toBe(true);
+    // On its way out, failed, settled, without a timeline, not served.
+    expect(isModelLoadInProgress([{ running: { phase: 'terminating' } }])).toBe(
+      false,
+    );
+    expect(
+      isModelLoadInProgress([
+        {
+          running: {
+            phase: 'failed',
+            steps: [{ name: 'scheduling', state: 'inProgress' }],
+          },
+        },
+      ]),
+    ).toBe(false);
+    expect(
+      isModelLoadInProgress([
+        { running: { phase: 'ready', steps: [{ state: 'done' }] } },
+      ]),
+    ).toBe(false);
+    expect(isModelLoadInProgress([{ running: {} }, {}])).toBe(false);
+    expect(isModelLoadInProgress(undefined)).toBe(false);
   });
 });
