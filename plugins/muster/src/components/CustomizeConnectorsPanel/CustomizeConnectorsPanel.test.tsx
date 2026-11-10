@@ -177,14 +177,17 @@ let queryClient: QueryClient;
 const consentOpen = jest.fn();
 
 async function renderPanel(search = '') {
+  return renderInPanelApp(<CustomizeConnectorsPanel search={search} />);
+}
+
+/** Renders `ui` with the panel's query client, APIs and routes. */
+async function renderInPanelApp(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
   return renderInTestApp(
-    <QueryClientProvider client={client}>
-      <CustomizeConnectorsPanel search={search} />
-    </QueryClientProvider>,
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
     {
       apis: [
         [musterApiRef, api],
@@ -1102,22 +1105,7 @@ describe('CustomizeConnectorsPanel', () => {
           </>
         );
       }
-      await renderInTestApp(
-        <QueryClientProvider
-          client={
-            new QueryClient({ defaultOptions: { queries: { retry: false } } })
-          }
-        >
-          <Searched />
-        </QueryClientProvider>,
-        {
-          apis: [[musterApiRef, api]],
-          mountedRoutes: {
-            '/customize/connectors': mcpServersRouteRef,
-            '/customize': customizeExternalRouteRef,
-          },
-        },
-      );
+      await renderInPanelApp(<Searched />);
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
       await user.click(header('Connector'));
       expect(names()).toEqual(['web-search', 'Muster', 'kubernetes', 'github']);
