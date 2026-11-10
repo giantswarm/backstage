@@ -5,11 +5,13 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   CREDENTIAL_OPERATION,
+  fakeOrganizationAccess,
   fakeOrganizationsMuster,
   toolCalls,
   type OrganizationsScenario,
@@ -109,6 +111,7 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [kubernetesApiRef, fakeOrganizationAccess(scenario.access)],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -685,6 +688,92 @@ describe('OrganizationPage', () => {
     expect(
       screen.getByText('https://api.stripe.com:443 (adds Authorization)'),
     ).toBeInTheDocument();
+  });
+
+  describe('what the person may do', () => {
+    const MEMBER_ONLY = {
+      ...SCENARIO,
+      access: { rolebindings: false, modelconfigs: false, secrets: false },
+    };
+
+    it('shows a member the status agent-manager lists, without reading the organization whole', async () => {
+      const { callTool } = await renderPage('', {
+        ...MEMBER_ONLY,
+        memberStatus: {
+          orphaned: { status: 'True', reason: 'MissingFromGit' },
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
+    });
+
+    it('offers a member no change to the members', async () => {
+      await renderPage('', MEMBER_ONLY);
+
+      expect(await screen.findByText('payments-team')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Remove / }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Add a member')).not.toBeInTheDocument();
+    });
+
+    it('offers a member no model or key change', async () => {
+      await renderPage('/models', MEMBER_ONLY);
+
+      expect(await screen.findByText('claude-sonnet')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Add model' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Replace the key of / }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers a member no credential change on a connector', async () => {
+      await renderPage('/connectors', MEMBER_ONLY);
+
+      expect(await screen.findByText('jira')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Replace the credential of / }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers an organization admin who does not manage the organization its changes', async () => {
+      const { callTool } = await renderPage('/models', SCENARIO);
+
+      expect(
+        await screen.findByRole('button', { name: 'Add model' }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', {
+          name: 'Replace the key of claude-sonnet',
+        }),
+      ).toBeInTheDocument();
+      expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
+    });
+
+    it('reads the organization whole for a person who manages it without being a member', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: {
+          name: 'payments',
+          parent: 'org-acme',
+          displayName: 'Payments',
+          namespace: PAYMENTS.namespace,
+          harnesses: ['kagent'],
+          workerReplicas: 3,
+        },
+      });
+
+      expect(
+        await screen.findByRole('heading', { name: 'Payments' }),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'get_organization')).toHaveLength(1),
+      );
+    });
   });
 
   it('says the person is no member of an organization agent-manager does not list for them', async () => {

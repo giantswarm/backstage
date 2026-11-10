@@ -37,7 +37,7 @@ const ORGANIZATION_DESCRIPTION =
 
 /**
  * Who can add a person to an organization, when agent-manager's answer does
- * not say it (`list_my_organizations`' `none`).
+ * not say it (`list_organizations`' `none`).
  */
 const NO_ORGANIZATION_HINT =
   'An admin of an organization adds you, or someone with the agent-platform:organizations-admin role creates one with you as its first admin.';

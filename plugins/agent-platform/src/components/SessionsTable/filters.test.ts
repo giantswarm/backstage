@@ -283,7 +283,7 @@ describe('the shell list’s dropdown filters (T92)', () => {
   });
 
   it('filters by the namespace and names it as every Organization label does', () => {
-    // As agent-manager's `list_my_organizations` names the namespace.
+    // As agent-manager's `list_organizations` names the namespace.
     const directory = organizationDirectory([
       {
         namespace: 'agents-acme-x7k2q',

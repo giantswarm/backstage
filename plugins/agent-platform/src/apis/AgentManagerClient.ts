@@ -26,7 +26,7 @@ import type { CredentialResourceResult } from '../lib/credentialOperations';
 import type {
   MemberRequest,
   MemberResult,
-  MyOrganizations,
+  Organizations,
   OrganizationConnector,
   OrganizationConnectorCredentialRequest,
   OrganizationModelRequest,
@@ -280,13 +280,12 @@ export class AgentManagerClient {
   }
 
   /**
-   * The organizations the person belongs to: the namespaces in which they
-   * may list Agents, asked with their own token. The New agent form's
-   * organization picker.
+   * The organizations the person manages or belongs to, each with what they
+   * may do with it, asked with their own token.
    */
-  async listMyOrganizations(): Promise<MyOrganizations> {
-    const result = await this.call<Partial<MyOrganizations>>(
-      AGENT_MANAGER_TOOLS.listMyOrganizations,
+  async listOrganizations(): Promise<Organizations> {
+    const result = await this.call<Partial<Organizations>>(
+      AGENT_MANAGER_TOOLS.listOrganizations,
       {},
     );
     return { ...result, organizations: result.organizations ?? [] };

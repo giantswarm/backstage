@@ -12,7 +12,7 @@ import { useOwnerField } from '../NewAgentPage/hooks/useOwnerField';
 import { ModelConfigPicker } from './ModelConfigPicker';
 
 // The organizations agent-manager names for the person
-// (`list_my_organizations`).
+// (`list_organizations`).
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>

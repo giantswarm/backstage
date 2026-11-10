@@ -325,12 +325,12 @@ export function musterAgentManagerEgressPoliciesQueryKey(
   ] as const;
 }
 
-/** `list_my_organizations` on one installation: the person's organizations. */
-export function musterMyOrganizationsQueryKey(installation: string) {
+/** `list_organizations` on one installation: the person's organizations. */
+export function musterOrganizationsQueryKey(installation: string) {
   return [
     'muster',
     'agent-platform',
-    'agent-manager-my-organizations',
+    'agent-manager-organizations',
     installation,
   ] as const;
 }

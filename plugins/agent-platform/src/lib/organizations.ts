@@ -14,8 +14,8 @@
 export const ORGANIZATIONS_CAPABILITY = 'organizations';
 
 /**
- * An organization namespace as its labels describe it
- * (`list_my_organizations`).
+ * An organization namespace as its labels describe it: what the directory
+ * names a namespace by.
  */
 export type OrganizationNamespace = {
   /** The organization namespace, e.g. `agents-payments-x7k2q`. */
@@ -24,13 +24,6 @@ export type OrganizationNamespace = {
   organization: string;
   /** The parent namespace it lives in (`agent-platform.giantswarm.io/parent`). */
   parent: string;
-};
-
-/** `list_my_organizations`: the organizations the person belongs to. */
-export type MyOrganizations = {
-  organizations: OrganizationNamespace[];
-  /** Who can add the person, when they belong to none. */
-  none?: string;
 };
 
 /** A condition of the organization as the operator reports it. */
@@ -63,6 +56,72 @@ export type AgentPlatformOrganization = {
   /** The step of the erasure the operator is on, while `deleting`. */
   erasureStep?: string;
 };
+
+/**
+ * What the person may do with a listed organization, as the API server
+ * answers agent-manager's access reviews with the person's token.
+ */
+export type OrganizationPermissions = {
+  /**
+   * `update` on the AgentPlatformOrganization in its parent namespace
+   * (agent-platform:organizations-admin): reading it whole, deleting and
+   * erasing it.
+   */
+  manage: boolean;
+  /** `list` on Agents in the organization namespace: a member of any role. */
+  member: boolean;
+};
+
+/**
+ * One organization of `list_organizations`. A member who does not manage it
+ * gets its status only; one who manages it also gets `organization`, the
+ * object `get_organization` answers.
+ */
+export type ListedOrganization = {
+  name: string;
+  parent: string;
+  displayName?: string;
+  /** The organization namespace, once the operator created it. */
+  namespace?: string;
+  orphaned?: OrganizationCondition;
+  deleting?: boolean;
+  permissions: OrganizationPermissions;
+  organization?: AgentPlatformOrganization;
+};
+
+/** `list_organizations`: the organizations the person manages or belongs to. */
+export type Organizations = {
+  organizations: ListedOrganization[];
+  /** Who can add the person, when they manage and belong to none. */
+  none?: string;
+};
+
+/** The listed organizations that have a namespace, as the directory names them. */
+export function organizationNamespacesOf(
+  answer: Organizations | undefined,
+): OrganizationNamespace[] {
+  return (answer?.organizations ?? []).flatMap(organization =>
+    organization.namespace
+      ? [
+          {
+            namespace: organization.namespace,
+            organization: organization.name,
+            parent: organization.parent,
+          },
+        ]
+      : [],
+  );
+}
+
+/** What the status notices of an organization read. */
+export type OrganizationStatus = Pick<
+  AgentPlatformOrganization,
+  | 'deleting'
+  | 'erasureStep'
+  | 'orphaned'
+  | 'lastAppliedRevision'
+  | 'lastAppliedRevisionUrl'
+>;
 
 /**
  * The operator's reason for `orphaned` `True` once the organization's delete
