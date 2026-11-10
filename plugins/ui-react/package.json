@@ -80,7 +80,7 @@
     "rehype-sanitize": "^5.0.0",
     "remark-gfm": "^3.0.1",
     "tldts": "^7.0.5",
-    "use-local-storage-state": "^19.5.0"
+    "use-local-storage-state": "^20.0.0"
   },
   "peerDependencies": {
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0",

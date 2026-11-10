@@ -57,7 +57,7 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
-    "use-local-storage-state": "^19.5.0",
+    "use-local-storage-state": "^20.0.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
