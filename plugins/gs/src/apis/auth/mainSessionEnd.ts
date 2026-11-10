@@ -4,29 +4,35 @@ import { gsAuthProvidersApiRef } from './types';
 import type { MainSessionEnd, MainSessionEndReason } from './types';
 
 /**
- * What Dex answers a refresh with a token that a later sign-in of the same
- * person and client replaced (Dex keeps one refresh token per person and
- * client): `invalid_request` up to 2.45, `invalid_grant` from 2.46, with this
- * text either way. The auth backend passes it on in its 401's `error.message`.
+ * The OAuth error Dex answers a refresh with when a later sign-in of the same
+ * person and client replaced the refresh token (Dex keeps one refresh token
+ * per person and client): `invalid_request` up to 2.45, `invalid_grant` from
+ * 2.46, with this `error_description` either way.
  */
+const CLAIMED_ERRORS: ReadonlySet<unknown> = new Set([
+  'invalid_request',
+  'invalid_grant',
+]);
 const CLAIMED_BY_ANOTHER_CLIENT = /already been claimed by another client/i;
 
 /**
- * Why a refused `/refresh` of the main sign-in ended its session, from the
- * auth backend's answer: its status and its JSON body
- * (`{ error: { message } }`). Undefined for any other failure, which may be
- * passing (the issuer unreachable) and says nothing about another sign-in.
+ * Why a 401 from the main sign-in's `/refresh` ended its session, from the
+ * auth backend's JSON body: the issuer's OAuth error (RFC 6749 section 5.2)
+ * is the `cause` of the backend's `AuthenticationError`, serialized with its
+ * `error` and `error_description`. Undefined for any other failure, which may
+ * be passing (the issuer unreachable) and says nothing about another sign-in.
  */
 export function sessionEndReasonOf(
-  status: number,
   body: unknown,
 ): MainSessionEndReason | undefined {
-  if (status !== 401) {
-    return undefined;
-  }
-  const message = (body as { error?: { message?: unknown } } | null)?.error
-    ?.message;
-  return typeof message === 'string' && CLAIMED_BY_ANOTHER_CLIENT.test(message)
+  const cause = (
+    body as {
+      error?: { cause?: { error?: unknown; error_description?: unknown } };
+    } | null
+  )?.error?.cause;
+  return CLAIMED_ERRORS.has(cause?.error) &&
+    typeof cause?.error_description === 'string' &&
+    CLAIMED_BY_ANOTHER_CLIENT.test(cause.error_description)
     ? 'signed-in-elsewhere'
     : undefined;
 }

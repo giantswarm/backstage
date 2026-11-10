@@ -149,11 +149,30 @@ describe('DefaultAuthConnector', () => {
     });
 
     describe('a refused refresh that ends the session', () => {
-      function refusedRefresh(status: number, message: string) {
+      const CLAIMED =
+        'Refresh token is invalid or has already been claimed by another client.';
+
+      /**
+       * The auth backend's body for a refresh the issuer refused: an
+       * `AuthenticationError` whose `cause` is the issuer's OAuth error.
+       */
+      function refusedRefresh(
+        status: number,
+        cause?: { error: string; error_description: string },
+      ) {
+        const causeMessage = cause
+          ? `${cause.error} (${cause.error_description})`
+          : 'fetch failed';
         jest.spyOn(global, 'fetch').mockResolvedValue(
           new Response(
             JSON.stringify({
-              error: { name: 'AuthenticationError', message },
+              error: {
+                name: 'AuthenticationError',
+                message: `Refresh failed; caused by OPError: ${causeMessage}`,
+                ...(cause && {
+                  cause: { name: 'OPError', message: causeMessage, ...cause },
+                }),
+              },
               response: { statusCode: status },
             }),
             { status, headers: { 'Content-Type': 'application/json' } },
@@ -177,10 +196,7 @@ describe('DefaultAuthConnector', () => {
       it.each(['invalid_request', 'invalid_grant'])(
         'says the person signed in elsewhere when Dex answers %s for a claimed token',
         async dexError => {
-          refusedRefresh(
-            401,
-            `Refresh failed; caused by OPError: ${dexError} (Refresh token is invalid or has already been claimed by another client.)`,
-          );
+          refusedRefresh(401, { error: dexError, error_description: CLAIMED });
           const onSessionEnded = jest.fn();
 
           await expect(
@@ -194,24 +210,37 @@ describe('DefaultAuthConnector', () => {
       );
 
       it.each([
-        [401, 'Refresh failed; caused by RPError: fetch failed'],
-        [400, 'Missing session cookie'],
-        [500, 'already been claimed by another client'],
-      ])(
-        'says nothing for another refusal (%s %s)',
-        async (status, message) => {
-          refusedRefresh(status, message);
-          const onSessionEnded = jest.fn();
+        [
+          'an expired refresh token',
+          401,
+          {
+            error: 'invalid_grant',
+            error_description: 'Refresh token expired.',
+          },
+        ],
+        ['an unreachable issuer', 401, undefined],
+        [
+          'another OAuth error with the same text',
+          401,
+          { error: 'server_error', error_description: CLAIMED },
+        ],
+        [
+          'a refusal that is not a 401',
+          500,
+          { error: 'invalid_grant', error_description: CLAIMED },
+        ],
+      ])('says nothing for %s', async (_name, status, cause) => {
+        refusedRefresh(status, cause);
+        const onSessionEnded = jest.fn();
 
-          await expect(
-            connectorTelling(onSessionEnded).refreshSession({
-              scopes: new Set(['openid']),
-            }),
-          ).rejects.toMatchObject({ status });
+        await expect(
+          connectorTelling(onSessionEnded).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+        ).rejects.toMatchObject({ status });
 
-          expect(onSessionEnded).not.toHaveBeenCalled();
-        },
-      );
+        expect(onSessionEnded).not.toHaveBeenCalled();
+      });
 
       it('says nothing for a 401 without a JSON body', async () => {
         jest

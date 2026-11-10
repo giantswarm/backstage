@@ -17,8 +17,20 @@ jest.mock('@backstage/core-app-api', () => ({
   openLoginPopup: jest.fn(),
 }));
 
-const CLAIMED =
-  'Refresh failed; caused by OPError: invalid_grant (Refresh token is invalid or has already been claimed by another client.)';
+/** The auth backend's 401 body for a refresh token Dex says was claimed. */
+const CLAIMED = {
+  error: {
+    name: 'AuthenticationError',
+    message:
+      'Refresh failed; caused by OPError: invalid_grant (Refresh token is invalid or has already been claimed by another client.)',
+    cause: {
+      name: 'OPError',
+      error: 'invalid_grant',
+      error_description:
+        'Refresh token is invalid or has already been claimed by another client.',
+    },
+  },
+};
 
 const scope = 'openid profile email groups offline_access';
 
@@ -42,18 +54,27 @@ function jsonResponse(status: number, body: unknown) {
 
 describe('sessionEndReasonOf', () => {
   it('reads a claimed refresh token as a sign-in elsewhere', () => {
-    expect(sessionEndReasonOf(401, { error: { message: CLAIMED } })).toBe(
-      'signed-in-elsewhere',
-    );
+    expect(sessionEndReasonOf(CLAIMED)).toBe('signed-in-elsewhere');
   });
 
   it.each([
-    [401, { error: { message: 'Refresh failed; caused by fetch failed' } }],
-    [401, undefined],
-    [401, { error: 'already been claimed by another client' }],
-    [503, { error: { message: CLAIMED } }],
-  ])('reads nothing into %s %j', (status, body) => {
-    expect(sessionEndReasonOf(status, body)).toBeUndefined();
+    [{ error: { message: 'Refresh failed; caused by fetch failed' } }],
+    [undefined],
+    [null],
+    [{ error: 'already been claimed by another client' }],
+    [{ error: { message: CLAIMED.error.message } }],
+    [
+      {
+        error: {
+          cause: {
+            error: 'invalid_grant',
+            error_description: 'Refresh token expired.',
+          },
+        },
+      },
+    ],
+  ])('reads nothing into %j', body => {
+    expect(sessionEndReasonOf(body)).toBeUndefined();
   });
 });
 
@@ -69,8 +90,12 @@ describe('the main sign-in session end', () => {
   } as unknown as OAuthRequestApi;
 
   const configApi = {
-    getOptionalString: jest.fn((key: string) =>
-      key === 'gs.authProvider' ? 'oidc-gazelle' : undefined,
+    getOptionalString: jest.fn(
+      (key: string) =>
+        ({
+          'gs.authProvider': 'oidc-gazelle',
+          'gs.signInFallbackProvider.connectorId': 'giantswarm-github',
+        })[key],
     ),
     getOptionalConfig: jest.fn().mockReturnValue(undefined),
     getOptionalStringArray: jest.fn().mockReturnValue(undefined),
@@ -112,7 +137,7 @@ describe('the main sign-in session end', () => {
     await mainAuthApi.getIdToken({ optional: true });
     expect(providers.getMainSessionEnd().reason()).toBeUndefined();
 
-    refreshAnswer = () => jsonResponse(401, { error: { message: CLAIMED } });
+    refreshAnswer = () => jsonResponse(401, CLAIMED);
     await expect(
       mainAuthApi.getIdToken({ optional: true }),
     ).resolves.toBeFalsy();
@@ -129,7 +154,7 @@ describe('the main sign-in session end', () => {
       discoveryApi,
       oauthRequestApi,
     });
-    refreshAnswer = () => jsonResponse(401, { error: { message: CLAIMED } });
+    refreshAnswer = () => jsonResponse(401, CLAIMED);
 
     await expect(
       providers.getMainAuthApi().getBackstageIdentity({ optional: true }),
@@ -137,6 +162,22 @@ describe('the main sign-in session end', () => {
 
     expect(providers.getMainSessionEnd().reason()).toBe('signed-in-elsewhere');
     expect(openLoginPopup).not.toHaveBeenCalled();
+  });
+
+  it('forgets the sign-in elsewhere once the fallback card signs in', async () => {
+    const providers = GSAuthProviders.create({
+      configApi,
+      discoveryApi,
+      oauthRequestApi,
+    });
+    refreshAnswer = () => jsonResponse(401, CLAIMED);
+    await providers.getMainAuthApi().getBackstageIdentity({ optional: true });
+    expect(providers.getMainSessionEnd().reason()).toBe('signed-in-elsewhere');
+
+    await providers.getFallbackSignInAuthApi().getIdToken();
+
+    expect(openLoginPopup).toHaveBeenCalledTimes(1);
+    expect(providers.getMainSessionEnd().reason()).toBeUndefined();
   });
 
   it('records nothing when the refresh failed otherwise', async () => {

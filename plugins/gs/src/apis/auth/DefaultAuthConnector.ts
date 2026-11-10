@@ -319,7 +319,7 @@ export class DefaultAuthConnector<
       error.status = res.status;
       if (this.onSessionEnded && res.status === 401) {
         const body = await res.json().catch(() => undefined);
-        const reason = sessionEndReasonOf(res.status, body);
+        const reason = sessionEndReasonOf(body);
         if (reason) {
           this.onSessionEnded(reason);
         }
