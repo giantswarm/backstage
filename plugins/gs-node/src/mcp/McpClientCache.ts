@@ -168,11 +168,11 @@ export class McpClientCache<C extends ClosableMcpClient = MCPClient> {
     client: C,
   ): void {
     try {
-      // `transport` is private on @ai-sdk/mcp's MCPClient (public on the
-      // official SDK's Client), but the chain hook is the only practical way
-      // to detect closure without polling. Cast through `unknown` to avoid
-      // lint complaints; runtime shape is stable across the @ai-sdk/mcp
-      // 1.x/2.x line.
+      // `transport` is private on @ai-sdk/mcp's MCPClient, and a client of
+      // the official SDK exposes the one it connected with, but the chain
+      // hook is the only practical way to detect closure without polling.
+      // Cast through `unknown` to avoid lint complaints; runtime shape is
+      // stable across the @ai-sdk/mcp 1.x/2.x line.
       const transport = (client as unknown as { transport?: HookableTransport })
         .transport;
       if (!transport) return;

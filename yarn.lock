@@ -9341,6 +9341,7 @@ __metadata:
     "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
     "@modelcontextprotocol/client": "npm:2.4.0"
     "@modelcontextprotocol/sdk": "npm:1.32.1"
+    "@modelcontextprotocol/server": "npm:2.4.0"
     node-fetch: "npm:^3.3.2"
     zod: "npm:^4.4.3"
   languageName: unknown
@@ -11746,6 +11747,16 @@ __metadata:
     zod:
       optional: false
   checksum: 10c0/8b6c8ff6aa5358aeb316fedfa2094a4241ce12d98a0f818cee42510ec9149fed21fc75244c5f0e8cb453337f243c09fa8a90425cd2533fd481964d8583a1f0c9
+  languageName: node
+  linkType: hard
+
+"@modelcontextprotocol/server@npm:2.4.0":
+  version: 2.4.0
+  resolution: "@modelcontextprotocol/server@npm:2.4.0"
+  dependencies:
+    "@modelcontextprotocol/core": "npm:2.4.0"
+    zod: "npm:^4.2.0"
+  checksum: 10c0/e52966e6f115296c6dbfd08550e81773f5f71fb4809c7411b11fcc619b3bd621b07f296a5571de777ea2351eca7003e6b3f4d172fe8c21563be1205b1ee4f0ec
   languageName: node
   linkType: hard
 

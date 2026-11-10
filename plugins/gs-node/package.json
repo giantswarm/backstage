@@ -45,6 +45,7 @@
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
     "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/server": "2.4.0",
     "zod": "^4.4.3"
   },
   "files": [

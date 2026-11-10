@@ -37,9 +37,10 @@ export const ELICITATION_ANSWER_REUSE_MS = 2 * 60_000;
 /**
  * Puts the URL elicitations of a call to the person through the portal's
  * consent dialog, one after another, and answers each with the person's
- * choice (`accept` opens the page). An answer stands for its page for
- * {@link ELICITATION_ANSWER_REUSE_MS}: the page is not opened again, and
- * neither is the dialog.
+ * choice (`accept` opens the page). An answer stands for its page, asked by
+ * the same server, for {@link ELICITATION_ANSWER_REUSE_MS}: the page is not
+ * opened again, and neither is the dialog. Another server asking for the same
+ * page is asked about: the person answered the server the dialog named.
  */
 export class UrlElicitationAnswers {
   private readonly answers = new Map<
@@ -74,16 +75,18 @@ export class UrlElicitationAnswers {
     tool: string,
     elicitation: MusterUrlElicitation,
   ): Promise<MusterElicitationAction> {
-    const kept = this.answers.get(elicitation.url);
+    const requester = musterServerOfTool(tool) ?? 'muster';
+    const key = JSON.stringify([requester, elicitation.url]);
+    const kept = this.answers.get(key);
     if (kept && kept.until > this.now()) {
       return kept.action;
     }
     const action = await this.consentApi.open({
       url: elicitation.url,
-      requester: musterServerOfTool(tool) ?? 'muster',
+      requester,
       message: elicitation.message,
     });
-    this.answers.set(elicitation.url, {
+    this.answers.set(key, {
       action,
       until: this.now() + ELICITATION_ANSWER_REUSE_MS,
     });

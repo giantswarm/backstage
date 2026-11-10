@@ -1278,6 +1278,29 @@ describe('MusterApiClient URL elicitations', () => {
     });
   });
 
+  it('asks again when another server asks for the same page', async () => {
+    const consentApi = consent('accept', 'decline');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(
+      fetchMock,
+      inputRequired(),
+      okResponse({}),
+      inputRequired(),
+      okResponse({}),
+    );
+
+    await client.callTool('x_github_get_me', {}, 'open');
+    await client.callTool('x_miro_get_board', {}, 'open');
+
+    expect(consentApi.open).toHaveBeenCalledTimes(2);
+    expect(consentApi.open).toHaveBeenLastCalledWith(
+      expect.objectContaining({ requester: 'miro', url: SIGN_IN_URL }),
+    );
+    expect(callBodies(fetchMock)[3].input.inputResponses).toEqual({
+      muster_sign_in: { action: 'decline' },
+    });
+  });
+
   it('gives up after a few rounds of the same question', async () => {
     const consentApi = consent('accept');
     const { client, fetchMock } = setup({ consent: consentApi });
