@@ -79,12 +79,15 @@ test('a shared conversation names each sender after reload', async ({
       lab.users.admin.email,
       lab.users.dev.email,
     ]);
-    expect(
-      await admin.evaluate(
-        () => document.documentElement.scrollWidth > window.innerWidth,
-      ),
-      'sender labels do not cause horizontal scrolling',
-    ).toBe(false);
+    await expect
+      .poll(
+        () =>
+          admin.evaluate(
+            () => document.documentElement.scrollWidth > window.innerWidth,
+          ),
+        { message: 'sender labels do not cause horizontal scrolling' },
+      )
+      .toBe(false);
   } finally {
     if (originalViewport) {
       await admin.setViewportSize(originalViewport);
