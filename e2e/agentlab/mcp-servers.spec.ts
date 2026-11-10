@@ -5,6 +5,7 @@ import {
   expect,
   open,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { connectorRow, INVENTORY_REJECTED_TOKEN, SHOWN } from './connectors';
 import { lab } from './lab';
@@ -254,11 +255,12 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
     await signOut();
   }
 
-  // The per-server Sign in: a popup through muster's OAuth proxy to the lab
+  // The per-server Sign in: a page through muster's OAuth proxy to the lab
   // Dex, completed with the same fixture account.
-  const popup = admin.waitForEvent('popup');
-  await signIn.click();
-  await completeDexLogin(await popup, lab.users.admin);
+  await completeDexLogin(
+    await openThroughConsent(admin, signIn),
+    lab.users.admin,
+  );
   await expect(signIn, 'signed in, the page no longer asks for it').toBeHidden({
     timeout: 60_000,
   });

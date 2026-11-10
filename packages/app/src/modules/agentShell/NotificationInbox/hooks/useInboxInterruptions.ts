@@ -8,6 +8,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import {
   countNoun,
+  externalUrlConsentApiRef,
   type PageAttention,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { InboxRow } from '../types';
@@ -200,6 +201,7 @@ export function useInboxInterruptions({
   hashActions: Readonly<Record<string, () => void>>;
 }): { overlayOpened: () => void } {
   const toastApi = useApi(toastApiRef);
+  const externalUrlConsentApi = useApi(externalUrlConsentApiRef);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -394,7 +396,11 @@ export function useInboxInterruptions({
               } else if (!link) {
                 latest.current.openOverlay();
               } else if (row.external) {
-                window.open(link, '_blank', 'noopener');
+                externalUrlConsentApi.open({
+                  url: link,
+                  requester: 'Portal notification',
+                  message: row.announce.title,
+                });
               } else {
                 navigate(link);
               }

@@ -9,7 +9,9 @@ import {
   type ReactNode,
 } from 'react';
 import { useHref, useLocation, useSearchParams } from 'react-router-dom';
-import { Button, ButtonLink, Text } from '@backstage/ui';
+import { Button, Text } from '@backstage/ui';
+import { useApi } from '@backstage/core-plugin-api';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 
@@ -410,6 +412,7 @@ export function useConnectorSignInLink(
 export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
   const classes = useStyles();
   const context = useContext(ConnectorSignInLinksContext);
+  const consentApi = useApi(externalUrlConsentApiRef);
   const now = useNow(30_000);
   if (!context) {
     return null;
@@ -447,15 +450,15 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
           Waiting for you to finish signing in{target}…
         </Text>
         {!isExpired && (
-          <ButtonLink
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Button
             variant="tertiary"
             size="small"
+            onPress={() =>
+              void consentApi.open({ url: href, requester: link.label })
+            }
           >
-            Open the sign-in page again ↗
-          </ButtonLink>
+            Open the sign-in page again
+          </Button>
         )}
         <Button
           variant="tertiary"
@@ -479,16 +482,21 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
 
   return (
     <span className={classes.action}>
-      <ButtonLink
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+      <Button
         variant="primary"
         size="small"
-        onPress={() => context.start(link.key)}
+        onPress={async () => {
+          const answer = await consentApi.open({
+            url: href,
+            requester: link.label,
+          });
+          if (answer === 'accept') {
+            context.start(link.key);
+          }
+        }}
       >
-        Sign in{target} ↗
-      </ButtonLink>
+        Sign in{target}
+      </Button>
     </span>
   );
 }
