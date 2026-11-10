@@ -36,6 +36,13 @@ export const PLATFORM_TENANT_NAMESPACE = 'kagent';
 export const CREATED_BY_ANNOTATION = 'agent-platform.giantswarm.io/created-by';
 
 /**
+ * The creator's display name from the IdP, beside {@link CREATED_BY_ANNOTATION}
+ * (which stays the identifier) and under the same rules: display only.
+ */
+export const CREATED_BY_NAME_ANNOTATION =
+  'agent-platform.giantswarm.io/created-by-name';
+
+/**
  * The organization a namespace is, as agent-manager answered it; none for a
  * namespace the directory does not hold.
  */
@@ -182,6 +189,23 @@ export const TENANT_KIND_LABELS: Record<TenantKind, string> = {
   organization: 'Organization',
   namespace: 'Other namespace',
 };
+
+/**
+ * Who an agent's creator reads as: the recorded name, else the recorded
+ * email, else, outside an organization, the platform — such an agent was put there by GitOps
+ * automation (the meta agents), and is the platform's to maintain. An
+ * organization's agent without the annotation names no creator.
+ */
+export function creatorOf(
+  createdBy: string | undefined,
+  kind: TenantKind,
+  createdByName?: string,
+): string | undefined {
+  if (createdByName || createdBy) {
+    return createdByName || createdBy;
+  }
+  return kind === 'organization' ? undefined : PLATFORM_LABEL;
+}
 
 /** The kind of place a namespace is. */
 export function tenantKindOf(

@@ -294,6 +294,11 @@ const mockUseToolsetResolution = jest.fn(() => ({
 jest.mock('../../hooks/useToolsetResolution', () => ({
   useToolsetResolution: () => mockUseToolsetResolution(),
 }));
+// muster's preset icons, read through react-query; `lib/connectorMarks` covers
+// which icon a preset shows.
+jest.mock('../../hooks/useToolsetPresets', () => ({
+  useToolsetPresetIconsByInstallation: () => new Map(),
+}));
 // The catalogue that names individually picked tools by connector (T103);
 // `lib/toolsetReach` covers the words.
 jest.mock('../../hooks/useReachCatalogue', () => ({
@@ -2406,7 +2411,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       );
       expect(await screen.findByText('Deployed by')).toBeInTheDocument();
       // The facts' alone: not under the name, not in Configuration.
-      expect(screen.getAllByText(/^Created\b/)).toEqual([
+      expect(screen.getAllByText(/^Created\b(?! by)/)).toEqual([
         within(facts).getByText('Created'),
       ]);
     });
@@ -3133,6 +3138,80 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByText('namespace agent-platform'),
       ).toBeInTheDocument();
       expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
+    });
+
+    it('names the creator by name, the email as the secondary line', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+        'agent-platform.giantswarm.io/created-by-name': 'Ana Example',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts).getByText('Created by').closest('dt')
+        ?.nextElementSibling as HTMLElement;
+      expect(within(createdBy).getByText('Ana Example')).toBeInTheDocument();
+      expect(
+        within(createdBy).getByText('ana@example.com'),
+      ).toBeInTheDocument();
+    });
+
+    it('names the creator by email alone where no name is recorded', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts)
+        .getByText('Created by')
+        .closest('dt')?.nextElementSibling;
+      expect(createdBy).toHaveTextContent(/^ana@example\.com$/);
+    });
+
+    it('names the platform as creator of an agent without a recorded one', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      const createdBy = within(facts)
+        .getByText('Created by')
+        .closest('dt')?.nextElementSibling;
+      expect(createdBy).toHaveTextContent(/^Platform$/);
+    });
+
+    it('names no creator of an organization’s agent without a recorded one', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(await within(facts).findByText('acme')).toBeInTheDocument();
+      expect(within(facts).queryByText('Created by')).not.toBeInTheDocument();
     });
 
     it('keeps the ModelConfig name without a display name, the model below it', async () => {

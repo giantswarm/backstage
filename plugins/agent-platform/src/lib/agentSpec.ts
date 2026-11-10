@@ -1,4 +1,8 @@
-import type { AgentSkillEntry, AgentSpec } from './agentManager';
+import type {
+  AgentPluginEntry,
+  AgentSkillEntry,
+  AgentSpec,
+} from './agentManager';
 import type { DiscoveredSkill } from './skills';
 import { parseEgressText } from './egress';
 import { pluginEntryOf } from './plugins';
@@ -15,6 +19,25 @@ export function skillEntryOf(skill: DiscoveredSkill): AgentSkillEntry {
     name: skill.name,
     ...(skill.path ? { path: skill.path } : {}),
     git: { url: skill.repoUrl, commit: skill.commit },
+  };
+}
+
+/**
+ * Every skill and plugin the form holds — an edited agent's kept ones and the
+ * ones picked in the skills step — as contract entries.
+ */
+export function pickedSourcesOf(
+  state: Pick<
+    NewAgentFormState,
+    'keptSkills' | 'selectedSkills' | 'keptPlugins' | 'selectedPlugins'
+  >,
+): { skills: AgentSkillEntry[]; plugins: AgentPluginEntry[] } {
+  return {
+    skills: [...state.keptSkills, ...state.selectedSkills.map(skillEntryOf)],
+    plugins: [
+      ...state.keptPlugins,
+      ...state.selectedPlugins.map(pluginEntryOf),
+    ],
   };
 }
 

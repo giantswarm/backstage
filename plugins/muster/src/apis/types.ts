@@ -331,6 +331,11 @@ export interface ToolsetPreset {
   name: string;
   description?: string;
   built_in?: boolean;
+  /**
+   * The preset's icon, a sanitised `data:` URI; absent from an older muster
+   * and for a preset configured without one. Check it with `connectorIconOf`.
+   */
+  icon?: string;
 }
 
 export interface FilterToolsResponse {

@@ -4,11 +4,13 @@ import {
   buildAgentIndex,
   decodeAgentIdLabel,
   markEarlierRevisions,
+  newestFirst,
   SESSION_TITLE_FALLBACK,
   sessionSearchFn,
   SessionRow,
   sortSessionRows,
   toAgentIdentifier,
+  timestampValue,
   toSessionRow,
 } from './helpers';
 
@@ -150,6 +152,24 @@ describe('decodeAgentIdLabel', () => {
 
   it('handles an id without the namespace marker', () => {
     expect(decodeAgentIdLabel('lonely_agent')).toBe('lonely-agent');
+  });
+});
+
+describe('timestampValue and newestFirst', () => {
+  it('reads an ISO time as epoch ms, nothing for none or garbage', () => {
+    expect(timestampValue('2026-11-01T00:00:00Z')).toBe(Date.UTC(2026, 10, 1));
+    expect(timestampValue(undefined)).toBeUndefined();
+    expect(timestampValue('not a date')).toBeUndefined();
+  });
+
+  it('orders newest first, an unknown time last, equal times as a tie', () => {
+    // Wrapped: `Array#sort` puts a bare `undefined` last on its own.
+    const times = [3, undefined, 1, 2].map(at => ({ at }));
+    expect(
+      times.sort((a, b) => newestFirst(a.at, b.at)).map(({ at }) => at),
+    ).toEqual([3, 2, 1, undefined]);
+    expect(newestFirst(5, 5)).toBe(0);
+    expect(newestFirst(undefined, undefined)).toBe(0);
   });
 });
 

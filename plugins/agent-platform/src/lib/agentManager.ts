@@ -198,6 +198,22 @@ export type AgentManagerInfo = {
   /** The muster MCP URL composed into every agent; empty = the chart default. */
   muster: { url: string };
   skillsRepositories: string[];
+  /**
+   * The installation's skills credential: the Secret (key `token`) in the
+   * agent's namespace every agent with a git skill fetches its skills with,
+   * unless it names its own `gitAuthSecretName`. Absent: such agents fetch
+   * anonymously, which a private repository refuses (and older agent-manager
+   * builds, which predate the credential, do the same).
+   */
+  skillsGitAuthSecretName?: string;
+  /** When agent-manager keeps that Secret filled with a minted App token. */
+  skillsGitAuthMint?: {
+    secretName: string;
+    refreshedAt?: string;
+    expiresAt?: string;
+    /** The last refresh's failure; empty after a success. */
+    error?: string;
+  };
 };
 
 /** The objects a create applies, as YAML, plus the values they carry. */
