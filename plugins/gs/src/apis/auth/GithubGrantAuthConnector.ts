@@ -12,6 +12,10 @@ import {
 // The header the user's main Dex ID token travels in, which the backend
 // exchanges through the muster token broker.
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import type {
+  ExternalUrlConsentAnswer,
+  ExternalUrlConsentApi,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The backend route minting and revoking the GitHub token. */
 export const GITHUB_TOKEN_PATH = '/api/auth/github-token';
@@ -160,8 +164,11 @@ export type GithubGrantAuthConnectorOptions = {
   mainAuthApi: OpenIdConnectApi & BackstageIdentityApi & ProfileInfoApi;
   /** Defaults to the global fetch. */
   fetch?: typeof fetch;
-  /** Defaults to a full-page navigation of the current window. */
-  navigate?: (url: string) => void;
+  /**
+   * Asks the person before muster's connect page replaces the current one;
+   * nothing navigates without their click.
+   */
+  externalUrlConsentApi: Pick<ExternalUrlConsentApi, 'open'>;
   /** Defaults to the current window location. */
   currentUrl?: () => string;
   /** Defaults to a sessionStorage-backed guard. */
@@ -178,12 +185,11 @@ export type GithubGrantAuthConnectorOptions = {
  *   (a GitHub App user token carries none), and `expiresAt` is the token's
  *   remaining lifetime, so `OAuth2` re-mints three minutes before it ends
  *   while muster refreshes the grant underneath.
- * - When the person holds no grant, `createSession` sends the browser
- *   through muster's connect once (a full-page redirect that returns to the
- *   current page; GitHub redirects straight back for an App the person
- *   already authorized at their login). No "Login Required" dialog, no
- *   popup. A bounce that comes back without a grant is not repeated: the
- *   consumer gets the error instead.
+ * - When the person holds no grant, `createSession` asks them to open
+ *   muster's connect page (the external URL consent dialog, showing the full
+ *   address), which then replaces the current page and returns to it. A
+ *   connect they do not open, or one that comes back without a grant, is not
+ *   asked again at once: the consumer gets the error instead.
  * - `removeSession` revokes the grant in muster (`core_auth_logout`) for
  *   every session and every server of that issuer.
  */
@@ -193,15 +199,16 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
     BackstageIdentityApi &
     ProfileInfoApi;
   private readonly fetchFn: typeof fetch;
-  private readonly navigate: (url: string) => void;
+  private readonly externalUrlConsentApi: Pick<ExternalUrlConsentApi, 'open'>;
   private readonly currentUrl: () => string;
   private readonly bounceGuard: BounceGuard;
+  private consentPrompt?: Promise<ExternalUrlConsentAnswer>;
 
   constructor(options: GithubGrantAuthConnectorOptions) {
     this.backendBaseUrl = options.backendBaseUrl;
     this.mainAuthApi = options.mainAuthApi;
     this.fetchFn = options.fetch ?? ((...args) => fetch(...args));
-    this.navigate = options.navigate ?? (url => window.location.assign(url));
+    this.externalUrlConsentApi = options.externalUrlConsentApi;
     this.currentUrl = options.currentUrl ?? (() => window.location.href);
     this.bounceGuard = options.bounceGuard ?? new SessionStorageBounceGuard();
   }
@@ -217,20 +224,60 @@ export class GithubGrantAuthConnector implements AuthConnector<OAuth2Session> {
         error.reason === 'no_grant' &&
         error.authUrl
       ) {
-        if (!this.bounceGuard.allow()) {
+        const answer = await this.askToConnect(error.authUrl);
+        if (answer === undefined) {
           throw new GithubTokenError(
             'no_grant',
-            'GitHub is not connected in muster: the connect did not produce a grant. Connect GitHub in muster and reload.',
+            'GitHub is not connected in muster. Connect GitHub in muster and reload.',
             error.authUrl,
           );
         }
-        this.bounceGuard.record();
-        this.navigate(withRedirectBack(error.authUrl, this.currentUrl()));
+        if (answer !== 'accept') {
+          throw new GithubTokenError(
+            'no_grant',
+            'GitHub is not connected: the connect page was not opened.',
+            error.authUrl,
+          );
+        }
         // The page is navigating away; nothing to resolve.
         return new Promise(() => {});
       }
       throw error;
     }
+  }
+
+  /**
+   * One consent prompt at a time: concurrent sessions share its answer, so a
+   * decline reaches all of them. Every answer is recorded in the bounce
+   * guard, or each token request would ask again. Resolves `undefined` when
+   * the guard refuses a new prompt.
+   */
+  private askToConnect(
+    authUrl: string,
+  ): Promise<ExternalUrlConsentAnswer | undefined> {
+    if (this.consentPrompt) {
+      return this.consentPrompt;
+    }
+    if (!this.bounceGuard.allow()) {
+      return Promise.resolve(undefined);
+    }
+    const prompt = this.externalUrlConsentApi
+      .open({
+        url: withRedirectBack(authUrl, this.currentUrl()),
+        requester: 'muster (GitHub connect)',
+        message:
+          'Connect your GitHub account in muster. The page comes back here once it is connected.',
+        target: 'page',
+      })
+      .then(answer => {
+        this.bounceGuard.record();
+        return answer;
+      })
+      .finally(() => {
+        this.consentPrompt = undefined;
+      });
+    this.consentPrompt = prompt;
+    return prompt;
   }
 
   async refreshSession(

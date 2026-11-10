@@ -109,6 +109,32 @@ it can be clicked: a table or list row, a card, a nav or rail item, a
 breadcrumb, a tab, a button. A link inside a table cell is a text link and
 stays underlined. Any other exception needs a reason in the code review.
 
+A text link to outside the portal (GitHub, the docs, Grafana, a sign-in page:
+any `http(s)` URL on another origin) opens in a new tab and shows the
+external-link icon after its text, with a visually hidden "(opens in a new
+tab)" for screen readers. On every page, the shell's and the classic
+portal's, in markdown too: `GSMarkdownContent` renders such a link as an
+`ExternalLink`, and `isExternalHref` tells one apart. The controls above (a
+row, a card, a nav or rail item, a menu item, a tile) keep their own look.
+
+### Links that open a new tab
+
+A link or button that opens a new tab says so one way everywhere: the launch
+icon (Material's "open in new") after its text, and "(opens in a new tab)" for
+a screen reader, with `target="_blank"` and `rel="noopener noreferrer"`. Use
+`ui-react`'s components rather than writing it out:
+
+- `ExternalLink` for a text link (`display="inline"` in running text and in a
+  `FactList` value);
+- `ExternalButtonLink` for a bui `ButtonLink`;
+- `ExternalCellText` for a table cell.
+
+All three are bui underneath (`ExternalLink` is bui's `Link`: pass a
+`variant` for its size, or none to take the surrounding font) and render
+`NewTabHint`. A `Button` that opens a tab from code (a sign-in) takes
+`NewTabLabel` as its label: the label and the hint in one box, so the button's
+gap does not set the icon apart. Never a text arrow ("↗") or another icon.
+
 ## Links in the Agent Platform shell
 
 Every text link in the Agent Platform shell looks the same: the shell's link

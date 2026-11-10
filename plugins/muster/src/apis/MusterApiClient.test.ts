@@ -470,7 +470,7 @@ describe('MusterApiClient token selection', () => {
       name: 'MusterTokenMintError',
       reason: 'mint-failed',
       message:
-        'Could not mint a token for muster on golem: Token broker is unreachable',
+        'Could not mint a token for Muster on golem: Token broker is unreachable',
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
   });
@@ -803,6 +803,14 @@ describe('MusterApiClient token selection for derived installations', () => {
     await expect(t.client.signIn('snail')).resolves.toBe(true);
     expect(t.getBrokeredCredentials).toHaveBeenCalledWith('oidc.oidc-snail');
     expect(t.getMainCredentials).not.toHaveBeenCalled();
+  });
+
+  it('authHeaders carries the brokered token for a derived installation', async () => {
+    const t = derivedSetup();
+
+    await expect(t.client.authHeaders('snail')).resolves.toEqual({
+      [HEADER]: 'brokered-token',
+    });
   });
 
   it('still trusts the configured authProvider first', async () => {

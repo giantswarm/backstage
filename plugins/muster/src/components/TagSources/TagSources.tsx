@@ -12,6 +12,14 @@ import { useMusterInstallations } from '../MusterInstanceProvider/useMusterInsta
 import { useMusterResources } from '../MusterInstanceProvider/useMusterResources';
 
 /**
+ * The tag sources sit in the shell layout, so a mount reads the list on any
+ * page. It is the full objects (megabytes for hundreds of workflows) for a
+ * few tags each, so a mount reuses what was read for a while; the Connectors
+ * and Workflows tabs read the same query with their own freshness.
+ */
+const TAG_SOURCE_QUERY_OPTIONS = { staleTime: 5 * 60_000 };
+
+/**
  * Every installation the Connectors and Workflows tabs can show, not only the
  * one in scope: one vocabulary for the fleet.
  */
@@ -31,6 +39,7 @@ function ConnectorTags({ onTags }: TagSourceProps) {
   const { resources, isLoading } = useMusterResources(
     useMusterTagInstallations(),
     MCPServer,
+    TAG_SOURCE_QUERY_OPTIONS,
   );
   // One entry per connector, as the Connectors tab lists them: a family's
   // servers are one connector on each installation. Only the tags written on
@@ -68,6 +77,7 @@ function WorkflowTags({ onTags }: TagSourceProps) {
   const { resources, isLoading } = useMusterResources(
     useMusterTagInstallations(),
     MusterWorkflow,
+    TAG_SOURCE_QUERY_OPTIONS,
   );
   const items = useMemo(
     () => resources.map(workflow => workflow.getTags()),

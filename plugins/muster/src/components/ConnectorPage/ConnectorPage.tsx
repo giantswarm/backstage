@@ -100,6 +100,7 @@ import {
   serverStateLabel,
   StatusWithHint,
   SessionGate,
+  useConnectorIcon,
   useConnectorListPaths,
   useServerSignIn,
 } from '../shared';
@@ -279,6 +280,7 @@ function ConnectorPageContent({
   const counts = useServerCapabilityCounts(representative, {
     enabled: authenticated,
   });
+  const icon = useConnectorIcon(row, installation, authenticated);
   const fleetClusters = useMemo(
     () => fleetManagementClusters(familyGroups(partitionServers(servers))),
     [servers],
@@ -306,6 +308,7 @@ function ConnectorPageContent({
   const usage = useConnectorUsage(row, installation, {
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
+    withToolLatency: tabPath === 'usage',
   });
 
   // The person's own sign-in to the connector. Signing in is offered where its
@@ -444,7 +447,7 @@ function ConnectorPageContent({
     <SessionGate
       session={session}
       installation={installation}
-      context="Tools need a muster session."
+      context="Tools need a Muster session."
     />
   );
   // An SSO connector that refused this person's sign-in hides its tools as a
@@ -637,12 +640,7 @@ function ConnectorPageContent({
         title={displayName}
         breadcrumbs={breadcrumbs}
         leading={
-          <ConnectorLogo
-            name={displayName}
-            icon={representative?.getStatusIcon()}
-            size={56}
-            decorative
-          />
+          <ConnectorLogo name={displayName} icon={icon} size={56} decorative />
         }
         badges={
           <StatusBadge
@@ -716,7 +714,7 @@ function ConnectorPageContent({
                         <SessionGate
                           session={session}
                           installation={installation}
-                          context="Usage figures need a muster session."
+                          context="Usage figures need a Muster session."
                         />
                       )
                     }

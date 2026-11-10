@@ -8,12 +8,8 @@ import {
   ProviderAppAuthStatus,
   ServerAuthStatus,
 } from '../../apis';
-import {
-  DEFAULT_SIGN_IN_TAB_WAIT_MS,
-  NO_SIGN_IN_TAB,
-  openSignInTab,
-  SignInTab,
-} from './signInTab';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
+import { useConnectorLabel } from './hooks/useConnectorLabels';
 
 /** How often `auth://status` is re-read while a browser sign-in is pending. */
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
@@ -205,8 +201,8 @@ interface PendingSignIn {
   /** How muster identifies itself to the AS, when it reported one. */
   clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
   /**
-   * Whether the click already opened the sign-in page in another tab. False
-   * means the popup was blocked, so the URL itself must be the affordance.
+   * Whether the person opened the sign-in page, in the external URL consent
+   * dialog. False means they did not (yet), so the page is offered again.
    */
   opened: boolean;
   /**
@@ -215,17 +211,12 @@ interface PendingSignIn {
    */
   deviceCode?: DeviceCode;
   /**
-   * The Sign in click whose answer (or fallback) wrote the entry. Clicks are
+   * The Sign in click whose answer wrote the entry. Clicks are
    * numbered in order, so an earlier click's late answer never overwrites or
    * clears the entry of a later one: it may come from another surface sharing
    * the entry, or from this row after a remount.
    */
   attemptId?: number;
-  /**
-   * The tab was given up before muster answered, and there is no sign-in
-   * page yet to offer instead: the portal says it is preparing one.
-   */
-  preparing?: boolean;
 }
 
 /** The code a device-code sign-in waits for, and where to enter it. */
@@ -236,17 +227,10 @@ export interface DeviceCode {
   expiresAt?: number;
 }
 
-/** One Sign in click: its tab, and what its fallback replaced. */
+/** One Sign in click. */
 interface SignInAttempt {
   /** Its place in click order, as `PendingSignIn.attemptId`. */
   id: number;
-  tab: SignInTab;
-  /**
-   * Set once the tab was given up before muster answered and the fallback
-   * wrote the entry: the entry it replaced (`null` for none). An answer
-   * without a sign-in page, or a failed request, puts that back.
-   */
-  replaced?: { entry: PendingSignIn | null };
 }
 
 /** The last click's {@link SignInAttempt.id}, across every surface. */
@@ -290,11 +274,11 @@ export interface ServerSignInState {
   /** True while `core_auth_login` is in flight. */
   isPending: boolean;
   /**
-   * Muster's sign-in URL, while muster still honours it. Only the popup-blocked
-   * fallback renders it (the URL is then the only way into the flow); it is
-   * withdrawn before the state behind it expires, and `signIn` then requests
-   * a fresh challenge instead. `undefined` while `isWaiting` means exactly
-   * that: the wait is still on, the earlier URL is not.
+   * Muster's sign-in URL, while muster still honours it: offered through
+   * `openSignInPage` while the person has not opened it. It is withdrawn
+   * before the state behind it expires, and `signIn` then requests a fresh
+   * challenge instead. `undefined` while `isWaiting` means exactly that: the
+   * wait is still on, the earlier URL is not.
    */
   authUrl?: string;
   /**
@@ -309,16 +293,9 @@ export interface ServerSignInState {
   /** True while polling for the browser sign-in to complete. */
   isWaiting: boolean;
   /**
-   * True while waiting, with the tab the click opened given up before muster
-   * answered (closed by the person, or for taking too long) and no sign-in
-   * page to offer yet: the wait is on muster, not on the person, and there is
-   * no other tab to finish in.
-   */
-  isPreparing: boolean;
-  /**
-   * Whether the sign-in page is already open in another tab (the click opens
-   * it directly). False while waiting means the popup was blocked, so the UI
-   * must offer the URL prominently instead of a mere re-open affordance.
+   * Whether the person opened the sign-in page in another tab. False while
+   * waiting means they did not, so the UI offers it again (`openSignInPage`)
+   * instead of a mere re-open affordance.
    */
   signInTabOpened: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
@@ -351,13 +328,18 @@ export interface ServerSignInState {
   /** True while `core_auth_logout` is in flight. */
   isSigningOut: boolean;
   /**
-   * Asks muster for a challenge and opens it in a new tab. Callable while a
-   * flow is outstanding: that is how the sign-in page is reopened, since the
-   * URL muster issued earlier may be expired by then. A fresh challenge
-   * replaces the outstanding entry (and restarts the wait); a refusal leaves
-   * it in place.
+   * Asks muster for a challenge and asks the person to open its page (the
+   * external URL consent dialog). Callable while a flow is outstanding: that
+   * is how the sign-in page is reopened, since the URL muster issued earlier
+   * may be expired by then. A fresh challenge replaces the outstanding entry
+   * (and restarts the wait); a refusal leaves it in place.
    */
   signIn: () => void;
+  /**
+   * Asks again to open the outstanding sign-in page (`authUrl`, or a device
+   * code's `verificationUrl`), for a person who did not open it.
+   */
+  openSignInPage: () => void;
   signOut: () => void;
 }
 
@@ -381,13 +363,13 @@ export interface UseServerSignInOptions {
   timeoutMs?: number;
   /** Overridable for the same reason: how long the issued URL is offered. */
   authUrlLifetimeMs?: number;
-  /**
-   * Overridable for the same reason: how long the tab a click opens waits
-   * for muster's sign-in URL before the URL is offered in the portal instead.
-   */
-  tabWaitMs?: number;
   /** What the hook's own notes call the server; main's "server" by default. */
   noun?: SignInNoun;
+  /**
+   * What people call the server, for the consent dialog that opens its
+   * sign-in page. Read from muster's connector names when not given.
+   */
+  displayName?: string;
   /**
    * Called once per sign-in that lands, for a surface that waits on it (a
    * refused call to clear, or to run again): when muster's status moves
@@ -462,8 +444,8 @@ function reportedDeviceCode(
  *
  * Signing in to muster (`musterApi.signIn`) says nothing about the servers
  * muster aggregates: each OAuth-protected server needs its own flow, started by
- * muster's `core_auth_login`. That returns a sign-in URL, which the click opens
- * directly in a new tab; muster's OAuth callback then connects the server for
+ * muster's `core_auth_login`. That returns a sign-in URL, which opens in a new
+ * tab once the person agrees in the external URL consent dialog; muster's OAuth callback then connects the server for
  * this muster session, with no further tool call. There is no push signal for
  * that, so this hook polls `auth://status` while the flow is outstanding and
  * clears itself (invalidating every muster query, so hidden tools appear) once
@@ -478,6 +460,7 @@ export function useServerSignIn(
   options: UseServerSignInOptions = {},
 ): ServerSignInState {
   const musterApi = useApi(musterApiRef);
+  const consentApi = useApi(externalUrlConsentApiRef);
   const queryClient = useQueryClient();
   // The caller's latest callback, so a sign-in that lands runs what the
   // caller would run now.
@@ -494,7 +477,6 @@ export function useServerSignIn(
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const authUrlLifetimeMs =
     options.authUrlLifetimeMs ?? DEFAULT_AUTH_URL_LIFETIME_MS;
-  const tabWaitMs = options.tabWaitMs ?? DEFAULT_SIGN_IN_TAB_WAIT_MS;
   const app = Boolean(options.app);
   // An App and a server may share a name; their waits must not.
   const pendingName = app ? `app:${serverName}` : serverName;
@@ -521,7 +503,6 @@ export function useServerSignIn(
   const authUrl = pending?.authUrl;
   const clientIdMethod = pending?.clientIdMethod;
   const isWaiting = Boolean(pending);
-  const isPreparing = Boolean(pending?.preparing);
   const signInTabOpened = pending?.opened ?? false;
 
   const { data, error: statusError } = useQuery({
@@ -567,7 +548,7 @@ export function useServerSignIn(
   // user has a muster session) is treated the same way.
   const statusUnreadable =
     data?.unavailable || statusError
-      ? `Cannot read the muster auth status${
+      ? `Cannot read the Muster auth status${
           (data?.message ?? statusError?.message)
             ? `: ${data?.message ?? statusError?.message}`
             : ''
@@ -579,60 +560,37 @@ export function useServerSignIn(
     (readPending(queryClient, installation, pendingName)?.attemptId ?? 0) >
     attempt.id;
 
-  // The tab was given up before muster answered (the person closed it, or it
-  // outlasted the wait): offer the sign-in in the portal at once rather than
-  // behind the button's spinner. The URL is a link as soon as it arrives; an
-  // earlier one still honoured stays on offer meanwhile.
-  //
-  // Not for a provider App: its wait offers Cancel, which cannot stop the
-  // request in flight, so its answer would undo the Cancel. An App's row
-  // keeps its button's spinner and shows the code once muster issued it.
-  const showSignInFallback = (attempt: SignInAttempt) => {
-    if (app || supersedes(attempt)) {
-      return;
-    }
-    const current = readPending(queryClient, installation, pendingName);
-    attempt.replaced = { entry: current };
-    const now = Date.now();
-    setPending({
-      ...(current ?? {
-        authUrlExpiresAt: now + authUrlLifetimeMs,
-        deadline: now + timeoutMs,
-      }),
-      opened: false,
-      preparing: !current?.authUrl,
-      attemptId: attempt.id,
+  const known = useConnectorLabel(installation, serverName, {
+    enabled: !app && options.displayName === undefined,
+  });
+  const requester = options.displayName ?? known;
+
+  // Opens the page once the person agrees in the external URL consent dialog.
+  // The entry records it only while it is still that click's: a later click
+  // has its own page to open.
+  const askToOpen = (
+    url: string,
+    attemptId: number | undefined,
+    message: string,
+  ) => {
+    void consentApi.open({ url, requester, message }).then(answer => {
+      const current = readPending(queryClient, installation, pendingName);
+      if (answer === 'accept' && current && current.attemptId === attemptId) {
+        setPending({ ...current, opened: true });
+      }
     });
   };
+  const signInMessage = `Sign in to ${requester} to continue.`;
+  const deviceCodeMessage = (userCode: string) =>
+    `Enter the code ${userCode} on the page that opens.`;
 
-  // A fallback whose request then brought no sign-in page puts back what it
-  // replaced: nothing, or the outstanding flow as it was (its tab still
-  // open). Only while the entry is still the fallback's own.
-  const undoFallback = (attempt: SignInAttempt) => {
-    if (
-      attempt.replaced &&
-      readPending(queryClient, installation, pendingName)?.attemptId ===
-        attempt.id
-    ) {
-      setPending(attempt.replaced.entry);
-    }
-  };
-
-  // The sign-in tab is opened synchronously in the click handler (see
-  // `signIn` below) and navigated here once muster's challenge arrives:
-  // window.open from this callback would be outside the user gesture's call
-  // stack, which is exactly what popup blockers block. Each click's tab is
-  // the mutation's variable, so an answer only ever navigates its own tab.
   const signIn = useTrackedMutation({
     event: null,
     untrackedReason: 'An authentication step, not a portal action.',
     mutationFn: (_attempt: SignInAttempt) =>
       musterApi.signInServer(target, installation),
     onSuccess: (result, attempt) => {
-      const tab = attempt.tab.take();
       if (result.status === 'connected') {
-        // No page to show: the blank tab would only strand the person.
-        tab?.close();
         setPending(null);
         queryClient.invalidateQueries({ queryKey: ['muster'] });
         // Signed in already: what waits on the sign-in goes ahead, rather
@@ -645,32 +603,18 @@ export function useServerSignIn(
         onSignedInRef.current?.({ here: true });
         return;
       }
-      const hasPage =
-        (result.status === 'pending' && result.deviceCode) ||
-        (result.status === 'auth_required' && result.authUrl);
-      if (!hasPage) {
-        // A refusal changes nothing about a flow that is already outstanding:
-        // a reopen that muster rate-limits must not cancel the wait on the
-        // tab opened earlier, which may still complete. The refusal is
-        // reported through `error` below.
-        tab?.close();
-        undoFallback(attempt);
-        return;
-      }
+      // A refusal changes nothing about a flow that is already outstanding:
+      // a reopen that muster rate-limits must not cancel the wait on the page
+      // opened earlier, which may still complete. The refusal is reported
+      // through `error` below. A later click's entry stands too: a second
+      // sign-in page for the older challenge would only compete with it.
       if (supersedes(attempt)) {
-        // A later click has answered or given up its tab since: its entry
-        // stands, and a second sign-in page for the older challenge would
-        // only compete with it.
-        tab?.close();
         return;
       }
       if (result.status === 'pending' && result.deviceCode) {
-        // A device-code sign-in: the tab shows the provider's page where the
-        // code is entered, and muster files the grant once it is.
+        // A device-code sign-in: the page is the provider's, where the code
+        // is entered, and muster files the grant once it is.
         const { userCode, verificationUrl } = result.deviceCode;
-        if (tab) {
-          tab.location.href = verificationUrl;
-        }
         const now = Date.now();
         const parsed = result.deviceCode.expiresAt
           ? Date.parse(result.deviceCode.expiresAt)
@@ -681,33 +625,28 @@ export function useServerSignIn(
           // muster gives the code up at its expiry; a little later, the wait
           // ends here too and the row offers a new code.
           deadline: (expiresAt ?? now + timeoutMs) + 30_000,
-          opened: Boolean(tab),
+          opened: false,
           deviceCode: { userCode, verificationUrl, expiresAt },
           attemptId: attempt.id,
         });
         queryClient.invalidateQueries({
           queryKey: authStatusQueryKey(installation),
         });
+        askToOpen(verificationUrl, attempt.id, deviceCodeMessage(userCode));
         return;
       }
       if (result.status === 'auth_required' && result.authUrl) {
-        if (tab) {
-          tab.location.href = result.authUrl;
-        }
         const now = Date.now();
         setPending({
           authUrl: result.authUrl,
           authUrlExpiresAt: now + authUrlLifetimeMs,
           deadline: now + timeoutMs,
           clientIdMethod: result.clientIdMethod,
-          opened: Boolean(tab),
+          opened: false,
           attemptId: attempt.id,
         });
+        askToOpen(result.authUrl, attempt.id, signInMessage);
       }
-    },
-    onError: (_error, attempt) => {
-      attempt.tab.close();
-      undoFallback(attempt);
     },
   });
 
@@ -858,15 +797,16 @@ export function useServerSignIn(
   const isSignOutFailure =
     signOutResult?.status === 'error' || signOutResult?.status === 'unknown';
 
+  const deviceCode = pending?.deviceCode ?? reportedDeviceCode(providerApp);
+
   return {
     status,
     providerApp,
-    deviceCode: pending?.deviceCode ?? reportedDeviceCode(providerApp),
+    deviceCode,
     isPending: signIn.isPending,
     authUrl,
     clientIdMethod,
     isWaiting,
-    isPreparing,
     signInTabOpened,
     // Muster's own words for a refusal, or the mutation's transport error. A
     // transport error is prefixed with the action it belongs to: a raw
@@ -911,19 +851,19 @@ export function useServerSignIn(
       // A new click answers for itself: a landing an earlier click reported
       // and no status read has shown yet is no longer waited for.
       landedByClickRef.current = false;
-      // Opened now, while still inside the user gesture (see the mutation);
-      // it says it is opening the sign-in page until muster's challenge
-      // navigates it.
       lastSignInAttemptId += 1;
-      const attempt: SignInAttempt = {
-        id: lastSignInAttemptId,
-        tab: NO_SIGN_IN_TAB,
-      };
-      attempt.tab = openSignInTab({
-        waitMs: tabWaitMs,
-        onGiveUp: () => showSignInFallback(attempt),
-      });
-      signIn.mutate(attempt);
+      signIn.mutate({ id: lastSignInAttemptId });
+    },
+    openSignInPage: () => {
+      if (deviceCode) {
+        askToOpen(
+          deviceCode.verificationUrl,
+          pending?.attemptId,
+          deviceCodeMessage(deviceCode.userCode),
+        );
+      } else if (authUrl) {
+        askToOpen(authUrl, pending?.attemptId, signInMessage);
+      }
     },
     signOut: () => {
       signIn.reset();

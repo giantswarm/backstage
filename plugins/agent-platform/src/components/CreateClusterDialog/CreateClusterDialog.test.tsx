@@ -20,6 +20,10 @@ import {
   defaultRelease,
   parseValues,
 } from './CreateClusterDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@giantswarm/backstage-plugin-muster', () =>
   jest
@@ -208,6 +212,7 @@ async function renderDialog(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [analyticsApiRef, analyticsApi],
       ]}
     >

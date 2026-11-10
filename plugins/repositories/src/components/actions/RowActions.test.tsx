@@ -859,7 +859,7 @@ describe('RowActions', () => {
       ),
     );
     expect(within(follow).getByTestId('phase-reported')).toHaveTextContent(
-      /^Reported after \d+ s converged run ↗$/,
+      /^Reported after \d+ s converged run\s\(opens in a new tab\)$/,
     );
     expect(within(follow).getByRole('link', { name: /^run/ })).toHaveAttribute(
       'href',

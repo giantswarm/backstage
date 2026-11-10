@@ -1,10 +1,11 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { Watch } from '../../apis';
 import { failureTitle, watchPhases } from '../../lib/phases';
 import { FindingsList } from '../FindingsList';
 import { PhaseList } from '../PhaseList';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 import { RepositoryDetails } from '../RepositoryDetails';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The set-up of a repository just created, followed live through
@@ -84,13 +85,9 @@ export function LiveSetup({
                 {watch.release && (
                   <>
                     : the first release{' '}
-                    <Link
-                      href={watch.release.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
+                    <ExternalLink href={watch.release.url} display="inline">
                       {watch.release.tag}
-                    </Link>{' '}
+                    </ExternalLink>{' '}
                     built green
                   </>
                 )}

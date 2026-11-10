@@ -22,7 +22,7 @@ export function sessionGateCopy(
   const where = installation ? ` for ${installation}` : '';
   if (session.pending) {
     return {
-      sentence: `Checking your muster session${where}…`,
+      sentence: `Checking your Muster session${where}…`,
     };
   }
   const failure = session.failure;
@@ -45,7 +45,7 @@ export function sessionGateCopy(
     };
   }
   return {
-    sentence: `No muster session${where} yet.`,
+    sentence: `No Muster session${where} yet.`,
     action: 'Retry',
   };
 }

@@ -182,6 +182,7 @@ export function ConnectorUsageTab({
       return href ? <Link href={href}>{name}</Link> : name;
     },
     withP95: true,
+    p95Loading: read.p95Loading,
   });
 
   if (sessionGate) {

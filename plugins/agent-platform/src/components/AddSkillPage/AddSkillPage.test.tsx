@@ -59,10 +59,22 @@ jest.mock('../../hooks/useCreateSession', () => ({
   }),
 }));
 
-// The catalog's skills, for the tags they already use.
+// The catalog: its skills, for the tags they already use, and the
+// repositories it offers as targets (the portal's: its github.com entries).
 let mockCatalogSkills: DiscoveredSkill[] = [];
+let mockProposalTargets: string[] | undefined;
 jest.mock('../../hooks/useSkillCatalog', () => ({
-  useSkillCatalog: () => ({ skills: mockCatalogSkills }),
+  useSkillCatalog: () => ({
+    skills: mockCatalogSkills,
+    isLoading: false,
+    hasRepositories: mockRepositories.length > 0,
+    proposalTargets:
+      mockProposalTargets ??
+      mockRepositories.filter(url => url.startsWith('https://github.com/')),
+    unproposableRepositories: mockProposalTargets
+      ? []
+      : mockRepositories.filter(url => !url.startsWith('https://github.com/')),
+  }),
 }));
 
 const proposeSkill = jest.fn();
@@ -133,6 +145,7 @@ beforeEach(() => {
   mockRepositories = [REPO];
   mockMetaAgents = {};
   mockCatalogSkills = [];
+  mockProposalTargets = undefined;
   createSession.mockReset();
 });
 
@@ -404,6 +417,20 @@ describe('AddSkillPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('has nothing to propose to when every skill-manager source is read-only', async () => {
+    mockRepositories = ['https://github.com/giantswarm/agent-platform'];
+    mockProposalTargets = [];
+    await renderPage();
+
+    expect(screen.getByText('No repository to propose to')).toBeInTheDocument();
+    expect(
+      screen.getByText(/None of the skill repositories takes new skills/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers only github.com repositories, and says why the others are missing', async () => {
     mockRepositories = ['http://gitea.lab.local/lab/skills', REPO];
     await renderPage();
@@ -530,13 +557,15 @@ describe('AddSkillPage editing an existing skill', () => {
 
     expect(screen.getByText('This file stays as it is')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'references/setup.md' }),
+      screen.getByRole('link', {
+        name: 'references/setup.md (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       `${edit.skillHref}/instructions?file=references/setup.md`,
     );
     expect(
-      screen.getByRole('link', { name: 'Edit on GitHub ↗' }),
+      screen.getByRole('link', { name: 'Edit on GitHub (opens in a new tab)' }),
     ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${COMMIT}/support/ticket-triage`,

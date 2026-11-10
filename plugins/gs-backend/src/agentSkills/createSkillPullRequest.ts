@@ -54,6 +54,11 @@ export interface CreateSkillPullRequestOptions {
    * start (the route always requires it).
    */
   baseCommit?: string;
+  /**
+   * The branch the pull request targets, where the catalog reads the
+   * repository from: the repository's default branch when absent.
+   */
+  base?: string;
   /** For the best-effort cleanup of a branch a failed attempt left (debug). */
   logger?: LoggerService;
 }
@@ -65,7 +70,7 @@ export interface SkillPullRequest {
   /** The branch the SKILL.md was pushed to (`add-skill/<name>`, or
    * `update-skill/<directory as a slug>`; see {@link branchCandidates}). */
   branch: string;
-  /** The branch the pull request targets (the repo's default branch). */
+  /** The branch the pull request targets. */
   base: string;
   /** The path of the written SKILL.md within the repository. */
   path: string;
@@ -292,7 +297,7 @@ export async function createSkillPullRequest(
     default_branch?: string;
     permissions?: { push?: boolean };
   };
-  const base = repoData.default_branch || 'main';
+  const base = options.base || repoData.default_branch || 'main';
   if (repoData.permissions && !repoData.permissions.push) {
     throw new GitHubApiError(
       403,

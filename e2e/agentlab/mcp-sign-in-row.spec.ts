@@ -6,6 +6,7 @@ import {
   open,
   signIn,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { fixtureRow, openInbox, signOutOfFixture } from './inboxSignIn';
 import { contextOptionsFor, lab } from './lab';
@@ -40,9 +41,13 @@ test('the inbox names a server waiting for the sign-in, and its Sign in signs in
   const server = dialog.getByRole('listitem').filter({ hasText: label });
   await expect(server).toBeVisible();
 
-  const popup = admin.waitForEvent('popup');
-  await server.getByRole('button', { name: 'Sign in' }).click();
-  await completeDexLogin(await popup, lab.users.admin);
+  await completeDexLogin(
+    await openThroughConsent(
+      admin,
+      server.getByRole('button', { name: 'Sign in' }),
+    ),
+    lab.users.admin,
+  );
 
   await expect(
     server,

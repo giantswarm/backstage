@@ -45,13 +45,17 @@ describe('SkillEditFiles', () => {
       screen.getByText('These 2 files stay as they are'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'references/setup guide.md' }),
+      screen.getByRole('link', {
+        name: 'references/setup guide.md (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       `${SKILL_HREF}/instructions?file=references/setup%20guide.md`,
     );
     expect(
-      screen.getByRole('link', { name: 'scripts/query.py' }),
+      screen.getByRole('link', {
+        name: 'scripts/query.py (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       `${SKILL_HREF}/instructions?file=scripts/query.py`,
@@ -60,7 +64,7 @@ describe('SkillEditFiles', () => {
       screen.queryByRole('link', { name: 'SKILL.md' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Edit on GitHub ↗' }),
+      screen.getByRole('link', { name: 'Edit on GitHub (opens in a new tab)' }),
     ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/support/ticket-triage`,
@@ -104,13 +108,13 @@ describe('SkillEditFiles', () => {
       screen.getByText('These 30 files stay as they are'),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'data/f29.csv' }),
+      screen.queryByRole('link', { name: 'data/f29.csv (opens in a new tab)' }),
     ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: 'Show all 30 files' }),
     );
     expect(
-      screen.getByRole('link', { name: 'data/f29.csv' }),
+      screen.getByRole('link', { name: 'data/f29.csv (opens in a new tab)' }),
     ).toBeInTheDocument();
   });
 

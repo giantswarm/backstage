@@ -11,6 +11,7 @@ import {
   plansPullExternalRouteRef,
   plansRootExternalRouteRef,
 } from '../../routes';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 const useStyles = makeStyles((theme: Theme) => ({
   divider: {
@@ -117,28 +118,36 @@ export function PlanPanel({
       </Typography>
       {merged.map(plan => (
         <Box key={`${plan.repo}/${plan.folder}`} className={classes.entry}>
-          <Link
-            to={
-              plansRoot
-                ? `${plansRoot()}?repo=${encodeURIComponent(plan.repo)}&plan=${encodeURIComponent(plan.folder)}`
-                : `https://github.com/${plan.repo}/tree/HEAD/${plan.folder}`
-            }
-          >
-            {plan.folder}
-          </Link>
+          {plansRoot ? (
+            <Link
+              to={`${plansRoot()}?repo=${encodeURIComponent(plan.repo)}&plan=${encodeURIComponent(plan.folder)}`}
+            >
+              {plan.folder}
+            </Link>
+          ) : (
+            <ExternalLink
+              href={`https://github.com/${plan.repo}/tree/HEAD/${plan.folder}`}
+            >
+              {plan.folder}
+            </ExternalLink>
+          )}
         </Box>
       ))}
       {proposed.map(pull => (
         <Box key={`${pull.repo}#${pull.number}`} className={classes.entry}>
-          <Link
-            to={
-              plansPull
-                ? `${plansPull({ number: String(pull.number) })}?repo=${encodeURIComponent(pull.repo)}`
-                : `https://github.com/${pull.repo}/pull/${pull.number}`
-            }
-          >
-            proposed in {pull.repo}#{pull.number}
-          </Link>
+          {plansPull ? (
+            <Link
+              to={`${plansPull({ number: String(pull.number) })}?repo=${encodeURIComponent(pull.repo)}`}
+            >
+              proposed in {pull.repo}#{pull.number}
+            </Link>
+          ) : (
+            <ExternalLink
+              href={`https://github.com/${pull.repo}/pull/${pull.number}`}
+            >
+              proposed in {pull.repo}#{pull.number}
+            </ExternalLink>
+          )}
         </Box>
       ))}
     </>

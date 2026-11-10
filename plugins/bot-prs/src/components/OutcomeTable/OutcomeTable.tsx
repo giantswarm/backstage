@@ -4,13 +4,15 @@ import {
   Cell,
   CellText,
   Flex,
-  Link,
   Table,
   Text,
   VisuallyHidden,
   type ColumnConfig,
 } from '@backstage/ui';
-import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  StatusLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   GREEN_GROUP,
@@ -151,9 +153,9 @@ function columnsOf(showTeam: boolean): ColumnConfig<BotPrRow>[] {
             title={row.title}
             style={{ overflowWrap: 'anywhere' }}
           >
-            <Link href={row.url} target="_blank" rel="noopener noreferrer">
+            <ExternalLink href={row.url} display="inline">
               #{row.number}
-            </Link>{' '}
+            </ExternalLink>{' '}
             {capitalized(withoutCommitType(row.title))}
           </Text>
         </Cell>

@@ -40,6 +40,7 @@ import {
   ListToolsResponse,
   McpServerListResponse,
   ConnectorNamesResponse,
+  MusterServerInfoResponse,
   MusterAnswerCutError,
   MusterApi,
   MusterAuthProvidersApi,
@@ -53,6 +54,7 @@ import {
   WorkflowExecution,
   WorkflowExecutionListResponse,
   WorkflowListResponse,
+  McpToolLatency,
   McpUsage,
   WorkflowStats,
 } from './types';
@@ -188,6 +190,26 @@ export function toolErrorDetails(error: unknown): string[] {
   return isStringArray(details) ? details : [];
 }
 
+/** The window and narrowing of a usage read, as a query string. */
+function usageQuery(options: {
+  hours?: number;
+  servers?: readonly string[];
+  tool?: string;
+}): string {
+  const searchParams = new URLSearchParams();
+  if (options.hours !== undefined) {
+    searchParams.set('hours', String(options.hours));
+  }
+  for (const server of options.servers ?? []) {
+    searchParams.append('server', server);
+  }
+  if (options.tool !== undefined) {
+    searchParams.set('tool', options.tool);
+  }
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
 export class MusterApiClient implements MusterApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
@@ -286,19 +308,21 @@ export class MusterApiClient implements MusterApi {
       tool?: string;
     } = {},
   ): Promise<McpUsage> {
-    const searchParams = new URLSearchParams();
-    if (options.hours !== undefined) {
-      searchParams.set('hours', String(options.hours));
-    }
-    for (const server of options.servers ?? []) {
-      searchParams.append('server', server);
-    }
-    if (options.tool !== undefined) {
-      searchParams.set('tool', options.tool);
-    }
-    const query = searchParams.toString();
     return this.get<McpUsage>(
-      `/usage${query ? `?${query}` : ''}`,
+      `/usage${usageQuery(options)}`,
+      options.installation,
+    );
+  }
+
+  async getMcpToolLatency(
+    options: {
+      installation?: string;
+      hours?: number;
+      servers?: readonly string[];
+    } = {},
+  ): Promise<McpToolLatency> {
+    return this.get<McpToolLatency>(
+      `/usage/tool-latency${usageQuery(options)}`,
       options.installation,
     );
   }
@@ -311,6 +335,14 @@ export class MusterApiClient implements MusterApi {
     installation?: string,
   ): Promise<ConnectorNamesResponse> {
     return this.get<ConnectorNamesResponse>('/servers/names', installation, {
+      silent: true,
+    });
+  }
+
+  async getServerInfo(
+    installation?: string,
+  ): Promise<MusterServerInfoResponse> {
+    return this.get<MusterServerInfoResponse>('/server-info', installation, {
       silent: true,
     });
   }
@@ -512,6 +544,11 @@ export class MusterApiClient implements MusterApi {
       typeof server === 'string' ? { server } : server,
       installation,
     );
+  }
+
+  async authHeaders(installation?: string): Promise<Record<string, string>> {
+    const token = await this.resolveToken(installation);
+    return token ? { [MUSTER_AUTH_HEADER]: token } : {};
   }
 
   /**
@@ -772,7 +809,7 @@ export class MusterApiClient implements MusterApi {
       throw new MusterTokenMintError(
         installation,
         'session-expired',
-        `Your portal session has expired; no sign-in token is available for muster${
+        `Your portal session has expired; no sign-in token is available for Muster${
           installation ? ` on ${installation}` : ''
         }.`,
       );

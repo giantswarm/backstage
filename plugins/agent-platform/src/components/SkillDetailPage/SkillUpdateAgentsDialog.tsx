@@ -6,13 +6,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Checkbox, Flex, Link, Text, VisuallyHidden } from '@backstage/ui';
+import { Checkbox, Flex, Text, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   HelmRelease,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  ExternalLink,
   ConfirmDialog,
   useFieldValidation,
   useGroupFieldError,
@@ -340,14 +341,13 @@ function outcomeLine(outcome: UpdateOutcome) {
         {outcome.pullRequest ? (
           <>
             {': '}
-            <Link
+            <ExternalLink
               href={outcome.pullRequest}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="body-small"
+              display="inline"
             >
               {outcome.pullRequest}
-            </Link>
+            </ExternalLink>
           </>
         ) : (
           '.'

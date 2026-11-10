@@ -17,6 +17,7 @@ import {
   reduceReliability,
   reduceTokenTypes,
   reduceUnpricedModels,
+  withFreshInput,
 } from './llmUsage';
 
 function agent(overrides: Partial<AgentRow> = {}): AgentRow {
@@ -74,9 +75,9 @@ describe('reduceByAgent', () => {
     ]);
   });
 
-  it('sums the token types a single agent row is split across', () => {
+  it('counts the token types a single agent row is split across once each', () => {
     // The query groups by token type as well as by agent, so one agent arrives
-    // as four series. Failing to sum them would show a quarter of the truth.
+    // as four series. Since agentgateway v1.5.0 `input` holds the cache reads.
     const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
     const rows = reduceByAgent({
       ...byAgentOptions,
@@ -93,7 +94,58 @@ describe('reduceByAgent', () => {
     });
 
     expect(rows[0].costUsd).toBe(4.5);
-    expect(rows[0].tokens).toBe(1_000_000);
+    expect(rows[0].tokens).toBe(950_000);
+  });
+
+  it('adds the cache types to input from a gateway that leaves them out of it', () => {
+    // Before agentgateway v1.5.0 `input` was fresh input alone, so cache reads
+    // well above it are their own tokens.
+    const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
+    const rows = reduceByAgent({
+      ...byAgentOptions,
+      cost: undefined,
+      tokens: [
+        sample({ ...labels, gen_ai_token_type: 'input' }, '100000'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_read' }, '900000'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_write' }, '50000'),
+        sample({ ...labels, gen_ai_token_type: 'output' }, '50000'),
+      ],
+      calls: undefined,
+    });
+
+    expect(rows[0].tokens).toBe(1_100_000);
+  });
+
+  it('decides the convention per model before adding an agent row up', () => {
+    // One model's series in each convention: the row is the sum of each
+    // counted once, not a reading of the agent's totals.
+    const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
+    const series = (model: string, values: Record<string, string>) =>
+      Object.entries(values).map(([type, value]) =>
+        sample(
+          { ...labels, gen_ai_response_model: model, gen_ai_token_type: type },
+          value,
+        ),
+      );
+    const rows = reduceByAgent({
+      ...byAgentOptions,
+      cost: undefined,
+      tokens: [
+        ...series('new', {
+          input: '1000',
+          input_cache_read: '900',
+          output: '10',
+        }),
+        ...series('old', {
+          input: '100',
+          input_cache_read: '900',
+          output: '10',
+        }),
+      ],
+      calls: undefined,
+    });
+
+    expect(rows[0].tokens).toBe(1010 + 1010);
   });
 
   it('renders a pair that matches no agent as a removed agent, unlinked, its spend kept', () => {
@@ -269,9 +321,21 @@ describe('reduceTokenTypes and cacheReadShare', () => {
     });
   });
 
-  it('measures cache reads against cache-eligible input only', () => {
-    // Output must not dilute the share — it is not cache-eligible, so
+  it('measures cache reads against input counted once, which holds the cache types', () => {
+    // Output must not dilute the share: it is not cache-eligible, so
     // including it would make heavy generation look like broken caching.
+    const share = cacheReadShare({
+      input: 400,
+      output: 10_000,
+      inputCacheRead: 300,
+      inputCacheWrite: 100,
+      other: 0,
+    });
+
+    expect(share).toBeCloseTo(75);
+  });
+
+  it('adds the cache types to input from a gateway that leaves them out of it', () => {
     const share = cacheReadShare({
       input: 100,
       output: 10_000,
@@ -875,6 +939,76 @@ describe('buildLlmUsage', () => {
     expect(usage.totals).toHaveProperty('previousCostUsd', undefined);
   });
 
+  it('counts the gazelle week once, as the session estimate does', () => {
+    // giantswarm/backstage#3346: claude-sonnet-5-5 on gazelle, 7 days to
+    // 2026-11-03. The cache types are 99.998% of `input`.
+    const sonnet = { ...labels, gen_ai_response_model: 'claude-sonnet-5-5' };
+    const usage = buildLlmUsage({
+      ...base,
+      calls: [],
+      cost: [sample(sonnet, '2.73')],
+      tokens: [
+        sample({ ...sonnet, gen_ai_token_type: 'input' }, '4537960'),
+        sample({ ...sonnet, gen_ai_token_type: 'input_cache_read' }, '4145979'),
+        sample({ ...sonnet, gen_ai_token_type: 'input_cache_write' }, '391832'),
+        sample({ ...sonnet, gen_ai_token_type: 'output' }, '92499'),
+      ],
+    });
+
+    expect(usage.totals.tokens).toBe(4_630_459);
+    expect(usage.byModel[0].tokens).toBe(4_630_459);
+    expect(usage.byAgent[0].tokens).toBe(4_630_459);
+    expect(usage.byOrganization[0].tokens).toBe(4_630_459);
+    expect(usage.byAgentModel[0].tokens).toBe(4_630_459);
+    expect(usage.totals.cacheReadSharePct).toBeCloseTo(91.36, 1);
+    expect(usage.totals.usdPerMillion).toBeCloseTo(
+      usage.rates.blended! * 1_000_000,
+    );
+  });
+
+  it('stacks the daily tokens as fresh input, cache reads, cache writes and output', () => {
+    // A point at midnight of 10 Sep totals 9 Sep; today's row is the partial.
+    const at = Date.UTC(2026, 8, 10) / 1000;
+    const day = (type: string, value: string): MimirMatrixSample => ({
+      metric: { gen_ai_token_type: type },
+      values: [[at, value]],
+    });
+    const usage = buildLlmUsage({
+      ...base,
+      cost: [],
+      tokens: [],
+      tokensPerDay: [
+        day('input', '1000'),
+        day('input_cache_read', '800'),
+        day('input_cache_write', '150'),
+        day('output', '20'),
+      ],
+      tokensToday: [
+        sample({ gen_ai_token_type: 'input' }, '500'),
+        sample({ gen_ai_token_type: 'input_cache_read' }, '450'),
+      ],
+    });
+
+    expect(usage.tokensPerDay.series).toContain('fresh_input');
+    expect(usage.tokensPerDay.series).not.toContain('input');
+    expect(usage.tokensPerDay.rows).toEqual([
+      {
+        day: '2026-09-09',
+        fresh_input: 50,
+        input_cache_read: 800,
+        input_cache_write: 150,
+        output: 20,
+      },
+      {
+        day: '2026-09-10',
+        fresh_input: 50,
+        input_cache_read: 450,
+        input_cache_write: 0,
+        output: 0,
+      },
+    ]);
+  });
+
   it('reports only a blended rate when cost carries no token type', () => {
     const usage = buildLlmUsage({
       ...base,
@@ -1038,5 +1172,90 @@ describe('firstSampledDay', () => {
         windowTotals: [[]],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('withFreshInput', () => {
+  it('replaces input with the input neither read from nor written to cache', () => {
+    const daily = withFreshInput({
+      rows: [
+        {
+          day: '2026-11-02',
+          input: 1000,
+          input_cache_read: 800,
+          input_cache_write: 150,
+          output: 20,
+        },
+      ],
+      series: ['input', 'input_cache_read', 'input_cache_write', 'output'],
+    });
+
+    expect(daily.rows).toEqual([
+      {
+        day: '2026-11-02',
+        fresh_input: 50,
+        input_cache_read: 800,
+        input_cache_write: 150,
+        output: 20,
+      },
+    ]);
+    expect(daily.series).toEqual([
+      'input_cache_read',
+      'input_cache_write',
+      'fresh_input',
+      'output',
+    ]);
+  });
+
+  it('keeps input as fresh input on a day from a gateway that leaves the cache types out', () => {
+    const daily = withFreshInput({
+      rows: [
+        { day: '2026-11-02', input: 100, input_cache_read: 800, output: 20 },
+      ],
+      series: ['input_cache_read', 'input', 'output'],
+    });
+
+    expect(daily.rows[0]).toEqual({
+      day: '2026-11-02',
+      fresh_input: 100,
+      input_cache_read: 800,
+      output: 20,
+    });
+  });
+
+  it("treats today's partial row like every other day", () => {
+    const daily = withFreshInput(
+      applyTodayPartial(
+        {
+          rows: [
+            { day: '2026-11-02', input: 0, input_cache_read: 0 },
+            { day: '2026-11-03', input: 0, input_cache_read: 0 },
+          ],
+          series: ['input', 'input_cache_read'],
+        },
+        {
+          day: '2026-11-03',
+          samples: [
+            sample({ gen_ai_token_type: 'input' }, '500'),
+            sample({ gen_ai_token_type: 'input_cache_read' }, '450'),
+          ],
+          label: labels => labels.gen_ai_token_type,
+        },
+      ),
+    );
+
+    expect(daily.rows[1]).toEqual({
+      day: '2026-11-03',
+      fresh_input: 50,
+      input_cache_read: 450,
+    });
+  });
+
+  it('leaves a series without input alone', () => {
+    const daily = {
+      rows: [{ day: '2026-11-02', output: 5 }],
+      series: ['output'],
+    };
+    expect(withFreshInput(daily)).toBe(daily);
   });
 });

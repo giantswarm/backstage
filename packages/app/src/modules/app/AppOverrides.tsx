@@ -43,6 +43,11 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
+import {
+  ExternalUrlConsentDialogHost,
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { grafanaPlugin } from '@backstage-community/plugin-grafana';
 import { SentryErrorReporter } from '../../apis/errorReporter';
 import { TelemetryDeckAnalyticsApi } from '../../apis/analytics';
@@ -232,6 +237,25 @@ export const appOverrides = createFrontendModule({
           aws: <AWSIcon />,
           azure: <AzureIcon />,
         },
+      },
+    }),
+    /**
+     * The one dialog through which the portal opens an address a server
+     * provided: a sign-in, a connect, an MCP URL elicitation.
+     */
+    ApiBlueprint.make({
+      name: 'external-url-consent',
+      params: defineParams =>
+        defineParams({
+          api: externalUrlConsentApiRef,
+          deps: {},
+          factory: () => new ExternalUrlConsentManager(),
+        }),
+    }),
+    AppRootElementBlueprint.make({
+      name: 'external-url-consent-dialog',
+      params: {
+        element: <ExternalUrlConsentDialogHost />,
       },
     }),
     AppRootElementBlueprint.make({
