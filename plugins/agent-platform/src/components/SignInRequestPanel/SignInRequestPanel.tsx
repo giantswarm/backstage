@@ -1,4 +1,5 @@
-import { Alert, Button, ButtonLink, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { ExternalButtonLink } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 
@@ -101,15 +102,13 @@ export function SignInRequestPanel({
           <ConnectorSignInAction link={link} />
         ) : (
           <>
-            <ButtonLink
+            <ExternalButtonLink
               href={signIn.url}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="primary"
               size="small"
             >
-              Sign in ↗
-            </ButtonLink>
+              Sign in
+            </ExternalButtonLink>
             <Button
               variant="secondary"
               size="small"

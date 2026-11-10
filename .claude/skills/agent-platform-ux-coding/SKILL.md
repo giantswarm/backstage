@@ -211,8 +211,14 @@ them and never invent a palette.
   inside a text link takes the link's colour from the same rule.
 - The underline is the cue, not the colour: #00609c holds 4.5:1 against every
   surface a link sits on, but only 2.3:1 against the body text, short of the
-  3:1 at which colour alone may mark a link. A trailing arrow is not a cue
-  either: "↗" marks a new tab (`ExternalLink`, `GSReleaseInfo`), nothing else.
+  3:1 at which colour alone may mark a link. The trailing launch icon is not
+  a cue either: it marks a new tab, nothing else.
+- A link or button that opens a new tab says so the one way: the launch icon
+  after its text and "(opens in a new tab)" for a screen reader, from
+  `ui-react`'s `ExternalLink` (text), `ExternalButtonLink` (a bui
+  `ButtonLink`) or `ExternalCellText` (a table cell). Never a text arrow
+  ("↗") or another icon; a `Button` that opens a tab from code puts
+  `NewTabHint` after its label.
 - Dark mode: the shell renders light, but a toast inverts the theme the person
   picked, so its links can sit on bui's dark surfaces. There the link colour is
   #bcdcff (`agentShellDarkColors`), which holds 4.5:1 against bui's dark app

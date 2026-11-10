@@ -1,6 +1,10 @@
 import { Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { ShowMore, USED_BY_ROWS } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  ShowMore,
+  USED_BY_ROWS,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { SKILL_MD } from '../../lib/skillFiles';
 import {
@@ -67,14 +71,11 @@ export function SkillEditFiles({
             : `These ${count} files stay as they are`}
         </Text>
         {githubUrl && (
-          <Link
-            href={githubUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="body-small"
-          >
-            Edit on GitHub ↗
-          </Link>
+          <Text variant="body-small">
+            <ExternalLink href={githubUrl} display="inline">
+              Edit on GitHub
+            </ExternalLink>
+          </Text>
         )}
       </Flex>
       <ShowMore items={others} initial={USED_BY_ROWS} noun="file" revealAll>

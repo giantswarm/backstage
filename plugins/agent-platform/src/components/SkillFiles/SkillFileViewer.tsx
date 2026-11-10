@@ -1,8 +1,9 @@
 import { useMemo, type ReactNode } from 'react';
-import { Alert, ButtonLink, Flex, Text, VisuallyHidden } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   CommitSha,
+  ExternalButtonLink,
   ExternalLink,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -176,16 +177,9 @@ function NotShown({
         {why}
       </Text>
       {url ? (
-        <ButtonLink
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-        >
-          {/* A button keeps its arrow; a screen reader hears what it means. */}
-          View on GitHub <span aria-hidden>↗</span>
-          <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
-        </ButtonLink>
+        <ExternalButtonLink href={url} variant="secondary">
+          View on GitHub
+        </ExternalButtonLink>
       ) : (
         <Text as="p" variant="body-small" color="secondary">
           {file.path} · {formatBytes(file.size)} — in the skill’s repository at{' '}

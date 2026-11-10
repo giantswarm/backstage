@@ -1,6 +1,9 @@
 import { makeStyles, Theme } from '@material-ui/core';
-import { Button, ButtonLink, Text } from '@backstage/ui';
-import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
+import { Button, Text } from '@backstage/ui';
+import {
+  DisabledAction,
+  ExternalButtonLink,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
   SignedIn,
@@ -346,15 +349,13 @@ export function SignInFlow({
   } else if (authUrl) {
     wayIn = (
       <>
-        <ButtonLink
+        <ExternalButtonLink
           href={authUrl}
-          target="_blank"
-          rel="noopener noreferrer"
           variant={prominent ? 'primary' : 'secondary'}
           size="small"
         >
-          Open sign-in page ↗
-        </ButtonLink>
+          Open sign-in page
+        </ExternalButtonLink>
         {waiting}
       </>
     );

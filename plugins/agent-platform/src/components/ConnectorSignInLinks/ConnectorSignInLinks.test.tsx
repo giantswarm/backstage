@@ -123,7 +123,9 @@ async function renderSession({
 }
 
 const signInLink = () =>
-  screen.getByRole('link', { name: 'Sign in to Grafana Cloud ↗' });
+  screen.getByRole('link', {
+    name: 'Sign in to Grafana Cloud (opens in a new tab)',
+  });
 const queryDone = () => screen.queryByText('Signed in to Grafana Cloud');
 
 /** What muster returns the sign-in's tab to, as the link asks it to. */
@@ -279,7 +281,9 @@ describe('ConnectorSignInLinks', () => {
     expect(
       screen.getByText('Sign in to github to continue.'),
     ).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: 'Sign in ↗' });
+    const link = screen.getByRole('link', {
+      name: 'Sign in (opens in a new tab)',
+    });
     const href = link.getAttribute('href')!;
     expect(returnPage(href).pathname).toBe('/sessions/gazelle/s1');
     await user.click(link);
@@ -352,7 +356,9 @@ describe('ConnectorSignInLinks', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Open the sign-in page again ↗' }),
+      screen.queryByRole('link', {
+        name: 'Open the sign-in page again (opens in a new tab)',
+      }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: "I've signed in" }));
     expect(queryDone()).toBeInTheDocument();

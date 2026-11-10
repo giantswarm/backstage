@@ -43,6 +43,7 @@ import {
   isSkillContentReadable,
   resolveSkillDetailPath,
   sameCommit,
+  skillFileUrl,
   skillSourceUrl,
   skillTags,
   type DiscoveredSkill,
@@ -428,6 +429,9 @@ function SkillPage({
   const source = skillSource(skill);
   // The skill's folder at the catalog's head (github.com only).
   const sourceUrl = skillSourceUrl(skill);
+  const skillMdPath = skill.path ? `${skill.path}/SKILL.md` : 'SKILL.md';
+  // The SKILL.md at the same commit as "Latest commit" (github.com only).
+  const skillMdUrl = skillFileUrl(skill, 'SKILL.md');
 
   const facts: Fact[] = [
     {
@@ -441,7 +445,13 @@ function SkillPage({
     },
     {
       label: 'Path',
-      value: skill.path ? `${skill.path}/SKILL.md` : 'SKILL.md',
+      value: skillMdUrl ? (
+        <ExternalLink href={skillMdUrl} display="inline">
+          {skillMdPath}
+        </ExternalLink>
+      ) : (
+        skillMdPath
+      ),
     },
     { label: 'Branch', value: skill.ref },
     {

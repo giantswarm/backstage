@@ -30,10 +30,9 @@ describe('SignInRequestPanel', () => {
       />,
     );
 
-    expect(screen.getByRole('link', { name: 'Sign in ↗' })).toHaveAttribute(
-      'href',
-      SIGN_IN.signIn!.url,
-    );
+    expect(
+      screen.getByRole('link', { name: 'Sign in (opens in a new tab)' }),
+    ).toHaveAttribute('href', SIGN_IN.signIn!.url);
     await user.click(screen.getByRole('button', { name: "I've signed in" }));
     expect(onAnswer).toHaveBeenLastCalledWith({
       taskId: 'task-1',

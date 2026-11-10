@@ -2798,8 +2798,8 @@ no task id), the panel is withheld and the page says so.
 An agent that calls `core_auth_login` gets muster's sign-in link
 (`…/oauth/proxy/start?state=…`) and passes it on, in a message or an `ask_user`
 question. `ConnectorSignInLinks` (around the session column) shows such a link
-as **Sign in to <connector> ↗** in place of the URL, wherever `MessageMarkdown`
-renders it. Only a link muster issued in this session counts: the answer of one
+as **Sign in to <connector>**, with the new-tab icon, in place of the URL,
+wherever `MessageMarkdown` renders it. Only a link muster issued in this session counts: the answer of one
 of the session's `core_auth_login` calls, for a server among the installation's
 MCPServer CRs (`lib/connectorSignIn.ts`). The agent's own text never makes a
 link a sign-in. A link muster no longer honours (10 minutes) says so and asks

@@ -10,14 +10,14 @@ describe('PhaseList', () => {
     render(<PhaseList phases={watchPhases(watchOf('declared'))} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(6);
     expect(row('created')).toHaveTextContent(
-      /^Created at 10:00:00Z repository ↗$/,
+      /^Created at 10:00:00Z repository\s\(opens in a new tab\)$/,
     );
     expect(
       within(row('created')).getByRole('link', { name: /repository/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/shiny-service');
     expect(row('scaffolded')).toHaveTextContent(/^Scaffolded after 4 s$/);
     expect(row('declared')).toHaveTextContent(
-      /^Declared after 13 s \(\+9 s\) pull request ↗$/,
+      /^Declared after 13 s \(\+9 s\) pull request\s\(opens in a new tab\)$/,
     );
     expect(row('merged')).toHaveAttribute('data-state', 'pending');
     expect(row('merged')).toHaveTextContent(
@@ -32,7 +32,7 @@ describe('PhaseList', () => {
     render(<PhaseList phases={watchPhases(watchReady)} />);
     expect(row('released')).toHaveAttribute('data-state', 'done');
     expect(row('released')).toHaveTextContent(
-      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0 ↗$/,
+      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0\s\(opens in a new tab\)$/,
     );
     expect(
       within(row('released')).getByRole('link', { name: /v0\.1\.0/ }),

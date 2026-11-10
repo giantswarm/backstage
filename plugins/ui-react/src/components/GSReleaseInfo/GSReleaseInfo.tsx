@@ -1,5 +1,6 @@
 import { Link, Text } from '@backstage/ui';
 import { CommitSha } from '../CommitSha';
+import { NewTabHint } from '../ExternalLink/NewTabHint';
 import { useShellScope } from '../ShellScope';
 
 const REPOSITORY_URL = 'https://github.com/giantswarm/backstage';
@@ -18,13 +19,13 @@ const RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+(-rc\.\d+)?$/;
  * the app's `config.d.ts`) and leaves the line out when it is unset, so this
  * library reads no config of its own.
  *
- * Both links open a new tab. Inside the shell (`ShellScopeProvider`) their
- * text ends in "↗", as the shell's other new-tab links do; classic pages keep
- * the plain line.
+ * Both links open a new tab. Inside the shell (`ShellScopeProvider`) they say
+ * so with the launch icon and "(opens in a new tab)", as `ExternalLink` does;
+ * classic pages keep the plain line.
  */
 export const GSReleaseInfo = ({ version }: { version: string }) => {
   const inShell = useShellScope();
-  const newTabMarker = inShell ? ' ↗' : '';
+  const newTabMarker = inShell ? <NewTabHint /> : null;
   const bareVersion = version.replace(/^v/, '');
   const isRelease = RELEASE_VERSION_PATTERN.test(bareVersion);
   const tag = `v${bareVersion}`;

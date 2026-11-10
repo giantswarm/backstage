@@ -580,7 +580,7 @@ describe('CreateRepositoryPage', () => {
       timeout: 20,
     });
     expect(within(phases).getByTestId('phase-declared')).toHaveTextContent(
-      /^Declared after 13 s \(\+9 s\) pull request ↗$/,
+      /^Declared after 13 s \(\+9 s\) pull request\s\(opens in a new tab\)$/,
     );
     expect(within(phases).getByTestId('phase-merged')).toHaveTextContent(
       'Merged the declaration pull request has not merged yet',
@@ -603,7 +603,7 @@ describe('CreateRepositoryPage', () => {
       'Every phase is done: the first release v0.1.0 built green.',
     );
     expect(within(phases).getByTestId('phase-released')).toHaveTextContent(
-      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0 ↗$/,
+      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0\s\(opens in a new tab\)$/,
     );
     expect(
       within(items[0]).getByRole('link', { name: 'giantswarm/shiny-service' }),

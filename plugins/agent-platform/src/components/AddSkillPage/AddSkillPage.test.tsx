@@ -536,7 +536,7 @@ describe('AddSkillPage editing an existing skill', () => {
       `${edit.skillHref}/instructions?file=references/setup.md`,
     );
     expect(
-      screen.getByRole('link', { name: 'Edit on GitHub ↗' }),
+      screen.getByRole('link', { name: 'Edit on GitHub (opens in a new tab)' }),
     ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${COMMIT}/support/ticket-triage`,

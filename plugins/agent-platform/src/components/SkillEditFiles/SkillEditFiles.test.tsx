@@ -60,7 +60,7 @@ describe('SkillEditFiles', () => {
       screen.queryByRole('link', { name: 'SKILL.md' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Edit on GitHub ↗' }),
+      screen.getByRole('link', { name: 'Edit on GitHub (opens in a new tab)' }),
     ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/support/ticket-triage`,

@@ -1,6 +1,7 @@
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
-import { Flex, Link, Text } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
 import {
+  ExternalLink,
   StatusLabel,
   StatusLabelIntent,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -61,13 +62,9 @@ function PhaseRow({ phase }: { phase: PhaseItem }) {
           {phase.link && (
             <Text variant="body-small">
               {' '}
-              <Link
-                href={phase.link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {phase.link.text} ↗
-              </Link>
+              <ExternalLink href={phase.link.href} display="inline">
+                {phase.link.text}
+              </ExternalLink>
             </Text>
           )}
         </Flex>

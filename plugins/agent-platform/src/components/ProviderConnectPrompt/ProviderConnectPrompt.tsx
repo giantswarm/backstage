@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import { NewTabHint } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   providerDisplayName,
@@ -232,7 +233,15 @@ function MusterGrant({
           isDisabled={signIn.isPending}
           onPress={startSignIn}
         >
-          {signIn.isPending ? 'Opening…' : `${copy.cta} ↗`}
+          {signIn.isPending ? (
+            'Opening…'
+          ) : (
+            // One box, so the button's gap does not set the icon apart.
+            <span>
+              {copy.cta}
+              <NewTabHint />
+            </span>
+          )}
         </Button>
       </div>
       <Text variant="body-small" color="secondary">

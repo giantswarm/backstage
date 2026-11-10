@@ -2411,7 +2411,7 @@ describe('SessionDetailPage', () => {
         name: 'Question from the agent',
       });
       const signIn = within(card).getByRole('link', {
-        name: 'Sign in to Grafana Cloud ↗',
+        name: 'Sign in to Grafana Cloud (opens in a new tab)',
       });
       expect(card).not.toHaveTextContent(LINK);
       await user.click(signIn);

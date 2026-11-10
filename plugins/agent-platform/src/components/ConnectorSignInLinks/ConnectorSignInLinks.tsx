@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import { useHref, useLocation, useSearchParams } from 'react-router-dom';
-import { Button, ButtonLink, Text } from '@backstage/ui';
+import { Button, Text } from '@backstage/ui';
+import { ExternalButtonLink } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 
@@ -447,15 +448,9 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
           Waiting for you to finish signing in{target}…
         </Text>
         {!isExpired && (
-          <ButtonLink
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="tertiary"
-            size="small"
-          >
-            Open the sign-in page again ↗
-          </ButtonLink>
+          <ExternalButtonLink href={href} variant="tertiary" size="small">
+            Open the sign-in page again
+          </ExternalButtonLink>
         )}
         <Button
           variant="tertiary"
@@ -479,16 +474,14 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
 
   return (
     <span className={classes.action}>
-      <ButtonLink
+      <ExternalButtonLink
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
         variant="primary"
         size="small"
         onPress={() => context.start(link.key)}
       >
-        Sign in{target} ↗
-      </ButtonLink>
+        Sign in{target}
+      </ExternalButtonLink>
     </span>
   );
 }
