@@ -3,7 +3,7 @@ import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -146,6 +146,225 @@ beforeEach(() => {
 });
 
 describe('OrganizationPage', () => {
+  describe('an organization whose file left git', () => {
+    const COMMIT = '0123456789abcdef0123456789abcdef01234567';
+    const ORGANIZATION = {
+      name: 'payments',
+      parent: 'org-acme',
+      namespace: PAYMENTS.namespace,
+      harnesses: ['kagent'],
+      workerReplicas: 3,
+    };
+
+    it('is Missing from git, linking the last commit that held its file', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: {
+            status: 'True',
+            reason: 'MissingFromGit',
+            message: 'missing from the inventory of the Kustomization',
+          },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+          lastAppliedRevisionUrl: `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', {
+          name: new RegExp(`main@sha1:${COMMIT.slice(0, 7)}`),
+        }),
+      ).toHaveAttribute(
+        'href',
+        `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
+      );
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+
+    it('names the commit when agent-manager has no link for it', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'MissingFromGit' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.getByText(`main@sha1:${COMMIT.slice(0, 7)}`),
+      ).toHaveAttribute('title', `main@sha1:${COMMIT}`);
+      expect(
+        screen.queryByRole('link', { name: /main@sha1/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('is Pending erase once its delete pull request merged', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      expect(
+        screen.getByText(/members are kept until it is erased/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+    });
+
+    it('is Erasing once the organization is deleted', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+          deleting: true,
+          erasureStep: 'Sessions',
+        },
+      });
+
+      expect(await screen.findByText('Erasing')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+
+    it('is Erasing once deleted, also when it was not applied from git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: { ...ORGANIZATION, deleting: true },
+      });
+
+      expect(await screen.findByText('Erasing')).toBeInTheDocument();
+    });
+
+    it('reads an organization being erased again every 10 s', async () => {
+      jest.useFakeTimers();
+      try {
+        const { callTool } = await renderPage('', {
+          ...SCENARIO,
+          organization: {
+            ...ORGANIZATION,
+            orphaned: { status: 'True', reason: 'DeleteMerged' },
+            deleting: true,
+          },
+        });
+        await screen.findByText('Erasing');
+        const reads = toolCalls(callTool, 'get_organization').length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        await waitFor(() =>
+          expect(toolCalls(callTool, 'get_organization')).toHaveLength(
+            reads + 1,
+          ),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('says the organization is erased once its read answers not_found', async () => {
+      jest.useFakeTimers();
+      try {
+        const scenario: OrganizationsScenario = {
+          ...SCENARIO,
+          organization: { ...ORGANIZATION, deleting: true },
+        };
+        const { callTool } = await renderPage('', scenario);
+        await screen.findByText('Erasing');
+
+        scenario.organizationErased = true;
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        expect(
+          await screen.findByText('payments is erased'),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Erasing')).not.toBeInTheDocument();
+        expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+        const reads = toolCalls(callTool, 'get_organization').length;
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+        expect(toolCalls(callTool, 'get_organization')).toHaveLength(reads);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('keeps reading an organization being erased after a failed read', async () => {
+      jest.useFakeTimers();
+      try {
+        let failures = 1;
+        const scenario: OrganizationsScenario = {
+          ...SCENARIO,
+          organization: { ...ORGANIZATION, deleting: true },
+        };
+        const { callTool } = await renderPage('', scenario);
+        await screen.findByText('Erasing');
+        const fake = callTool.getMockImplementation()!;
+        callTool.mockImplementation(async (name: string, args) => {
+          if (name === 'x_agent-manager_get_organization' && failures > 0) {
+            failures -= 1;
+            throw new Error(
+              'backend_error: the API server did not answer in time',
+            );
+          }
+          return fake(name, args);
+        });
+        const reads = toolCalls(callTool, 'get_organization').length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        await waitFor(() =>
+          expect(toolCalls(callTool, 'get_organization')).toHaveLength(
+            reads + 2,
+          ),
+        );
+        expect(screen.getByText('Erasing')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('shows nothing while the organization is in git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'False', reason: 'InInventory' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByRole('grid')).toBeInTheDocument();
+      expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
     const { callTool } = await renderPage('', SCENARIO);
 

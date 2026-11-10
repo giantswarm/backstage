@@ -52,8 +52,23 @@ export type AgentPlatformOrganization = {
   ready?: OrganizationCondition;
   defaultModelConfigured?: OrganizationCondition;
   orphaned?: OrganizationCondition;
+  /**
+   * The last revision Flux applied the organization from
+   * (`<branch>@sha1:<sha>`), kept while it is orphaned.
+   */
+  lastAppliedRevision?: string;
+  /** That revision's commit on GitHub, when agent-manager knows the repository. */
+  lastAppliedRevisionUrl?: string;
   deleting?: boolean;
+  /** The step of the erasure the operator is on, while `deleting`. */
+  erasureStep?: string;
 };
+
+/**
+ * The operator's reason for `orphaned` `True` once the organization's delete
+ * pull request merged; any other is Missing from git.
+ */
+export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
 
 /** `get_organization`: the organization, and what a delete would erase. */
 export type OrganizationDetails = {
