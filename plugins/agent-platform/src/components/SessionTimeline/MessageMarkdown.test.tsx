@@ -84,7 +84,8 @@ describe('MessageMarkdown', () => {
     await renderInTestApp(<MessageMarkdown text="[Details](#details)" />);
 
     const link = screen.getByRole('link', { name: 'Details' });
-    expect(link).toHaveAttribute('href', '#details');
+    // The sanitiser prefixes fragments as it prefixes the ids they point at.
+    expect(link).toHaveAttribute('href', '#user-content-details');
     expect(link).not.toHaveAttribute('target');
   });
 
