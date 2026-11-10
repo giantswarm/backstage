@@ -78,7 +78,6 @@ describe('reduceByPerson', () => {
         }),
         ...typed('bob@lab.local', {
           input: '100',
-          input_cache_read: '800',
           output: '20',
         }),
       ],
@@ -86,7 +85,7 @@ describe('reduceByPerson', () => {
 
     expect(rows.map(row => [row.label, row.tokens])).toEqual([
       ['alice@lab.local', 1020],
-      ['bob@lab.local', 920],
+      ['bob@lab.local', 120],
     ]);
   });
 
