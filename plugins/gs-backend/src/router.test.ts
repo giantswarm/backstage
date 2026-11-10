@@ -1843,6 +1843,30 @@ describe('POST /agent-skills/pull-request', () => {
           repoUrl: 'https://github.com/acme/team-skills',
         }),
       );
+      expect(
+        jest.mocked(createSkillPullRequest).mock.calls[0][0],
+      ).not.toHaveProperty('base');
+    });
+
+    it('opens it against the branch the source reads', async () => {
+      mockReadSkillSources.mockResolvedValue([
+        { url: 'https://github.com/acme/team-skills', ref: 'skills' },
+      ]);
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send({
+          ...withInstallation,
+          repoUrl: 'https://github.com/acme/team-skills',
+        });
+
+      expect(response.status).toBe(200);
+      expect(createSkillPullRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ base: 'skills' }),
+      );
     });
 
     it('ignores the portal’s configured list', async () => {

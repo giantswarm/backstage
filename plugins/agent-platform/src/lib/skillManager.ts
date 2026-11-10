@@ -1,5 +1,6 @@
 import {
   canonicalRepoUrl,
+  canProposeSkillTo,
   type DiscoveredSkill,
   type SkillFile,
   type SkillFileContent,
@@ -81,6 +82,11 @@ export interface SkillManagerCatalog {
   truncated: boolean;
   /** By canonical URL (`canonicalRepoUrl`), as skill-manager reports them. */
   privateRepositories: ReadonlySet<string>;
+  /**
+   * The writable sources the person can read that scan the whole
+   * repository: a new skill is written to `<name>/SKILL.md` at its root.
+   */
+  proposalTargets: string[];
 }
 
 /**
@@ -100,6 +106,7 @@ export function catalogFromSkillManager(
     failureMessages: {},
     truncated: false,
     privateRepositories,
+    proposalTargets: [],
   };
   for (const repo of listing.repositories) {
     if (repo.private) {
@@ -113,6 +120,12 @@ export function catalogFromSkillManager(
     if (repo.error) {
       catalog.failedRepositories.push(repo.repoUrl);
       catalog.failureMessages[repo.repoUrl] = repo.error;
+    } else if (
+      !repo.readOnly &&
+      !repo.path &&
+      canProposeSkillTo(repo.repoUrl)
+    ) {
+      catalog.proposalTargets.push(repo.repoUrl);
     }
     catalog.truncated = catalog.truncated || repo.truncated;
     for (const skill of repo.skills) {

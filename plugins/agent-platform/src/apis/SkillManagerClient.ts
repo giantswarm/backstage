@@ -40,6 +40,14 @@ export class SkillManagerClient {
     );
   }
 
+  /**
+   * The person's muster token for this installation, for gs-backend to read
+   * skill-manager's sources as them.
+   */
+  authHeaders(): Promise<Record<string, string>> {
+    return this.musterApi.authHeaders(this.installation);
+  }
+
   listSkills(): Promise<SkillManagerListing> {
     return this.call<SkillManagerListing>('list_skills', {});
   }

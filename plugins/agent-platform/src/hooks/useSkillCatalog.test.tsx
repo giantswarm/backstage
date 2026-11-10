@@ -115,6 +115,29 @@ describe('useSkillCatalog', () => {
     expect(new URL(fetchMock.mock.calls[0][0]).pathname).toMatch(
       /\/gs\/agent-skills$/,
     );
+    expect(result.current.proposalTargets).toEqual([
+      'https://github.com/giantswarm/agent-skills',
+    ]);
+  });
+
+  it('offers the configured github.com repositories as targets, and names the rest', async () => {
+    givenConfig([
+      'https://github.com/giantswarm/agent-skills',
+      'http://gitea.lab.local/lab/skills',
+    ]);
+    jest.mocked(useSkillSource).mockReturnValue({ kind: 'portal' });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ skills: [], plugins: [] }),
+    });
+    const { result } = render();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.proposalTargets).toEqual([
+      'https://github.com/giantswarm/agent-skills',
+    ]);
+    expect(result.current.unproposableRepositories).toEqual([
+      'http://gitea.lab.local/lab/skills',
+    ]);
   });
 
   it('is loading while the source is not known', () => {
@@ -122,6 +145,7 @@ describe('useSkillCatalog', () => {
     const { result } = render();
     expect(result.current.isLoading).toBe(true);
     expect(result.current.hasRepositories).toBe(true);
+    expect(result.current.proposalTargets).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

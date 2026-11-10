@@ -140,6 +140,30 @@ describe('catalogFromSkillManager', () => {
     expect(catalog.truncated).toBe(true);
   });
 
+  it('offers only writable, readable, whole-repository sources as targets', () => {
+    const repo = (repoUrl: string, extra: object = {}) => ({
+      repoUrl,
+      commit,
+      truncated: false,
+      skills: [],
+      plugins: [],
+      ...extra,
+    });
+    const catalog = catalogFromSkillManager({
+      repositories: [
+        repo('https://github.com/acme/team-skills'),
+        repo('https://github.com/giantswarm/agent-platform', {
+          readOnly: true,
+        }),
+        repo('https://github.com/acme/scoped', { path: 'skills' }),
+        repo('https://github.com/acme/private', { error: 'cannot read it' }),
+      ],
+    });
+    expect(catalog.proposalTargets).toEqual([
+      'https://github.com/acme/team-skills',
+    ]);
+  });
+
   it('has no repositories when skill-manager has no sources', () => {
     expect(catalogFromSkillManager({ repositories: [] })).toMatchObject({
       hasRepositories: false,

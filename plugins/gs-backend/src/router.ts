@@ -988,6 +988,7 @@ export async function createRouter({
     // add a skill no one can see. With an installation, its skill-manager's
     // sources as the person sees them; without one, the portal's configured
     // list (deprecated).
+    let base: string | undefined;
     if (parsed.data.installation !== undefined) {
       if (!readSkillSources) {
         throw new Error('gs-backend reads skill sources only with a logger');
@@ -1015,12 +1016,12 @@ export async function createRouter({
         }
         throw error;
       }
-      requireWritableSource(sources, {
+      base = requireWritableSource(sources, {
         repoUrl,
         kind: kind ?? 'create',
         skillName,
         path: parsed.data.path,
-      });
+      }).ref;
     } else {
       const repositories =
         config.getOptionalStringArray('agentPlatform.skills.repositories') ??
@@ -1049,6 +1050,7 @@ export async function createRouter({
           instructions,
           ...(tags !== undefined ? { tags } : {}),
           token,
+          ...(base ? { base } : {}),
           ...(kind === 'update'
             ? {
                 kind,

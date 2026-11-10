@@ -5,7 +5,6 @@ import {
   useApi,
 } from '@backstage/core-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import { useMusterPluginApi } from './useMusterPluginApi';
 import { unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
 
@@ -70,7 +69,6 @@ export function useProposeSkill(installation?: string) {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
   const githubAuthApi = useApi(githubAuthApiRef);
-  const musterApi = useMusterPluginApi();
   const source = useSkillSource(installation);
 
   const mutation = useTrackedMutation({
@@ -79,8 +77,6 @@ export function useProposeSkill(installation?: string) {
       attributes: { kind: skill.kind === 'update' ? 'updated' : 'created' },
     }),
     mutationFn: async (skill: ProposedSkill): Promise<SkillPullRequest> => {
-      // The person's own token: the branch and the pull request name them,
-      // not a bot. Scope `repo` is what the portal's GitHub grant asks for.
       if (source.kind === 'unreachable') {
         throw unreachableError(source.installation);
       }
@@ -89,11 +85,13 @@ export function useProposeSkill(installation?: string) {
           'Still reading where this installation keeps its skills; try again in a moment.',
         );
       }
+      // The person's own token: the branch and the pull request name them,
+      // not a bot. Scope `repo` is what the portal's GitHub grant asks for.
       const token = await githubAuthApi.getAccessToken('repo');
       const baseUrl = await discoveryApi.getBaseUrl('gs');
       // From skill-manager, gs-backend checks the target against the
       // installation's sources as the person, through their muster token.
-      const viaSkillManager = source.kind === 'skill-manager' && musterApi;
+      const viaSkillManager = source.kind === 'skill-manager';
       const response = await fetchApi.fetch(
         `${baseUrl}/agent-skills/pull-request`,
         {
@@ -101,9 +99,7 @@ export function useProposeSkill(installation?: string) {
           headers: {
             'Content-Type': 'application/json',
             [GITHUB_TOKEN_HEADER]: token,
-            ...(viaSkillManager
-              ? await musterApi.authHeaders(source.installation)
-              : {}),
+            ...(viaSkillManager ? await source.client.authHeaders() : {}),
           },
           body: JSON.stringify(
             viaSkillManager

@@ -6,7 +6,11 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import { canonicalRepoUrl, DiscoveredSkill } from '../lib/skills';
+import {
+  canonicalRepoUrl,
+  canProposeSkillTo,
+  DiscoveredSkill,
+} from '../lib/skills';
 import type { DiscoveredPlugin } from '../lib/plugins';
 import { catalogFromSkillManager, unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
@@ -34,9 +38,33 @@ export type SkillCatalog = {
    * fetches their skills only with a credential.
    */
   privateRepositories: ReadonlySet<string>;
+  /**
+   * The repositories a new skill can be proposed to: the pull request route
+   * accepts a new `<name>/SKILL.md` there and the catalog lists it once merged.
+   */
+  proposalTargets: string[];
+  /** Repositories of the catalog no pull request can go to (not on github.com). */
+  unproposableRepositories: string[];
 };
 
 const NO_REPOSITORIES: ReadonlySet<string> = new Set();
+
+/** The catalog while its source is unknown or cannot be asked. */
+function emptyCatalog(error: Error | null, isLoading: boolean): SkillCatalog {
+  return {
+    skills: [],
+    plugins: [],
+    isLoading,
+    error,
+    hasRepositories: true,
+    failedRepositories: [],
+    failureMessages: {},
+    truncated: false,
+    privateRepositories: NO_REPOSITORIES,
+    proposalTargets: [],
+    unproposableRepositories: [],
+  };
+}
 
 /**
  * The skills and plugins an agent on `installation` (default: the portal's
@@ -64,20 +92,13 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
   });
   const portal = usePortalSkillCatalog(source.kind === 'portal');
   if (source.kind === 'pending') {
-    return { ...portal, isLoading: true, hasRepositories: true };
+    return emptyCatalog(null, true);
   }
   if (source.kind === 'portal') {
     return portal;
   }
   if (source.kind === 'unreachable') {
-    return {
-      ...portal,
-      skills: [],
-      plugins: [],
-      isLoading: false,
-      error: unreachableError(source.installation),
-      hasRepositories: true,
-    };
+    return emptyCatalog(unreachableError(source.installation), false);
   }
   const data = skillManager.data;
   return {
@@ -90,6 +111,8 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
     privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
+    proposalTargets: data?.proposalTargets ?? [],
+    unproposableRepositories: [],
   };
 }
 
@@ -187,5 +210,9 @@ function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
     privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
+    proposalTargets: repositories.filter(canProposeSkillTo),
+    unproposableRepositories: repositories.filter(
+      repoUrl => !canProposeSkillTo(repoUrl),
+    ),
   };
 }
