@@ -1,6 +1,6 @@
 import { ServiceUnavailableError } from '@backstage/errors';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { mockServices } from '@backstage/backend-test-utils';
+import { mockCredentials, mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
@@ -22,12 +22,14 @@ import {
 
 const mockGetMcpUsage = jest.fn();
 const mockGetMcpToolLatency = jest.fn();
+const mockIsPartialUsage = jest.fn();
 jest.mock('./mcpUsage', () => {
   const actual = jest.requireActual('./mcpUsage');
   return {
     ...actual,
     getMcpUsage: (...args: unknown[]) => mockGetMcpUsage(...args),
     getMcpToolLatency: (...args: unknown[]) => mockGetMcpToolLatency(...args),
+    isPartialUsage: (...args: unknown[]) => mockIsPartialUsage(...args),
   };
 });
 
@@ -87,6 +89,7 @@ describe('createRouter', () => {
     const router = await createRouter({
       logger,
       config,
+      httpAuth: mockServices.httpAuth(),
       client: mockClient,
       reachability: reachableEverywhere(),
       ...options,
@@ -110,6 +113,7 @@ describe('createRouter', () => {
     const router = await createRouter({
       logger,
       config,
+      httpAuth: mockServices.httpAuth(),
       client: mockClient,
       reachability: reachableEverywhere(),
       ...options,
@@ -125,6 +129,7 @@ describe('createRouter', () => {
   beforeEach(async () => {
     mockGetMcpUsage.mockReset();
     mockGetMcpToolLatency.mockReset();
+    mockIsPartialUsage.mockReset().mockReturnValue(false);
     callTool.mockReset();
     callToolWithProgress.mockReset();
     callToolWithStructured.mockReset();
@@ -336,9 +341,11 @@ describe('createRouter', () => {
   describe('usage caching', () => {
     const available = { available: true, range_hours: 720 };
 
+    afterEach(() => jest.restoreAllMocks());
+
     it('answers a repeated read from the cache until five minutes have passed', async () => {
       let now = 0;
-      app = await buildApp({ now: () => now });
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
       mockGetMcpUsage.mockResolvedValue(available);
 
       await request(app).get('/usage?hours=720');
@@ -372,7 +379,17 @@ describe('createRouter', () => {
       expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
     });
 
-    it("never answers one person's read from another's", async () => {
+    it('reads again after an answer a rollup was left out of', async () => {
+      mockGetMcpUsage.mockResolvedValue(available);
+      mockIsPartialUsage.mockReturnValue(true);
+
+      await request(app).get('/usage?hours=720');
+      await request(app).get('/usage?hours=720');
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it("answers a person's reload from the cache, never another person's read", async () => {
       const multi = await buildMultiApp([
         {
           name: 'graveler',
@@ -381,19 +398,29 @@ describe('createRouter', () => {
         },
       ]);
       mockGetMcpUsage.mockResolvedValue(available);
-      const token = (sub: string) =>
+      // Every full load forwards a newly minted ID token.
+      let minted = 0;
+      const idToken = () =>
         [
           Buffer.from('{"alg":"none"}').toString('base64url'),
           Buffer.from(
-            JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 600 }),
+            JSON.stringify({
+              sub: 'ada',
+              iat: (minted += 1),
+              exp: Math.floor(Date.now() / 1000) + 600,
+            }),
           ).toString('base64url'),
           'sig',
         ].join('.');
 
-      for (const sub of ['ada', 'ada', 'grace']) {
+      for (const user of ['ada', 'ada', 'grace']) {
         const response = await request(multi)
           .get('/usage?installation=graveler&hours=720')
-          .set(MUSTER_AUTH_HEADER, token(sub));
+          .set(
+            'Authorization',
+            mockCredentials.user.header(`user:default/${user}`),
+          )
+          .set(MUSTER_AUTH_HEADER, idToken());
         expect(response.status).toBe(200);
       }
 
@@ -465,6 +492,7 @@ describe('createRouter', () => {
     const router = await createRouter({
       logger,
       config,
+      httpAuth: mockServices.httpAuth(),
       reachability: reachableEverywhere(),
     });
     const unconfiguredApp = expressApp();
@@ -650,6 +678,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: mockClient,
         reachability: reachableEverywhere(),
       });
@@ -1538,6 +1567,7 @@ describe('createRouter', () => {
         const router = await createRouter({
           logger,
           config,
+          httpAuth: mockServices.httpAuth(),
           client: mockClient,
           reachability: reachableEverywhere(),
         });
@@ -1892,6 +1922,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: { callTool } as unknown as MusterMcpClient,
       });
       const authApp = expressApp();
@@ -1963,6 +1994,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: mockClient,
         reachability: reachableEverywhere(),
       });
@@ -2107,6 +2139,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: mockClient,
         reachability: reachableEverywhere(),
       });

@@ -18,7 +18,10 @@ const JSON_HEADERS = {
 /** The channel the user-settings backend announces a stored change on. */
 const SIGNAL_CHANNEL = 'user-settings';
 
-/** How long a subscription may reuse the backend's 404 for a key. */
+/**
+ * How long a new subscription may reuse the backend's 404 for a key: a bound
+ * on an announcement the signals connection lost.
+ */
 export const ABSENT_FRESH_MS = 60_000;
 
 type Snapshot = StorageValueSnapshot<JsonValue>;
@@ -47,8 +50,13 @@ type KeyState = {
   started: number;
   /** The number of the newest one whose answer was handed out. */
   delivered: number;
-  /** When the backend last answered 404 for the key, since any change. */
+  /**
+   * When the backend last answered 404 for the key, while `signal` has been
+   * open: forgotten on any change and when `signal` closes.
+   */
   absentAt?: number;
+  /** A read in flight since `signal` opened, which a new subscription joins. */
+  reading?: number;
 };
 
 export type RoamingSettingsStorageOptions = {
@@ -59,8 +67,6 @@ export type RoamingSettingsStorageOptions = {
   fallback: StorageApi;
   /** Delivers the backend's change announcements to this tab. */
   signalApi?: SignalApi;
-  /** The clock {@link ABSENT_FRESH_MS} is measured on. Overridable for tests. */
-  now?: () => number;
 };
 
 /**
@@ -81,12 +87,12 @@ export type RoamingSettingsStorageOptions = {
  * - **Every read of a value goes to the backend.** A subscription and every
  *   change announced on the signals channel read the key afresh, so a writer
  *   that reads before it writes starts from what is stored now, and a change
- *   announced right after a read is not answered from that read. The one
- *   answer reused is a 404, for {@link ABSENT_FRESH_MS}, to a new
- *   subscription, and only with the signals channel: every store on the
- *   backend announces itself there, and an announcement or a write here
- *   forgets the 404. A key never set is otherwise read, and answered 404,
- *   once per component that subscribes on a page.
+ *   announced right after a read is not answered from that read. A new
+ *   subscription shares only what its key's signals subscription has been
+ *   open for: a read still in flight, and a 404 for {@link ABSENT_FRESH_MS}.
+ *   Every store on the backend announces itself on that channel, and an
+ *   announcement, a write here or the signals subscription closing forgets
+ *   the 404. Without the signals channel every subscription reads the key.
  *
  * Answers are handed to every subscriber of the key, newest first: one that
  * arrives after a newer read or write has been handed out is dropped.
@@ -142,12 +148,14 @@ export class RoamingSettingsStorage implements StorageApi {
           },
         );
       }
-      this.read(key, { reuseAbsent: true });
+      this.subscribe(key);
       return () => {
         state.subscribers.delete(subscriber);
         if (state.subscribers.size === 0) {
           state.signal?.unsubscribe();
           state.signal = undefined;
+          state.absentAt = undefined;
+          state.reading = undefined;
         }
       };
     }) as unknown as Observable<StorageValueSnapshot<T>>;
@@ -206,26 +214,45 @@ export class RoamingSettingsStorage implements StorageApi {
     }
   }
 
-  /** Reads the key from the backend and hands the answer to its subscribers. */
-  private async read(
-    key: string,
-    { reuseAbsent = false }: { reuseAbsent?: boolean } = {},
-  ): Promise<void> {
+  /**
+   * Answers a new subscription: from what the key's open signals
+   * subscription has seen where it can, else with a read.
+   */
+  private subscribe(key: string): void {
     const state = this.stateOf(key);
-    const turn = this.start(key);
-    const now = this.options.now ?? Date.now;
-    if (
-      reuseAbsent &&
-      this.options.signalApi &&
-      state.absentAt !== undefined &&
-      now() - state.absentAt < ABSENT_FRESH_MS
-    ) {
-      this.deliver(key, turn, { key, presence: 'absent' });
+    if (!state.signal) {
+      this.read(key);
       return;
     }
+    if (state.reading !== undefined && state.reading === state.started) {
+      // The newest turn: its answer, or a later one's, reaches this
+      // subscriber too.
+      return;
+    }
+    if (
+      state.absentAt !== undefined &&
+      Date.now() - state.absentAt < ABSENT_FRESH_MS
+    ) {
+      this.deliver(key, this.start(key), { key, presence: 'absent' });
+      return;
+    }
+    this.read(key);
+  }
+
+  /** Reads the key from the backend and hands the answer to its subscribers. */
+  private async read(key: string): Promise<void> {
+    const state = this.stateOf(key);
+    const turn = this.start(key);
+    const signal = state.signal;
+    if (signal) {
+      state.reading = turn;
+    }
     const snapshot = await this.fetchSnapshot(key);
-    if (turn === state.started) {
-      state.absentAt = snapshot.notFound ? now() : undefined;
+    if (state.reading === turn) {
+      state.reading = undefined;
+    }
+    if (turn === state.started && signal && state.signal === signal) {
+      state.absentAt = snapshot.notFound ? Date.now() : undefined;
     }
     this.deliver(key, turn, snapshot.value);
   }

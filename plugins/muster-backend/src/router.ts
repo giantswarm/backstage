@@ -1,4 +1,5 @@
 import {
+  HttpAuthService,
   LoggerService,
   RootLifecycleService,
 } from '@backstage/backend-plugin-api';
@@ -35,6 +36,7 @@ import {
 import {
   getMcpToolLatency,
   getMcpUsage,
+  isPartialUsage,
   type McpToolLatencyResponse,
   type McpUsageResponse,
 } from './mcpUsage';
@@ -82,8 +84,8 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
-  /** The clock of the usage caches. Overridable for tests. */
-  now?: () => number;
+  /** Names the Backstage user a usage answer is cached for. */
+  httpAuth: HttpAuthService;
 }
 
 /**
@@ -931,22 +933,16 @@ export async function createRouter(
 
   // --- MCP usage (derived from muster's own Prometheus metrics) ------------
 
-  /**
-   * Usage statistics for the installation's muster: tool calls per bucket by
-   * outcome, top tools, and per-server rollups. Sourced from muster's
-   * downstream dispatch metrics via the prometheus MCP server federated
-   * behind the same muster (no separate Prometheus access path). Answers
-   * `available: false` with a reason instead of erroring when the
-   * installation has no queryable prometheus server.
-   *
-   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
-   * family's instances included, and lists every tool they were called with.
-   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
-   */
-  const usageCache = new UsageCache<McpUsageResponse>({ now: options.now });
-  const toolLatencyCache = new UsageCache<McpToolLatencyResponse>({
-    now: options.now,
-  });
+  const usageCache = new UsageCache<McpUsageResponse>();
+  const toolLatencyCache = new UsageCache<McpToolLatencyResponse>();
+
+  /** The Backstage user a usage answer is cached for. */
+  const usageReader = async (req: express.Request) => {
+    const { principal } = await options.httpAuth.credentials(req, {
+      allow: ['user'],
+    });
+    return principal.userEntityRef;
+  };
 
   /** The window and the narrowing `/usage` and `/usage/tool-latency` take. */
   const readUsageParams = (req: express.Request) => {
@@ -990,10 +986,10 @@ export async function createRouter(
    * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
    * Each tool's p95 is `/usage/tool-latency`'s, except that one tool's.
    *
-   * An available answer is reused for five minutes per installation, window,
-   * narrowing and token (`usageCacheKey`), and concurrent identical reads
-   * share one: past daily buckets do not change, and a 30-day read costs
-   * Mimir seconds.
+   * A complete, available answer is reused for five minutes per
+   * installation, window, narrowing and Backstage user (`usageCacheKey`),
+   * and concurrent identical reads share one: past daily buckets do not
+   * change, and a 30-day read costs Mimir seconds.
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -1007,11 +1003,11 @@ export async function createRouter(
           hours,
           servers,
           tool,
-          authToken: callOptions.authToken,
+          userEntityRef: await usageReader(req),
         }),
         () =>
           getMcpUsage(client, installation, callOptions, hours, servers, tool),
-        answer => answer.available,
+        answer => answer.available && !isPartialUsage(answer),
       ),
     );
   });
@@ -1038,7 +1034,7 @@ export async function createRouter(
           installation: installation.name,
           hours,
           servers,
-          authToken: callOptions.authToken,
+          userEntityRef: await usageReader(req),
         }),
         () =>
           getMcpToolLatency(client, installation, callOptions, hours, servers),

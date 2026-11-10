@@ -1,6 +1,7 @@
 import {
   getMcpToolLatency,
   getMcpUsage,
+  isPartialUsage,
   usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
@@ -238,6 +239,7 @@ describe('getMcpUsage', () => {
     expect(
       calls.some(call => String(call.args.query).includes('sum by (tool, le)')),
     ).toBe(false);
+    expect(isPartialUsage(usage)).toBe(false);
 
     // Every prometheus query is routed to the installation's own server via
     // the family routing parameter.
@@ -727,6 +729,8 @@ describe('getMcpUsage', () => {
     });
     expect(usage.top_tools).toEqual([]);
     expect(usage.servers).toEqual([]);
+    // A later read may fill them in: not an answer to reuse.
+    expect(isPartialUsage(usage)).toBe(true);
   });
 
   it('reports unavailable with the failure reason when queries error', async () => {

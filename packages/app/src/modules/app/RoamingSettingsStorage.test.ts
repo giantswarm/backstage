@@ -37,8 +37,7 @@ const json = (body: unknown, status = 200) =>
 function setup({
   signedIn = true,
   withSignals = true,
-  now,
-}: { signedIn?: boolean; withSignals?: boolean; now?: () => number } = {}) {
+}: { signedIn?: boolean; withSignals?: boolean } = {}) {
   const signals = fakeSignals();
   const fetch = jest.fn<Promise<Response>, [string, RequestInit?]>();
   const fallback = WebStorage.create({
@@ -50,7 +49,6 @@ function setup({
     identityApi: mockApis.identity(signedIn ? { token: 'a-token' } : {}),
     fallback,
     signalApi: withSignals ? signals.signalApi : undefined,
-    now,
   }).forBucket('agent-platform');
   return { storage, fetch, fallback, ...signals };
 }
@@ -116,10 +114,17 @@ describe('RoamingSettingsStorage', () => {
 
   describe('a key the backend does not hold', () => {
     const notFound = () => Promise.resolve(json({ error: 'not found' }, 404));
+    let now: number;
+
+    beforeEach(() => {
+      now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+    });
+
+    afterEach(() => jest.restoreAllMocks());
 
     it('answers another subscription from the 404 for a minute', async () => {
-      let now = 0;
-      const { storage, fetch } = setup({ now: () => now });
+      const { storage, fetch } = setup();
       fetch.mockImplementation(notFound);
 
       watch(storage);
@@ -137,8 +142,21 @@ describe('RoamingSettingsStorage', () => {
       expect(fetch).toHaveBeenCalledTimes(2);
     });
 
+    it('shares one read between subscriptions that start together', async () => {
+      const { storage, fetch } = setup();
+      fetch.mockImplementation(notFound);
+
+      const first = watch(storage);
+      const second = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(first.seen).toEqual([{ key: 'someSetting', presence: 'absent' }]);
+      expect(second.seen).toEqual([{ key: 'someSetting', presence: 'absent' }]);
+    });
+
     it('reads again once a change is announced', async () => {
-      const { storage, fetch, send } = setup({ now: () => 0 });
+      const { storage, fetch, send } = setup();
       fetch.mockImplementationOnce(notFound);
       watch(storage);
       await settle();
@@ -159,7 +177,7 @@ describe('RoamingSettingsStorage', () => {
     });
 
     it('reads again after a write here', async () => {
-      const { storage, fetch } = setup({ now: () => 0 });
+      const { storage, fetch } = setup();
       fetch.mockImplementationOnce(notFound);
       watch(storage);
       await settle();
@@ -173,16 +191,35 @@ describe('RoamingSettingsStorage', () => {
       expect(fetch).toHaveBeenCalledTimes(3);
     });
 
-    it('reads every time without the signals channel to announce a store', async () => {
-      const { storage, fetch } = setup({ withSignals: false, now: () => 0 });
-      fetch.mockImplementation(notFound);
-
-      watch(storage);
+    it('reads again after every subscription closed, when an announcement could have been missed', async () => {
+      const { storage, fetch, count } = setup();
+      fetch.mockImplementationOnce(notFound);
+      const { subscription } = watch(storage);
       await settle();
-      watch(storage);
+      subscription.unsubscribe();
+      expect(count()).toBe(0);
+
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      const { seen } = watch(storage);
       await settle();
 
       expect(fetch).toHaveBeenCalledTimes(2);
+      expect(seen).toEqual([
+        { key: 'someSetting', presence: 'present', value: 'Muted' },
+      ]);
+    });
+
+    it('reads every time without the signals channel to announce a store', async () => {
+      const { storage, fetch } = setup({ withSignals: false });
+      fetch.mockImplementation(notFound);
+
+      watch(storage);
+      watch(storage);
+      await settle();
+      watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(3);
     });
   });
 

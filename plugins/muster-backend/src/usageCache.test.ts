@@ -6,7 +6,7 @@ const key = (overrides: Partial<Parameters<typeof usageCacheKey>[0]> = {}) =>
     installation: 'graveler',
     hours: 720,
     servers: [],
-    authToken: 'token-a',
+    userEntityRef: 'user:default/ada',
     ...overrides,
   });
 
@@ -23,20 +23,19 @@ describe('usageCacheKey', () => {
     ['window', { hours: 168 }],
     ['servers', { servers: ['kagi'] }],
     ['tool', { tool: 'x_kagi_search' }],
-    ['token', { authToken: 'token-b' }],
+    ['user', { userEntityRef: 'user:default/grace' }],
   ])('tells reads apart by %s', (_name, overrides) => {
     expect(key(overrides)).not.toBe(key());
-  });
-
-  it('does not carry the token itself', () => {
-    expect(key()).not.toContain('token-a');
   });
 });
 
 describe('UsageCache', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('reuses an answer until the TTL has passed', async () => {
     let now = 0;
-    const cache = new UsageCache<{ n: number }>({ now: () => now });
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    const cache = new UsageCache<{ n: number }>();
     let loads = 0;
     const load = jest.fn(async () => {
       loads += 1;

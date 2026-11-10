@@ -319,6 +319,10 @@ function McpUsageBody() {
     hours,
     enabled: !unreachable,
   });
+  const usage = useMemo(
+    () => data && withToolLatency(data, toolLatency.latency),
+    [data, toolLatency.latency],
+  );
 
   let body;
   if (unreachable) {
@@ -339,10 +343,10 @@ function McpUsageBody() {
         Usage unavailable: {(error as Error).message}
       </Text>
     );
-  } else if (data) {
+  } else if (usage) {
     body = (
       <UsageBody
-        data={withToolLatency(data, toolLatency.latency)}
+        data={usage}
         p95Loading={toolLatency.isLoading}
         windowDays={windowDays}
         installation={activeInstallation}

@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 /** How long a usage answer is reused: the frontend's own `staleTime`. */
 export const USAGE_CACHE_TTL_MS = 5 * 60_000;
 
@@ -9,11 +7,11 @@ const USAGE_CACHE_MAX_ENTRIES = 500;
 /**
  * The cache key of one usage read.
  *
- * The token is part of it, hashed: a hit answers without muster seeing the
- * request, so it may only answer a request muster already answered for the
- * same credential. Without it, one person's answer would reach anybody whose
- * token `readCallOptions` lets through, which checks presence and expiry, not
- * what muster would let them read.
+ * It carries the Backstage user the request was authenticated as: a hit
+ * answers without muster seeing the request, so it may only answer someone
+ * muster already answered. The forwarded muster token cannot stand in for
+ * them: the frontend gets a new ID token on every full load, and
+ * `readCallOptions` checks its presence and expiry, not who it names.
  */
 export function usageCacheKey(parts: {
   route: string;
@@ -21,18 +19,15 @@ export function usageCacheKey(parts: {
   hours: number;
   servers: readonly string[];
   tool?: string;
-  authToken?: string;
+  userEntityRef: string;
 }): string {
-  const credential = parts.authToken
-    ? createHash('sha256').update(parts.authToken).digest('hex')
-    : '';
   return JSON.stringify([
     parts.route,
     parts.installation,
     parts.hours,
     [...new Set(parts.servers)].sort(),
     parts.tool ?? null,
-    credential,
+    parts.userEntityRef,
   ]);
 }
 
@@ -45,17 +40,10 @@ export function usageCacheKey(parts: {
 export class UsageCache<T> {
   private readonly entries = new Map<string, { value: T; expires: number }>();
   private readonly inFlight = new Map<string, Promise<T>>();
-  private readonly ttlMs: number;
-  private readonly now: () => number;
-
-  constructor(options: { ttlMs?: number; now?: () => number } = {}) {
-    this.ttlMs = options.ttlMs ?? USAGE_CACHE_TTL_MS;
-    this.now = options.now ?? Date.now;
-  }
 
   read(key: string, load: () => Promise<T>, keep: (value: T) => boolean) {
     const entry = this.entries.get(key);
-    if (entry && entry.expires > this.now()) {
+    if (entry && entry.expires > Date.now()) {
       return Promise.resolve(entry.value);
     }
     const running = this.inFlight.get(key);
@@ -77,14 +65,14 @@ export class UsageCache<T> {
   }
 
   private store(key: string, value: T) {
-    const now = this.now();
+    const now = Date.now();
     for (const [stored, entry] of this.entries) {
       if (entry.expires <= now) {
         this.entries.delete(stored);
       }
     }
     this.entries.delete(key);
-    this.entries.set(key, { value, expires: now + this.ttlMs });
+    this.entries.set(key, { value, expires: now + USAGE_CACHE_TTL_MS });
     while (this.entries.size > USAGE_CACHE_MAX_ENTRIES) {
       const oldest = this.entries.keys().next().value;
       if (oldest === undefined) {

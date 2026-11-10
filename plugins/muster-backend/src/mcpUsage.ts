@@ -75,6 +75,17 @@ export interface McpUsageResponse {
   servers: McpUsageServerRow[];
 }
 
+/** Usage answers with a secondary rollup left empty because its query failed. */
+const partialAnswers = new WeakSet<McpUsageResponse>();
+
+/**
+ * Whether a secondary rollup of `usage` degraded to empty: a later read may
+ * fill it, so the answer is not one to reuse.
+ */
+export function isPartialUsage(usage: McpUsageResponse): boolean {
+  return partialAnswers.has(usage);
+}
+
 export interface McpToolLatencyResponse {
   available: boolean;
   /** Human-readable reason when `available` is false. */
@@ -370,18 +381,6 @@ export function usageSelector(
   return matchers.length > 0 ? `{${matchers.join(',')}}` : '';
 }
 
-/**
- * Usage over the last `hours` on one installation, from muster's dispatch
- * metrics.
- *
- * `servers` narrows every figure to those connectors (a connector's page: the
- * MCPServer, or a family's instances), and then lists every tool they were
- * called with rather than the busiest {@link TOP_TOOLS_LIMIT}. `onlyTool`
- * narrows them to one tool as well (a tool's page), so the buckets, totals
- * and per-instance rows are that tool's. `data_start` stays the installation's
- * either way: it says where muster's records start, and a quiet connector's
- * first call is not that.
- */
 /** The queries one usage read runs, against the window it covers. */
 interface UsageQueries {
   promServer: string;
@@ -558,6 +557,18 @@ export async function getMcpToolLatency(
   };
 }
 
+/**
+ * Usage over the last `hours` on one installation, from muster's dispatch
+ * metrics.
+ *
+ * `servers` narrows every figure to those connectors (a connector's page: the
+ * MCPServer, or a family's instances), and then lists every tool they were
+ * called with rather than the busiest {@link TOP_TOOLS_LIMIT}. `onlyTool`
+ * narrows them to one tool as well (a tool's page), so the buckets, totals
+ * and per-instance rows are that tool's. `data_start` stays the installation's
+ * either way: it says where muster's records start, and a quiet connector's
+ * first call is not that.
+ */
 export async function getMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
@@ -602,8 +613,12 @@ export async function getMcpUsage(
   const none = Promise.resolve<PromSeries[]>([]);
   // The secondary rollups degrade to empty on failure instead of taking the
   // whole view down.
+  let partial = false;
   const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>
-    promise.catch(() => []);
+    promise.catch(() => {
+      partial = true;
+      return [];
+    });
   const calls = `${METRIC_CALLS}${selector}`;
   const duration = `${METRIC_DURATION}${selector}`;
 
@@ -807,7 +822,7 @@ export async function getMcpUsage(
     });
   }
 
-  return {
+  const usage: McpUsageResponse = {
     available: true,
     source: { server: promServer, tool: `${FAMILY_PREFIX}${QUERY_TOOL}` },
     range_hours: rangeHours,
@@ -827,4 +842,8 @@ export async function getMcpUsage(
     top_tools: filtered ? tools : tools.slice(0, TOP_TOOLS_LIMIT),
     servers: [...serverRows.values()].sort((a, b) => b.calls - a.calls),
   };
+  if (partial) {
+    partialAnswers.add(usage);
+  }
+  return usage;
 }
