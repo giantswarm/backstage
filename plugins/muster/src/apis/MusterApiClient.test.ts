@@ -470,7 +470,7 @@ describe('MusterApiClient token selection', () => {
       name: 'MusterTokenMintError',
       reason: 'mint-failed',
       message:
-        'Could not mint a token for muster on golem: Token broker is unreachable',
+        'Could not mint a token for Muster on golem: Token broker is unreachable',
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
   });

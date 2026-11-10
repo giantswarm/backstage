@@ -61,7 +61,7 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
 }));
 
 const NOTE =
-  'muster on wombat is not reachable from this portal (no answer within 3000 ms).';
+  'Muster on wombat is not reachable from this portal (no answer within 3000 ms).';
 
 function instance(): MusterInstance {
   const installationInfos = [
@@ -122,7 +122,7 @@ describe('McpUsageSection on an installation the portal cannot reach', () => {
     mountSection(api, instance());
 
     expect(
-      screen.getByText(`Usage metrics need a muster session. ${NOTE}`),
+      screen.getByText(`Usage metrics need a Muster session. ${NOTE}`),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /connect|retry|sign in/i }),

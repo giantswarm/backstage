@@ -246,7 +246,7 @@ function WorkflowPageContent({
       label: 'Source',
       value: gitOps
         ? 'GitOps — changed through Git and agents, not here'
-        : 'Manually added — changed by agents through muster, not here',
+        : 'Manually added — changed by agents through Muster, not here',
     },
     ...(category ? [{ label: 'Category', value: category }] : []),
     {
@@ -305,7 +305,7 @@ function WorkflowPageContent({
                 installation={installation}
                 hasSession={hasSession}
                 sessionGate={sessionGate(
-                  'The last run on the flow and the read-only badge need a muster session.',
+                  'The last run on the flow and the read-only badge need a Muster session.',
                 )}
                 prefixes={prefixes}
               />
@@ -321,7 +321,7 @@ function WorkflowPageContent({
                 hasSession={hasSession}
                 perUserSession={perUserSession}
                 sessionGate={sessionGate(
-                  'Running a workflow needs a muster session.',
+                  'Running a workflow needs a Muster session.',
                 )}
                 workflowTool={workflowTool}
                 asCaller={asCaller}
@@ -338,7 +338,7 @@ function WorkflowPageContent({
                 name={name}
                 installation={installation}
                 hasSession={hasSession}
-                sessionGate={sessionGate('Statistics need a muster session.')}
+                sessionGate={sessionGate('Statistics need a Muster session.')}
               />
             }
           />
