@@ -466,7 +466,10 @@ export function toggleCatalogueSelector(
     const others = (bucket?.tools ?? [])
       .map(selectorForTool)
       .filter(entry => entry !== selector && !selection.includes(entry));
-    return [...selection.filter(entry => entry !== whole), ...others];
+    return [
+      ...selection.filter(entry => entry !== whole && entry !== selector),
+      ...others,
+    ];
   }
   return withoutCovered(toggleSelector([...selection], selector), groups);
 }

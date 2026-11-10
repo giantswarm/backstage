@@ -487,6 +487,16 @@ describe('a whole connector beside its single tools', () => {
     ]);
   });
 
+  it('unticks a covered tool that is also listed on its own', () => {
+    expect(
+      toggleCatalogueSelector(
+        ['server:jira', 'tool:x_jira_search'],
+        'tool:x_jira_search',
+        groups,
+      ),
+    ).toEqual(['tool:x_jira_get_issue', 'tool:x_jira_create_issue']);
+  });
+
   it('adds and removes a single tool as before when the connector is not whole', () => {
     expect(
       toggleCatalogueSelector(['workflow:a'], 'tool:x_jira_search', groups),
