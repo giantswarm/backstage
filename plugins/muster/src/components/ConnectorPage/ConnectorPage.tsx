@@ -306,6 +306,7 @@ function ConnectorPageContent({
   const usage = useConnectorUsage(row, installation, {
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
+    withToolLatency: tabPath === 'usage',
   });
 
   // The person's own sign-in to the connector. Signing in is offered where its
