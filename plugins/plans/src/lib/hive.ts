@@ -14,6 +14,8 @@ import {
   Now,
   PlanCard,
   statusTone,
+  TeamSet,
+  TeamSets,
 } from './magazine';
 
 /** `?team=` value, and the localStorage key's value, for every team at once. */
@@ -48,6 +50,16 @@ export function sameTeam(a: string, b: string): boolean {
 }
 
 /**
+ * The data set the magazine writes for a team (`magazine/teams.json`),
+ * matched by name or board option; undefined for a team without one.
+ */
+export function teamSetFor(sets: TeamSets, team: string): TeamSet | undefined {
+  return sets.teams.find(
+    set => sameTeam(set.name, team) || sameTeam(set.boardTeam, team),
+  );
+}
+
+/**
  * Whether the magazine follows this scope: its own team (`meta.json`'s
  * `sources.team`) or all teams. Only then are its summary, its figures and
  * its plans the scope's.
@@ -66,21 +78,24 @@ function inTeam(
 }
 
 /**
- * Now, scoped to one team: its lanes and blockers, and its plans and summary
- * when the magazine follows it. "Other teams, coming up" keeps only the
- * other teams' work, and is empty across all teams.
+ * Now, scoped to one team: its lanes and blockers, and its plans, summary
+ * and lane descriptions when the magazine follows it. "Other teams, coming
+ * up" keeps only the other teams' work, and is empty across all teams.
  */
 export function nowForTeam(now: Now, team: string, magazineTeam: string): Now {
   if (team === ALL_TEAMS) {
     return { ...now, upcoming: [] };
   }
   const follows = followsTeam(team, magazineTeam);
-  // A lane keeps its ranked `total` until the scope drops one of its cards.
+  // A lane keeps its ranked `total` until the scope drops one of its cards;
+  // its description is the magazine's team's.
   const lanes: Lane[] = now.lanes.map(lane => {
     const cards = lane.cards.filter(card => inTeam(card, team, magazineTeam));
-    return cards.length === lane.cards.length
-      ? lane
-      : { ...lane, cards, total: cards.length };
+    const scoped =
+      cards.length === lane.cards.length
+        ? lane
+        : { ...lane, cards, total: cards.length };
+    return follows ? scoped : { ...scoped, summary: '' };
   });
   return {
     ...now,

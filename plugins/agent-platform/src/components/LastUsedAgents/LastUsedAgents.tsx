@@ -3,6 +3,7 @@ import { Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import type { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
@@ -90,8 +91,16 @@ const useStyles = makeStyles({
  * `AgentsDataProvider` and a `SessionsDataProvider`. Sessions from an
  * installation whose session list is not scoped to the signed-in user (kagent
  * in `unsecure` mode) are left out: they would not be "by you".
+ *
+ * `states`, the sessions' states by session row id where the page reads
+ * them, rank by last turn rather than start, as the list's Last used sort
+ * does.
  */
-export function LastUsedAgents() {
+export function LastUsedAgents({
+  states,
+}: {
+  states?: ReadonlyMap<string, SessionStateEntry>;
+} = {}) {
   const classes = useStyles();
   const stretched = useStretchedLinkStyles();
   const headingId = useId();
@@ -105,9 +114,9 @@ export function LastUsedAgents() {
     return recentAgentUses(
       sessions.filter(session => !notMine.has(session.installation)),
       agents,
-      { startableOnly: false },
+      { startableOnly: false, states },
     );
-  }, [agents, sessions, notUserScopedInstallations]);
+  }, [agents, sessions, notUserScopedInstallations, states]);
 
   // Each card opens the agent's page; with no page to open, the strip has
   // nothing to offer.

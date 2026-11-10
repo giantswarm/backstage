@@ -296,9 +296,20 @@ export async function gotoApp(page: Page, path: string): Promise<void> {
  * the portal renders signed in. Fails with the page's state when the card is
  * not offered (the app did not load) or the popup never closes (Dex refused,
  * or the handler page did not hand the session to the opener).
+ *
+ * With `AGENTLAB_E2E_AUTH=guest` (a local dev server, `AuthMode` in `lab.ts`) the
+ * app signs the guest in by itself: the page loads and renders signed in, as
+ * the guest whichever `user` is asked for.
  */
 export async function signIn(page: Page, user: LabUser): Promise<void> {
   await gotoApp(page, '/');
+  if (lab.auth === 'guest') {
+    await expect(
+      portalChrome(page),
+      'the dev server signs the guest in and renders the portal',
+    ).toBeAttached({ timeout: 60_000 });
+    return;
+  }
   // The classic card's "Sign In" and the shell card's "Sign in with …" alike
   // (a case-insensitive substring).
   const card = page.getByRole('button', { name: 'Sign In' });

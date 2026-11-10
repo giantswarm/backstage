@@ -30,12 +30,15 @@ FROM node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3
 
-# Install the toolchain needed to compile the native modules at install time.
+# Install the toolchain needed to compile the native modules at install time,
+# and git (with the CA bundle for its HTTPS fetch) for the git dependencies in
+# yarn.lock (@giantswarm/semver-ts, @giantswarm/k8s-types): yarn clones them
+# whenever the berry cache mount below is cold, e.g. on a fresh builder.
 # None of this reaches the runtime stage.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    apt-get install -y --no-install-recommends libsqlite3-dev python3 build-essential && \
+    apt-get install -y --no-install-recommends libsqlite3-dev python3 build-essential git ca-certificates && \
     yarn config set python /usr/bin/python3 && \
     rm -rf /var/lib/apt/lists/*
 

@@ -128,3 +128,41 @@ export function useMusterServers(
     isUnavailable: errors.length > 0 && resources.length === 0,
   };
 }
+
+/**
+ * {@link useMusterServers} for several installations in one hook: each
+ * installation's MCPServer CRs, read from the same cached per-installation
+ * queries, for a list whose rows span installations. Keyed by installation;
+ * an installation not asked for has no entry.
+ */
+export function useMusterServersByInstallation(
+  installations: readonly string[],
+): ReadonlyMap<string, MusterServers> {
+  const { resources, clustersData, errors, isLoading } = useResources(
+    [...installations],
+    MCPServer,
+    {},
+    { enabled: installations.length > 0 },
+  );
+
+  return useMemo(() => {
+    const byInstallation = new Map<string, MusterServers>();
+    for (const installation of installations) {
+      const own = resources.filter(
+        resource => resource.cluster === installation,
+      );
+      const failed = errors.some(error => error.cluster === installation);
+      const answered =
+        failed || clustersData.some(data => data.cluster === installation);
+      const servers = own.map(serverInfoOf);
+      byInstallation.set(installation, {
+        servers,
+        resources: own,
+        labels: connectorLabels(servers),
+        isLoading: isLoading && !answered,
+        isUnavailable: failed && own.length === 0,
+      });
+    }
+    return byInstallation;
+  }, [installations, resources, clustersData, errors, isLoading]);
+}

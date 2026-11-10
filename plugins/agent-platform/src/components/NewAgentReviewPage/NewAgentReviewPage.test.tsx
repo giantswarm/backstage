@@ -40,6 +40,7 @@ jest.mock('react-router-dom', () => ({
 
 jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
+    privateRepositories: new Set(),
     skills: [],
     isLoading: false,
     error: null,

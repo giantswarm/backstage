@@ -10,10 +10,12 @@ import {
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
-import type { ToolSummary } from '../../apis/types';
+import { musterPollingOptions } from '../../lib/musterPolling';
+import type { McpServerListResponse, ToolSummary } from '../../apis/types';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
 import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
@@ -161,27 +163,32 @@ export function NewConnectorTestPage() {
   }, [applying]);
 
   // Live per-session runtime view; shares the query key with the connector
-  // page's capability counts (`useServerCapabilityCounts`) so the two agree. Background refetch stays on: the
-  // connector takes up to a minute to connect, precisely the window where the
-  // person switches tabs.
+  // page's capability counts (`useServerCapabilityCounts`) so the two agree.
+  // Not from a hidden tab: the connector takes up to a minute to connect,
+  // the window where the person switches tabs, and the next tick, seconds
+  // after this tab becomes visible again, shows where it got to (no read on
+  // becoming visible on top: the client keeps focus refetches off and
+  // `staleTime` at 0). Not after muster refused the person either.
   const { data: runtimeData } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(installation && serverName),
-    refetchInterval: query => {
-      if (applying) {
-        return TEST_POLL_INTERVAL_MS;
-      }
-      const runtimeState = (query.state.data?.mcpServers ?? []).find(
-        s => s.name === serverName,
-      )?.state;
-      return runtimeState === 'Connected' ||
-        runtimeState === 'Running' ||
-        runtimeState === 'Awaiting Session'
-        ? SETTLED_POLL_INTERVAL_MS
-        : TEST_POLL_INTERVAL_MS;
-    },
-    refetchIntervalInBackground: true,
+    ...musterPollingOptions(
+      (query: PollingQuery<McpServerListResponse>) => {
+        if (applying) {
+          return TEST_POLL_INTERVAL_MS;
+        }
+        const runtimeState = (query.state.data?.mcpServers ?? []).find(
+          s => s.name === serverName,
+        )?.state;
+        return runtimeState === 'Connected' ||
+          runtimeState === 'Running' ||
+          runtimeState === 'Awaiting Session'
+          ? SETTLED_POLL_INTERVAL_MS
+          : TEST_POLL_INTERVAL_MS;
+      },
+      { refetchOnVisible: false },
+    ),
   });
   const runtime = (runtimeData?.mcpServers ?? []).find(
     s => s.name === serverName,

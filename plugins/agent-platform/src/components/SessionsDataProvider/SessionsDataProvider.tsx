@@ -140,8 +140,18 @@ const SessionsContext = createContext<SessionsContextValue | undefined>(
  * and an installation genuinely dropping out of the queried set *should* prune
  * its rows. Please don't "restore parity" — it would add state with nothing to
  * fix.
+ *
+ * `enabled` false reads nothing — no sessions, no identity probes, so no
+ * installation's Dex token is minted — and lists no sessions, for a page that
+ * shows them only some of the time.
  */
-export function SessionsDataProvider({ children }: { children: ReactNode }) {
+export function SessionsDataProvider({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+}) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
   const { installations } = useInstallations();
@@ -189,6 +199,9 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const notReachableKey = notReachable.join(',');
 
   const { targets, notReachableInstallations } = useMemo(() => {
+    if (!enabled) {
+      return { targets: [], notReachableInstallations: [] };
+    }
     // If the backend's list itself is unavailable, fall back to the inventory's
     // kagent installations rather than showing an empty page: a backend hiccup
     // shouldn't look like "you have no sessions".
@@ -216,7 +229,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       ),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kagentKey, proxiedKey, notReachableKey, allowlistFailed]);
+  }, [kagentKey, proxiedKey, notReachableKey, allowlistFailed, enabled]);
 
   // Home first, literally: the home installation's sessions are requested
   // alone, and the other installations' only once that request has answered
@@ -349,6 +362,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     // window where nothing is loading yet and the table would flash "No sessions
     // found." before the first installation is even queried.
     const isBusy =
+      enabled &&
       hasInstallations &&
       (isProbing ||
         isLoadingAllowlist ||
@@ -386,6 +400,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     readSignature,
+    enabled,
     agentIndex,
     capabilitiesFor,
     isProbing,

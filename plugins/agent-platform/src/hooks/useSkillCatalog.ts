@@ -6,7 +6,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import { DiscoveredSkill } from '../lib/skills';
+import { canonicalRepoUrl, DiscoveredSkill } from '../lib/skills';
 import type { DiscoveredPlugin } from '../lib/plugins';
 
 export type SkillCatalog = {
@@ -23,7 +23,15 @@ export type SkillCatalog = {
   failureMessages?: Record<string, string>;
   /** True when a repo's listing was capped, so some skills may be missing. */
   truncated: boolean;
+  /**
+   * The repositories GitHub reports private, by canonical URL
+   * (`canonicalRepoUrl`): only their collaborators read them, and an agent
+   * fetches their skills only with a credential.
+   */
+  privateRepositories: ReadonlySet<string>;
 };
+
+const NO_REPOSITORIES: ReadonlySet<string> = new Set();
 
 /**
  * Discovers agent skills across every configured repository
@@ -72,6 +80,8 @@ export function useSkillCatalog(): SkillCatalog {
             /** Absent from older backends. */
             plugins?: DiscoveredPlugin[];
             truncated?: boolean;
+            /** Absent from older backends and for non-GitHub hosts. */
+            private?: boolean;
           };
           return body;
         }),
@@ -81,12 +91,16 @@ export function useSkillCatalog(): SkillCatalog {
       const plugins: DiscoveredPlugin[] = [];
       const failedRepositories: string[] = [];
       const failureMessages: Record<string, string> = {};
+      const privateRepositories = new Set<string>();
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           skills.push(...result.value.skills);
           plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
+          if (result.value.private) {
+            privateRepositories.add(canonicalRepoUrl(repositories[index]));
+          }
         } else {
           failedRepositories.push(repositories[index]);
           failureMessages[repositories[index]] =
@@ -102,6 +116,7 @@ export function useSkillCatalog(): SkillCatalog {
         failedRepositories,
         failureMessages,
         truncated,
+        privateRepositories,
       };
     },
   });
@@ -116,5 +131,6 @@ export function useSkillCatalog(): SkillCatalog {
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
+    privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
   };
 }

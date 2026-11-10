@@ -5,7 +5,10 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  pollingQueryOptions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
   A2aTaskWire,
@@ -281,7 +284,9 @@ export function useSessionDetail(
     // A flat baseline, not the tasks' two tiers: this object is the title, the
     // agent and the timestamps, none of which move while an agent works. It polls
     // at all so a session renamed or deleted elsewhere stops looking current.
-    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+    // Not from a hidden tab (read again as it becomes visible), not after
+    // kagent refused the person (401, 403).
+    ...pollingQueryOptions(BASELINE_REFETCH_INTERVAL_MS),
     ...settleOptions(sessionRead),
   });
 
@@ -289,7 +294,7 @@ export function useSessionDetail(
     queryKey: sessionTasksQueryKey(installation, sessionId),
     queryFn: () => kagentApi.listSessionTasks(installation, sessionId),
     enabled,
-    refetchInterval: getSessionTasksRefetchInterval,
+    ...pollingQueryOptions(getSessionTasksRefetchInterval),
     ...settleOptions(tasksRead),
   });
 
