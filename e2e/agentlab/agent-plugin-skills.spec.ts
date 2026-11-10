@@ -15,7 +15,7 @@ import {
  * materialises only what the agent selects.
  *
  * Needs the lab's `claude` Harness, a working Anthropic key behind
- * `default-model-config`, and https://github.com/giantswarm/agentlab among the
+ * the lab's default model (`lab.defaultModel`), and https://github.com/giantswarm/agentlab among the
  * portal's and agent-manager's skill repositories (a `platform.valuesFiles`
  * overlay). Skips on a lab whose skills step does not offer the package.
  */

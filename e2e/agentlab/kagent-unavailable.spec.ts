@@ -74,9 +74,12 @@ test('a session list kagent could not answer is an error with a retry, not an em
   await expect(error).toContainText(
     `The sessions could not be read on ${lab.installation} (temporarily unavailable`,
   );
-  await expect(admin.getByText('No sessions yet', { exact: true })).toHaveCount(
-    0,
-  );
+  // The page's own empty state, not the rail's session list, which says the
+  // same.
+  const content = admin.getByRole('main');
+  await expect(
+    content.getByText('No sessions yet', { exact: true }),
+  ).toHaveCount(0);
   await snapshot(admin, 'kagent-unavailable-sessions');
 
   // kagent is back: Try again reads the lab's real answer.
@@ -84,10 +87,10 @@ test('a session list kagent could not answer is an error with a retry, not an em
   await error.getByRole('button', { name: 'Try again' }).click();
   await expect(error).toBeHidden({ timeout: 60_000 });
   await expect(
-    admin
+    content
       .getByRole('grid')
       .first()
-      .or(admin.getByText('No sessions yet', { exact: true })),
+      .or(content.getByText('No sessions yet', { exact: true })),
     'the retry settles on the real answer',
   ).toBeVisible({ timeout: 60_000 });
 });
