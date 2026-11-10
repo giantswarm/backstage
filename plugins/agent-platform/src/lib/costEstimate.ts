@@ -101,7 +101,7 @@ function sumAll(totals: Record<string, number>): number {
  * the totals is right for both parts: the rate can be off either way until
  * the window has rolled past the upgrade.
  */
-export function inputIncludesCache(totals: Record<string, number>): boolean {
+function inputIncludesCache(totals: Record<string, number>): boolean {
   return (
     sumTypes(totals, CACHE_TOKEN_TYPES) <=
     (totals.input ?? 0) * CACHE_IN_INPUT_TOLERANCE

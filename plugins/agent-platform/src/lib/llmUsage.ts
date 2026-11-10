@@ -5,7 +5,6 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import {
   deriveTokenRates,
-  inputIncludesCache,
   sumDistinctTokens,
   sumInputTokens,
   type TokenRates,
@@ -1314,11 +1313,10 @@ export const FRESH_INPUT_SERIES = 'fresh_input';
 /**
  * Replace the `input` series of a daily series by token type with
  * {@link FRESH_INPUT_SERIES}: input that was neither read from nor written to
- * cache. `input` holds both cache types on a gateway since v1.5.0, so stacked
- * with them it drew cached input twice; fresh input stacks with the cache
- * types and output to every token, once. Decided per day, as
- * {@link inputIncludesCache} does for a window: on an older gateway `input`
- * already is fresh input.
+ * cache. On a gateway since v1.5.0 `input` holds both cache types, so only
+ * fresh input stacks with the cache types and output to every token, once.
+ * The convention is decided per day by {@link sumInputTokens}: on an older
+ * gateway `input` already is fresh input.
  */
 export function withFreshInput(daily: LlmDailySeries): LlmDailySeries {
   if (!daily.series.includes('input')) {
@@ -1326,17 +1324,16 @@ export function withFreshInput(daily: LlmDailySeries): LlmDailySeries {
   }
 
   const rows = daily.rows.map(row => {
-    const types = {
+    const cacheRead = seriesValue(row, 'input_cache_read');
+    const cacheWrite = seriesValue(row, 'input_cache_write');
+    const input = sumInputTokens({
       input: seriesValue(row, 'input'),
-      input_cache_read: seriesValue(row, 'input_cache_read'),
-      input_cache_write: seriesValue(row, 'input_cache_write'),
-    };
-    const fresh = inputIncludesCache(types)
-      ? Math.max(
-          types.input - types.input_cache_read - types.input_cache_write,
-          0,
-        )
-      : types.input;
+      input_cache_read: cacheRead,
+      input_cache_write: cacheWrite,
+    });
+    // Within the convention check's tolerance the cache types may exceed
+    // `input` a little; that is no fresh input, not a negative amount.
+    const fresh = Math.max(input - cacheRead - cacheWrite, 0);
     const next: LlmDailyEntry = { ...row, [FRESH_INPUT_SERIES]: fresh };
     delete next.input;
     return next;

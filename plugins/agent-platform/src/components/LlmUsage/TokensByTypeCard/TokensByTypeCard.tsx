@@ -6,10 +6,7 @@ import {
   StackedBarChart,
   type StackedBarChartSeries,
 } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  FRESH_INPUT_SERIES,
-  type LlmDailySeries,
-} from '../../../lib/llmUsage';
+import { FRESH_INPUT_SERIES, type LlmDailySeries } from '../../../lib/llmUsage';
 import { formatCount, formatTokens } from '../../../lib/formatNumbers';
 import { formatDayTick, formatDayTooltip } from '../../../lib/formatDay';
 import { UsageCard } from '../UsageCard';
@@ -18,7 +15,7 @@ import { UsageCard } from '../UsageCard';
  * The four parts every token falls in, in the order they cost.
  *
  * Fresh input is derived (`withFreshInput`): the gateway's `input` holds both
- * cache types, so stacking it with them drew cached input twice.
+ * cache types, so it does not stack with them.
  *
  * Fixed rather than derived from the response: these are a partition of one
  * quantity, not a ranking, so their colours must not move when a day's mix

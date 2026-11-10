@@ -131,8 +131,16 @@ describe('reduceByAgent', () => {
       ...byAgentOptions,
       cost: undefined,
       tokens: [
-        ...series('new', { input: '1000', input_cache_read: '900', output: '10' }),
-        ...series('old', { input: '100', input_cache_read: '900', output: '10' }),
+        ...series('new', {
+          input: '1000',
+          input_cache_read: '900',
+          output: '10',
+        }),
+        ...series('old', {
+          input: '100',
+          input_cache_read: '900',
+          output: '10',
+        }),
       ],
       calls: undefined,
     });
@@ -1201,7 +1209,10 @@ describe('withFreshInput', () => {
   });
 
   it('leaves a series without input alone', () => {
-    const daily = { rows: [{ day: '2026-11-02', output: 5 }], series: ['output'] };
+    const daily = {
+      rows: [{ day: '2026-11-02', output: 5 }],
+      series: ['output'],
+    };
     expect(withFreshInput(daily)).toBe(daily);
   });
 });
