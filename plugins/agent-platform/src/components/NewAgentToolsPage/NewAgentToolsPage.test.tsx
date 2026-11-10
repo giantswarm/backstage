@@ -883,7 +883,7 @@ describe('NewAgentToolsPage', () => {
         'It lists no tools right now.',
       );
       expect(connector('agent-manager')).toHaveTextContent(
-        'None of its tools only read, so Read-only is not offered.',
+        'None of its tools only read, so Read-only cannot be picked.',
       );
     });
 
@@ -1667,6 +1667,35 @@ describe('NewAgentToolsPage', () => {
       layout = mockDesktopLayout();
     });
     afterEach(() => layout.restore());
+
+    it('states why the toolset is blocked in body text, in the danger tone', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      const tooMany = Array.from(
+        { length: 33 },
+        (_, i) => `tool:x_srv_t${i}`,
+      ).join(',');
+      await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+      await user.click(screen.getByText("Copy another agent's toolset"));
+      await user.click(
+        await screen.findByRole('radio', {
+          name: 'Copy the toolset of Existing agent',
+        }),
+      );
+
+      const rail = screen.getByRole('complementary', { name: 'Selected' });
+      const reason = within(rail).getByText(
+        'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+      );
+      expect(reason).toHaveAttribute('data-variant', 'body-small');
+      expect(reason).toHaveAttribute('data-color', 'danger');
+    });
 
     it('lists the selection by connector beside the step, with how many tools change things', async () => {
       const { api } = makeMusterApi({

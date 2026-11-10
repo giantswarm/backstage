@@ -92,7 +92,7 @@ function readOnlyUnavailable(
     return undefined;
   }
   if (readOnlyCount === 0) {
-    return 'None of its tools only read, so Read-only is not offered.';
+    return 'None of its tools only read, so Read-only cannot be picked.';
   }
   if (!readOnlyFits(bucket)) {
     return `Its read-only tools are more than the ${MAX_INLINE_SELECTORS} an agent may list one by one, so choose All.`;
