@@ -415,6 +415,7 @@ export async function createRouter(
    * logs each state change itself. Nothing while the probe has not settled
    * (`'unknown'`), or says it is reachable.
    */
+  const refusals = new WeakSet<Error>();
   const unreachableError = (
     installation: MusterInstallationConfig,
   ): MusterUnreachableError | undefined => {
@@ -422,11 +423,18 @@ export async function createRouter(
     if (state.reachable !== false) {
       return undefined;
     }
-    return new MusterUnreachableError(
+    const refusal = new MusterUnreachableError(
       installation.name,
       `not reachable from this portal (${state.reason ?? 'no answer'})`,
     );
+    refusals.add(refusal);
+    return refusal;
   };
+  /** The installation each request resolved to, for the error handler below. */
+  const resolvedInstallations = new WeakMap<
+    express.Request,
+    MusterInstallationConfig
+  >();
 
   /**
    * Resolve the target installation for a request from `?installation=`.
@@ -467,6 +475,7 @@ export async function createRouter(
         ].join(', ')}`,
       );
     }
+    resolvedInstallations.set(req, installationConfig);
     const unreachable = allowUnreachable
       ? undefined
       : unreachableError(installationConfig);
@@ -1424,6 +1433,29 @@ export async function createRouter(
         request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
+    },
+  );
+
+  // A muster that stopped answering while its probe still says reachable
+  // would otherwise cost every call a connection attempt until the probe's
+  // positive answer expires: a failed call probes again at once (deduplicated
+  // by the cache). Not for the refusals above, which the probe already knows.
+  router.use(
+    (
+      error: unknown,
+      req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      const installation = resolvedInstallations.get(req);
+      if (
+        installation &&
+        error instanceof MusterUnreachableError &&
+        !refusals.has(error)
+      ) {
+        void reachability.refresh(musterProbeUrl(installation.url));
+      }
+      next(error);
     },
   );
 

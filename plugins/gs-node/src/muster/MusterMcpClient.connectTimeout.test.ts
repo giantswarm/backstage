@@ -27,6 +27,7 @@ jest.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
 const INSTALLATION = { name: 'nowhere', url: 'https://muster.example/mcp' };
 
 describe('MusterMcpClient connections', () => {
+  // The timeout itself is pinned in musterFetch.test.ts.
   it('opens its MCP sessions with the fetch that bounds the connection', async () => {
     mockCreateMCPClient.mockRejectedValue(new TypeError('fetch failed'));
     const client = new MusterMcpClient(

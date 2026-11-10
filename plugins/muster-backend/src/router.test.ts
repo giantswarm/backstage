@@ -759,6 +759,51 @@ describe('createRouter', () => {
         expect(getResource).not.toHaveBeenCalled();
       });
 
+      it('probes again at once when a call fails while the probe still says reachable', async () => {
+        const { cache, pending, probe } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
+        pending.get(golemProbe)!({ reachable: true, checkedAt: 1 });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        callTool.mockRejectedValueOnce(
+          new MusterUnreachableError(
+            'golem',
+            'the connection failed (ECONNREFUSED)',
+          ),
+        );
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(probe).toHaveBeenCalledTimes(3);
+        expect(probe).toHaveBeenLastCalledWith(golemProbe);
+      });
+
+      it('does not probe again for its own refusal', async () => {
+        const { cache, pending, probe } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
+        pending.get(golemProbe)!({
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+          checkedAt: Date.now(),
+        });
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(probe).toHaveBeenCalledTimes(2);
+      });
+
       it('logs nothing for the refused call: the probe logged the state change', async () => {
         const logger = mockServices.logger.mock();
         const { cache, pending } = controlledCache();
@@ -769,6 +814,7 @@ describe('createRouter', () => {
           }),
           client: mockClient,
           reachability: cache,
+          httpAuth: mockServices.httpAuth(),
         });
         const probing = expressApp();
         probing.use(router);

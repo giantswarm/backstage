@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer as createNetServer, type AddressInfo } from 'node:net';
 import { getGlobalDispatcher, MockAgent, setGlobalDispatcher } from 'undici';
 import { createMusterFetch, MUSTER_CONNECT_TIMEOUT_MS } from './musterFetch';
 
@@ -35,6 +35,27 @@ describe('createMusterFetch', () => {
         result: {},
       });
     });
+  });
+
+  it('gives up on a connection that does not open within the timeout', async () => {
+    // Accepts the TCP connection and never answers the TLS handshake, which
+    // undici counts as part of connecting.
+    const silent = createNetServer(() => {});
+    await new Promise<void>(resolve => silent.listen(0, '127.0.0.1', resolve));
+    const { port } = silent.address() as AddressInfo;
+    const started = Date.now();
+    try {
+      await expect(
+        createMusterFetch(200)(`https://127.0.0.1:${port}/mcp`, {
+          method: 'POST',
+        }),
+      ).rejects.toMatchObject({
+        cause: { code: 'UND_ERR_CONNECT_TIMEOUT' },
+      });
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      silent.close();
+    }
   });
 
   describe('behind an egress proxy', () => {

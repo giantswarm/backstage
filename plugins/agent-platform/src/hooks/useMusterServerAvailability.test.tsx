@@ -237,6 +237,36 @@ describe('an installation the portal cannot reach', () => {
   });
 });
 
+it('reads a list that failed with something other than a 503 again on the next mount', async () => {
+  listServers.mockRejectedValueOnce(
+    Object.assign(new Error('timeout'), { status: 504 }),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const shared = ({ children }: PropsWithChildren<{}>) => (
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </TestApiProvider>
+  );
+  const first = renderHook(
+    () => useMusterServerAvailability('agent-manager', ['alpha']),
+    { wrapper: shared },
+  );
+  await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+  first.unmount();
+
+  const second = renderHook(
+    () => useMusterServerAvailability('agent-manager', ['alpha']),
+    { wrapper: shared },
+  );
+
+  await waitFor(() =>
+    expect(second.result.current.presenceOf('alpha')).toBe('available'),
+  );
+  expect(listServers).toHaveBeenCalledTimes(2);
+});
+
 describe('unavailableBackoff', () => {
   const query = (state: Partial<Query<unknown, Error>['state']>) =>
     ({ state }) as Query<unknown, Error>;
@@ -254,6 +284,21 @@ describe('unavailableBackoff', () => {
         query({ status: 'error', error: unavailable, errorUpdateCount: count }),
       ),
     ).toBe(delay);
+  });
+
+  it('starts the doubling over after a successful read', () => {
+    const shared = query({
+      status: 'success',
+      error: null,
+      errorUpdateCount: 3,
+    });
+    expect(unavailableBackoff(shared)).toBe(false);
+    Object.assign(shared.state, {
+      status: 'error',
+      error: unavailable,
+      errorUpdateCount: 4,
+    });
+    expect(unavailableBackoff(shared)).toBe(60_000);
   });
 
   it.each([

@@ -46,22 +46,41 @@ function exposedNameOf(server: McpServerRuntime): string {
 const UNAVAILABLE_BACKOFF_MS = 60_000;
 const UNAVAILABLE_BACKOFF_MAX_MS = 10 * 60_000;
 
+function isUnavailable(query: Query<unknown, Error>): boolean {
+  return (
+    query.state.status === 'error' &&
+    (query.state.error as { status?: unknown } | null)?.status === 503
+  );
+}
+
+/**
+ * The query's `errorUpdateCount` at its last successful read: the count only
+ * grows, so the failures in a row are the count since then.
+ */
+const errorsBeforeLastSuccess = new WeakMap<Query<unknown, Error>, number>();
+
 /**
  * When to read an installation's list again after it failed: a 503 (its
  * muster did not answer, or muster-backend knows it cannot be reached from
- * the portal) after {@link UNAVAILABLE_BACKOFF_MS}, doubling up to
- * {@link UNAVAILABLE_BACKOFF_MAX_MS}. Any other failure is not read again by
- * itself. A successful read ends it.
+ * the portal) after {@link UNAVAILABLE_BACKOFF_MS}, doubling with each 503 in
+ * a row up to {@link UNAVAILABLE_BACKOFF_MAX_MS}. Any other failure is not
+ * read again by itself. A successful read ends it and starts the doubling
+ * over.
  */
 export function unavailableBackoff(
   query: Query<unknown, Error>,
 ): number | false {
-  const { status, error, errorUpdateCount } = query.state;
-  if (status !== 'error' || (error as { status?: unknown })?.status !== 503) {
+  const { status, errorUpdateCount } = query.state;
+  if (status === 'success') {
+    errorsBeforeLastSuccess.set(query, errorUpdateCount);
     return false;
   }
+  if (!isUnavailable(query)) {
+    return false;
+  }
+  const inARow = errorUpdateCount - (errorsBeforeLastSuccess.get(query) ?? 0);
   return Math.min(
-    UNAVAILABLE_BACKOFF_MS * 2 ** Math.max(errorUpdateCount - 1, 0),
+    UNAVAILABLE_BACKOFF_MS * 2 ** Math.max(inARow - 1, 0),
     UNAVAILABLE_BACKOFF_MAX_MS,
   );
 }
@@ -166,9 +185,9 @@ export function useMusterServerAvailability(
       queryFn: () => musterApi!.listServers(installation),
       staleTime: 60_000,
       retry: false,
-      // Several components of a page read these lists, and a failed read
-      // would otherwise be made again by every one that mounts.
-      retryOnMount: false,
+      // Several components of a page read these lists: a 503 is read again by
+      // the backoff, not by every one that mounts. Other failures still are.
+      retryOnMount: (query: Query<unknown, Error>) => !isUnavailable(query),
       ...pollingQueryOptions(unavailableBackoff, { refetchOnVisible: false }),
     })),
   });
