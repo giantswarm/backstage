@@ -22,9 +22,7 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
  * `organization-admins` binds the admin's group.
  */
 
-const [PARENT, ORGANIZATION] = (
-  process.env.AGENTLAB_ORGANIZATION ?? 'agentlab-organizations/default'
-).split('/');
+const { parent: PARENT, name: ORGANIZATION } = lab.organization;
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
 const MODEL = `e2e-cred-${stamp}`;
 const SECRET = `tenant-credential-${MODEL}`;

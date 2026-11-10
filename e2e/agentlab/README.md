@@ -44,7 +44,7 @@ the command that installs it.
 | `AGENTLAB_TENANTS`       | unset                             | `1` on a lab with `platform.tenants` (`agentlab configure --tenants`: the tenant users alice and bob, the kagent controller's Kubernetes authorizer), for `tenants.spec.ts`, which also needs `AGENTLAB_KUBECONFIG`; skipped without it |
 | `AGENTLAB_SLASH_BRANCH`  | the checkout's branch             | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one                                                                                |
 | `AGENTLAB_WORKSPACE`     | unset                             | `<organization>/<name>` of a workspace the admin created in the portal on the lab (the real GitHub App grant), for `workspace-detail.spec.ts`; skipped without it                                                                       |
-| `AGENTLAB_ORGANIZATION`  | `agentlab-organizations/default`  | `<parent>/<name>` of the lab's organization whose `organization-admins` binds the admin, for `organization-credentials.spec.ts`                                                                                                         |
+| `AGENTLAB_ORGANIZATION`  | `agentlab-organizations/default`  | `<parent>/<name>` of the lab's organization whose `organization-admins` binds the admin, for `organization-credentials.spec.ts`, and where `labAgent` creates its agent when agent-manager offers organizations only                    |
 
 The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
 
