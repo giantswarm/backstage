@@ -24,6 +24,7 @@ import {
   type MusterUrlElicitation,
   musterTokenExpiredError,
   musterTokenMissingError,
+  MusterUnreachableError,
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
@@ -33,6 +34,8 @@ import {
   MusterInstallationConfig,
   MusterMcpClient,
   musterInstallationRequiresAuth,
+  MUSTER_CONNECT_TIMEOUT_MS,
+  probeEndpoint,
   ReachabilityCache,
   reachabilityFields,
   resolveMusterInstallations,
@@ -77,8 +80,9 @@ export interface RouterOptions {
   client?: MusterMcpClient;
   /**
    * The cache of unauthenticated reachability probes behind `/installations`.
-   * Overridable for tests; defaults to one that probes for real with a 3 s
-   * budget and a 5 min TTL (30 s for a negative answer).
+   * Overridable for tests; defaults to one that probes for real with the
+   * budget a muster call has to connect (`MUSTER_CONNECT_TIMEOUT_MS`) and a
+   * 5 min TTL (30 s for a negative answer).
    */
   reachability?: ReachabilityCache;
   /**
@@ -364,7 +368,12 @@ export async function createRouter(
   // until a probe settles. Results are logged at INFO, one line per endpoint
   // per state change.
   const reachability =
-    options.reachability ?? new ReachabilityCache({ logger });
+    options.reachability ??
+    new ReachabilityCache({
+      logger,
+      probe: url =>
+        probeEndpoint(url, { timeoutMs: MUSTER_CONNECT_TIMEOUT_MS }),
+    });
   const warmReachability = () => {
     for (const installation of installations.values()) {
       void reachability.refresh(musterProbeUrl(installation.url));
@@ -408,12 +417,50 @@ export async function createRouter(
   });
 
   /**
+   * Whether calls to the installation are refused without a connection
+   * attempt: the probe reports its muster unreachable from this portal. Not
+   * while the probe has not settled (`'unknown'`).
+   */
+  const isRefused = (installation: MusterInstallationConfig): boolean =>
+    reachability.get(musterProbeUrl(installation.url)).reachable === false;
+  /**
+   * The 503 a refused call fails with: neither logged nor sent to Sentry, as
+   * the probe logs each state change itself.
+   */
+  const refusalOf = (installation: MusterInstallationConfig) =>
+    new MusterUnreachableError(
+      installation.name,
+      `not reachable from this portal (${
+        reachability.get(musterProbeUrl(installation.url)).reason ?? 'no answer'
+      })`,
+    );
+  /**
+   * Probes again at once after a call to the installation could not reach
+   * its muster, unless calls are already refused: a muster that stopped
+   * answering while its probe still says reachable would otherwise cost every
+   * call a connection attempt until the probe's positive answer expires.
+   * Deduplicated by the cache.
+   */
+  const reprobeAfter = (error: unknown) => {
+    if (!(error instanceof MusterUnreachableError)) {
+      return;
+    }
+    const installation = installations.get(error.installation);
+    if (installation && !isRefused(installation)) {
+      void reachability.refresh(musterProbeUrl(installation.url));
+    }
+  };
+
+  /**
    * Resolve the target installation for a request from `?installation=`.
    * Defaults to the only installation when exactly one is configured;
-   * otherwise the parameter is required.
+   * otherwise the parameter is required. Throws {@link refusalOf} for an
+   * installation whose calls are refused ({@link isRefused}), unless
+   * `allowUnreachable` leaves that to the route.
    */
   const resolveInstallation = (
     req: express.Request,
+    { allowUnreachable = false }: { allowUnreachable?: boolean } = {},
   ): { config: MusterInstallationConfig; client: MusterMcpClient } => {
     if (clients.size === 0) {
       throw new ServiceUnavailableError(
@@ -442,6 +489,9 @@ export async function createRouter(
           ...clients.keys(),
         ].join(', ')}`,
       );
+    }
+    if (!allowUnreachable && isRefused(installationConfig)) {
+      throw refusalOf(installationConfig);
     }
     return { config: installationConfig, client };
   };
@@ -794,17 +844,28 @@ export async function createRouter(
    * still be waiting for the user.
    */
   router.get('/auth/status', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
+    const { config: installation, client } = resolveInstallation(req, {
+      allowUnreachable: true,
+    });
     if (!hasPerUserSession(installation)) {
       res.json({ servers: [] });
       return;
     }
 
     const callOptions = readCallOptions(req, installation);
+    if (isRefused(installation)) {
+      res.json({
+        servers: [],
+        unavailable: true,
+        message: refusalOf(installation).message,
+      });
+      return;
+    }
 
     try {
       res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
     } catch (error) {
+      reprobeAfter(error);
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`Muster ${AUTH_STATUS_RESOURCE} is unavailable`, {
         installation: installation.name,
@@ -1383,6 +1444,18 @@ export async function createRouter(
         request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
+    },
+  );
+
+  router.use(
+    (
+      error: unknown,
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      reprobeAfter(error);
+      next(error);
     },
   );
 

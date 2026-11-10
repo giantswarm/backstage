@@ -1,6 +1,14 @@
 import { useMemo } from 'react';
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type Query,
+} from '@tanstack/react-query';
+import {
+  isAwaitingData,
+  pollingQueryOptions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   musterInstallationsQueryKey,
   type McpServerRuntime,
@@ -32,6 +40,49 @@ export type MusterServerPresence =
  */
 function exposedNameOf(server: McpServerRuntime): string {
   return server.family?.name ?? server.toolPrefix ?? server.name;
+}
+
+/** The first read again after a 503, doubling with every further one. */
+const UNAVAILABLE_BACKOFF_MS = 60_000;
+const UNAVAILABLE_BACKOFF_MAX_MS = 10 * 60_000;
+
+function isUnavailable(query: Query<unknown, Error>): boolean {
+  return (
+    query.state.status === 'error' &&
+    (query.state.error as { status?: unknown } | null)?.status === 503
+  );
+}
+
+/**
+ * The query's `errorUpdateCount` at its last successful read: the count only
+ * grows, so the failures in a row are the count since then.
+ */
+const errorsBeforeLastSuccess = new WeakMap<Query<unknown, Error>, number>();
+
+/**
+ * When to read an installation's list again after it failed: a 503 (its
+ * muster did not answer, or muster-backend knows it cannot be reached from
+ * the portal) after {@link UNAVAILABLE_BACKOFF_MS}, doubling with each 503 in
+ * a row up to {@link UNAVAILABLE_BACKOFF_MAX_MS}. Any other failure is not
+ * read again by itself. A successful read ends it and starts the doubling
+ * over.
+ */
+export function unavailableBackoff(
+  query: Query<unknown, Error>,
+): number | false {
+  const { status, errorUpdateCount } = query.state;
+  if (status === 'success') {
+    errorsBeforeLastSuccess.set(query, errorUpdateCount);
+    return false;
+  }
+  if (!isUnavailable(query)) {
+    return false;
+  }
+  const inARow = errorUpdateCount - (errorsBeforeLastSuccess.get(query) ?? 0);
+  return Math.min(
+    UNAVAILABLE_BACKOFF_MS * 2 ** Math.max(inARow - 1, 0),
+    UNAVAILABLE_BACKOFF_MAX_MS,
+  );
 }
 
 function presenceIn(
@@ -116,16 +167,28 @@ export function useMusterServerAvailability(
       .filter(info => info.requiresAuth === false)
       .map(info => info.name),
   );
+  // The portal cannot reach their muster: their lists are not asked for once
+  // `/installations` says so, and their presence is `unknown` whatever a
+  // read made before that answered.
+  const unreachable = new Set(
+    (installationInfo.data?.installations ?? [])
+      .filter(info => info.reachable === false)
+      .map(info => info.name),
+  );
   const isReadingInstallations = asPerson && isAwaitingData(installationInfo);
   // Without an answer, whether an installation runs as the person is unknown.
   const isInstallationsUnknown = asPerson && !installationInfo.data;
   const queries = useQueries({
     queries: installations.map(installation => ({
       queryKey: musterServersQueryKey(installation),
-      enabled: Boolean(musterApi),
+      enabled: Boolean(musterApi) && !unreachable.has(installation),
       queryFn: () => musterApi!.listServers(installation),
       staleTime: 60_000,
       retry: false,
+      // Several components of a page read these lists: a 503 is read again by
+      // the backoff, not by every one that mounts. Other failures still are.
+      retryOnMount: (query: Query<unknown, Error>) => !isUnavailable(query),
+      ...pollingQueryOptions(unavailableBackoff, { refetchOnVisible: false }),
     })),
   });
 
@@ -134,16 +197,23 @@ export function useMusterServerAvailability(
   const signature = installations
     .map((installation, index) => {
       const query = queries[index];
-      const listed = presenceIn(query.data?.mcpServers, serverName);
+      const listed = unreachable.has(installation)
+        ? 'unknown'
+        : presenceIn(query.data?.mcpServers, serverName);
       let presence: MusterServerPresence = listed;
       if (listed !== 'missing' && shared.has(installation)) {
         presence = 'sharedIdentity';
       } else if (listed === 'available' && isInstallationsUnknown) {
         presence = 'unknown';
       }
-      const loading = isAwaitingData(query) || isReadingInstallations;
+      const loading =
+        (isAwaitingData(query) && !unreachable.has(installation)) ||
+        isReadingInstallations;
       const failed =
-        !loading && (query.isError || (asPerson && installationInfo.isError));
+        !loading &&
+        (unreachable.has(installation) ||
+          query.isError ||
+          (asPerson && installationInfo.isError));
       return `${installation}:${presence}:${loading ? 'l' : ''}:${failed ? 'f' : ''}`;
     })
     .join('|');

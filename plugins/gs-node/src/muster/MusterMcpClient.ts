@@ -37,6 +37,7 @@ import {
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
 import { MusterUnreachableError } from './musterUnreachable';
+import { createMusterFetch } from './musterFetch';
 import { markReported } from '../errors';
 import {
   FREQUENT_LOST_SESSIONS,
@@ -691,6 +692,9 @@ export interface ToolCallClient extends ClosableMcpClient {
   close(): Promise<void>;
 }
 
+/** One connection pool for every muster, with the connect timeout. */
+const musterFetch = createMusterFetch();
+
 /**
  * An official MCP SDK client of muster. It speaks protocol 2026-07-28 where
  * muster does, whose calls carry their own capabilities; an `input_required`
@@ -702,6 +706,7 @@ async function connectToolCallClient(
 ): Promise<ToolCallClient> {
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: { headers },
+    fetch: musterFetch,
   });
   const client = new SdkClient(
     { name: 'muster-backend', version: '1.0.0' },
@@ -748,6 +753,7 @@ export class MusterMcpClient {
           type: 'http',
           url: installation.url,
           headers,
+          fetch: musterFetch,
         },
       }),
     private readonly toolCallClientFactory: (

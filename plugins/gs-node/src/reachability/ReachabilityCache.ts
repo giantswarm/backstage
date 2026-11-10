@@ -14,6 +14,13 @@ export const DEFAULT_REACHABILITY_TTL_MS = 5 * 60_000;
 export const DEFAULT_NEGATIVE_REACHABILITY_TTL_MS = 30_000;
 
 /**
+ * Failed probes in a row before an endpoint is reported unreachable: one
+ * slow answer from a distant endpoint is not the same finding as an endpoint
+ * that never answers.
+ */
+export const UNREACHABLE_AFTER_FAILED_PROBES = 2;
+
+/**
  * `'unknown'` until the first probe of the endpoint has settled; a boolean
  * afterwards. Routes report it verbatim so a frontend can tell "not probed
  * yet" from "probed and unreachable" -- only the latter is acted on.
@@ -72,6 +79,11 @@ export type ReachabilityCacheOptions = {
  * answer while a refresh is in flight. Concurrent callers share one in-flight
  * probe per URL.
  *
+ * An endpoint is reported unreachable only once
+ * {@link UNREACHABLE_AFTER_FAILED_PROBES} probes in a row found it so. After
+ * a single failure the previous answer (or `'unknown'`) keeps being served,
+ * and the next ask probes again at once.
+ *
  * Only conclusive answers are recorded. A probe that ran out of budget while
  * the process was too busy to notice an answer (`inconclusive`, see
  * `EndpointProbeResult`) changes nothing: `'unknown'` stays `'unknown'`, a
@@ -84,6 +96,7 @@ export type ReachabilityCacheOptions = {
  */
 export class ReachabilityCache {
   private readonly entries = new Map<string, EndpointProbeResult>();
+  private readonly failures = new Map<string, number>();
   private readonly inFlight = new Map<string, Promise<EndpointProbeResult>>();
   private readonly ttlMs: number;
   private readonly negativeTtlMs: number;
@@ -108,13 +121,19 @@ export class ReachabilityCache {
    */
   get(url: string): ReachabilityState {
     const entry = this.entries.get(url);
-    if (!entry) {
+    const failures = this.failures.get(url) ?? 0;
+    const unconfirmed =
+      failures > 0 && failures < UNREACHABLE_AFTER_FAILED_PROBES;
+    if (!entry || unconfirmed) {
       void this.refresh(url);
-      return { reachable: 'unknown' };
+    } else {
+      const ttlMs = entry.reachable ? this.ttlMs : this.negativeTtlMs;
+      if (this.now() - entry.checkedAt >= ttlMs) {
+        void this.refresh(url);
+      }
     }
-    const ttlMs = entry.reachable ? this.ttlMs : this.negativeTtlMs;
-    if (this.now() - entry.checkedAt >= ttlMs) {
-      void this.refresh(url);
+    if (!entry) {
+      return { reachable: 'unknown' };
     }
     return {
       reachable: entry.reachable,
@@ -171,6 +190,11 @@ export class ReachabilityCache {
   }
 
   private record(url: string, result: EndpointProbeResult) {
+    const failures = result.reachable ? 0 : (this.failures.get(url) ?? 0) + 1;
+    this.failures.set(url, failures);
+    if (failures > 0 && failures < UNREACHABLE_AFTER_FAILED_PROBES) {
+      return;
+    }
     const previous = this.entries.get(url);
     this.entries.set(url, result);
     const changed =
