@@ -254,10 +254,11 @@ function WorkspaceEditor({
       validation.blurProps(field, worded ?? problems[field]),
     [validation, problems],
   );
-  // Read, and none to pick from: no source can name its provider.
+  // Read, none to pick from, and a source that names none: it cannot be saved.
   const providersMissing =
     (Boolean(providersQuery.data) || Boolean(providersQuery.error)) &&
-    providers.length === 0;
+    providers.length === 0 &&
+    Boolean(draft?.sources.some(source => !source.provider));
   const providersAlert = useRef<HTMLDivElement>(null);
   // The name is checked once typing pauses too, and whether it is free.
   const typedName = draft?.name.trim() ?? '';
@@ -333,18 +334,9 @@ function WorkspaceEditor({
       nameAvailability.state === 'taken'
     ) {
       unfold(Object.keys(problems));
-      // No field can take the focus when only the missing providers block
-      // the save: the warning that says so takes it.
-      if (
-        providersMissing &&
-        nameAvailability.state !== 'taken' &&
-        !Object.keys(problems).some(
-          field =>
-            field === 'name' ||
-            field === 'sizing.minimum' ||
-            field.endsWith('.owner'),
-        )
-      ) {
+      // The provider field is not on screen: the warning takes the focus,
+      // and `reveal()` moves it on to the first invalid field, if any.
+      if (providersMissing) {
         providersAlert.current?.focus();
       }
       validation.reveal();
@@ -368,10 +360,12 @@ function WorkspaceEditor({
         classifyWorkspaceManagerError(cause),
         organization,
       );
-      if (refusal.field) {
-        unfold([refusal.field]);
-      }
       setProblem(refusal);
+      if (refusal.field) {
+        // The refused field takes the focus, so its message is read out.
+        unfold([refusal.field]);
+        validation.reveal();
+      }
     }
   }, [
     draft,
@@ -619,7 +613,7 @@ type EditorBodyProps = {
   onAddSource: () => void;
   sourceEditors: React.ReactNode;
   providersError: unknown;
-  /** The providers are read and there is none, so no source can be saved. */
+  /** No provider can be picked and a source names none, so it cannot be saved. */
   providersMissing: boolean;
   providersAlert: React.RefObject<HTMLDivElement>;
   previewPanel: React.ReactNode;
@@ -692,6 +686,7 @@ function EditorBody({
 
       {problem && !problem.field && (
         <Alert
+          role="alert"
           status="danger"
           title="The workspace was not saved"
           description={problem.message}

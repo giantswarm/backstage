@@ -314,6 +314,7 @@ export function WorkspaceSourceEditor({
           <Select
             label="Provider"
             isRequired
+            placeholder="Choose a provider"
             searchable={searchableIf(providers)}
             options={providers.map(p => ({
               id: p.name,
@@ -330,10 +331,10 @@ export function WorkspaceSourceEditor({
           {providerError.message}
         </div>
       ) : null}
-      {/* With no provider to pick from, the page's warning says why: a
-          message here would name a field that is not on screen. */}
-      {providers.length === 1 && field('provider') && (
-        <Text variant="body-small" color="danger">
+      {/* Without a Provider field only the manager refuses a named provider;
+          a source that names none is the page's warning to explain. */}
+      {providers.length <= 1 && source.provider && field('provider') && (
+        <Text variant="body-small" color="danger" role="alert">
           {field('provider')}
         </Text>
       )}
@@ -350,6 +351,7 @@ export function WorkspaceSourceEditor({
               <Select
                 label="Owner"
                 isRequired
+                placeholder="Choose an owner"
                 searchable={searchableIf(ownerOptions)}
                 options={ownerOptions.map(name => ({ id: name, label: name }))}
                 selectedKey={source.owner.trim() || null}

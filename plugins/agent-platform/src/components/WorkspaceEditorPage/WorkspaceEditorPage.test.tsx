@@ -1088,10 +1088,10 @@ describe('WorkspaceEditorPage blocked save', () => {
     act(() => owner.focus());
     await user.tab();
     expect(owner).not.toHaveFocus();
-    expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
+    expect(owner).toHaveTextContent('Choose an owner');
+    expect(owner).toHaveAccessibleDescription('');
 
     await user.click(screen.getByRole('button', { name: 'Create workspace' }));
-    expect(await source(0).findByText('Choose an owner')).toBeInTheDocument();
     await waitFor(() => expect(owner).toHaveFocus());
     expect(owner).toHaveAccessibleDescription(
       expect.stringContaining('Choose an owner'),
@@ -1106,7 +1106,7 @@ describe('WorkspaceEditorPage blocked save', () => {
 
     await user.click(owner);
     await user.click(await screen.findByRole('option', { name: 'acme' }));
-    expect(source(0).queryByText('Choose an owner')).not.toBeInTheDocument();
+    expect(owner).toHaveAccessibleDescription('');
     expect(
       await source(0).findByText(
         'Pick repositories by name, or filter by language or topic',
@@ -1126,8 +1126,10 @@ describe('WorkspaceEditorPage blocked save', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
 
-    expect(await source(0).findByText('Choose a provider')).toBeInTheDocument();
-    const provider = source(0).getByRole('button', { name: /Provider/ });
+    const provider = await source(0).findByRole('button', {
+      name: /Provider/,
+    });
+    expect(provider).toHaveTextContent('Choose a provider');
     await waitFor(() => expect(provider).toHaveFocus());
     expect(provider).toHaveAccessibleDescription(
       expect.stringContaining('Choose a provider'),
@@ -1210,6 +1212,50 @@ describe('WorkspaceEditorPage blocked save', () => {
       expect(owner).toHaveAccessibleDescription(
         expect.stringContaining('owner must be a provider account name'),
       ),
+    );
+    await waitFor(() => expect(owner).toHaveFocus());
+  });
+
+  it('announces a refusal that names no field', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    fake.onWrite('update_workspace', () => {
+      throw new Error('update_workspace: the manager is read-only');
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The workspace was not saved',
+    );
+  });
+
+  it('announces the problem of a field the person leaves', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    await user.click(screen.getByRole('button', { name: 'Advanced options' }));
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Minimum size' }),
+      '2O',
+    );
+    await user.tab();
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-field-validation-announcer]'),
+      ).toHaveTextContent('Enter a whole number of GiB, such as 20'),
     );
   });
 });
@@ -1377,6 +1423,50 @@ describe('WorkspaceEditorPage without providers', () => {
     await waitFor(() => expect(owner).toHaveFocus());
     expect(owner).toHaveAccessibleDescription(
       expect.stringContaining('Enter an owner'),
+    );
+  });
+
+  it('keeps an edit whose sources name their provider savable', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    withoutListProviders(fake);
+    await render(fake, { name: 'portal' });
+
+    expect(
+      await screen.findByText('Could not read the providers'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/the workspace cannot be saved/),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(fake.callsOf('update_workspace')).toHaveLength(1),
+    );
+  });
+
+  it('shows the manager refusing the provider a source names', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    withoutListProviders(fake);
+    fake.onWrite('update_workspace', () => {
+      throw new Error(
+        'update_workspace: invalid workspace: sources[0]: unknown provider instance "github"',
+      );
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByText('Could not read the providers');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await source(0).findByRole('alert')).toHaveTextContent(
+      /unknown provider instance/,
     );
   });
 
