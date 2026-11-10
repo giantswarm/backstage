@@ -46,10 +46,13 @@ export function useSkillSource(installation?: string): SkillSource {
   // lists no skill-manager (or runs under its shared identity), or there is
   // no muster to ask.
   const unknown = Boolean(musterApi) && presence === 'unknown';
+  // An unknown presence that is not loading also occurs between two reads,
+  // so only a failed read makes muster unreachable.
+  const unreachable =
+    unknown && Boolean(target) && availability.failedOf(target!);
   const pending =
     Boolean(musterApi) &&
-    ((!target && isHomeLoading) || (unknown && availability.isLoading));
-  const unreachable = unknown && !availability.isLoading;
+    ((!target && isHomeLoading) || (unknown && !unreachable));
 
   return useMemo((): SkillSource => {
     if (pending) {

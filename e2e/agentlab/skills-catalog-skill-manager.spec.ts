@@ -84,6 +84,35 @@ function filesIn(value: unknown): { path: string }[] | undefined {
   return undefined;
 }
 
+/**
+ * Records whether the page ever said muster could not be asked about
+ * skill-manager, however briefly: a source that settles must never pass
+ * through that state.
+ */
+async function watchUnreachable(page: Page) {
+  await page.addInitScript(() => {
+    const seen = () =>
+      document.body?.innerText.includes('Could not ask muster on') ?? false;
+    new MutationObserver(() => {
+      if (seen()) {
+        (
+          window as unknown as { __skillsUnreachable: boolean }
+        ).__skillsUnreachable = true;
+      }
+    }).observe(document, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
+  return async () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __skillsUnreachable?: boolean })
+          .__skillsUnreachable === true,
+    );
+}
+
 function watchSkillReads(page: Page) {
   const portalDiscovery: string[] = [];
   const tools: Response[] = [];
@@ -105,6 +134,7 @@ test('the wizard offers what skill-manager lists, plugins included', async ({
 }) => {
   test.setTimeout(5 * 60_000);
   const reads = watchSkillReads(admin);
+  const sawUnreachable = await watchUnreachable(admin);
   const listed = admin
     .waitForResponse(
       response => toolOf(response) === 'x_skill-manager_list_skills',
@@ -161,12 +191,16 @@ test('the wizard offers what skill-manager lists, plugins included', async ({
   expect(reads.portalDiscovery, 'gs-backend discovery is not asked').toEqual(
     [],
   );
+  expect(await sawUnreachable(), 'muster was never reported unreachable').toBe(
+    false,
+  );
 });
 
 test('a skill page reads its SKILL.md through skill-manager', async ({
   admin,
 }) => {
   const reads = watchSkillReads(admin);
+  const sawUnreachable = await watchUnreachable(admin);
   const listed = admin
     .waitForResponse(
       response => toolOf(response) === 'x_skill-manager_list_skills',
@@ -219,4 +253,7 @@ test('a skill page reads its SKILL.md through skill-manager', async ({
     reads.portalDiscovery,
     'gs-backend content routes are not asked',
   ).toEqual([]);
+  expect(await sawUnreachable(), 'muster was never reported unreachable').toBe(
+    false,
+  );
 });

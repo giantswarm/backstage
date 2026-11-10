@@ -19,6 +19,7 @@ function given(options: {
   homeLoading?: boolean;
   presence?: Record<string, string>;
   availabilityLoading?: boolean;
+  failed?: string[];
 }) {
   jest.mocked(useMusterPluginApi).mockReturnValue(musterApi as never);
   jest.mocked(useHomeInstallation).mockReturnValue({
@@ -29,6 +30,8 @@ function given(options: {
     presenceOf: (installation: string) =>
       options.presence?.[installation] ?? 'unknown',
     isLoading: Boolean(options.availabilityLoading),
+    failedOf: (installation: string) =>
+      (options.failed ?? []).includes(installation),
   } as never);
 }
 
@@ -68,8 +71,19 @@ describe('useSkillSource', () => {
     });
   });
 
-  it('is unreachable, not the portal’s own discovery, when muster’s server list failed', () => {
+  it('waits between two reads: unknown and not loading, but nothing failed', () => {
     given({ home: 'gazelle', presence: { gazelle: 'unknown' } });
+    expect(renderHook(() => useSkillSource()).result.current).toEqual({
+      kind: 'pending',
+    });
+  });
+
+  it('is unreachable, not the portal’s own discovery, when muster’s server list failed', () => {
+    given({
+      home: 'gazelle',
+      presence: { gazelle: 'unknown' },
+      failed: ['gazelle'],
+    });
     expect(renderHook(() => useSkillSource()).result.current).toEqual({
       kind: 'unreachable',
       installation: 'gazelle',
