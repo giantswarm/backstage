@@ -134,6 +134,92 @@ beforeEach(() => {
 });
 
 describe('OrganizationPage', () => {
+  describe('an organization whose file left git', () => {
+    const COMMIT = '0123456789abcdef0123456789abcdef01234567';
+    const ORGANIZATION = {
+      name: 'payments',
+      parent: 'org-acme',
+      namespace: PAYMENTS.namespace,
+      harnesses: ['kagent'],
+      workerReplicas: 3,
+    };
+
+    it('is Missing from git, linking the last commit that held its file', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: {
+            status: 'True',
+            reason: 'MissingFromGit',
+            message: 'missing from the inventory of the Kustomization',
+          },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+          lastAppliedRevisionUrl: `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', {
+          name: /Open the last commit that held its file/,
+        }),
+      ).toHaveAttribute(
+        'href',
+        `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
+      );
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+
+    it('names the commit when agent-manager has no link for it', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'MissingFromGit' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.getByText(`main@sha1:${COMMIT.slice(0, 7)}`),
+      ).toHaveAttribute('title', `main@sha1:${COMMIT}`);
+      expect(
+        screen.queryByRole('link', { name: /last commit/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('is Pending erase once its delete pull request merged', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+    });
+
+    it('shows nothing while the organization is in git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'False', reason: 'InInventory' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByRole('grid')).toBeInTheDocument();
+      expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
     const { callTool } = await renderPage('', SCENARIO);
 

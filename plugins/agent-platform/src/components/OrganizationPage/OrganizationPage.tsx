@@ -21,6 +21,7 @@ import { organizationsRouteRef } from '../../routes';
 import { MembersTab } from './MembersTab';
 import { ConnectorsTab, EgressTab, ModelsTab } from './ResourceTabs';
 import { ORGANIZATION_PAGE_TABS } from './organizationTabs';
+import { OrphanedAlert } from './OrphanedAlert';
 
 export type OrganizationPageProps = {
   installation: string;
@@ -156,6 +157,7 @@ export function OrganizationPage({
       tabsBasePath={basePath}
     >
       <Flex direction="column" gap="5">
+        {object && <OrphanedAlert organization={object} />}
         <Routes>
           <Route
             index

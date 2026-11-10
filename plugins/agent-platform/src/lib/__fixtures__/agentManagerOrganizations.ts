@@ -2,6 +2,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentManagerModelConfig } from '../agentManager';
 import type {
+  AgentPlatformOrganization,
   MemberResult,
   MyOrganizations,
   OrganizationConnector,
@@ -30,6 +31,11 @@ export type OrganizationsScenario = {
     namespace: string;
     destinations: { origin: string; credentialHeader?: string }[];
   }[];
+  /**
+   * `get_organization`'s organization, as an organizations-admin reads it;
+   * without it the call is refused, as for a member.
+   */
+  organization?: AgentPlatformOrganization;
   /** What `remove_organization_member` fails with, as muster passes it on. */
   removeError?: string;
 };
@@ -54,6 +60,9 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           }
           return scenario.mine ?? { organizations: [] };
         case 'x_agent-manager_get_organization':
+          if (scenario.organization) {
+            return { organization: scenario.organization };
+          }
           // A member may not read the AgentPlatformOrganization itself.
           throw new Error(
             'forbidden: you may not get agentplatformorganizations in org-acme: agent-platform:organizations-admin grants it',
