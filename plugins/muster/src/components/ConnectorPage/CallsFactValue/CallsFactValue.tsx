@@ -12,10 +12,10 @@ import type { ConnectorUsage } from '../hooks/useConnectorUsage';
 
 /** Why there is no session to read the calls through, per failure. */
 const NO_SESSION: Record<MusterSessionFailureKind, string> = {
-  unreachable: 'muster is not reachable from this portal',
+  unreachable: 'Muster is not reachable from this portal',
   'session-expired': 'Your sign-in has expired',
-  'mint-failed': 'No muster session could be started',
-  'muster-rejected': 'muster refused the session',
+  'mint-failed': 'No Muster session could be started',
+  'muster-rejected': 'Muster refused the session',
 };
 
 export type CallsFactValueProps = {
@@ -64,7 +64,7 @@ export function CallsFactValue({ usage, session }: CallsFactValueProps) {
     return muted(NO_SESSION[session.failure.kind]);
   }
   if (!session.authenticated) {
-    return muted('Needs a muster session');
+    return muted('Needs a Muster session');
   }
   // A session and no read: never an endless skeleton.
   return muted('Not available');

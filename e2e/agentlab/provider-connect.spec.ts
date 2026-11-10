@@ -6,6 +6,7 @@ import {
   openReadyAgent,
   startSessionButton,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { RUN } from './lab';
 
@@ -276,11 +277,11 @@ test('the composer prompts for an unconnected provider before a workspace start,
   // Only a sign-in the person makes here restarts the start: the click, the
   // sign-in tab, and muster reporting the grant.
   await stageGrant(admin, provider, granted);
-  const signInTab = admin.waitForEvent('popup');
-  await prompt
-    .getByRole('button', { name: /^(Continue with|Sign in to) / })
-    .click();
-  await (await signInTab).close();
+  const signInTab = await openThroughConsent(
+    admin,
+    prompt.getByRole('button', { name: /^(Continue with|Sign in to) / }),
+  );
+  await signInTab.close();
   await expect(prompt).toContainText(/Waiting for /);
   expect(checks, 'nothing starts before the grant').toHaveLength(1);
 

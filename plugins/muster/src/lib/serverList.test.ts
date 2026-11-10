@@ -92,9 +92,28 @@ describe('serverListEntries with display names', () => {
       [
         ['mcp-zendesk', 'Acme Support'],
         ['github', 'github'],
-        ['muster', 'muster'],
+        ['muster', 'Muster'],
       ],
     );
+  });
+
+  it('sorts by name whatever the case, and digits by their value', () => {
+    const named = serverListRows(
+      [
+        makeServer('connector-10'),
+        makeServer('connector-2'),
+        makeServer('Zebra'),
+        makeServer('apple'),
+      ],
+      undefined,
+    );
+    expect(serverListEntries(named, '').map(e => e.id)).toEqual([
+      'apple',
+      'connector-2',
+      'connector-10',
+      'muster',
+      'Zebra',
+    ]);
   });
 
   it('matches the display name and the name its page uses', () => {

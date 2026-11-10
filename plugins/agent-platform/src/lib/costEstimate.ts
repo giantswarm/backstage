@@ -109,14 +109,14 @@ function inputIncludesCache(totals: Record<string, number>): boolean {
 }
 
 /** Every token the totals hold, each once. */
-function sumDistinctTokens(totals: Record<string, number>): number {
+export function sumDistinctTokens(totals: Record<string, number>): number {
   return inputIncludesCache(totals)
     ? sumAll(totals) - sumTypes(totals, CACHE_TOKEN_TYPES)
     : sumAll(totals);
 }
 
 /** Every input token the totals hold, each once. */
-function sumInputTokens(totals: Record<string, number>): number {
+export function sumInputTokens(totals: Record<string, number>): number {
   return inputIncludesCache(totals)
     ? (totals.input ?? 0)
     : sumTypes(totals, INPUT_TOKEN_TYPES);

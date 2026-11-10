@@ -2,8 +2,8 @@ import type { StatusDotProps } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type AuthActionParts,
   authActionParts,
-  signInWaitText,
   SSO_REFUSED_STATUS,
+  WAITING_FOR_SIGN_IN,
 } from '../ServerSignIn';
 import {
   type ServerSignInState,
@@ -105,7 +105,7 @@ function statusDetails(
     details.push(parts.explanation);
   }
   if (parts.kind === 'sign-in' && parts.wait) {
-    details.push(signInWaitText(state));
+    details.push(WAITING_FOR_SIGN_IN);
     if (parts.wait.clientIdNote) {
       details.push(parts.wait.clientIdNote.text);
     }

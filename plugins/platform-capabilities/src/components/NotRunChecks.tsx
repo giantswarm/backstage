@@ -1,5 +1,10 @@
-import { Button, Flex, Link, Text } from '@backstage/ui';
-import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
+import { Button, Flex, Text } from '@backstage/ui';
+import { useApi } from '@backstage/frontend-plugin-api';
+import {
+  externalUrlConsentApiRef,
+  NewTabLabel,
+  SimpleAccordion,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { VerifyDimension, VerifyResult } from '../apis';
 import { count, notChecked, NotRun } from '../lib/comparison';
@@ -23,12 +28,24 @@ function CheckLine({ dimension }: { dimension: VerifyDimension }) {
       {auth?.authUrl && (
         <>
           {' · '}
-          <Link href={auth.authUrl} target="_blank" rel="noopener">
-            connect {auth.server} in muster
-          </Link>
+          <ConnectButton url={auth.authUrl} server={auth.server} />
         </>
       )}
     </li>
+  );
+}
+
+/** muster's connect page, opened after the person agrees to it. */
+function ConnectButton({ url, server }: { url: string; server: string }) {
+  const consentApi = useApi(externalUrlConsentApiRef);
+  return (
+    <Button
+      variant="tertiary"
+      size="small"
+      onPress={() => void consentApi.open({ url, requester: server })}
+    >
+      <NewTabLabel>Connect {server} in muster</NewTabLabel>
+    </Button>
   );
 }
 

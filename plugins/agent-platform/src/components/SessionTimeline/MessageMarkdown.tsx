@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link as BackstageLink } from '@backstage/core-components';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
@@ -15,6 +14,10 @@ import {
   ConnectorSignInAction,
   useConnectorSignInLink,
 } from '../ConnectorSignInLinks';
+import {
+  chatRehypePlugins,
+  chatRemarkRehypeOptions,
+} from './chatRehypePlugins';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -295,9 +298,16 @@ export function useMarkdownComponents(): Components {
         {children}
       </Text>
     ),
-    a: ({ href, children }) => (
-      <MarkdownLink href={href}>{children}</MarkdownLink>
-    ),
+    a: ({ href, children, node: _node, ...props }) =>
+      // An in-page anchor, such as a footnote reference, keeps its id and
+      // footnote attributes.
+      href?.startsWith('#') ? (
+        <a href={href} {...props}>
+          {children}
+        </a>
+      ) : (
+        <MarkdownLink href={href}>{children}</MarkdownLink>
+      ),
     blockquote: ({ children }) => (
       <blockquote className={classes.blockquote}>{children}</blockquote>
     ),
@@ -330,13 +340,21 @@ export function useMarkdownComponents(): Components {
     summary: ({ children }) => (
       <summary className={classes.summary}>{children}</summary>
     ),
+    img: ({ src, alt }) => {
+      const label = `Image: ${alt || 'untitled'}`;
+      return typeof src === 'string' && src ? (
+        <MarkdownLink href={src}>{label}</MarkdownLink>
+      ) : (
+        <>{`[${label}]`}</>
+      );
+    },
   };
 }
 
 /**
- * Agent prose. GFM (tables, task lists, strikethrough) plus raw HTML — agents
- * wrap long output in `<details>` blocks, which is the same trade the AI chat
- * plugin makes.
+ * Agent prose. GFM (tables, task lists, strikethrough) plus sanitised raw
+ * HTML for agents' `<details>` blocks. Images render as links, so a message
+ * never makes the browser fetch a URL.
  */
 function MessageMarkdownImpl({ text }: { text: string }) {
   const classes = useStyles();
@@ -345,7 +363,8 @@ function MessageMarkdownImpl({ text }: { text: string }) {
     <div className={`${STABLE_CLASS_NAMES.message} ${classes.root}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={chatRehypePlugins}
+        remarkRehypeOptions={chatRemarkRehypeOptions}
         components={components}
       >
         {text}

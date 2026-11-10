@@ -218,6 +218,12 @@ target is larger than the text — a table or list row, a card, a nav or rail
 item, a breadcrumb, a tab, a button — and anything else needs a reason. A link
 in a table cell stays underlined. See "Links" in `docs/ui.md`.
 
+A text link to outside the portal opens in a new tab and shows the
+external-link icon with a hidden "(opens in a new tab)": `ui-react`'s
+`ExternalLink` (`ExternalButtonLink` for a button, `ExternalCellText` in a
+table cell), on classic pages as in the shell. Never `target="_blank"` by
+hand, a text arrow ("↗") or core-components' `externalLinkIcon`.
+
 ### Links in the Agent Platform shell
 
 Every text link in the shell takes the shell's link colour and a solid

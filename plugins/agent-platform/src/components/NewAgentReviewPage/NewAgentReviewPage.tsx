@@ -98,7 +98,7 @@ function CreateAgentReview() {
     useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
   // step doesn't exist. Cached by the time this page renders.
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories } = useSkillCatalog(state.installation);
 
   // The toolset as the Tools step showed it — the same resolution for the same
   // person, from the same cached queries — so what is reviewed is exactly what

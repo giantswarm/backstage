@@ -2,6 +2,7 @@ import { SidebarPinStateProvider } from '@backstage/core-components';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { toastApiRef } from '@backstage/frontend-plugin-api';
 import {
+  externalUrlConsentApiRef,
   ShellDocumentTitle,
   ShellDocumentTitleProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -101,7 +102,10 @@ async function renderShell({ path = '/' }: { path?: string } = {}) {
     </ShellDocumentTitleProvider>,
     {
       initialRouteEntries: [path],
-      apis: [[toastApiRef, { post }]],
+      apis: [
+        [toastApiRef, { post }],
+        [externalUrlConsentApiRef, { open: jest.fn() }],
+      ],
       mountedRoutes: {
         '/': homeRouteRef,
         '/sessions': agentPlatformPlugin.routes.sessions,

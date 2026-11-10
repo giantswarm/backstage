@@ -54,7 +54,7 @@ export const InShell: Story = {
     docs: {
       description: {
         story:
-          'Inside the agent-platform shell, both new-tab links end in “↗”, like the shell’s other new-tab links.',
+          'Inside the agent-platform shell, both links are `ExternalLink`s: the launch icon after the text, and “(opens in a new tab)” for screen readers, like every other new-tab link.',
       },
     },
   },

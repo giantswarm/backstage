@@ -1,7 +1,10 @@
 import { Tooltip } from '@material-ui/core';
 import { Badge } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
-import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  stopRowPress,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   discoveryApiRef,
   fetchApiRef,
@@ -10,6 +13,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { EpicRef } from '../../apis';
+import { isPortalPath } from '../../lib/magazine';
 import { roadmapItemExternalRouteRef } from '../../routes';
 
 /** The slice of a roadmap board item the chip needs. */
@@ -75,21 +79,34 @@ export function EpicChip({
       {/* The chip sits inside a table row and a list row, both of which act on
           a press anywhere within them. Without this, clicking the chip would
           open the epic *and* open (or re-select) the plan behind it. */}
-      <Link
-        to={to}
-        underline={variant === 'link' ? 'hover' : 'none'}
-        onPointerDown={stopRowPress}
-        onPointerUp={stopRowPress}
-        onClick={stopRowPress}
-      >
-        {variant === 'link' ? (
-          `#${epic.number}`
-        ) : (
-          <Badge size="small">
-            {status ? `Epic · ${status}` : `Epic #${epic.number}`}
-          </Badge>
-        )}
-      </Link>
+      {variant === 'link' && !isPortalPath(to) ? (
+        // The GitHub fallback as text leaves the portal: a new tab, which it
+        // says. The span keeps the press from the row around it.
+        <span
+          role="presentation"
+          onPointerDown={stopRowPress}
+          onPointerUp={stopRowPress}
+          onClick={stopRowPress}
+        >
+          <ExternalLink href={to}>#{epic.number}</ExternalLink>
+        </span>
+      ) : (
+        <Link
+          to={to}
+          underline={variant === 'link' ? 'hover' : 'none'}
+          onPointerDown={stopRowPress}
+          onPointerUp={stopRowPress}
+          onClick={stopRowPress}
+        >
+          {variant === 'link' ? (
+            `#${epic.number}`
+          ) : (
+            <Badge size="small">
+              {status ? `Epic · ${status}` : `Epic #${epic.number}`}
+            </Badge>
+          )}
+        </Link>
+      )}
     </Tooltip>
   );
 }

@@ -1,9 +1,10 @@
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Link, Text } from '@backstage/ui';
+import { Text } from '@backstage/ui';
 
 import { servingRouteRef } from '../../routes';
 import { useServing } from '../ServingProvider';
 import { useModelHosting } from '../../hooks/useModelHosting';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Where the portal's configuration reference says what model hosting needs:
@@ -30,9 +31,9 @@ export function ModelHostingHint() {
     <Text as="p" variant="body-small" color="secondary">
       Model hosting — running models on your own GPUs — appears here once an
       environment runs model-manager, registered with its muster.{' '}
-      <Link href={MODEL_HOSTING_DOCS_URL} target="_blank" rel="noopener">
+      <ExternalLink href={MODEL_HOSTING_DOCS_URL} display="inline">
         How to turn it on
-      </Link>
+      </ExternalLink>
     </Text>
   );
 }

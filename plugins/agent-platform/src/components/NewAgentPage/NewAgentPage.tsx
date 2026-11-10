@@ -69,13 +69,6 @@ function NewAgentPageContent() {
   const classes = useStyles();
   const navigate = useNavigate();
   const links = useAgentWizardLinks();
-  // Called here for two reasons beyond this page's own rendering: it starts the
-  // (backend, git-tree-walking) skill discovery while the user is still filling
-  // in this form, so step 2 usually has its catalogue ready instead of showing
-  // "Discovering skills…"; and `hasRepositories` decides whether step 2 exists
-  // at all. The query key doesn't depend on any form state, so the warm-up is
-  // never wasted, and it doesn't fire when no repositories are configured.
-  const { hasRepositories } = useSkillCatalog();
   const {
     state,
     edit,
@@ -94,6 +87,10 @@ function NewAgentPageContent() {
     tagsOffered,
     storedTags,
   } = useNewAgentForm();
+  // Starts reading the target installation's skill catalog while the form is
+  // filled in, so step 2 has it ready; `hasRepositories` decides whether step 2
+  // exists at all.
+  const { hasRepositories } = useSkillCatalog(state.installation);
   // The platform Harness the runtime field shows, for the summary below.
   const { platformChoice } = useRuntimeChoices();
   // The runtime decides whether extra egress origins are offered at all.

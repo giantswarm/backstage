@@ -11,9 +11,11 @@ const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
 }));
 
 /**
- * What marks a link that opens in a new tab, inside the link: the launch icon
- * to the eye and "(opens in a new tab)" to a screen reader. Shared by
- * `ExternalLink` and `ExternalCellText`, so the two say it alike.
+ * What marks a link or button that opens a new tab, inside it after its text:
+ * the launch icon to the eye and "(opens in a new tab)" to a screen reader.
+ * `ExternalLink`, `ExternalButtonLink` and `ExternalCellText` render it; use
+ * one of them, or `NewTabLabel` in a `Button` that opens a tab from code,
+ * rather than placing it by hand.
  */
 export const NewTabHint = () => (
   <>

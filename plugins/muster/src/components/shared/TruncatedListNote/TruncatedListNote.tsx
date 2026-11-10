@@ -30,10 +30,10 @@ export function TruncatedListNote({
   return (
     <Text as="p" variant="body-small" color="secondary">
       {counted
-        ? `This list is incomplete: muster returned ${formatCount(
+        ? `This list is incomplete: Muster returned ${formatCount(
             shown,
           )} of ${formatCount(total)} ${plural}.`
-        : `This list may be incomplete: muster returned only part of the ${plural}.`}
+        : `This list may be incomplete: Muster returned only part of the ${plural}.`}
     </Text>
   );
 }

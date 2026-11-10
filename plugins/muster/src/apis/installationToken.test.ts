@@ -56,7 +56,7 @@ describe('MusterTokenMintError', () => {
     );
     expect(error.reason).toBe('mint-failed');
     expect(error.message).toBe(
-      'Could not mint a token for muster on golem: Installation "golem" is not known to the Kubernetes API.',
+      'Could not mint a token for Muster on golem: Installation "golem" is not known to the Kubernetes API.',
     );
   });
 
