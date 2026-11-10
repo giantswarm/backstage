@@ -1,11 +1,14 @@
 /**
- * Recognising what `@ai-sdk/mcp` throws, and turning it into words for a
- * person. The SDK's errors are `MCPClientError`s (not exported from the
+ * Recognising what the MCP clients throw, and turning it into words for a
+ * person. `@ai-sdk/mcp`'s errors are `MCPClientError`s (not exported from the
  * package's index) whose message starts with `MCP HTTP Transport Error:` for
  * anything the HTTP transport met; the HTTP status rides along as
- * `statusCode`. The strings below are the SDK's public error surface, so they
- * are stable across versions; if one ever changed we would stop recognising
- * that signal, not crash.
+ * `statusCode`. The official SDK (`@modelcontextprotocol/client`) throws an
+ * `SdkHttpError` with the status in `status` for an HTTP answer it cannot use
+ * (`Error POSTing to endpoint: …`), and an `UnauthorizedError` for a 401. The
+ * strings below are the SDKs' public error surface, so they are stable across
+ * versions; if one ever changed we would stop recognising that signal, not
+ * crash.
  */
 
 // `MCPClientError({ message: 'Attempted to send a request from a closed
@@ -14,6 +17,19 @@ const CLOSED_CLIENT_ERROR_FRAGMENT =
   'Attempted to send a request from a closed client';
 
 const TRANSPORT_ERROR_PREFIX = 'MCP HTTP Transport Error';
+
+/** The official SDK's error names for its HTTP transport's failures. */
+const SDK_HTTP_ERROR = 'SdkHttpError';
+const SDK_UNAUTHORIZED_ERROR = 'UnauthorizedError';
+const SDK_ERROR_NAMES = new Set([
+  'SdkError',
+  SDK_HTTP_ERROR,
+  SDK_UNAUTHORIZED_ERROR,
+]);
+
+function nameOf(error: unknown): unknown {
+  return (error as { name?: unknown } | null)?.name;
+}
 
 /**
  * What a stateful streamable-http server (or the gateway in front of it)
@@ -42,6 +58,11 @@ function messageOf(error: unknown): string {
 function statusCodeOf(error: unknown): number | undefined {
   const status = (error as { statusCode?: unknown } | null)?.statusCode;
   if (typeof status === 'number') return status;
+  if (nameOf(error) === SDK_UNAUTHORIZED_ERROR) return 401;
+  if (nameOf(error) === SDK_HTTP_ERROR) {
+    const httpStatus = (error as { status?: unknown }).status;
+    if (typeof httpStatus === 'number') return httpStatus;
+  }
   const match = /\(HTTP (\d{3})\)/.exec(messageOf(error));
   return match ? Number(match[1]) : undefined;
 }
@@ -75,10 +96,11 @@ export function isRecoverableSessionError(error: unknown): boolean {
 
 function isTransportError(error: unknown): boolean {
   if (!error) return false;
-  const name = (error as { name?: unknown }).name;
+  const name = nameOf(error);
   const message = messageOf(error);
   return (
     name === 'MCPClientError' ||
+    (typeof name === 'string' && SDK_ERROR_NAMES.has(name)) ||
     message.startsWith(TRANSPORT_ERROR_PREFIX) ||
     isClosedClientError(error) ||
     // Node's fetch rejects with `TypeError: fetch failed` when the endpoint

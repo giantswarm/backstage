@@ -20,6 +20,8 @@ import {
   MusterUnauthorizedError,
 } from './musterUnauthorized';
 import { MusterAnswerCutError, MusterAuthProvidersApi } from './types';
+import { MusterInputRequiredError } from './urlElicitations';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
 
 const HEADER = 'backstage-muster-authorization';
 
@@ -308,6 +310,8 @@ type SetupOptions = {
   withKubernetes?: boolean;
   /** Also configure the legacy `aiChat.mcp` muster entry. */
   legacy?: boolean;
+  /** The consent dialog's answers, one per call to `open`. */
+  consent?: ExternalUrlConsentApi;
 };
 
 function setup(options: SetupOptions = {}) {
@@ -348,6 +352,7 @@ function setup(options: SetupOptions = {}) {
     ...(options.withKubernetes === false
       ? {}
       : { kubernetesApi, kubernetesAuthProvidersApi }),
+    ...(options.consent ? { externalUrlConsentApi: options.consent } : {}),
   });
 
   const sentHeaders = (): Record<string, string> | undefined =>
@@ -1153,5 +1158,165 @@ describe('isMusterAuthFailure', () => {
     expect(
       musterSignInRequiredOf(new MusterUnauthorizedError('x', 'token_expired')),
     ).toBeUndefined();
+  });
+});
+
+describe('MusterApiClient URL elicitations', () => {
+  const SIGN_IN_URL = 'https://muster/oauth/proxy/start?state=abc';
+  const elicitations = [
+    {
+      key: 'muster_sign_in',
+      url: SIGN_IN_URL,
+      message: 'Sign in to github to continue.',
+    },
+  ];
+  const inputRequired = () =>
+    errorResponse(428, {
+      error: {
+        name: 'MusterInputRequiredError',
+        message: 'Sign in to github to continue.',
+        elicitations,
+        requestState: 'opaque-state',
+      },
+    });
+
+  function consent(...answers: Array<'accept' | 'decline' | 'cancel'>) {
+    const open = jest.fn();
+    for (const answer of answers) {
+      open.mockResolvedValueOnce(answer);
+    }
+    return { open } as unknown as ExternalUrlConsentApi & { open: jest.Mock };
+  }
+
+  /** The bodies of the tool calls sent, in order. */
+  const callBodies = (fetchMock: jest.Mock) =>
+    fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('/call'))
+      .map(([, init]) => JSON.parse((init as RequestInit).body as string));
+
+  /** Tool calls answer `answers` in turn; every other read its default. */
+  function answerCalls(fetchMock: jest.Mock, ...answers: Response[]) {
+    fetchMock.mockImplementation(async (url: string) =>
+      url.includes('/call')
+        ? (answers.shift() ?? inputRequired())
+        : okResponse({ total: 1, tools: [] }),
+    );
+  }
+
+  it('puts the page to the person and sends the call again with their answer', async () => {
+    const consentApi = consent('accept');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(fetchMock, inputRequired(), okResponse({ me: 'octocat' }));
+
+    await expect(
+      client.callTool('x_github_get_me', { a: 1 }, 'open'),
+    ).resolves.toEqual({ me: 'octocat' });
+
+    expect(consentApi.open).toHaveBeenCalledWith({
+      url: SIGN_IN_URL,
+      requester: 'github',
+      message: 'Sign in to github to continue.',
+    });
+    expect(callBodies(fetchMock)[0]).toEqual({
+      name: 'x_github_get_me',
+      arguments: { a: 1 },
+    });
+    expect(callBodies(fetchMock)[1]).toEqual({
+      name: 'x_github_get_me',
+      arguments: { a: 1 },
+      input: {
+        inputResponses: { muster_sign_in: { action: 'accept' } },
+        requestState: 'opaque-state',
+      },
+    });
+  });
+
+  it("answers muster with the person's decline, and throws muster's answer", async () => {
+    const consentApi = consent('decline');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(
+      fetchMock,
+      inputRequired(),
+      errorResponse(500, {
+        error: {
+          name: 'MusterToolError',
+          message:
+            'The tool did not run: the person answered decline to signing in to github.',
+        },
+      }),
+    );
+
+    await expect(
+      client.callTool('x_github_get_me', {}, 'open'),
+    ).rejects.toThrow('the person answered decline');
+    expect(callBodies(fetchMock)[1].input.inputResponses).toEqual({
+      muster_sign_in: { action: 'decline' },
+    });
+  });
+
+  it('does not ask about the same page again while the answer stands', async () => {
+    const consentApi = consent('cancel');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    const cancelled = () =>
+      errorResponse(500, {
+        error: { name: 'MusterToolError', message: 'cancelled' },
+      });
+    answerCalls(
+      fetchMock,
+      inputRequired(),
+      cancelled(),
+      inputRequired(),
+      cancelled(),
+    );
+
+    await client.callTool('x_github_get_me', {}, 'open').catch(() => {});
+    await client.callTool('x_github_get_me', {}, 'open').catch(() => {});
+
+    expect(consentApi.open).toHaveBeenCalledTimes(1);
+    expect(callBodies(fetchMock)[3].input.inputResponses).toEqual({
+      muster_sign_in: { action: 'cancel' },
+    });
+  });
+
+  it('gives up after a few rounds of the same question', async () => {
+    const consentApi = consent('accept');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(fetchMock);
+
+    await expect(
+      client.callTool('x_github_get_me', {}, 'open'),
+    ).rejects.toBeInstanceOf(MusterInputRequiredError);
+    expect(callBodies(fetchMock)).toHaveLength(4);
+  });
+
+  it('throws the elicitation when the app has no consent dialog', async () => {
+    const { client, fetchMock } = setup();
+    answerCalls(fetchMock, inputRequired());
+
+    const error: unknown = await client
+      .callTool('x_github_get_me', {}, 'open')
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterInputRequiredError);
+    expect(error).toMatchObject({ status: 428, elicitations });
+  });
+
+  it("asks about a progress call's elicitation and streams the retry", async () => {
+    const consentApi = consent('accept');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(
+      fetchMock,
+      inputRequired(),
+      streamResponse(['{"type":"result","result":{"swept":1}}\n']),
+    );
+
+    await expect(
+      client.callToolWithProgress(
+        'x_marge_sweep',
+        {},
+        { installation: 'open', onProgress: () => {} },
+      ),
+    ).resolves.toEqual({ swept: 1 });
+    expect(callBodies(fetchMock)[1].input.requestState).toBe('opaque-state');
   });
 });

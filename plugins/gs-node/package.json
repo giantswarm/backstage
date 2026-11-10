@@ -38,12 +38,13 @@
     "@backstage/types": "backstage:^",
     "@giantswarm/backstage-plugin-gs-common": "^0.23.0",
     "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10",
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "zod": "^4.4.3"
   },
   "files": [

@@ -16,8 +16,12 @@ import {
   AUTH_LOGOUT_TOOL,
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
+  isMusterInputAnswer,
   isTokenExpired,
   type ConnectorName,
+  type MusterInputAnswer,
+  MusterInputRequiredError,
+  type MusterUrlElicitation,
   musterTokenExpiredError,
   musterTokenMissingError,
   toMusterUnauthorizedError,
@@ -121,6 +125,8 @@ function serializeStreamError(error: unknown): {
   name: string;
   message: string;
   details?: string[];
+  elicitations?: MusterUrlElicitation[];
+  requestState?: string;
 } {
   if (!(error instanceof Error)) {
     return { name: 'Error', message: String(error) };
@@ -133,7 +139,32 @@ function serializeStreamError(error: unknown): {
     details.every(detail => typeof detail === 'string')
       ? { details }
       : {}),
+    ...(error instanceof MusterInputRequiredError
+      ? {
+          elicitations: error.elicitations,
+          ...(error.requestState !== undefined
+            ? { requestState: error.requestState }
+            : {}),
+        }
+      : {}),
   };
+}
+
+/**
+ * The retry's answer to muster's `input_required` in a `/call` body's
+ * `input`, when it has one.
+ */
+function readInputAnswer(body: unknown): MusterInputAnswer | undefined {
+  const input = (body as { input?: unknown } | undefined)?.input;
+  if (input === undefined) {
+    return undefined;
+  }
+  if (!isMusterInputAnswer(input)) {
+    throw new InputError(
+      'input must hold inputResponses, each with an action of accept, decline or cancel, and an optional requestState string',
+    );
+  }
+  return input;
 }
 
 function parseOptionalInt(value: unknown, name: string): number | undefined {
@@ -460,6 +491,25 @@ export async function createRouter(
   };
 
   /**
+   * The options of a tool call the page made: the page can put a URL
+   * elicitation to the person (MCP 2026-07-28), so the call declares it, and
+   * muster answers a sign-in the call needs, or a server's own page, with
+   * MusterInputRequiredError (428). The page sends the call again with the
+   * person's answer in the body's `input`.
+   */
+  const elicitableCallOptions = (
+    req: express.Request,
+    installation: MusterInstallationConfig,
+  ) => {
+    const input = readInputAnswer(req.body);
+    return {
+      ...readCallOptions(req, installation),
+      urlElicitation: true,
+      ...(input ? { input } : {}),
+    };
+  };
+
+  /**
    * Without per-user auth muster runs a call under its own identity, shared
    * by every portal user. The discovery routes and muster's core tools
    * tolerate that; every other tool is refused before muster is called.
@@ -643,7 +693,7 @@ export async function createRouter(
     const result = await client.callTool(
       name,
       (toolArgs as Record<string, unknown>) ?? {},
-      readCallOptions(req, installation),
+      elicitableCallOptions(req, installation),
     );
     res.json(result);
   });
@@ -672,7 +722,7 @@ export async function createRouter(
       throw new InputError('arguments must be a JSON object when provided');
     }
     assertRunsAsPerson(name, installation);
-    const callOptions = readCallOptions(req, installation);
+    const callOptions = elicitableCallOptions(req, installation);
 
     const abort = new AbortController();
     res.on('close', () => {

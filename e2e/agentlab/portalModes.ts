@@ -77,6 +77,7 @@ export const SHELL_SPECS = [
   'telemetry.spec.ts',
   'toolchains.spec.ts',
   'tenants.spec.ts',
+  'url-elicitation.spec.ts',
   'usage-cost.spec.ts',
   'usage-older-data-unavailable.spec.ts',
   'usage-time-window.spec.ts',
