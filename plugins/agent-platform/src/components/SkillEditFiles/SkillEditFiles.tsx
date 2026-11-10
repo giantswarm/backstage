@@ -1,4 +1,4 @@
-import { Flex, Link, Text } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   ExternalLink,
@@ -81,16 +81,15 @@ export function SkillEditFiles({
           <ul className={classes.list} aria-label="Files that stay as they are">
             {shown.map(file => (
               <li key={file.path} className={classes.path}>
-                <Link
+                <ExternalLink
                   href={`${skillHref}/instructions?${SKILL_FILE_PARAM}=${encodeURIComponent(
                     file.path,
                   ).replace(/%2F/g, '/')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   variant="body-small"
+                  display="inline"
                 >
                   {file.path}
-                </Link>
+                </ExternalLink>
               </li>
             ))}
           </ul>

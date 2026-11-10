@@ -1,10 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Content, Link, LinkButton } from '@backstage/core-components';
+import { Content, LinkButton } from '@backstage/core-components';
 import { Box, Tab, Tabs, Typography } from '@material-ui/core';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
+  ExternalLink,
   FiltersLayout,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -132,9 +133,9 @@ export function RepositoriesPage() {
           </Tabs>
         </Box>
         <Box mr={2}>
-          <Link to={REPOSITORY_SETUP_DOCS_URL} externalLinkIcon>
+          <ExternalLink href={REPOSITORY_SETUP_DOCS_URL}>
             Repository set-up docs
-          </Link>
+          </ExternalLink>
         </Box>
         <LinkButton
           to={createLink?.() ?? 'create'}

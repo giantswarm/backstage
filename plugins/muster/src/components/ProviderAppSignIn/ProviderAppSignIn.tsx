@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Button, Flex, Link, Text } from '@backstage/ui';
+import { Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '../shared';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * What a provider App is called and what connecting it is for, where its name
@@ -150,13 +151,9 @@ export function ProviderAppSignIn({
             <li>
               <Text variant="body-small">
                 Open{' '}
-                <Link
-                  href={code.verificationUrl}
-                  target="_blank"
-                  rel="noopener"
-                >
+                <ExternalLink href={code.verificationUrl} display="inline">
                   {code.verificationUrl}
-                </Link>{' '}
+                </ExternalLink>{' '}
                 and sign in.
               </Text>
             </li>

@@ -213,6 +213,9 @@ them and never invent a palette.
   surface a link sits on, but only 2.3:1 against the body text, short of the
   3:1 at which colour alone may mark a link. The trailing launch icon is not
   a cue either: it marks a new tab, nothing else.
+- A text link to outside the portal opens in a new tab and shows the
+  external-link icon with a hidden "(opens in a new tab)": `ExternalLink`.
+  See "Links" in `docs/ui.md`.
 - A link or button that opens a new tab says so the one way: the launch icon
   after its text and "(opens in a new tab)" for a screen reader, from
   `ui-react`'s `ExternalLink` (text), `ExternalButtonLink` (a bui

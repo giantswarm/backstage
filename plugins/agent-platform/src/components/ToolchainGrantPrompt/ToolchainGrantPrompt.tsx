@@ -1,5 +1,8 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
-import { safeWebURL } from '@giantswarm/backstage-plugin-ui-react';
+import { Alert, Flex, Text } from '@backstage/ui';
+import {
+  ExternalLink,
+  safeWebURL,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { musterToolchainManagerQueryKey } from '../../lib/queryKeys';
@@ -73,9 +76,9 @@ export function ToolchainGrantPrompt({
             {answer.message ?? `It answered ${answer.status}.`}
           </Text>
           {installURL && (
-            <Link href={installURL} target="_blank" rel="noopener">
+            <ExternalLink href={installURL} variant="body-medium">
               Install the App
-            </Link>
+            </ExternalLink>
           )}
         </Flex>
       }

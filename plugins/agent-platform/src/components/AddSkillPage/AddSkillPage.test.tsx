@@ -530,7 +530,9 @@ describe('AddSkillPage editing an existing skill', () => {
 
     expect(screen.getByText('This file stays as it is')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'references/setup.md' }),
+      screen.getByRole('link', {
+        name: 'references/setup.md (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       `${edit.skillHref}/instructions?file=references/setup.md`,

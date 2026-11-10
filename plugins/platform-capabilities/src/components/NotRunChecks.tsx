@@ -1,5 +1,8 @@
-import { Button, Flex, Link, Text } from '@backstage/ui';
-import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
+import { Button, Flex, Text } from '@backstage/ui';
+import {
+  ExternalLink,
+  SimpleAccordion,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { VerifyDimension, VerifyResult } from '../apis';
 import { count, notChecked, NotRun } from '../lib/comparison';
@@ -23,9 +26,9 @@ function CheckLine({ dimension }: { dimension: VerifyDimension }) {
       {auth?.authUrl && (
         <>
           {' · '}
-          <Link href={auth.authUrl} target="_blank" rel="noopener">
+          <ExternalLink href={auth.authUrl} display="inline">
             connect {auth.server} in muster
-          </Link>
+          </ExternalLink>
         </>
       )}
     </li>

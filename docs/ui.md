@@ -109,6 +109,14 @@ it can be clicked: a table or list row, a card, a nav or rail item, a
 breadcrumb, a tab, a button. A link inside a table cell is a text link and
 stays underlined. Any other exception needs a reason in the code review.
 
+A text link to outside the portal (GitHub, the docs, Grafana, a sign-in page:
+any `http(s)` URL on another origin) opens in a new tab and shows the
+external-link icon after its text, with a visually hidden "(opens in a new
+tab)" for screen readers. On every page, the shell's and the classic
+portal's, in markdown too: `GSMarkdownContent` renders such a link as an
+`ExternalLink`, and `isExternalHref` tells one apart. The controls above (a
+row, a card, a nav or rail item, a menu item, a tile) keep their own look.
+
 ### Links that open a new tab
 
 A link or button that opens a new tab says so one way everywhere: the launch

@@ -114,10 +114,9 @@ describe('ProviderAppSignIn', () => {
     expect(screen.getByTestId('provider-app-user-code')).toHaveTextContent(
       'WXYZ-1234',
     );
-    expect(screen.getByRole('link', { name: DEVICE_PAGE })).toHaveAttribute(
-      'href',
-      DEVICE_PAGE,
-    );
+    expect(
+      screen.getByRole('link', { name: `${DEVICE_PAGE} (opens in a new tab)` }),
+    ).toHaveAttribute('href', DEVICE_PAGE);
     expect(
       screen.getByRole('button', { name: 'Copy the code WXYZ-1234' }),
     ).toBeInTheDocument();

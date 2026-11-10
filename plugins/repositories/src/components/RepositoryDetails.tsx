@@ -7,6 +7,7 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
+  ExternalLink,
   Fact,
   FactList,
   InfoCard,
@@ -268,13 +269,12 @@ export function RepositoryDetails({ repository }: { repository: string }) {
       'Latest release',
       reality?.latestRelease && (
         <Text variant="body-small">
-          <Link
-            to={`${reality.url}/releases/tag/${reality.latestRelease.tag}`}
-            target="_blank"
-            rel="noopener"
+          <ExternalLink
+            href={`${reality.url}/releases/tag/${reality.latestRelease.tag}`}
+            display="inline"
           >
             {reality.latestRelease.tag}
-          </Link>
+          </ExternalLink>
           {` on ${date(reality.latestRelease.publishedAt)}`}
         </Text>
       ),
@@ -283,9 +283,9 @@ export function RepositoryDetails({ repository }: { repository: string }) {
       'Last reconciler run',
       setup.lastRun && (
         <Text variant="body-small">
-          <Link to={setup.lastRun.runUrl} target="_blank" rel="noopener">
+          <ExternalLink href={setup.lastRun.runUrl} display="inline">
             {date(setup.lastRun.timestamp)}
-          </Link>
+          </ExternalLink>
           {`, ${setup.lastRun.result.mode}`}
           {setup.lastRun.change && ` (${setup.lastRun.change.kind})`}
         </Text>
@@ -340,9 +340,9 @@ export function RepositoryDetails({ repository }: { repository: string }) {
           <Box display="flex" alignItems="center" flexWrap="wrap" gridGap={16}>
             <Typography variant="h6" component="h3">
               {reality ? (
-                <Link to={reality.url} target="_blank" rel="noopener">
+                <ExternalLink href={reality.url}>
                   {record.repository}
-                </Link>
+                </ExternalLink>
               ) : (
                 record.repository
               )}

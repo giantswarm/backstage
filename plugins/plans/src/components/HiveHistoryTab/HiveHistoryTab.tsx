@@ -3,7 +3,6 @@ import {
   ButtonLink,
   Flex,
   Grid,
-  Link,
   List,
   ListRow,
   Tag,
@@ -24,7 +23,8 @@ import {
   useHiveTeam,
 } from '../../hooks/useHive';
 import { formatDate } from '../../lib/dates';
-import { followsTeam, linkTarget, matchesSearch } from '../../lib/hive';
+import { followsTeam, matchesSearch } from '../../lib/hive';
+import { HiveLink } from '../HiveLink';
 import {
   ENTRY_KIND_LABELS,
   Group,
@@ -63,9 +63,7 @@ function GroupCard(props: { group: Group }) {
     <InfoCard
       title={
         group.url ? (
-          <Link href={group.url} {...linkTarget(group.url)}>
-            {group.title}
-          </Link>
+          <HiveLink href={group.url}>{group.title}</HiveLink>
         ) : (
           group.title
         )
@@ -120,9 +118,7 @@ function GroupCard(props: { group: Group }) {
                     <Badge size="small">{ENTRY_KIND_LABELS[entry.kind]}</Badge>
                   }
                 >
-                  <Link href={entry.url} {...linkTarget(entry.url)}>
-                    {entry.title}
-                  </Link>
+                  <HiveLink href={entry.url}>{entry.title}</HiveLink>
                 </ListRow>
               ))}
             </List>

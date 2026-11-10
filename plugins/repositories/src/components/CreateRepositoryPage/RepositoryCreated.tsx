@@ -1,5 +1,9 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
-import { StatusLabel, CommitSha } from '@giantswarm/backstage-plugin-ui-react';
+import { Alert, Flex, Text } from '@backstage/ui';
+import {
+  ExternalLink,
+  StatusLabel,
+  CommitSha,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Created, CreatedRepository } from '../../apis';
 import { PullRequestBody } from '../actions/PullRequestOpened';
 
@@ -27,9 +31,9 @@ function RepositoryLines({
           <Text variant="body-small">
             Repository{' '}
             {ready ? (
-              <Link href={repository.repository} target="_blank">
+              <ExternalLink href={repository.repository} display="inline">
                 {slugOf(repository.repository)}
-              </Link>
+              </ExternalLink>
             ) : (
               <span data-testid="repository-name">
                 {slugOf(repository.repository)}
@@ -56,12 +60,12 @@ function RepositoryLines({
         <li>
           <Text variant="body-small">
             Scaffold commit{' '}
-            <Link
+            <ExternalLink
               href={`${repository.repository}/commit/${repository.scaffoldCommit}`}
-              target="_blank"
+              display="inline"
             >
               <CommitSha value={repository.scaffoldCommit} copy={false} />
-            </Link>{' '}
+            </ExternalLink>{' '}
             on its default branch — {firstRelease}
           </Text>
         </li>
