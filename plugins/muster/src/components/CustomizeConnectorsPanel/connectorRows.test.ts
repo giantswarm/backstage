@@ -334,7 +334,7 @@ describe('unsearchedToolsNotes', () => {
       'Only connector names were searched: the tools are still loading.',
     ]);
     expect(unsearchedToolsNotes('unavailable', [], false)).toEqual([
-      'Only connector names were searched: tools need a muster session.',
+      'Only connector names were searched: tools need a Muster session.',
     ]);
   });
 
@@ -374,7 +374,7 @@ describe('unsearchedToolsNotes', () => {
         false,
       ),
     ).toEqual([
-      'The tools of github were not searched: muster listed none of them.',
+      'The tools of github were not searched: Muster listed none of them.',
     ]);
   });
 
@@ -382,7 +382,7 @@ describe('unsearchedToolsNotes', () => {
     expect(
       unsearchedToolsNotes('partial', [row('github', 'sign-in')], true),
     ).toEqual([
-      'Some tools were not searched: muster returned only part of them.',
+      'Some tools were not searched: Muster returned only part of them.',
       'The tools of github were not searched: they need your sign-in.',
     ]);
   });

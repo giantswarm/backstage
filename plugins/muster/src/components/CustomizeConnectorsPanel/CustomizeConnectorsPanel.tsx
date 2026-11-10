@@ -32,8 +32,10 @@ import {
   stopRowPress,
   useCatalogFilters,
   usePhoneLayout,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
+import { musterApiRef, type AuthStatusResponse } from '../../apis';
+import { musterPollingOptions } from '../../lib/musterPolling';
 import { ConnectorLogo } from '../ConnectorLogo';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
@@ -54,6 +56,7 @@ import {
   StatusWithHint,
   type ExplainedStatusText,
   useServerPageLinks,
+  useConnectorIcon,
   useServerSignInStatus,
   useToolCatalogue,
 } from '../shared';
@@ -92,8 +95,6 @@ type Row = {
   signInGate?: string;
   reach?: ConnectorReach;
   tags: string[];
-  /** The MCPServer's `.status.icon`, for the connector's logo. */
-  icon?: string;
 };
 
 /** A row muster asks this person to sign in to. */
@@ -131,15 +132,23 @@ function registeredFirst(entries: ServerListEntry[]): ServerListEntry[] {
   ];
 }
 
-function ConnectorName({ row, href }: { row: Row; href?: string }) {
+function ConnectorName({
+  row,
+  href,
+  installation,
+  hasSession,
+}: {
+  row: Row;
+  href?: string;
+  installation: string;
+  hasSession: boolean;
+}) {
+  // Read per row, so muster's icon arriving re-renders its logo only.
+  const icon = useConnectorIcon(row.entry.row, installation, hasSession);
   return (
     <Cell>
       <Flex align="center" gap="3" style={{ minWidth: 0 }}>
-        <ConnectorLogo
-          name={row.entry.displayName}
-          icon={row.icon}
-          decorative
-        />
+        <ConnectorLogo name={row.entry.displayName} icon={icon} decorative />
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
           {/* The name is the row's link (M21): reachable by keyboard and
               opens in a new tab on cmd/middle-click; the row stays clickable. */}
@@ -280,20 +289,23 @@ function SignInStackedRow({
 function ConnectorStackedRow({
   row,
   installation,
+  hasSession,
   href,
   toolsPending,
 }: {
   row: Row;
   installation: string;
+  hasSession: boolean;
   href?: string;
   toolsPending: boolean;
 }) {
+  const icon = useConnectorIcon(row.entry.row, installation, hasSession);
   const props: StackedRowProps = {
     title: row.entry.displayName,
     ...(row.description ? { description: row.description } : {}),
     ...(href ? { href } : {}),
     leading: (
-      <ConnectorLogo name={row.entry.displayName} icon={row.icon} decorative />
+      <ConnectorLogo name={row.entry.displayName} icon={icon} decorative />
     ),
     facts: [
       row.tags.length > 0 ? (
@@ -340,11 +352,13 @@ function ConnectorStackedRow({
 function ConnectorStackedList({
   rows,
   installation,
+  hasSession,
   hrefOf,
   toolsPending,
 }: {
   rows: Row[];
   installation: string;
+  hasSession: boolean;
   hrefOf: (row: Row) => string | undefined;
   toolsPending: boolean;
 }) {
@@ -355,6 +369,7 @@ function ConnectorStackedList({
           key={row.id}
           row={row}
           installation={installation}
+          hasSession={hasSession}
           href={hrefOf(row)}
           toolsPending={toolsPending}
         />
@@ -382,7 +397,14 @@ function ConnectorsTable({
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: hasSession,
-    refetchInterval: query => connectingPollInterval(query.state.data),
+    // While muster still connects a server; not from a hidden tab, not after
+    // muster refused the person. No read on becoming visible: the client
+    // keeps focus refetches off and `staleTime` at 0.
+    ...musterPollingOptions(
+      (query: PollingQuery<AuthStatusResponse>) =>
+        connectingPollInterval(query.state.data),
+      { refetchOnVisible: false },
+    ),
   });
 
   // Every connector, muster's own row among them.
@@ -454,7 +476,6 @@ function ConnectorsTable({
         description: server?.getDescription(),
         auth: authLabel(server),
         tools: toolsLabel(entry),
-        icon: server?.getStatusIcon(),
         status: connectorStatus(entry, status),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? { signInServer: entry.id }
@@ -501,7 +522,14 @@ function ConnectorsTable({
       label: 'Connector',
       isRowHeader: true,
       defaultWidth: '3fr',
-      cell: row => <ConnectorName row={row} href={hrefOf(row)} />,
+      cell: row => (
+        <ConnectorName
+          row={row}
+          href={hrefOf(row)}
+          installation={installation}
+          hasSession={hasSession}
+        />
+      ),
     },
     {
       id: 'tags',
@@ -589,6 +617,7 @@ function ConnectorsTable({
             <ConnectorStackedList
               rows={page}
               installation={installation}
+              hasSession={hasSession}
               hrefOf={hrefOf}
               toolsPending={isAwaitingData(catalogue)}
             />
@@ -622,7 +651,7 @@ function ConnectorsTable({
         <SessionGate
           session={session}
           installation={installation}
-          context="Tool counts and sign-ins need a muster session."
+          context="Tool counts and sign-ins need a Muster session."
         />
       )}
       {catalogue.error && (
@@ -658,7 +687,7 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
     body = (
       <EmptyStateCard
         title="No connectors here"
-        description="None of your environments runs muster, which connects agents to tools."
+        description="None of your environments runs Muster, which connects agents to tools."
       />
     );
   } else {

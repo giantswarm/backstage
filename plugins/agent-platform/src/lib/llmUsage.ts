@@ -3,13 +3,23 @@ import type {
   MimirMetricSample,
 } from '@giantswarm/backstage-plugin-gs';
 import type { AgentRow } from '../components/AgentsDataProvider';
-import { deriveTokenRates, type TokenRates } from './costEstimate';
+import {
+  deriveTokenRates,
+  sumDistinctTokens,
+  sumInputTokens,
+  type TokenRates,
+} from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
 import {
   EMPTY_ORGANIZATION_DIRECTORY,
   type OrganizationDirectory,
 } from './organizations';
-import { tenantKindOf, tenantOf, type TenantKind } from './tenants';
+import {
+  namespacesSharingAName,
+  tenantKindOf,
+  tenantOf,
+  type TenantKind,
+} from './tenants';
 import {
   usageDataStart,
   type UsageDataStart,
@@ -304,6 +314,45 @@ function sumBy(
   return totals;
 }
 
+/**
+ * Sum a token vector by `key`, counting each token once.
+ *
+ * A gateway since v1.5.0 counts both cache types inside `input` as well as on
+ * their own, an older one beside it. Which holds is decided per series (the
+ * labels without `gen_ai_token_type`) by {@link sumDistinctTokens}, and only
+ * then are the series added up by `key`, so every table and the totals are
+ * sums of the same per-series counts and agree with each other.
+ */
+function sumTokensBy(
+  samples: MimirMetricSample[] | undefined,
+  key: (labels: Record<string, string>) => string,
+): Map<string, number> {
+  const bySeries = new Map<
+    string,
+    { group: string; types: Record<string, number> }
+  >();
+  for (const sample of samples ?? []) {
+    const value = instantValue(sample);
+    if (value === undefined) {
+      continue;
+    }
+    const labels = sample.metric ?? {};
+    const { gen_ai_token_type: type = '', ...rest } = labels;
+    const id = JSON.stringify(
+      Object.entries(rest).sort(([a], [b]) => a.localeCompare(b)),
+    );
+    const entry = bySeries.get(id) ?? { group: key(labels), types: {} };
+    entry.types[type] = (entry.types[type] ?? 0) + value;
+    bySeries.set(id, entry);
+  }
+
+  const totals = new Map<string, number>();
+  for (const { group, types } of bySeries.values()) {
+    totals.set(group, (totals.get(group) ?? 0) + sumDistinctTokens(types));
+  }
+  return totals;
+}
+
 function sumValues(totals: Map<string, number>): number {
   let sum = 0;
   for (const value of totals.values()) {
@@ -396,7 +445,8 @@ export function reduceTokenTypes(
 }
 
 /**
- * Cache reads over every cache-eligible input token.
+ * Cache reads over every input token, each counted once: `input` alone on a
+ * gateway that counts the cache types inside it, all three otherwise.
  *
  * The figure that says whether prompt caching is paying off: cache reads are
  * priced at a fraction of fresh input, so this falling towards zero is a bill
@@ -404,8 +454,12 @@ export function reduceTokenTypes(
  * not the same as caching being broken.
  */
 export function cacheReadShare(types: TokenTypeTotals): number | undefined {
-  const eligible = types.input + types.inputCacheRead + types.inputCacheWrite;
-  return percent(types.inputCacheRead, eligible);
+  const input = sumInputTokens({
+    input: types.input,
+    input_cache_read: types.inputCacheRead,
+    input_cache_write: types.inputCacheWrite,
+  });
+  return percent(types.inputCacheRead, input);
 }
 
 /**
@@ -441,7 +495,7 @@ export function reduceByAgent(options: {
     options;
 
   const costByAgent = sumBy(cost, agentKey);
-  const tokensByAgent = sumBy(tokens, agentKey);
+  const tokensByAgent = sumTokensBy(tokens, agentKey);
   const callsByAgent = sumBy(calls, agentKey);
   const totalCost = optionalSum(costByAgent);
 
@@ -524,10 +578,12 @@ function organizationKey(labels: Record<string, string>): string {
 /**
  * Roll the same three vectors up by the namespace the agents run in: the
  * organization's tenant, which is the cost centre (giantswarm/giantswarm#36698,
- * D8). An organization namespace reads as the organization, by the labels
- * agent-manager answered for it (`organizations`),
- * the `kagent` namespace as the platform (no organization), any other
- * namespace by its name, and traffic in no namespace as `unknownLabel`. No
+ * D8). Each namespace reads as `tenantOf` names it under "Organization": an
+ * organization namespace as the organization, by the labels agent-manager
+ * answered for it (`organizations`), a Giant Swarm organization's
+ * `org-<name>` namespace as that organization, the `kagent` namespace as the
+ * platform (no organization), any other namespace by its name; traffic in
+ * no namespace reads as `unknownLabel`. No
  * join is needed: the namespace is the identity.
  */
 export function reduceByOrganization(options: {
@@ -547,7 +603,7 @@ export function reduceByOrganization(options: {
   } = options;
 
   const costByNamespace = sumBy(cost, organizationKey);
-  const tokensByNamespace = sumBy(tokens, organizationKey);
+  const tokensByNamespace = sumTokensBy(tokens, organizationKey);
   const callsByNamespace = sumBy(calls, organizationKey);
   const totalCost = optionalSum(costByNamespace);
 
@@ -557,13 +613,22 @@ export function reduceByOrganization(options: {
     ...callsByNamespace.keys(),
   ]);
 
+  const sharingAName = namespacesSharingAName(
+    [...keys].filter(namespace => namespace !== ''),
+    directory,
+  );
   const rows: LlmOrganizationRow[] = [];
   for (const namespace of keys) {
     const costUsd = optionalTotal(costByNamespace, namespace);
     rows.push({
       id: namespace || 'unattributed',
       namespace,
-      ...identifyOrganization(namespace, unknownLabel, directory),
+      ...identifyOrganization(
+        namespace,
+        unknownLabel,
+        directory,
+        sharingAName.has(namespace),
+      ),
       tokens: tokensByNamespace.get(namespace) ?? 0,
       calls: callsByNamespace.get(namespace) ?? 0,
       costUsd,
@@ -579,11 +644,15 @@ export function reduceByOrganization(options: {
   );
 }
 
-/** What a namespace is under the label "Organization", and the name to show. */
+/**
+ * What a namespace is under the label "Organization", and the name to show.
+ * `sharesItsName`: another row reads the same ({@link namespacesSharingAName}).
+ */
 function identifyOrganization(
   namespace: string,
   unknownLabel: string,
   directory: OrganizationDirectory,
+  sharesItsName: boolean,
 ): Pick<LlmOrganizationRow, 'kind' | 'label' | 'description'> {
   if (namespace === '') {
     return { kind: 'unattributed', label: unknownLabel };
@@ -593,8 +662,10 @@ function identifyOrganization(
     kind,
     label: tenantOf(namespace, directory),
     // The organization's name is not its namespace, so the namespace goes
-    // under it; for the platform and another namespace the label says it.
-    description: kind === 'organization' ? namespace : undefined,
+    // under it, as it does under a name another row reads too; for the
+    // platform and any other namespace the label says it.
+    description:
+      kind === 'organization' || sharesItsName ? namespace : undefined,
   };
 }
 
@@ -617,7 +688,7 @@ export function reduceByPerson(options: {
 }): LlmPersonRow[] {
   const { cost, tokens, unknownLabel } = options;
   const costByPerson = sumBy(cost, personKey);
-  const tokensByPerson = sumBy(tokens, personKey);
+  const tokensByPerson = sumTokensBy(tokens, personKey);
   const totalCost = optionalSum(costByPerson);
 
   const keys = new Set([...costByPerson.keys(), ...tokensByPerson.keys()]);
@@ -660,7 +731,7 @@ export function reduceByModel(options: {
   const { cost, tokens, calls, unknownLabel } = options;
 
   const costByModel = sumBy(cost, modelKey);
-  const tokensByModel = sumBy(tokens, modelKey);
+  const tokensByModel = sumTokensBy(tokens, modelKey);
   const callsByModel = sumBy(calls, modelKey);
   const totalCost = optionalSum(costByModel);
 
@@ -712,7 +783,7 @@ export function reduceByAgentModel(options: {
   calls: MimirMetricSample[] | undefined;
 }): LlmAgentModelRow[] {
   const costByPair = sumBy(options.cost, agentModelKey);
-  const tokensByPair = sumBy(options.tokens, agentModelKey);
+  const tokensByPair = sumTokensBy(options.tokens, agentModelKey);
   const callsByPair = sumBy(options.calls, agentModelKey);
 
   const keys = new Set([
@@ -1039,7 +1110,7 @@ export function buildLlmUsage(options: {
   const tokenTypes = reduceTokenTypes(tokensByType);
 
   const totalCost = optionalSum(sumBy(cost, () => 'all'));
-  const totalTokens = sumValues(sumBy(tokens, () => 'all'));
+  const totalTokens = sumValues(sumTokensBy(tokens, () => 'all'));
   const totalCalls = sumValues(sumBy(calls, () => 'all'));
 
   const byAgent = reduceByAgent({
@@ -1077,16 +1148,18 @@ export function buildLlmUsage(options: {
     }),
     { day: options.today, samples: options.costToday, label: modelLabel },
   );
-  const tokensPerDay = applyTodayPartial(
-    reduceDaily(options.tokensPerDay, {
-      label: typeLabel,
-      days: options.days,
-    }),
-    {
-      day: options.today,
-      samples: options.tokensToday,
-      label: typeLabel,
-    },
+  const tokensPerDay = withFreshInput(
+    applyTodayPartial(
+      reduceDaily(options.tokensPerDay, {
+        label: typeLabel,
+        days: options.days,
+      }),
+      {
+        day: options.today,
+        samples: options.tokensToday,
+        label: typeLabel,
+      },
+    ),
   );
   const callsLabel = () => CALLS_SERIES;
   const callsPerDay =
@@ -1230,6 +1303,50 @@ export function applyTodayPartial(
     );
     return densify(row.day, values, series);
   });
+
+  return { rows, series };
+}
+
+/** The derived series {@link withFreshInput} puts in place of `input`. */
+export const FRESH_INPUT_SERIES = 'fresh_input';
+
+/**
+ * Replace the `input` series of a daily series by token type with
+ * {@link FRESH_INPUT_SERIES}: input that was neither read from nor written to
+ * cache. On a gateway since v1.5.0 `input` holds both cache types, so only
+ * fresh input stacks with the cache types and output to every token, once.
+ * The convention is decided per day by {@link sumInputTokens}: on an older
+ * gateway `input` already is fresh input.
+ */
+export function withFreshInput(daily: LlmDailySeries): LlmDailySeries {
+  if (!daily.series.includes('input')) {
+    return daily;
+  }
+
+  const rows = daily.rows.map(row => {
+    const cacheRead = seriesValue(row, 'input_cache_read');
+    const cacheWrite = seriesValue(row, 'input_cache_write');
+    const input = sumInputTokens({
+      input: seriesValue(row, 'input'),
+      input_cache_read: cacheRead,
+      input_cache_write: cacheWrite,
+    });
+    // Within the convention check's tolerance the cache types may exceed
+    // `input` a little; that is no fresh input, not a negative amount.
+    const fresh = Math.max(input - cacheRead - cacheWrite, 0);
+    const next: LlmDailyEntry = { ...row, [FRESH_INPUT_SERIES]: fresh };
+    delete next.input;
+    return next;
+  });
+
+  const series = daily.series
+    .map(key => (key === 'input' ? FRESH_INPUT_SERIES : key))
+    .map(key => ({
+      key,
+      total: rows.reduce((acc, row) => acc + seriesValue(row, key), 0),
+    }))
+    .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key))
+    .map(({ key }) => key);
 
   return { rows, series };
 }

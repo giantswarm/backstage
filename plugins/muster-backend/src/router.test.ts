@@ -1,6 +1,6 @@
 import { ServiceUnavailableError } from '@backstage/errors';
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { mockServices } from '@backstage/backend-test-utils';
+import { mockCredentials, mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
@@ -21,11 +21,15 @@ import {
 } from './router';
 
 const mockGetMcpUsage = jest.fn();
+const mockGetMcpToolLatency = jest.fn();
+const mockIsPartialUsage = jest.fn();
 jest.mock('./mcpUsage', () => {
   const actual = jest.requireActual('./mcpUsage');
   return {
     ...actual,
     getMcpUsage: (...args: unknown[]) => mockGetMcpUsage(...args),
+    getMcpToolLatency: (...args: unknown[]) => mockGetMcpToolLatency(...args),
+    isPartialUsage: (...args: unknown[]) => mockIsPartialUsage(...args),
   };
 });
 
@@ -62,6 +66,7 @@ describe('createRouter', () => {
   const describeTool = jest.fn();
   const listCoreTools = jest.fn();
   const getResource = jest.fn();
+  const serverIcon = jest.fn();
 
   const mockClient = {
     callTool,
@@ -74,6 +79,7 @@ describe('createRouter', () => {
     describeTool,
     listCoreTools,
     getResource,
+    serverIcon,
   } as unknown as MusterMcpClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -85,6 +91,7 @@ describe('createRouter', () => {
     const router = await createRouter({
       logger,
       config,
+      httpAuth: mockServices.httpAuth(),
       client: mockClient,
       reachability: reachableEverywhere(),
       ...options,
@@ -108,6 +115,7 @@ describe('createRouter', () => {
     const router = await createRouter({
       logger,
       config,
+      httpAuth: mockServices.httpAuth(),
       client: mockClient,
       reachability: reachableEverywhere(),
       ...options,
@@ -122,6 +130,8 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     mockGetMcpUsage.mockReset();
+    mockGetMcpToolLatency.mockReset();
+    mockIsPartialUsage.mockReset().mockReturnValue(false);
     callTool.mockReset();
     callToolWithProgress.mockReset();
     callToolWithStructured.mockReset();
@@ -130,6 +140,7 @@ describe('createRouter', () => {
     describeTool.mockReset();
     listCoreTools.mockReset();
     getResource.mockReset();
+    serverIcon.mockReset();
     app = await buildApp();
   });
 
@@ -330,6 +341,161 @@ describe('createRouter', () => {
     );
   });
 
+  describe('usage caching', () => {
+    const available = { available: true, range_hours: 720 };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('answers a repeated read from the cache until five minutes have passed', async () => {
+      let now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      mockGetMcpUsage.mockResolvedValue(available);
+
+      await request(app).get('/usage?hours=720');
+      now = 5 * 60_000 - 1;
+      const cached = await request(app).get('/usage?hours=720');
+      expect(cached.body).toEqual(available);
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(1);
+
+      now = 5 * 60_000;
+      await request(app).get('/usage?hours=720');
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps windows and narrowings apart', async () => {
+      mockGetMcpUsage.mockResolvedValue(available);
+
+      await request(app).get('/usage?hours=720');
+      await request(app).get('/usage?hours=168');
+      await request(app).get('/usage?hours=720&server=kagi');
+      await request(app).get('/usage?hours=720&server=kagi&tool=x_kagi_search');
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(4);
+    });
+
+    it('reads again after an unavailable answer', async () => {
+      mockGetMcpUsage.mockResolvedValue({ available: false });
+
+      await request(app).get('/usage?hours=720');
+      await request(app).get('/usage?hours=720');
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it('reads again after an answer a rollup was left out of', async () => {
+      mockGetMcpUsage.mockResolvedValue(available);
+      mockIsPartialUsage.mockReturnValue(true);
+
+      await request(app).get('/usage?hours=720');
+      await request(app).get('/usage?hours=720');
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it("answers a person's reload from the cache, never another person's read", async () => {
+      const multi = await buildMultiApp([
+        {
+          name: 'graveler',
+          url: 'https://muster.graveler.example/mcp',
+          authProvider: 'oidc-graveler',
+        },
+      ]);
+      mockGetMcpUsage.mockResolvedValue(available);
+      // Every full load forwards a newly minted ID token.
+      let minted = 0;
+      const idToken = () =>
+        [
+          Buffer.from('{"alg":"none"}').toString('base64url'),
+          Buffer.from(
+            JSON.stringify({
+              sub: 'ada',
+              iat: (minted += 1),
+              exp: Math.floor(Date.now() / 1000) + 600,
+            }),
+          ).toString('base64url'),
+          'sig',
+        ].join('.');
+
+      for (const user of ['ada', 'ada', 'grace']) {
+        const response = await request(multi)
+          .get('/usage?installation=graveler&hours=720')
+          .set(
+            'Authorization',
+            mockCredentials.user.header(`user:default/${user}`),
+          )
+          .set(MUSTER_AUTH_HEADER, idToken());
+        expect(response.status).toBe(200);
+      }
+
+      expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('finds the prometheus server once for the usage reads a page makes', async () => {
+    callTool.mockResolvedValue({
+      mcpServers: [{ name: 'gazelle-mcp-prometheus', state: 'Connected' }],
+    });
+    mockGetMcpUsage.mockResolvedValue({ available: true });
+    mockGetMcpToolLatency.mockResolvedValue({ available: true, tools: [] });
+
+    await Promise.all([
+      request(app).get('/usage?hours=720'),
+      request(app).get('/usage/tool-latency?hours=720'),
+    ]);
+    await request(app).get('/usage?hours=168');
+
+    expect(
+      callTool.mock.calls.filter(([name]) => name === 'core_mcpserver_list'),
+    ).toHaveLength(1);
+    for (const read of [mockGetMcpUsage, mockGetMcpToolLatency]) {
+      for (const [, installation] of read.mock.calls) {
+        expect(installation).toMatchObject({
+          prometheusServer: 'gazelle-mcp-prometheus',
+        });
+      }
+    }
+  });
+
+  describe('/usage/tool-latency', () => {
+    it('reads every tool’s p95 over the window and connectors, and caches it', async () => {
+      const latency = {
+        available: true,
+        range_hours: 720,
+        tools: [{ tool: 'x_kagi_search', p95_seconds: 1.2 }],
+      };
+      mockGetMcpToolLatency.mockResolvedValue(latency);
+
+      const response = await request(app).get(
+        '/usage/tool-latency?hours=720&server=kagi',
+      );
+      await request(app).get('/usage/tool-latency?hours=720&server=kagi');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(latency);
+      expect(mockGetMcpToolLatency).toHaveBeenCalledTimes(1);
+      expect(mockGetMcpToolLatency).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        720,
+        ['kagi'],
+      );
+      expect(mockGetMcpUsage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a tool, which /usage answers itself', '/usage/tool-latency?tool=x'],
+      ['a window out of range', '/usage/tool-latency?hours=0'],
+      ['a server that is no MCPServer name', '/usage/tool-latency?server=A_B'],
+      ['the retired window parameter', '/usage/tool-latency?window=month'],
+    ])('rejects %s', async (_, path) => {
+      const response = await request(app).get(path);
+
+      expect(response.status).toBe(400);
+      expect(mockGetMcpToolLatency).not.toHaveBeenCalled();
+    });
+  });
+
   it('proxies execution detail with steps', async () => {
     const payload = { execution_id: 'abc', steps: [] };
     callTool.mockResolvedValue(payload);
@@ -354,6 +520,7 @@ describe('createRouter', () => {
     const router = await createRouter({
       logger,
       config,
+      httpAuth: mockServices.httpAuth(),
       reachability: reachableEverywhere(),
     });
     const unconfiguredApp = expressApp();
@@ -539,6 +706,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: mockClient,
         reachability: reachableEverywhere(),
       });
@@ -825,6 +993,79 @@ describe('createRouter', () => {
       { showAll: true, verbose: true },
       {},
     );
+  });
+
+  describe('GET /server-info', () => {
+    const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    const TOKEN = 'user-token';
+
+    async function readInfo() {
+      const authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+      return request(authApp)
+        .get('/server-info?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, TOKEN);
+    }
+
+    it("answers the icon from muster's initialize result, as the person", async () => {
+      serverIcon.mockResolvedValue(SVG);
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ icon: SVG });
+      expect(serverIcon).toHaveBeenCalledWith({ authToken: TOKEN });
+    });
+
+    it('answers no icon for a muster that announces none', async () => {
+      serverIcon.mockResolvedValue(undefined);
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({});
+    });
+
+    it('answers unavailable, not a 5xx, when muster cannot be asked', async () => {
+      serverIcon.mockRejectedValue(new Error('fetch failed'));
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ unavailable: true });
+    });
+
+    // The token refresh only follows a 401: a refused bearer must not read
+    // as "no icon" until the frontend's next read.
+    it('answers 401 when muster refuses the forwarded token', async () => {
+      serverIcon.mockRejectedValue(
+        Object.assign(
+          new Error(
+            'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): invalid_token',
+          ),
+          { name: 'MCPClientError', statusCode: 401 },
+        ),
+      );
+
+      const response = await readInfo();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_rejected');
+    });
+
+    it('asks for the token muster needs before connecting', async () => {
+      const authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+
+      const response = await request(authApp).get(
+        '/server-info?installation=gazelle',
+      );
+
+      expect(response.status).toBe(401);
+      expect(serverIcon).not.toHaveBeenCalled();
+    });
   });
 
   /**
@@ -1427,6 +1668,7 @@ describe('createRouter', () => {
         const router = await createRouter({
           logger,
           config,
+          httpAuth: mockServices.httpAuth(),
           client: mockClient,
           reachability: reachableEverywhere(),
         });
@@ -1781,6 +2023,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: { callTool } as unknown as MusterMcpClient,
       });
       const authApp = expressApp();
@@ -1852,6 +2095,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: mockClient,
         reachability: reachableEverywhere(),
       });
@@ -1996,6 +2240,7 @@ describe('createRouter', () => {
       const router = await createRouter({
         logger,
         config,
+        httpAuth: mockServices.httpAuth(),
         client: mockClient,
         reachability: reachableEverywhere(),
       });

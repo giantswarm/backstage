@@ -180,6 +180,29 @@ export function isServedModelSettled(model: ServedModelProgress): boolean {
 }
 
 /**
+ * A served model on its way in: neither settled ({@link isServedModelSettled})
+ * nor `failed` nor `terminating`. What a GPU pool's serve intent waits on
+ * after its `load_model`, so the inventory read keeps going from a hidden tab
+ * while one is (giantswarm/backstage#2446).
+ */
+export function isServedModelLoading(model: ServedModelProgress): boolean {
+  return (
+    !isServedModelSettled(model) &&
+    model.phase !== 'failed' &&
+    model.phase !== 'terminating'
+  );
+}
+
+/** Whether any model of one installation's inventory is {@link isServedModelLoading}. */
+export function isModelLoadInProgress(
+  models: { running?: ServedModelProgress }[] | undefined,
+): boolean {
+  return (models ?? []).some(
+    model => model.running !== undefined && isServedModelLoading(model.running),
+  );
+}
+
+/**
  * react-query's `refetchInterval` for one installation's inventory: 10 s
  * while a served model is unsettled, else the given idle interval.
  */

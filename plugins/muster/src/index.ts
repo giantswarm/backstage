@@ -61,13 +61,17 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
+  isPermanentMusterReadError,
+  musterPollingOptions,
+} from './lib/musterPolling';
+export {
   connectorDisplayNames,
   connectorNameSource,
   mcpServerDisplayNames,
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
 export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
-export { connectorIconOf } from './lib/connectorLogo';
+export { connectorIconOf } from '@giantswarm/backstage-plugin-gs-common';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
@@ -128,6 +132,11 @@ export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider
 export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
 export { ConnectorLogo } from './components/ConnectorLogo';
 export type { ConnectorLogoProps } from './components/ConnectorLogo';
+export { ConnectorLogoStack } from './components/ConnectorLogoStack';
+export type {
+  ConnectorLogoStackItem,
+  ConnectorLogoStackProps,
+} from './components/ConnectorLogoStack';
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';

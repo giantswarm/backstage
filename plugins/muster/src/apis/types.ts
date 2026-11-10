@@ -111,7 +111,22 @@ export interface McpUsageToolRow {
   tool: string;
   calls: number;
   errors: number;
+  /**
+   * Set by `/usage` only where it is narrowed to this one tool; every tool's
+   * comes from `/usage/tool-latency` ({@link McpToolLatency}).
+   */
   p95_seconds: number | null;
+}
+
+/**
+ * The p95 latency of every tool called in the window (`/usage/tool-latency`),
+ * read apart from {@link McpUsage} because its query is the slowest.
+ */
+export interface McpToolLatency {
+  available: boolean;
+  reason?: string;
+  range_hours: number;
+  tools: Array<{ tool: string; p95_seconds: number | null }>;
 }
 
 /** Per-MCP-server usage rollup over the selected range. */
@@ -270,6 +285,17 @@ export interface ConnectorNamesResponse {
 }
 
 /**
+ * What muster says of itself in its `initialize` result. `icon` is the logo
+ * it announces (muster v5.59.0 and later), already checked by gs-common's
+ * `connectorIconOf`; absent from an older muster. `unavailable` when muster
+ * could not be asked: worth asking again soon.
+ */
+export interface MusterServerInfoResponse {
+  icon?: string;
+  unavailable?: boolean;
+}
+
+/**
  * One entry from the `filter_tools` discovery tier. In discovery mode only
  * `summary` (a one-line excerpt) is populated; `description`/`inputSchema`
  * arrive with `include_schema=true` or via `describe_tool`. `score` is set
@@ -320,6 +346,11 @@ export interface ToolsetPreset {
   name: string;
   description?: string;
   built_in?: boolean;
+  /**
+   * The preset's icon, a sanitised `data:` URI; absent from an older muster
+   * and for a preset configured without one. Check it with `connectorIconOf`.
+   */
+  icon?: string;
 }
 
 export interface FilterToolsResponse {
@@ -625,6 +656,12 @@ export interface MusterApi {
     /** Narrows every figure to one tool, by the name muster exposes it as. */
     tool?: string;
   }): Promise<McpUsage>;
+  /** Every tool's p95 latency over the window, narrowed as {@link getMcpUsage}. */
+  getMcpToolLatency(options?: {
+    installation?: string;
+    hours?: number;
+    servers?: readonly string[];
+  }): Promise<McpToolLatency>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
   /**
@@ -632,6 +669,11 @@ export interface MusterApi {
    * sign-in prompt. A background read: it never asks the person to sign in.
    */
   listConnectorNames(installation?: string): Promise<ConnectorNamesResponse>;
+  /**
+   * What muster says of itself (its logo), for its own row and page. A
+   * background read: it never asks the person to sign in.
+   */
+  getServerInfo(installation?: string): Promise<MusterServerInfoResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
   filterResources(

@@ -364,7 +364,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        /rejected muster's automatic client registration/,
+        /rejected Muster's automatic client registration/,
       ),
     ).toBeInTheDocument();
     expect(
@@ -372,7 +372,7 @@ describe('ServerSignIn', () => {
     ).toBeInTheDocument();
   });
 
-  it('notes when muster registered itself via Dynamic Client Registration', async () => {
+  it('notes when Muster registered itself via Dynamic Client Registration', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },
       signIn: {
@@ -410,7 +410,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        /rejected muster's automatic client registration/,
+        /rejected Muster's automatic client registration/,
       ),
     ).toHaveTextContent(/^This connector's authorization server rejected/);
   });
@@ -590,7 +590,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        "pro authenticates through SSO from muster's own session, so there is nothing to sign in to here.",
+        "pro authenticates through SSO from Muster's own session, so there is nothing to sign in to here.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
@@ -618,7 +618,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        /Cannot read the muster auth status: auth:\/\/status returned no text content/,
+        /Cannot read the Muster auth status: auth:\/\/status returned no text content/,
       ),
     ).toBeInTheDocument();
   });
@@ -634,7 +634,7 @@ describe('ServerSignIn', () => {
 
     await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
     expect(
-      screen.queryByText(/Cannot read the muster auth status/),
+      screen.queryByText(/Cannot read the Muster auth status/),
     ).not.toBeInTheDocument();
   });
 

@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { modelManagerApiRef } from '../apis';
 import type { ModelManagerApi } from '../apis/ModelManagerApi';
@@ -52,10 +56,17 @@ export function usePullJobs(installations: string[]): PullJobs {
       queryKey: modelManagerJobsQueryKey(installation),
       queryFn: () => modelManagerApi.listJobs(installation),
       staleTime: 0,
-      refetchInterval: (query: { state: { data?: ModelManagerJob[] } }) =>
-        (query.state.data ?? []).some(isJobActive)
-          ? JOBS_POLL_ACTIVE_MS
-          : JOBS_POLL_IDLE_MS,
+      // Not from a hidden tab, not after muster answered that the person is
+      // not signed in to model-manager. No read on becoming visible: with
+      // `staleTime` 0 every return to the tab would read it; the next tick,
+      // within seconds while a pull runs, does.
+      ...musterPollingOptions(
+        (query: PollingQuery<ModelManagerJob[]>) =>
+          (query.state.data ?? []).some(isJobActive)
+            ? JOBS_POLL_ACTIVE_MS
+            : JOBS_POLL_IDLE_MS,
+        { refetchOnVisible: false },
+      ),
     })),
   });
 

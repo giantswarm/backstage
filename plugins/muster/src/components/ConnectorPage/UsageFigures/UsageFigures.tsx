@@ -73,7 +73,7 @@ const SUBJECTS = {
     reading: "Reading this connector's usage…",
     failed: "Could not read this connector's usage",
     callsHint:
-      'Counts the calls muster dispatched to this connector, from agents, sessions and this portal alike.',
+      'Counts the calls Muster dispatched to this connector, from agents, sessions and this portal alike.',
     noCalls: 'No tool calls',
     reach: 'this connector',
   },
@@ -82,7 +82,7 @@ const SUBJECTS = {
     reading: "Reading this tool's usage…",
     failed: "Could not read this tool's usage",
     callsHint:
-      'Counts the calls muster dispatched to this tool, from agents, sessions and this portal alike.',
+      'Counts the calls Muster dispatched to this tool, from agents, sessions and this portal alike.',
     noCalls: 'No calls',
     reach: 'this tool',
   },
@@ -223,7 +223,7 @@ export function UsageFigures({
       )}
 
       <Text as="p" variant="body-small" color="secondary">
-        Counted where muster dispatches each call, so a call through call_tool
+        Counted where Muster dispatches each call, so a call through call_tool
         counts for the tool it ran.
       </Text>
       {footer}

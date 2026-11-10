@@ -30,10 +30,20 @@ export class ToolRefusal {
   ) {}
 }
 
+/**
+ * A tool call muster refuses because the person has not signed in to
+ * model-manager: muster-backend's 401 with `reason: 'server_sign_in_required'`
+ * and the server, as it answers for a server that authenticates per person.
+ */
+export class ToolSignInRequired {
+  readonly message = 'Sign in to model-manager to use its tools.';
+}
+
 /** A stubbed tool's answer: a value, a refusal, or computed from the call's arguments. */
 export type ToolAnswer =
   | Record<string, unknown>
   | ToolRefusal
+  | ToolSignInRequired
   | ((args: Record<string, unknown>, call: ToolCall) => unknown);
 
 export type ModelManagerStub = {
@@ -134,6 +144,20 @@ export async function stubModelManagerTools(
       typeof answer === 'function'
         ? await answer(call.arguments, call)
         : answer;
+    if (json instanceof ToolSignInRequired) {
+      await route.fulfill({
+        status: 401,
+        json: {
+          error: {
+            name: 'UnauthorizedError',
+            message: json.message,
+            reason: 'server_sign_in_required',
+            server: 'model-manager',
+          },
+        },
+      });
+      return;
+    }
     if (json instanceof ToolRefusal) {
       await route.fulfill({
         status: 500,

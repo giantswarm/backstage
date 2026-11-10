@@ -13,7 +13,7 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
 
 // A connector's client typed into the wizard (giantswarm/giantswarm#38849):
 // muster stores it, as the person, in a Secret owned by the MCPServer and
-// names it `<server>-oauth-client-<5 of [a-z0-9]>`; the portal shows it as
+// names it `<server>-muster-client-<10 of [a-z0-9]>`; the portal shows it as
 // stored and never reads it back. The client is the lab's
 // `lab-oauth-fixture`'s own (Dex's platform client) with its pinned Dex
 // endpoints, so the new connector signs in like the fixture. Its issuer is
@@ -24,7 +24,7 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
 const FIXTURE = 'lab-oauth-fixture';
 const TYPED = 'E2E Client Credentials';
 const NAME = 'e2e-client-credentials';
-const STORED = new RegExp(`^${NAME}-oauth-client-[a-z0-9]{5}$`);
+const STORED = new RegExp(`^${NAME}-muster-client-[a-z0-9]{10}$`);
 
 const scope = `?installation=${lab.installation}`;
 
@@ -284,7 +284,7 @@ test.describe('a connector whose client is typed into the wizard', () => {
       })
       .click();
     await admin
-      .getByText("Advanced: sign-in settings for apps muster can't look up")
+      .getByText("Advanced: sign-in settings for apps Muster can't look up")
       .click();
     const { authorizationServer } = fixture;
     await admin

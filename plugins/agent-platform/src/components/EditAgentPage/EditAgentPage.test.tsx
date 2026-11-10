@@ -45,6 +45,7 @@ jest.mock('@giantswarm/backstage-plugin-muster', () =>
 );
 jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
+    privateRepositories: new Set(),
     skills: [
       {
         name: 'PR review',

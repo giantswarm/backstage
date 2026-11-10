@@ -65,6 +65,12 @@ export interface DiscoverAgentSkillsResult {
   ref: string;
   commit: string;
   truncated: boolean;
+  /**
+   * Whether GitHub reports the repository private: only its collaborators
+   * read it, and an agent fetches its skills only with a credential. Absent
+   * when the provider cannot tell (a generic git host, read anonymously).
+   */
+  private?: boolean;
 }
 
 /**
@@ -273,20 +279,32 @@ function rateLimitMessage(
   };
 }
 
-async function resolveDefaultBranch(
+/** What discovery needs of `GET /repos/{owner}/{repo}`. */
+interface RepositoryInfo {
+  defaultBranch: string;
+  private: boolean;
+}
+
+async function readRepository(
   owner: string,
   repo: string,
   token: string | undefined,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<RepositoryInfo> {
   const response = await githubApiFetch(
     `https://api.github.com/repos/${owner}/${repo}`,
     token,
     undefined,
     signal,
   );
-  const data = (await response.json()) as { default_branch?: string };
-  return data.default_branch || 'main';
+  const data = (await response.json()) as {
+    default_branch?: string;
+    private?: boolean;
+  };
+  return {
+    defaultBranch: data.default_branch || 'main',
+    private: data.private === true,
+  };
 }
 
 /**
@@ -462,8 +480,15 @@ export async function discoverAgentSkills(options: {
     canonicalRepoUrl,
   );
 
-  const branch =
-    ref ?? (await resolveDefaultBranch(owner, repo, token, signal));
+  // The repository read answers the default branch and the private flag. A
+  // refresh at a named ref keeps the flag its last snapshot read rather than
+  // spend a request on what seldom changes.
+  const repository =
+    ref === undefined || previous?.private === undefined
+      ? await readRepository(owner, repo, token, signal)
+      : undefined;
+  const branch = ref ?? repository!.defaultBranch;
+  const isPrivate = repository?.private ?? previous?.private;
   const commit = await resolveHeadCommit(
     owner,
     repo,
@@ -592,6 +617,7 @@ export async function discoverAgentSkills(options: {
     ref: branch,
     commit,
     truncated: treeTruncated,
+    private: isPrivate,
     contents,
     files,
   };

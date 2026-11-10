@@ -28,7 +28,7 @@ export function toolLine(
         line: `${display.connector} · ${display.tool}`,
       };
     case 'core':
-      return { glyph: 'M', line: `muster · ${display.tool}` };
+      return { glyph: 'M', line: `Muster · ${display.tool}` };
     case 'workflow':
       return { glyph: 'W', line: `Runs the workflow ${display.workflow}` };
     default:

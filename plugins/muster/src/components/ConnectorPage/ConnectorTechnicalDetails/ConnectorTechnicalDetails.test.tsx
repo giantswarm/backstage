@@ -69,7 +69,7 @@ describe('ConnectorTechnicalDetails', () => {
     expect(fact('Resource', 'Namespace')).toHaveTextContent(/^muster$/);
     expect(fact('Resource', 'Name')).toHaveTextContent(/^jira$/);
     expect(screen.queryByText('muster/jira')).toBeNull();
-    expect(screen.getByText('Added through muster, not Git')).toBeVisible();
+    expect(screen.getByText('Added through Muster, not Git')).toBeVisible();
     expect(screen.queryByText('Managed through GitOps')).toBeNull();
 
     expect(fact('Configuration', 'Timeout')).toHaveTextContent('30s');
@@ -146,7 +146,7 @@ describe('ConnectorTechnicalDetails', () => {
     expect(screen.getByRole('heading', { name: 'Health' })).toBeVisible();
     expect(
       screen.getByText(
-        'muster reports the connector as failed but gives no reason.',
+        'Muster reports the connector as failed but gives no reason.',
       ),
     ).toBeVisible();
   });

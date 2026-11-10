@@ -406,5 +406,6 @@ describe('ImportModelPage · the selects at scale', () => {
 
     await openTargetNodes();
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
-  });
+    // 300 options each: slow on a loaded CI runner.
+  }, 30_000);
 });

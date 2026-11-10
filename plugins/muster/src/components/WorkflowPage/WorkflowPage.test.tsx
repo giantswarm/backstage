@@ -1062,7 +1062,7 @@ describe('WorkflowPage', () => {
 
     const facts = screen.getByRole('region', { name: 'Workflow details' });
     expect(facts).toHaveTextContent(
-      'Manually added — changed by agents through muster, not here',
+      'Manually added — changed by agents through Muster, not here',
     );
     expect(within(facts).getByText('Tool name')).toBeInTheDocument();
     expect(within(facts).getByText('workflow_deploy')).toBeInTheDocument();
@@ -1263,7 +1263,7 @@ describe('WorkflowPage', () => {
       await screen.findByText('Sign in to a connector first'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/muster refuses the run until you are/),
+      screen.getByText(/Muster refuses the run until you are/),
     ).toBeInTheDocument();
     // The form still shows: signing in makes the run possible.
     expect(
@@ -1352,7 +1352,7 @@ describe('WorkflowPage', () => {
         within(dialog).getByText('Leave while the workflow runs?'),
       ).toBeInTheDocument();
       expect(dialog).toHaveTextContent(
-        'muster keeps running it after you leave',
+        'Muster keeps running it after you leave',
       );
       // Still here, behind the modal dialog.
       expect(
@@ -1420,7 +1420,7 @@ describe('WorkflowPage', () => {
     const api = await renderAt(`${BASE}/deploy/run`);
 
     expect(
-      screen.getByText(/Running a workflow needs a muster session/),
+      screen.getByText(/Running a workflow needs a Muster session/),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     expect(api.filterTools).not.toHaveBeenCalled();
@@ -1564,7 +1564,7 @@ describe('WorkflowPage', () => {
     // Overview names what it needs the session for; statistics are on Usage.
     expect(
       screen.getByText(
-        /The last run on the flow and the read-only badge need a muster session/,
+        /The last run on the flow and the read-only badge need a Muster session/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Statistics need/)).toBeNull();
@@ -1593,7 +1593,7 @@ describe('WorkflowPage', () => {
     const api = await renderAt(`${BASE}/deploy/usage`);
 
     expect(
-      screen.getByText(/Statistics need a muster session/),
+      screen.getByText(/Statistics need a Muster session/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/The last run on the flow/)).toBeNull();
     expect(screen.queryByText(/Every run counts/)).toBeNull();
@@ -1748,7 +1748,7 @@ describe('WorkflowPage at phone width', () => {
       screen.getByRole('region', { name: 'If a step fails' }),
     );
     expect(
-      cleanup.getByText('Cleanup muster runs when a step fails.'),
+      cleanup.getByText('Cleanup Muster runs when a step fails.'),
     ).toBeInTheDocument();
     expect(
       cleanup.getByRole('button', { name: /^Cleanup step: Roll back/ }),

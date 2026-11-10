@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { NON_PERSISTED_QUERY_META } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { musterApiRef } from '../../../apis';
 import { connectorLabels } from '../../../lib/connectorName';
+import { isPermanentMusterReadError } from '../../../lib/musterPolling';
 
 /**
  * How often a failed read of the names is tried again while a prompt stays
@@ -64,7 +65,7 @@ export function useConnectorLabels(
       const answer = await musterApi!.listConnectorNames(installation);
       if (answer.unavailable) {
         throw new ConnectorNamesUnavailableError(
-          `muster on ${installation} could not list its connectors`,
+          `Muster on ${installation} could not list its connectors`,
         );
       }
       return answer;
@@ -72,11 +73,16 @@ export function useConnectorLabels(
     enabled,
     // An answer is kept; a failure is read again on the next mount, on
     // focus and every few minutes, so a short outage does not leave the
-    // prompts on technical names for the rest of the tab.
+    // prompts on technical names for the rest of the tab. Not from a hidden
+    // tab, and not after muster refused the person, which asking again does
+    // not change.
     staleTime: Infinity,
     refetchOnWindowFocus: query => query.state.status === 'error',
     refetchInterval: query =>
-      query.state.status === 'error' ? RETRY_FAILED_READ_MS : false,
+      query.state.status === 'error' &&
+      !isPermanentMusterReadError(query.state.error)
+        ? RETRY_FAILED_READ_MS
+        : false,
     retry: false,
   });
   const sources = data?.servers;

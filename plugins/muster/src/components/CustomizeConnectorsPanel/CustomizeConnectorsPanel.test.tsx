@@ -9,6 +9,7 @@ import {
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
+import { stubImageLoad } from '../ConnectorLogo/stubImageLoad';
 import type { AuthStatusResponse } from '../../apis/types';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
@@ -123,6 +124,7 @@ const api = {
     message: 'Sign in to github.',
   })),
   getAuthStatus: jest.fn(async () => defaultAuthStatus()),
+  getServerInfo: jest.fn(async (): Promise<{ icon?: string }> => ({})),
 };
 
 function defaultAuthStatus(): AuthStatusResponse {
@@ -211,6 +213,8 @@ describe('CustomizeConnectorsPanel', () => {
     api.getAuthStatus.mockClear();
     api.getAuthStatus.mockImplementation(async () => defaultAuthStatus());
     api.signInServer.mockClear();
+    api.getServerInfo.mockReset();
+    api.getServerInfo.mockImplementation(async () => ({}));
     mockNavigate.mockClear();
   });
 
@@ -242,7 +246,7 @@ describe('CustomizeConnectorsPanel', () => {
       within(rowOf('web-search')).getByText('No sign-in'),
     ).toBeInTheDocument();
     // muster itself is listed too, after the registered connectors.
-    expect(rowOf('muster')).toBeInTheDocument();
+    expect(rowOf('Muster')).toBeInTheDocument();
   });
 
   it('signs in from the row without opening the connector', async () => {
@@ -683,7 +687,7 @@ describe('CustomizeConnectorsPanel', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent('Too many sign-in attempts');
     expect(tooltip).toHaveTextContent(
-      'Cannot read the muster auth status: muster answered 502',
+      'Cannot read the Muster auth status: muster answered 502',
     );
   });
 
@@ -884,7 +888,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       await screen.findByText(
-        'The tools of 2 connectors (github, web-search) were not searched: muster listed none of them.',
+        'The tools of 2 connectors (github, web-search) were not searched: Muster listed none of them.',
       ),
     ).toBeInTheDocument();
   });
@@ -901,7 +905,7 @@ describe('CustomizeConnectorsPanel', () => {
     expect(
       await screen.findByText(/Some tools were not searched/),
     ).toHaveTextContent(
-      'Some tools were not searched: muster returned only part of them. The tools of github were not searched: they need your sign-in.',
+      'Some tools were not searched: Muster returned only part of them. The tools of github were not searched: they need your sign-in.',
     );
   });
 
@@ -911,7 +915,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       await screen.findByText(
-        'Only connector names were searched: tools need a muster session.',
+        'Only connector names were searched: tools need a Muster session.',
       ),
     ).toBeInTheDocument();
   });
@@ -921,7 +925,7 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     expect(
-      screen.getByText(/Tool counts and sign-ins need a muster session/),
+      screen.getByText(/Tool counts and sign-ins need a Muster session/),
     ).toBeInTheDocument();
     expect(api.filterTools).not.toHaveBeenCalled();
   });
@@ -1391,7 +1395,7 @@ describe('CustomizeConnectorsPanel', () => {
     mockServers = [];
     await renderPanel();
 
-    expect(rowOf('muster')).toBeInTheDocument();
+    expect(rowOf('Muster')).toBeInTheDocument();
   });
 
   describe('one list, tagged by tool group', () => {
@@ -1432,7 +1436,7 @@ describe('CustomizeConnectorsPanel', () => {
         'web-search',
         'agent-manager',
         'lone-capi',
-        'muster',
+        'Muster',
         'prometheus',
       ]);
     });
@@ -1449,7 +1453,7 @@ describe('CustomizeConnectorsPanel', () => {
         within(rowOf('agent-manager')).getByText('agent-platform'),
       ).toBeInTheDocument();
       expect(
-        within(rowOf('muster')).getByText('agent-platform'),
+        within(rowOf('Muster')).getByText('agent-platform'),
       ).toBeInTheDocument();
     });
 
@@ -1473,7 +1477,7 @@ describe('CustomizeConnectorsPanel', () => {
       await renderPanel();
 
       expect(rowOf('agent-manager')).toBeInTheDocument();
-      const muster = rowOf('muster');
+      const muster = rowOf('Muster');
       expect(
         within(muster).queryByText('https://muster.gazelle.example.test/mcp'),
       ).not.toBeInTheDocument();
@@ -1483,7 +1487,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(within(muster).getByText('Company login')).toBeInTheDocument();
       expect(within(muster).getByText('Connected')).toBeInTheDocument();
       expect(
-        within(muster).getByRole('link', { name: 'muster' }),
+        within(muster).getByRole('link', { name: 'Muster' }),
       ).toHaveAttribute('href', '/customize/connectors/gazelle/muster');
     });
 
@@ -1496,7 +1500,7 @@ describe('CustomizeConnectorsPanel', () => {
         },
       };
       await renderPanel();
-      const muster = rowOf('muster');
+      const muster = rowOf('Muster');
       expect(within(muster).getByText('No sign-in')).toBeInTheDocument();
       expect(within(muster).getByText('Not connected')).toBeInTheDocument();
       expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
@@ -1505,17 +1509,68 @@ describe('CustomizeConnectorsPanel', () => {
     it('claims no state for muster while its installation is undescribed', async () => {
       mockInstance = { activeInstallationInfo: undefined };
       await renderPanel();
-      const muster = rowOf('muster');
+      const muster = rowOf('Muster');
       expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
       expect(within(muster).queryByText('No sign-in')).not.toBeInTheDocument();
     });
 
-    it('says muster is not connected without a session', async () => {
+    it('says Muster is not connected without a session', async () => {
       mockAuthenticated = false;
       await renderPanel();
       expect(
-        within(rowOf('muster')).getByText('Not connected'),
+        within(rowOf('Muster')).getByText('Not connected'),
       ).toBeInTheDocument();
+    });
+
+    describe("muster's logo", () => {
+      const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+      let restoreImage: () => void;
+      beforeEach(() => {
+        restoreImage = stubImageLoad();
+      });
+      afterEach(() => restoreImage());
+
+      it('shows the icon muster announces, as an image', async () => {
+        api.getServerInfo.mockImplementation(async () => ({ icon: SVG }));
+        await renderPanel();
+
+        await waitFor(() =>
+          expect(rowOf('Muster').querySelector('img')).toHaveAttribute(
+            'src',
+            SVG,
+          ),
+        );
+        expect(api.getServerInfo).toHaveBeenCalledWith('gazelle');
+        expect(rowOf('Muster').querySelector('svg')).toBeNull();
+      });
+
+      it('shows the letter tile when muster announces no icon', async () => {
+        await renderPanel();
+
+        await waitFor(() => expect(api.getServerInfo).toHaveBeenCalled());
+        const muster = rowOf('Muster');
+        expect(muster.querySelector('img')).toBeNull();
+        expect(
+          within(within(muster).getByRole('rowheader')).getByText('M'),
+        ).toBeInTheDocument();
+      });
+
+      it('shows the letter tile for an icon it would not render', async () => {
+        api.getServerInfo.mockImplementation(async () => ({
+          icon: ['javascript', 'alert(1)'].join(':'),
+        }));
+        await renderPanel();
+
+        await waitFor(() => expect(api.getServerInfo).toHaveBeenCalled());
+        expect(rowOf('Muster').querySelector('img')).toBeNull();
+      });
+
+      it('does not ask muster without a session', async () => {
+        mockAuthenticated = false;
+        await renderPanel();
+        expect(rowOf('Muster').querySelector('img')).toBeNull();
+        expect(api.getServerInfo).not.toHaveBeenCalled();
+      });
     });
   });
 });
