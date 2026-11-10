@@ -135,6 +135,40 @@ describe('useMargeInstallation on installations marge cannot be used on', () => 
     expect(result.current.installation).toBe('glean');
   });
 
+  it('offers none on a pinned installation that is unreachable and has no per-user sign-in, and names it', async () => {
+    mockScope = 'glean';
+    listInstallations.mockResolvedValueOnce({
+      installations: [
+        { name: 'gazelle', requiresAuth: true },
+        { name: 'glean', requiresAuth: false, reachable: false },
+      ],
+    });
+    listServers.mockResolvedValue({ mcpServers: [] });
+
+    const { result } = render();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.installation).toBeUndefined();
+    expect(result.current.withoutPerUserSignIn).toEqual(['glean']);
+  });
+
+  it('offers none on a pinned installation whose server list failed and that has no per-user sign-in', async () => {
+    mockScope = 'glean';
+    listInstallations.mockResolvedValueOnce({
+      installations: [
+        { name: 'gazelle', requiresAuth: true },
+        { name: 'glean', requiresAuth: false },
+      ],
+    });
+    listServers.mockRejectedValue(new Error('muster answered 503'));
+
+    const { result } = render();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.installation).toBeUndefined();
+    expect(result.current.withoutPerUserSignIn).toEqual(['glean']);
+  });
+
   it('passes on why the installations could not be read', async () => {
     listInstallations.mockRejectedValueOnce(new Error('answered 502'));
     listServers.mockResolvedValue({

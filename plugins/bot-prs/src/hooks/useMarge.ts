@@ -136,9 +136,11 @@ export function useMargeInstallation(): MargeInstallationView {
   // (for an unreachable one, at once: "not reachable from this portal"). Only
   // a muster that answered without marge, or that runs without a per-user
   // sign-in, leaves the page with no installation.
-  const fallback = [pinned, home, availability.unreachable[0]].find(
-    (name): name is string =>
-      name !== undefined && availability.unreachable.includes(name),
+  const fallbacks = availability.unreachable.filter(
+    name => !availability.sharedIdentity.includes(name),
+  );
+  const fallback = [pinned, home, fallbacks[0]].find(
+    (name): name is string => name !== undefined && fallbacks.includes(name),
   );
   const installation = listed ?? fallback;
 
