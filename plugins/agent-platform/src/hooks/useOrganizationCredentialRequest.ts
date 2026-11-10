@@ -4,8 +4,8 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
+  CREDENTIAL_OPERATION_PATTERN,
   type CredentialResourceResult,
-  operationOfFormUrl,
 } from '../lib/credentialOperations';
 import type { OrganizationNamespace } from '../lib/organizations';
 import {
@@ -24,12 +24,11 @@ export type CredentialRequest =
 /**
  * Asks agent-manager, as the person, for a write that needs a credential:
  * a new model, or a new key or credential value for an existing object. The
- * tool takes no value; it prepares a credential request and answers its
- * form link, and the person is taken to the portal's own form for it (the
- * operation's id only, never the link itself). An answer without a request
- * (the credential already exists) is a finished write: the lists are read
- * again. A request whose link is not the portal's form is a failure the
- * person sees, never a silent no-op.
+ * tool takes no value; it prepares a credential request and answers its id
+ * (`credentialOperation`), and the person is taken to the portal's own form
+ * for that id. agent-manager's own link (`credentials[].formUrl`) is never
+ * followed. An answer without a request (the credential already exists) is
+ * a finished write: the lists are read again.
  */
 export function useOrganizationCredentialRequest(
   installation: string,
@@ -82,25 +81,26 @@ export function useOrganizationCredentialRequest(
       'prepares a credential request; the save on the credential form is the tracked write',
     mutationFn: async request => {
       const result = await send(request);
-      const operation = (result.credentials ?? [])
-        .map(pair => operationOfFormUrl(pair.formUrl))
-        .find(Boolean);
-      const form =
-        operation &&
-        formLink?.({
-          installation,
-          parent: organization.parent,
-          name: organization.organization,
-          operation,
-        });
-      const asked = (result.credentials ?? []).some(
-        pair => pair.state === 'missing' || pair.state === 'replace',
-      );
-      if (!form && (result.pending || asked)) {
+      const operation = result.credentialOperation;
+      if (!operation) {
+        if (result.pending) {
+          throw new Error(
+            'agent-manager answered a credential request without its id.',
+          );
+        }
+        return { result };
+      }
+      if (!CREDENTIAL_OPERATION_PATTERN.test(operation)) {
         throw new Error(
-          'agent-manager prepared a credential request, but its link is not this portal’s credential form. agent-manager’s credentials.uiURL must end in /organizations/<installation>/{parent}/{organization}/credentials/{operation} of this portal.',
+          'agent-manager answered a credential request id this portal does not recognize.',
         );
       }
+      const form = formLink?.({
+        installation,
+        parent: organization.parent,
+        name: organization.organization,
+        operation,
+      });
       return { result, form };
     },
     onSuccess: ({ form }) => {

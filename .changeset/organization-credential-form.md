@@ -17,7 +17,8 @@ An Agent Platform organization's credentials are entered on the Dev Portal's cre
   is validated and never logged or echoed; `If-Match` is required on POST and
   DELETE; every answer is `Cache-Control: no-store`; refusals are the
   backend's error body with agent-manager's `code`. A save that runs past
-  120 s answers 504 `outcome_unknown`.
+  120 s, loses its connection or is refused by a gateway answers 504
+  `outcome_unknown`.
 - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
   the link agent-manager's `credentials.uiURL` names
   (`…/credentials/{operation}`), shows what the value is for (the
@@ -29,6 +30,7 @@ An Agent Platform organization's credentials are entered on the Dev Portal's cre
   agent-manager's side is finished from the page; a commit without the
   GitHub grant offers the connection. The Models tab's Add model and Replace
   key, and the Connectors tab's Replace credential, ask agent-manager as the
-  person and open the form for the request it prepares.
+  person and open the form for the request it prepares (its
+  `credentialOperation`).
 - analytics-react: `AgentPlatform.organizationCredentialSaved`.
 - app: the form's page view, without the request's id.

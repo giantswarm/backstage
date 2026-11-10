@@ -172,14 +172,24 @@ function answerError(
   res.status(status).json(errorResponseBody(error, req, status));
 }
 
-/** agent-manager's error answer, `{error: {code, message}}`, passed on. */
+/** Gateway answers for a request that may have reached agent-manager. */
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+
+const OUTCOME_UNKNOWN_MESSAGE =
+  'agent-manager did not answer the save; it may still complete';
+
+/**
+ * agent-manager's error answer, `{error: {code, message}}`, passed on. A save
+ * refused by a gateway in front of agent-manager (no agent-manager body) may
+ * still have run, so it answers `outcome_unknown`, never a failure.
+ */
 async function forwardError(
   req: express.Request,
   res: express.Response,
   upstream: Response,
 ) {
-  let code = 'backend_error';
-  let message = `agent-manager answered ${upstream.status}`;
+  let code: string | undefined;
+  let message: string | undefined;
   try {
     const body = (await upstream.json()) as {
       error?: { code?: unknown; message?: unknown };
@@ -194,9 +204,23 @@ async function forwardError(
     // A body that is not agent-manager's JSON (a gateway's page) keeps the
     // generic message.
   }
+  if (
+    code === undefined &&
+    req.method === 'POST' &&
+    GATEWAY_STATUSES.has(upstream.status)
+  ) {
+    answerError(req, res, 504, 'outcome_unknown', OUTCOME_UNKNOWN_MESSAGE);
+    return;
+  }
   const status =
     upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
-  answerError(req, res, status, code, message);
+  answerError(
+    req,
+    res,
+    status,
+    code ?? 'backend_error',
+    message ?? `agent-manager answered ${upstream.status}`,
+  );
 }
 
 export function createCredentialOperationsRouter(
@@ -225,9 +249,10 @@ export function createCredentialOperationsRouter(
   };
 
   /**
-   * One call to agent-manager. A save that does not answer in time may
-   * still complete there: it is answered `outcome_unknown` (504), never as a
-   * failure, and the form reads the operation again.
+   * One call to agent-manager. A save that fails in transit (no answer in
+   * time, a dropped connection) may still complete there: it is answered
+   * `outcome_unknown` (504), never as a failure, and the form reads the
+   * operation again.
    */
   const call = async (
     req: express.Request,
@@ -236,25 +261,15 @@ export function createCredentialOperationsRouter(
     init: { method: string; headers: Record<string, string>; body?: string },
     timeoutMs: number,
   ): Promise<Response | undefined> => {
-    res.set('Cache-Control', 'no-store');
     try {
       return await fetchFn(url, {
         ...init,
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
-    } catch (error) {
-      if (
-        init.method === 'POST' &&
-        (error as Error | undefined)?.name === 'TimeoutError'
-      ) {
-        answerError(
-          req,
-          res,
-          504,
-          'outcome_unknown',
-          'agent-manager did not answer the save in time; it may still complete',
-        );
+    } catch {
+      if (init.method === 'POST') {
+        answerError(req, res, 504, 'outcome_unknown', OUTCOME_UNKNOWN_MESSAGE);
       } else {
         answerError(
           req,
@@ -291,6 +306,12 @@ export function createCredentialOperationsRouter(
   };
 
   const path = '/organizations/credential-operations/:operation';
+
+  // Every answer, refusals of the request itself included.
+  router.use(path, (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
 
   router.get(path, async (req, res) => {
     const url = target(req);

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Link, PasswordField, Text } from '@backstage/ui';
@@ -22,12 +23,12 @@ import {
   askingObjects,
   CREDENTIAL_OPERATION_PATTERN,
   type CredentialOperation,
-  type CredentialOperationRead,
   type CredentialResourceResult,
   destinations,
   otherReferences,
   requestedPairs,
 } from '../../lib/credentialOperations';
+import { agentManagerCredentialOperationQueryKey } from '../../lib/queryKeys';
 import {
   organizationDetailRouteRef,
   organizationsRouteRef,
@@ -44,50 +45,41 @@ export type CredentialFormPageProps = {
   operation: string;
 };
 
-type Read =
-  | { status: 'loading' }
-  | { status: 'error'; error: Error }
-  | { status: 'loaded'; read: CredentialOperationRead };
-
 const pairId = (pair: { secret: string; key: string }) =>
   `${pair.secret}/${pair.key}`;
 
+/** Kubernetes kinds (references, changes) and agent-manager's result kinds. */
 const KIND_LABELS: Record<string, string> = {
   ModelConfig: 'Model',
   RemoteMCPServer: 'Connector',
   EgressPolicy: 'Egress policy',
+  model: 'Model',
+  connector: 'Connector',
+  egressPolicy: 'Egress policy',
 };
 
 const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
 
 /**
- * The confirmation is read here, outside the plugin's query client, whose
- * cache is persisted to the browser's storage: what a person is asked to
- * confirm is read fresh for every visit and kept in this page alone.
+ * The confirmation, read fresh for every visit: kept out of the persisted
+ * cache (`meta.persist`), dropped when the page unmounts, and not read again
+ * on focus, so what the person confirms does not change under them.
  */
 function useOperation(installation: string, operation: string | undefined) {
   const api = useApi(agentManagerCredentialsApiRef);
-  const [state, setState] = useState<Read>({ status: 'loading' });
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    if (!operation) {
-      return undefined;
-    }
-    let cancelled = false;
-    // A read again keeps the confirmation on screen until the new one is in.
-    setState(current =>
-      current.status === 'loaded' ? current : { status: 'loading' },
-    );
-    api.getOperation(installation, operation).then(
-      read => !cancelled && setState({ status: 'loaded', read }),
-      error => !cancelled && setState({ status: 'error', error }),
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [api, installation, operation, attempt]);
-  const reload = useCallback(() => setAttempt(n => n + 1), []);
-  return { state, reload };
+  return useQuery({
+    queryKey: agentManagerCredentialOperationQueryKey(
+      installation,
+      operation ?? '',
+    ),
+    queryFn: () => api.getOperation(installation, operation ?? ''),
+    enabled: operation !== undefined,
+    meta: { persist: false },
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
 }
 
 function Fact({
@@ -287,7 +279,10 @@ export function CredentialFormPage({
     ? operationParam
     : undefined;
   const api = useApi(agentManagerCredentialsApiRef);
-  const { state, reload } = useOperation(installation, operationId);
+  const query = useOperation(installation, operationId);
+  const reload = () => {
+    query.refetch();
+  };
   const [values, setValues] = useState<Record<string, string>>({});
   const [receipt, setReceipt] = useState<CredentialResourceResult>();
   const [cancelled, setCancelled] = useState(false);
@@ -311,7 +306,7 @@ export function CredentialFormPage({
     <Link href={organizationHref}>Back to {name}</Link>
   ) : undefined;
 
-  const loaded = state.status === 'loaded' ? state.read : undefined;
+  const loaded = query.data;
   const pairs = loaded ? requestedPairs(loaded.operation) : [];
 
   const save = useTrackedMutation<CredentialResourceResult, Error, void>({
@@ -389,7 +384,7 @@ export function CredentialFormPage({
     );
   }
 
-  if (state.status === 'loading') {
+  if (query.isPending) {
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <ShellPageFactsSkeleton />
@@ -397,8 +392,8 @@ export function CredentialFormPage({
     );
   }
 
-  if (state.status === 'error') {
-    const notFound = credentialOperationErrorStatus(state.error) === 404;
+  if (query.isError && !query.isFetching) {
+    const notFound = credentialOperationErrorStatus(query.error) === 404;
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <EmptyStateCard
@@ -410,7 +405,7 @@ export function CredentialFormPage({
           description={
             notFound
               ? 'It expired, was cancelled, or was started by someone else. Start again from the organization’s tab or ask the agent again.'
-              : credentialOperationErrorMessage(state.error)
+              : credentialOperationErrorMessage(query.error)
           }
           actions={
             <Flex gap="3" align="center">
@@ -427,7 +422,14 @@ export function CredentialFormPage({
     );
   }
 
-  const { operation } = state.read;
+  if (!loaded) {
+    return (
+      <ShellPage title="Enter a credential" {...frame}>
+        <ShellPageFactsSkeleton />
+      </ShellPage>
+    );
+  }
+  const { operation } = loaded;
   if (!sameOrganization(operation, parent, name)) {
     return (
       <ShellPage title="Enter a credential" {...frame}>

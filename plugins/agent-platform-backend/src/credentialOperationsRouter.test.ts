@@ -200,6 +200,70 @@ describe('the credential operations', () => {
     expect(JSON.stringify(res.body)).not.toContain(SECRET_VALUE);
   });
 
+  it.each([
+    [
+      'a dropped connection',
+      () => Promise.reject(new TypeError('fetch failed')),
+    ],
+    [
+      'a gateway’s 502 page',
+      async () => new Response('<html>bad gateway</html>', { status: 502 }),
+    ],
+    [
+      'a gateway’s 504 page',
+      async () => new Response('upstream timeout', { status: 504 }),
+    ],
+  ])(
+    'answers a save that ends in %s as an unknown outcome',
+    async (_case, answer) => {
+      const fetchFn = jest.fn(answer);
+      const res = await request(app(fetchFn as unknown as typeof fetch))
+        .post(path)
+        .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+        .set('If-Match', '"7"')
+        .send({
+          values: [
+            {
+              secret: 'tenant-credential-claude',
+              key: 'apiKey',
+              value: SECRET_VALUE,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(504);
+      expect(res.body.error.code).toBe('outcome_unknown');
+      expect(res.headers['cache-control']).toBe('no-store');
+    },
+  );
+
+  it('keeps agent-manager’s own 5xx refusal of a save as a failure', async () => {
+    const fetchFn = mockFetch(() =>
+      json(500, { error: { code: 'backend_error', message: 'apply failed' } }),
+    );
+    const res = await request(app(fetchFn as unknown as typeof fetch))
+      .post(path)
+      .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+      .set('If-Match', '"7"')
+      .send({ values: [] });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatchObject({
+      code: 'backend_error',
+      message: 'apply failed',
+    });
+  });
+
+  it('answers its own refusals of a request no-store too', async () => {
+    const fetchFn = mockFetch(() => json(200, {}));
+    const res = await request(app(fetchFn as unknown as typeof fetch))
+      .post(path)
+      .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+      .send({ values: [] });
+    expect(res.status).toBe(400);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it('answers 502 for a confirmation without its version, or a body that is not JSON', async () => {
     const noEtag = mockFetch(() => json(200, { id: OPERATION }));
     const first = await request(app(noEtag as unknown as typeof fetch))

@@ -377,12 +377,9 @@ describe('OrganizationPage', () => {
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
   });
 
-  it('says so when agent-manager links its request somewhere else than the portal’s form', async () => {
+  it('says so when agent-manager answers a credential request without its id', async () => {
     const user = userEvent.setup();
-    await renderPage('/models', {
-      ...SCENARIO,
-      formUrl: `https://elsewhere.example.com/form?operation=${CREDENTIAL_OPERATION}`,
-    });
+    await renderPage('/models', { ...SCENARIO, withoutOperation: true });
 
     await user.click(
       await screen.findByRole('button', { name: 'Replace the key of gpt' }),
@@ -392,7 +389,7 @@ describe('OrganizationPage', () => {
 
     expect(
       await within(dialog).findByText(
-        /its link is not this portal’s credential form/,
+        'agent-manager answered a credential request without its id.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('location')).not.toBeInTheDocument();

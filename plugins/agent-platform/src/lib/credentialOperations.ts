@@ -42,14 +42,19 @@ export type CredentialCommit = {
   number?: number;
 };
 
+/** agent-manager's names of the objects a credential operation writes. */
+export type CredentialResourceKind = 'model' | 'connector' | 'egressPolicy';
+
 /** What a save answers, and what the operation will write. */
 export type CredentialResourceResult = {
   namespace?: string;
-  kind?: string;
+  kind?: CredentialResourceKind;
   name?: string;
   created?: boolean;
   note?: string;
   pending?: boolean;
+  /** The id of the credential operation a pending write prepared. */
+  credentialOperation?: string;
   credentials?: CredentialPair[];
   commit?: CredentialCommit;
 };
@@ -181,25 +186,4 @@ export function destinations(operation: CredentialOperation): string[] {
     }
   }
   return [...out].sort();
-}
-
-/** The portal's form path, as `credentials.uiURL` names it: `…/credentials/<operation>`. */
-const FORM_PATH = /\/credentials\/([a-f0-9]{48})$/;
-
-/**
- * The operation id of an agent-manager form link (`credentials[].formUrl`),
- * from the portal's own form path. Only the id is taken: the portal builds
- * its own link, never follows the absolute URL.
- */
-export function operationOfFormUrl(
-  url: string | undefined,
-): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-  try {
-    return FORM_PATH.exec(new URL(url).pathname)?.[1];
-  } catch {
-    return undefined;
-  }
 }

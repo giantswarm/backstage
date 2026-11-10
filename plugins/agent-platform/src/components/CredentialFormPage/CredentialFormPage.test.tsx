@@ -57,7 +57,7 @@ const CONFIRMATION: CredentialOperation = {
     },
   ],
   result: {
-    kind: 'ModelConfig',
+    kind: 'model',
     name: 'claude-sonnet',
     pending: true,
     credentials: [
@@ -97,7 +97,7 @@ function fakeCredentialsApi(
   return {
     getOperation: jest.fn(reader),
     saveOperation: jest.fn(async () => ({
-      kind: 'ModelConfig',
+      kind: 'model' as const,
       name: 'claude-sonnet',
       credentials: [
         {
@@ -203,6 +203,9 @@ describe('CredentialFormPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Credential saved')).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Model claude-sonnet has its credential\./),
+    ).toBeInTheDocument();
     expect(api.saveOperation).toHaveBeenCalledTimes(1);
     expect(api.saveOperation).toHaveBeenCalledWith(
       'gazelle',
