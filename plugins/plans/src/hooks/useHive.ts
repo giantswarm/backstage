@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PlansApi, plansApiRef } from '../apis';
-import { DEFAULT_TEAM, historyForTeam, nowForTeam } from '../lib/hive';
+import {
+  ALL_TEAMS,
+  DEFAULT_TEAM,
+  historyForTeam,
+  nowForTeam,
+  teamSetFor,
+} from '../lib/hive';
 import {
   History,
+  HistoryWindow,
   HIVE_HISTORY_WINDOW,
   KnowledgeCategory,
   KnowledgeDoc,
   knowledgeDocs,
+  MAGAZINE_TEAMS_FILE,
   magazineFile,
   Meta,
   Now,
+  TeamSets,
 } from '../lib/magazine';
 
 async function magazineRefs(plansApi: PlansApi) {
@@ -137,51 +146,96 @@ export function useHiveSearch(): [string, (query: string) => void] {
 //
 // Hive reads the magazine repository (`plans.magazine` on the backend)
 // through the plans API: the generated `magazine/*.json` on its data ref and
-// the `knowledge/**` documents on its knowledge ref.
+// the `knowledge/**` documents on its knowledge ref. The magazine writes one
+// data set per team (`magazine/teams.json` lists them, each in
+// `magazine/teams/<slug>/`) and the default team's again under `magazine/`.
 
-/** A magazine view scoped to a team, with the team the magazine follows. */
+/**
+ * A magazine view scoped to a team, with the team the view's data set
+ * follows. `view` is null when the magazine has no data set for the team.
+ */
 export interface ScopedView<T> {
-  view: T;
+  view: T | null;
   magazineTeam: string;
 }
 
 /**
- * A magazine file with the team the magazine follows (`meta.json`), which
- * every item without a `team` belongs to.
+ * `magazine/teams.json`, read once for every tab; null for a magazine that
+ * writes the default team's set only.
  */
-async function readScoped<T>(
+function readTeamSets(
+  queryClient: QueryClient,
   plansApi: PlansApi,
-  path: string,
-): Promise<ScopedView<T>> {
-  const [view, meta] = await Promise.all([
-    readMagazineJson<T>(plansApi, path),
-    readMagazineJson<Meta>(plansApi, magazineFile('meta')),
-  ]);
-  return { view, magazineTeam: meta.sources.team };
+): Promise<TeamSets | null> {
+  return queryClient.fetchQuery({
+    queryKey: ['plans', 'hive', 'teams'],
+    queryFn: async () => {
+      try {
+        return await readMagazineJson<TeamSets>(plansApi, MAGAZINE_TEAMS_FILE);
+      } catch (error) {
+        if ((error as Error).name === 'NotFoundError') {
+          return null;
+        }
+        throw error;
+      }
+    },
+  });
 }
 
-/** Now (`magazine/now.json`), scoped to a team. */
+/**
+ * A view from the team's own data set, with the team it follows
+ * (`meta.json`), which every item without a `team` belongs to. All teams,
+ * and a magazine without per-team sets, read the default set under
+ * `magazine/`; a team the magazine lists no set for has no view.
+ */
+async function readScoped<T>(
+  queryClient: QueryClient,
+  plansApi: PlansApi,
+  view: 'now' | HistoryWindow,
+  team: string,
+): Promise<ScopedView<T>> {
+  let folder: string | undefined;
+  if (team !== ALL_TEAMS) {
+    const sets = await readTeamSets(queryClient, plansApi);
+    if (sets) {
+      const set = teamSetFor(sets, team);
+      if (!set) {
+        return { view: null, magazineTeam: team };
+      }
+      folder = set.path;
+    }
+  }
+  const [data, meta] = await Promise.all([
+    readMagazineJson<T>(plansApi, magazineFile(view, folder)),
+    readMagazineJson<Meta>(plansApi, magazineFile('meta', folder)),
+  ]);
+  return { view: data, magazineTeam: meta.sources.team };
+}
+
+/** Now (`now.json` of the team's data set), scoped to a team. */
 export function useHiveNow(team: string) {
   const plansApi = useApi(plansApiRef);
+  const queryClient = useQueryClient();
   return useQuery({
-    queryKey: ['plans', 'hive', 'now'],
-    queryFn: () => readScoped<Now>(plansApi, magazineFile('now')),
+    queryKey: ['plans', 'hive', 'now', team],
+    queryFn: () => readScoped<Now>(queryClient, plansApi, 'now', team),
     select: ({ view, magazineTeam }): ScopedView<Now> => ({
-      view: nowForTeam(view, team, magazineTeam),
+      view: view && nowForTeam(view, team, magazineTeam),
       magazineTeam,
     }),
   });
 }
 
-/** Hive's history (`magazine/history-weeks.json`), scoped to a team. */
+/** Hive's history (`history-weeks.json` of the team's data set), scoped to a team. */
 export function useHiveHistory(team: string) {
   const plansApi = useApi(plansApiRef);
+  const queryClient = useQueryClient();
   return useQuery({
-    queryKey: ['plans', 'hive', 'history'],
+    queryKey: ['plans', 'hive', 'history', team],
     queryFn: () =>
-      readScoped<History>(plansApi, magazineFile(HIVE_HISTORY_WINDOW)),
+      readScoped<History>(queryClient, plansApi, HIVE_HISTORY_WINDOW, team),
     select: ({ view, magazineTeam }): ScopedView<History> => ({
-      view: historyForTeam(view, team, magazineTeam),
+      view: view && historyForTeam(view, team, magazineTeam),
       magazineTeam,
     }),
   });
