@@ -14,7 +14,8 @@ import { useMusterServerAvailability } from './useMusterServerAvailability';
  * - `portal`: it does not (an installation on an agent-platform release
  *   without skill-manager). gs-backend's own discovery of
  *   `agentPlatform.skills.repositories` answers, deprecated.
- * - `pending`: not known yet.
+ * - `pending`: muster has not answered yet; also while its read fails, since
+ *   skill-manager may be there.
  */
 export type SkillSource =
   | { kind: 'pending' }
@@ -38,9 +39,13 @@ export function useSkillSource(installation?: string): SkillSource {
     target ? [target] : [],
   );
   const presence = target ? availability.presenceOf(target) : undefined;
+  // The portal's own discovery answers only once muster has said that it
+  // lists no skill-manager (or runs under its shared identity), or there is
+  // no muster to ask: an `unknown` presence also occurs between two reads,
+  // and answering it from the portal would list a second catalog.
   const pending =
-    (!target && isHomeLoading) ||
-    (presence === 'unknown' && availability.isLoading);
+    Boolean(musterApi) &&
+    ((!target && isHomeLoading) || presence === 'unknown');
 
   return useMemo((): SkillSource => {
     if (pending) {

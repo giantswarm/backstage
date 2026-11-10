@@ -71,6 +71,7 @@ export const SHELL_SPECS = [
   'sessions-awaiting-data.spec.ts',
   'sessions-unreadable-reason.spec.ts',
   'shell-sign-in.spec.ts',
+  'skills-catalog-skill-manager.spec.ts',
   'telemetry.spec.ts',
   'toolchains.spec.ts',
   'tenants.spec.ts',

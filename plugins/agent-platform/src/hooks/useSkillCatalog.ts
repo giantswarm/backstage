@@ -17,7 +17,10 @@ export type SkillCatalog = {
   plugins: DiscoveredPlugin[];
   isLoading: boolean;
   error: Error | null;
-  /** Whether any skill repository is configured at all. */
+  /**
+   * Whether any skill repository is configured at all; true until the
+   * source has answered, since the wizard decides on its skills step by it.
+   */
   hasRepositories: boolean;
   /** Configured repositories whose discovery failed (surfaced as a warning). */
   failedRepositories: string[];
@@ -53,7 +56,7 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
   });
   const portal = usePortalSkillCatalog(source.kind === 'portal');
   if (source.kind === 'pending') {
-    return { ...portal, isLoading: true };
+    return { ...portal, isLoading: true, hasRepositories: true };
   }
   if (source.kind === 'portal') {
     return portal;
@@ -64,7 +67,7 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
     plugins: data?.plugins ?? [],
     isLoading: isAwaitingData(skillManager),
     error: (skillManager.error as Error) ?? null,
-    hasRepositories: data?.hasRepositories ?? false,
+    hasRepositories: data?.hasRepositories ?? true,
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,

@@ -121,6 +121,19 @@ describe('useSkillCatalog', () => {
     jest.mocked(useSkillSource).mockReturnValue({ kind: 'pending' });
     const { result } = render();
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.hasRepositories).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the skills step while skill-manager has not answered', () => {
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'skill-manager',
+      installation: 'graveler',
+      client: { listSkills: () => new Promise(() => {}) },
+    } as unknown as SkillSource);
+    const { result } = render();
+    expect(result.current.isLoading).toBe(true);
+    // The wizard decides on its skills step from it.
+    expect(result.current.hasRepositories).toBe(true);
   });
 });

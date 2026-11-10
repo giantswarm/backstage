@@ -68,6 +68,21 @@ describe('useSkillSource', () => {
     });
   });
 
+  it('waits while muster has not said whether it lists skill-manager, even between reads', () => {
+    given({ home: 'gazelle', presence: { gazelle: 'unknown' } });
+    expect(renderHook(() => useSkillSource()).result.current).toEqual({
+      kind: 'pending',
+    });
+  });
+
+  it('reads the portal’s own discovery without the muster plugin', () => {
+    given({ home: 'gazelle', presence: { gazelle: 'unknown' } });
+    jest.mocked(useMusterPluginApi).mockReturnValue(undefined);
+    expect(renderHook(() => useSkillSource()).result.current).toEqual({
+      kind: 'portal',
+    });
+  });
+
   it('waits while the server list or the home installation is read', () => {
     given({ home: 'gazelle', availabilityLoading: true });
     expect(renderHook(() => useSkillSource()).result.current).toEqual({
