@@ -8,6 +8,7 @@ import {
   EndpointProbeResult,
   markReported,
   MusterAuthRequiredError,
+  MusterInputRequiredError,
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
@@ -1481,7 +1482,14 @@ describe('createRouter', () => {
         .send({ name: 'core_service_list', arguments: {} });
 
       expect(response.status).toBe(200);
-      expect(callTool).toHaveBeenCalledWith('core_service_list', {}, {});
+      expect(callTool).toHaveBeenCalledWith(
+        'core_service_list',
+        {},
+        {
+          urlElicitation: true,
+          signal: expect.any(AbortSignal),
+        },
+      );
     });
 
     it('executes a mutating-looking core tool without any gate', async () => {
@@ -1495,7 +1503,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'core_service_stop',
         { name: 'k8s' },
-        {},
+        { urlElicitation: true, signal: expect.any(AbortSignal) },
       );
     });
 
@@ -1553,8 +1561,102 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_start_session',
         {},
-        asPerson,
+        {
+          ...asPerson,
+          urlElicitation: true,
+          signal: expect.any(AbortSignal),
+        },
       );
+    });
+
+    it('cancels the muster call when the page goes away', async () => {
+      let signal: AbortSignal | undefined;
+      callTool.mockImplementation(
+        (_name: string, _args: unknown, options: { signal?: AbortSignal }) =>
+          new Promise(resolve => {
+            signal = options.signal;
+            signal?.addEventListener('abort', () => resolve({}));
+          }),
+      );
+
+      await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {} })
+        .timeout(200)
+        .catch(() => undefined);
+
+      for (let i = 0; i < 50 && !signal?.aborted; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(signal?.aborted).toBe(true);
+    });
+
+    it("passes the person's answer to muster's URL elicitation on", async () => {
+      callTool.mockResolvedValue({ ok: true });
+      const input = {
+        inputResponses: { muster_sign_in: { action: 'decline' } },
+        requestState: '{"server":"github"}',
+      };
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {}, input });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_github_get_me',
+        {},
+        {
+          ...asPerson,
+          urlElicitation: true,
+          input,
+          signal: expect.any(AbortSignal),
+        },
+      );
+    });
+
+    it('refuses an answer that is not one', async () => {
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'x_github_get_me',
+          input: { inputResponses: { muster_sign_in: { action: 'yes' } } },
+        });
+
+      expect(response.status).toBe(400);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it("answers muster's input_required with 428, its elicitations and requestState", async () => {
+      const elicitations = [
+        {
+          key: 'muster_sign_in',
+          url: 'https://muster/oauth/proxy/start?state=abc',
+          message: 'Sign in to github to continue.',
+        },
+      ];
+      callTool.mockRejectedValue(
+        new MusterInputRequiredError(elicitations, 'opaque', {
+          tool: 'x_github_get_me',
+          installation: 'gazelle',
+        }),
+      );
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {} });
+
+      expect(response.status).toBe(428);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterInputRequiredError',
+        message: 'Sign in to github to continue.',
+        elicitations,
+        requestState: 'opaque',
+      });
     });
 
     // cluster-manager's delete_node_pool answers its structured refusal as a
