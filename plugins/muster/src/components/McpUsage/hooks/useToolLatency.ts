@@ -35,7 +35,14 @@ export function useToolLatency({
 }): ToolLatency {
   const musterApi = useApi(musterApiRef);
   const { data, isPending, fetchStatus } = useQuery({
-    queryKey: ['muster', 'mcp-tool-latency', installation, hours, servers],
+    queryKey: [
+      'muster',
+      'mcp-tool-latency',
+      installation,
+      hours,
+      // The backend's own cache entry: one per set of servers, in any order.
+      [...new Set(servers)].sort(),
+    ],
     queryFn: () =>
       musterApi.getMcpToolLatency({ installation, hours, servers }),
     enabled: enabled && Boolean(installation),

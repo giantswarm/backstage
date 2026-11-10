@@ -36,14 +36,16 @@ import {
 import {
   findPrometheusServer,
   getMcpToolLatency,
-  getMcpUsage,
-  isPartialUsage,
+  readMcpUsage,
   type McpToolLatencyResponse,
-  type McpUsageResponse,
+  type McpUsageRead,
 } from './mcpUsage';
 import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
+
+/** The user `auth-backend-module-gs` signs in anyone it cannot match. */
+const SHARED_GUEST_USER = 'user:default/guest';
 
 /**
  * Header the muster frontend uses to forward the user's OAuth token for the
@@ -975,16 +977,25 @@ export async function createRouter(
 
   // --- MCP usage (derived from muster's own Prometheus metrics) ------------
 
-  const usageCache = new UsageCache<McpUsageResponse>();
+  const usageCache = new UsageCache<McpUsageRead>();
   const toolLatencyCache = new UsageCache<McpToolLatencyResponse>();
   const prometheusServerCache = new UsageCache<string | undefined>();
 
-  /** The Backstage user a usage answer is cached for. */
-  const usageReader = async (req: express.Request) => {
+  /**
+   * The Backstage user a usage answer is cached for, or none for the guest
+   * user, which the sign-in resolver gives several people at once (no
+   * verified email, no catalog user): a hit would answer one of them with
+   * what muster answered another, so their reads are not cached.
+   */
+  const usageReader = async (
+    req: express.Request,
+  ): Promise<string | undefined> => {
     const { principal } = await options.httpAuth.credentials(req, {
       allow: ['user'],
     });
-    return principal.userEntityRef;
+    return principal.userEntityRef === SHARED_GUEST_USER
+      ? undefined
+      : principal.userEntityRef;
   };
 
   /**
@@ -993,20 +1004,39 @@ export async function createRouter(
    * concurrent reads, so a usage read does not first wait on
    * `core_mcpserver_list`.
    */
+  const prometheusServerKey = (
+    installation: MusterInstallationConfig,
+    userEntityRef: string | undefined,
+  ) => userEntityRef && JSON.stringify([installation.name, userEntityRef]);
   const withPrometheusServer = async (
     installation: MusterInstallationConfig,
     client: MusterMcpClient,
     callOptions: { authToken?: string },
-    userEntityRef: string,
+    userEntityRef: string | undefined,
   ): Promise<MusterInstallationConfig> => {
     const prometheusServer = await prometheusServerCache.read(
-      JSON.stringify([installation.name, userEntityRef]),
+      prometheusServerKey(installation, userEntityRef),
       () => findPrometheusServer(client, installation, callOptions),
       found => found !== undefined,
     );
     return prometheusServer
       ? { ...installation, prometheusServer }
       : installation;
+  };
+  /**
+   * After a read that could not use the server found earlier (renamed,
+   * replaced, failing), the next read looks it up again.
+   */
+  const forgetPrometheusServer = (
+    installation: MusterInstallationConfig,
+    userEntityRef: string | undefined,
+    available: boolean,
+  ) => {
+    if (!available) {
+      prometheusServerCache.forget(
+        prometheusServerKey(installation, userEntityRef),
+      );
+    }
   };
 
   /** The window and the narrowing `/usage` and `/usage/tool-latency` take. */
@@ -1061,8 +1091,8 @@ export async function createRouter(
     const { hours, servers, tool } = readUsageParams(req);
     const callOptions = readCallOptions(req, installation);
     const userEntityRef = await usageReader(req);
-    res.json(
-      await usageCache.read(
+    const { usage } = await usageCache.read(
+      userEntityRef &&
         usageCacheKey({
           route: 'usage',
           installation: installation.name,
@@ -1071,23 +1101,30 @@ export async function createRouter(
           tool,
           userEntityRef,
         }),
-        async () =>
-          getMcpUsage(
+      async () => {
+        const read = await readMcpUsage(
+          client,
+          await withPrometheusServer(
+            installation,
             client,
-            await withPrometheusServer(
-              installation,
-              client,
-              callOptions,
-              userEntityRef,
-            ),
             callOptions,
-            hours,
-            servers,
-            tool,
+            userEntityRef,
           ),
-        answer => answer.available && !isPartialUsage(answer),
-      ),
+          callOptions,
+          hours,
+          servers,
+          tool,
+        );
+        forgetPrometheusServer(
+          installation,
+          userEntityRef,
+          read.usage.available,
+        );
+        return read;
+      },
+      read => read.usage.available && read.complete,
     );
+    res.json(usage);
   });
 
   /**
@@ -1108,15 +1145,16 @@ export async function createRouter(
     const userEntityRef = await usageReader(req);
     res.json(
       await toolLatencyCache.read(
-        usageCacheKey({
-          route: 'tool-latency',
-          installation: installation.name,
-          hours,
-          servers,
-          userEntityRef,
-        }),
-        async () =>
-          getMcpToolLatency(
+        userEntityRef &&
+          usageCacheKey({
+            route: 'tool-latency',
+            installation: installation.name,
+            hours,
+            servers,
+            userEntityRef,
+          }),
+        async () => {
+          const latency = await getMcpToolLatency(
             client,
             await withPrometheusServer(
               installation,
@@ -1127,7 +1165,14 @@ export async function createRouter(
             callOptions,
             hours,
             servers,
-          ),
+          );
+          forgetPrometheusServer(
+            installation,
+            userEntityRef,
+            latency.available,
+          );
+          return latency;
+        },
         answer => answer.available,
       ),
     );

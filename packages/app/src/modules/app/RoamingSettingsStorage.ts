@@ -18,12 +18,6 @@ const JSON_HEADERS = {
 /** The channel the user-settings backend announces a stored change on. */
 const SIGNAL_CHANNEL = 'user-settings';
 
-/**
- * How long a new subscription may reuse the backend's 404 for a key: a bound
- * on an announcement the signals connection lost.
- */
-export const ABSENT_FRESH_MS = 60_000;
-
 type Snapshot = StorageValueSnapshot<JsonValue>;
 
 /**
@@ -50,12 +44,7 @@ type KeyState = {
   started: number;
   /** The number of the newest one whose answer was handed out. */
   delivered: number;
-  /**
-   * When the backend last answered 404 for the key, while `signal` has been
-   * open: forgotten on any change and when `signal` closes.
-   */
-  absentAt?: number;
-  /** A read in flight since `signal` opened, which a new subscription joins. */
+  /** The turn of a read in flight, which a new subscription joins. */
   reading?: number;
 };
 
@@ -87,12 +76,10 @@ export type RoamingSettingsStorageOptions = {
  * - **Every read of a value goes to the backend.** A subscription and every
  *   change announced on the signals channel read the key afresh, so a writer
  *   that reads before it writes starts from what is stored now, and a change
- *   announced right after a read is not answered from that read. A new
- *   subscription shares only what its key's signals subscription has been
- *   open for: a read still in flight, and a 404 for {@link ABSENT_FRESH_MS}.
- *   Every store on the backend announces itself on that channel, and an
- *   announcement, a write here or the signals subscription closing forgets
- *   the 404. Without the signals channel every subscription reads the key.
+ *   announced right after a read is not answered from that read. The one
+ *   thing a new subscription shares is a read of the key still in flight,
+ *   when nothing newer has started: the components of a page that subscribe
+ *   together make one request, and no answer outlives its request.
  *
  * Answers are handed to every subscriber of the key, newest first: one that
  * arrives after a newer read or write has been handed out is dropped.
@@ -142,7 +129,6 @@ export class RoamingSettingsStorage implements StorageApi {
           SIGNAL_CHANNEL,
           message => {
             if ((message as { key?: unknown }).key === key) {
-              this.stateOf(key).absentAt = undefined;
               this.read(key);
             }
           },
@@ -154,8 +140,6 @@ export class RoamingSettingsStorage implements StorageApi {
         if (state.subscribers.size === 0) {
           state.signal?.unsubscribe();
           state.signal = undefined;
-          state.absentAt = undefined;
-          state.reading = undefined;
         }
       };
     }) as unknown as Observable<StorageValueSnapshot<T>>;
@@ -163,7 +147,6 @@ export class RoamingSettingsStorage implements StorageApi {
 
   async set<T extends JsonValue>(key: string, data: T): Promise<void> {
     const turn = this.start(key);
-    this.stateOf(key).absentAt = undefined;
     if (!(await this.isSignedIn())) {
       await this.fallback.set(key, data);
       this.deliver(key, turn, { key, presence: 'present', value: data });
@@ -183,7 +166,6 @@ export class RoamingSettingsStorage implements StorageApi {
 
   async remove(key: string): Promise<void> {
     const turn = this.start(key);
-    this.stateOf(key).absentAt = undefined;
     if (!(await this.isSignedIn())) {
       await this.fallback.remove(key);
       this.deliver(key, turn, { key, presence: 'absent' });
@@ -214,26 +196,12 @@ export class RoamingSettingsStorage implements StorageApi {
     }
   }
 
-  /**
-   * Answers a new subscription: from what the key's open signals
-   * subscription has seen where it can, else with a read.
-   */
+  /** Answers a new subscription: from the read in flight, else with a read. */
   private subscribe(key: string): void {
     const state = this.stateOf(key);
-    if (!state.signal) {
-      this.read(key);
-      return;
-    }
     if (state.reading !== undefined && state.reading === state.started) {
       // The newest turn: its answer, or a later one's, reaches this
       // subscriber too.
-      return;
-    }
-    if (
-      state.absentAt !== undefined &&
-      Date.now() - state.absentAt < ABSENT_FRESH_MS
-    ) {
-      this.deliver(key, this.start(key), { key, presence: 'absent' });
       return;
     }
     this.read(key);
@@ -243,46 +211,37 @@ export class RoamingSettingsStorage implements StorageApi {
   private async read(key: string): Promise<void> {
     const state = this.stateOf(key);
     const turn = this.start(key);
-    const signal = state.signal;
-    if (signal) {
-      state.reading = turn;
-    }
+    state.reading = turn;
     const snapshot = await this.fetchSnapshot(key);
     if (state.reading === turn) {
       state.reading = undefined;
     }
-    if (turn === state.started && signal && state.signal === signal) {
-      state.absentAt = snapshot.notFound ? Date.now() : undefined;
-    }
-    this.deliver(key, turn, snapshot.value);
+    this.deliver(key, turn, snapshot);
   }
 
-  /** The key's snapshot, and whether it is the backend's 404. */
-  private async fetchSnapshot(
-    key: string,
-  ): Promise<{ value: Snapshot; notFound?: true }> {
+  private async fetchSnapshot(key: string): Promise<Snapshot> {
     if (!(await this.isSignedIn())) {
-      return { value: this.fallback.snapshot<JsonValue>(key) };
+      return this.fallback.snapshot<JsonValue>(key);
     }
     let response: Response;
     try {
       response = await this.options.fetchApi.fetch(await this.urlOf(key));
     } catch {
       // Offline: nothing is known.
-      return { value: unknownSnapshot(key, { network: true }) };
+      return unknownSnapshot(key, { network: true });
     }
     if (response.status === 404) {
-      return { value: { key, presence: 'absent' }, notFound: true };
+      return { key, presence: 'absent' };
     }
     if (!response.ok) {
-      return { value: unknownSnapshot(key, { status: response.status }) };
+      return unknownSnapshot(key, { status: response.status });
     }
     try {
       const { value } = (await response.json()) as { value: JsonValue };
-      return { value: { key, presence: 'present', value } };
+      return { key, presence: 'present', value };
     } catch {
       // An answer that was not JSON (a proxy's page): nothing is known.
-      return { value: unknownSnapshot(key, {}) };
+      return unknownSnapshot(key, {});
     }
   }
 

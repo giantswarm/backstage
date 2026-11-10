@@ -76,15 +76,14 @@ export interface McpUsageResponse {
   servers: McpUsageServerRow[];
 }
 
-/** Usage answers with a secondary rollup left empty because its query failed. */
-const partialAnswers = new WeakSet<McpUsageResponse>();
-
 /**
- * Whether a secondary rollup of `usage` degraded to empty: a later read may
- * fill it, so the answer is not one to reuse.
+ * A usage answer, and whether every rollup in it was read: `complete` is
+ * false when a secondary rollup degraded to empty because its query failed,
+ * which a later read may fill, so the answer is not one to reuse.
  */
-export function isPartialUsage(usage: McpUsageResponse): boolean {
-  return partialAnswers.has(usage);
+export interface McpUsageRead {
+  usage: McpUsageResponse;
+  complete: boolean;
 }
 
 export interface McpToolLatencyResponse {
@@ -591,13 +590,20 @@ export async function getMcpToolLatency(
  * first call is not that.
  */
 export async function getMcpUsage(
+  ...args: Parameters<typeof readMcpUsage>
+): Promise<McpUsageResponse> {
+  return (await readMcpUsage(...args)).usage;
+}
+
+/** {@link getMcpUsage}, saying whether every rollup was read. */
+export async function readMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
   hours: number,
   servers: readonly string[] = [],
   onlyTool?: string,
-): Promise<McpUsageResponse> {
+): Promise<McpUsageRead> {
   const queries = await openUsageQueries(
     client,
     installation,
@@ -605,7 +611,10 @@ export async function getMcpUsage(
     hours,
   );
   if ('reason' in queries) {
-    return unavailable(queries.rangeHours, queries.reason);
+    return {
+      usage: unavailable(queries.rangeHours, queries.reason),
+      complete: true,
+    };
   }
   const {
     promServer,
@@ -699,7 +708,10 @@ export async function getMcpUsage(
         : none,
     ]);
   } catch (error) {
-    return unavailable(rangeHours, queryFailure(promServer, error));
+    return {
+      usage: unavailable(rangeHours, queryFailure(promServer, error)),
+      complete: true,
+    };
   }
 
   const recordedBeforeWindow = beforeWindow?.some(
@@ -856,8 +868,5 @@ export async function getMcpUsage(
     top_tools: filtered ? tools : tools.slice(0, TOP_TOOLS_LIMIT),
     servers: [...serverRows.values()].sort((a, b) => b.calls - a.calls),
   };
-  if (partial) {
-    partialAnswers.add(usage);
-  }
-  return usage;
+  return { usage, complete: !partial };
 }

@@ -1,7 +1,7 @@
 import {
   getMcpToolLatency,
   getMcpUsage,
-  isPartialUsage,
+  readMcpUsage,
   usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
@@ -246,13 +246,18 @@ describe('getMcpUsage', () => {
       throw new Error(`unexpected query ${query}`);
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      24,
+    );
 
     // The per-tool latency, the slowest query, is not part of this read.
     expect(
       calls.some(call => String(call.args.query).includes('sum by (tool, le)')),
     ).toBe(false);
-    expect(isPartialUsage(usage)).toBe(false);
+    expect(complete).toBe(true);
 
     // Every prometheus query is routed to the installation's own server via
     // the family routing parameter.
@@ -647,11 +652,16 @@ describe('getMcpUsage', () => {
         },
       );
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.totals.calls).toBe(2);
       expect(usage).not.toHaveProperty('data_start');
-      expect(isPartialUsage(usage)).toBe(false);
+      expect(complete).toBe(true);
     });
 
     it('is absent, and the answer not one to reuse, when the week before the window cannot be read', async () => {
@@ -673,11 +683,16 @@ describe('getMcpUsage', () => {
         },
       );
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.totals.calls).toBe(2);
       expect(usage).not.toHaveProperty('data_start');
-      expect(isPartialUsage(usage)).toBe(true);
+      expect(complete).toBe(false);
     });
 
     it('counts only the outcomes the chart draws, as the chart does', async () => {
@@ -778,7 +793,12 @@ describe('getMcpUsage', () => {
       throw new Error('server_error: server error: 500');
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      24,
+    );
     expect(usage.available).toBe(true);
     expect(usage.totals).toEqual({
       calls: 7,
@@ -790,7 +810,7 @@ describe('getMcpUsage', () => {
     expect(usage.top_tools).toEqual([]);
     expect(usage.servers).toEqual([]);
     // A later read may fill them in: not an answer to reuse.
-    expect(isPartialUsage(usage)).toBe(true);
+    expect(complete).toBe(false);
   });
 
   it('reports unavailable with the failure reason when queries error', async () => {
