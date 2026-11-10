@@ -50,7 +50,7 @@ async function openTechnicalDetails(page: Page) {
   }).toPass();
 }
 
-test('Customize · Connectors lists every connector, the registered ones first', async ({
+test('Customize · Connectors lists every connector by name, sortable by its headers', async ({
   admin,
 }) => {
   // The old address lands on Customize's Connectors tab.
@@ -79,12 +79,24 @@ test('Customize · Connectors lists every connector, the registered ones first',
   ]) {
     await expect(connectorRow(admin, name)).toBeVisible();
   }
-  // The fixture carries no tool-group label: registered, so listed before
-  // the platform's own.
-  const names = await admin.getByRole('rowheader').allInnerTexts();
-  const at = (name: string) => names.findIndex(text => text.includes(name));
-  expect(at(SHOWN.fixture)).toBeLessThan(at(SHOWN.kubernetes));
-  expect(at(SHOWN.fixture)).toBeLessThan(at(SHOWN.agentManager));
+  // One list by name, whatever the case: the registered fixture, the
+  // platform's own and muster among each other, every one at once.
+  const shownNames = async () =>
+    (await admin.getByRole('rowheader').allInnerTexts()).map(
+      text => text.split('\n')[0],
+    );
+  const byName = new Intl.Collator(undefined, {
+    sensitivity: 'base',
+    numeric: true,
+  }).compare;
+  const names = await shownNames();
+  expect(names).toEqual([...names].sort(byName));
+  await expect(
+    admin.getByRole('button', { name: /^Show \d+ more/ }),
+  ).toHaveCount(0);
+  // A click on the name's header reverses the order.
+  await admin.getByRole('columnheader', { name: /^Connector/ }).click();
+  await expect.poll(shownNames).toEqual([...names].reverse());
   // The platform's own carry the tag their label reads as.
   await expect(connectorRow(admin, SHOWN.kubernetes)).toContainText(
     'infrastructure',
