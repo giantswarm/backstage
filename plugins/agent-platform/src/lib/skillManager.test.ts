@@ -88,6 +88,9 @@ describe('catalogFromSkillManager', () => {
       failedRepositories: [],
       truncated: false,
     });
+    expect([...catalog.privateRepositories]).toEqual([
+      'https://github.com/giantswarm/claude-code',
+    ]);
   });
 
   it('reports a repository withheld from the person as failed, with why', () => {

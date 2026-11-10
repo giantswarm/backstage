@@ -89,6 +89,7 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
+    privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
   };
 }
 

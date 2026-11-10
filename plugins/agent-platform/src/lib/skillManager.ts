@@ -1,4 +1,9 @@
-import type { DiscoveredSkill, SkillFile, SkillFileContent } from './skills';
+import {
+  canonicalRepoUrl,
+  type DiscoveredSkill,
+  type SkillFile,
+  type SkillFileContent,
+} from './skills';
 import type { DiscoveredPlugin, PluginFormat } from './plugins';
 
 /**
@@ -74,6 +79,8 @@ export interface SkillManagerCatalog {
   failedRepositories: string[];
   failureMessages: Record<string, string>;
   truncated: boolean;
+  /** By canonical URL (`canonicalRepoUrl`), as skill-manager reports them. */
+  privateRepositories: ReadonlySet<string>;
 }
 
 /**
@@ -84,6 +91,7 @@ export interface SkillManagerCatalog {
 export function catalogFromSkillManager(
   listing: SkillManagerListing,
 ): SkillManagerCatalog {
+  const privateRepositories = new Set<string>();
   const catalog: SkillManagerCatalog = {
     skills: [],
     plugins: [],
@@ -91,8 +99,12 @@ export function catalogFromSkillManager(
     failedRepositories: [],
     failureMessages: {},
     truncated: false,
+    privateRepositories,
   };
   for (const repo of listing.repositories) {
+    if (repo.private) {
+      privateRepositories.add(canonicalRepoUrl(repo.repoUrl));
+    }
     const at = {
       repoUrl: repo.repoUrl,
       ref: repo.ref ?? '',
