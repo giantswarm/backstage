@@ -1,4 +1,10 @@
-import { expect, expectWizardStep, open, test } from './fixtures';
+import {
+  expect,
+  expectWizardStep,
+  open,
+  reloadAccepting,
+  test,
+} from './fixtures';
 
 /** Stage only the catalog; the wizard, persistence, reload and Dex are real. */
 test('the Skills step restores cached private repositories after a reload', async ({
@@ -27,7 +33,7 @@ test('the Skills step restores cached private repositories after a reload', asyn
       restored ? { status: 503, json: {} } : { json: answer },
     );
   });
-  await admin.route('**/api/muster/call', async route => {
+  await admin.route('**/api/muster/call**', async route => {
     if (
       route.request().postDataJSON()?.name !== 'x_skill-manager_list_skills'
     ) {
@@ -85,7 +91,7 @@ test('the Skills step restores cached private repositories after a reload', asyn
     .toBe(true);
 
   restored = true;
-  await admin.reload();
+  await reloadAccepting(admin);
   await expectWizardStep(admin, 'Skills');
   await expect(card).toBeVisible();
   await expect(card).toContainText('private');
