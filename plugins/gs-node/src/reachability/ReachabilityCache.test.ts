@@ -68,7 +68,29 @@ describe('ReachabilityCache', () => {
       reachable: false,
       reason: 'DNS lookup failed (ENOTFOUND)',
       checkedAt: now(),
+      failures: 1,
     });
+  });
+
+  it('counts the failed probes in a row, and starts over after a reachable one', async () => {
+    const answers = [false, false, true, false];
+    const cache = new ReachabilityCache({
+      probe: async () => ({
+        reachable: answers.shift()!,
+        reason: 'no answer within 5000 ms',
+        checkedAt: now(),
+      }),
+      now,
+    });
+
+    await cache.refresh(URL_A);
+    expect(cache.get(URL_A).failures).toBe(1);
+    await cache.refresh(URL_A);
+    expect(cache.get(URL_A).failures).toBe(2);
+    await cache.refresh(URL_A);
+    expect(cache.get(URL_A)).not.toHaveProperty('failures');
+    await cache.refresh(URL_A);
+    expect(cache.get(URL_A).failures).toBe(1);
   });
 
   it('serves a fresh answer from the cache without re-probing', async () => {
@@ -113,6 +135,7 @@ describe('ReachabilityCache', () => {
       reachable: false,
       reason: 'connection refused (ECONNREFUSED)',
       checkedAt: now(),
+      failures: 1,
     });
   });
 
@@ -221,6 +244,7 @@ describe('ReachabilityCache', () => {
       reachable: false,
       reason: 'connection refused (ECONNREFUSED)',
       checkedAt: now(),
+      failures: 1,
     });
     expect(probe).toHaveBeenCalledTimes(2);
   });
@@ -237,6 +261,7 @@ describe('ReachabilityCache', () => {
       reachable: false,
       reason: 'probe failed',
       checkedAt: now(),
+      failures: 1,
     });
   });
 
@@ -254,6 +279,7 @@ describe('ReachabilityCache', () => {
       reachable: false,
       reason: 'probe failed',
       checkedAt: now(),
+      failures: 1,
     });
   });
 
