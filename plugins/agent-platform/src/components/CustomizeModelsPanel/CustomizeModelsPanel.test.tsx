@@ -137,6 +137,21 @@ describe('CustomizeModelsPanel', () => {
     expect(rows[1]).not.toHaveTextContent('Default');
   });
 
+  it('names the namespace of models that share a name, and only theirs', async () => {
+    const otherSonnet = {
+      ...sonnet,
+      id: 'golem/engineering/sonnet',
+      namespace: 'engineering',
+    };
+    mockModelRows = [sonnet, otherSonnet, qwen];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(/claude-sonnet-4-5 · support/);
+    expect(rows[1]).toHaveTextContent(/claude-sonnet-4-5 · engineering/);
+    expect(rows[2]).not.toHaveTextContent('engineering');
+  });
+
   it('makes each name a link to the model (M21)', async () => {
     await renderPanel();
 

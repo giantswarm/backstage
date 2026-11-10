@@ -10,6 +10,7 @@ import {
   categoricalColors,
   columnMax,
   DataBar,
+  otherSeriesColor,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -61,25 +62,19 @@ export type UsageFigures = {
 /**
  * The data bars' hues, one per measure.
  *
- * Slot numbers rather than an import: the agent-platform plugin keeps the
- * same measure→slot map for its own tables (`lib/measures.ts` — calls is
- * slot 0, a per-call figure slot 7), and matching it keeps "Calls" the same
- * colour across every table on the Usage tab. Importing that map would make
- * this plugin depend on agent-platform, which the whole attach-by-node-id
- * contract exists to avoid — so the two numbers are duplicated deliberately.
- * `barColors.test.ts` pins them, so drift fails CI rather than resting on
- * this comment.
+ * Calls is categorical slot 0, as in the agent-platform plugin's tables
+ * (`lib/measures.ts`), so "Calls" is the same colour across the Usage tab.
  *
- * Errors takes the **status** red rather than a categorical slot: an error
- * count is a status quantity, and status colours are reserved. It ships with
- * a column header and its own figure, so it never rests on colour alone.
+ * Latency is neutral grey: the categorical palette's last slot is red, and red
+ * beside an Errors column reads as failure. Errors takes the **status** red: an
+ * error count is a status quantity, and status colours are reserved. Each bar
+ * ships with a column header and its own figure, so none rests on colour alone.
  */
 function useBarColors() {
   const theme = useTheme();
-  const palette = categoricalColors(theme);
   return {
-    calls: palette[0],
-    latency: palette[7],
+    calls: categoricalColors(theme)[0],
+    latency: otherSeriesColor(theme),
     errors: theme.palette.error.main,
   };
 }
