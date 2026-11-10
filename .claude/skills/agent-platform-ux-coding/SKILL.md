@@ -94,6 +94,8 @@ them and never invent a palette.
   (name plus one or two numbers) for analytic tables.
 - Long lists render through `ShowMore` (`INITIAL_ROWS` = 20 per page,
   `revealAll` for bounded excerpts such as "Used by" at `USED_BY_ROWS` = 10).
+  The exception, by product decision: Customize's Connectors list renders
+  every connector at once, sortable by its headers.
 - Search and filter chrome appear only past `SEARCH_MIN` = 8 entries, or while
   a search or filter is in force so it can be cleared. Selects use
   `searchableIf(options)` for type-ahead.
