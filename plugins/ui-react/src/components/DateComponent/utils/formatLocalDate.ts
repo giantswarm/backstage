@@ -17,14 +17,22 @@ function localZoneName(date: Date): string | undefined {
 }
 
 /**
+ * `date` in the browser's time zone, in date-fns `pattern`; a value that does
+ * not parse comes back as given.
+ */
+function formatLocal(date: string | Date, pattern: string): string {
+  const givenDate = parseDate(date);
+  if (!isFinite(givenDate.getTime())) return date.toString();
+  return format(pattern)(givenDate);
+}
+
+/**
  * A date in the browser's time zone, in {@link formatDate}'s shape without
  * the zone: `11 Oct 2026, 17:50`. For a surface where every time is local, so
  * the zone goes without saying (see `DateTimeZoneProvider`).
  */
 export function formatLocalDate(date: string | Date): string {
-  const givenDate = parseDate(date);
-  if (!isFinite(givenDate.getTime())) return date.toString();
-  return format('d MMM yyyy, HH:mm')(givenDate);
+  return formatLocal(date, 'd MMM yyyy, HH:mm');
 }
 
 /**
@@ -46,9 +54,7 @@ export function formatLocalDateFull(date: string | Date): string {
  * compact list cell whose date goes without saying.
  */
 export function formatLocalTime(date: string | Date): string {
-  const givenDate = parseDate(date);
-  if (!isFinite(givenDate.getTime())) return date.toString();
-  return format('HH:mm')(givenDate);
+  return formatLocal(date, 'HH:mm');
 }
 
 /**
@@ -59,9 +65,8 @@ export function formatLocalDay(
   date: string | Date,
   currentYear: number = new Date().getFullYear(),
 ): string {
-  const givenDate = parseDate(date);
-  if (!isFinite(givenDate.getTime())) return date.toString();
-  return format(
-    givenDate.getFullYear() === currentYear ? 'd MMM' : 'd MMM yyyy',
-  )(givenDate);
+  return formatLocal(
+    date,
+    parseDate(date).getFullYear() === currentYear ? 'd MMM' : 'd MMM yyyy',
+  );
 }
