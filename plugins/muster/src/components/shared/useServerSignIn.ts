@@ -567,7 +567,7 @@ export function useServerSignIn(
   // user has a muster session) is treated the same way.
   const statusUnreadable =
     data?.unavailable || statusError
-      ? `Cannot read the muster auth status${
+      ? `Cannot read the Muster auth status${
           (data?.message ?? statusError?.message)
             ? `: ${data?.message ?? statusError?.message}`
             : ''

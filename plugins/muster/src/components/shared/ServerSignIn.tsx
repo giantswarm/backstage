@@ -110,7 +110,7 @@ function ssoExplanationText(
 ): string {
   return state.isSsoRefused
     ? ssoRefusedText(serverName, noun)
-    : `${serverName} authenticates through SSO from muster's own session, so there is nothing to sign in to here.`;
+    : `${serverName} authenticates through SSO from Muster's own session, so there is nothing to sign in to here.`;
 }
 
 /** What a row says while the sign-in page is open somewhere. */
@@ -148,7 +148,7 @@ function clientIdMethodNote(
     case 'cimd-fallback':
       return {
         color: 'warning',
-        text: `This ${noun}'s authorization server advertises neither support for muster's client identity (CIMD) nor automatic client registration — the sign-in may be rejected as an unregistered client.`,
+        text: `This ${noun}'s authorization server advertises neither support for Muster's client identity (CIMD) nor automatic client registration — the sign-in may be rejected as an unregistered client.`,
       };
     // muster#1086: distinct from cimd-fallback — the AS does offer client
     // registration but rejected muster's request (its actual rejection is in
@@ -156,12 +156,12 @@ function clientIdMethodNote(
     case 'dcr-failed':
       return {
         color: 'warning',
-        text: `This ${noun}'s authorization server rejected muster's automatic client registration — the sign-in may be rejected as an unregistered client.`,
+        text: `This ${noun}'s authorization server rejected Muster's automatic client registration — the sign-in may be rejected as an unregistered client.`,
       };
     case 'dcr':
       return {
         color: 'secondary',
-        text: `muster registered itself with this ${noun}'s authorization server automatically (Dynamic Client Registration).`,
+        text: `Muster registered itself with this ${noun}'s authorization server automatically (Dynamic Client Registration).`,
       };
     default:
       return undefined;
