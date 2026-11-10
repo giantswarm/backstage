@@ -52,10 +52,9 @@ const TOOL_FAILED_TEXTS: RegExp[] = [
  * prefix their errors by provider, the Go ADK's A2A server quotes a model
  * client's error as `llm error response (code <code>): "<error>"`, the Claude
  * Harness passes Claude Code's `API Error: <n>` through, and Gemini answers
- * `Error <n>, Message: …`. They
- * say who answered, not why: the same prefixes carry a prompt that outgrew the
- * context window, so they count only together with one of the
- * {@link UNAVAILABLE_SIGNALS}.
+ * `Error <n>, Message: …`. They say who answered, not why: the same prefixes
+ * carry a prompt that outgrew the context window, so they count only together
+ * with the provider's answer for unavailability ({@link hasUnavailableAnswer}).
  */
 const MODEL_PROVIDER_TEXTS: RegExp[] = [
   /\bOpenAI (chat completion|responses) request failed\b/i,
@@ -77,6 +76,25 @@ const UNAVAILABLE_SIGNALS: RegExp[] = [
   /\b(401|403|404|408|429|5\d\d)\b/,
   /\b(Unauthorized|Forbidden|Not Found|Too Many Requests|Service Unavailable|Bad Gateway|Gateway Timeout|Overloaded|ThrottlingException)\b/i,
 ];
+
+/**
+ * The HTTP status in the Anthropic and OpenAI Go SDKs' errors,
+ * `<METHOD> "<url>": <status> <status text> …`. Where it is present it is the
+ * provider's answer: other numbers in the text, such as a message index in a
+ * 400's `messages.404.content`, say nothing about it.
+ */
+const SDK_HTTP_STATUS = /": (\d{3}) [A-Z]/;
+
+const UNAVAILABLE_STATUS = /^(401|403|404|408|429|5\d\d)$/;
+
+/** Whether the provider's answer says the model cannot be had. */
+function hasUnavailableAnswer(text: string): boolean {
+  const status = SDK_HTTP_STATUS.exec(text)?.[1];
+  if (status) {
+    return UNAVAILABLE_STATUS.test(status);
+  }
+  return UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text));
+}
 
 /**
  * The model is unavailable whoever says so: a missing provider key or
@@ -126,11 +144,38 @@ export function classifyFailureText(
   if (
     MODEL_UNAVAILABLE_TEXTS.some(pattern => pattern.test(text)) ||
     (MODEL_PROVIDER_TEXTS.some(pattern => pattern.test(text)) &&
-      UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text)))
+      hasUnavailableAnswer(text))
   ) {
     return 'model-unavailable';
   }
   return 'other';
+}
+
+/** The providers' and LiteLLM's names for a refused key or permission. */
+const CREDENTIALS_REFUSED_TEXTS: RegExp[] = [
+  /\b(authentication_error|permission_error)\b/,
+  /\blitellm\.(Authentication|PermissionDenied)Error\b/,
+];
+
+const CREDENTIALS_REFUSED_SIGNALS = /\b(401|403|Unauthorized|Forbidden)\b/;
+
+/**
+ * Whether a `model-unavailable` failure is the provider refusing the agent's
+ * credentials (unauthorised or forbidden), rather than failing to answer.
+ * `false` for any failure of another class.
+ */
+export function isCredentialsRefusedText(text: string | undefined): boolean {
+  if (!text || classifyFailureText(text) !== 'model-unavailable') {
+    return false;
+  }
+  if (CREDENTIALS_REFUSED_TEXTS.some(pattern => pattern.test(text))) {
+    return true;
+  }
+  const status = SDK_HTTP_STATUS.exec(text)?.[1];
+  if (status) {
+    return status === '401' || status === '403';
+  }
+  return CREDENTIALS_REFUSED_SIGNALS.test(text);
 }
 
 /**

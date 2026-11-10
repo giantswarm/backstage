@@ -6,6 +6,7 @@ import LoopIcon from '@material-ui/icons/Loop';
 import {
   CANCELED_STATE,
   classifyFailureText,
+  isCredentialsRefusedText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
@@ -154,10 +155,6 @@ export type TimelineEntryProps = {
   /** An egress refusal only: where the agent's egress is set. */
   egressSettings?: EgressSettingsLink;
 };
-
-/** A provider that refused the credentials, rather than failed to answer. */
-const REFUSED_CREDENTIALS =
-  /\b(401|403|Unauthorized|Forbidden|authentication_error|permission_error)\b/;
 
 /** Prose from the agent, rendered as markdown. */
 function MessageBody({ text }: { text: string }) {
@@ -482,7 +479,7 @@ export function TimelineEntry({
       description = (
         <Flex direction="column" gap="2">
           <span>
-            {REFUSED_CREDENTIALS.test(item.reason)
+            {isCredentialsRefusedText(item.reason)
               ? 'The model provider refused this agent’s credentials, so the agent could not answer.'
               : 'The model provider could not answer this agent’s request.'}{' '}
             Check the agent’s model, or ask your platform team for help.

@@ -1115,11 +1115,11 @@ describe('SessionTimeline — a turn the runtime failed', () => {
   });
 });
 
-describe('SessionTimeline — a turn the model refused', () => {
-  const REFUSED_KEY =
+describe('SessionTimeline — a turn the model provider failed', () => {
+  const INVALID_KEY =
     'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"},\\"request_id\\":\\"req_011CgszuDCqiu7fWDhLTw29G\\"}"';
 
-  function refusedTurn(reason: string): TimelineItem {
+  function providerFailedTurn(reason: string): TimelineItem {
     return {
       kind: 'turn-failed',
       id: '0:ended:1',
@@ -1130,7 +1130,9 @@ describe('SessionTimeline — a turn the model refused', () => {
   }
 
   it('says the provider refused the credentials, in the portal’s words', async () => {
-    await renderInTestApp(<TimelineEntry item={refusedTurn(REFUSED_KEY)} />);
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
 
     expect(screen.getByText('Could not reach the model')).toBeInTheDocument();
     expect(
@@ -1146,7 +1148,9 @@ describe('SessionTimeline — a turn the model refused', () => {
   });
 
   it('keeps kagent’s words folded under Technical details', async () => {
-    await renderInTestApp(<TimelineEntry item={refusedTurn(REFUSED_KEY)} />);
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
 
     expect(screen.queryByText(/agentgateway\.agent-platform/)).toBeNull();
 
@@ -1154,13 +1158,13 @@ describe('SessionTimeline — a turn the model refused', () => {
       screen.getByRole('button', { name: 'Technical details' }),
     );
 
-    expect(screen.getByText(REFUSED_KEY)).toBeVisible();
+    expect(screen.getByText(INVALID_KEY)).toBeVisible();
   });
 
   it('says the provider could not answer when it did not refuse the credentials', async () => {
     await renderInTestApp(
       <TimelineEntry
-        item={refusedTurn(
+        item={providerFailedTurn(
           'llm error response (code STREAM_ERROR): "anthropic API error: 529 overloaded"',
         )}
       />,

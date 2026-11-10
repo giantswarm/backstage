@@ -1,5 +1,6 @@
 import {
   classifyFailureText,
+  isCredentialsRefusedText,
   readInstanceFailureReason,
   readTaskFailureReason,
 } from './kagentFailureReason';
@@ -107,6 +108,10 @@ describe('classifyFailureText', () => {
     ],
     // A streamed error says who answered, not that the model is unavailable.
     ['llm error response (code STREAM_ERROR): "unexpected EOF"'],
+    // The SDK's status is the answer; a message index is not a status.
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 400 Bad Request {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"messages.403: `tool_use` ids were found without `tool_result` blocks immediately after\\"}}"',
+    ],
     [
       'OpenAI chat completion request failed: 404 maximum context length is 128000 tokens',
     ],
@@ -121,6 +126,36 @@ describe('classifyFailureText', () => {
     [undefined],
   ])('reads %s as other', text => {
     expect(classifyFailureText(text)).toBe('other');
+  });
+});
+
+describe('isCredentialsRefusedText', () => {
+  it.each([
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_1) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"}}"',
+    ],
+    [
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 401 Unauthorized {"code": "invalid_api_key"}',
+    ],
+    ['{"type":"error","error":{"type":"permission_error"}}'],
+    ['litellm.AuthenticationError: AnthropicException - invalid x-api-key'],
+    ['anthropic API error: 403 Forbidden'],
+  ])('reads %s as refused credentials', text => {
+    expect(isCredentialsRefusedText(text)).toBe(true);
+  });
+
+  it.each([
+    ['llm error response: "anthropic API error: 529 overloaded"'],
+    [
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 429 Too Many Requests {"message": "Limit 403, Used 403"}',
+    ],
+    ['litellm.RateLimitError: too many requests'],
+    // A 403 that is not the provider's answer, in a failure of another class.
+    ['failed to connect MCP client for github: 403 Forbidden'],
+    [''],
+    [undefined],
+  ])('does not read %s as refused credentials', text => {
+    expect(isCredentialsRefusedText(text)).toBe(false);
   });
 });
 
