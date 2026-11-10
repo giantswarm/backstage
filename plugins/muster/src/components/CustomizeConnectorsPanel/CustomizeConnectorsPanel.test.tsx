@@ -1076,7 +1076,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(names()).toEqual(['github', 'kubernetes', 'muster', 'web-search']);
     });
 
-    it('sorts by sign-in and by state', async () => {
+    it('sorts by sign-in', async () => {
       const user = userEvent.setup();
       await renderPanel();
       expect(
@@ -1090,11 +1090,37 @@ describe('CustomizeConnectorsPanel', () => {
           .slice(1)
           .map(row => within(row).getAllByRole('gridcell')[1].textContent);
       expect(auths()).toEqual([...auths()].sort((a, b) => a.localeCompare(b)));
+    });
 
+    it('sorts by state, the most urgent first, and reverses it', async () => {
+      const user = userEvent.setup();
+      mockServers = [...servers(), makeServer('broken', { state: 'Failed' })];
+      await renderPanel();
+      expect(
+        await within(rowOf('github')).findByText('Sign in needed'),
+      ).toBeInTheDocument();
+      expect(
+        within(rowOf('muster')).getByText('Connected'),
+      ).toBeInTheDocument();
+
+      // The sign-in this person can give, then the failure, then the healthy,
+      // each tier by name.
       await user.click(header('Status'));
-      expect(names().at(-1)).toBe('github');
+      expect(names()).toEqual([
+        'github',
+        'broken',
+        'kubernetes',
+        'muster',
+        'web-search',
+      ]);
       await user.click(header('Status'));
-      expect(names()[0]).toBe('github');
+      expect(names()).toEqual([
+        'kubernetes',
+        'muster',
+        'web-search',
+        'broken',
+        'github',
+      ]);
     });
 
     it('keeps the sort through a search', async () => {

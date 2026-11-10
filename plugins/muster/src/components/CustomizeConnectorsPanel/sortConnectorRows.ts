@@ -1,4 +1,5 @@
 import type { SortDescriptor } from '@backstage/ui';
+import type { ConnectorReach } from './connectorRows';
 
 /** What the Connectors table's sort reads of a row. */
 export type SortableConnectorRow = {
@@ -10,7 +11,10 @@ export type SortableConnectorRow = {
     toolCount?: number;
   };
   auth: string;
-  status: { label: string };
+  /** The row's state as it reads, and its tone. */
+  status: { label: string; tone: string };
+  /** Whether the connector answers now: the Connection filter's bucket. */
+  reach?: ConnectorReach;
 };
 
 /** The columns a header click sorts the Connectors table by. */
@@ -70,10 +74,51 @@ function compareOptional<T>(
 const orEmpty = (text: string) => (text === '' ? undefined : text);
 
 /**
+ * The urgency of a row's state, most urgent first, in the order the Status
+ * column's first click sorts by:
+ *
+ * 1. Sign in needed: this person can fix it now, from the row.
+ * 2. Sign-in expired: the same, once more.
+ * 3. Not connected, failing: "Failed", "Cannot connect", muster unreachable.
+ * 4. Not connected, a warning: "Stopped", "Disconnected", "Starting", muster
+ *    waiting for a session.
+ * 5. Not connected otherwise: "Connecting", an unknown state.
+ * 6. Partly connected: some of a family's instances answer.
+ * 7. Portal only: answers here, but not for agents.
+ * 8. Connected.
+ * 9. Deactivated: switched off on purpose.
+ *
+ * A row without a state has no urgency: it goes last whichever way the
+ * column sorts.
+ */
+export function statusUrgency(row: SortableConnectorRow): number | undefined {
+  switch (row.reach) {
+    case 'sign-in':
+      return row.status.label === 'Sign in needed' ? 1 : 2;
+    case 'not-connected':
+      if (row.status.tone === 'danger') {
+        return 3;
+      }
+      return row.status.tone === 'warning' ? 4 : 5;
+    case 'partial':
+      return 6;
+    case 'portal-only':
+      return 7;
+    case 'connected':
+      return 8;
+    case 'deactivated':
+      return 9;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * The Connectors table's rows in the order of its sort: by name (the default),
- * by how one signs in, by tool count or by state. Every column falls back to
- * the name, ascending whichever way the column sorts, so reversing a sort does
- * not shuffle the rows it holds equal.
+ * by how one signs in, by tool count or by the urgency of the state
+ * ({@link statusUrgency}). Every column falls back to the name, ascending
+ * whichever way the column sorts, so reversing a sort does not shuffle the
+ * rows it holds equal.
  */
 export function sortConnectorRows<Row extends SortableConnectorRow>(
   rows: Row[],
@@ -99,9 +144,9 @@ export function sortConnectorRows<Row extends SortableConnectorRow>(
         );
       case 'status':
         return compareOptional(
-          orEmpty(a.status.label),
-          orEmpty(b.status.label),
-          compareText,
+          statusUrgency(a),
+          statusUrgency(b),
+          (x, y) => x - y,
           factor,
         );
       case 'name':

@@ -1,3 +1,4 @@
+import type { ConnectorReach } from './connectorRows';
 import {
   CONNECTORS_DEFAULT_SORT,
   type SortableConnectorRow,
@@ -11,6 +12,8 @@ function row(
     auth?: string;
     toolCount?: number;
     status?: string;
+    tone?: string;
+    reach?: ConnectorReach;
   } = {},
 ): SortableConnectorRow {
   return {
@@ -20,7 +23,8 @@ function row(
       toolCount: options.toolCount,
     },
     auth: options.auth ?? '',
-    status: { label: options.status ?? '' },
+    status: { label: options.status ?? '', tone: options.tone ?? 'neutral' },
+    ...(options.reach ? { reach: options.reach } : {}),
   };
 }
 
@@ -99,24 +103,56 @@ describe('sortConnectorRows', () => {
     ).toEqual(['b', 'c', 'd', 'a']);
   });
 
-  it('sorts by state, rows without one last either way', () => {
+  it('sorts by state, most urgent first, rows without one last either way', () => {
     const rows = [
       row('a'),
-      row('b', { status: 'Sign in needed' }),
-      row('c', { status: 'Connected' }),
-      row('d', { status: 'Deactivated' }),
+      row('b', { status: 'Connected', tone: 'success', reach: 'connected' }),
+      row('c', { status: 'Deactivated', reach: 'deactivated' }),
+      row('d', { status: 'Connecting', reach: 'not-connected' }),
+      row('e', {
+        status: 'Sign-in expired',
+        tone: 'warning',
+        reach: 'sign-in',
+      }),
+      row('f', { status: 'Failed', tone: 'danger', reach: 'not-connected' }),
+      row('g', {
+        status: 'Portal only',
+        tone: 'warning',
+        reach: 'portal-only',
+      }),
+      row('h', {
+        status: 'Sign in needed',
+        tone: 'warning',
+        reach: 'sign-in',
+      }),
+      row('i', {
+        status: '1 of 2 connected',
+        tone: 'danger',
+        reach: 'partial',
+      }),
+      row('j', {
+        status: 'Stopped',
+        tone: 'warning',
+        reach: 'not-connected',
+      }),
+      row('k', {
+        status: 'Sign in needed',
+        tone: 'warning',
+        reach: 'sign-in',
+      }),
     ];
 
     expect(
       ids(
         sortConnectorRows(rows, { column: 'status', direction: 'ascending' }),
       ),
-    ).toEqual(['c', 'd', 'b', 'a']);
+    ).toEqual(['h', 'k', 'e', 'f', 'j', 'd', 'i', 'g', 'b', 'c', 'a']);
+    // Reversed, the name still breaks the tie between h and k.
     expect(
       ids(
         sortConnectorRows(rows, { column: 'status', direction: 'descending' }),
       ),
-    ).toEqual(['b', 'd', 'c', 'a']);
+    ).toEqual(['c', 'b', 'g', 'i', 'd', 'j', 'f', 'e', 'h', 'k', 'a']);
   });
 
   it('leaves the rows it is given as they are', () => {
