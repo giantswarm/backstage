@@ -10,5 +10,6 @@ quotes tool output no longer makes the browser load a URL or run its handlers.
 `<details>` blocks still render.
 GFM footnotes link to their note and back.
 
-`MermaidDiagram` takes `images={false}`, which drops a diagram's image nodes
+`MermaidDiagram` takes `untrusted`, which drops a diagram's image nodes and
+the remote references in its CSS (`url(…)`, `image-set(…)`, `@import`)
 instead of loading them; the AI chat renders its diagrams that way.

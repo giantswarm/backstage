@@ -75,7 +75,7 @@ describe('MermaidDiagram', () => {
 
     it('is dropped from a diagram of untrusted text', async () => {
       mermaid.render.mockResolvedValueOnce({ svg });
-      render(<MermaidDiagram source="graph TD; A@{ img: x }" images={false} />);
+      render(<MermaidDiagram source="graph TD; A@{ img: x }" untrusted />);
 
       const diagram = await screen.findByTestId('mermaid-diagram');
       expect(diagram.querySelector('image, img')).toBeNull();
@@ -88,6 +88,32 @@ describe('MermaidDiagram', () => {
 
       const diagram = await screen.findByTestId('mermaid-diagram');
       expect(diagram.querySelector('image')).not.toBeNull();
+    });
+  });
+
+  describe('remote CSS', () => {
+    const svg =
+      '<svg><style>@import "https://attacker.example/a.css"; @font-face{font-family:x;src:url(https://attacker.example/f.woff)} .n{background:image-set("https://attacker.example/b.png" 1x)} .e{marker-end:url(#arrow)}</style><g><rect style="mask-image:url(\'https://attacker.example/m.png\');fill:red"></rect></g></svg>';
+
+    it('is dropped from a diagram of untrusted text', async () => {
+      mermaid.render.mockResolvedValueOnce({ svg });
+      render(<MermaidDiagram source="graph TD; A-->B" untrusted />);
+
+      const diagram = await screen.findByTestId('mermaid-diagram');
+      expect(diagram.innerHTML).not.toContain('attacker.example');
+      expect(diagram.querySelector('style')).toHaveTextContent('url(#arrow)');
+      expect(diagram.querySelector('rect')).toHaveAttribute(
+        'style',
+        expect.stringContaining('fill:red'),
+      );
+    });
+
+    it('is kept by default', async () => {
+      mermaid.render.mockResolvedValueOnce({ svg });
+      render(<MermaidDiagram source="graph TD; A-->B" />);
+
+      const diagram = await screen.findByTestId('mermaid-diagram');
+      expect(diagram.innerHTML).toContain('attacker.example/f.woff');
     });
   });
 });

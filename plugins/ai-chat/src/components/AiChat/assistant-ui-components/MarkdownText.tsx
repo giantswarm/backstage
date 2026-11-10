@@ -311,7 +311,7 @@ export const createMarkdownComponents = (
     },
     code: ({ children, className }) => {
       if (className && /\blanguage-mermaid\b/.test(className)) {
-        return <MermaidDiagram source={String(children)} images={false} />;
+        return <MermaidDiagram source={String(children)} untrusted />;
       }
       const content = String(children);
       if (content.includes('\n')) {
