@@ -59,10 +59,22 @@ jest.mock('../../hooks/useCreateSession', () => ({
   }),
 }));
 
-// The catalog's skills, for the tags they already use.
+// The catalog: its skills, for the tags they already use, and the
+// repositories it offers as targets (the portal's: its github.com entries).
 let mockCatalogSkills: DiscoveredSkill[] = [];
+let mockProposalTargets: string[] | undefined;
 jest.mock('../../hooks/useSkillCatalog', () => ({
-  useSkillCatalog: () => ({ skills: mockCatalogSkills }),
+  useSkillCatalog: () => ({
+    skills: mockCatalogSkills,
+    isLoading: false,
+    hasRepositories: mockRepositories.length > 0,
+    proposalTargets:
+      mockProposalTargets ??
+      mockRepositories.filter(url => url.startsWith('https://github.com/')),
+    unproposableRepositories: mockProposalTargets
+      ? []
+      : mockRepositories.filter(url => !url.startsWith('https://github.com/')),
+  }),
 }));
 
 const proposeSkill = jest.fn();
@@ -133,6 +145,7 @@ beforeEach(() => {
   mockRepositories = [REPO];
   mockMetaAgents = {};
   mockCatalogSkills = [];
+  mockProposalTargets = undefined;
   createSession.mockReset();
 });
 
@@ -399,6 +412,20 @@ describe('AddSkillPage', () => {
     await renderPage();
 
     expect(screen.getByText('No skill repositories')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('has nothing to propose to when every skill-manager source is read-only', async () => {
+    mockRepositories = ['https://github.com/giantswarm/agent-platform'];
+    mockProposalTargets = [];
+    await renderPage();
+
+    expect(screen.getByText('No repository to propose to')).toBeInTheDocument();
+    expect(
+      screen.getByText(/None of the skill repositories takes new skills/),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).not.toBeInTheDocument();

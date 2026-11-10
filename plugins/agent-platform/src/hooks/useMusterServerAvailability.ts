@@ -57,6 +57,13 @@ export type MusterServerAvailability = {
    */
   sharedIdentity: string[];
   presenceOf: (installation: string) => MusterServerPresence;
+  /**
+   * Whether the read that decides the installation's presence has failed
+   * (its server list, or the installations as the person): an `unknown`
+   * presence that will not settle by waiting. `false` while a read is in
+   * flight or has answered.
+   */
+  failedOf: (installation: string) => boolean;
   /** True while any installation's server list is still being read. */
   isLoading: boolean;
   /** The muster plugin is not installed: the server is reachable nowhere. */
@@ -135,17 +142,23 @@ export function useMusterServerAvailability(
         presence = 'unknown';
       }
       const loading = isAwaitingData(query) || isReadingInstallations;
-      return `${installation}:${presence}:${loading ? 'l' : ''}`;
+      const failed =
+        !loading && (query.isError || (asPerson && installationInfo.isError));
+      return `${installation}:${presence}:${loading ? 'l' : ''}:${failed ? 'f' : ''}`;
     })
     .join('|');
 
   return useMemo(() => {
     const presence = new Map<string, MusterServerPresence>();
+    const failed = new Set<string>();
     let isLoading = false;
     for (const entry of signature ? signature.split('|') : []) {
-      const [installation, state, loading] = entry.split(':');
+      const [installation, state, loading, failure] = entry.split(':');
       presence.set(installation, state as MusterServerPresence);
       isLoading = isLoading || loading === 'l';
+      if (failure === 'f') {
+        failed.add(installation);
+      }
     }
     const of = (installation: string): MusterServerPresence =>
       presence.get(installation) ?? 'unknown';
@@ -156,6 +169,7 @@ export function useMusterServerAvailability(
         name => of(name) === 'sharedIdentity',
       ),
       presenceOf: of,
+      failedOf: (installation: string) => failed.has(installation),
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,
       recheck: async () => {

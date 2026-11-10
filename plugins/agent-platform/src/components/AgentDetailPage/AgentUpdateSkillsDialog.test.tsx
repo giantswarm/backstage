@@ -24,6 +24,10 @@ import type {
   AgentSkillEntry,
 } from '../../lib/agentManager';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const PINNED = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const HEAD = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -201,6 +205,7 @@ async function renderDialog(scenario: Scenario = {}) {
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [analyticsApiRef, analyticsApi],
       ]}
     >

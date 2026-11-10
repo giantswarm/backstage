@@ -38,6 +38,26 @@ export class DexRefusedLogin extends Error {
 }
 
 /**
+ * Clicks `trigger`, a sign-in that opens a page muster issued, and agrees to
+ * open it in the external URL consent dialog; resolves the tab it opens in.
+ * The dialog names the page's address before anything opens.
+ */
+export async function openThroughConsent(
+  page: Page,
+  trigger: Locator,
+): Promise<Page> {
+  await trigger.click();
+  const consent = page.getByRole('dialog', { name: /^Open a page for / });
+  await expect(
+    consent,
+    'the sign-in page waits for the person to agree',
+  ).toBeVisible({ timeout: 60_000 });
+  const popup = page.waitForEvent('popup');
+  await consent.getByRole('button', { name: 'Open page in new tab' }).click();
+  return popup;
+}
+
+/**
  * Submits the lab Dex's login form in the popup the portal opened, with the
  * fixture password unless the test passes another (the wrong-password case),
  * and waits for Dex to send the popup on: the portal's own sign-in closes it

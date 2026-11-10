@@ -9,6 +9,10 @@ import {
   ServerAuthStatus,
 } from '../../apis';
 import { McpAuthDialog } from './McpAuthDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The installation's connectors as muster names them: none by default. */
 let mockNames: ConnectorNamesResponse = { servers: [] };
@@ -48,7 +52,12 @@ async function renderDialog(
   });
   seed?.(queryClient);
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <McpAuthDialog
           isOpen
@@ -73,7 +82,12 @@ function Harness({
   isOpen: boolean;
 }) {
   return (
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <McpAuthDialog
           isOpen={isOpen}

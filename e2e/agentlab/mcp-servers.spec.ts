@@ -5,6 +5,7 @@ import {
   expect,
   open,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { connectorRow, INVENTORY_REJECTED_TOKEN, SHOWN } from './connectors';
 import { lab } from './lab';
@@ -32,6 +33,8 @@ const infrastructurePath = `/customize/connectors${scope}&tags=infrastructure`;
  * management cluster does; the table shows a family as one row.
  */
 const KUBERNETES_FAMILY = 'kubernetes';
+/** muster's logo as its `initialize` result announces it: an SVG image. */
+const MUSTER_ICON = 'img[src^="data:image/svg+xml;base64,"]';
 
 /**
  * Open the Details tab's fold-out. It also opens by itself while the connector
@@ -92,6 +95,11 @@ test('Customize · Connectors lists every connector, the registered ones first',
   await expect(connectorRow(admin, SHOWN.muster)).toContainText(
     'agent-platform',
   );
+  // muster is no MCPServer: its logo is the one it announces in its
+  // `initialize` result (muster v5.59.0 and later), shown as an image only.
+  await expect(
+    connectorRow(admin, SHOWN.muster).locator(MUSTER_ICON),
+  ).toBeVisible();
   // The fixture asks each person to sign in, right from its row.
   const fixture = connectorRow(admin, SHOWN.fixture);
   await expect(fixture).toContainText('Your own account');
@@ -247,11 +255,12 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
     await signOut();
   }
 
-  // The per-server Sign in: a popup through muster's OAuth proxy to the lab
+  // The per-server Sign in: a page through muster's OAuth proxy to the lab
   // Dex, completed with the same fixture account.
-  const popup = admin.waitForEvent('popup');
-  await signIn.click();
-  await completeDexLogin(await popup, lab.users.admin);
+  await completeDexLogin(
+    await openThroughConsent(admin, signIn),
+    lab.users.admin,
+  );
   await expect(signIn, 'signed in, the page no longer asks for it').toBeHidden({
     timeout: 60_000,
   });
@@ -407,6 +416,11 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   await connectToMuster(admin, admin.getByRole('grid'));
   await connectorRow(admin, SHOWN.muster).getByRole('rowheader').click();
   await expect(admin).toHaveURL(new RegExp(`${connectorPages}/muster$`));
+  // Its page's header carries the logo muster announces, under its name.
+  await expect(
+    admin.getByRole('heading', { level: 1, name: SHOWN.muster }),
+  ).toBeVisible();
+  await expect(admin.getByRole('main').locator(MUSTER_ICON)).toBeVisible();
   // muster's page says it is fixed.
   await expect(admin.getByText(/cannot be changed here/)).toBeVisible();
   // Its endpoint sits above the tabs, with its copy button.
@@ -453,7 +467,7 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   // The way back is the connector's Tools tab.
   await admin
     .getByRole('navigation', { name: 'Breadcrumb' })
-    .getByRole('link', { name: 'muster', exact: true })
+    .getByRole('link', { name: 'Muster', exact: true })
     .click();
   await expect(admin).toHaveURL(new RegExp(`${connectorPages}/muster$`));
   await expect(admin.getByRole('tab', { name: /^Tools/ })).toHaveAttribute(
@@ -487,7 +501,7 @@ test("a connector tool's page: Overview, Run it and its own Usage, reached from 
   await expect(facts.getByText('Connector', { exact: true })).toBeVisible({
     timeout: 60_000,
   });
-  await expect(facts.getByText('Exposed by muster as')).toBeVisible();
+  await expect(facts.getByText('Exposed by Muster as')).toBeVisible();
   await expect(facts.getByText('Annotations', { exact: true })).toBeVisible();
 
   // Usage: this tool's calls, or why they cannot be read.

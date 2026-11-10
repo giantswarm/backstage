@@ -24,6 +24,10 @@ import {
   type FakeRepository,
   type WorkspaceManagerFake,
 } from './workspaceManagerFake';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -99,7 +103,12 @@ async function render(
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <WorkspaceEditorPage

@@ -92,12 +92,12 @@ export function classifySessionFailure(
   if (isMusterAuthError(error)) {
     return {
       kind: 'muster-rejected',
-      message: `muster${where} rejected the token: ${detail}`,
+      message: `Muster${where} rejected the token: ${detail}`,
     };
   }
   return {
     kind: 'muster-rejected',
-    message: `muster${where} answered with an error: ${detail}`,
+    message: `Muster${where} answered with an error: ${detail}`,
   };
 }
 
@@ -114,7 +114,7 @@ export function unreachableFailure(
   const why = reason ? ` (${reason})` : '';
   return {
     kind: 'unreachable',
-    message: `muster${where} is not reachable from this portal${why}.`,
+    message: `Muster${where} is not reachable from this portal${why}.`,
   };
 }
 

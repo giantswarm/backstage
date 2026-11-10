@@ -13,6 +13,10 @@ import {
   ConnectorSignInAlert,
   splitConnectorSignIns,
 } from './ConnectorSignInAlert';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 type Api = Pick<
   MusterApi,
@@ -51,7 +55,12 @@ async function renderAlert(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api as MusterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api as MusterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <ConnectorSignInAlert
           server="cluster-manager"

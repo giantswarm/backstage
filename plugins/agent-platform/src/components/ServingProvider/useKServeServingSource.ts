@@ -22,6 +22,9 @@ import {
   type ServingSourceSnapshot,
 } from '../../lib/serving';
 
+/** How long a read of the nodes is reused. */
+const NODES_STALE_MS = 60_000;
+
 /**
  * What reading the objects can offer: the node inventory (the GPU capacity
  * panel) and nothing operational — pull, load, delete and wiring need a
@@ -94,11 +97,14 @@ export function useKServeServingSource(
       refetchInterval: llmInferenceServiceRefetchInterval,
     },
   );
+  // The full Node objects, hundreds of KB per installation, for a few
+  // fields that change rarely: a remount on the next page reuses them for a
+  // minute instead of reading them again.
   const nodes = useResources(
     installations,
     Node,
     {},
-    { enableDiscovery: false },
+    { enableDiscovery: false, staleTime: NODES_STALE_MS },
   );
 
   // The installation's serving contract, for the resource name its

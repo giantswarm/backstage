@@ -122,6 +122,7 @@ export function AgentWizardFrame({
 }) {
   const links = useAgentWizardLinks();
   const {
+    state,
     edit,
     isDirty,
     isDraftRestored,
@@ -153,7 +154,7 @@ export function AgentWizardFrame({
   const closeHref = edit
     ? (edit.detailHref ?? createCloseHref)
     : createCloseHref;
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories } = useSkillCatalog(state.installation);
 
   const steps: WizardStep[] = [
     { id: 'details', label: 'Details', href: links.details?.() },

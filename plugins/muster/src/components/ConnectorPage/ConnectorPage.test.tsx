@@ -16,6 +16,7 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
+import { stubImageLoad } from '../ConnectorLogo/stubImageLoad';
 import {
   MANAGEMENT_CLUSTER_LABEL,
   MCPServer,
@@ -28,6 +29,10 @@ import {
 } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: () => ({ isLoading: false }),
@@ -177,6 +182,7 @@ function makeApi() {
       mcpServers: [{ name: 'jira', resourcesCount: 2 }],
     })),
     getAuthStatus: jest.fn(async () => ({ servers: [] })),
+    getServerInfo: jest.fn(async (): Promise<{ icon?: string }> => ({})),
     describeTool: jest.fn(async (name: string) => ({
       name,
       description: 'A tool.',
@@ -186,6 +192,11 @@ function makeApi() {
       async (_tool: string, _args?: unknown, _installation?: string) =>
         ({}) as object,
     ),
+    getMcpToolLatency: jest.fn(async () => ({
+      available: true,
+      range_hours: 720,
+      tools: [{ tool: 'x_jira_search_issues', p95_seconds: 2.5 }],
+    })),
     getMcpUsage: jest.fn(async () => ({
       available: true,
       range_hours: 720,
@@ -287,7 +298,10 @@ async function renderAt(
     </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
-      apis: [[musterApiRef, api as never]],
+      apis: [
+        [musterApiRef, api as never],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ],
       mountedRoutes: {
         '/customize/connectors': mcpServersRouteRef,
         '/usage/connectors': usageConnectorsExternalRouteRef,
@@ -361,7 +375,7 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/muster`);
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'muster' }),
+      screen.getByRole('heading', { level: 1, name: 'Muster' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
@@ -392,6 +406,45 @@ describe('ConnectorPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("muster's logo", () => {
+    const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    let restoreImage: () => void;
+    beforeEach(() => {
+      restoreImage = stubImageLoad();
+    });
+    afterEach(() => restoreImage());
+
+    it('shows the icon muster announces in the header, as an image', async () => {
+      const api = makeApi();
+      api.getServerInfo.mockImplementation(async () => ({ icon: SVG }));
+      await renderAt(`${BASE}/muster`, { api });
+
+      await waitFor(() =>
+        expect(document.querySelector(`img[src="${SVG}"]`)).not.toBeNull(),
+      );
+      expect(api.getServerInfo).toHaveBeenCalledWith('gazelle');
+    });
+
+    it('shows the letter tile when muster announces no icon', async () => {
+      const api = makeApi();
+      await renderAt(`${BASE}/muster`, { api });
+
+      await waitFor(() => expect(api.getServerInfo).toHaveBeenCalled());
+      expect(document.querySelector('img')).toBeNull();
+      expect(screen.getByText('M')).toBeInTheDocument();
+    });
+
+    it("does not ask muster for its icon on another connector's page", async () => {
+      const api = makeApi();
+      await renderAt(`${BASE}/jira`, { api });
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'jira' }),
+      ).toBeInTheDocument();
+      expect(api.getServerInfo).not.toHaveBeenCalled();
+    });
   });
 
   it('names the connector in the document title', async () => {
@@ -546,7 +599,7 @@ describe('ConnectorPage', () => {
     const facts = screen.getByRole('region', { name: 'Connector details' });
     expect(within(facts).getByText('Calls, last 30 days')).toBeInTheDocument();
     expect(
-      within(facts).getByText('Needs a muster session'),
+      within(facts).getByText('Needs a Muster session'),
     ).toBeInTheDocument();
     expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
@@ -739,7 +792,7 @@ describe('ConnectorPage', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Edit' }),
-    ).toHaveAccessibleDescription(/muster session, which is not connected/);
+    ).toHaveAccessibleDescription(/Muster session, which is not connected/);
     expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled();
   });
 
@@ -858,7 +911,7 @@ describe('ConnectorPage', () => {
       expect(screen.queryByText('Portal only')).toBeNull();
     });
 
-    it('reads Connected where muster reports the grant as the person’s', async () => {
+    it('reads Connected where Muster reports the grant as the person’s', async () => {
       await renderAt(`${BASE}/grafana-cloud`, {
         api: signedIn({ grant_scope: 'subject' }),
       });
@@ -1070,6 +1123,23 @@ describe('ConnectorPage Usage tab', () => {
     expect(api.getMcpUsage).toHaveBeenCalledTimes(1);
   });
 
+  it('reads each tool’s p95 apart, on the Usage tab only', async () => {
+    const api = await renderAt(`${BASE}/jira/usage`);
+    await screen.findByText('1 of 2');
+
+    expect(api.getMcpToolLatency).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+    expect(await screen.findByText('2.5 s')).toBeInTheDocument();
+
+    api.getMcpToolLatency.mockClear();
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByText('3,418 · 0.4% errors');
+    expect(api.getMcpToolLatency).not.toHaveBeenCalled();
+  });
+
   it("reads a family's usage for all its instances", async () => {
     const api = await renderAt(`${BASE}/kubernetes/usage`);
 
@@ -1097,7 +1167,7 @@ describe('ConnectorPage Usage tab', () => {
     const api = await renderAt(`${BASE}/jira/usage`);
 
     expect(
-      screen.getByText(/Usage figures need a muster session/),
+      screen.getByText(/Usage figures need a Muster session/),
     ).toBeInTheDocument();
     expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
@@ -1219,7 +1289,7 @@ describe('ConnectorPage Details tab', () => {
     expect(resourceFact('Name')).toHaveTextContent(/^mcp-jira$/);
   });
 
-  it('opens the fold-out on arrival while muster reports the connector failed', async () => {
+  it('opens the fold-out on arrival while Muster reports the connector failed', async () => {
     mockServers = [
       ...makeServers(),
       makeServer({ name: 'linear', state: 'Failed' }),

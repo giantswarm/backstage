@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test';
-import { completeDexLogin, expect, open, test } from './fixtures';
+import {
+  completeDexLogin,
+  expect,
+  open,
+  openThroughConsent,
+  test,
+} from './fixtures';
 import { fixtureRow, openInbox, signOutOfFixture } from './inboxSignIn';
 import { lab } from './lab';
 
@@ -49,9 +55,13 @@ test('a sign-in from the inbox and a reload keep the unsent prompt on New sessio
   await row.getByRole('button', { name: 'Sign in to connectors' }).click();
   const dialog = admin.getByRole('dialog', { name: 'Sign in to connectors' });
   const server = dialog.getByRole('listitem').filter({ hasText: label });
-  const popup = admin.waitForEvent('popup');
-  await server.getByRole('button', { name: 'Sign in' }).click();
-  await completeDexLogin(await popup, lab.users.admin);
+  await completeDexLogin(
+    await openThroughConsent(
+      admin,
+      server.getByRole('button', { name: 'Sign in' }),
+    ),
+    lab.users.admin,
+  );
   await expect(server).toContainText('Connected', { timeout: 60_000 });
   await dialog
     .getByRole('button')

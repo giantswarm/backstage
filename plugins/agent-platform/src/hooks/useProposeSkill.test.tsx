@@ -9,6 +9,11 @@ import {
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useProposeSkill, type ProposedSkill } from './useProposeSkill';
+import { useSkillSource, type SkillSource } from './useSkillSource';
+
+jest.mock('./useSkillSource', () => ({
+  useSkillSource: jest.fn(),
+}));
 
 const analyticsApi = mockApis.analytics.mock();
 const discoveryApi = mockApis.discovery();
@@ -57,6 +62,7 @@ function renderUseProposeSkill() {
 
 beforeEach(() => {
   jest.mocked(analyticsApi.captureEvent).mockClear();
+  jest.mocked(useSkillSource).mockReturnValue({ kind: 'portal' });
   getAccessToken.mockReset();
   getAccessToken.mockResolvedValue('gh-token');
   fetchMock.mockReset();
@@ -132,5 +138,47 @@ describe('useProposeSkill', () => {
     });
 
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('useProposeSkill through skill-manager', () => {
+  it('names the installation and carries the person’s muster token', async () => {
+    const authHeaders = jest
+      .fn()
+      .mockResolvedValue({ 'backstage-muster-authorization': 'muster-token' });
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'skill-manager',
+      installation: 'graveler',
+      client: { authHeaders },
+    } as unknown as SkillSource);
+
+    const { result } = renderUseProposeSkill();
+    await act(async () => {
+      await result.current.proposeSkill(skill);
+    });
+
+    expect(authHeaders).toHaveBeenCalled();
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers['backstage-muster-authorization']).toBe('muster-token');
+    expect(JSON.parse(init.body)).toEqual({
+      ...skill,
+      installation: 'graveler',
+    });
+  });
+
+  it('opens nothing while muster cannot be asked about skill-manager', async () => {
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'unreachable',
+      installation: 'graveler',
+    });
+
+    const { result } = renderUseProposeSkill();
+    await act(async () => {
+      await expect(result.current.proposeSkill(skill)).rejects.toThrow(
+        /muster on graveler/,
+      );
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

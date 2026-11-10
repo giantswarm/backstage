@@ -34,6 +34,7 @@ export * from './ErrorStatus';
 export * from './ExternalButtonLink';
 export * from './ExternalCellText';
 export * from './ExternalLink';
+export * from './ExternalUrlConsentDialog';
 export * from './SelectableCard';
 export * from './Gate';
 export * from './GitOpsManagedLabel';

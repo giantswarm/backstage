@@ -92,7 +92,7 @@ describe('serverListEntries with display names', () => {
       [
         ['mcp-zendesk', 'Acme Support'],
         ['github', 'github'],
-        ['muster', 'muster'],
+        ['muster', 'Muster'],
       ],
     );
   });

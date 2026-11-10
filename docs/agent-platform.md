@@ -186,7 +186,10 @@ that pins an older commit.
   repository, authored as the person with their own GitHub account (connected
   once through muster if needed). Nothing changes until it is merged. Both
   write the SKILL.md only, and both work for github.com repositories only; a
-  skill from another git repository has a read-only page. A `skillCreation`
+  skill from another git repository has a read-only page. Add skill offers
+  the catalog's targets: where skill-manager answers, its writable sources
+  that scan the whole repository and that the person can read, the pull
+  request opened against the source's ref. A `skillCreation`
   meta-agent adds **Create with <agent>** (Edit skill: **Edit with <agent>**),
   which starts a session with that agent about the skill (repository and
   draft, or path, commit and the fields the person changed) for complex,
@@ -561,9 +564,10 @@ called through the installation's muster as the signed-in person.
 Only step 1 validates (name, slug, installation, model); later steps redirect
 back to it when those are missing, so a deep link cannot strand the person.
 
-Without `agentPlatform.skills.repositories` the Skills step is skipped, and a
-deep link to it redirects onward. `hasRepositories` comes from config alone, so
-the decision costs no request.
+Without skill repositories the Skills step is skipped, and a deep link to it
+redirects onward. Where skill-manager answers, `hasRepositories` is whether its
+`list_skills` lists any source, and stays true until it has answered;
+elsewhere it comes from `agentPlatform.skills.repositories` alone.
 
 Editing (`/customize/agents/<installation>/<namespace>/<name>/edit`) is the
 same wizard, prefilled, ending in an `update_agent` dry run (see "Editing an
@@ -891,7 +895,17 @@ token nowhere else.
 
 ### Skill discovery
 
-Skills come from `agentPlatform.skills.repositories`: github.com through the
+Where the installation's muster lists skill-manager, the portal lists and
+reads skills only through it, as the signed-in person: `x_skill-manager_list_skills`
+(skills and plugins, with each plugin's `format`), `get_skill` and
+`get_skill_file` (`SkillManagerClient`, `useSkillSource`). skill-manager's
+sources are then the only skill list; a private repository the person's GitHub
+login cannot read lists nothing and carries the reason, which the skills step
+shows. The wizard and the agent pages read the agent's installation, the other
+pages the home installation.
+
+Where skill-manager is not deployed (deprecated): skills come from
+`agentPlatform.skills.repositories`: github.com through the
 REST API, any other http(s) host through a depth-1 git clone
 (`discoverAgentSkillsFromGit.ts`). A skill is any directory containing a
 `SKILL.md`; its frontmatter `name` and `description` drive the picker. Listings

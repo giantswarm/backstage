@@ -5,6 +5,8 @@ import {
   useApi,
 } from '@backstage/core-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { unreachableError } from '../lib/skillManager';
+import { useSkillSource } from './useSkillSource';
 
 /**
  * The header the person's GitHub access token travels in to the gs-backend
@@ -63,10 +65,11 @@ export const SKILL_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
  * creates the branch, puts the SKILL.md and opens the PR. Nothing deploys:
  * the skill joins the catalog once a teammate merges.
  */
-export function useProposeSkill() {
+export function useProposeSkill(installation?: string) {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
   const githubAuthApi = useApi(githubAuthApiRef);
+  const source = useSkillSource(installation);
 
   const mutation = useTrackedMutation({
     event: (_pr, skill) => ({
@@ -74,10 +77,21 @@ export function useProposeSkill() {
       attributes: { kind: skill.kind === 'update' ? 'updated' : 'created' },
     }),
     mutationFn: async (skill: ProposedSkill): Promise<SkillPullRequest> => {
+      if (source.kind === 'unreachable') {
+        throw unreachableError(source.installation);
+      }
+      if (source.kind === 'pending') {
+        throw new Error(
+          'Still reading where this installation keeps its skills; try again in a moment.',
+        );
+      }
       // The person's own token: the branch and the pull request name them,
       // not a bot. Scope `repo` is what the portal's GitHub grant asks for.
       const token = await githubAuthApi.getAccessToken('repo');
       const baseUrl = await discoveryApi.getBaseUrl('gs');
+      // From skill-manager, gs-backend checks the target against the
+      // installation's sources as the person, through their muster token.
+      const viaSkillManager = source.kind === 'skill-manager';
       const response = await fetchApi.fetch(
         `${baseUrl}/agent-skills/pull-request`,
         {
@@ -85,8 +99,13 @@ export function useProposeSkill() {
           headers: {
             'Content-Type': 'application/json',
             [GITHUB_TOKEN_HEADER]: token,
+            ...(viaSkillManager ? await source.client.authHeaders() : {}),
           },
-          body: JSON.stringify(skill),
+          body: JSON.stringify(
+            viaSkillManager
+              ? { ...skill, installation: source.installation }
+              : skill,
+          ),
         },
       );
       if (!response.ok) {

@@ -1,5 +1,9 @@
 import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { ExternalButtonLink } from '@giantswarm/backstage-plugin-ui-react';
+import { useApi } from '@backstage/core-plugin-api';
+import {
+  externalUrlConsentApiRef,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 
@@ -62,6 +66,7 @@ export function SignInRequestPanel({
   onAnswer,
 }: SignInRequestPanelProps) {
   const classes = useStyles();
+  const consentApi = useApi(externalUrlConsentApiRef);
   const signIn = pending.signIn;
   const link = useConnectorSignInLink(signIn?.url);
   if (!signIn) {
@@ -102,13 +107,19 @@ export function SignInRequestPanel({
           <ConnectorSignInAction link={link} />
         ) : (
           <>
-            <ExternalButtonLink
-              href={signIn.url}
+            <Button
               variant="primary"
               size="small"
+              onPress={() =>
+                void consentApi.open({
+                  url: signIn.url,
+                  requester: signIn.server,
+                  message: signIn.message,
+                })
+              }
             >
-              Sign in
-            </ExternalButtonLink>
+              <NewTabLabel>Sign in</NewTabLabel>
+            </Button>
             <Button
               variant="secondary"
               size="small"
