@@ -197,6 +197,8 @@ describe('an installation the portal cannot reach', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.available).toEqual(['alpha']);
     expect(result.current.presenceOf('garm')).toBe('unknown');
+    expect(result.current.failedOf('garm')).toBe(true);
+    expect(result.current.failedOf('alpha')).toBe(false);
     // At most the read started beside `/installations`, before it answered.
     await result.current.recheck();
     expect(
