@@ -621,6 +621,22 @@ html[data-agent-shell] [class*='Toast_container'] {
     margin-top: var(--bui-space-2);
   }
 
+  /*
+   * An option's name is never cut short: the list grows with its longest
+   * name, up to the screen's width less the page gutter, and a name wider
+   * than that wraps. bui cuts it with an ellipsis, which leaves a touch
+   * screen no way to read a long name (the Usage screen's Organization
+   * select cuts its selected name short and points here for the whole one).
+   */
+  html[data-agent-shell] .bui-SelectPopover {
+    max-width: calc(100vw - 2 * var(--bui-space-4));
+  }
+
+  html[data-agent-shell] .bui-SelectItemTitle {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   @media (hover: none) and (pointer: coarse) {
     html[data-agent-shell] .bui-SelectItem {
       min-height: 44px;

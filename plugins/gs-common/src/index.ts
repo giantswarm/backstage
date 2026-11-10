@@ -10,3 +10,4 @@ export * from './musterUnauthorized';
 export * from './shortSha';
 export * from './tags';
 export * from './connectorName';
+export * from './organizationNamespace';
