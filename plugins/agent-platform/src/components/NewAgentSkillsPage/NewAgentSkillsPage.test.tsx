@@ -74,6 +74,7 @@ const RESOLVED = {
   failedRepositories: [],
   failureMessages: {} as Record<string, string>,
   truncated: false,
+  privateRepositories: new Set<string>() as ReadonlySet<string>,
 };
 
 // Mutable so a test can flip it to loading. The `mock` prefix is what lets
@@ -97,12 +98,27 @@ jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => mockAgents,
 }));
 
+// get_info of the installation's agent-manager: what the private-skills note
+// reads. Undefined (not read) unless a test sets it.
+let mockAgentManagerInfo: Record<string, unknown> | undefined;
+jest.mock('../../hooks/useAgentManager', () => ({
+  ...jest.requireActual('../../hooks/useAgentManager'),
+  useAgentManagerInfo: () => ({
+    info: mockAgentManagerInfo,
+    isLoading: false,
+    error: null,
+    canRead: true,
+    refetch: jest.fn(),
+  }),
+}));
+
 jest.mock('../ModelConfigsProvider', () => ({
   ...jest.requireActual('../ModelConfigsProvider'),
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 beforeEach(() => {
+  mockAgentManagerInfo = undefined;
   Object.assign(mockCatalog, RESOLVED);
   Object.assign(mockAgents, { rows: [], isLoading: false });
 });
@@ -189,6 +205,63 @@ async function renderStep() {
 }
 
 describe('NewAgentSkillsPage', () => {
+  describe('a private skill repository', () => {
+    beforeEach(() => {
+      mockCatalog.privateRepositories = new Set([
+        'https://github.com/giantswarm/claude-code',
+      ]);
+    });
+
+    it('marks the private repository and its skills', async () => {
+      await renderStep();
+
+      expect(
+        await screen.findByRole('checkbox', { name: 'Skill PR review' }),
+      ).toHaveTextContent('giantswarm/claude-code · private');
+      expect(
+        screen.getByRole('checkbox', { name: 'Skill Incident responder' }),
+      ).not.toHaveTextContent('private');
+    });
+
+    it('names the installation credential once a private skill is picked', async () => {
+      mockAgentManagerInfo = { skillsGitAuthSecretName: 'skills-token' };
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', {
+          name: 'Skill Incident responder',
+        }),
+      );
+      expect(screen.queryByText('Private skills')).not.toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Skill PR review' }),
+      );
+      expect(screen.getByText('Private skills')).toBeInTheDocument();
+      expect(
+        screen.getByText(/credential Secret skills-token/),
+      ).toBeInTheDocument();
+    });
+
+    it('warns, and lets the person go on, when the installation has no credential', async () => {
+      mockAgentManagerInfo = {};
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', { name: 'Skill PR review' }),
+      );
+
+      expect(
+        screen.getByText('No credential for private skills'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('selection')).toHaveTextContent(
+        'plugins/gs-base/skills/pr-review',
+      );
+    });
+  });
+
   it('shows the commit each skill is pinned to, next to its branch', async () => {
     await renderStep();
 

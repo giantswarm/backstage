@@ -26,7 +26,15 @@ import {
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { agentsBySkill, searchSkills } from '../../lib/customize';
-import { DiscoveredSkill, repoSlug, skillId } from '../../lib/skills';
+import {
+  canonicalRepoUrl,
+  DiscoveredSkill,
+  repoSlug,
+  skillId,
+} from '../../lib/skills';
+import { pickedSourcesOf } from '../../lib/agentSpec';
+import { PrivateSkillsNote } from '../PrivateSkillsNote';
+import { agentSkillsSecretOf } from '../../lib/privateSkills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -73,12 +81,15 @@ function SkillCard({
   skill,
   selected,
   pinned,
+  isPrivate,
   onSelect,
 }: {
   skill: DiscoveredSkill;
   selected: boolean;
   /** The commit an edited agent is pinned to, when its repo has moved on. */
   pinned?: string;
+  /** The skill's repository is private. */
+  isPrivate: boolean;
   onSelect: () => void;
 }) {
   const classes = useSelectableCardStyles();
@@ -106,6 +117,7 @@ function SkillCard({
       {description.content}
       <Text variant="body-x-small" color="secondary">
         {repoSlug(skill.repoUrl)}
+        {isPrivate && ' · private'}
         {showPath && (
           <>
             {' · '}
@@ -154,6 +166,8 @@ type SkillSelection = {
   query: string;
   selectedIds: Map<string, DiscoveredSkill>;
   onToggle: (skill: DiscoveredSkill) => void;
+  /** The private repositories, by canonical URL (`useSkillCatalog`). */
+  privateRepositories: ReadonlySet<string>;
 };
 
 /**
@@ -167,6 +181,7 @@ function SkillGrid({
   query,
   selectedIds,
   onToggle,
+  privateRepositories,
 }: SkillSelection & {
   skills: DiscoveredSkill[];
   /** Names the group for assistive tech — the subgroup, or the repo when flush. */
@@ -184,6 +199,9 @@ function SkillGrid({
                 skill={skill}
                 selected={selectedIds.has(skillId(skill))}
                 pinned={pin && pin !== skill.commit ? pin : undefined}
+                isPrivate={privateRepositories.has(
+                  canonicalRepoUrl(skill.repoUrl),
+                )}
                 onSelect={() => onToggle(skill)}
               />
             );
@@ -245,7 +263,7 @@ function GroupedSkills({
   expandAll: boolean;
 }) {
   const classes = useStyles();
-  const { query, selectedIds } = selection;
+  const { query, selectedIds, privateRepositories } = selection;
   const repoKeys = groups.map(group => group.repoUrl);
   const repoSignature = repoKeys.join('|');
   const seed = () =>
@@ -293,7 +311,11 @@ function GroupedSkills({
         return (
           <Accordion id={group.repoUrl} key={group.repoUrl}>
             <AccordionTrigger>
-              {group.repoSlug} ({total}
+              {group.repoSlug}
+              {privateRepositories.has(canonicalRepoUrl(group.repoUrl))
+                ? ' · private'
+                : ''}{' '}
+              ({total}
               {selected > 0 ? ` · ${selected} selected` : ''})
             </AccordionTrigger>
             <AccordionPanel className={classes.skillsPanel}>
@@ -350,6 +372,7 @@ function NewAgentSkillsPageContent() {
     failedRepositories,
     failureMessages = {},
     truncated,
+    privateRepositories,
   } = useSkillCatalog(state.installation);
 
   const [query, setQuery] = useState('');
@@ -410,7 +433,13 @@ function NewAgentSkillsPageContent() {
   );
 
   const narrowKey = filters.isFiltered ? `${trimmed}|${filters.key}` : trimmed;
-  const selection = { query: narrowKey, selectedIds, onToggle: toggleSkill };
+  const selection = {
+    query: narrowKey,
+    selectedIds,
+    onToggle: toggleSkill,
+    privateRepositories,
+  };
+  const installation = edit?.installation ?? state.installation;
   const catalogue = isSingleRepo ? (
     groups[0] && <RepoSkills group={groups[0]} {...selection} />
   ) : (
@@ -595,6 +624,14 @@ function NewAgentSkillsPageContent() {
           onTogglePlugin={togglePlugin}
           onTogglePluginSkill={togglePluginSkill}
         />
+
+        {installation && (
+          <PrivateSkillsNote
+            installation={installation}
+            {...pickedSourcesOf(state)}
+            agentSecretName={agentSkillsSecretOf(edit?.agent)}
+          />
+        )}
 
         {repeated.length > 0 && (
           <Alert

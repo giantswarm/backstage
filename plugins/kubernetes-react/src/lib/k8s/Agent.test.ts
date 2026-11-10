@@ -4,6 +4,7 @@ import {
   AgentInterface,
   AgentTemplateSpec,
   failureFieldOf,
+  missingSecretOf,
   getAgentStatusChangedAt,
   isAgentTransitional,
 } from './Agent';
@@ -634,6 +635,104 @@ describe('Agent', () => {
       ['resolve memory ModelConfig "embed": not found'],
     ])('names no field for %j', message => {
       expect(failureFieldOf(message)).toBeUndefined();
+    });
+  });
+
+  describe('a private skill repository', () => {
+    // The Secret's lookup failing: what kagent writes for a credentialRef
+    // naming a Secret that does not exist.
+    const missingSecret = (secret: string) =>
+      condition(
+        'ResolvedRefs',
+        'False',
+        'ReferenceResolutionFailed',
+        `build revision provenance: secret "${secret}" not found`,
+      );
+    const withPrivateSkill = (conditions: AgentCondition[]) =>
+      makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation: 1 },
+        spec: {
+          harnessRef: { name: 'kagent' },
+          template: {
+            skills: [
+              {
+                name: 'kyverno',
+                source: {
+                  git: {
+                    url: 'https://github.com/giantswarm/claude-code',
+                    commit: 'a'.repeat(40),
+                    credentialRef: { name: 'skills-token', key: 'token' },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        status: { conditions, observedGeneration: 1 },
+      } as unknown as Partial<AgentInterface>);
+
+    it('reads the missing Secret out of the message', () => {
+      expect(
+        missingSecretOf(
+          'build Claude revision provenance: secret "x" not found',
+        ),
+      ).toBe('x');
+      expect(missingSecretOf('resolve ModelConfig "x": not found')).toBe(
+        undefined,
+      );
+    });
+
+    it('lists the Secrets its git skills are fetched with', () => {
+      expect(withPrivateSkill([]).getSkillsCredentialSecrets()).toEqual([
+        'skills-token',
+      ]);
+    });
+
+    it('names a missing skills credential Secret as the failure', () => {
+      const agent = withPrivateSkill([
+        accepted(),
+        missingSecret('skills-token'),
+        condition('Compatible', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+        condition('Ready', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+      ]);
+
+      expect(agent.getFailure()).toEqual({
+        condition: 'ResolvedRefs',
+        message: 'build revision provenance: secret "skills-token" not found',
+        field: 'skills',
+        missingSecret: 'skills-token',
+      });
+      expect(agent.isBootPending()).toBe(false);
+    });
+
+    it('does not take another missing Secret, a model key say, for the skills credential', () => {
+      const agent = withPrivateSkill([
+        accepted(),
+        missingSecret('anthropic-key'),
+        condition('Compatible', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+        condition('Ready', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+      ]);
+
+      expect(agent.getFailure()?.field).toBeUndefined();
+      expect(agent.getFailure()?.missingSecret).toBeUndefined();
+    });
+
+    it('tells a boot that has not finished apart from a failure', () => {
+      const agent = withPrivateSkill([
+        accepted(),
+        resolved(),
+        compatible(),
+        condition(
+          'Ready',
+          'False',
+          'ActorTemplatePending',
+          'waiting for the ActorTemplate golden snapshot',
+        ),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+      expect(agent.isBootPending()).toBe(true);
+      expect(agent.getFailure()).toBeUndefined();
     });
   });
 

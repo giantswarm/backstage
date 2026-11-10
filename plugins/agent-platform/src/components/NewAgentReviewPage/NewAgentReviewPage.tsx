@@ -31,6 +31,7 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
+import { PrivateSkillsNote } from '../PrivateSkillsNote';
 import {
   harnessTitle,
   platformRuntimeLine,
@@ -390,6 +391,12 @@ function CreateAgentReview() {
             description="This agent can discover and call every tool the gateway exposes to whoever invokes it, platform tools included."
           />
         )}
+
+        <PrivateSkillsNote
+          installation={state.installation!}
+          skills={spec.skills}
+          plugins={spec.plugins}
+        />
 
         {/* What decides whether Create is offered, in sight: the check is
             agent-manager's dry run of exactly what gets applied. */}

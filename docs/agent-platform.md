@@ -950,8 +950,24 @@ A selected skill becomes a chart 1.x `skills[]` entry,
 `{ name, path: <skill dir>, git: { url: repo, commit } }` (`lib/agentSpec.ts`,
 `skillEntryOf`). The portal sends the commit, never a branch, so what the
 person picked runs until they update it. Root-level skills omit `path`; agents
-without skills omit `skills`. There is no per-skill credential (private skill
-repositories are separate platform work).
+without skills omit `skills`. There is no per-skill credential.
+
+**Private skill repositories.** Discovery reads GitHub's `private` flag of
+each repository (`GET /agent-skills` answers `private`), and the Skills step
+marks a private repository and its skills. agent-manager gives every agent
+with a git skill the installation's credential Secret (key `token`, in the
+agent's namespace; `get_info.skillsGitAuthSecretName`, kept filled with a
+GitHub App token when `get_info.skillsGitAuthMint` reports it) unless the agent
+names its own `gitAuthSecretName`, so the wizard asks for nothing: with a
+private skill picked, the Skills step and the review name the credential the
+agent fetches it with, and warn without blocking when the installation has
+none or its token failed to refresh (`PrivateSkillsNote`, `lib/privateSkills.ts`).
+Edit and Update skills send no `gitAuthSecretName`, so the agent keeps its
+credential. On the agent's page, a `ResolvedRefs=False` naming a Secret of the
+agent's skill `credentialRef`s reads as the credential Secret missing (the
+agent recovers once it exists; `Agent.getFailure().missingSecret`), apart from
+`Ready=False ActorTemplatePending`, the boot not finished, which points at the
+worker's boot log (where a wrong token's refusal shows).
 
 ### Adding, editing and evaluating a skill
 
@@ -3901,9 +3917,9 @@ The portal does not carry the values shape.
 
 - **Name-conflict pre-check.** A taken name is refused only at Deploy
   (`conflict`). Asking `get_agent` from step 1 would surface it earlier.
-- **Skills.** Private skill repositories need a platform answer (the create
-  contract has no per-skill credential). Discovery reads the **default branch**
-  and offers no per-skill `ref`.
+- **Skills.** Discovery reads the **default branch** and offers no per-skill
+  `ref`. The wizard offers no per-agent credential Secret: agents use the
+  installation's.
 - **An empty session is possible** between create and send. Avoiding it needs
   a server-side route that dispatches a turn without waiting.
 - **The agent version is not pinned to the session.** The prototype's

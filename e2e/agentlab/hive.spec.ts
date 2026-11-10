@@ -5,16 +5,24 @@ import { contextOptions } from './lab';
 /**
  * Hive (`/hive`): one sidebar entry with the tabs Now, History, Roadmap,
  * Plans and Knowledge, and the redirects from the pages it replaced. The lab
- * has no GitHub MCP behind its muster, so every plans- and roadmap-backend
- * route the tabs call is answered here with fixtures that follow the
- * magazine's data contract and the board's shape; the pages, their routing
- * and their rendering are the portal's.
+ * has no GitHub MCP behind its muster, so every plans-backend route the tabs
+ * call is answered here with fixtures that follow the magazine's data
+ * contract; the pages, their routing and their rendering are the portal's.
+ *
+ * The roadmap-backend routes are answered here too, from a board of the same
+ * shape, unless AGENTLAB_ROADMAP_FIXTURE=1 says the lab's muster serves its
+ * fake pro (`agentlab roadmap-test --keep`, on a lab with `agentlab configure
+ * --hive`): the Roadmap tab then reads the portal's own roadmap-backend, which
+ * reads that fixture board through muster as the signed-in person.
  *
  * Hive is disabled by default; the suite is skipped with the reason until
  * AGENTLAB_HIVE=1 says the lab's Backstage names `page:plans`, `api:plans`,
  * `page:roadmap`, `api:roadmap`, `page:plans/plans-redirect` and
  * `page:plans/magazine` in `app.extensions`.
  */
+/** The lab's muster serves agentlab's fake pro board: real roadmap routes. */
+const ROADMAP_FIXTURE = Boolean(process.env.AGENTLAB_ROADMAP_FIXTURE);
+
 const MAGAZINE = 'giantswarm/team-magazine';
 const NOW = '2026-10-05T08:00:00Z';
 
@@ -348,7 +356,9 @@ test.describe('Hive', () => {
 
   test.beforeEach(async ({ admin }) => {
     await mockPlansBackend(admin);
-    await mockRoadmapBackend(admin);
+    if (!ROADMAP_FIXTURE) {
+      await mockRoadmapBackend(admin);
+    }
   });
 
   test.afterEach(async ({ admin }) => {
@@ -527,6 +537,14 @@ test.describe('Hive', () => {
   }) => {
     await open(admin, '/hive/roadmap?team=all');
     await expect(admin.getByText('Self-service clusters')).toBeVisible();
+    if (ROADMAP_FIXTURE) {
+      // The fake pro's board, read through the roadmap-backend and muster:
+      // items the mocked board does not have, another team's among them.
+      await expect(
+        admin.getByText('Cluster templates in the portal'),
+      ).toBeVisible();
+      await expect(admin.getByText('Phoenix storage migration')).toBeVisible();
+    }
     await open(admin, '/hive/roadmap?team=all&q=nothing-matches');
     await expect(admin.getByText('Self-service clusters')).toHaveCount(0);
   });
