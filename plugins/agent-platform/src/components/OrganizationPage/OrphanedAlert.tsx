@@ -49,10 +49,22 @@ export function OrphanedAlert({ organization }: OrphanedAlertProps) {
         icon
         title="Erasing"
         description={
-          <Text as="p" variant="body-medium" className={classes.inherit}>
-            This organization is deleted and is being erased. Its workers are
-            stopped.
-          </Text>
+          <Flex direction="column" gap="2">
+            <Text as="p" variant="body-medium" className={classes.inherit}>
+              This organization is deleted and is being erased. Its workers are
+              stopped.
+            </Text>
+            {organization.erasureStep && (
+              <SimpleAccordion title="Technical details" headingLevel={3}>
+                <Text as="p" variant="body-small" className={classes.inherit}>
+                  The operator's erasure step:{' '}
+                  <span className={classes.code}>
+                    {organization.erasureStep}
+                  </span>
+                </Text>
+              </SimpleAccordion>
+            )}
+          </Flex>
         }
       />
     );
@@ -75,9 +87,9 @@ export function OrphanedAlert({ organization }: OrphanedAlertProps) {
         description={
           <Flex direction="column" gap="2">
             <Text as="p" variant="body-medium" className={classes.inherit}>
-              The pull request that deletes this organization is merged. Its
-              workers are stopped, and nothing is erased until an organizations
-              admin erases it.
+              The pull request that deletes this organization is merged, and its
+              workers are stopped. Its agents, connectors, credentials and
+              members are kept until it is erased.
             </Text>
             {technical}
           </Flex>

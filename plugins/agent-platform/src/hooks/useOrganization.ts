@@ -93,6 +93,8 @@ export function useMyOrganizations(
   return { ...readOf(enabled, query), supported, infoError, recheck };
 }
 
+const ERASING_POLL_INTERVAL_MS = 10_000;
+
 /**
  * `get_organization`: the organization object, for its display name. Only an
  * organizations-admin may read it; a member's read is refused, and the page
@@ -110,6 +112,12 @@ export function useOrganizationDetails(
     enabled,
     queryFn: () => client!.getOrganization(parent, name),
     staleTime: 60_000,
+    // An organization being erased changes step on its own; the read fails
+    // once it is gone, which ends the polling.
+    refetchInterval: ({ state }) =>
+      state.data?.organization.deleting && !state.error
+        ? ERASING_POLL_INTERVAL_MS
+        : false,
     retry: false,
   });
   return readOf(enabled, query);

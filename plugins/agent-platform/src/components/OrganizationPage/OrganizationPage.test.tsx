@@ -3,7 +3,7 @@ import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -204,6 +204,9 @@ describe('OrganizationPage', () => {
       });
 
       expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      expect(
+        screen.getByText(/members are kept until it is erased/),
+      ).toBeInTheDocument();
       expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
     });
 
@@ -215,11 +218,43 @@ describe('OrganizationPage', () => {
           orphaned: { status: 'True', reason: 'DeleteMerged' },
           lastAppliedRevision: `main@sha1:${COMMIT}`,
           deleting: true,
+          erasureStep: 'Sessions',
         },
       });
 
       expect(await screen.findByText('Erasing')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toBeInTheDocument();
       expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+
+    it('reads an organization being erased again every 10 s', async () => {
+      jest.useFakeTimers();
+      try {
+        const { callTool } = await renderPage('', {
+          ...SCENARIO,
+          organization: {
+            ...ORGANIZATION,
+            orphaned: { status: 'True', reason: 'DeleteMerged' },
+            deleting: true,
+          },
+        });
+        await screen.findByText('Erasing');
+        const reads = toolCalls(callTool, 'get_organization').length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        await waitFor(() =>
+          expect(toolCalls(callTool, 'get_organization')).toHaveLength(
+            reads + 1,
+          ),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('shows nothing while the organization is in git', async () => {

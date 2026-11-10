@@ -60,6 +60,8 @@ export type AgentPlatformOrganization = {
   /** That revision's commit on GitHub, when agent-manager knows the repository. */
   lastAppliedRevisionUrl?: string;
   deleting?: boolean;
+  /** The step of the erasure the operator is on, while `deleting`. */
+  erasureStep?: string;
 };
 
 /**
