@@ -304,7 +304,7 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(screen.getByText('4 steps')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Run counts and the read-only badge need a muster session/,
+        /Run counts and the read-only badge need a Muster session/,
       ),
     ).toBeInTheDocument();
     expect(api.listExecutions).not.toHaveBeenCalled();

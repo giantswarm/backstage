@@ -162,7 +162,7 @@ describe('NewConnectorTestPage', () => {
 
     expect(screen.getByText('Connecting…')).toBeInTheDocument();
     expect(
-      screen.getByText(/This updates automatically once muster connects it/),
+      screen.getByText(/This updates automatically once Muster connects it/),
     ).toBeInTheDocument();
   });
 

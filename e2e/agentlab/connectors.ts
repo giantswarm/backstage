@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
 export const SHOWN = {
   kubernetes: 'Kubernetes',
   agentManager: 'Agent Manager',
-  muster: 'muster',
+  muster: 'Muster',
   fixture: 'lab-oauth-fixture',
 } as const;
 

@@ -40,6 +40,7 @@ import {
   ListToolsResponse,
   McpServerListResponse,
   ConnectorNamesResponse,
+  MusterServerInfoResponse,
   MusterAnswerCutError,
   MusterApi,
   MusterAuthProvidersApi,
@@ -334,6 +335,14 @@ export class MusterApiClient implements MusterApi {
     installation?: string,
   ): Promise<ConnectorNamesResponse> {
     return this.get<ConnectorNamesResponse>('/servers/names', installation, {
+      silent: true,
+    });
+  }
+
+  async getServerInfo(
+    installation?: string,
+  ): Promise<MusterServerInfoResponse> {
+    return this.get<MusterServerInfoResponse>('/server-info', installation, {
       silent: true,
     });
   }
@@ -795,7 +804,7 @@ export class MusterApiClient implements MusterApi {
       throw new MusterTokenMintError(
         installation,
         'session-expired',
-        `Your portal session has expired; no sign-in token is available for muster${
+        `Your portal session has expired; no sign-in token is available for Muster${
           installation ? ` on ${installation}` : ''
         }.`,
       );
