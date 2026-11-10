@@ -5,6 +5,7 @@ import {
 } from '@backstage/core-components';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
   type MockedLayout,
@@ -124,6 +125,7 @@ async function renderNav({
             signOut,
           }),
         ],
+        [externalUrlConsentApiRef, { open: jest.fn() }],
       ],
       mountedRoutes: {
         // The shell's home, the app's own page: always there.

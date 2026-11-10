@@ -134,7 +134,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const navigate = useNavigate();
   const { details: detailsLink, tools: toolsLink } = useAgentWizardLinks();
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories } = useSkillCatalog(edit.installation);
   const { agent, installation, writeMode, detailHref } = edit;
   const { info, isLoading: isInfoLoading } = useAgentManagerInfo(installation);
   // The platform Harness the runtime field shows, for its summary row.

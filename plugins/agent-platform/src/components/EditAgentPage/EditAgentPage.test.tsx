@@ -29,6 +29,10 @@ import {
 } from '../../lib/queryKeys';
 import { agentsRouteRef } from '../../routes';
 import { EditAgentPage } from './EditAgentPage';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -361,7 +365,12 @@ async function renderEdit(
 ) {
   const { api, callTool } = makeMusterApi(scenario);
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <Routes>

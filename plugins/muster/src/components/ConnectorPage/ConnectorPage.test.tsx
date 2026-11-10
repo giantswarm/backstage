@@ -29,6 +29,10 @@ import {
 } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: () => ({ isLoading: false }),
@@ -294,7 +298,10 @@ async function renderAt(
     </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
-      apis: [[musterApiRef, api as never]],
+      apis: [
+        [musterApiRef, api as never],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ],
       mountedRoutes: {
         '/customize/connectors': mcpServersRouteRef,
         '/usage/connectors': usageConnectorsExternalRouteRef,

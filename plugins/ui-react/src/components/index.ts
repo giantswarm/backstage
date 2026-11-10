@@ -33,6 +33,7 @@ export * from './EmptyStateCard';
 export * from './ErrorStatus';
 export * from './ExternalCellText';
 export * from './ExternalLink';
+export * from './ExternalUrlConsentDialog';
 export * from './SelectableCard';
 export * from './Gate';
 export * from './GitOpsManagedLabel';

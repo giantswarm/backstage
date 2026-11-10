@@ -805,6 +805,14 @@ describe('MusterApiClient token selection for derived installations', () => {
     expect(t.getMainCredentials).not.toHaveBeenCalled();
   });
 
+  it('authHeaders carries the brokered token for a derived installation', async () => {
+    const t = derivedSetup();
+
+    await expect(t.client.authHeaders('snail')).resolves.toEqual({
+      [HEADER]: 'brokered-token',
+    });
+  });
+
   it('still trusts the configured authProvider first', async () => {
     // golem is listed in muster.installations with an authProvider; the
     // backend's list is not needed to decide.
