@@ -7,7 +7,11 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   type AgentManagerCredentialsApi,
@@ -127,6 +131,9 @@ async function renderForm(
         [agentManagerCredentialsApiRef, credentialsApi],
         [musterApiRef, musterApi],
         [analyticsApiRef, analyticsApi],
+        // The GitHub connection prompt's sign-in asks before it opens
+        // muster's page; without the API it suspends and never renders.
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
       ]}
     >
       <QueryClientProvider client={queryClient}>
