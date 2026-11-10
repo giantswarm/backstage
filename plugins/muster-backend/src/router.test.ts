@@ -656,6 +656,18 @@ describe('createRouter', () => {
         checkedAt: 1,
       });
       await new Promise(resolve => setTimeout(resolve, 0));
+      // Unreachable only after a second failed probe in a row.
+      void cache.refresh(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      pending.get(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      )!({
+        reachable: false,
+        reason: 'no answer within 3000 ms',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const response = await request(probing).get('/installations');
 

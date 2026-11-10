@@ -52,9 +52,6 @@ import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
-/** Failed reachability probes in a row before calls are refused outright. */
-const REFUSE_AFTER_FAILED_PROBES = 2;
-
 /**
  * Header the muster frontend uses to forward the user's OAuth token for the
  * target installation's `authProvider`. Mirrors ai-chat's
@@ -421,18 +418,11 @@ export async function createRouter(
 
   /**
    * Whether calls to the installation are refused without a connection
-   * attempt: {@link REFUSE_AFTER_FAILED_PROBES} probes in a row found its
-   * muster unreachable from this portal. Not while the probe has not settled
-   * (`'unknown'`), says it is reachable, or failed once, so a distant muster
-   * that answered one probe late still gets its calls.
+   * attempt: the probe reports its muster unreachable from this portal. Not
+   * while the probe has not settled (`'unknown'`).
    */
-  const isRefused = (installation: MusterInstallationConfig): boolean => {
-    const state = reachability.get(musterProbeUrl(installation.url));
-    return (
-      state.reachable === false &&
-      (state.failures ?? 1) >= REFUSE_AFTER_FAILED_PROBES
-    );
-  };
+  const isRefused = (installation: MusterInstallationConfig): boolean =>
+    reachability.get(musterProbeUrl(installation.url)).reachable === false;
   /**
    * The 503 a refused call fails with: neither logged nor sent to Sentry, as
    * the probe logs each state change itself.
