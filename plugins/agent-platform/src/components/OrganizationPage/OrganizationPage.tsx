@@ -49,8 +49,9 @@ function useOrganizationFrame(title: string) {
  * Egress, each a tab read from agent-manager's organization tools as the
  * signed-in person. The organization and its namespace come from
  * `list_organizations`, never from a name: a member who does not manage it
- * gets its status only, and `get_organization` is asked only for a person
- * who manages it.
+ * gets its status only, one who manages it its summary too.
+ * `get_organization`, which also previews the erasure, is asked only to
+ * follow the erasure of an organization the person manages.
  */
 export function OrganizationPage({
   installation,
@@ -67,9 +68,8 @@ export function OrganizationPage({
     organization =>
       organization.parent === parent && organization.name === name,
   );
-  const manages = listed?.permissions.manage === true;
   const details = useOrganizationDetails(installation, parent, name, {
-    enabled: manages,
+    enabled: listed?.permissions.manage === true && listed.deleting === true,
   });
   const basePath = useSplatBasePath();
   const { search } = useLocation();
@@ -137,6 +137,35 @@ export function OrganizationPage({
     );
   }
   if (!namespace) {
+    if (mine.failure) {
+      return (
+        <ShellPage title={name} {...frame}>
+          <EmptyStateCard
+            title={`Could not read your organizations on ${installation}`}
+            description={mine.failure.message}
+            actions={
+              <Flex gap="3" align="center">
+                <Button variant="secondary" onPress={() => mine.refetch()}>
+                  Check again
+                </Button>
+                {backLink}
+              </Flex>
+            }
+          />
+        </ShellPage>
+      );
+    }
+    if (listed) {
+      return (
+        <ShellPage title={title} {...frame}>
+          <EmptyStateCard
+            title={`${title} has no namespace yet`}
+            description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
+            actions={backLink}
+          />
+        </ShellPage>
+      );
+    }
     if (mine.isLoading || details.isLoading || mine.supported === undefined) {
       return (
         <ShellPage

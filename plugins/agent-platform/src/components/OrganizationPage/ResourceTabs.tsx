@@ -251,10 +251,10 @@ export function ModelsTab({ installation, organization }: TabProps) {
     </Button>
   ) : undefined;
 
-  if (models.isLoading || models.failure) {
+  if (models.isLoading || access.isLoading || models.failure) {
     return (
       <ReadState
-        isLoading={models.isLoading}
+        isLoading={models.isLoading || access.isLoading}
         failure={models.failure}
         noun="models"
       />
@@ -393,10 +393,10 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
     label: string;
     request: CredentialRequest;
   }>();
-  if (connectors.isLoading || connectors.failure) {
+  if (connectors.isLoading || access.isLoading || connectors.failure) {
     return (
       <ReadState
-        isLoading={connectors.isLoading}
+        isLoading={connectors.isLoading || access.isLoading}
         failure={connectors.failure}
         noun="connectors"
       />

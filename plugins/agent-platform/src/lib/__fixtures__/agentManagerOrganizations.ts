@@ -9,7 +9,7 @@ import type {
   OrganizationConnector,
   OrganizationMember,
   OrganizationNamespace,
-  Organizations,
+  OrganizationListing,
 } from '../organizations';
 
 /**
@@ -66,7 +66,7 @@ export type OrganizationsScenario = {
  */
 export function listedOrganizations(
   scenario: OrganizationsScenario,
-): Organizations {
+): OrganizationListing {
   const managed = scenario.organization;
   const isManaged = (parent: string, name: string) =>
     managed?.parent === parent && managed?.name === name;

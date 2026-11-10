@@ -10,7 +10,7 @@ import {
   type OrganizationConnector,
   type OrganizationDetails,
   type OrganizationMember,
-  type Organizations,
+  type OrganizationListing,
 } from '../lib/organizations';
 import {
   musterOrganizationsQueryKey,
@@ -79,8 +79,11 @@ export function useOrganizationsSupported(installation: string | undefined): {
  */
 export function useOrganizations(
   installation: string | undefined,
-): OrganizationRead<Organizations> &
-  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> {
+): OrganizationRead<OrganizationListing> &
+  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> & {
+    /** Reads `list_organizations` again. */
+    refetch: () => Promise<unknown>;
+  } {
   const client = useAgentManagerClient(installation);
   const { supported, infoError, recheck } =
     useOrganizationsSupported(installation);
@@ -92,7 +95,13 @@ export function useOrganizations(
     staleTime: 60_000,
     retry: false,
   });
-  return { ...readOf(enabled, query), supported, infoError, recheck };
+  return {
+    ...readOf(enabled, query),
+    supported,
+    infoError,
+    recheck,
+    refetch: query.refetch,
+  };
 }
 
 const ERASING_POLL_INTERVAL_MS = 10_000;

@@ -23,7 +23,7 @@ import {
   organizationNamespacesOf,
   type OrganizationDirectory,
   type OrganizationNamespace,
-  type Organizations,
+  type OrganizationListing,
 } from '../../lib/organizations';
 
 export type OrganizationDirectoryValue = {
@@ -37,7 +37,7 @@ export type OrganizationDirectoryValue = {
   /** Failures checking whether installations serve organizations. */
   discoveryErrors: string[];
   /** The person's organizations on one installation, once answered. */
-  organizationsOf: (installation: string) => Organizations | undefined;
+  organizationsOf: (installation: string) => OrganizationListing | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
   failureOf: (installation: string) => string | undefined;
   /** Reads an installation's organizations again (Check again). */
@@ -171,7 +171,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   const value = useMemo<OrganizationDirectoryValue>(() => {
     const entries = JSON.parse(signature) as [
       string,
-      Organizations | null,
+      OrganizationListing | null,
       string | null,
     ][];
     const answers = new Map(

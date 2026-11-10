@@ -11,6 +11,8 @@ export type OrganizationAccess = {
   models: boolean;
   /** Replace a key or a credential: replace the namespace's Secrets. */
   credentials: boolean;
+  /** A review is still out: every right reads `false` until it answers. */
+  isLoading: boolean;
 };
 
 /**
@@ -47,5 +49,6 @@ export function useOrganizationAccess(
     members: members.allowed,
     models: models.allowed,
     credentials: credentials.allowed,
+    isLoading: members.isLoading || models.isLoading || credentials.isLoading,
   };
 }

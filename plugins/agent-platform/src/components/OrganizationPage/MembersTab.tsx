@@ -219,7 +219,7 @@ export function MembersTab({
   ];
 
   let body;
-  if (members.isLoading) {
+  if (members.isLoading || access.isLoading) {
     body = <Text color="secondary">Reading the members…</Text>;
   } else if (members.failure) {
     body = (

@@ -90,7 +90,7 @@ export type ListedOrganization = {
 };
 
 /** `list_organizations`: the organizations the person manages or belongs to. */
-export type Organizations = {
+export type OrganizationListing = {
   organizations: ListedOrganization[];
   /** Who can add the person, when they manage and belong to none. */
   none?: string;
@@ -98,7 +98,7 @@ export type Organizations = {
 
 /** The listed organizations that have a namespace, as the directory names them. */
 export function organizationNamespacesOf(
-  answer: Organizations | undefined,
+  answer: OrganizationListing | undefined,
 ): OrganizationNamespace[] {
   return (answer?.organizations ?? []).flatMap(organization =>
     organization.namespace

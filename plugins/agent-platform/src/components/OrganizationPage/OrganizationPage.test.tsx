@@ -753,7 +753,7 @@ describe('OrganizationPage', () => {
       expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
     });
 
-    it('reads the organization whole for a person who manages it without being a member', async () => {
+    it('names an organization the person manages without being a member from the listing alone', async () => {
       const { callTool } = await renderPage('', {
         ...SCENARIO,
         mine: { organizations: [] },
@@ -770,10 +770,46 @@ describe('OrganizationPage', () => {
       expect(
         await screen.findByRole('heading', { name: 'Payments' }),
       ).toBeInTheDocument();
-      await waitFor(() =>
-        expect(toolCalls(callTool, 'get_organization')).toHaveLength(1),
-      );
+      expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
     });
+
+    it('says an organization the person manages has no namespace yet, rather than that they are no member', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: {
+          name: 'payments',
+          parent: 'org-acme',
+          displayName: 'Payments',
+          harnesses: ['kagent'],
+          workerReplicas: 0,
+        },
+      });
+
+      expect(
+        await screen.findByText('Payments has no namespace yet'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/You are not a member/),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('says the organizations could not be read, rather than that the person is no member, and reads them again', async () => {
+    const { callTool } = await renderPage('', {
+      ...SCENARIO,
+      mineFailures: 1,
+    });
+
+    expect(
+      await screen.findByText('Could not read your organizations on gazelle'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/You are not a member/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }));
+
+    expect(await screen.findByText('payments-team')).toBeInTheDocument();
+    expect(toolCalls(callTool, 'list_organizations')).toHaveLength(2);
   });
 
   it('says the person is no member of an organization agent-manager does not list for them', async () => {
