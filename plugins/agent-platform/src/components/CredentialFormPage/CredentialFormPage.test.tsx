@@ -7,7 +7,11 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   type AgentManagerCredentialsApi,
@@ -127,6 +131,9 @@ async function renderForm(
         [agentManagerCredentialsApiRef, credentialsApi],
         [musterApiRef, musterApi],
         [analyticsApiRef, analyticsApi],
+        // The GitHub connection prompt's sign-in opens its address through
+        // the consent dialog, as the app registers it.
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
       ]}
     >
       <QueryClientProvider client={queryClient}>
@@ -399,6 +406,10 @@ describe('CredentialFormPage', () => {
     expect(
       await screen.findByText(/connect GitHub to open the pull request/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Authorize GitHub for agent-manager'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Not saved')).not.toBeInTheDocument();
   });
 
   it('cancels the request', async () => {
