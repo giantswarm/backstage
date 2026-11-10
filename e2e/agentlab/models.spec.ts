@@ -174,7 +174,10 @@ test('a model’s Overview shows its context window, or a note when the table na
     'No context window is configured for this model',
   );
   await expect(
-    note.getByRole('link', { name: 'How to configure it', exact: true }),
+    note.getByRole('link', {
+      name: 'How to configure it (opens in a new tab)',
+      exact: true,
+    }),
   ).toHaveAttribute('href', /agent-platform-configuration\.md#context-windows/);
   await expect(facts.getByText('Context window', { exact: true })).toHaveCount(
     0,

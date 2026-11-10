@@ -225,7 +225,9 @@ describe('CustomizeModelsPanel', () => {
     ).not.toBeInTheDocument();
     // Without one: the hint at what turns it on.
     expect(
-      screen.getByRole('link', { name: 'How to turn it on' }),
+      screen.getByRole('link', {
+        name: 'How to turn it on (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
     unmount();
 
@@ -236,7 +238,9 @@ describe('CustomizeModelsPanel', () => {
       '/customize/models/hosting',
     );
     expect(
-      screen.queryByRole('link', { name: 'How to turn it on' }),
+      screen.queryByRole('link', {
+        name: 'How to turn it on (opens in a new tab)',
+      }),
     ).not.toBeInTheDocument();
   });
 
@@ -249,7 +253,9 @@ describe('CustomizeModelsPanel', () => {
       '/customize/models/hosting',
     );
     expect(
-      screen.queryByRole('link', { name: 'How to turn it on' }),
+      screen.queryByRole('link', {
+        name: 'How to turn it on (opens in a new tab)',
+      }),
     ).not.toBeInTheDocument();
   });
 

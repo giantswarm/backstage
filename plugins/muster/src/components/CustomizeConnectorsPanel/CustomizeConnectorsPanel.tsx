@@ -11,6 +11,7 @@ import {
   Link,
   Table,
   Text,
+  useTable,
 } from '@backstage/ui';
 import {
   applyCatalogFilters,
@@ -18,9 +19,7 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
-  INITIAL_ROWS,
   LoadingIndicator,
-  ShowMore,
   StackedRow,
   type StackedRowItem,
   StackedRowList,
@@ -76,6 +75,10 @@ import {
   toolsLabel,
   unsearchedToolsNotes,
 } from './connectorRows';
+import {
+  CONNECTORS_DEFAULT_SORT,
+  sortConnectorRows,
+} from './sortConnectorRows';
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
@@ -120,17 +123,6 @@ const CONNECTOR_FACETS: CatalogFacet<Row>[] = [
   },
   tagsFacet<Row>(row => row.tags),
 ];
-
-/**
- * Registered connectors (no tool-group label) first, then the platform's own,
- * each part in the order it came in.
- */
-function registeredFirst(entries: ServerListEntry[]): ServerListEntry[] {
-  return [
-    ...entries.filter(entry => isRegisteredRow(entry.row)),
-    ...entries.filter(entry => !isRegisteredRow(entry.row)),
-  ];
-}
 
 function ConnectorName({
   row,
@@ -244,7 +236,7 @@ type StackedRowProps = Omit<StackedRowItem, 'id'>;
  * one hook call, so the answer to a click on the button reaches the state:
  * the state and its hint on line 1; the Sign in button in the row's actions;
  * an outstanding sign-in's way back into the page ("Reopen sign-in page",
- * "Open sign-in page ↗") on a line of its own under the description, since
+ * "Open sign-in page", which opens a new tab) on a line of its own under the description, since
  * at the end of line 1 it would squeeze the name to a few characters.
  */
 function SignInStackedRow({
@@ -492,14 +484,14 @@ function ConnectorsTable({
   // The whole list decides which filters can tell connectors apart; the
   // searched one is what they then narrow.
   const allRows = useMemo(
-    () => registeredFirst(serverListEntries(listRows, '')).map(toRow),
+    () => serverListEntries(listRows, '').map(toRow),
     [listRows, toRow],
   );
   const searchedRows = useMemo(
     () =>
       search.trim() === ''
         ? allRows
-        : registeredFirst(serverListEntries(listRows, search)).map(toRow),
+        : serverListEntries(listRows, search).map(toRow),
     [allRows, listRows, search, toRow],
   );
   const filters = useCatalogFilters({
@@ -507,8 +499,27 @@ function ConnectorsTable({
     searched: searchedRows,
     facets: CONNECTOR_FACETS,
   });
-  const rows = filters.filtered;
+  // One list by name, muster and the platform's own connectors among the
+  // rest; a header click sorts by its column, a second one reverses it.
+  const { tableProps } = useTable<Row>({
+    mode: 'complete',
+    data: filters.filtered,
+    sortFn: sortConnectorRows,
+    initialSort: CONNECTORS_DEFAULT_SORT,
+    // Every connector at once: no pages, no "Show more".
+    paginationOptions: { type: 'none' },
+  });
   const isPhone = usePhoneLayout();
+  // The phone's stacked rows have no headers to show or change a sort with:
+  // they stay by name whatever the table was sorted by.
+  const stackedRows = useMemo(
+    () =>
+      isPhone
+        ? sortConnectorRows(filters.filtered, CONNECTORS_DEFAULT_SORT)
+        : [],
+    [isPhone, filters.filtered],
+  );
+  const rows = isPhone ? stackedRows : (tableProps.data ?? []);
   const hrefOf = (row: Row) =>
     row.entry.shadowed
       ? undefined
@@ -521,6 +532,7 @@ function ConnectorsTable({
       id: 'name',
       label: 'Connector',
       isRowHeader: true,
+      isSortable: true,
       defaultWidth: '3fr',
       cell: row => (
         <ConnectorName
@@ -545,12 +557,14 @@ function ConnectorsTable({
     {
       id: 'auth',
       label: 'Sign-in',
+      isSortable: true,
       defaultWidth: '1.2fr',
       cell: row => <CellText title={row.auth} />,
     },
     {
       id: 'tools',
       label: 'Tools',
+      isSortable: true,
       defaultWidth: '1fr',
       cell: row => (
         <CellText title={row.tools ?? (isAwaitingData(catalogue) ? '…' : '')} />
@@ -559,6 +573,7 @@ function ConnectorsTable({
     {
       id: 'status',
       label: 'Status',
+      isSortable: true,
       defaultWidth: '1.6fr',
       cell: row => (
         <ConnectorStatusCell row={row} installation={installation} />
@@ -601,36 +616,20 @@ function ConnectorsTable({
       </Flex>
     );
   } else {
-    // Registered connectors first, each part by name, and ShowMore hands the table a page of
-    // that at a time. Never bui's page mode, which draws its footer even at
-    // three rows. Keyed on the search and filters, so a new query starts at
-    // its first page.
-    list = (
-      <ShowMore
-        key={`${search.trim()}|${filters.key}`}
-        items={rows}
-        initial={INITIAL_ROWS}
-        noun="connector"
-      >
-        {page =>
-          isPhone ? (
-            <ConnectorStackedList
-              rows={page}
-              installation={installation}
-              hasSession={hasSession}
-              hrefOf={hrefOf}
-              toolsPending={isAwaitingData(catalogue)}
-            />
-          ) : (
-            <Table<Row>
-              columnConfig={columns}
-              data={page}
-              pagination={{ type: 'none' }}
-              rowConfig={{ getHref: hrefOf }}
-            />
-          )
-        }
-      </ShowMore>
+    list = isPhone ? (
+      <ConnectorStackedList
+        rows={rows}
+        installation={installation}
+        hasSession={hasSession}
+        hrefOf={hrefOf}
+        toolsPending={isAwaitingData(catalogue)}
+      />
+    ) : (
+      <Table<Row>
+        {...tableProps}
+        columnConfig={columns}
+        rowConfig={{ getHref: hrefOf }}
+      />
     );
   }
 
@@ -705,13 +704,13 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
 
 /**
  * The Connectors tab of the shell's Customize screen: the active muster's
- * servers and muster itself as flat rows, registered connectors first, with how one signs in, their tool count and state, and
- * a sign-in where muster asks this person for one; filtered by sign-in, by
- * connection and by tags where those tell connectors apart (T49). The
- * platform's own connectors carry a tag from their tool-group label
+ * servers and muster itself as flat rows by name, every one at once and
+ * sorted again by a header click, with how one signs in, their tool count and
+ * state, and a sign-in where muster asks this person for one; filtered by
+ * sign-in, by connection and by tags where those tell connectors apart (T49).
+ * The platform's own connectors carry a tag from their tool-group label
  * (`connectorTags`), so `?tags=infrastructure` or `?tags=agent-platform`
- * lists them. Must be mounted inside a
- * `CustomizeMusterProvider`.
+ * lists them. Must be mounted inside a `CustomizeMusterProvider`.
  */
 export function CustomizeConnectorsPanel(props: CustomizeConnectorsPanelProps) {
   return (

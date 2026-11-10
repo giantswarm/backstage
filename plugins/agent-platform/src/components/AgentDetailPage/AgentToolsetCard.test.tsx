@@ -17,6 +17,10 @@ import {
 import { agentsRouteRef } from '../../routes';
 import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentToolsetCard } from './AgentToolsetCard';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockUseResources = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -254,7 +258,14 @@ async function renderCard(
   );
   return renderInTestApp(
     api ? (
-      <TestApiProvider apis={[[musterApiRef, api]]}>{tree}</TestApiProvider>
+      <TestApiProvider
+        apis={[
+          [musterApiRef, api],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
+      >
+        {tree}
+      </TestApiProvider>
     ) : (
       tree
     ),

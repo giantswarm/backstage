@@ -1,6 +1,7 @@
 import { CSSProperties, Fragment, ReactNode, useMemo } from 'react';
-import { Flex, Link, Text } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
 import {
+  ExternalLink,
   DateComponent,
   FactList,
   CommitSha,
@@ -58,9 +59,9 @@ function Message({
     <Text as="span" variant="body-small" color="secondary" data-testid={testId}>
       {linkify(text, repositories).map((part, i) =>
         part.href ? (
-          <Link key={i} href={part.href} target="_blank" rel="noopener">
+          <ExternalLink key={i} href={part.href} display="inline">
             {part.text}
-          </Link>
+          </ExternalLink>
         ) : (
           <Fragment key={i}>{part.text}</Fragment>
         ),
@@ -86,9 +87,9 @@ function RevertedBy({ revert }: { revert: ActionRevert }) {
     <span data-testid="action-revert">
       {', reverted by '}
       {href ? (
-        <Link href={href} target="_blank" rel="noopener">
+        <ExternalLink href={href} display="inline">
           {name}
-        </Link>
+        </ExternalLink>
       ) : (
         name
       )}
@@ -165,10 +166,10 @@ export function ActionDetails({
             {status.pullRequests.map(pr => (
               <li key={`${pr.repository}#${pr.number}`}>
                 {pr.url ? (
-                  <Link href={pr.url} target="_blank" rel="noopener">
+                  <ExternalLink href={pr.url} display="inline">
                     {pr.repository}
                     {pr.number ? `#${pr.number}` : ''}
-                  </Link>
+                  </ExternalLink>
                 ) : (
                   `${pr.repository}${pr.number ? `#${pr.number}` : ''}`
                 )}
@@ -188,9 +189,9 @@ export function ActionDetails({
           {approval.url && (
             <>
               {' '}
-              <Link href={approval.url} target="_blank" rel="noopener">
+              <ExternalLink href={approval.url} display="inline">
                 thread
-              </Link>
+              </ExternalLink>
             </>
           )}
         </Text>

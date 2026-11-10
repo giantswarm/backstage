@@ -94,6 +94,8 @@ them and never invent a palette.
   (name plus one or two numbers) for analytic tables.
 - Long lists render through `ShowMore` (`INITIAL_ROWS` = 20 per page,
   `revealAll` for bounded excerpts such as "Used by" at `USED_BY_ROWS` = 10).
+  The exception, by product decision: Customize's Connectors list renders
+  every connector at once, sortable by its headers.
 - Search and filter chrome appear only past `SEARCH_MIN` = 8 entries, or while
   a search or filter is in force so it can be cleared. Selects use
   `searchableIf(options)` for type-ahead.
@@ -211,8 +213,17 @@ them and never invent a palette.
   inside a text link takes the link's colour from the same rule.
 - The underline is the cue, not the colour: #00609c holds 4.5:1 against every
   surface a link sits on, but only 2.3:1 against the body text, short of the
-  3:1 at which colour alone may mark a link. A trailing arrow is not a cue
-  either: "↗" marks a new tab (`ExternalLink`, `GSReleaseInfo`), nothing else.
+  3:1 at which colour alone may mark a link. The trailing launch icon is not
+  a cue either: it marks a new tab, nothing else.
+- A text link to outside the portal opens in a new tab and shows the
+  external-link icon with a hidden "(opens in a new tab)": `ExternalLink`.
+  See "Links" in `docs/ui.md`.
+- A link or button that opens a new tab says so the one way: the launch icon
+  after its text and "(opens in a new tab)" for a screen reader, from
+  `ui-react`'s `ExternalLink` (text), `ExternalButtonLink` (a bui
+  `ButtonLink`) or `ExternalCellText` (a table cell). Never a text arrow
+  ("↗") or another icon; a `Button` that opens a tab from code takes
+  `NewTabLabel` as its label.
 - Dark mode: the shell renders light, but a toast inverts the theme the person
   picked, so its links can sit on bui's dark surfaces. There the link colour is
   #bcdcff (`agentShellDarkColors`), which holds 4.5:1 against bui's dark app

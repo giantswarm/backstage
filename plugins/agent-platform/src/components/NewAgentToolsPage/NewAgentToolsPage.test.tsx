@@ -32,6 +32,10 @@ import {
   useNewAgentForm,
 } from '../NewAgentFormProvider';
 import { NewAgentToolsPage } from './NewAgentToolsPage';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // No skill repositories: the Tools step is step 2 of 3 and "Back" is step 1.
 jest.mock('../../hooks/useSkillCatalog', () => ({
@@ -487,7 +491,12 @@ async function renderStep(
   );
   return renderInTestApp(
     options.api ? (
-      <TestApiProvider apis={[[musterApiRef, options.api]]}>
+      <TestApiProvider
+        apis={[
+          [musterApiRef, options.api],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
+      >
         {tree}
       </TestApiProvider>
     ) : (
@@ -567,16 +576,9 @@ async function connectorsListed() {
 }
 
 describe('NewAgentToolsPage', () => {
-  let windowOpen: jest.SpyInstance;
   beforeEach(() => {
     mockUseResources.mockReset();
     CARRIERS = [];
-    // jsdom has no window.open; null is the popup-blocked answer the sign-in
-    // hook tolerates.
-    windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
-  });
-  afterEach(() => {
-    windowOpen.mockRestore();
   });
 
   describe('the access level', () => {

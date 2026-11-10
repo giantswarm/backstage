@@ -20,6 +20,10 @@ import { fleetImageScanWorkflow } from '../../lib/__fixtures__/fleetImageScan';
 import { DEFAULT_DETAILS_HEIGHT } from './WorkflowFlowCanvas';
 import { WorkflowPage } from './WorkflowPage';
 import { useWorkflowPageTarget } from './workflowPageTarget';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // A textarea stands in for the CodeMirror editor, so the raw-YAML assertion
 // can read the definition as the textbox's value.
@@ -354,7 +358,10 @@ async function renderAt(
         '/customize/workflows': workflowsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
-      apis: [[musterApiRef, api as never]],
+      apis: [
+        [musterApiRef, api as never],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ],
     },
   );
   return api;

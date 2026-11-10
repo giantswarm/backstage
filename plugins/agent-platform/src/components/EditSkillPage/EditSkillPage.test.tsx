@@ -101,6 +101,8 @@ const loaded: SkillCatalog = {
   failedRepositories: [],
   truncated: false,
   privateRepositories: new Set(),
+  proposalTargets: [],
+  unproposableRepositories: [],
 };
 
 function renderPage(path = 'giantswarm/skills/support/ticket-triage') {

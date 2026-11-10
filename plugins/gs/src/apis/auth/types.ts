@@ -13,6 +13,7 @@ import {
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { SignInConnectorMemory } from './signInConnectorMemory';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
 
 export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
@@ -120,6 +121,8 @@ export type GSAuthProvidersApiCreateOptions = {
   provider?: AuthProviderInfo;
   configApi?: ConfigApi;
   oauthRequestApi: OAuthRequestApi;
+  /** Asks the person before a server-provided address is opened. */
+  externalUrlConsentApi: ExternalUrlConsentApi;
   defaultScopes?: string[];
   /**
    * Store that records per-cluster access outcomes (success / degraded /

@@ -13,9 +13,9 @@ import {
   isPagerDutyAvailable,
   pagerDutyApiRef,
 } from '@pagerduty/backstage-plugin';
-import { Avatar, Box, Card, Flex, Link, Text } from '@backstage/ui';
+import { Avatar, Box, Card, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { RiExternalLinkLine } from '@remixicon/react';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 const PAGERDUTY_USER_ID_ANNOTATION = 'pagerduty.com/user-id';
 
@@ -54,11 +54,6 @@ const useStyles = makeStyles({
   cardTextContainer: {
     overflow: 'hidden',
   },
-  externalLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 'var(--bui-space-1)',
-  },
 });
 
 function OnCallUserTile({
@@ -94,16 +89,13 @@ function OnCallUserTile({
           {displayName}
         </Text>
         {policyUrl && policyName && (
-          <Link
-            className={classes.externalLink}
+          <ExternalLink
             href={policyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
             title="Open escalation policy in PagerDuty"
+            variant="body-medium"
           >
             {policyName}
-            <RiExternalLinkLine size={14} />
-          </Link>
+          </ExternalLink>
         )}
       </Flex>
     </>
@@ -186,14 +178,13 @@ function WhoIsOnCallContent() {
   }, [api, catalogApi, entity]);
 
   const headerActions = serviceUrl ? (
-    <Link
+    <ExternalLink
       href={serviceUrl}
-      target="_blank"
-      rel="noopener noreferrer"
       title="Open service in PagerDuty"
+      variant="body-medium"
     >
       View in PagerDuty
-    </Link>
+    </ExternalLink>
   ) : undefined;
 
   let body;

@@ -93,6 +93,40 @@ describe('useMusterServerAvailability', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.presenceOf('gamma')).toBe('unknown');
     expect(result.current.available).toEqual([]);
+    expect(result.current.failedOf('gamma')).toBe(true);
+  });
+
+  it('says a server list failed only once its read has failed', async () => {
+    let fail: (error: Error) => void = () => {};
+    listServers.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    const { result } = renderHook(
+      () => useMusterServerAvailability('agent-manager', ['alpha']),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(listServers).toHaveBeenCalled());
+    expect(result.current.presenceOf('alpha')).toBe('unknown');
+    expect(result.current.failedOf('alpha')).toBe(false);
+
+    fail(new Error('muster down'));
+    await waitFor(() => expect(result.current.failedOf('alpha')).toBe(true));
+    expect(result.current.presenceOf('alpha')).toBe('unknown');
+  });
+
+  it('says nothing failed for an installation muster answered', async () => {
+    const { result } = renderHook(
+      () => useMusterServerAvailability('agent-manager', ['alpha']),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.presenceOf('alpha')).toBe('available'),
+    );
+    expect(result.current.failedOf('alpha')).toBe(false);
   });
 
   it('reports a missing server before the shared identity, which a sign-in alone would not fix', async () => {

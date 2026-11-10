@@ -1,5 +1,6 @@
 import { Link, Text } from '@backstage/ui';
 import { CommitSha } from '../CommitSha';
+import { ExternalLink } from '../ExternalLink';
 import { useShellScope } from '../ShellScope';
 
 const REPOSITORY_URL = 'https://github.com/giantswarm/backstage';
@@ -18,39 +19,39 @@ const RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+(-rc\.\d+)?$/;
  * the app's `config.d.ts`) and leaves the line out when it is unset, so this
  * library reads no config of its own.
  *
- * Both links open a new tab. Inside the shell (`ShellScopeProvider`) their
- * text ends in "↗", as the shell's other new-tab links do; classic pages keep
- * the plain line.
+ * Both links open a new tab. Inside the shell (`ShellScopeProvider`) they are
+ * `ExternalLink`s, which say so with the launch icon and "(opens in a new
+ * tab)"; classic pages keep the plain line, as the classic home page's footer
+ * always had it.
  */
 export const GSReleaseInfo = ({ version }: { version: string }) => {
   const inShell = useShellScope();
-  const newTabMarker = inShell ? ' ↗' : '';
   const bareVersion = version.replace(/^v/, '');
   const isRelease = RELEASE_VERSION_PATTERN.test(bareVersion);
   const tag = `v${bareVersion}`;
 
-  return (
-    <Text as="p" variant="body-small" color="secondary">
-      This is{' '}
+  const newTabLink = (href: string, text: string) =>
+    inShell ? (
+      <ExternalLink href={href} display="inline" variant="body-small">
+        {text}
+      </ExternalLink>
+    ) : (
       <Link
-        href={REPOSITORY_URL}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
         variant="body-small"
       >
-        backstage{newTabMarker}
-      </Link>{' '}
-      provided by Giant Swarm, release{' '}
+        {text}
+      </Link>
+    );
+
+  return (
+    <Text as="p" variant="body-small" color="secondary">
+      This is {newTabLink(REPOSITORY_URL, 'backstage')} provided by Giant Swarm,
+      release{' '}
       {isRelease ? (
-        <Link
-          href={`${REPOSITORY_URL}/releases/tag/${tag}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="body-small"
-        >
-          {tag}
-          {newTabMarker}
-        </Link>
+        newTabLink(`${REPOSITORY_URL}/releases/tag/${tag}`, tag)
       ) : (
         <CommitSha value={version} />
       )}

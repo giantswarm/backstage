@@ -1,6 +1,10 @@
-import { Flex, Link, Text } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { ShowMore, USED_BY_ROWS } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  ShowMore,
+  USED_BY_ROWS,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { SKILL_MD } from '../../lib/skillFiles';
 import {
@@ -67,14 +71,9 @@ export function SkillEditFiles({
             : `These ${count} files stay as they are`}
         </Text>
         {githubUrl && (
-          <Link
-            href={githubUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="body-small"
-          >
-            Edit on GitHub ↗
-          </Link>
+          <ExternalLink href={githubUrl} variant="body-small">
+            Edit on GitHub
+          </ExternalLink>
         )}
       </Flex>
       <ShowMore items={others} initial={USED_BY_ROWS} noun="file" revealAll>
@@ -82,16 +81,15 @@ export function SkillEditFiles({
           <ul className={classes.list} aria-label="Files that stay as they are">
             {shown.map(file => (
               <li key={file.path} className={classes.path}>
-                <Link
+                <ExternalLink
                   href={`${skillHref}/instructions?${SKILL_FILE_PARAM}=${encodeURIComponent(
                     file.path,
                   ).replace(/%2F/g, '/')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   variant="body-small"
+                  display="inline"
                 >
                   {file.path}
-                </Link>
+                </ExternalLink>
               </li>
             ))}
           </ul>

@@ -9,6 +9,10 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useChatGptConnection } from './useChatGptConnection';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The ModelConfig the targeted read answers; undefined for a refused read. */
 let mockModelConfig: ModelConfig | undefined;
@@ -42,7 +46,12 @@ function render(chatgpt: 'connected' | 'auth_required' | 'pending') {
     defaultOptions: { queries: { retry: false } },
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );

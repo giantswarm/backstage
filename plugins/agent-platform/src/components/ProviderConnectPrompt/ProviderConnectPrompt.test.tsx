@@ -26,6 +26,10 @@ import {
   type WorkspaceManagerFake,
 } from '../WorkspaceEditorPage/workspaceManagerFake';
 import { ProviderConnectPrompt } from './ProviderConnectPrompt';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** Two provider instances of different kinds, each with its own App. */
 const GITHUB: WorkspaceProvider = {
@@ -80,6 +84,12 @@ function Host({ onConnected }: { onConnected: (name: string) => void }) {
   );
 }
 
+/** The external URL consent dialog's queue; nothing answers unless a test does. */
+let consent: ExternalUrlConsentManager;
+beforeEach(() => {
+  consent = new ExternalUrlConsentManager(jest.fn());
+});
+
 function renderHost(fake: WorkspaceManagerFake) {
   const onConnected = jest.fn();
   const musterApi = {
@@ -97,7 +107,12 @@ function renderHost(fake: WorkspaceManagerFake) {
     },
   });
   render(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [externalUrlConsentApiRef, consent],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <Host onConnected={onConnected} />
       </QueryClientProvider>
@@ -122,12 +137,7 @@ function twoProviders() {
   });
 }
 
-let open: jest.SpyInstance;
-beforeEach(() => {
-  open = jest.spyOn(window, 'open').mockReturnValue(null);
-});
 afterEach(() => {
-  open.mockRestore();
   focusManager.setFocused(undefined);
 });
 
@@ -268,7 +278,8 @@ describe('ProviderConnectPrompt', () => {
     );
   });
 
-  it('says the sign-in is being prepared once its tab is closed before muster answered', async () => {
+  it('asks before opening the sign-in, and offers it again when not opened', async () => {
+    const authUrl = 'https://muster.lab.example.io/oauth/proxy/start?state=abc';
     const fake = createWorkspaceManagerFake({
       providers: [
         {
@@ -280,53 +291,27 @@ describe('ProviderConnectPrompt', () => {
       repositories: [],
       managerSignIn: 'auth_required',
     });
-    const tab = {
-      closed: false,
-      opener: window,
-      close: jest.fn(),
-      location: { href: 'about:blank' },
-    };
-    open.mockReturnValue(tab as unknown as Window);
-    let answer: (value: unknown) => void = () => {};
-    fake.signInServer.mockImplementationOnce(
-      () =>
-        new Promise(resolve => {
-          answer = resolve;
-        }) as never,
-    );
+    fake.signInServer.mockResolvedValueOnce({
+      status: 'auth_required',
+      authUrl,
+      message: 'Sign in to workspace-manager.',
+    } as never);
     renderHost(fake);
 
     fireEvent.click(
       await screen.findByRole('button', { name: /Continue with GitHub/ }),
     );
-    await waitFor(() => expect(fake.signInServer).toHaveBeenCalled());
+    await waitFor(() => expect(consent.current()?.url).toBe(authUrl));
+    act(() => consent.answer(consent.current()!.id, 'decline'));
 
-    tab.closed = true;
-
-    // Not "finish in the other tab": there is none, and no page yet.
-    expect(
-      await screen.findByText(
-        'Preparing the GitHub sign-in…',
-        {},
-        { timeout: 3_000 },
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Finish in the other tab/)).toBeNull();
-
-    await act(async () =>
-      answer({
-        status: 'auth_required',
-        authUrl: 'https://muster.lab.example.io/oauth/proxy/start?state=abc',
-        message: 'Sign in to workspace-manager.',
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Open the GitHub sign-in (opens in a new tab)',
       }),
     );
 
-    expect(
-      await screen.findByRole('link', { name: 'Open the GitHub sign-in' }),
-    ).toHaveAttribute(
-      'href',
-      'https://muster.lab.example.io/oauth/proxy/start?state=abc',
-    );
+    expect(consent.current()?.url).toBe(authUrl);
+    expect(fake.signInServer).toHaveBeenCalledTimes(1);
   });
 
   it('starts a grant through the server the manager is pinned to', async () => {

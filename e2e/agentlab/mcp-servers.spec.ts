@@ -5,14 +5,15 @@ import {
   expect,
   open,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { connectorRow, INVENTORY_REJECTED_TOKEN, SHOWN } from './connectors';
 import { lab } from './lab';
 
 /**
  * Connectors (the muster plugin) in the agent shell, as the admin uses them:
- * Customize's Connectors tab — the installation's connectors in one list, the
- * registered ones first, a family one row, the platform's own tagged by their
+ * Customize's Connectors tab — the installation's connectors in one list, by
+ * name and sortable by its headers, a family one row, the platform's own tagged by their
  * tool-group label — its search over connector and tool names, the muster
  * session behind **Connect to muster**, a connector's page with its tabs, a
  * tool's own page where it is tried, and the per-connector **Sign in** the lab's
@@ -52,7 +53,7 @@ async function openTechnicalDetails(page: Page) {
   }).toPass();
 }
 
-test('Customize · Connectors lists every connector, the registered ones first', async ({
+test('Customize · Connectors lists every connector by name, sortable by its headers', async ({
   admin,
 }) => {
   // The old address lands on Customize's Connectors tab.
@@ -81,12 +82,24 @@ test('Customize · Connectors lists every connector, the registered ones first',
   ]) {
     await expect(connectorRow(admin, name)).toBeVisible();
   }
-  // The fixture carries no tool-group label: registered, so listed before
-  // the platform's own.
-  const names = await admin.getByRole('rowheader').allInnerTexts();
-  const at = (name: string) => names.findIndex(text => text.includes(name));
-  expect(at(SHOWN.fixture)).toBeLessThan(at(SHOWN.kubernetes));
-  expect(at(SHOWN.fixture)).toBeLessThan(at(SHOWN.agentManager));
+  // One list by name, whatever the case: the registered fixture, the
+  // platform's own and muster among each other, every one at once.
+  const shownNames = async () =>
+    // The name's link, not the row header's text, which starts with the
+    // logo's letter while the logo has no icon.
+    admin.getByRole('rowheader').getByRole('link').allInnerTexts();
+  const byName = new Intl.Collator(undefined, {
+    sensitivity: 'base',
+    numeric: true,
+  }).compare;
+  const names = await shownNames();
+  expect(names).toEqual([...names].sort(byName));
+  await expect(
+    admin.getByRole('button', { name: /^Show \d+ more/ }),
+  ).toHaveCount(0);
+  // A click on the name's header reverses the order.
+  await admin.getByRole('columnheader', { name: /^Connector/ }).click();
+  await expect.poll(shownNames).toEqual([...names].reverse());
   // The platform's own carry the tag their label reads as.
   await expect(connectorRow(admin, SHOWN.kubernetes)).toContainText(
     'infrastructure',
@@ -254,11 +267,12 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
     await signOut();
   }
 
-  // The per-server Sign in: a popup through muster's OAuth proxy to the lab
+  // The per-server Sign in: a page through muster's OAuth proxy to the lab
   // Dex, completed with the same fixture account.
-  const popup = admin.waitForEvent('popup');
-  await signIn.click();
-  await completeDexLogin(await popup, lab.users.admin);
+  await completeDexLogin(
+    await openThroughConsent(admin, signIn),
+    lab.users.admin,
+  );
   await expect(signIn, 'signed in, the page no longer asks for it').toBeHidden({
     timeout: 60_000,
   });
