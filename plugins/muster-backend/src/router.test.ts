@@ -1487,6 +1487,7 @@ describe('createRouter', () => {
         {},
         {
           urlElicitation: true,
+          signal: expect.any(AbortSignal),
         },
       );
     });
@@ -1502,7 +1503,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'core_service_stop',
         { name: 'k8s' },
-        { urlElicitation: true },
+        { urlElicitation: true, signal: expect.any(AbortSignal) },
       );
     });
 
@@ -1560,8 +1561,35 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_start_session',
         {},
-        { ...asPerson, urlElicitation: true },
+        {
+          ...asPerson,
+          urlElicitation: true,
+          signal: expect.any(AbortSignal),
+        },
       );
+    });
+
+    it('cancels the muster call when the page goes away', async () => {
+      let signal: AbortSignal | undefined;
+      callTool.mockImplementation(
+        (_name: string, _args: unknown, options: { signal?: AbortSignal }) =>
+          new Promise(resolve => {
+            signal = options.signal;
+            signal?.addEventListener('abort', () => resolve({}));
+          }),
+      );
+
+      await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {} })
+        .timeout(200)
+        .catch(() => undefined);
+
+      for (let i = 0; i < 50 && !signal?.aborted; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(signal?.aborted).toBe(true);
     });
 
     it("passes the person's answer to muster's URL elicitation on", async () => {
@@ -1584,6 +1612,7 @@ describe('createRouter', () => {
           ...asPerson,
           urlElicitation: true,
           input,
+          signal: expect.any(AbortSignal),
         },
       );
     });

@@ -1301,6 +1301,27 @@ describe('MusterApiClient URL elicitations', () => {
     });
   });
 
+  it('sends no retry once the call is cancelled while the person is asked', async () => {
+    const abort = new AbortController();
+    const open = jest.fn(async () => {
+      abort.abort();
+      return 'accept' as const;
+    });
+    const { client, fetchMock } = setup({
+      consent: { open } as unknown as ExternalUrlConsentApi,
+    });
+    answerCalls(fetchMock, inputRequired());
+
+    await expect(
+      client.callTool('x_github_get_me', {}, 'open', { signal: abort.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(callBodies(fetchMock)).toHaveLength(1);
+    const [, init] = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('/call'),
+    )!;
+    expect((init as RequestInit).signal).toBe(abort.signal);
+  });
+
   it('gives up after a few rounds of the same question', async () => {
     const consentApi = consent('accept');
     const { client, fetchMock } = setup({ consent: consentApi });

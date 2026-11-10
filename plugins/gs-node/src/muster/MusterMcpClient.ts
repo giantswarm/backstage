@@ -645,6 +645,11 @@ export interface MusterCallOptions {
   urlElicitation?: boolean;
   /** The person's answer to the call's {@link MusterInputRequiredError}. */
   input?: MusterInputAnswer;
+  /**
+   * Cancels a call that declares URL elicitation or answers one: muster is
+   * sent `notifications/cancelled` and stops waiting on the sign-in.
+   */
+  signal?: AbortSignal;
 }
 
 /** One `notifications/progress` of a tool call, as muster relayed it. */
@@ -907,7 +912,6 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options: MusterCallOptions & {
       onProgress: (progress: MusterToolProgress) => void;
-      signal?: AbortSignal;
     },
   ): Promise<unknown> {
     return this.gated(toolName, options, async () => {
@@ -1391,6 +1395,7 @@ export class MusterMcpClient {
       client.callTool(this.callToolParams(toolName, args, options), {
         timeout: TOOL_CALL_TIMEOUT_MS,
         allowInputRequired: true,
+        signal: options.signal,
       }),
     );
     return this.answeredOrThrow(result, toolName);

@@ -690,10 +690,17 @@ export async function createRouter(
     // 500 at which the error middleware sends it to Sentry. The error holds
     // muster's message and text blocks only, never the request's arguments
     // (which may carry a client secret).
+    const callOptions = elicitableCallOptions(req, installation);
+    const abort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) {
+        abort.abort();
+      }
+    });
     const result = await client.callTool(
       name,
       (toolArgs as Record<string, unknown>) ?? {},
-      elicitableCallOptions(req, installation),
+      { ...callOptions, signal: abort.signal },
     );
     res.json(result);
   });

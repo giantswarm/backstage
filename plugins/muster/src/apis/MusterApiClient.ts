@@ -458,19 +458,25 @@ export class MusterApiClient implements MusterApi {
    * -- a sign-in to the tool's server, a server's own page such as a
    * credential form -- the page is put to the person in the consent dialog,
    * and the call is sent again with their answer. Declined or dismissed,
-   * muster answers the call's error.
+   * muster answers the call's error. `signal` cancels the call, the retry
+   * muster holds until a sign-in completes included.
    */
   async callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
+    options?: { signal?: AbortSignal },
   ): Promise<unknown> {
-    return this.withElicitations(name, input =>
-      this.post<unknown>(
-        '/call',
-        { name, arguments: args, ...(input ? { input } : {}) },
-        installation,
-      ),
+    return this.withElicitations(
+      name,
+      input =>
+        this.post<unknown>(
+          '/call',
+          { name, arguments: args, ...(input ? { input } : {}) },
+          installation,
+          options?.signal,
+        ),
+      options?.signal,
     );
   }
 
@@ -483,8 +489,10 @@ export class MusterApiClient implements MusterApi {
       signal?: AbortSignal;
     },
   ): Promise<unknown> {
-    return this.withElicitations(name, input =>
-      this.runWithProgress(name, args, options, input),
+    return this.withElicitations(
+      name,
+      input => this.runWithProgress(name, args, options, input),
+      options.signal,
     );
   }
 
@@ -495,6 +503,7 @@ export class MusterApiClient implements MusterApi {
   private async withElicitations<T>(
     name: string,
     call: (input: MusterInputAnswer | undefined) => Promise<T>,
+    signal: AbortSignal | undefined,
   ): Promise<T> {
     let input: MusterInputAnswer | undefined;
     for (let round = 0; ; round++) {
@@ -513,6 +522,7 @@ export class MusterApiClient implements MusterApi {
           error.elicitations,
           error.requestState,
         );
+        signal?.throwIfAborted();
       }
     }
   }
@@ -971,6 +981,7 @@ export class MusterApiClient implements MusterApi {
     path: string,
     body: unknown,
     installation?: string,
+    signal?: AbortSignal,
   ): Promise<T> {
     const answer = await this.send(
       path,
@@ -978,6 +989,7 @@ export class MusterApiClient implements MusterApi {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       },
       installation,
     );
