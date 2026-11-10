@@ -54,6 +54,7 @@ import {
   WorkflowExecution,
   WorkflowExecutionListResponse,
   WorkflowListResponse,
+  McpToolLatency,
   McpUsage,
   WorkflowStats,
 } from './types';
@@ -189,6 +190,26 @@ export function toolErrorDetails(error: unknown): string[] {
   return isStringArray(details) ? details : [];
 }
 
+/** The window and narrowing of a usage read, as a query string. */
+function usageQuery(options: {
+  hours?: number;
+  servers?: readonly string[];
+  tool?: string;
+}): string {
+  const searchParams = new URLSearchParams();
+  if (options.hours !== undefined) {
+    searchParams.set('hours', String(options.hours));
+  }
+  for (const server of options.servers ?? []) {
+    searchParams.append('server', server);
+  }
+  if (options.tool !== undefined) {
+    searchParams.set('tool', options.tool);
+  }
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
 export class MusterApiClient implements MusterApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
@@ -287,19 +308,21 @@ export class MusterApiClient implements MusterApi {
       tool?: string;
     } = {},
   ): Promise<McpUsage> {
-    const searchParams = new URLSearchParams();
-    if (options.hours !== undefined) {
-      searchParams.set('hours', String(options.hours));
-    }
-    for (const server of options.servers ?? []) {
-      searchParams.append('server', server);
-    }
-    if (options.tool !== undefined) {
-      searchParams.set('tool', options.tool);
-    }
-    const query = searchParams.toString();
     return this.get<McpUsage>(
-      `/usage${query ? `?${query}` : ''}`,
+      `/usage${usageQuery(options)}`,
+      options.installation,
+    );
+  }
+
+  async getMcpToolLatency(
+    options: {
+      installation?: string;
+      hours?: number;
+      servers?: readonly string[];
+    } = {},
+  ): Promise<McpToolLatency> {
+    return this.get<McpToolLatency>(
+      `/usage/tool-latency${usageQuery(options)}`,
       options.installation,
     );
   }

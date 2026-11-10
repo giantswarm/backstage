@@ -333,7 +333,8 @@ export function llmUsageQueriesFor({
  * label (an email, or `unknown` where the runtime named nobody), over the
  * same window as {@link llmUsageQueriesFor}: the monthly view's by-person
  * table (giantswarm/backstage#2672). No model calls: the duration histogram
- * is the server's, and the label is not asserted on it.
+ * is the server's, and the label is not asserted on it. Tokens keep
+ * `gen_ai_token_type` so each person's tokens are counted once.
  */
 export function byPersonQueriesFor({
   days,
@@ -345,7 +346,7 @@ export function byPersonQueriesFor({
   const only = orgSelector(org);
   return {
     cost: `sum by (user) ${counterIncrease(`${Cost.name}${only}`, range, undefined, at)}`,
-    tokens: `sum by (user) ${counterIncrease(`${TokenUsage.name}_sum${only}`, range, undefined, at)}`,
+    tokens: `sum by (user, gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum${only}`, range, undefined, at)}`,
   };
 }
 

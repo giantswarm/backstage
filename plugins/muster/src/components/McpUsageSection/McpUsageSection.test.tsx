@@ -565,3 +565,76 @@ describe('McpUsageSection tables at phone width', () => {
     expect(screen.queryByText(/errors · p95/)).toBeNull();
   });
 });
+
+describe('McpUsageSection tool latency', () => {
+  const usage: McpUsage = {
+    available: true,
+    range_hours: 720,
+    step_hours: 24,
+    buckets: [
+      { start: '2026-11-08T00:00:00.000Z', ok: 30, error: 0, error_result: 0 },
+    ],
+    totals: {
+      calls: 30,
+      errors: 0,
+      error_ratio: 0,
+      p95_seconds: 0.4,
+      distinct_tools: 1,
+    },
+    top_tools: [
+      { tool: 'x_kagi_search', calls: 30, errors: 0, p95_seconds: null },
+    ],
+    servers: [],
+  };
+
+  it('shows the figures before the per-tool p95, then fills it in from its own read', async () => {
+    let answerLatency: (value: unknown) => void = () => {};
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue(usage),
+      getMcpToolLatency: jest.fn(
+        () =>
+          new Promise(resolve => {
+            answerLatency = resolve;
+          }),
+      ),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    mountSection(api as Partial<MusterApi>, reachable());
+
+    expect(await screen.findByText('x_kagi_search')).toBeInTheDocument();
+    expect(screen.getByLabelText('Reading p95')).toBeInTheDocument();
+    expect(api.getMcpToolLatency).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: [],
+    });
+
+    await act(async () => {
+      answerLatency({
+        available: true,
+        range_hours: 720,
+        tools: [{ tool: 'x_kagi_search', p95_seconds: 1.5 }],
+      });
+    });
+
+    expect(await screen.findByText('1.5 s')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Reading p95')).not.toBeInTheDocument();
+  });
+
+  it('leaves the column empty when the latency read fails', async () => {
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue(usage),
+      getMcpToolLatency: jest.fn().mockRejectedValue(new Error('timeout')),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    mountSection(api as Partial<MusterApi>, reachable());
+
+    expect(await screen.findByText('x_kagi_search')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reading p95')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('Tool calls')).toBeInTheDocument();
+  });
+});

@@ -34,9 +34,12 @@ import { MusterProviders } from '../MusterProviders';
 import {
   errorRatioFigure,
   McpCallsByOutcomeChart,
+  MCP_USAGE_STALE_MS,
   McpDataStartNote,
   McpUsageTable,
+  useToolLatency,
   useUsageColumns,
+  withToolLatency,
 } from '../McpUsage';
 import { SessionGate, Stat, useServerPageLinks } from '../shared';
 
@@ -109,11 +112,14 @@ type ServerRow = McpUsage['servers'][number] & { id: string };
 
 function UsageBody({
   data,
+  p95Loading,
   windowDays,
   installation,
   servers,
 }: {
   data: McpUsage;
+  /** The tools' p95, read apart from `data`, is still on its way. */
+  p95Loading: boolean;
   /** The Usage screen's window, which each connector's link carries. */
   windowDays: UsageWindowDays;
   /** The installation the figures are read on, whose connector pages rows open. */
@@ -146,6 +152,7 @@ function UsageBody({
     label: 'Top tools',
     renderName: row => row.tool,
     withP95: true,
+    p95Loading,
   });
   const serverColumns = useUsageColumns(serverRows, {
     label: 'Connector',
@@ -304,8 +311,18 @@ function McpUsageBody() {
         hours,
       }),
     enabled: Boolean(activeInstallation) && !unreachable,
+    staleTime: MCP_USAGE_STALE_MS,
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
+  const toolLatency = useToolLatency({
+    installation: activeInstallation,
+    hours,
+    enabled: !unreachable,
+  });
+  const usage = useMemo(
+    () => data && withToolLatency(data, toolLatency.latency),
+    [data, toolLatency.latency],
+  );
 
   let body;
   if (unreachable) {
@@ -326,10 +343,11 @@ function McpUsageBody() {
         Usage unavailable: {(error as Error).message}
       </Text>
     );
-  } else if (data) {
+  } else if (usage) {
     body = (
       <UsageBody
-        data={data}
+        data={usage}
+        p95Loading={toolLatency.isLoading}
         windowDays={windowDays}
         installation={activeInstallation}
         servers={mcpServers}

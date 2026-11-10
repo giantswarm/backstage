@@ -188,6 +188,11 @@ function makeApi() {
       async (_tool: string, _args?: unknown, _installation?: string) =>
         ({}) as object,
     ),
+    getMcpToolLatency: jest.fn(async () => ({
+      available: true,
+      range_hours: 720,
+      tools: [{ tool: 'x_jira_search_issues', p95_seconds: 2.5 }],
+    })),
     getMcpUsage: jest.fn(async () => ({
       available: true,
       range_hours: 720,
@@ -1109,6 +1114,23 @@ describe('ConnectorPage Usage tab', () => {
     await screen.findByText('3,418 · 0.4% errors');
 
     expect(api.getMcpUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads each tool’s p95 apart, on the Usage tab only', async () => {
+    const api = await renderAt(`${BASE}/jira/usage`);
+    await screen.findByText('1 of 2');
+
+    expect(api.getMcpToolLatency).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+    expect(await screen.findByText('2.5 s')).toBeInTheDocument();
+
+    api.getMcpToolLatency.mockClear();
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByText('3,418 · 0.4% errors');
+    expect(api.getMcpToolLatency).not.toHaveBeenCalled();
   });
 
   it("reads a family's usage for all its instances", async () => {

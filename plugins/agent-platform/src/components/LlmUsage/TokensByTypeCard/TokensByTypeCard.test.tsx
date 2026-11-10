@@ -31,10 +31,10 @@ function chart(container: HTMLElement) {
 
 const KNOWN: LlmDailySeries = {
   rows: [
-    { day: '2026-09-10', input: 900, output: 100, input_cache_read: 50 },
-    { day: '2026-09-11', input: 800, output: 200, input_cache_read: 0 },
+    { day: '2026-09-10', fresh_input: 850, output: 100, input_cache_read: 50 },
+    { day: '2026-09-11', fresh_input: 800, output: 200, input_cache_read: 0 },
   ],
-  series: ['input', 'output', 'input_cache_read'],
+  series: ['fresh_input', 'output', 'input_cache_read'],
 };
 
 describe('TokensByTypeCard', () => {
@@ -43,7 +43,7 @@ describe('TokensByTypeCard', () => {
 
     expect(chart(container).series).toEqual([
       'input_cache_read:cache read',
-      'input:input',
+      'fresh_input:fresh input',
       'output:output',
     ]);
   });
@@ -52,18 +52,20 @@ describe('TokensByTypeCard', () => {
     // Dropped, its tokens vanished from this chart while still counting in the
     // totals strip above — two panels disagreeing with nothing explaining why.
     const daily: LlmDailySeries = {
-      rows: [{ day: '2026-09-10', input: 900, reasoning: 40, unknown: 10 }],
-      series: ['input', 'reasoning', 'unknown'],
+      rows: [
+        { day: '2026-09-10', fresh_input: 900, reasoning: 40, unknown: 10 },
+      ],
+      series: ['fresh_input', 'reasoning', 'unknown'],
     };
 
     const { series, rows } = chart(
       render(<TokensByTypeCard daily={daily} />).container,
     );
 
-    expect(series).toEqual(['input:input', '__other__:other']);
+    expect(series).toEqual(['fresh_input:fresh input', '__other__:other']);
     // 40 + 10, so the day's total still adds up.
     expect(rows[0].__other__).toBe(50);
-    expect(rows[0].input).toBe(900);
+    expect(rows[0].fresh_input).toBe(900);
   });
 
   it('adds no pooled band when every type is known', () => {
@@ -76,12 +78,12 @@ describe('TokensByTypeCard', () => {
 
   it('omits a known type absent from the data', () => {
     const daily: LlmDailySeries = {
-      rows: [{ day: '2026-09-10', input: 900 }],
-      series: ['input'],
+      rows: [{ day: '2026-09-10', fresh_input: 900 }],
+      series: ['fresh_input'],
     };
 
     expect(
       chart(render(<TokensByTypeCard daily={daily} />).container).series,
-    ).toEqual(['input:input']);
+    ).toEqual(['fresh_input:fresh input']);
   });
 });

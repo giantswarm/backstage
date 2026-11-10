@@ -111,7 +111,22 @@ export interface McpUsageToolRow {
   tool: string;
   calls: number;
   errors: number;
+  /**
+   * Set by `/usage` only where it is narrowed to this one tool; every tool's
+   * comes from `/usage/tool-latency` ({@link McpToolLatency}).
+   */
   p95_seconds: number | null;
+}
+
+/**
+ * The p95 latency of every tool called in the window (`/usage/tool-latency`),
+ * read apart from {@link McpUsage} because its query is the slowest.
+ */
+export interface McpToolLatency {
+  available: boolean;
+  reason?: string;
+  range_hours: number;
+  tools: Array<{ tool: string; p95_seconds: number | null }>;
 }
 
 /** Per-MCP-server usage rollup over the selected range. */
@@ -641,6 +656,12 @@ export interface MusterApi {
     /** Narrows every figure to one tool, by the name muster exposes it as. */
     tool?: string;
   }): Promise<McpUsage>;
+  /** Every tool's p95 latency over the window, narrowed as {@link getMcpUsage}. */
+  getMcpToolLatency(options?: {
+    installation?: string;
+    hours?: number;
+    servers?: readonly string[];
+  }): Promise<McpToolLatency>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
   /**
