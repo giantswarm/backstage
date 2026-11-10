@@ -2,6 +2,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentManagerModelConfig } from '../agentManager';
 import type {
+  AgentPlatformOrganization,
   MemberResult,
   MyOrganizations,
   OrganizationConnector,
@@ -30,9 +31,21 @@ export type OrganizationsScenario = {
     namespace: string;
     destinations: { origin: string; credentialHeader?: string }[];
   }[];
+  /**
+   * `get_organization`'s organization, as an organizations-admin reads it;
+   * without it the call is refused, as for a member.
+   */
+  organization?: AgentPlatformOrganization;
+  /** `get_organization` answers `not_found`, as once the operator erased it. */
+  organizationErased?: boolean;
+  /** A prepared credential request answered without its operation id. */
+  withoutOperation?: boolean;
   /** What `remove_organization_member` fails with, as muster passes it on. */
   removeError?: string;
 };
+
+/** The operation id the fake's credential requests link to. */
+export const CREDENTIAL_OPERATION = 'b2'.repeat(24);
 
 /** muster's `/installations` and server list with agent-manager on gazelle. */
 export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
@@ -54,6 +67,14 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           }
           return scenario.mine ?? { organizations: [] };
         case 'x_agent-manager_get_organization':
+          if (scenario.organizationErased) {
+            throw new Error(
+              'not_found: get AgentPlatformOrganization org-acme/payments',
+            );
+          }
+          if (scenario.organization) {
+            return { organization: scenario.organization };
+          }
           // A member may not read the AgentPlatformOrganization itself.
           throw new Error(
             'forbidden: you may not get agentplatformorganizations in org-acme: agent-platform:organizations-admin grants it',
@@ -88,6 +109,32 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           return { connectors: scenario.connectors ?? [] };
         case 'x_agent-manager_list_egress_policies':
           return { egressPolicies: scenario.egressPolicies ?? [] };
+        case 'x_agent-manager_set_organization_model':
+        case 'x_agent-manager_set_organization_connector': {
+          // A new model, or a replaced credential: agent-manager prepares a
+          // credential request and answers its operation id and form link.
+          const kind =
+            name === 'x_agent-manager_set_organization_model'
+              ? 'model'
+              : 'connector';
+          return {
+            namespace: args.namespace,
+            kind,
+            name: args.name,
+            pending: true,
+            ...(scenario.withoutOperation
+              ? {}
+              : { credentialOperation: CREDENTIAL_OPERATION }),
+            credentials: [
+              {
+                secret: `tenant-credential-${String(args.name)}`,
+                key: kind === 'model' ? 'apiKey' : 'token',
+                state: args.replaceCredential ? 'replace' : 'missing',
+                formUrl: `https://portal.example.com/credentials?operation=${CREDENTIAL_OPERATION}`,
+              },
+            ],
+          };
+        }
         default:
           throw new Error(`unexpected tool ${name}`);
       }

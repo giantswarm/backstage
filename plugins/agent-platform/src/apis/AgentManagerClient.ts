@@ -22,11 +22,14 @@ import {
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
+import type { CredentialResourceResult } from '../lib/credentialOperations';
 import type {
   MemberRequest,
   MemberResult,
   MyOrganizations,
   OrganizationConnector,
+  OrganizationConnectorCredentialRequest,
+  OrganizationModelRequest,
   OrganizationDetails,
   OrganizationMembers,
 } from '../lib/organizations';
@@ -336,5 +339,29 @@ export class AgentManagerClient {
       { namespace },
     );
     return result.connectors ?? [];
+  }
+
+  /**
+   * Creates an organization's model, or asks for a new key for one. Never
+   * takes a key: one that is missing or replaced comes back as a credential
+   * request (`credentials[].formUrl`).
+   */
+  setOrganizationModel(
+    request: OrganizationModelRequest,
+  ): Promise<CredentialResourceResult> {
+    return this.call<CredentialResourceResult>(
+      AGENT_MANAGER_TOOLS.setOrganizationModel,
+      { ...request },
+    );
+  }
+
+  /** Asks for a new credential value for a connector of the organization. */
+  setOrganizationConnector(
+    request: OrganizationConnectorCredentialRequest,
+  ): Promise<CredentialResourceResult> {
+    return this.call<CredentialResourceResult>(
+      AGENT_MANAGER_TOOLS.setOrganizationConnector,
+      { ...request },
+    );
   }
 }

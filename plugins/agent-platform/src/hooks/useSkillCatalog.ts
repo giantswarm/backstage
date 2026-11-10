@@ -82,12 +82,15 @@ export function useSkillCatalog(installation?: string): SkillCatalog {
       'skill-manager',
       'skills',
       source.kind === 'skill-manager' ? source.installation : '',
+      'json-v1',
     ],
     enabled: source.kind === 'skill-manager',
     queryFn: async () =>
       source.kind === 'skill-manager'
-        ? catalogFromSkillManager(await source.client.listSkills())
+        ? await source.client.listSkills()
         : undefined,
+    // Keep the wire answer in the persisted cache; derive Sets only for readers.
+    select: listing => listing && catalogFromSkillManager(listing),
     retry: false,
   });
   const portal = usePortalSkillCatalog(source.kind === 'portal');
@@ -128,7 +131,8 @@ function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
     config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['agent-platform', 'skills', repositories.join(',')],
+    // Older cache entries contain a Set serialized as {} and must be refetched.
+    queryKey: ['agent-platform', 'skills', repositories.join(','), 'json-v1'],
     enabled: enabled && !configIsLoading && repositories.length > 0,
     queryFn: async () => {
       const baseUrl = await discoveryApi.getBaseUrl('gs');
@@ -194,7 +198,7 @@ function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
         failedRepositories,
         failureMessages,
         truncated,
-        privateRepositories,
+        privateRepositories: [...privateRepositories],
       };
     },
   });
@@ -209,7 +213,7 @@ function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
-    privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
+    privateRepositories: new Set(data?.privateRepositories ?? []),
     proposalTargets: repositories.filter(canProposeSkillTo),
     unproposableRepositories: repositories.filter(
       repoUrl => !canProposeSkillTo(repoUrl),

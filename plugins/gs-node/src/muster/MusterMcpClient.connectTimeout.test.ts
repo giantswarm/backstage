@@ -9,14 +9,13 @@ jest.mock('@ai-sdk/mcp', () => ({
 }));
 
 const mockTransportOptions = jest.fn();
-jest.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
+jest.mock('@modelcontextprotocol/client', () => ({
+  ...jest.requireActual('@modelcontextprotocol/client'),
   StreamableHTTPClientTransport: class {
     constructor(_url: URL, options: unknown) {
       mockTransportOptions(options);
     }
   },
-}));
-jest.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
   Client: class {
     connect() {
       return Promise.reject(new TypeError('fetch failed'));

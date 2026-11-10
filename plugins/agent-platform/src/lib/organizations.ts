@@ -52,8 +52,23 @@ export type AgentPlatformOrganization = {
   ready?: OrganizationCondition;
   defaultModelConfigured?: OrganizationCondition;
   orphaned?: OrganizationCondition;
+  /**
+   * The last revision Flux applied the organization from
+   * (`<branch>@sha1:<sha>`), kept while it is orphaned.
+   */
+  lastAppliedRevision?: string;
+  /** That revision's commit on GitHub, when agent-manager knows the repository. */
+  lastAppliedRevisionUrl?: string;
   deleting?: boolean;
+  /** The step of the erasure the operator is on, while `deleting`. */
+  erasureStep?: string;
 };
+
+/**
+ * The operator's reason for `orphaned` `True` once the organization's delete
+ * pull request merged; any other is Missing from git.
+ */
+export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
 
 /** `get_organization`: the organization, and what a delete would erase. */
 export type OrganizationDetails = {
@@ -151,3 +166,26 @@ export function memberKindLabel(kind: string): string {
       return kind;
   }
 }
+
+/**
+ * `set_organization_model` without a key: a new model of the organization,
+ * or `replaceCredential` on an existing one. A missing or replaced key is a
+ * credential request agent-manager prepares and links to the form.
+ */
+export type OrganizationModelRequest = {
+  namespace: string;
+  name: string;
+  provider?: string;
+  model?: string;
+  replaceCredential?: boolean;
+  /** Idempotency key: one per intended change. */
+  requestId: string;
+};
+
+/** `set_organization_connector` with `replaceCredential`: a new credential value for an existing connector. */
+export type OrganizationConnectorCredentialRequest = {
+  namespace: string;
+  name: string;
+  replaceCredential: true;
+  requestId: string;
+};

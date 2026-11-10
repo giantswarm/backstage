@@ -23,7 +23,17 @@ function musterUnreachableMessage(
  * does not log it again.
  */
 export class MusterUnreachableError extends ReportedServiceUnavailableError {
+  // A private field and a getter rather than an own property, which the
+  // error middleware would serialize into the response body.
+  readonly #installation: string;
+
   constructor(installation: string, reason: string) {
     super(musterUnreachableMessage(installation, reason));
+    this.#installation = installation;
+  }
+
+  /** The installation whose muster could not be reached. */
+  get installation(): string {
+    return this.#installation;
   }
 }

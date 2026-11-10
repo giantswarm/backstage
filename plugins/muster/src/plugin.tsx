@@ -13,6 +13,7 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   musterApiRef,
@@ -140,6 +141,7 @@ const musterApi = ApiBlueprint.make({
         authProvidersApi: musterAuthProvidersApiRef,
         kubernetesApi: kubernetesApiRef,
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+        externalUrlConsentApi: externalUrlConsentApiRef,
       },
       factory: deps => new MusterApiClient(deps),
     }),

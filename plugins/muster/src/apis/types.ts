@@ -694,12 +694,14 @@ export interface MusterApi {
   /**
    * Execute an aggregated tool. The UI executes whatever tools muster exposes;
    * the trust boundary is the downstream MCP server's deployment (e.g.
-   * mcp-kubernetes is deployed read-only), not the portal.
+   * mcp-kubernetes is deployed read-only), not the portal. `signal` cancels
+   * the call, also while it waits on the person's sign-in.
    */
   callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
+    options?: { signal?: AbortSignal },
   ): Promise<unknown>;
   /**
    * {@link callTool} for a tool that reports progress while it works: each

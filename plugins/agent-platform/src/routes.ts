@@ -140,13 +140,14 @@ export const organizationDetailRouteRef = createSubRouteRef({
   parent: organizationsRouteRef,
 });
 
-// The Dev Portal's credential form of one organization
-// (`/organizations/<installation>/<parent>/<name>/credentials`), where a model
-// key or a connector or egress credential is entered and never shown back.
-// The organization page's Models tab links here to add a model with the
-// organization's own key; the form itself is giantswarm/backstage#3364's.
+// The Dev Portal's credential form of one organization's request
+// (`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
+// where a model key or a connector credential is entered and never shown
+// back. agent-manager's `credentials.uiURL` names it with the operation's id
+// as the last segment; the Models and Connectors tabs open it with the id
+// agent-manager answers.
 export const organizationCredentialsRouteRef = createSubRouteRef({
-  path: '/:installation/:parent/:name/credentials',
+  path: '/:installation/:parent/:name/credentials/:operation',
   parent: organizationsRouteRef,
 });
 

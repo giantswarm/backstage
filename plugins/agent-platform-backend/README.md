@@ -156,10 +156,11 @@ one **unauthenticated** `SystemService/GetVersion` per origin
 (`src/kagent/reachability.ts`) — no token, no user data, nothing performed. Behind
 the JWT policy that answers `Unauthenticated`, which proves the route exactly as
 a 401 did; any answer at all is the proof. A DNS failure, a refused or reset
-connection, a TLS failure or no answer within 3 s means `false`, with `reason`
-naming the failure class (codes only, never the host). Answers are cached five
-minutes in gs-node's `ReachabilityCache` and refreshed in the background; the
-route never waits for a probe.
+connection, a TLS failure or no answer within 3 s, on two probes in a row,
+means `false`, with `reason` naming the failure class (codes only, never the
+host); after a single failure the previous answer stands and the next request
+probes again. Answers are cached five minutes in gs-node's `ReachabilityCache`
+and refreshed in the background; the route never waits for a probe.
 
 ### Error mapping: "absent" vs "unwell"
 
