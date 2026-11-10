@@ -14,6 +14,30 @@ describe('MessageMarkdown', () => {
     expect(screen.getByText(/session file/)).toBeInTheDocument();
   });
 
+  it('sets every paragraph at 14px, the size of the user’s own message', async () => {
+    const { container } = await renderInTestApp(
+      <MessageMarkdown
+        text={[
+          'A plain paragraph with a [link](https://example.com) and `code`.',
+          '',
+          '- a loose list item',
+          '',
+          '- whose text is a paragraph',
+          '',
+          '> A quoted paragraph.',
+        ].join('\n')}
+      />,
+    );
+
+    const paragraphs = container.querySelectorAll('p');
+    expect(paragraphs).toHaveLength(4);
+    // bui's body-medium is --bui-font-size-3, 0.875rem; body-small, 12px,
+    // made the agent's reply smaller than the user's message (#3396).
+    paragraphs.forEach(p =>
+      expect(p).toHaveAttribute('data-variant', 'body-medium'),
+    );
+  });
+
   it('keeps whole words in table cells, so a wide table scrolls instead', async () => {
     await renderInTestApp(
       <MessageMarkdown

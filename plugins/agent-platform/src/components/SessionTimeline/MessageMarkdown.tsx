@@ -270,8 +270,10 @@ export function useMarkdownComponents(): Components {
         {children}
       </Text>
     ),
+    // bui's body-medium is 14px, the size of the person's own message beside
+    // it and of the list items and table cells around it; body-small is 12px.
     p: ({ children }) => (
-      <Text as="p" variant="body-small" className={classes.paragraph}>
+      <Text as="p" variant="body-medium" className={classes.paragraph}>
         {children}
       </Text>
     ),
