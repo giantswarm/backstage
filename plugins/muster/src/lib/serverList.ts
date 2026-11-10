@@ -115,8 +115,42 @@ export function serverListRows(
   });
 }
 
+const nameCollator = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+  numeric: true,
+});
+
 /**
- * The servers list for a search, sorted by the name it shows. A row stays
+ * Compares text the way a person reads a list: case-insensitive, so
+ * "Muster" sorts with "muster", and digits by their value, so `connector-2`
+ * comes before `connector-10`.
+ */
+export function compareListText(a: string, b: string): number {
+  return nameCollator.compare(a, b);
+}
+
+/**
+ * The servers list's order: by the name a row shows, then by the name its
+ * page uses, then by its key, so a shadowed server and the family (or
+ * muster) of the same name still take a fixed order. Never 0 for two rows
+ * of one list.
+ */
+export function compareServerListNames(
+  a: Pick<ServerListRow, 'displayName' | 'id' | 'key'>,
+  b: Pick<ServerListRow, 'displayName' | 'id' | 'key'>,
+): number {
+  return (
+    compareListText(a.displayName, b.displayName) ||
+    compareListText(a.id, b.id) ||
+    // Only case tells these apart: still a fixed order.
+    a.id.localeCompare(b.id) ||
+    a.key.localeCompare(b.key)
+  );
+}
+
+/**
+ * The servers list for a search, sorted by the name it shows
+ * ({@link compareServerListNames}). A row stays
  * when its name -- the display name or the one its page uses -- or one of its
  * tags matches, or one of its tools does (by the rule the Tools tab filters with);
  * without a catalogue -- no muster session -- only names and tags are
@@ -147,10 +181,5 @@ export function serverListEntries(
     })
     .filter(entry => entry.nameMatch || (entry.toolMatches ?? 0) > 0)
     .map(({ nameMatch: _nameMatch, ...entry }) => entry)
-    .sort(
-      (a, b) =>
-        a.displayName.localeCompare(b.displayName) ||
-        a.id.localeCompare(b.id) ||
-        a.key.localeCompare(b.key),
-    );
+    .sort(compareServerListNames);
 }

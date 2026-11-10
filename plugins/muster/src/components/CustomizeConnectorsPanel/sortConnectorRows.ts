@@ -1,4 +1,5 @@
 import type { SortDescriptor } from '@backstage/ui';
+import { compareListText, compareServerListNames } from '../../lib/serverList';
 import type { ConnectorReach } from './connectorRows';
 
 /** What the Connectors table's sort reads of a row. */
@@ -8,7 +9,11 @@ export type SortableConnectorRow = {
     displayName: string;
     /** The connector's name. */
     id: string;
+    /** Unique within the list: `family:<name>`, `server:<name>` or `core`. */
+    key: string;
     toolCount?: number;
+    /** How many of its tools a search matched, where its name did not. */
+    toolMatches?: number;
   };
   auth: string;
   /** The row's state as it reads, and its tone. */
@@ -18,7 +23,7 @@ export type SortableConnectorRow = {
 };
 
 /** The columns a header click sorts the Connectors table by. */
-export type ConnectorSortColumn = 'name' | 'auth' | 'tools' | 'status';
+type ConnectorSortColumn = 'name' | 'auth' | 'tools' | 'status';
 
 /** The Connectors table's order before any header is clicked. */
 export const CONNECTORS_DEFAULT_SORT: SortDescriptor = {
@@ -26,30 +31,24 @@ export const CONNECTORS_DEFAULT_SORT: SortDescriptor = {
   direction: 'ascending',
 };
 
-const collator = new Intl.Collator(undefined, {
-  sensitivity: 'base',
-  numeric: true,
-});
-
 /**
- * Compares text the way a person reads a list: case-insensitive, so
- * "Muster" sorts with "muster", and digits by their value.
+ * By the name a row shows, the servers list's own order: case-insensitive,
+ * digits by value, a fixed order for any two rows.
  */
-function compareText(a: string, b: string): number {
-  return collator.compare(a, b);
-}
-
-/** By the name a row shows, then by its name, so equal names keep an order. */
 function compareNames(
   a: SortableConnectorRow,
   b: SortableConnectorRow,
 ): number {
-  return (
-    compareText(a.entry.displayName, b.entry.displayName) ||
-    compareText(a.entry.id, b.entry.id) ||
-    // Only case tells these apart: still a fixed order.
-    a.entry.id.localeCompare(b.entry.id)
-  );
+  return compareServerListNames(a.entry, b.entry);
+}
+
+/**
+ * The tool count a row's Tools cell leads with: the matches where a search
+ * matched its tools ("3 of 40 tools match"), else the total.
+ */
+function shownToolCount(row: SortableConnectorRow): number | undefined {
+  const { toolMatches, toolCount } = row.entry;
+  return toolMatches !== undefined && toolMatches > 0 ? toolMatches : toolCount;
 }
 
 /**
@@ -115,7 +114,8 @@ export function statusUrgency(row: SortableConnectorRow): number | undefined {
 
 /**
  * The Connectors table's rows in the order of its sort: by name (the default),
- * by how one signs in, by tool count or by the urgency of the state
+ * by how one signs in, by the tool count the cell leads with, or by the
+ * urgency of the state
  * ({@link statusUrgency}). Every column falls back to the name, ascending
  * whichever way the column sorts, so reversing a sort does not shuffle the
  * rows it holds equal.
@@ -132,13 +132,13 @@ export function sortConnectorRows<Row extends SortableConnectorRow>(
         return compareOptional(
           orEmpty(a.auth),
           orEmpty(b.auth),
-          compareText,
+          compareListText,
           factor,
         );
       case 'tools':
         return compareOptional(
-          a.entry.toolCount,
-          b.entry.toolCount,
+          shownToolCount(a),
+          shownToolCount(b),
           (x, y) => x - y,
           factor,
         );

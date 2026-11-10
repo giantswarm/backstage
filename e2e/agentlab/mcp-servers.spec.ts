@@ -11,8 +11,8 @@ import { lab } from './lab';
 
 /**
  * Connectors (the muster plugin) in the agent shell, as the admin uses them:
- * Customize's Connectors tab — the installation's connectors in one list, the
- * registered ones first, a family one row, the platform's own tagged by their
+ * Customize's Connectors tab — the installation's connectors in one list, by
+ * name and sortable by its headers, a family one row, the platform's own tagged by their
  * tool-group label — its search over connector and tool names, the muster
  * session behind **Connect to muster**, a connector's page with its tabs, a
  * tool's own page where it is tried, and the per-connector **Sign in** the lab's
@@ -82,9 +82,9 @@ test('Customize · Connectors lists every connector by name, sortable by its hea
   // One list by name, whatever the case: the registered fixture, the
   // platform's own and muster among each other, every one at once.
   const shownNames = async () =>
-    (await admin.getByRole('rowheader').allInnerTexts()).map(
-      text => text.split('\n')[0],
-    );
+    // The name's link, not the row header's text, which starts with the
+    // logo's letter while the logo has no icon.
+    admin.getByRole('rowheader').getByRole('link').allInnerTexts();
   const byName = new Intl.Collator(undefined, {
     sensitivity: 'base',
     numeric: true,

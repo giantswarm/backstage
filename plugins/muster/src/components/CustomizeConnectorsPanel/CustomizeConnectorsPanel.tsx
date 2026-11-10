@@ -488,8 +488,7 @@ function ConnectorsTable({
     facets: CONNECTOR_FACETS,
   });
   // One list by name, muster and the platform's own connectors among the
-  // rest; a header click sorts by its column, a second one reverses it. The
-  // phone's stacked rows have no headers: they keep the table's order.
+  // rest; a header click sorts by its column, a second one reverses it.
   const { tableProps } = useTable<Row>({
     mode: 'complete',
     data: filters.filtered,
@@ -498,8 +497,17 @@ function ConnectorsTable({
     // Every connector at once: no pages, no "Show more".
     paginationOptions: { type: 'none' },
   });
-  const rows = tableProps.data ?? [];
   const isPhone = usePhoneLayout();
+  // The phone's stacked rows have no headers to show or change a sort with:
+  // they stay by name whatever the table was sorted by.
+  const stackedRows = useMemo(
+    () =>
+      isPhone
+        ? sortConnectorRows(filters.filtered, CONNECTORS_DEFAULT_SORT)
+        : [],
+    [isPhone, filters.filtered],
+  );
+  const rows = isPhone ? stackedRows : (tableProps.data ?? []);
   const hrefOf = (row: Row) =>
     row.entry.shadowed
       ? undefined

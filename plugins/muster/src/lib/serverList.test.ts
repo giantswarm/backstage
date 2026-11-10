@@ -97,6 +97,25 @@ describe('serverListEntries with display names', () => {
     );
   });
 
+  it('sorts by name whatever the case, and digits by their value', () => {
+    const named = serverListRows(
+      [
+        makeServer('connector-10'),
+        makeServer('connector-2'),
+        makeServer('Zebra'),
+        makeServer('apple'),
+      ],
+      undefined,
+    );
+    expect(serverListEntries(named, '').map(e => e.id)).toEqual([
+      'apple',
+      'connector-2',
+      'connector-10',
+      'muster',
+      'Zebra',
+    ]);
+  });
+
   it('matches the display name and the name its page uses', () => {
     expect(serverListEntries(rows, 'acme').map(e => e.id)).toEqual([
       'mcp-zendesk',
