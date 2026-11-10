@@ -428,6 +428,31 @@ describe('createRouter', () => {
     });
   });
 
+  it('finds the prometheus server once for the usage reads a page makes', async () => {
+    callTool.mockResolvedValue({
+      mcpServers: [{ name: 'gazelle-mcp-prometheus', state: 'Connected' }],
+    });
+    mockGetMcpUsage.mockResolvedValue({ available: true });
+    mockGetMcpToolLatency.mockResolvedValue({ available: true, tools: [] });
+
+    await Promise.all([
+      request(app).get('/usage?hours=720'),
+      request(app).get('/usage/tool-latency?hours=720'),
+    ]);
+    await request(app).get('/usage?hours=168');
+
+    expect(
+      callTool.mock.calls.filter(([name]) => name === 'core_mcpserver_list'),
+    ).toHaveLength(1);
+    for (const read of [mockGetMcpUsage, mockGetMcpToolLatency]) {
+      for (const [, installation] of read.mock.calls) {
+        expect(installation).toMatchObject({
+          prometheusServer: 'gazelle-mcp-prometheus',
+        });
+      }
+    }
+  });
+
   describe('/usage/tool-latency', () => {
     it('reads every tool’s p95 over the window and connectors, and caches it', async () => {
       const latency = {

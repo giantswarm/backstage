@@ -34,6 +34,7 @@ import {
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
+  findPrometheusServer,
   getMcpToolLatency,
   getMcpUsage,
   isPartialUsage,
@@ -935,6 +936,7 @@ export async function createRouter(
 
   const usageCache = new UsageCache<McpUsageResponse>();
   const toolLatencyCache = new UsageCache<McpToolLatencyResponse>();
+  const prometheusServerCache = new UsageCache<string | undefined>();
 
   /** The Backstage user a usage answer is cached for. */
   const usageReader = async (req: express.Request) => {
@@ -942,6 +944,28 @@ export async function createRouter(
       allow: ['user'],
     });
     return principal.userEntityRef;
+  };
+
+  /**
+   * The installation with the prometheus server its usage is read through,
+   * found once per person for as long as a usage answer lasts, and shared by
+   * concurrent reads, so a usage read does not first wait on
+   * `core_mcpserver_list`.
+   */
+  const withPrometheusServer = async (
+    installation: MusterInstallationConfig,
+    client: MusterMcpClient,
+    callOptions: { authToken?: string },
+    userEntityRef: string,
+  ): Promise<MusterInstallationConfig> => {
+    const prometheusServer = await prometheusServerCache.read(
+      JSON.stringify([installation.name, userEntityRef]),
+      () => findPrometheusServer(client, installation, callOptions),
+      found => found !== undefined,
+    );
+    return prometheusServer
+      ? { ...installation, prometheusServer }
+      : installation;
   };
 
   /** The window and the narrowing `/usage` and `/usage/tool-latency` take. */
@@ -995,6 +1019,7 @@ export async function createRouter(
     const { config: installation, client } = resolveInstallation(req);
     const { hours, servers, tool } = readUsageParams(req);
     const callOptions = readCallOptions(req, installation);
+    const userEntityRef = await usageReader(req);
     res.json(
       await usageCache.read(
         usageCacheKey({
@@ -1003,10 +1028,22 @@ export async function createRouter(
           hours,
           servers,
           tool,
-          userEntityRef: await usageReader(req),
+          userEntityRef,
         }),
-        () =>
-          getMcpUsage(client, installation, callOptions, hours, servers, tool),
+        async () =>
+          getMcpUsage(
+            client,
+            await withPrometheusServer(
+              installation,
+              client,
+              callOptions,
+              userEntityRef,
+            ),
+            callOptions,
+            hours,
+            servers,
+            tool,
+          ),
         answer => answer.available && !isPartialUsage(answer),
       ),
     );
@@ -1027,6 +1064,7 @@ export async function createRouter(
       );
     }
     const callOptions = readCallOptions(req, installation);
+    const userEntityRef = await usageReader(req);
     res.json(
       await toolLatencyCache.read(
         usageCacheKey({
@@ -1034,10 +1072,21 @@ export async function createRouter(
           installation: installation.name,
           hours,
           servers,
-          userEntityRef: await usageReader(req),
+          userEntityRef,
         }),
-        () =>
-          getMcpToolLatency(client, installation, callOptions, hours, servers),
+        async () =>
+          getMcpToolLatency(
+            client,
+            await withPrometheusServer(
+              installation,
+              client,
+              callOptions,
+              userEntityRef,
+            ),
+            callOptions,
+            hours,
+            servers,
+          ),
         answer => answer.available,
       ),
     );
