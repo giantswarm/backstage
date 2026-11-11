@@ -165,7 +165,12 @@ export const CREDENTIAL_OPERATION = 'b2'.repeat(24);
 export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
   let mineFailures = scenario.mineFailures ?? 0;
   const callTool = jest.fn(
-    async (name: string, args: Record<string, unknown>): Promise<unknown> => {
+    async (
+      name: string,
+      args: Record<string, unknown>,
+      _installation?: string,
+      options?: { urlElicitation?: boolean },
+    ): Promise<unknown> => {
       switch (name) {
         case 'x_agent-manager_get_info':
           return {
@@ -257,6 +262,15 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           return { egressPolicies: scenario.egressPolicies ?? [] };
         case 'x_agent-manager_set_organization_model':
         case 'x_agent-manager_set_organization_connector': {
+          // A call that declares URL elicitation is asked to open the form's
+          // page instead (MCP input_required); the portal's muster client
+          // puts it to the person as an external page and, after the save,
+          // fails with agent-manager's message.
+          if (options?.urlElicitation !== false) {
+            throw new Error(
+              `[agent-manager] Enter the value of key apiKey of Secret tenant-credential-${String(args.name)} in the credential UI.`,
+            );
+          }
           // A new model, or a replaced credential: agent-manager prepares a
           // credential request and answers its operation id and form link.
           const kind =

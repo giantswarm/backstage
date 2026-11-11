@@ -48,6 +48,20 @@ function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
 }
 
 /**
+ * The tools that may prepare a credential request. Their calls declare no URL
+ * elicitation: agent-manager then answers the request's id
+ * (`credentialOperation`) as its result, and the portal opens its own
+ * credential form in place. Declared, agent-manager asks muster's caller to
+ * open the form's page instead, which the portal would put to the person as
+ * an external page in a new tab, and the call would end in an error after the
+ * save. A new such tool belongs here.
+ */
+const CREDENTIAL_REQUEST_TOOLS: ReadonlySet<AgentManagerTool> = new Set([
+  AGENT_MANAGER_TOOLS.setOrganizationModel,
+  AGENT_MANAGER_TOOLS.setOrganizationConnector,
+]);
+
+/**
  * agent-manager's tools on one installation, called as the signed-in person.
  *
  * The seam is the muster plugin's own client: `musterApi.callTool()` sends the
@@ -73,6 +87,9 @@ export class AgentManagerClient {
         agentManagerToolName(tool),
         args,
         this.installation,
+        ...(CREDENTIAL_REQUEST_TOOLS.has(tool)
+          ? [{ urlElicitation: false }]
+          : []),
       );
     } catch (error) {
       throw classifyAgentManagerError(error);

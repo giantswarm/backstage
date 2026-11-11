@@ -159,6 +159,8 @@ describe('useSaveOrganizationModel', () => {
         requestId: expect.any(String),
       },
       'gazelle',
+      // agent-manager answers the request's id, not a page to open.
+      { urlElicitation: false },
     );
     // The model is not written yet: the credential form's save tracks it.
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();

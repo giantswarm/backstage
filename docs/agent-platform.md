@@ -747,6 +747,19 @@ refuses an organization namespace, and any namespace but `kagent` while the
 portal cannot tell whether it is an organization's (agent-manager not
 reachable or its organizations not read); Edit is withheld then too.
 
+The Models routes (`ModelsRouter`) read the organization directory
+(`OrganizationDirectoryProvider`) for all of this: without it every
+organization's model reads as the platform's, and Edit is withheld for a model
+agent-manager wrote. A call that may prepare a credential request
+(`set_organization_model`, `set_organization_connector`) declares no URL
+elicitation (`callTool` with `urlElicitation: false`, the body's
+`urlElicitation: false` at muster-backend's `/call`): agent-manager then answers
+the request's id, and the portal opens its own credential form in the same
+tab. Declared, agent-manager asks the caller to open the form's page, which the
+portal puts to the person as an external page in a new tab. Such a call also
+gets no sign-in prompt: a missing sign-in to agent-manager fails it with
+muster's answer.
+
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
 a Flux HelmRelease rendered it, the page reads that HelmRelease with the

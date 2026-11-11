@@ -459,14 +459,23 @@ export class MusterApiClient implements MusterApi {
    * credential form -- the page is put to the person in the consent dialog,
    * and the call is sent again with their answer. Declined or dismissed,
    * muster answers the call's error. `signal` cancels the call, the retry
-   * muster holds until a sign-in completes included.
+   * muster holds until a sign-in completes included. With
+   * `urlElicitation: false` the call declares none and is sent once.
    */
   async callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; urlElicitation?: boolean },
   ): Promise<unknown> {
+    if (options?.urlElicitation === false) {
+      return this.post<unknown>(
+        '/call',
+        { name, arguments: args, urlElicitation: false },
+        installation,
+        options.signal,
+      );
+    }
     return this.withElicitations(
       name,
       input =>

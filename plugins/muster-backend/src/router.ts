@@ -171,6 +171,22 @@ function readInputAnswer(body: unknown): MusterInputAnswer | undefined {
   return input;
 }
 
+/**
+ * Whether the page's call declares URL elicitation: yes unless the body says
+ * `urlElicitation: false`.
+ */
+function readUrlElicitation(body: unknown): boolean {
+  const value = (body as { urlElicitation?: unknown } | undefined)
+    ?.urlElicitation;
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'boolean') {
+    throw new InputError('urlElicitation must be a boolean when provided');
+  }
+  return value;
+}
+
 function parseOptionalInt(value: unknown, name: string): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -552,6 +568,16 @@ export async function createRouter(
     installation: MusterInstallationConfig,
   ) => {
     const input = readInputAnswer(req.body);
+    // A page that opens a tool's page itself (the portal's own credential
+    // form) declares none: the tool answers its result instead.
+    if (!readUrlElicitation(req.body)) {
+      if (input) {
+        throw new InputError(
+          'input answers a URL elicitation, which a call with urlElicitation false does not declare',
+        );
+      }
+      return readCallOptions(req, installation);
+    }
     return {
       ...readCallOptions(req, installation),
       urlElicitation: true,
