@@ -974,15 +974,18 @@ skill. A plugin becomes a `plugins[]` entry pinned like a skill,
   `skills`, on every Harness. A directory with both manifests is one, `claude`
   included, because kagent reads the root manifest first. Its row folds out its
   skills as cards to pick, and its checkbox picks every skill it lists at the
-  commit shown (mixed while only some are). agent-manager takes no marker for
-  the whole package (giantswarm/giantswarm#39190), so the entry names each
-  skill, and a skill added to the package later is not included until it is
-  picked.
-- An edited agent's entry without `skills` for a package (picked while the
-  directory was a Claude Code plugin at the commit it is pinned to, where it
+  commit shown (mixed while only some are), pinning the package to that
+  commit, an edited agent's too. agent-manager takes no marker for the whole
+  package (giantswarm/giantswarm#39190), so the entry names each skill, and a
+  skill added to the package later is not included until it is picked.
+- An edited agent's entry without `skills` for a package pinned to an older
+  commit (picked while the directory was a Claude Code plugin there, where it
   loads whole) shows the package checked and its skills checked and disabled.
   Clearing the checkbox removes the entry; skills picked afterwards are pinned
-  to the latest commit.
+  to the latest commit. The same entry at the commit shown loads nothing, and
+  its row says so. Picked names the package no longer lists are named under
+  the row and left out of its count. A Claude Code row whose pinned entry
+  names skills says the agent loads only those.
 
 **Private skill repositories.** Discovery reads GitHub's `private` flag of
 each repository (`GET /agent-skills` answers `private`), and the Skills step

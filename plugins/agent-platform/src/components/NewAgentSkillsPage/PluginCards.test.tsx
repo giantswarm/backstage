@@ -23,6 +23,7 @@ const gsBase: DiscoveredPlugin = {
 
 function renderCards(
   selected: { plugin: DiscoveredPlugin; skills: string[] }[],
+  plugins: DiscoveredPlugin[] = [gsBase],
 ) {
   const handlers = {
     onTogglePlugin: jest.fn(),
@@ -33,7 +34,7 @@ function renderCards(
     handlers,
     rendered: renderInTestApp(
       <PluginCards
-        plugins={[gsBase]}
+        plugins={plugins}
         catalog={[]}
         selected={selected}
         {...handlers}
@@ -65,9 +66,7 @@ describe('PluginCards', () => {
     );
 
     // Every skill loads, so none is picked or dropped on its own.
-    await user.click(
-      screen.getByRole('button', { name: 'Show skills of gs-base' }),
-    );
+    await user.click(screen.getByRole('button', { name: /^gs-base / }));
     const skills = within(
       screen.getByRole('group', { name: 'Skills of plugin gs-base' }),
     ).getAllByRole('checkbox');
@@ -106,9 +105,7 @@ describe('PluginCards', () => {
     );
 
     expect(screen.queryByText('skill-00')).not.toBeInTheDocument();
-    await user.click(
-      screen.getByRole('button', { name: 'Show skills of gs-base' }),
-    );
+    await user.click(screen.getByRole('button', { name: /^gs-base / }));
     expect(
       within(
         screen.getByRole('group', { name: 'Skills of plugin gs-base' }),
@@ -118,11 +115,108 @@ describe('PluginCards', () => {
       screen.getByRole('button', { name: 'Show 10 more skills' }),
     ).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Hide skills of gs-base' }),
-    );
+    await user.click(screen.getByRole('button', { name: /^gs-base / }));
     expect(
       screen.queryByRole('group', { name: 'Skills of plugin gs-base' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('says that an entry without a selection at the commit shown loads nothing', async () => {
+    const user = userEvent.setup();
+    const { handlers, rendered } = renderCards([
+      { plugin: gsBase, skills: [] },
+    ]);
+    await rendered;
+
+    const plugin = screen.getByRole('checkbox', { name: 'Plugin gs-base' });
+    expect(plugin).toBePartiallyChecked();
+    expect(
+      screen.getByText('Agent Plugins · No skills selected'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The agent's entry for it selects no skills, so the agent loads none of them.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(plugin);
+    expect(handlers.onSelectAllPluginSkills).toHaveBeenCalledWith(gsBase);
+  });
+
+  it('counts the listed skills and names the ones the plugin no longer has', async () => {
+    const { rendered } = renderCards([
+      {
+        plugin: { ...gsBase, commit: PINNED },
+        skills: ['fluxcd', 'gone', 'older'],
+      },
+    ]);
+    await rendered;
+
+    expect(
+      screen.getByText('Agent Plugins · 1 of 2 skills selected'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Also selected at its pinned commit, and no longer in the plugin: gone, older.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('clears a picked package that lists no skills any more', async () => {
+    const empty = { ...gsBase, skills: [] };
+    const user = userEvent.setup();
+    const { handlers, rendered } = renderCards(
+      [{ plugin: { ...empty, commit: PINNED }, skills: ['gone'] }],
+      [empty],
+    );
+    await rendered;
+
+    const plugin = screen.getByRole('checkbox', { name: 'Plugin gs-base' });
+    expect(plugin).toBeEnabled();
+    expect(
+      screen.getByText('Agent Plugins · No skills in its skills directory'),
+    ).toBeInTheDocument();
+    await user.click(plugin);
+    expect(handlers.onTogglePlugin).toHaveBeenCalledWith(empty);
+    expect(handlers.onSelectAllPluginSkills).not.toHaveBeenCalled();
+  });
+
+  it('says what a Claude Code row loads when its pinned entry names skills', async () => {
+    const commits: DiscoveredPlugin = {
+      ...gsBase,
+      name: 'commits',
+      path: 'plugins/commits',
+      format: 'claude-code',
+      skills: [],
+    };
+    const { rendered } = renderCards(
+      [{ plugin: { ...commits, commit: PINNED }, skills: ['style'] }],
+      [commits],
+    );
+    await rendered;
+
+    expect(
+      screen.getByRole('checkbox', { name: 'Plugin commits' }),
+    ).toBeChecked();
+    expect(
+      screen.getByText(
+        /At its pinned commit it is an Agent Plugins package, and the agent loads only style\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a row opened by hand open once a search is cleared', async () => {
+    const user = userEvent.setup();
+    const { rendered } = renderCards([]);
+    await rendered;
+
+    await user.click(screen.getByRole('button', { name: /^gs-base / }));
+    expect(screen.getByText('fluxcd')).toBeInTheDocument();
+    const search = screen.getByRole('searchbox', { name: 'Search plugins' });
+    await user.type(search, 'registries');
+    // The search opens the plugin at its matching skill alone.
+    expect(screen.queryByText('fluxcd')).not.toBeInTheDocument();
+    expect(screen.getByText('registries')).toBeInTheDocument();
+    await user.clear(search);
+    expect(screen.getByText('fluxcd')).toBeInTheDocument();
   });
 });

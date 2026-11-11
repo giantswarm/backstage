@@ -51,33 +51,57 @@ export type SelectedPlugin = {
 };
 
 /**
+ * A plugin's or skill's directory as one form: no leading `./` or `/`, no
+ * trailing `/`, so a prefix match and a plugin's identity read paths alike.
+ */
+export function normalizePluginPath(path: string): string {
+  return path.replace(/^\.?\/+/, '').replace(/\/+$/, '');
+}
+
+/**
+ * The skill catalogue by canonical repository, so each plugin reads only its
+ * own repository's skills ({@link pluginSkillsOf}).
+ */
+export function skillsByRepo<T extends Pick<DiscoveredSkill, 'repoUrl'>>(
+  catalog: T[],
+): Map<string, T[]> {
+  const byRepo = new Map<string, T[]>();
+  for (const skill of catalog) {
+    const repo = canonicalRepoUrl(skill.repoUrl);
+    const list = byRepo.get(repo);
+    if (list) {
+      list.push(skill);
+    } else {
+      byRepo.set(repo, [skill]);
+    }
+  }
+  return byRepo;
+}
+
+/**
  * The skills a plugin brings. An Agent Plugins package's are the ones
  * discovery listed for it. A Claude Code plugin's are not listed (it loads
  * whole, so nothing selects them), but each is a `SKILL.md` directly under its
  * `skills/` directory, which the skill catalogue lists like any other skill:
  * they are read from there, to be shown, never selected.
+ *
+ * @param repoSkills the catalogue's skills of the plugin's repository
+ *   ({@link skillsByRepo})
  */
 export function pluginSkillsOf(
   plugin: DiscoveredPlugin,
-  catalog: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'description'>[],
+  repoSkills: Pick<DiscoveredSkill, 'path' | 'description'>[],
 ): PluginSkill[] {
   if (plugin.format === 'agent-plugins' || plugin.skills.length > 0) {
     return plugin.skills;
   }
-  const repo = canonicalRepoUrl(plugin.repoUrl);
-  const root = plugin.path.replace(/^\.?\/+/, '').replace(/\/+$/, '');
+  const root = normalizePluginPath(plugin.path);
   const prefix = root ? `${root}/skills/` : 'skills/';
   const skills = new Map<string, PluginSkill>();
-  for (const skill of catalog) {
-    const name = skill.path.startsWith(prefix)
-      ? skill.path.slice(prefix.length)
-      : '';
-    if (
-      name &&
-      !name.includes('/') &&
-      canonicalRepoUrl(skill.repoUrl) === repo &&
-      !skills.has(name)
-    ) {
+  for (const skill of repoSkills) {
+    const path = normalizePluginPath(skill.path);
+    const name = path.startsWith(prefix) ? path.slice(prefix.length) : '';
+    if (name && !name.includes('/') && !skills.has(name)) {
       skills.set(name, { name, description: skill.description ?? '' });
     }
   }
@@ -100,28 +124,50 @@ export function allSkillNamesOf(plugin: DiscoveredPlugin): string[] {
  *   names, since agent-manager and kagent take no "whole package" marker
  *   (giantswarm/giantswarm#39190): a skill added to the package later is not
  *   picked up until it is picked.
- * - `whole`: an edited agent's entry without a selection, from when the
- *   directory was a Claude Code plugin at the commit it is pinned to, where it
- *   loads whole. The portal never writes one for an Agent Plugins package,
- *   whose empty selection loads nothing.
+ * - `whole`: an edited agent's entry without a selection, pinned to an older
+ *   commit than the one discovered: picked while the directory was a Claude
+ *   Code plugin at that commit, where it loads whole. The portal never writes
+ *   a selection-less entry for an Agent Plugins package.
+ * - `empty`: an entry without a selection at the discovered commit itself,
+ *   where the directory is an Agent Plugins package: it loads nothing (an
+ *   entry written elsewhere, through the API say).
  */
-export type PluginSelection = 'none' | 'some' | 'all' | 'whole';
+export type PluginSelection = 'none' | 'some' | 'all' | 'whole' | 'empty';
+
+/** A package's selection as its row shows it. */
+export type PluginPickState = {
+  selection: PluginSelection;
+  /** The picked names the package lists at the discovered commit. */
+  listed: string[];
+  /**
+   * The picked names it no longer lists there: skills of the pinned commit
+   * the row has no card for, named so the selection is not hidden.
+   */
+  stale: string[];
+};
 
 export function pluginSelectionOf(
   plugin: DiscoveredPlugin,
   pick: SelectedPlugin | undefined,
-): PluginSelection {
+): PluginPickState {
   if (!pick) {
-    return 'none';
+    return { selection: 'none', listed: [], stale: [] };
   }
   if (pick.skills.length === 0) {
-    return 'whole';
+    return {
+      selection: pick.plugin.commit === plugin.commit ? 'empty' : 'whole',
+      listed: [],
+      stale: [],
+    };
   }
-  const picked = new Set(pick.skills);
-  return plugin.skills.length > 0 &&
-    plugin.skills.every(skill => picked.has(skill.name))
-    ? 'all'
-    : 'some';
+  const names = new Set(plugin.skills.map(skill => skill.name));
+  const listed = pick.skills.filter(name => names.has(name));
+  const stale = pick.skills.filter(name => !names.has(name));
+  return {
+    selection: names.size > 0 && listed.length === names.size ? 'all' : 'some',
+    listed,
+    stale,
+  };
 }
 
 /** A plugin row as a search leaves it: the plugin and the skills it shows. */
@@ -167,8 +213,9 @@ export function searchPlugins<
 
 /** Stable identity of a plugin: its repository and directory. */
 export function pluginId(plugin: Pick<DiscoveredPlugin, 'repoUrl' | 'path'>) {
-  const path = plugin.path.replace(/^\.?\/+/, '').replace(/\/+$/, '');
-  return `${canonicalRepoUrl(plugin.repoUrl)}#${path}`;
+  return `${canonicalRepoUrl(plugin.repoUrl)}#${normalizePluginPath(
+    plugin.path,
+  )}`;
 }
 
 /** The identity of a plugin entry's place, for a git entry; else undefined. */

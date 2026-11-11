@@ -48,11 +48,13 @@ test('a coding agent loads only the plugin skills selected in the wizard', async
           `the skills step offers no plugin ${PLUGIN}: add https://github.com/giantswarm/agentlab to the lab's skill repositories`,
         );
         // A package's skills are folded under its row until it is opened.
+        // Its trigger is named by the plugin's name and the line after it.
         await admin
-          .getByRole('button', { name: `Show skills of ${PLUGIN}` })
+          .getByRole('button', { name: new RegExp(`^${PLUGIN} `) })
           .click();
         const skills = admin.getByRole('group', {
           name: `Skills of plugin ${PLUGIN}`,
+          exact: true,
         });
         await expect(
           skills.getByRole('checkbox', {

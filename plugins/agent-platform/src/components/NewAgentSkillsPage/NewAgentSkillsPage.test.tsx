@@ -801,9 +801,7 @@ describe('NewAgentSkillsPage', () => {
       await user.click(
         await screen.findByRole('checkbox', { name: 'Plugin commits' }),
       );
-      await user.click(
-        screen.getByRole('button', { name: 'Show skills of review' }),
-      );
+      await user.click(screen.getByRole('button', { name: /^review / }));
       const review = screen.getByRole('group', {
         name: 'Skills of plugin review',
       });
@@ -870,9 +868,7 @@ describe('NewAgentSkillsPage', () => {
       ).toBeInTheDocument();
 
       // Unpicking one skill leaves it mixed; the checkbox picks them all again.
-      await user.click(
-        screen.getByRole('button', { name: 'Show skills of review' }),
-      );
+      await user.click(screen.getByRole('button', { name: /^review / }));
       await user.click(
         within(
           screen.getByRole('group', { name: 'Skills of plugin review' }),
@@ -910,9 +906,7 @@ describe('NewAgentSkillsPage', () => {
           'Claude Code plugin · Loads whole: 1 skill, plus its commands, hooks and subagents',
         ),
       ).toBeInTheDocument();
-      await user.click(
-        screen.getByRole('button', { name: 'Show skills of commits' }),
-      );
+      await user.click(screen.getByRole('button', { name: /^commits / }));
       const skills = screen.getByRole('list', {
         name: 'Skills of plugin commits',
       });
@@ -967,9 +961,7 @@ describe('NewAgentSkillsPage', () => {
           name: 'Skill Incident responder',
         }),
       );
-      await user.click(
-        screen.getByRole('button', { name: 'Show skills of review' }),
-      );
+      await user.click(screen.getByRole('button', { name: /^review / }));
       await user.click(
         within(
           screen.getByRole('group', { name: 'Skills of plugin review' }),

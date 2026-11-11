@@ -25,6 +25,16 @@ type Repository = {
   plugins?: Plugin[];
 };
 
+/**
+ * A plugin row's fold-out: its trigger is named by the plugin's name and the
+ * line after it, so the name is matched whole, then a space ("app" must not
+ * open "app-dev").
+ */
+function pluginTrigger(page: Page, name: string) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return page.getByRole('button', { name: new RegExp(`^${escaped} `) });
+}
+
 function toolOf(response: Response): string | undefined {
   if (!response.url().includes('/api/muster/call')) {
     return undefined;
@@ -165,20 +175,25 @@ test('the wizard offers what skill-manager lists, plugins included', async ({
   for (const plugin of plugins) {
     if (plugin.format === 'claude-code') {
       await expect(
-        admin.getByRole('checkbox', { name: `Plugin ${plugin.name}` }),
+        admin.getByRole('checkbox', {
+          name: `Plugin ${plugin.name}`,
+          exact: true,
+        }),
         `Claude Code plugin ${plugin.name}`,
       ).toBeVisible();
     } else if (plugin.skills.length > 0) {
       await expect(
-        admin.getByRole('checkbox', { name: `Plugin ${plugin.name}` }),
+        admin.getByRole('checkbox', {
+          name: `Plugin ${plugin.name}`,
+          exact: true,
+        }),
         `Agent Plugins package ${plugin.name}`,
       ).toBeVisible();
       // A package's skills are folded under its row until it is opened.
-      await admin
-        .getByRole('button', { name: `Show skills of ${plugin.name}` })
-        .click();
+      await pluginTrigger(admin, plugin.name).click();
       const group = admin.getByRole('group', {
         name: `Skills of plugin ${plugin.name}`,
+        exact: true,
       });
       await expect(group, `Agent Plugins package ${plugin.name}`).toBeVisible();
       for (const skill of plugin.skills) {

@@ -8,8 +8,10 @@ import {
   pluginSelectionOf,
   pluginSkillsOf,
   pluginSummary,
+  normalizePluginPath,
   repeatedSkillNames,
   searchPlugins,
+  skillsByRepo,
 } from './plugins';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
@@ -108,7 +110,7 @@ describe('pluginSkillsOf', () => {
     },
     {
       repoUrl: 'https://github.com/giantswarm/claude-code',
-      path: 'plugins/commits/skills/amend',
+      path: './plugins/commits/skills/amend/',
       description: '',
     },
     // Nested below a skill, in another plugin, or in another repository: not
@@ -129,16 +131,36 @@ describe('pluginSkillsOf', () => {
       description: 'no',
     },
   ];
+  const byRepo = skillsByRepo(catalog);
+  const ofCommits = byRepo.get('https://github.com/giantswarm/claude-code')!;
 
-  it("reads a Claude Code plugin's skills from the catalogue", () => {
-    expect(pluginSkillsOf(commits, catalog)).toEqual([
-      { name: 'amend', description: '' },
-      { name: 'style', description: 'Commit style.' },
+  it('groups the catalogue by canonical repository', () => {
+    expect(ofCommits).toHaveLength(4);
+    expect(byRepo.get('https://github.com/giantswarm/agent-skills')).toEqual([
+      catalog[4],
     ]);
   });
 
+  it("reads a Claude Code plugin's skills from its repository's skills", () => {
+    expect(pluginSkillsOf(commits, ofCommits)).toEqual([
+      { name: 'amend', description: '' },
+      { name: 'style', description: 'Commit style.' },
+    ]);
+    expect(
+      pluginSkillsOf({ ...commits, path: './plugins/commits/' }, ofCommits),
+    ).toHaveLength(2);
+  });
+
   it("keeps an Agent Plugins package's listed skills", () => {
-    expect(pluginSkillsOf(review, catalog)).toBe(review.skills);
+    expect(pluginSkillsOf(review, ofCommits)).toBe(review.skills);
+  });
+});
+
+describe('normalizePluginPath', () => {
+  it('drops a leading ./ or / and a trailing /', () => {
+    expect(normalizePluginPath('./plugins/a/')).toBe('plugins/a');
+    expect(normalizePluginPath('/plugins/a')).toBe('plugins/a');
+    expect(normalizePluginPath('')).toBe('');
   });
 });
 
@@ -155,29 +177,55 @@ describe('allSkillNamesOf', () => {
 });
 
 describe('pluginSelectionOf', () => {
-  it('tells none, some, all and a whole entry apart', () => {
-    expect(pluginSelectionOf(review, undefined)).toBe('none');
+  const OLD = 'a'.repeat(40);
+
+  it('tells none, some and all apart, counting the listed names', () => {
+    expect(pluginSelectionOf(review, undefined)).toEqual({
+      selection: 'none',
+      listed: [],
+      stale: [],
+    });
     expect(
       pluginSelectionOf(review, { plugin: review, skills: ['go-review'] }),
-    ).toBe('some');
+    ).toEqual({ selection: 'some', listed: ['go-review'], stale: [] });
     expect(
       pluginSelectionOf(review, {
         plugin: review,
         skills: ['helm-review', 'go-review'],
-      }),
+      }).selection,
     ).toBe('all');
-    expect(pluginSelectionOf(review, { plugin: review, skills: [] })).toBe(
-      'whole',
-    );
   });
 
-  it('reads a selection naming a skill no longer listed as some', () => {
+  it('reads an entry without a selection as whole only at an older pin', () => {
     expect(
-      pluginSelectionOf(
-        { ...review, skills: [{ name: 'go-review', description: '' }] },
-        { plugin: review, skills: ['gone'] },
-      ),
-    ).toBe('some');
+      pluginSelectionOf(review, {
+        plugin: { ...review, commit: OLD },
+        skills: [],
+      }).selection,
+    ).toBe('whole');
+    // At the discovered commit the directory is a package: it loads nothing.
+    expect(
+      pluginSelectionOf(review, { plugin: review, skills: [] }).selection,
+    ).toBe('empty');
+  });
+
+  it('keeps the names the package no longer lists apart', () => {
+    expect(
+      pluginSelectionOf(review, {
+        plugin: { ...review, commit: OLD },
+        skills: ['go-review', 'gone'],
+      }),
+    ).toEqual({ selection: 'some', listed: ['go-review'], stale: ['gone'] });
+    expect(
+      pluginSelectionOf(review, {
+        plugin: review,
+        skills: ['go-review', 'helm-review', 'gone'],
+      }),
+    ).toEqual({
+      selection: 'all',
+      listed: ['go-review', 'helm-review'],
+      stale: ['gone'],
+    });
   });
 });
 
