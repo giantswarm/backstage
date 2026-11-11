@@ -33,6 +33,12 @@ export type OrganizationCondition = {
   message?: string;
 };
 
+/**
+ * The operator's reason for `orphaned` `True` once the organization's delete
+ * pull request merged; any other is Missing from git.
+ */
+export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
+
 /** `get_organization`'s organization. */
 export type AgentPlatformOrganization = {
   name: string;
@@ -217,12 +223,6 @@ export type OrganizationStatus = Pick<
   | 'lastAppliedRevision'
   | 'lastAppliedRevisionUrl'
 >;
-
-/**
- * The operator's reason for `orphaned` `True` once the organization's delete
- * pull request merged; any other is Missing from git.
- */
-export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
 
 /** `get_organization`: the organization, and what a delete would erase. */
 export type OrganizationDetails = {

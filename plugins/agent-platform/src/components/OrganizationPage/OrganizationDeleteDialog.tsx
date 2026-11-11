@@ -178,6 +178,13 @@ export function OrganizationDeleteDialog({
     : undefined;
   const connect = failure?.kind === 'connect' ? failure : undefined;
   const pullRequest = viaPullRequest ? deletion.data?.commit : undefined;
+  // Neither a pull request nor an erase: agent-manager says why in `next`,
+  // as when the delete pull request is open already or the organization is
+  // being erased.
+  const unchanged =
+    deletion.data && !deletion.data.commit && !deletion.data.deleted
+      ? deletion.data
+      : undefined;
 
   let confirmLabel = 'Erase organization';
   if (viaPullRequest) {
@@ -212,7 +219,7 @@ export function OrganizationDeleteDialog({
         Boolean(connect) ||
         (!viaPullRequest && typed !== expected)
       }
-      isDone={Boolean(pullRequest)}
+      isDone={Boolean(pullRequest || unchanged)}
       error={
         failure?.kind === 'other' || failure?.kind === 'release-outside'
           ? failure.message
@@ -276,6 +283,18 @@ export function OrganizationDeleteDialog({
           />
         )}
         {pullRequest && <PullRequestOutcome commit={pullRequest} />}
+        {unchanged && (
+          <Alert
+            status="info"
+            data-testid="organization-delete-unchanged"
+            title="Nothing was deleted"
+            description={
+              <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
+                {unchanged.next ?? 'agent-manager gave no reason.'}
+              </Text>
+            }
+          />
+        )}
       </Flex>
     </ConfirmDialog>
   );

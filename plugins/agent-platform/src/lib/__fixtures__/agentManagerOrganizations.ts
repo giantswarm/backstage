@@ -47,6 +47,13 @@ export type OrganizationsScenario = {
    */
   organization?: AgentPlatformOrganization;
   /**
+   * `false`: the person may read `organization` but not manage it
+   * (`permissions.manage` false). The listing still carries its summary, so
+   * a test pins that the page decides on `manage`, not on having the object.
+   * Managed when left out.
+   */
+  manage?: boolean;
+  /**
    * What the person's access reviews in an organization namespace answer,
    * by resource; an organization admin's (all allowed) when left out.
    */
@@ -81,14 +88,19 @@ export function listedOrganizations(
   const managed = scenario.organization;
   const isManaged = (parent: string, name: string) =>
     managed?.parent === parent && managed?.name === name;
+  const manages = scenario.manage ?? true;
   const listed: ListedOrganization[] = (scenario.mine?.organizations ?? []).map(
     organization => {
-      const manage = isManaged(organization.parent, organization.organization);
+      const readable = isManaged(
+        organization.parent,
+        organization.organization,
+      );
+      const manage = readable && manages;
       return {
         name: organization.organization,
         parent: organization.parent,
         namespace: organization.namespace,
-        ...(manage
+        ...(readable
           ? {
               displayName: managed?.displayName,
               orphaned: managed?.orphaned,
@@ -113,7 +125,7 @@ export function listedOrganizations(
       namespace: managed.namespace,
       orphaned: managed.orphaned,
       deleting: managed.deleting,
-      permissions: { manage: true, member: false },
+      permissions: { manage: manages, member: false },
       organization: managed,
     });
   }
