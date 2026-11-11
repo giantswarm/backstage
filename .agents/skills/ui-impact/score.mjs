@@ -234,8 +234,9 @@ const INSERT_BEFORE = [
 /**
  * The PR description with its UI impact section replaced by `sec`. The old
  * section runs from its heading to its block, or to the next heading when it
- * has no block yet (the template's placeholder). A description without one
- * gets it inserted before the first of INSERT_BEFORE, or appended.
+ * has no block yet (the template's placeholder). A block without its heading
+ * is replaced in place. A description with neither gets the section inserted
+ * before the first of INSERT_BEFORE, or appended.
  */
 export function replaceSection(body, sec) {
   const lines = body.replace(/\r\n/g, '\n').split('\n');
@@ -250,6 +251,12 @@ export function replaceSection(body, sec) {
       while (end > start && lines[end]?.trim() === '') end--;
     }
     lines.splice(start, end - start + 1, ...sec.split('\n'));
+    return lines.join('\n');
+  }
+  // A block whose heading was edited away: the section takes its place.
+  const orphan = lines.findIndex(l => l.trim().startsWith(BLOCK_PREFIX));
+  if (orphan >= 0) {
+    lines.splice(orphan, 1, ...sec.split('\n'));
     return lines.join('\n');
   }
   const at = lines.findIndex(l => INSERT_BEFORE.includes(l.trim()));

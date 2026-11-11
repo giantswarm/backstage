@@ -255,6 +255,10 @@ test('replaceSection inserts before Preview, or appends', () => {
     `### Changes\n\nStuff.\n\n${sec}\n\n### Preview\n\nPics.`,
   );
   assert.equal(replaceSection('Just text.\n', sec), `Just text.\n\n${sec}\n`);
+  const orphan = `### Changes\n\nStuff.\n\n${block(fp(), SHA, ROUTES)}\n\n### Preview`;
+  const out = replaceSection(orphan, sec);
+  assert.equal(out.match(/<!-- ui-impact /g).length, 1);
+  assert.equal(readBlock(out).score, 0);
 });
 
 test('the command line: a file, stdin, --print, --body, --reuse', () => {
