@@ -72,6 +72,7 @@ const RESOLVED = {
   error: null,
   hasRepositories: true,
   failedRepositories: [],
+  failureMessages: {} as Record<string, string>,
   truncated: false,
   privateRepositories: new Set<string>() as ReadonlySet<string>,
 };
@@ -832,6 +833,24 @@ describe('NewAgentSkillsPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Plugins')).not.toBeInTheDocument();
     });
+  });
+
+  it('says why a repository was skipped', async () => {
+    Object.assign(mockCatalog, {
+      failedRepositories: [
+        'https://github.com/giantswarm/agent-skills-internal',
+      ],
+      failureMessages: {
+        'https://github.com/giantswarm/agent-skills-internal':
+          'skill repository not readable: connect GitHub in muster',
+      },
+    });
+    await renderStep();
+    expect(
+      screen.getByText(
+        /agent-skills-internal: skill repository not readable: connect GitHub in muster/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('says that skills stay on their pinned commit', async () => {

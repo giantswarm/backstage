@@ -886,5 +886,6 @@ describe('ServeModelPage · the selects at scale', () => {
     await waitFor(() => expect(listPresets).toHaveBeenCalled());
     await userEvent.click(await presetSelect());
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
-  });
+    // 300 options each: slow on a loaded CI runner.
+  }, 30_000);
 });

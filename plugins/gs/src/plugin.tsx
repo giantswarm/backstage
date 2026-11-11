@@ -64,6 +64,7 @@ import {
 } from './apis/containerRegistry';
 import { GitHubClient, gitHubApiRef } from './apis/github';
 import { MimirClient, mimirApiRef } from './apis/mimir';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 
 // Pages
 // The Clusters pages take actions other plugins contribute, by node id
@@ -167,18 +168,21 @@ const gsAuthProvidersApi = ApiBlueprint.make({
         configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         oauthRequestApi: oauthRequestApiRef,
+        externalUrlConsentApi: externalUrlConsentApiRef,
         clusterAccessStatusApi: clusterAccessStatusApiRef,
       },
       factory: ({
         configApi,
         discoveryApi,
         oauthRequestApi,
+        externalUrlConsentApi,
         clusterAccessStatusApi: clusterAccessStatus,
       }) =>
         GSAuthProviders.create({
           configApi,
           discoveryApi: discoveryApi as DiscoveryApiClient,
           oauthRequestApi,
+          externalUrlConsentApi,
           clusterAccessStatusApi: clusterAccessStatus,
         }),
     }),

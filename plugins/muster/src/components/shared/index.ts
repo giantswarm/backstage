@@ -88,6 +88,7 @@ export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { familyHealthLabel } from './familyHealth';
 export { PORTAL_ONLY_LABEL, portalOnlyStatus } from './portalOnlyStatus';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
+export { useConnectorIcon } from './useConnectorIcon';
 export { useToolDescription } from './useToolDescription';
 export { DefinitionEditorDialog } from './DefinitionEditorDialog';
 export type {

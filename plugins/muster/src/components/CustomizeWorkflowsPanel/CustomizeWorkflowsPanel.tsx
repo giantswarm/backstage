@@ -377,7 +377,7 @@ function WorkflowsTable({
         <SessionGate
           session={session}
           installation={installation}
-          context="Run counts and the read-only badge need a muster session."
+          context="Run counts and the read-only badge need a Muster session."
         />
       )}
       {assist}
@@ -396,7 +396,7 @@ function Panel({ search, createAssist }: CustomizeWorkflowsPanelProps) {
     body = (
       <EmptyStateCard
         title="No workflows here"
-        description="None of your environments runs muster, which runs workflows."
+        description="None of your environments runs Muster, which runs workflows."
       />
     );
   } else {

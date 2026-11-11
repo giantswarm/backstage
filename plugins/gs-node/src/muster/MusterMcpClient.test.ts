@@ -338,6 +338,54 @@ describe('MusterMcpClient', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  describe('serverIcon', () => {
+    const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    /** A script URL, built so the source carries no `javascript:` literal. */
+    const SCRIPT_URL = ['javascript', 'alert(1)'].join(':');
+
+    function buildWithServerInfo(serverInfo: unknown) {
+      const factory = jest.fn(() =>
+        Promise.resolve({
+          serverInfo,
+          close: jest.fn(),
+        } as unknown as MCPClient),
+      );
+      const client = new MusterMcpClient(
+        { name: 'muster', url: 'http://muster/mcp' },
+        logger,
+        factory,
+      );
+      return { client, factory };
+    }
+
+    it('reads the icon from the initialize result on the cached session', async () => {
+      const { client, factory } = buildWithServerInfo({
+        name: 'muster',
+        version: '5.59.0',
+        icons: [{ src: SVG, mimeType: 'image/svg+xml', sizes: ['any'] }],
+      });
+
+      await expect(client.serverIcon({ authToken: 't' })).resolves.toBe(SVG);
+      await expect(client.serverIcon({ authToken: 't' })).resolves.toBe(SVG);
+      // One session for the caller: no connection just for the icon.
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers none for a muster that announces no icon', async () => {
+      const { client } = buildWithServerInfo({ name: 'muster', version: '1' });
+      await expect(client.serverIcon()).resolves.toBeUndefined();
+    });
+
+    it('answers none for an icon it would not render', async () => {
+      const { client } = buildWithServerInfo({
+        name: 'muster',
+        version: '5.59.0',
+        icons: [{ src: SCRIPT_URL }],
+      });
+      await expect(client.serverIcon()).resolves.toBeUndefined();
+    });
+  });
+
   it('rejects a resource read that returns no text content', async () => {
     const readResource = jest.fn().mockResolvedValue({ contents: [] });
     const { client } = buildClient(jest.fn(), readResource);

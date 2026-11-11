@@ -71,6 +71,21 @@ function authModeFromEnv(): AuthMode {
   return mode;
 }
 
+/** An `AgentPlatformOrganization`: its namespace (`parent`) and name. */
+export type LabOrganization = { parent: string; name: string };
+
+function organizationFromEnv(): LabOrganization {
+  const value =
+    process.env.AGENTLAB_ORGANIZATION ?? 'agentlab-organizations/default';
+  const [parent, name, ...rest] = value.split('/');
+  if (!parent || !name || rest.length > 0) {
+    throw new Error(
+      `AGENTLAB_ORGANIZATION must be "<parent>/<name>", not "${value}"`,
+    );
+  }
+  return { parent, name };
+}
+
 /**
  * The parallel worker this process is: Playwright's `TEST_PARALLEL_INDEX`,
  * `0` in the first worker and in the runner. The one source of which lab users
@@ -93,6 +108,18 @@ export const lab = {
    * name of the platform chart in the lab, not the kind cluster's name.
    */
   installation: process.env.AGENTLAB_INSTALLATION ?? 'agent-platform',
+  /**
+   * The lab's first organization (`AGENTLAB_ORGANIZATION`, `<parent>/<name>`),
+   * whose `organization-admins` binds the admin's group: where the admin
+   * creates agents when agent-manager offers organizations only.
+   */
+  organization: organizationFromEnv(),
+  /**
+   * The name of the agents' default ModelConfig the lab provisions on its
+   * `aiModel` (`AGENTLAB_DEFAULT_MODEL`), in `kagent` and in every
+   * organization namespace.
+   */
+  defaultModel: process.env.AGENTLAB_DEFAULT_MODEL ?? 'anthropic',
   /**
    * The MCPServer the lab registers for its own cluster: the `kubernetes`
    * family member `<cluster>-mcp-kubernetes`, the way every management

@@ -9,7 +9,6 @@ import {
   ColumnConfig,
   Flex,
   Grid,
-  Link,
   List,
   ListRow,
   Table,
@@ -28,10 +27,10 @@ import {
   StatusLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useHiveNow, useHiveSearch, useHiveTeam } from '../../hooks/useHive';
+import { HiveLink } from '../HiveLink';
 import {
   ALL_TEAMS,
   cardHref,
-  linkTarget,
   HIVE_LANE_PREVIEW,
   matchesSearch,
   nowFigures,
@@ -276,9 +275,7 @@ function PlansToReview(props: { plans: PlanCard[] }) {
                 <Badge size="small">{PLAN_STATE_LABELS[plan.state]}</Badge>
               }
             >
-              <Link href={plan.url} {...linkTarget(plan.url)}>
-                {plan.title}
-              </Link>
+              <HiveLink href={plan.url}>{plan.title}</HiveLink>
             </ListRow>
           ))}
         </List>
@@ -299,11 +296,7 @@ function Blocked(props: { cards: MagazineCard[] }) {
             key={card.key}
             status="warning"
             icon
-            title={
-              <Link href={cardHref(card)} {...linkTarget(cardHref(card))}>
-                {card.title}
-              </Link>
-            }
+            title={<HiveLink href={cardHref(card)}>{card.title}</HiveLink>}
             description={
               <>
                 {card.blocker?.reason}
@@ -340,9 +333,7 @@ function OtherTeams(props: { cards: MagazineCard[] }) {
               <Avatar src="" name={teamName(card.team ?? '')} size="small" />
             }
           >
-            <Link href={card.url} {...linkTarget(card.url)}>
-              {card.title}
-            </Link>
+            <HiveLink href={card.url}>{card.title}</HiveLink>
           </ListRow>
         ))}
       </List>

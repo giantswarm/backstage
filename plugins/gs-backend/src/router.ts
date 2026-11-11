@@ -3,7 +3,7 @@ import {
   LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
-import { InputError } from '@backstage/errors';
+import { AuthenticationError, InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
 import express from 'express';
@@ -15,7 +15,6 @@ import {
 import {
   discoverAgentSkills,
   GitHubApiError,
-  parseRepoUrl,
   SkillDiscoverySnapshot,
 } from './agentSkills/discoverAgentSkills';
 import {
@@ -53,9 +52,17 @@ import {
 } from './agentSkills/skillFiles';
 import {
   containerRegistryServiceRef,
+  MUSTER_AUTH_HEADER,
+  MusterServerNotConnectedError,
   mimirServiceRef,
   reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  requireWritableSource,
+  skillSourcesReader,
+  slugOf,
+  type SkillSource,
+} from './agentSkills/skillManagerSources';
 import { readSignedInConfig } from './signedInConfig';
 import {
   isValidTag,
@@ -83,6 +90,9 @@ export async function createRouter({
   logger?: LoggerService;
 }): Promise<express.Router> {
   const router = Router();
+  const readSkillSources = logger
+    ? skillSourcesReader(config, logger)
+    : undefined;
   const isGitHubUrl = (repoUrl: string): boolean =>
     repoUrl.toLowerCase().startsWith('https://github.com/');
   // The skill pull request carries a whole SKILL.md (up to
@@ -946,6 +956,7 @@ export async function createRouter({
         .string()
         .regex(COMMIT_RE, { message: 'baseCommit must be a full commit id' })
         .optional(),
+      installation: z.string().min(1).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -973,26 +984,61 @@ export async function createRouter({
       );
     }
 
-    // Only the configured sources: the catalog lists these and nothing else,
-    // so a pull request anywhere else would add a skill no one can see.
-    const repositories =
-      config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-    const slugOf = (url: string) => {
-      const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
-      return `${owner}/${repo}`.toLowerCase();
-    };
-    const target = slugOf(repoUrl);
-    const configured = repositories.some(url => {
-      try {
-        return slugOf(url) === target;
-      } catch {
-        return false;
+    // Only the catalog's writable sources: a pull request anywhere else would
+    // add a skill no one can see. With an installation, its skill-manager's
+    // sources as the person sees them; without one, the portal's configured
+    // list (deprecated).
+    let base: string | undefined;
+    if (parsed.data.installation !== undefined) {
+      if (!readSkillSources) {
+        throw new Error('gs-backend reads skill sources only with a logger');
       }
-    });
-    if (!configured) {
-      throw new InputError(
-        `${repoUrl} is not one of the configured skill repositories`,
-      );
+      const musterToken = req.header(MUSTER_AUTH_HEADER);
+      if (!musterToken) {
+        throw new AuthenticationError(
+          `Missing ${MUSTER_AUTH_HEADER} header: the skill sources are read from the installation's skill-manager as the signed-in person.`,
+        );
+      }
+      let sources: SkillSource[];
+      try {
+        sources = await readSkillSources(parsed.data.installation, musterToken);
+      } catch (error) {
+        if (error instanceof MusterServerNotConnectedError) {
+          res.status(401).json({
+            error: {
+              name: error.name,
+              message: error.message,
+              server: error.server,
+              authUrl: error.authUrl,
+            },
+          });
+          return;
+        }
+        throw error;
+      }
+      base = requireWritableSource(sources, {
+        repoUrl,
+        kind: kind ?? 'create',
+        skillName,
+        path: parsed.data.path,
+      }).ref;
+    } else {
+      const repositories =
+        config.getOptionalStringArray('agentPlatform.skills.repositories') ??
+        [];
+      const target = slugOf(repoUrl);
+      const configured = repositories.some(url => {
+        try {
+          return slugOf(url) === target;
+        } catch {
+          return false;
+        }
+      });
+      if (!configured) {
+        throw new InputError(
+          `${repoUrl} is not one of the configured skill repositories`,
+        );
+      }
     }
 
     try {
@@ -1004,6 +1050,7 @@ export async function createRouter({
           instructions,
           ...(tags !== undefined ? { tags } : {}),
           token,
+          ...(base ? { base } : {}),
           ...(kind === 'update'
             ? {
                 kind,

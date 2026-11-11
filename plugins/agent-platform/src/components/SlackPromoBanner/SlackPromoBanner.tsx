@@ -1,6 +1,7 @@
-import { ButtonIcon, ButtonLink, Text } from '@backstage/ui';
+import { ButtonIcon, Text } from '@backstage/ui';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
+  ExternalButtonLink,
   PHONE_MEDIA,
   safeWebURL,
   usePhoneLayout,
@@ -312,15 +313,9 @@ function SlackPromoBannerContent({ docsUrl }: { docsUrl: string }) {
             works"): the portal knows no workspace to send people to, only the
             docs, and two buttons to the same page would be one too many. */}
         <div className={classes.actions}>
-          <ButtonLink
-            href={docsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-            size="small"
-          >
-            How it works ↗
-          </ButtonLink>
+          <ExternalButtonLink href={docsUrl} variant="secondary" size="small">
+            How it works
+          </ExternalButtonLink>
         </div>
       </div>
     </section>

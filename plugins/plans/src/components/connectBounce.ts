@@ -1,3 +1,8 @@
+import type {
+  ExternalUrlConsentAnswer,
+  ExternalUrlConsentApi,
+} from '@giantswarm/backstage-plugin-ui-react';
+
 /**
  * sessionStorage key recording when this tab last bounced through muster's
  * GitHub connect from the plans page, so a connect that comes back without a
@@ -28,7 +33,7 @@ export function withRedirectBack(authUrl: string, back: string): string {
   return url.toString();
 }
 
-/** Whether an automatic bounce may start now (none recorded recently). */
+/** Whether a bounce may start now (none recorded recently). */
 export function bounceAllowed(now = Date.now()): boolean {
   const raw = storage()?.getItem(PLANS_CONNECT_BOUNCE_KEY);
   if (!raw) {
@@ -44,15 +49,23 @@ export function recordBounce(now = Date.now()): void {
 }
 
 /**
- * Sends the browser through muster's GitHub connect and back to the current
- * page: a full-page navigation, no popup, no click. GitHub redirects straight
- * back for an App the person already authorized at their login.
+ * Asks the person to open muster's GitHub connect, which replaces this page
+ * and comes back to `back`, and records the bounce once they agree.
  */
-export function bounceToConnect(
+export async function bounceToConnect(
+  consentApi: Pick<ExternalUrlConsentApi, 'open'>,
   authUrl: string,
-  navigate: (url: string) => void = url => window.location.assign(url),
   back: string = window.location.href,
-): void {
-  recordBounce();
-  navigate(withRedirectBack(authUrl, back));
+): Promise<ExternalUrlConsentAnswer> {
+  const answer = await consentApi.open({
+    url: withRedirectBack(authUrl, back),
+    requester: 'muster (GitHub connect)',
+    message:
+      'Connect your GitHub account in muster. The page comes back here once it is connected.',
+    target: 'page',
+  });
+  if (answer === 'accept') {
+    recordBounce();
+  }
+  return answer;
 }

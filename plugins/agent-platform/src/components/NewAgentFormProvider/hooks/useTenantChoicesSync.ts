@@ -23,7 +23,7 @@ export type TenantChoicesSync = {
  * one), `setTenantChoicesUnread` says why there is none. Where agent-manager
  * serves the organization tools (`get_info`'s `organizations` capability),
  * the answer is the organizations the person belongs to
- * (`list_my_organizations`, asked with their own token), so no Platform is
+ * (`list_organizations`' members, asked with their own token), so no Platform is
  * offered; elsewhere it is `get_info`'s `namespaces.managed`. The one place
  * that does: every step of the create wizard mounts it (`NewAgentStep`), and
  * the Owner field only reads the form. Inert while editing: an existing agent
@@ -52,7 +52,11 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     Boolean(installation) &&
     Boolean(organizations.failureOf(installation ?? ''));
   const choices = byOrganization
-    ? mine?.organizations.map(organization => organization.namespace)
+    ? mine?.organizations.flatMap(organization =>
+        organization.permissions.member && organization.namespace
+          ? [organization.namespace]
+          : [],
+      )
     : info?.namespaces?.managed;
   const choicesKey = choices?.join(',');
   const heldKey = state.tenantChoices?.join(',');
@@ -64,7 +68,7 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     }
   }, [choicesKey, heldKey, setTenantChoices]);
 
-  // No muster plugin to ask, or `get_info` (or `list_my_organizations`)
+  // No muster plugin to ask, or `get_info` (or `list_organizations`)
   // failed: `failed`. Answered without a list: `unlisted`.
   let unread: TenantChoicesUnread | undefined;
   if (installation && choicesKey === undefined) {

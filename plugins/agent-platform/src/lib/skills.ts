@@ -340,15 +340,16 @@ export function skillSourceUrl(
 /**
  * One file of the skill on github.com at the pinned commit (`blob/…`), where
  * the Instructions tab's viewer sends a file it does not show inline (binary,
- * or over the 512 KB cap). `file` is relative to the skill directory.
- * Undefined outside github.com.
+ * or over the 512 KB cap), and the skill page's Path. `file` is relative to
+ * the skill directory. Undefined outside github.com, and without a commit to
+ * read it at.
  */
 export function skillFileUrl(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
   file: string,
 ): string | undefined {
   const parts = githubRepoParts(skill.repoUrl);
-  if (!parts) {
+  if (!parts || !skill.commit) {
     return undefined;
   }
   const segments = [

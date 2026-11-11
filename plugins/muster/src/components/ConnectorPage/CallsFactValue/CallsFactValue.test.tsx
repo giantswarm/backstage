@@ -127,15 +127,15 @@ describe('CallsFactValue', () => {
   it('says a muster session is needed without one', () => {
     renderValue({ isLoading: false }, { authenticated: false });
 
-    expect(screen.getByText('Needs a muster session')).toBeInTheDocument();
+    expect(screen.getByText('Needs a Muster session')).toBeInTheDocument();
     expect(skeleton()).toBeNull();
   });
 
   it.each([
-    ['unreachable', 'muster is not reachable from this portal'],
+    ['unreachable', 'Muster is not reachable from this portal'],
     ['session-expired', 'Your sign-in has expired'],
-    ['mint-failed', 'No muster session could be started'],
-    ['muster-rejected', 'muster refused the session'],
+    ['mint-failed', 'No Muster session could be started'],
+    ['muster-rejected', 'Muster refused the session'],
   ] as const)(
     'says why there is no session after a %s failure',
     (kind, text) => {

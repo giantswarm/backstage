@@ -24,6 +24,10 @@ import {
   type FakeRepository,
   type WorkspaceManagerFake,
 } from './workspaceManagerFake';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -99,7 +103,12 @@ async function render(
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <WorkspaceEditorPage
@@ -510,7 +519,9 @@ describe('WorkspaceEditorPage', () => {
           gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
         ).toBeInTheDocument();
         expect(
-          gate.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          gate.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         ).toBeInTheDocument();
         expect(gate.queryByText(/core_auth_login/)).not.toBeInTheDocument();
         expect(
@@ -532,7 +543,9 @@ describe('WorkspaceEditorPage', () => {
         await screen.findByTestId('workspace-editor-gate');
 
         fireEvent.click(
-          screen.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          screen.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         );
         expect(
           await screen.findByText('Waiting for GitLab…'),
@@ -581,7 +594,9 @@ describe('WorkspaceEditorPage', () => {
         expect(fake.callsOf('list_repositories')).toHaveLength(0);
 
         fireEvent.click(
-          prompt.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          prompt.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         );
         await waitFor(() =>
           expect(fake.signInServer.mock.calls).toEqual([[target, 'lab']]),

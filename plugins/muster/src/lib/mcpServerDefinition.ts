@@ -76,9 +76,9 @@ export type McpServerAuthMode =
  * engineer, so anyone who can reach the server's tools acts as everyone else.
  */
 export const SIGV4_SHARED_IDENTITY_WARNING =
-  'Every request is signed as muster itself, never as the user making the ' +
+  'Every request is signed as Muster itself, never as the user making the ' +
   'call. All users of this connector share one AWS identity, and CloudTrail ' +
-  'attributes their actions to muster (STS session name muster-aggregator), ' +
+  'attributes their actions to Muster (STS session name muster-aggregator), ' +
   'not to a named engineer.';
 
 /** One `spec.meta` entry, kept as a list so the editor can round-trip order. */
@@ -914,7 +914,7 @@ function existingSecretProblems(
     // so a Secret made by hand under such a name never signs anyone in.
     problems.push({
       field: 'clientSecretName',
-      message: `Names like ${state.slug.trim()}-muster-client-a1b2c3d4e5 are kept for the client muster stores; choose another name.`,
+      message: `Names like ${state.slug.trim()}-muster-client-a1b2c3d4e5 are kept for the client Muster stores; choose another name.`,
     });
   }
   if (namespace && !isValidSlug(namespace)) {
@@ -1111,7 +1111,7 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
     authorizationServer = {
       available: false,
       reason:
-        "AWS SigV4 signs with muster's own machine identity — there is no authorization server in that flow, and the CRD rejects the two together.",
+        "AWS SigV4 signs with Muster's own machine identity — there is no authorization server in that flow, and the CRD rejects the two together.",
     };
   }
 
@@ -1139,7 +1139,7 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
       : {
           available: false,
           reason: sigv4Mode
-            ? "Required audiences apply to the forwarded platform identity token. AWS SigV4 forwards no token at all — it signs as muster's own machine identity."
+            ? "Required audiences apply to the forwarded platform identity token. AWS SigV4 forwards no token at all — it signs as Muster's own machine identity."
             : 'Required audiences apply to the forwarded platform identity token, which only Platform SSO sends.',
         },
     sigv4,

@@ -649,7 +649,7 @@ describe('validateNewMcpServerForm', () => {
         {
           field: 'clientSecretName',
           message:
-            'Names like github-muster-client-a1b2c3d4e5 are kept for the client muster stores; choose another name.',
+            'Names like github-muster-client-a1b2c3d4e5 are kept for the client Muster stores; choose another name.',
         },
       ]);
       // Another connector's prefix, or another length, is an ordinary name.
@@ -832,7 +832,7 @@ describe('authFieldAvailability', () => {
     const sigv4 = authFieldAvailability(sigv4State());
     expect(sigv4.authorizationServer).toEqual({
       available: false,
-      reason: expect.stringContaining("muster's own machine identity"),
+      reason: expect.stringContaining("Muster's own machine identity"),
     });
     expect(sigv4.requiredAudiences).toEqual({
       available: false,

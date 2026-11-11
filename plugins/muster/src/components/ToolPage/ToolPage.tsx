@@ -177,7 +177,7 @@ function ToolPageContent() {
     withTabs = false;
     body = (
       <EmptyStateCard
-        title="No muster environment"
+        title="No Muster environment"
         description="None of this portal's environments runs muster."
       />
     );
@@ -186,7 +186,7 @@ function ToolPageContent() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="Tools need a muster session."
+        context="Tools need a Muster session."
       />
     );
   } else if (row && serverTools.isLoading) {
@@ -283,7 +283,7 @@ function ToolPageContent() {
 
   const exposedAs = (
     <>
-      Exposed by muster as: <span style={TOOL_NAME_STYLE}>{tool}</span>
+      Exposed by Muster as: <span style={TOOL_NAME_STYLE}>{tool}</span>
     </>
   );
 

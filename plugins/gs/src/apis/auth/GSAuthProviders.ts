@@ -39,6 +39,7 @@ import {
   asLoginRequestCaller,
   asLoginRequestCallerApi,
 } from './loginRequestCaller';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -99,6 +100,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly configApi?: ConfigApi;
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly oauthRequestApi: OAuthRequestApi;
+  private readonly externalUrlConsentApi: ExternalUrlConsentApi;
 
   // Per-installation kubernetes auth providers/APIs are populated lazily by
   // `ensureInitialized()` once the signed-in config (with the installations)
@@ -147,6 +149,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
+    this.externalUrlConsentApi = options.externalUrlConsentApi;
     this.clusterAccessStatusApi = options.clusterAccessStatusApi;
     this.signInConnectorMemory =
       options.signInConnectorMemory ?? new LocalStorageSignInConnectorMemory();
@@ -654,8 +657,8 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   /**
    * Backstage's standard GitHub auth API (`githubAuthApiRef`) implemented on
    * the person's own GitHub grant in muster: tokens are minted from
-   * `POST /api/auth/github-token`, a missing grant sends the browser through
-   * muster's connect once (full-page, back to the current page), signing out
+   * `POST /api/auth/github-token`, a missing grant asks the person to open
+   * muster's connect (full-page, back to the current page), signing out
    * revokes the grant in muster. Configured by `gs.github`; returns undefined
    * otherwise, so the app can keep the upstream GitHub provider.
    *
@@ -674,6 +677,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         authConnector: new GithubGrantAuthConnector({
           backendBaseUrl,
           mainAuthApi: asLoginRequestCallerApi('github-grant', mainAuthApi),
+          externalUrlConsentApi: this.externalUrlConsentApi,
         }),
         // What the portal's plugins ask for (see the app's github-auth
         // factory); echoed by the connector, since a GitHub App user token

@@ -35,6 +35,10 @@ import {
   EVERY_ZONE,
   PICK_A_ZONE,
 } from './PoolPlacementPicker';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@giantswarm/backstage-plugin-muster', () =>
   jest
@@ -551,6 +555,7 @@ async function renderPage(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [analyticsApiRef, analyticsApi],
       ]}
     >

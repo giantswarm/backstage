@@ -24,6 +24,7 @@ import {
   repositoriesQueryClient,
 } from '../RepositoriesProviders';
 import { REPOSITORY_SETUP_DOCS_URL } from '../../lib/docs';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { bounceToConnect } from '../connectBounce';
 import { RepositoriesPage } from './RepositoriesPage';
 
@@ -62,7 +63,12 @@ const inventoryWith = (record: InventoryRecord) => ({
 /** Renders the page, at the URL given (a shared or reloaded view). */
 async function renderPage(api: RepositoriesApi, url = '/') {
   return renderInTestApp(
-    <TestApiProvider apis={[[repositoriesApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [repositoriesApiRef, api],
+        [externalUrlConsentApiRef, { open: jest.fn() }],
+      ]}
+    >
       <RepositoriesProviders>
         <RepositoriesPage />
         <LocationProbe />
@@ -164,10 +170,10 @@ describe('RepositoriesPage', () => {
   it('links the repository set-up docs from the header, in a new tab', async () => {
     await renderPage(fakeApi());
 
-    // The label says where it goes; the portal's Link adds the new-window
-    // notice for screen readers and the external-link icon.
+    // The label says where it goes; the external-link icon and the hidden
+    // new-tab notice follow it.
     const docs = await screen.findByRole('link', {
-      name: /^Repository set-up docs\s*, Opens in a new window$/,
+      name: 'Repository set-up docs (opens in a new tab)',
     });
     expect(docs).toHaveAttribute('href', REPOSITORY_SETUP_DOCS_URL);
     expect(docs).toHaveAttribute('target', '_blank');
@@ -747,7 +753,7 @@ describe('RepositoriesPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('bounces through muster connect when the person has no grant', async () => {
+  it('offers muster connect, and asks before it opens, when the person has no grant', async () => {
     const api = fakeApi({
       listRepositories: async () => {
         throw new MusterServerNotConnectedError(
@@ -758,16 +764,14 @@ describe('RepositoriesPage', () => {
     });
     await renderPage(api);
     expect(
-      await screen.findByText('Connecting to the repository manager…'),
+      await screen.findByText('Connect to the repository manager'),
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(bounceToConnect).toHaveBeenCalledWith(
-        'https://muster.example/oauth/proxy/start?state=abc',
-      ),
+    expect(bounceToConnect).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(bounceToConnect).toHaveBeenCalledWith(
+      expect.anything(),
+      'https://muster.example/oauth/proxy/start?state=abc',
     );
-    expect(
-      screen.queryByRole('button', { name: 'Connect' }),
-    ).not.toBeInTheDocument();
   });
 
   it('offers Connect when a bounce just came back without a grant', async () => {
@@ -790,6 +794,7 @@ describe('RepositoriesPage', () => {
     expect(bounceToConnect).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
     expect(bounceToConnect).toHaveBeenCalledWith(
+      expect.anything(),
       'https://muster.example/start',
     );
   });

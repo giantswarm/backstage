@@ -6,6 +6,7 @@ import {
   expect,
   open,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { lab } from './lab';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
@@ -173,10 +174,9 @@ async function signInToConnector(admin: Page): Promise<void> {
     'an OAuth connector offers Sign in, or its tools once signed in',
   ).toBeVisible({ timeout: 60_000 });
   if (await signIn.isVisible()) {
-    const popup = admin.waitForEvent('popup');
-    await signIn.click();
     // A grant left by an earlier run signs in without Dex.
-    await completeDexLogin(await popup, lab.users.admin, lab.password, {
+    const popup = await openThroughConsent(admin, signIn);
+    await completeDexLogin(popup, lab.users.admin, lab.password, {
       mayBeGranted: true,
     });
   }
@@ -284,7 +284,7 @@ test.describe('a connector whose client is typed into the wizard', () => {
       })
       .click();
     await admin
-      .getByText("Advanced: sign-in settings for apps muster can't look up")
+      .getByText("Advanced: sign-in settings for apps Muster can't look up")
       .click();
     const { authorizationServer } = fixture;
     await admin

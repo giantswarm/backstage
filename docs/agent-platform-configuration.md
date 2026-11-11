@@ -256,7 +256,9 @@ agent-manager an installation offers no agent creation
 | ------- | ------------------- | ------------------------------------------------------------------------------- |
 | `[]`    | required for skills | frontend (signed-in config) and gs-backend (`plugins/gs-backend/src/router.ts`) |
 
-Git repositories to discover skills from. Every `SKILL.md` is one skill (its
+Deprecated: read only on an installation whose muster does not list
+skill-manager. Where it does, skill-manager's sources are the skill list and
+this key is ignored. Git repositories to discover skills from. Every `SKILL.md` is one skill (its
 directory is the skill root; frontmatter `name` and `description` are shown).
 An agent's skill is pinned to the commit discovery read.
 

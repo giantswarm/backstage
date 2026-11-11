@@ -14,6 +14,10 @@ import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import { musterCommitAgentUpdateDryRunQueryKey } from '../../lib/queryKeys';
 import { AgentDeleteDialog } from './AgentDeleteDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // agent-manager's answers to the empty commit dry run, as they come over MCP
 // (see `missingReleaseFile`'s test for the first).
@@ -102,7 +106,12 @@ async function renderDialog(scenario: Scenario) {
     );
   }
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <AgentDeleteDialog
           installation="gazelle"

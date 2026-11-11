@@ -170,7 +170,7 @@ export function WorkflowOverviewTab({
           status="warning"
           description={
             <>
-              muster's validator flagged this definition. The workflow can still
+              Muster's validator flagged this definition. The workflow can still
               run.
               {validationErrors.length > 0 && (
                 <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>

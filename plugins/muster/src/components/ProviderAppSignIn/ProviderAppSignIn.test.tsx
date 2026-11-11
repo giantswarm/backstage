@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import {
   AuthStatusResponse,
   MusterApi,
@@ -58,12 +59,20 @@ function makeMuster(initial: ProviderAppAuthStatus) {
   return { api, state };
 }
 
+/** The person's answer in the external URL consent dialog. */
+const consentOpen = jest.fn();
+
 async function renderRow(api: Api) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, { open: consentOpen }],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <ProviderAppSignIn
           app="chatgpt"
@@ -76,18 +85,8 @@ async function renderRow(api: Api) {
 }
 
 describe('ProviderAppSignIn', () => {
-  let windowOpen: jest.SpyInstance;
-  let tab: { closed: boolean; opener: unknown; location: { href: string } };
-
   beforeEach(() => {
-    tab = { closed: false, opener: {}, location: { href: 'about:blank' } };
-    windowOpen = jest
-      .spyOn(window, 'open')
-      .mockReturnValue(tab as unknown as Window);
-  });
-
-  afterEach(() => {
-    windowOpen.mockRestore();
+    consentOpen.mockReset().mockResolvedValue('accept');
   });
 
   it('shows a person without the grant as not connected, with Connect', async () => {
@@ -98,7 +97,7 @@ describe('ProviderAppSignIn', () => {
     expect(screen.getByRole('button', { name: 'Connect' })).toBeEnabled();
   });
 
-  it('shows a code muster reports outstanding, with its link and a copy button', async () => {
+  it('shows a code muster reports outstanding, with its page and a copy button', async () => {
     const { api } = makeMuster({
       name: 'chatgpt',
       status: 'pending',
@@ -114,9 +113,17 @@ describe('ProviderAppSignIn', () => {
     expect(screen.getByTestId('provider-app-user-code')).toHaveTextContent(
       'WXYZ-1234',
     );
-    expect(screen.getByRole('link', { name: DEVICE_PAGE })).toHaveAttribute(
-      'href',
-      DEVICE_PAGE,
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
+    );
+    expect(consentOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: DEVICE_PAGE,
+        requester: 'ChatGPT',
+        message: 'Enter the code WXYZ-1234 on the page that opens.',
+      }),
     );
     expect(
       screen.getByRole('button', { name: 'Copy the code WXYZ-1234' }),
@@ -192,8 +199,10 @@ describe('ProviderAppSignIn', () => {
     expect(
       await screen.findByTestId('provider-app-user-code'),
     ).toHaveTextContent('ABCD-EFGH');
-    // The provider's page, in the tab the click opened.
-    expect(tab.location.href).toBe(DEVICE_PAGE);
+    // The provider's page, once the person agrees to open it.
+    expect(consentOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ url: DEVICE_PAGE }),
+    );
 
     // The person enters the code at OpenAI; muster files the grant.
     state.app = { name: 'chatgpt', status: 'connected' };

@@ -1,7 +1,7 @@
 import { Avatar } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { HintTooltip } from '@giantswarm/backstage-plugin-ui-react';
-import { connectorIconOf } from '../../lib/connectorLogo';
+import { connectorIconOf } from '@giantswarm/backstage-plugin-gs-common';
 
 type StyleProps = { size: number; round: boolean };
 
@@ -42,7 +42,11 @@ const useStyles = makeStyles({
 });
 
 export type ConnectorLogoProps = {
-  /** The MCPServer's `.status.icon`; checked by `connectorIconOf`. */
+  /**
+   * The connector's icon, from `useConnectorIcon`: its MCPServer's
+   * `.status.icon`, or the one muster announces for muster's own row.
+   * Checked by `connectorIconOf`.
+   */
   icon?: string;
   /** The connector's display name: its label, tooltip and fallback letter. */
   name: string;
@@ -62,8 +66,8 @@ export type ConnectorLogoProps = {
 };
 
 /**
- * A connector's logo at the letter tile's size: the icon muster wrote to the
- * MCPServer's `.status.icon`, else the name's first letter. An image that
+ * A connector's logo at the letter tile's size: its icon (`useConnectorIcon`),
+ * else the name's first letter. An image that
  * fails to load falls back to the letter too, as bui's `Avatar` does.
  */
 export function ConnectorLogo({

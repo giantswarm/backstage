@@ -168,7 +168,7 @@ describe('AuthChain', () => {
 
     expect(screen.getByText('derived from the URL host')).toBeInTheDocument();
     expect(
-      screen.getByText(/signs as muster's own identity/),
+      screen.getByText(/signs as Muster's own identity/),
     ).toBeInTheDocument();
   });
 
@@ -350,7 +350,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        /connects per session with your identity; its tools appear once muster has connected it for you/,
+        /connects per session with your identity; its tools appear once Muster has connected it for you/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();

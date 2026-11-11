@@ -11,7 +11,7 @@ import {
 } from './tenants';
 
 // Which namespace is which organization, as agent-manager's
-// `list_my_organizations` answers it from the namespaces' labels. The
+// `list_organizations` answers it from the namespaces' labels. The
 // namespace's name decides nothing: `org-legacy` is a Giant Swarm
 // Organization's namespace that no answer names, so it is no Agent Platform
 // organization, only named as the Giant Swarm one.

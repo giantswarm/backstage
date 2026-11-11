@@ -171,7 +171,9 @@ describe('ProfilePage', () => {
   it('keeps an escape hatch to the classic portal settings, in a new tab', async () => {
     await renderPage();
 
-    const link = screen.getByRole('link', { name: 'All portal settings ↗' });
+    const link = screen.getByRole('link', {
+      name: 'All portal settings (opens in a new tab)',
+    });
     expect(link).toHaveAttribute('href', '/settings');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -182,10 +184,12 @@ describe('ProfilePage', () => {
 
     const line = screen.getByText(/provided by Giant Swarm, release/);
     expect(line.textContent).toBe(
-      'This is backstage ↗ provided by Giant Swarm, release v0.220.3 ↗',
+      'This is backstage (opens in a new tab) provided by Giant Swarm, release v0.220.3 (opens in a new tab)',
     );
     expect(line.closest('[class*="footer"]')).not.toBeNull();
-    const tag = screen.getByRole('link', { name: 'v0.220.3 ↗' });
+    const tag = screen.getByRole('link', {
+      name: 'v0.220.3 (opens in a new tab)',
+    });
     expect(tag).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/backstage/releases/tag/v0.220.3',

@@ -135,6 +135,25 @@ describe('createSkillPullRequest', () => {
     }
   });
 
+  it('opens the PR against the given base instead of the default branch', async () => {
+    const calls = mockGithub({
+      ...happyHandlers,
+      [`GET ${API}/commits/skills`]: () => ({
+        status: 200,
+        body: { sha: HEAD_A },
+      }),
+    });
+
+    const result = await createSkillPullRequest({ ...input, base: 'skills' });
+
+    expect(result.base).toBe('skills');
+    expect(calls.map(call => call.key)).not.toContain(
+      `GET ${API}/commits/main`,
+    );
+    const pr = calls.find(call => call.key === `POST ${API}/pulls`);
+    expect(pr?.body).toMatchObject({ base: 'skills' });
+  });
+
   it('refuses more than 50 tags on a new skill before it creates a branch', async () => {
     const calls = mockGithub(happyHandlers);
 

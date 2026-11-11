@@ -111,7 +111,22 @@ export interface McpUsageToolRow {
   tool: string;
   calls: number;
   errors: number;
+  /**
+   * Set by `/usage` only where it is narrowed to this one tool; every tool's
+   * comes from `/usage/tool-latency` ({@link McpToolLatency}).
+   */
   p95_seconds: number | null;
+}
+
+/**
+ * The p95 latency of every tool called in the window (`/usage/tool-latency`),
+ * read apart from {@link McpUsage} because its query is the slowest.
+ */
+export interface McpToolLatency {
+  available: boolean;
+  reason?: string;
+  range_hours: number;
+  tools: Array<{ tool: string; p95_seconds: number | null }>;
 }
 
 /** Per-MCP-server usage rollup over the selected range. */
@@ -266,6 +281,17 @@ export type { ConnectorName };
  */
 export interface ConnectorNamesResponse {
   servers: ConnectorName[];
+  unavailable?: boolean;
+}
+
+/**
+ * What muster says of itself in its `initialize` result. `icon` is the logo
+ * it announces (muster v5.59.0 and later), already checked by gs-common's
+ * `connectorIconOf`; absent from an older muster. `unavailable` when muster
+ * could not be asked: worth asking again soon.
+ */
+export interface MusterServerInfoResponse {
+  icon?: string;
   unavailable?: boolean;
 }
 
@@ -630,6 +656,12 @@ export interface MusterApi {
     /** Narrows every figure to one tool, by the name muster exposes it as. */
     tool?: string;
   }): Promise<McpUsage>;
+  /** Every tool's p95 latency over the window, narrowed as {@link getMcpUsage}. */
+  getMcpToolLatency(options?: {
+    installation?: string;
+    hours?: number;
+    servers?: readonly string[];
+  }): Promise<McpToolLatency>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
   /**
@@ -637,6 +669,11 @@ export interface MusterApi {
    * sign-in prompt. A background read: it never asks the person to sign in.
    */
   listConnectorNames(installation?: string): Promise<ConnectorNamesResponse>;
+  /**
+   * What muster says of itself (its logo), for its own row and page. A
+   * background read: it never asks the person to sign in.
+   */
+  getServerInfo(installation?: string): Promise<MusterServerInfoResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
   filterResources(
@@ -657,12 +694,14 @@ export interface MusterApi {
   /**
    * Execute an aggregated tool. The UI executes whatever tools muster exposes;
    * the trust boundary is the downstream MCP server's deployment (e.g.
-   * mcp-kubernetes is deployed read-only), not the portal.
+   * mcp-kubernetes is deployed read-only), not the portal. `signal` cancels
+   * the call, also while it waits on the person's sign-in.
    */
   callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
+    options?: { signal?: AbortSignal },
   ): Promise<unknown>;
   /**
    * {@link callTool} for a tool that reports progress while it works: each
@@ -690,6 +729,12 @@ export interface MusterApi {
    * need their own downstream OAuth flow -- see `signInServer`.
    */
   signIn(installation?: string): Promise<boolean>;
+  /**
+   * The headers that carry the person's token for the installation's
+   * muster, for a backend plugin that calls muster as them: empty when the
+   * installation needs no token.
+   */
+  authHeaders(installation?: string): Promise<Record<string, string>>;
   /**
    * Per-server authentication state for the user's muster session
    * (`auth://status`). Cheap enough to poll while a sign-in is in flight.

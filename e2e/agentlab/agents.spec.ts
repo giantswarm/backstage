@@ -8,6 +8,7 @@ import {
   searchRoster,
   test,
 } from './fixtures';
+import { lab } from './lab';
 
 /**
  * Customize's Agents tab as the admin reads it: the roster from the
@@ -107,7 +108,7 @@ test('an agent in the roster opens its detail page', async ({
   await expect(
     admin
       .getByRole('complementary', { name: 'About this agent' })
-      .getByRole('link', { name: 'default-model-config' }),
+      .getByRole('link', { name: lab.defaultModel }),
   ).toBeVisible();
   await admin.getByRole('tab', { name: 'Sessions' }).click();
   await expect(admin).toHaveURL(new RegExp(`${href}/sessions$`));
@@ -155,7 +156,7 @@ test('the New agent wizard opens on Details, derives the technical name and list
 
   const models = admin.getByRole('radiogroup', { name: 'Model' });
   await expect(
-    models.getByRole('radio', { name: /default-model-config/ }),
+    models.getByRole('radio', { name: lab.defaultModel }),
     'the ModelConfigs an admin provisioned are offered',
   ).toBeVisible();
 

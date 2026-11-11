@@ -45,7 +45,9 @@ describe('ModelHostingHint', () => {
   it('says what turns model hosting on, linking the configuration reference', async () => {
     await renderHint();
     expect(screen.getByText(hint)).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: 'How to turn it on' });
+    const link = screen.getByRole('link', {
+      name: 'How to turn it on (opens in a new tab)',
+    });
     expect(link).toHaveAttribute('href', MODEL_HOSTING_DOCS_URL);
     expect(link).toHaveAttribute('target', '_blank');
   });
