@@ -156,7 +156,9 @@ export function fakeOrganizationAccess(
     async ({ path, init }: { path: string; init?: RequestInit }) => {
       // The organization's ModelConfigs, as the person reads them: only
       // their key references matter here.
-      const models = path.match(/\/namespaces\/([^/]+)\/modelconfigs\/?(?:\?|$)/);
+      const models = path.match(
+        /\/namespaces\/([^/]+)\/modelconfigs\/?(?:\?|$)/,
+      );
       if (models) {
         return new Response(
           JSON.stringify({
