@@ -4,8 +4,8 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
-  CREDENTIAL_OPERATION_PATTERN,
   type CredentialResourceResult,
+  preparedCredentialOperation,
 } from '../lib/credentialOperations';
 import type { OrganizationNamespace } from '../lib/organizations';
 import {
@@ -81,19 +81,9 @@ export function useOrganizationCredentialRequest(
       'prepares a credential request; the save on the credential form is the tracked write',
     mutationFn: async request => {
       const result = await send(request);
-      const operation = result.credentialOperation;
+      const operation = preparedCredentialOperation(result);
       if (!operation) {
-        if (result.pending) {
-          throw new Error(
-            'agent-manager answered a credential request without its id.',
-          );
-        }
         return { result };
-      }
-      if (!CREDENTIAL_OPERATION_PATTERN.test(operation)) {
-        throw new Error(
-          'agent-manager answered a credential request id this portal does not recognize.',
-        );
       }
       const form = formLink?.({
         installation,

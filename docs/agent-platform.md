@@ -728,6 +728,25 @@ anything but the portal; the model page names the owner in a "Managed by"
 fact. A CR without markers (applied with kubectl) is editable. The portal
 labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
 
+**An organization's model is saved through agent-manager.** In an
+organization namespace (one agent-manager's `list_organizations` names), New
+model and Edit model call `set_organization_model` as the person
+(`useSaveOrganizationModel`) and write no Secret: an organization admin has no
+`patch` on Secrets, and its key is never typed into the model form. The form
+asks for the model's name (agent-manager keeps no display name), the provider
+and the model id. A new model, an edit that asks for a new key, or one that
+changes the provider continues to the credential form
+(`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
+which takes the key and finishes the write, then has the model and connector
+views read again; an edit that keeps the key is finished when the call
+answers. `set_organization_model` changes a model that exists, so a create
+first reads the organization's models (`list_model_configs`) and refuses a
+name it already has. A model agent-manager wrote there stays
+editable, since the edit goes through agent-manager. `useSaveModelConfig`
+refuses an organization namespace, and any namespace but `kagent` while the
+portal cannot tell whether it is an organization's (agent-manager not
+reachable or its organizations not read); Edit is withheld then too.
+
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
 a Flux HelmRelease rendered it, the page reads that HelmRelease with the
@@ -958,6 +977,34 @@ A selected skill becomes a chart 1.x `skills[]` entry,
 `skillEntryOf`). The portal sends the commit, never a branch, so what the
 person picked runs until they update it. Root-level skills omit `path`; agents
 without skills omit `skills`. There is no per-skill credential.
+
+**Plugins.** The Skills step lists the plugins of the same repositories below
+the skills (`PluginCards`), Claude Code plugins and Agent Plugins packages as
+two groups, one row per plugin, with a search over the plugins' names and
+their skills' names and descriptions that opens every plugin with a matching
+skill. A plugin becomes a `plugins[]` entry pinned like a skill,
+`{ path, git: { url, commit }, skills? }` (`lib/plugins.ts`, `pluginEntryOf`).
+
+- A Claude Code plugin (`.claude-plugin/plugin.json` only) has one checkbox and
+  no selection: it loads whole, with its commands, hooks and subagents, on the
+  `claude` Harness only. Its row folds out its skills without checkboxes, read
+  from the skill catalogue.
+- An Agent Plugins package (a root `plugin.json`) loads only the skills named in
+  `skills`, on every Harness. A directory with both manifests is one, `claude`
+  included, because kagent reads the root manifest first. Its row folds out its
+  skills as cards to pick, and its checkbox picks every skill it lists at the
+  commit shown (mixed while only some are), pinning the package to that
+  commit, an edited agent's too. agent-manager takes no marker for the whole
+  package (giantswarm/giantswarm#39190), so the entry names each skill, and a
+  skill added to the package later is not included until it is picked.
+- An edited agent's entry without `skills` for a package pinned to an older
+  commit (picked while the directory was a Claude Code plugin there, where it
+  loads whole) shows the package checked and its skills checked and disabled.
+  Clearing the checkbox removes the entry; skills picked afterwards are pinned
+  to the latest commit. The same entry at the commit shown loads nothing, and
+  its row says so. Picked names the package no longer lists are named under
+  the row and left out of its count. A Claude Code row whose pinned entry
+  names skills says the agent loads only those.
 
 **Private skill repositories.** Discovery reads GitHub's `private` flag of
 each repository (`GET /agent-skills` answers `private`), and the Skills step

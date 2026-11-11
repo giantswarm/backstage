@@ -55,8 +55,29 @@ jest.mock('../../hooks/useSaveModelConfig', () => ({
   }),
 }));
 
+// The organizations agent-manager names for the person: `org-acme` is one.
+let mockDirectoryFailure: string | undefined;
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () => ({
+    ...jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+    discoveryErrors: mockDirectoryFailure ? [mockDirectoryFailure] : [],
+  }),
+}));
+
+jest.mock('../../hooks/useSaveOrganizationModel', () => ({
+  useSaveOrganizationModel: () => ({
+    save: jest.fn(),
+    isSaving: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
 function sonnet(
   overrides: {
+    namespace?: string;
     labels?: Record<string, string>;
     spec?: ModelConfigInterface['spec'];
   } = {},
@@ -67,7 +88,7 @@ function sonnet(
       kind: 'ModelConfig',
       metadata: {
         name: 'sonnet',
-        namespace: 'kagent',
+        namespace: overrides.namespace ?? 'kagent',
         annotations: { 'ui.giantswarm.io/display-name': 'Sonnet 4.5' },
         ...(overrides.labels ? { labels: overrides.labels } : {}),
       },
@@ -108,9 +129,10 @@ function renderPage() {
 
 describe('EditModelPage', () => {
   beforeEach(() => {
+    mockDirectoryFailure = undefined;
     mockMayUpdate = true;
     mockSave.mockReset();
-    mockSave.mockResolvedValue(undefined);
+    mockSave.mockResolvedValue({ isDefault: false });
     mockUseResource.mockReturnValue({
       resource: sonnet(),
       isLoading: false,
@@ -222,6 +244,79 @@ describe('EditModelPage', () => {
       expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     },
   );
+
+  it("opens the form for an organization's model agent-manager wrote: the form saves it through agent-manager", async () => {
+    mockUseResource.mockReturnValue({
+      resource: sonnet({
+        namespace: 'org-acme',
+        labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+      }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByRole('switch', { name: 'Enter a new key on the next page' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('This model cannot be edited from here'),
+    ).toBeNull();
+  });
+
+  it("offers no form outside the platform's namespace while it cannot tell an organization's", async () => {
+    mockDirectoryFailure =
+      'Could not reach agent-manager on inst-1. Check your connector sign-in and try again.';
+    mockUseResource.mockReturnValue({
+      resource: sonnet({ namespace: 'agents-payments-x7k2q' }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        /Could not tell whether this model belongs to an organization/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^API key/)).toBeNull();
+  });
+
+  it('still opens the form for a platform model then', async () => {
+    mockDirectoryFailure = 'Could not reach agent-manager on inst-1.';
+    await renderPage();
+
+    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
+  });
+
+  it("offers no form for an organization's model on a provider its gateway does not serve", async () => {
+    mockUseResource.mockReturnValue({
+      resource: sonnet({
+        namespace: 'org-acme',
+        spec: { provider: 'Ollama', model: 'qwen3', ollama: { host: 'x' } },
+      }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByText(/this one uses Ollama/)).toBeInTheDocument();
+  });
+
+  it('offers no form for a platform model agent-manager wrote', async () => {
+    mockUseResource.mockReturnValue({
+      resource: sonnet({
+        labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+      }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText(/asserted by agent-manager, which would revert/),
+    ).toBeInTheDocument();
+  });
 
   it('offers no form without permission to change the model', async () => {
     mockMayUpdate = false;

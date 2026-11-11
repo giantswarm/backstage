@@ -58,6 +58,12 @@ export type ModelConfigFormFieldsProps = {
    * model): the listener is its endpoint, so the form asks for none.
    */
   routed?: boolean;
+  /**
+   * Edit of an organization's model (`routed`) only: whether the save asks
+   * for a new key, which the person enters on the credential form.
+   */
+  replaceKey?: boolean;
+  onReplaceKeyChange?: (replaceKey: boolean) => void;
 };
 
 function providerLabel(provider: string): string {
@@ -171,6 +177,8 @@ export function ModelConfigFormFields({
   originalProjectID,
   providers,
   routed = false,
+  replaceKey = false,
+  onReplaceKeyChange,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
@@ -201,41 +209,74 @@ export function ModelConfigFormFields({
     .filter(Boolean)
     .join(', ');
 
+  // An organization's model keeps no display name (agent-manager writes it):
+  // its name is the one the person types, and its key is entered on the
+  // credential form, never here.
+  const keyChanges =
+    routed && mode === 'edit' && originalProvider !== values.provider;
+
   return (
     <>
-      <Card>
-        <CardBody>
-          <SectionHeader
-            variant="title-x-small"
-            title="Name"
-            description="People creating agents see the model under this name."
-          />
-          <TextField
-            label="Name"
-            isRequired={mode === 'create'}
-            value={values.displayName}
-            onChange={displayName => onChange({ displayName })}
-            placeholder="e.g. Sonnet 4.5"
-            {...textFieldProps('displayName', errors.displayName)}
-          />
-          {values.name && (
-            <Text
-              as="p"
-              variant="body-small"
-              color="secondary"
-              style={{
-                marginTop: 'var(--bui-space-1)',
-                overflowWrap: 'anywhere',
-              }}
-            >
-              Its technical name is <code>{values.name}</code>;{' '}
-              {mode === 'edit'
-                ? 'it cannot be changed.'
-                : 'it cannot be changed once the model exists.'}
-            </Text>
-          )}
-        </CardBody>
-      </Card>
+      {routed ? (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              variant="title-x-small"
+              title="Name"
+              description="People creating agents in the organization see the model under this name."
+            />
+            {mode === 'create' ? (
+              <TextField
+                label="Name"
+                isRequired
+                value={values.name}
+                onChange={name => onChange({ name })}
+                placeholder="e.g. claude-sonnet"
+                description="Lowercase letters, numbers and hyphens. It cannot be changed once the model exists."
+                {...textFieldProps('name', errors.name)}
+              />
+            ) : (
+              <Text as="p" style={{ overflowWrap: 'anywhere' }}>
+                <code>{values.name}</code>. It cannot be changed.
+              </Text>
+            )}
+          </CardBody>
+        </Card>
+      ) : (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              variant="title-x-small"
+              title="Name"
+              description="People creating agents see the model under this name."
+            />
+            <TextField
+              label="Name"
+              isRequired={mode === 'create'}
+              value={values.displayName}
+              onChange={displayName => onChange({ displayName })}
+              placeholder="e.g. Sonnet 4.5"
+              {...textFieldProps('displayName', errors.displayName)}
+            />
+            {values.name && (
+              <Text
+                as="p"
+                variant="body-small"
+                color="secondary"
+                style={{
+                  marginTop: 'var(--bui-space-1)',
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                Its technical name is <code>{values.name}</code>;{' '}
+                {mode === 'edit'
+                  ? 'it cannot be changed.'
+                  : 'it cannot be changed once the model exists.'}
+              </Text>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardBody>
@@ -338,7 +379,44 @@ export function ModelConfigFormFields({
         </Card>
       )}
 
-      {needsKey && !isVertexAI && (
+      {routed && (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              variant="title-x-small"
+              title="API key"
+              description="The organization's own key, kept as a Secret of the organization; never shown again."
+            />
+            {mode === 'create' ? (
+              <Text>
+                You enter the key on the next page, the credential form, once
+                you continue.
+              </Text>
+            ) : (
+              <Switch
+                label="Enter a new key on the next page"
+                isSelected={replaceKey || keyChanges}
+                isDisabled={keyChanges}
+                onChange={selected => onReplaceKeyChange?.(selected)}
+              />
+            )}
+            {mode === 'edit' && (
+              <Text
+                as="p"
+                variant="body-small"
+                color="secondary"
+                style={{ marginTop: 'var(--bui-space-1)' }}
+              >
+                {keyChanges
+                  ? `The stored key is for ${providerLabel(originalProvider ?? '')}, not ${providerLabel(values.provider)}: you enter a new one on the credential form.`
+                  : 'Leave it off to keep the current key. A new key replaces it once you save it on the credential form.'}
+              </Text>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {needsKey && !isVertexAI && !routed && (
         <Card>
           <CardBody>
             <SectionHeader
@@ -375,7 +453,7 @@ export function ModelConfigFormFields({
 
       {/* Edit keeps nothing here without an endpoint: the technical name is
           locked and said under the name. */}
-      {(mode === 'create' || hasEndpoint) && (
+      {((mode === 'create' && !routed) || hasEndpoint) && (
         <MoreOptions
           open={moreOptionsOpen}
           onOpenChange={onMoreOptionsOpenChange}
