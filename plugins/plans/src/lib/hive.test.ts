@@ -10,8 +10,14 @@ import {
   statusIntent,
   statusText,
   teamName,
+  teamSetFor,
 } from './hive';
-import { fixtureHistory, fixtureMeta, fixtureNow } from './hiveFixtures';
+import {
+  fixtureHistory,
+  fixtureMeta,
+  fixtureNow,
+  fixtureTeamSets,
+} from './hiveFixtures';
 
 const MAGAZINE_TEAM = fixtureMeta().sources.team;
 import { HIVE_TAB_ORDER, orderHiveTabs } from './hiveTabs';
@@ -21,6 +27,15 @@ describe('hive', () => {
     expect(sameTeam('Phoenix 🔥', 'Phoenix')).toBe(true);
     expect(sameTeam('Bumblebee🐝', 'bumblebee')).toBe(true);
     expect(sameTeam('Atlas 🗺️', 'Phoenix')).toBe(false);
+  });
+
+  it("finds a team's data set by name or board option", () => {
+    const sets = fixtureTeamSets();
+    expect(teamSetFor(sets, 'Bumblebee🐝')?.path).toBe(
+      'magazine/teams/bumblebee',
+    );
+    expect(teamSetFor(sets, 'bumblebee')?.slug).toBe('bumblebee');
+    expect(teamSetFor(sets, 'Phoenix 🔥')).toBeUndefined();
   });
 
   it('scopes Now to a team, keeping only other teams as upcoming', () => {

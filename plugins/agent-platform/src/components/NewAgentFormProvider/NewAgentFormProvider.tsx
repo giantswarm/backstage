@@ -39,6 +39,7 @@ import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
+  allSkillNamesOf,
   DiscoveredPlugin,
   pluginEntryKey,
   pluginId,
@@ -270,8 +271,16 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
   removeKeptSkill: (skill: AgentSkillEntry) => void;
-  /** A Claude Code plugin: adds it if not picked, removes it if picked. */
+  /**
+   * Adds the plugin if not picked, removes it if picked. A Claude Code plugin
+   * is added whole; an Agent Plugins package with every skill it lists.
+   */
   togglePlugin: (plugin: DiscoveredPlugin) => void;
+  /**
+   * An Agent Plugins package: enables every skill it lists at the commit the
+   * skills step shows, and pins it to that commit.
+   */
+  selectAllPluginSkills: (plugin: DiscoveredPlugin) => void;
   /**
    * An Agent Plugins package: enables or disables one of its skills. The
    * package is picked while at least one of its skills is enabled.
@@ -545,6 +554,36 @@ const NO_TAGS: readonly string[] = [];
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
+
+/**
+ * The state with an Agent Plugins package picked with every skill it lists,
+ * pinned to the commit the skills step shows: the names are read at that
+ * commit, so a package an edited agent pinned earlier moves its pin with
+ * them, or it would name skills its pinned commit may not have. Unchanged
+ * for a package that lists no skills, whose empty selection would load
+ * nothing.
+ */
+function withAllPluginSkills(
+  prev: NewAgentFormState,
+  plugin: DiscoveredPlugin,
+): NewAgentFormState {
+  const skills = allSkillNamesOf(plugin);
+  if (skills.length === 0) {
+    return prev;
+  }
+  const id = pluginId(plugin);
+  const picked = { plugin, skills };
+  return {
+    ...prev,
+    selectedPlugins: prev.selectedPlugins.some(
+      selected => pluginId(selected.plugin) === id,
+    )
+      ? prev.selectedPlugins.map(selected =>
+          pluginId(selected.plugin) === id ? picked : selected,
+        )
+      : [...prev.selectedPlugins, picked],
+  };
+}
 
 /**
  * The wizard's state, shared by its steps. Creating starts empty; editing
@@ -905,18 +944,29 @@ export function NewAgentFormProvider({
       togglePlugin: plugin =>
         setState(prev => {
           const id = pluginId(plugin);
-          const isSelected = prev.selectedPlugins.some(
-            selected => pluginId(selected.plugin) === id,
-          );
+          if (
+            prev.selectedPlugins.some(
+              selected => pluginId(selected.plugin) === id,
+            )
+          ) {
+            return {
+              ...prev,
+              selectedPlugins: prev.selectedPlugins.filter(
+                selected => pluginId(selected.plugin) !== id,
+              ),
+            };
+          }
+          // A package is added the one way it can be: with every skill.
+          if (plugin.format === 'agent-plugins') {
+            return withAllPluginSkills(prev, plugin);
+          }
           return {
             ...prev,
-            selectedPlugins: isSelected
-              ? prev.selectedPlugins.filter(
-                  selected => pluginId(selected.plugin) !== id,
-                )
-              : [...prev.selectedPlugins, { plugin, skills: [] }],
+            selectedPlugins: [...prev.selectedPlugins, { plugin, skills: [] }],
           };
         }),
+      selectAllPluginSkills: plugin =>
+        setState(prev => withAllPluginSkills(prev, plugin)),
       togglePluginSkill: (plugin, skill) =>
         setState(prev => {
           const id = pluginId(plugin);

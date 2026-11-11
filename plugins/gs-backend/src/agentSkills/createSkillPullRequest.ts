@@ -52,11 +52,6 @@ export interface CreateSkillPullRequestOptions {
    */
   parentDir?: string;
   /**
-   * The branch the pull request targets (the source's configured `ref`); the
-   * default branch when absent. A ref that is not a branch is refused (422).
-   */
-  baseBranch?: string;
-  /**
    * For `update`: the commit the edit started from. The SKILL.md there is the
    * version the edit replaces: when the default branch's file is no longer
    * that blob, the update is refused with 409 instead of overwriting what
@@ -64,6 +59,12 @@ export interface CreateSkillPullRequestOptions {
    * start (the route always requires it).
    */
   baseCommit?: string;
+  /**
+   * The branch the pull request targets, where the catalog reads the
+   * repository from (the source's `ref`): the repository's default branch
+   * when absent. A ref that is not a branch is refused (422).
+   */
+  base?: string;
   /** For the best-effort cleanup of a branch a failed attempt left (debug). */
   logger?: LoggerService;
 }
@@ -75,7 +76,7 @@ export interface SkillPullRequest {
   /** The branch the SKILL.md was pushed to (`add-skill/<name>`, or
    * `update-skill/<directory as a slug>`; see {@link branchCandidates}). */
   branch: string;
-  /** The branch the pull request targets (the repo's default branch). */
+  /** The branch the pull request targets. */
   base: string;
   /** The path of the written SKILL.md within the repository. */
   path: string;
@@ -305,24 +306,24 @@ export async function createSkillPullRequest(
     default_branch?: string;
     permissions?: { push?: boolean };
   };
-  const base = options.baseBranch || repoData.default_branch || 'main';
+  const base = options.base || repoData.default_branch || 'main';
   if (repoData.permissions && !repoData.permissions.push) {
     throw new GitHubApiError(
       403,
       `You don't have push access to ${owner}/${repo}, which opening the pull request needs (the branch is created as you).`,
     );
   }
-  if (options.baseBranch) {
+  if (options.base) {
     // A configured ref may be a tag: pull requests only target branches.
     const branchResponse = await githubRequest(
-      `${api}/git/ref/heads/${encodePath(options.baseBranch)}`,
+      `${api}/git/ref/heads/${encodePath(options.base)}`,
       token,
     );
     if (branchResponse.status === 404) {
       await branchResponse.body?.cancel();
       throw new GitHubApiError(
         422,
-        `${options.baseBranch} is not a branch of ${owner}/${repo}, so skills cannot be proposed to it.`,
+        `${options.base} is not a branch of ${owner}/${repo}, so skills cannot be proposed to it.`,
       );
     }
     if (!branchResponse.ok) {
@@ -338,7 +339,7 @@ export async function createSkillPullRequest(
   // A configured branch is named in full: a tag of the same name is not it.
   const headResponse = await githubRequest(
     `${api}/commits/${encodeURIComponent(
-      options.baseBranch ? `refs/heads/${base}` : base,
+      options.base ? `refs/heads/${base}` : base,
     )}`,
     token,
   );

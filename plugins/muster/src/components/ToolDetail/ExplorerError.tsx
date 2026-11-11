@@ -50,10 +50,10 @@ export function ExplorerError({ error, installation }: ExplorerErrorProps) {
     return <ResponseErrorPanel error={error as Error} />;
   }
 
-  const description = `Sign in to muster${
+  const description = `Sign in to Muster${
     installation ? ` (${installation})` : ''
   } to browse and run its tools.${
-    signIn.isError ? ' Sign-in failed — check the muster auth provider.' : ''
+    signIn.isError ? ' Sign-in failed — check the Muster auth provider.' : ''
   }`;
 
   return (

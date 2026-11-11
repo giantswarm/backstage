@@ -25,10 +25,6 @@ import {
   repoSlug,
   skillTags,
 } from '../../lib/skills';
-import {
-  offGitHubSources,
-  proposableSources,
-} from '../../lib/skillRepositories';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { newSkillRouteRef } from '../../routes';
@@ -210,9 +206,8 @@ function SkillCard({ card }: { card: Row }) {
 }
 
 /**
- * Whether the Skills tab offers Add skill: once the catalog is read, when a
- * github.com repository to propose to is configured and the add page is
- * bound. Add skill = a pull request to a source repository, opened as the
+ * Whether the Skills tab offers Add skill: once the catalog is read, when it
+ * has a repository to propose to and the add page is bound. Add skill = a pull request to a source repository, opened as the
  * person (G16 B). The Customize screen draws it beside the tab's search, where
  * every tab's create action sits. Must be used inside a
  * `CustomizeDataProvider`.
@@ -222,7 +217,7 @@ export function useCanAddSkill(): boolean {
   const newSkillRoute = useRouteRef(newSkillRouteRef);
   return (
     !skillCatalog.isLoading &&
-    proposableSources(skillCatalog.sources ?? []).length > 0 &&
+    skillCatalog.proposalTargets.length > 0 &&
     Boolean(newSkillRoute)
   );
 }
@@ -240,14 +235,12 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillPaths = useSkillPaths();
-  // The add form's target repositories (`proposable`, the backend's call):
+  // The add form's target repositories (the catalog's `proposalTargets`):
   // skills are proposed as GitHub pull requests, and the endpoint refuses
   // any other repository (T61), a read-only source and one not read on a
-  // branch.
-  const sources = skillCatalog.sources ?? [];
-  const proposable = proposableSources(sources);
-  // Writable sources left out for not being on github.com.
-  const offGitHub = offGitHubSources(sources);
+  // branch. Writable sources left out for not being on github.com.
+  const proposable = skillCatalog.proposalTargets;
+  const offGitHub = skillCatalog.unproposableRepositories;
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const unique = useMemo(
     () => uniqueSkills(skillCatalog.skills),

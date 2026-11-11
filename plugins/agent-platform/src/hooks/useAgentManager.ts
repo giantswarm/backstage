@@ -13,7 +13,7 @@ import {
   useMusterServerAvailability,
   type MusterServerAvailability,
   type MusterServerPresence,
-} from './useMusterServerAvailability';
+} from '@giantswarm/backstage-plugin-muster';
 
 /**
  * agent-manager's tools on one installation, as the signed-in person —

@@ -22,6 +22,10 @@ jest.mock('@giantswarm/backstage-plugin-muster', () =>
 );
 import type { AgentManagerAgent } from '../../lib/agentManager';
 import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockUseResources = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -160,6 +164,7 @@ async function renderDialog(scenario: Scenario = {}) {
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [analyticsApiRef, analyticsApi],
       ]}
     >

@@ -173,7 +173,7 @@ describe('createSkillPullRequest', () => {
 
     const result = await createSkillPullRequest({
       ...input,
-      baseBranch: 'develop',
+      base: 'develop',
     });
 
     expect(result.base).toBe('develop');
@@ -189,11 +189,31 @@ describe('createSkillPullRequest', () => {
     });
 
     await expect(
-      createSkillPullRequest({ ...input, baseBranch: 'v1.2.3' }),
+      createSkillPullRequest({ ...input, base: 'v1.2.3' }),
     ).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining('v1.2.3 is not a branch'),
     });
+  });
+
+  it('opens the PR against the given base instead of the default branch', async () => {
+    const calls = mockGithub({
+      ...happyHandlers,
+      [`GET ${API}/git/ref/heads/skills`]: () => ({ status: 200, body: {} }),
+      [`GET ${API}/commits/refs%2Fheads%2Fskills`]: () => ({
+        status: 200,
+        body: { sha: HEAD_A },
+      }),
+    });
+
+    const result = await createSkillPullRequest({ ...input, base: 'skills' });
+
+    expect(result.base).toBe('skills');
+    expect(calls.map(call => call.key)).not.toContain(
+      `GET ${API}/commits/main`,
+    );
+    const pr = calls.find(call => call.key === `POST ${API}/pulls`);
+    expect(pr?.body).toMatchObject({ base: 'skills' });
   });
 
   it('refuses more than 50 tags on a new skill before it creates a branch', async () => {

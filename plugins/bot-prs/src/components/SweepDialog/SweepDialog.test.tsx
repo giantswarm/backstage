@@ -212,16 +212,22 @@ describe('SweepDialog', () => {
       screen.getByText('It was only a preview, so nothing changed.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/marge refused/)).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '#2250' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: '#2250 (opens in a new tab)' }),
+    ).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Preview again' }),
     );
 
-    expect(await screen.findByRole('link', { name: '#7' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: '#7 (opens in a new tab)' }),
+    ).toBeInTheDocument();
     expect(sweepsOf('planeteers')).toHaveLength(2);
     expect(sweepsOf('bumblebee')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: '#2250' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: '#2250 (opens in a new tab)' }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(/The connection dropped/),
     ).not.toBeInTheDocument();
@@ -254,7 +260,9 @@ describe('SweepDialog', () => {
     expect(screen.queryByText('Applied')).not.toBeInTheDocument();
     expect(screen.queryByText(/nothing changed/)).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'giantswarm/backstage#2250' }),
+      screen.getByRole('link', {
+        name: 'giantswarm/backstage#2250 (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/backstage/pull/2250',

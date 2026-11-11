@@ -1,14 +1,17 @@
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  CREDENTIAL_OPERATION,
+  fakeOrganizationAccess,
   fakeOrganizationsMuster,
   toolCalls,
   type OrganizationsScenario,
@@ -92,6 +95,13 @@ const SCENARIO: OrganizationsScenario = {
 
 const analyticsApi = mockApis.analytics.mock();
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+  );
+}
+
 async function renderPage(tab: string, scenario: OrganizationsScenario) {
   const { api, callTool } = fakeOrganizationsMuster(scenario);
   const queryClient = new QueryClient({
@@ -101,12 +111,17 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [kubernetesApiRef, fakeOrganizationAccess(scenario.access)],
         [analyticsApiRef, analyticsApi],
       ]}
     >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <Routes>
+            <Route
+              path="/organizations/:installation/:parent/:name/credentials/:operation"
+              element={<LocationProbe />}
+            />
             <Route
               path="/organizations/:installation/:parent/:name/*"
               element={
@@ -134,6 +149,225 @@ beforeEach(() => {
 });
 
 describe('OrganizationPage', () => {
+  describe('an organization whose file left git', () => {
+    const COMMIT = '0123456789abcdef0123456789abcdef01234567';
+    const ORGANIZATION = {
+      name: 'payments',
+      parent: 'org-acme',
+      namespace: PAYMENTS.namespace,
+      harnesses: ['kagent'],
+      workerReplicas: 3,
+    };
+
+    it('is Missing from git, linking the last commit that held its file', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: {
+            status: 'True',
+            reason: 'MissingFromGit',
+            message: 'missing from the inventory of the Kustomization',
+          },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+          lastAppliedRevisionUrl: `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', {
+          name: new RegExp(`main@sha1:${COMMIT.slice(0, 7)}`),
+        }),
+      ).toHaveAttribute(
+        'href',
+        `https://github.com/giantswarm/gazelle-configs/commit/${COMMIT}`,
+      );
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+
+    it('names the commit when agent-manager has no link for it', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'MissingFromGit' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.getByText(`main@sha1:${COMMIT.slice(0, 7)}`),
+      ).toHaveAttribute('title', `main@sha1:${COMMIT}`);
+      expect(
+        screen.queryByRole('link', { name: /main@sha1/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('is Pending erase once its delete pull request merged', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      expect(
+        screen.getByText(/members are kept until it is erased/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+    });
+
+    it('is Erasing once the organization is deleted', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+          deleting: true,
+          erasureStep: 'Sessions',
+        },
+      });
+
+      expect(await screen.findByText('Erasing')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+
+    it('is Erasing once deleted, also when it was not applied from git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: { ...ORGANIZATION, deleting: true },
+      });
+
+      expect(await screen.findByText('Erasing')).toBeInTheDocument();
+    });
+
+    it('reads an organization being erased again every 10 s', async () => {
+      jest.useFakeTimers();
+      try {
+        const { callTool } = await renderPage('', {
+          ...SCENARIO,
+          organization: {
+            ...ORGANIZATION,
+            orphaned: { status: 'True', reason: 'DeleteMerged' },
+            deleting: true,
+          },
+        });
+        await screen.findByText('Erasing');
+        const reads = toolCalls(callTool, 'get_organization').length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        await waitFor(() =>
+          expect(toolCalls(callTool, 'get_organization')).toHaveLength(
+            reads + 1,
+          ),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('says the organization is erased once its read answers not_found', async () => {
+      jest.useFakeTimers();
+      try {
+        const scenario: OrganizationsScenario = {
+          ...SCENARIO,
+          organization: { ...ORGANIZATION, deleting: true },
+        };
+        const { callTool } = await renderPage('', scenario);
+        await screen.findByText('Erasing');
+
+        scenario.organizationErased = true;
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        expect(
+          await screen.findByText('payments is erased'),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Erasing')).not.toBeInTheDocument();
+        expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+        const reads = toolCalls(callTool, 'get_organization').length;
+        await act(async () => {
+          jest.advanceTimersByTime(30_000);
+        });
+        expect(toolCalls(callTool, 'get_organization')).toHaveLength(reads);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('keeps reading an organization being erased after a failed read', async () => {
+      jest.useFakeTimers();
+      try {
+        let failures = 1;
+        const scenario: OrganizationsScenario = {
+          ...SCENARIO,
+          organization: { ...ORGANIZATION, deleting: true },
+        };
+        const { callTool } = await renderPage('', scenario);
+        await screen.findByText('Erasing');
+        const fake = callTool.getMockImplementation()!;
+        callTool.mockImplementation(async (name: string, args) => {
+          if (name === 'x_agent-manager_get_organization' && failures > 0) {
+            failures -= 1;
+            throw new Error(
+              'backend_error: the API server did not answer in time',
+            );
+          }
+          return fake(name, args);
+        });
+        const reads = toolCalls(callTool, 'get_organization').length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(10_000);
+        });
+
+        await waitFor(() =>
+          expect(toolCalls(callTool, 'get_organization')).toHaveLength(
+            reads + 2,
+          ),
+        );
+        expect(screen.getByText('Erasing')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('shows nothing while the organization is in git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...ORGANIZATION,
+          orphaned: { status: 'False', reason: 'InInventory' },
+          lastAppliedRevision: `main@sha1:${COMMIT}`,
+        },
+      });
+
+      expect(await screen.findByRole('grid')).toBeInTheDocument();
+      expect(screen.queryByText('Missing from git')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pending erase')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
     const { callTool } = await renderPage('', SCENARIO);
 
@@ -303,15 +537,138 @@ describe('OrganizationPage', () => {
     expect(within(gpt).queryByText('Default')).toBeNull();
   });
 
-  it("asks for the organization's own key when it has no model, linking the credential form", async () => {
-    await renderPage('/models', { ...SCENARIO, models: {} });
+  it("asks for the organization's own key when it has no model, on the credential form", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
 
     expect(
       await screen.findByText('This organization has no model yet'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Add model' })).toHaveAttribute(
-      'href',
-      '/organizations/gazelle/org-acme/payments/credentials',
+    await user.click(screen.getByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+      'claude',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Model/ }),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+        expect.objectContaining({
+          namespace: PAYMENTS.namespace,
+          name: 'claude',
+          provider: 'Anthropic',
+          model: 'claude-sonnet-4-6',
+          requestId: expect.any(String),
+        }),
+      ]),
+    );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('says what is missing before it asks agent-manager for a model', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(
+      await within(dialog).findByText('Enter a name for the model.'),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Enter the provider's model id."),
+    ).toBeInTheDocument();
+    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
+  });
+
+  it('says so when agent-manager answers a credential request without its id', async () => {
+    const user = userEvent.setup();
+    await renderPage('/models', { ...SCENARIO, withoutOperation: true });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+
+    expect(
+      await within(dialog).findByText(
+        'agent-manager answered a credential request without its id.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('location')).not.toBeInTheDocument();
+  });
+
+  it('asks for a new key of a model on the credential form', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', SCENARIO);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    );
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Continue',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+        {
+          namespace: PAYMENTS.namespace,
+          name: 'gpt',
+          replaceCredential: true,
+          requestId: expect.any(String),
+        },
+      ]),
+    );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `/credentials/${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('asks for a new connector credential on the credential form', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/connectors', SCENARIO);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of jira',
+      }),
+    );
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Continue',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'set_organization_connector')).toEqual([
+        {
+          namespace: PAYMENTS.namespace,
+          name: 'jira',
+          replaceCredential: true,
+          requestId: expect.any(String),
+        },
+      ]),
     );
   });
 
@@ -331,6 +688,128 @@ describe('OrganizationPage', () => {
     expect(
       screen.getByText('https://api.stripe.com:443 (adds Authorization)'),
     ).toBeInTheDocument();
+  });
+
+  describe('what the person may do', () => {
+    const MEMBER_ONLY = {
+      ...SCENARIO,
+      access: { rolebindings: false, modelconfigs: false, secrets: false },
+    };
+
+    it('shows a member the status agent-manager lists, without reading the organization whole', async () => {
+      const { callTool } = await renderPage('', {
+        ...MEMBER_ONLY,
+        memberStatus: {
+          orphaned: { status: 'True', reason: 'MissingFromGit' },
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
+    });
+
+    it('offers a member no change to the members', async () => {
+      await renderPage('', MEMBER_ONLY);
+
+      expect(await screen.findByText('payments-team')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Remove / }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Add a member')).not.toBeInTheDocument();
+    });
+
+    it('offers a member no model or key change', async () => {
+      await renderPage('/models', MEMBER_ONLY);
+
+      expect(await screen.findByText('claude-sonnet')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Add model' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Replace the key of / }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers a member no credential change on a connector', async () => {
+      await renderPage('/connectors', MEMBER_ONLY);
+
+      expect(await screen.findByText('jira')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Replace the credential of / }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers an organization admin who does not manage the organization its changes', async () => {
+      const { callTool } = await renderPage('/models', SCENARIO);
+
+      expect(
+        await screen.findByRole('button', { name: 'Add model' }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', {
+          name: 'Replace the key of claude-sonnet',
+        }),
+      ).toBeInTheDocument();
+      expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
+    });
+
+    it('names an organization the person manages without being a member from the listing alone', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: {
+          name: 'payments',
+          parent: 'org-acme',
+          displayName: 'Payments',
+          namespace: PAYMENTS.namespace,
+          harnesses: ['kagent'],
+          workerReplicas: 3,
+        },
+      });
+
+      expect(
+        await screen.findByRole('heading', { name: 'Payments' }),
+      ).toBeInTheDocument();
+      expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
+    });
+
+    it('says an organization the person manages has no namespace yet, rather than that they are no member', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: {
+          name: 'payments',
+          parent: 'org-acme',
+          displayName: 'Payments',
+          harnesses: ['kagent'],
+          workerReplicas: 0,
+        },
+      });
+
+      expect(
+        await screen.findByText('Payments has no namespace yet'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/You are not a member/),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('says the organizations could not be read, rather than that the person is no member, and reads them again', async () => {
+    const { callTool } = await renderPage('', {
+      ...SCENARIO,
+      mineFailures: 1,
+    });
+
+    expect(
+      await screen.findByText('Could not read your organizations on gazelle'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/You are not a member/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }));
+
+    expect(await screen.findByText('payments-team')).toBeInTheDocument();
+    expect(toolCalls(callTool, 'list_organizations')).toHaveLength(2);
   });
 
   it('says the person is no member of an organization agent-manager does not list for them', async () => {

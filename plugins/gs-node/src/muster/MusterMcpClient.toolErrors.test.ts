@@ -4,6 +4,7 @@ import { reportedErrorHandler } from '../errors';
 import {
   MusterAuthRequiredError,
   MusterMcpClient,
+  MUSTER_TOOL_ERROR_STATUS,
   MusterToolError,
   musterServerOfTool,
   musterToolErrorKindOf,
@@ -319,6 +320,18 @@ describe('musterToolErrorKindOf', () => {
       musterToolErrorKindOf('does_not_fit: x', 'x_agent-manager_update_agent'),
     ).toBeUndefined();
   });
+
+  it.each(['decline', 'cancel'])(
+    "reads muster's answer to a sign-in the person answered %s to",
+    action => {
+      const kind = musterToolErrorKindOf(
+        `The tool did not run: the person answered ${action} to signing in to github.`,
+        'x_github_get_me',
+      );
+      expect(kind).toBe('sign_in_declined');
+      expect(MUSTER_TOOL_ERROR_STATUS[kind!]).toBe(412);
+    },
+  );
 
   it("reads muster's structured interruption whatever its text", () => {
     expect(

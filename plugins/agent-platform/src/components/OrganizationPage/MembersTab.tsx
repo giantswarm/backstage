@@ -23,6 +23,7 @@ import {
   useOrganizationMembers,
   useOrganizationMemberWrites,
 } from '../../hooks/useOrganization';
+import { useOrganizationAccess } from '../../hooks/useOrganizationAccess';
 import {
   FIRST_ADMINS_BINDING,
   MEMBER_ROLE_DESCRIPTIONS,
@@ -152,6 +153,7 @@ export function MembersTab({
 }) {
   const members = useOrganizationMembers(installation, namespace);
   const { remove } = useOrganizationMemberWrites(installation, namespace);
+  const access = useOrganizationAccess(installation, namespace);
   const [removing, setRemoving] = useState<MemberRow>();
 
   const columns: ColumnConfig<MemberRow>[] = [
@@ -196,7 +198,7 @@ export function MembersTab({
       // Only a group or a person is added or removed here; another
       // subject (a ServiceAccount) is changed where it was bound.
       cell: row =>
-        row.kind === 'Group' || row.kind === 'User' ? (
+        access.members && (row.kind === 'Group' || row.kind === 'User') ? (
           <Cell>
             <Button
               size="small"
@@ -217,7 +219,7 @@ export function MembersTab({
   ];
 
   let body;
-  if (members.isLoading) {
+  if (members.isLoading || access.isLoading) {
     body = <Text color="secondary">Reading the members…</Text>;
   } else if (members.failure) {
     body = (
@@ -295,9 +297,11 @@ export function MembersTab({
           </Text>
         )}
       </ConfirmDialog>
-      <PageSection title="Add a member">
-        <AddMember installation={installation} namespace={namespace} />
-      </PageSection>
+      {access.members && (
+        <PageSection title="Add a member">
+          <AddMember installation={installation} namespace={namespace} />
+        </PageSection>
+      )}
     </Flex>
   );
 }

@@ -154,7 +154,7 @@ function GrantScopeChoice({
   let description: string | undefined;
   if (!hasIssuer) {
     description =
-      "Signing in once needs the app's issuer URL, under Advanced: muster can't yet reuse a sign-in to an app whose sign-in settings it looks up.";
+      "Signing in once needs the app's issuer URL, under Advanced: Muster can't yet reuse a sign-in to an app whose sign-in settings it looks up.";
   } else if (grantScope === 'subject') {
     description = 'A sign-in lasts until the person signs out of it.';
   }
@@ -424,7 +424,7 @@ export function NewConnectorSignInPage() {
   ]);
 
   let newSecretText =
-    'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.';
+    'When you enter a client, Muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.';
   if (cannotStoreClient && !clientSecretStored) {
     newSecretText =
       'Muster on this installation cannot store a client yet. To use your own client, choose Existing Secret and name a Secret that holds it.';
@@ -522,7 +522,7 @@ export function NewConnectorSignInPage() {
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
             The app&apos;s authorization server must allow redirects to
-            muster&apos;s callback URL
+            Muster&apos;s callback URL
             {callbackUrl ? ':' : ' (https://<muster host>/oauth/callback).'}
           </Text>
           {callbackUrl && (
@@ -542,7 +542,7 @@ export function NewConnectorSignInPage() {
             key={validation.attempt}
             summary={
               <span className={classes.disclosureSummary}>
-                Advanced: sign-in settings for apps muster can&apos;t look up
+                Advanced: sign-in settings for apps Muster can&apos;t look up
               </span>
             }
             // An issuer opens it too: the grant-scope choice above depends on
@@ -557,7 +557,7 @@ export function NewConnectorSignInPage() {
             <div className={classes.disclosureBody}>
               <Text variant="body-small" color="secondary">
                 Only for apps that don&apos;t publish their sign-in settings,
-                such as GitHub. Leave empty and muster looks them up.
+                such as GitHub. Leave empty and Muster looks them up.
               </Text>
               <TextField
                 label="Where people sign in (issuer URL)"
@@ -616,7 +616,7 @@ export function NewConnectorSignInPage() {
                 </Text>
                 <Text variant="body-small" color="secondary">
                   Only if you registered the app with its provider yourself,
-                  such as a GitHub App. Leave empty when muster can register
+                  such as a GitHub App. Leave empty when Muster can register
                   itself.
                 </Text>
                 <RadioGroup
@@ -734,7 +734,7 @@ export function NewConnectorSignInPage() {
                       )}
                     />
                     {/* The placeholder is the default key itself, not an
-                        "e.g.": an empty field sends nothing and muster uses
+                        "e.g.": an empty field sends nothing and Muster uses
                         that key, which the text above says too. */}
                     <TextField
                       label="Key in the Secret's data that holds the client ID"
@@ -777,8 +777,8 @@ export function NewConnectorSignInPage() {
             description="Separate them with commas. Fill this in only if the backend checks a specific audience."
           />
           <Text as="p" variant="body-small" color="secondary">
-            A new audience takes effect only after muster restarts and people
-            sign in to the platform again; one muster already requests works
+            A new audience takes effect only after Muster restarts and people
+            sign in to the platform again; one Muster already requests works
             right away.
           </Text>
         </Flex>
@@ -821,7 +821,7 @@ export function NewConnectorSignInPage() {
             value={state.sigv4RoleArn}
             onChange={setSigv4RoleArn}
             placeholder="arn:aws:iam::123456789012:role/muster-mcp"
-            description="Defaults to muster's own identity."
+            description="Defaults to Muster's own identity."
           />
           {authAdvisories.map(advisory => (
             <Alert
@@ -837,7 +837,7 @@ export function NewConnectorSignInPage() {
       {!authenticated && (
         <SessionGate
           session={session}
-          context="Adding the connector needs a muster session."
+          context="Adding the connector needs a Muster session."
         />
       )}
       {validation.submitted && fieldErrors.transport && (

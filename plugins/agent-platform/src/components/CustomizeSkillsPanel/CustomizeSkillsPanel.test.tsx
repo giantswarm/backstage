@@ -17,16 +17,6 @@ import {
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: Array<
-  string | { url: string; ref?: string; path?: string; readOnly?: boolean }
-> = [];
-jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
-  useSignedInConfig: () => ({
-    config: { getOptional: () => mockRepositories },
-    isLoading: false,
-  }),
-}));
-
 function skill(name: string) {
   return {
     name,
@@ -39,28 +29,8 @@ function skill(name: string) {
 }
 
 let mockCatalog: SkillCatalog;
-// What discovery found each configured ref to be, by URL.
-let mockRefKinds: Record<string, string> = {};
-// The catalog's sources as gs-backend describes them: proposable when
-// writable, on github.com and read on a branch.
 jest.mock('../CustomizeDataProvider', () => ({
-  useCustomizeData: () => ({
-    skillCatalog: {
-      ...mockCatalog,
-      sources: mockRepositories.map(entry => {
-        const e = typeof entry === 'string' ? { url: entry } : entry;
-        return {
-          url: e.url,
-          path: e.path ?? '',
-          readOnly: Boolean(e.readOnly),
-          proposable:
-            e.url.startsWith('https://github.com/') &&
-            !e.readOnly &&
-            (!e.ref || mockRefKinds[e.url] === 'branch'),
-        };
-      }),
-    },
-  }),
+  useCustomizeData: () => ({ skillCatalog: mockCatalog }),
 }));
 let mockAgentSkillIds: string[] = [];
 let mockAgentsLoading = false;
@@ -80,6 +50,8 @@ const loaded: SkillCatalog = {
   failedRepositories: [],
   truncated: false,
   privateRepositories: new Set(),
+  proposalTargets: [REPO],
+  unproposableRepositories: [],
 };
 
 /**
@@ -118,11 +90,9 @@ function listedRows(): HTMLElement[] {
 
 describe('CustomizeSkillsPanel', () => {
   beforeEach(() => {
-    mockRefKinds = {};
     mockAgentsLoading = false;
     mockCatalog = loaded;
     mockAgentSkillIds = [`${REPO}#triage`];
-    mockRepositories = [REPO];
   });
 
   it('lists the most used skills first, with their source and usage', async () => {
@@ -244,7 +214,6 @@ describe('CustomizeSkillsPanel at 3 skills and at 300 (T39)', () => {
 
   beforeEach(() => {
     mockAgentSkillIds = [];
-    mockRepositories = [REPO];
   });
 
   it('shows a short catalog whole, with no paging and no ranking note', async () => {
@@ -309,7 +278,6 @@ describe('CustomizeSkillsPanel at phone width (T22 P3)', () => {
     mockCatalog = loaded;
     mockAgentsLoading = false;
     mockAgentSkillIds = [];
-    mockRepositories = [REPO];
     layout = mockPhoneLayout();
   });
   afterEach(() => layout.restore());
@@ -347,7 +315,6 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
   beforeEach(() => {
     mockCatalog = loaded;
     mockAgentSkillIds = [];
-    mockRepositories = [REPO];
   });
 
   it('links each skill card to its detail page', async () => {
@@ -396,8 +363,12 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
   });
 
   it('offers no Add skill without a configured repository', async () => {
-    mockRepositories = [];
-    mockCatalog = { ...loaded, skills: [], hasRepositories: false };
+    mockCatalog = {
+      ...loaded,
+      skills: [],
+      hasRepositories: false,
+      proposalTargets: [],
+    };
     await renderPanel();
 
     expect(
@@ -406,7 +377,11 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
   });
 
   it('offers no Add skill when no configured repository is on github.com, and says why', async () => {
-    mockRepositories = ['http://gitea.lab.local/lab/skills'];
+    mockCatalog = {
+      ...loaded,
+      proposalTargets: [],
+      unproposableRepositories: ['http://gitea.lab.local/lab/skills'],
+    };
     await renderPanel();
 
     expect(
@@ -419,14 +394,13 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers no Add skill when the only github.com repository is read-only', async () => {
-    mockRepositories = [{ url: REPO, readOnly: true }];
+  it('offers no Add skill when skill-manager lists only read-only sources', async () => {
+    mockCatalog = { ...loaded, proposalTargets: [] };
     await renderPanel();
 
     expect(
       screen.getByText('No skill repository takes new skills here.'),
     ).toBeInTheDocument();
-
     expect(
       screen.queryByRole('link', { name: /Add skill/ }),
     ).not.toBeInTheDocument();
@@ -437,17 +411,12 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('offers Add skill for a configured ref only once it is known to be a branch', async () => {
-    mockRepositories = [{ url: REPO, ref: 'v1' }];
-    mockRefKinds = { [REPO]: 'tag' };
-    await renderPanel();
-    expect(
-      screen.queryByRole('link', { name: /Add skill/ }),
-    ).not.toBeInTheDocument();
-  });
-
   it('offers Add skill when one configured repository is on github.com', async () => {
-    mockRepositories = ['http://gitea.lab.local/lab/skills', REPO];
+    mockCatalog = {
+      ...loaded,
+      proposalTargets: [REPO],
+      unproposableRepositories: ['http://gitea.lab.local/lab/skills'],
+    };
     await renderPanel();
 
     expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
@@ -491,7 +460,6 @@ const cardNames = () =>
 describe('CustomizeSkillsPanel filters (T49, T64)', () => {
   beforeEach(() => {
     mockAgentsLoading = false;
-    mockRepositories = [REPO];
   });
 
   it('offers no filters over three skills of one repository nobody uses', async () => {

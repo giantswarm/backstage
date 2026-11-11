@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
+import { ExternalButtonLink } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ClusterManagerCommit, PlaceNoun } from '../../lib/clusterManager';
 
@@ -48,15 +49,13 @@ export function ClusterManagerCommitOutcome({
           </Text>
           {commit.pullRequest && (
             <div>
-              <ButtonLink
+              <ExternalButtonLink
                 href={commit.pullRequest}
-                target="_blank"
-                rel="noopener noreferrer"
                 variant="secondary"
                 size="small"
               >
-                Review pull request ↗
-              </ButtonLink>
+                Review pull request
+              </ExternalButtonLink>
             </div>
           )}
           {liveSteps.length > 0 && (

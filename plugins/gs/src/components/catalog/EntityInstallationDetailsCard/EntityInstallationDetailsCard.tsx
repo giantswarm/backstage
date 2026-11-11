@@ -1,7 +1,7 @@
 import { Flex } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { Link } from '@backstage/core-components';
 import {
+  ExternalLink,
   GSMarkdownContent,
   InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -56,12 +56,13 @@ export function EntityInstallationDetailsCard() {
             />
             {entity.metadata.annotations?.['giantswarm.io/custom-ca'] && (
               <AboutField label="Custom CA" value="">
-                <Link
-                  to={entity.metadata.annotations?.['giantswarm.io/custom-ca']}
-                  externalLinkIcon
+                <ExternalLink
+                  href={
+                    entity.metadata.annotations?.['giantswarm.io/custom-ca']
+                  }
                 >
                   YES
-                </Link>
+                </ExternalLink>
               </AboutField>
             )}
           </Flex>

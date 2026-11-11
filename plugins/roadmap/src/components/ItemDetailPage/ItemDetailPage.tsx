@@ -17,6 +17,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import {
+  ExternalLink,
   GSMarkdownContent,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -183,9 +184,9 @@ export function ItemDetailPage() {
           )}
           <Typography variant="body2" color="textSecondary">
             {repository && item.url ? (
-              <Link to={item.url}>
+              <ExternalLink href={item.url} display="inline">
                 {repository}#{item.number}
-              </Link>
+              </ExternalLink>
             ) : (
               'draft item'
             )}

@@ -1,5 +1,9 @@
-import { Button, Flex, Link, Text } from '@backstage/ui';
-import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
+import { Button, Flex, Text } from '@backstage/ui';
+import {
+  ExternalLink,
+  FactList,
+  type Fact,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { versionOf, type BotPrRow } from '../../lib/marge';
 
@@ -80,9 +84,9 @@ export function BotPrDetails({
   return (
     <Flex direction="column" gap="3">
       <Text variant="body-medium">
-        <Link href={row.url} target="_blank" rel="noopener noreferrer">
+        <ExternalLink href={row.url} display="inline">
           {row.ref}
-        </Link>{' '}
+        </ExternalLink>{' '}
         {row.title}
       </Text>
       <FactList

@@ -71,12 +71,21 @@ export {
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
 export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
-export { connectorIconOf } from './lib/connectorLogo';
+export { connectorIconOf } from '@giantswarm/backstage-plugin-gs-common';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
   isMcpTransportText,
 } from './lib/installationError';
+export {
+  musterServerListQueryKey,
+  useMusterServerAvailability,
+} from './hooks/useMusterServerAvailability';
+export type {
+  MusterServerAvailability,
+  MusterServerAvailabilityOptions,
+  MusterServerPresence,
+} from './hooks/useMusterServerAvailability';
 export {
   MusterInstanceProvider,
   useMusterInstance,

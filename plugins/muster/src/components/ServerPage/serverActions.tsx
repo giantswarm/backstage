@@ -202,7 +202,7 @@ export function serverLiveActions(server: MCPServer): {
         label: `Activate ${name}`,
         tool: 'core_service_start',
         args: { name },
-        description: 'muster connects it again and keeps it connected.',
+        description: 'Muster connects it again and keeps it connected.',
       },
       remove,
     };
@@ -213,14 +213,14 @@ export function serverLiveActions(server: MCPServer): {
       tool: 'core_service_stop',
       args: { name },
       description:
-        'muster disconnects it and keeps it off until it is activated again.',
+        'Muster disconnects it and keeps it off until it is activated again.',
     },
     reconnect: {
       label: `Reconnect ${name}`,
       tool: 'core_service_restart',
       args: { name },
       description:
-        'muster opens a fresh session to it and re-runs tool discovery.',
+        'Muster opens a fresh session to it and re-runs tool discovery.',
     },
     reconnectGate: oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined,
     remove,

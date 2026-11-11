@@ -22,11 +22,14 @@ import {
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
+import type { CredentialResourceResult } from '../lib/credentialOperations';
 import type {
   MemberRequest,
   MemberResult,
-  MyOrganizations,
+  OrganizationListing,
   OrganizationConnector,
+  OrganizationConnectorCredentialRequest,
+  OrganizationModelRequest,
   OrganizationDetails,
   OrganizationMembers,
 } from '../lib/organizations';
@@ -277,13 +280,12 @@ export class AgentManagerClient {
   }
 
   /**
-   * The organizations the person belongs to: the namespaces in which they
-   * may list Agents, asked with their own token. The New agent form's
-   * organization picker.
+   * The organizations the person manages or belongs to, each with what they
+   * may do with it, asked with their own token.
    */
-  async listMyOrganizations(): Promise<MyOrganizations> {
-    const result = await this.call<Partial<MyOrganizations>>(
-      AGENT_MANAGER_TOOLS.listMyOrganizations,
+  async listOrganizations(): Promise<OrganizationListing> {
+    const result = await this.call<Partial<OrganizationListing>>(
+      AGENT_MANAGER_TOOLS.listOrganizations,
       {},
     );
     return { ...result, organizations: result.organizations ?? [] };
@@ -336,5 +338,29 @@ export class AgentManagerClient {
       { namespace },
     );
     return result.connectors ?? [];
+  }
+
+  /**
+   * Creates an organization's model, or asks for a new key for one. Never
+   * takes a key: one that is missing or replaced comes back as a credential
+   * request (`credentials[].formUrl`).
+   */
+  setOrganizationModel(
+    request: OrganizationModelRequest,
+  ): Promise<CredentialResourceResult> {
+    return this.call<CredentialResourceResult>(
+      AGENT_MANAGER_TOOLS.setOrganizationModel,
+      { ...request },
+    );
+  }
+
+  /** Asks for a new credential value for a connector of the organization. */
+  setOrganizationConnector(
+    request: OrganizationConnectorCredentialRequest,
+  ): Promise<CredentialResourceResult> {
+    return this.call<CredentialResourceResult>(
+      AGENT_MANAGER_TOOLS.setOrganizationConnector,
+      { ...request },
+    );
   }
 }

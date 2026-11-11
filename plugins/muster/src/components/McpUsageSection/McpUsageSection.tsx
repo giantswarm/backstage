@@ -34,9 +34,12 @@ import { MusterProviders } from '../MusterProviders';
 import {
   errorRatioFigure,
   McpCallsByOutcomeChart,
+  MCP_USAGE_STALE_MS,
   McpDataStartNote,
   McpUsageTable,
+  useToolLatency,
   useUsageColumns,
+  withToolLatency,
 } from '../McpUsage';
 import { SessionGate, Stat, useServerPageLinks } from '../shared';
 
@@ -109,11 +112,14 @@ type ServerRow = McpUsage['servers'][number] & { id: string };
 
 function UsageBody({
   data,
+  p95Loading,
   windowDays,
   installation,
   servers,
 }: {
   data: McpUsage;
+  /** The tools' p95, read apart from `data`, is still on its way. */
+  p95Loading: boolean;
   /** The Usage screen's window, which each connector's link carries. */
   windowDays: UsageWindowDays;
   /** The installation the figures are read on, whose connector pages rows open. */
@@ -146,6 +152,7 @@ function UsageBody({
     label: 'Top tools',
     renderName: row => row.tool,
     withP95: true,
+    p95Loading,
   });
   const serverColumns = useUsageColumns(serverRows, {
     label: 'Connector',
@@ -213,7 +220,7 @@ function UsageBody({
       {totals.calls === 0 ? (
         <Text as="p" variant="body-medium" color="secondary">
           No tool calls were dispatched to connectors in {windowNoun}. If usage
-          is expected, this environment's muster may not export dispatch metrics
+          is expected, this environment's Muster may not export dispatch metrics
           yet.
         </Text>
       ) : (
@@ -250,7 +257,7 @@ function UsageBody({
           color="secondary"
           className={classes.note}
         >
-          Counted at muster's dispatch layer, so meta-tool wrapping (call_tool)
+          Counted at Muster's dispatch layer, so meta-tool wrapping (call_tool)
           is attributed to the resolved tool and connector. Queried through the{' '}
           {names.get(data.source.server) ?? data.source.server} connector.
         </Text>
@@ -304,8 +311,18 @@ function McpUsageBody() {
         hours,
       }),
     enabled: Boolean(activeInstallation) && !unreachable,
+    staleTime: MCP_USAGE_STALE_MS,
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
+  const toolLatency = useToolLatency({
+    installation: activeInstallation,
+    hours,
+    enabled: !unreachable,
+  });
+  const usage = useMemo(
+    () => data && withToolLatency(data, toolLatency.latency),
+    [data, toolLatency.latency],
+  );
 
   let body;
   if (unreachable) {
@@ -313,7 +330,7 @@ function McpUsageBody() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="Usage metrics need a muster session."
+        context="Usage metrics need a Muster session."
       />
     );
   } else if (!activeInstallation || isLoading || isLoadingServers) {
@@ -326,10 +343,11 @@ function McpUsageBody() {
         Usage unavailable: {(error as Error).message}
       </Text>
     );
-  } else if (data) {
+  } else if (usage) {
     body = (
       <UsageBody
-        data={data}
+        data={usage}
+        p95Loading={toolLatency.isLoading}
         windowDays={windowDays}
         installation={activeInstallation}
         servers={mcpServers}

@@ -1,7 +1,6 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { Link as BackstageLink } from '@backstage/core-components';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { makeStyles } from '@material-ui/core';
@@ -12,6 +11,10 @@ import {
   ConnectorSignInAction,
   useConnectorSignInLink,
 } from '../ConnectorSignInLinks';
+import {
+  chatRehypePlugins,
+  chatRemarkRehypeOptions,
+} from './chatRehypePlugins';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -30,11 +33,21 @@ const useStyles = makeStyles(theme => ({
     },
     overflowWrap: 'anywhere',
   },
+  // The size and colour are set here, not left to bui's Text: its variant
+  // decides the size (body-small is 12px, which made a reply smaller than the
+  // user's message beside it, #3396) and its default `color="primary"` sets a
+  // colour on the paragraph itself, which a quiet container (a blockquote, the
+  // agent's reasoning) could no longer pass down. Unlayered JSS beats bui's
+  // `@layer components` rules. 14px, the user's message and table cells' size.
   paragraph: {
     margin: theme.spacing(1, 0),
     lineHeight: 1.6,
+    fontSize: '0.875rem',
+    color: 'inherit',
   },
+  // Inherits its colour for the paragraph's reason.
   heading: {
+    color: 'inherit',
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(1),
   },
@@ -212,108 +225,131 @@ export const useMarkdownStyles = useStyles;
 
 export function useMarkdownComponents(): Components {
   const classes = useStyles();
-  return {
-    h1: ({ children }) => (
-      <Text
-        as="h1"
-        variant="title-small"
-        className={`${classes.heading} ${classes.heading1}`}
-      >
-        {children}
-      </Text>
-    ),
-    h2: ({ children }) => (
-      <Text
-        as="h2"
-        variant="title-x-small"
-        className={`${classes.heading} ${classes.heading2}`}
-      >
-        {children}
-      </Text>
-    ),
-    h3: ({ children }) => (
-      <Text
-        as="h3"
-        variant="body-large"
-        className={`${classes.heading} ${classes.heading3}`}
-      >
-        {children}
-      </Text>
-    ),
-    h4: ({ children }) => (
-      <Text
-        as="h4"
-        variant="body-large"
-        className={`${classes.heading} ${classes.heading4}`}
-      >
-        {children}
-      </Text>
-    ),
-    h5: ({ children }) => (
-      <Text
-        as="h5"
-        variant="body-medium"
-        className={`${classes.heading} ${classes.heading5}`}
-      >
-        {children}
-      </Text>
-    ),
-    h6: ({ children }) => (
-      <Text
-        as="h6"
-        variant="body-medium"
-        className={`${classes.heading} ${classes.heading6}`}
-      >
-        {children}
-      </Text>
-    ),
-    p: ({ children }) => (
-      <Text as="p" variant="body-small" className={classes.paragraph}>
-        {children}
-      </Text>
-    ),
-    a: ({ href, children }) => (
-      <MarkdownLink href={href}>{children}</MarkdownLink>
-    ),
-    blockquote: ({ children }) => (
-      <blockquote className={classes.blockquote}>{children}</blockquote>
-    ),
-    ul: ({ children }) => <ul className={classes.list}>{children}</ul>,
-    ol: ({ children }) => <ol className={classes.list}>{children}</ol>,
-    hr: () => <hr className={classes.hr} />,
-    table: ({ children }) => (
-      <div className={classes.tableContainer}>
-        <table className={classes.table}>{children}</table>
-      </div>
-    ),
-    thead: ({ children }) => <thead>{children}</thead>,
-    tbody: ({ children }) => <tbody>{children}</tbody>,
-    tr: ({ children }) => <tr>{children}</tr>,
-    th: ({ children }) => <th className={classes.tableCell}>{children}</th>,
-    td: ({ children }) => <td className={classes.tableCell}>{children}</td>,
-    pre: ({ children }) => <pre className={classes.codeBlock}>{children}</pre>,
-    code: ({ children, className }) => {
-      const content = String(children);
-      // A fenced block arrives as `pre > code`; the pre above carries the
-      // styling. Only genuinely inline code gets the chip treatment.
-      if (content.includes('\n')) {
-        return <code className={className}>{children}</code>;
-      }
-      return <code className={classes.inlineCode}>{children}</code>;
-    },
-    details: ({ children }) => (
-      <details className={classes.details}>{children}</details>
-    ),
-    summary: ({ children }) => (
-      <summary className={classes.summary}>{children}</summary>
-    ),
-  };
+  // Stable across renders: react-markdown uses these as element types, so a
+  // new map on each render (each streamed chunk of a reply) would remount every
+  // element, closing an opened <details> and dropping a text selection.
+  return useMemo<Components>(
+    () => ({
+      h1: ({ children }) => (
+        <Text
+          as="h1"
+          variant="title-small"
+          className={`${classes.heading} ${classes.heading1}`}
+        >
+          {children}
+        </Text>
+      ),
+      h2: ({ children }) => (
+        <Text
+          as="h2"
+          variant="title-x-small"
+          className={`${classes.heading} ${classes.heading2}`}
+        >
+          {children}
+        </Text>
+      ),
+      h3: ({ children }) => (
+        <Text
+          as="h3"
+          variant="body-large"
+          className={`${classes.heading} ${classes.heading3}`}
+        >
+          {children}
+        </Text>
+      ),
+      h4: ({ children }) => (
+        <Text
+          as="h4"
+          variant="body-large"
+          className={`${classes.heading} ${classes.heading4}`}
+        >
+          {children}
+        </Text>
+      ),
+      h5: ({ children }) => (
+        <Text
+          as="h5"
+          variant="body-medium"
+          className={`${classes.heading} ${classes.heading5}`}
+        >
+          {children}
+        </Text>
+      ),
+      h6: ({ children }) => (
+        <Text
+          as="h6"
+          variant="body-medium"
+          className={`${classes.heading} ${classes.heading6}`}
+        >
+          {children}
+        </Text>
+      ),
+      p: ({ children }) => (
+        <Text as="p" variant="body-medium" className={classes.paragraph}>
+          {children}
+        </Text>
+      ),
+      a: ({ href, children, node: _node, ...props }) =>
+        // An in-page anchor, such as a footnote reference, keeps its id and
+        // footnote attributes.
+        href?.startsWith('#') ? (
+          <a href={href} {...props}>
+            {children}
+          </a>
+        ) : (
+          <MarkdownLink href={href}>{children}</MarkdownLink>
+        ),
+      blockquote: ({ children }) => (
+        <blockquote className={classes.blockquote}>{children}</blockquote>
+      ),
+      ul: ({ children }) => <ul className={classes.list}>{children}</ul>,
+      ol: ({ children }) => <ol className={classes.list}>{children}</ol>,
+      hr: () => <hr className={classes.hr} />,
+      table: ({ children }) => (
+        <div className={classes.tableContainer}>
+          <table className={classes.table}>{children}</table>
+        </div>
+      ),
+      thead: ({ children }) => <thead>{children}</thead>,
+      tbody: ({ children }) => <tbody>{children}</tbody>,
+      tr: ({ children }) => <tr>{children}</tr>,
+      th: ({ children }) => <th className={classes.tableCell}>{children}</th>,
+      td: ({ children }) => <td className={classes.tableCell}>{children}</td>,
+      pre: ({ children }) => (
+        <pre className={classes.codeBlock}>{children}</pre>
+      ),
+      code: ({ children, className }) => {
+        const content = String(children);
+        // A fenced block arrives as `pre > code`; the pre above carries the
+        // styling. Only genuinely inline code gets the chip treatment.
+        if (content.includes('\n')) {
+          return <code className={className}>{children}</code>;
+        }
+        return <code className={classes.inlineCode}>{children}</code>;
+      },
+      details: ({ children }) => (
+        <details className={classes.details}>{children}</details>
+      ),
+      summary: ({ children }) => (
+        <summary className={classes.summary}>{children}</summary>
+      ),
+      img: ({ src, alt }) => {
+        const label = `Image: ${alt || 'untitled'}`;
+        return typeof src === 'string' && src ? (
+          <MarkdownLink href={src}>{label}</MarkdownLink>
+        ) : (
+          <>{`[${label}]`}</>
+        );
+      },
+    }),
+    [classes],
+  );
 }
 
 /**
- * Agent prose. GFM (tables, task lists, strikethrough) plus raw HTML — agents
- * wrap long output in `<details>` blocks, which is the same trade the AI chat
- * plugin makes.
+ * Agent prose. GFM (tables, task lists, strikethrough) plus sanitised raw
+ * HTML for agents' `<details>` blocks. Images render as links, so a message
+ * never makes the browser fetch a URL.
  */
 function MessageMarkdownImpl({ text }: { text: string }) {
   const classes = useStyles();
@@ -322,7 +358,8 @@ function MessageMarkdownImpl({ text }: { text: string }) {
     <div className={`${STABLE_CLASS_NAMES.message} ${classes.root}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={chatRehypePlugins}
+        remarkRehypeOptions={chatRemarkRehypeOptions}
         components={components}
       >
         {text}

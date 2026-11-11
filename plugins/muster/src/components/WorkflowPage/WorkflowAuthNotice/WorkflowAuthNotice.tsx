@@ -57,8 +57,8 @@ export function WorkflowAuthNotice({
         <Flex direction="column" gap="2">
           <Text variant="body-small">
             {waiting.length === 1
-              ? 'This workflow calls a connector you are not signed in to, and muster refuses the run until you are.'
-              : 'This workflow calls connectors you are not signed in to, and muster refuses the run until you are.'}
+              ? 'This workflow calls a connector you are not signed in to, and Muster refuses the run until you are.'
+              : 'This workflow calls connectors you are not signed in to, and Muster refuses the run until you are.'}
           </Text>
           {waiting.map(connector => (
             <ServerSignIn

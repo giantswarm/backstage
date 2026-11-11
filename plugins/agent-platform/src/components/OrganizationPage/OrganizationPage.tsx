@@ -12,8 +12,8 @@ import {
 
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
-  useMyOrganizations,
   useOrganizationDetails,
+  useOrganizations,
 } from '../../hooks/useOrganization';
 import { agentManagerBlocker } from '../../lib/agentManager';
 import type { OrganizationNamespace } from '../../lib/organizations';
@@ -21,6 +21,7 @@ import { organizationsRouteRef } from '../../routes';
 import { MembersTab } from './MembersTab';
 import { ConnectorsTab, EgressTab, ModelsTab } from './ResourceTabs';
 import { ORGANIZATION_PAGE_TABS } from './organizationTabs';
+import { OrganizationStatusAlert } from './OrganizationStatusAlert';
 
 export type OrganizationPageProps = {
   installation: string;
@@ -46,11 +47,11 @@ function useOrganizationFrame(title: string) {
 /**
  * One Agent Platform organization: its Members, Models, Connectors and
  * Egress, each a tab read from agent-manager's organization tools as the
- * signed-in person. The organization namespace comes from agent-manager's
- * answer for the organization's labels (`list_my_organizations` for a
- * member, `get_organization` for an organizations-admin), never from a name;
- * the title is the display name where `get_organization` answers, else the
- * organization's name.
+ * signed-in person. The organization and its namespace come from
+ * `list_organizations`, never from a name: a member who does not manage it
+ * gets its status only, one who manages it its summary too.
+ * `get_organization`, which also previews the erasure, is asked only to
+ * follow the erasure of an organization the person manages.
  */
 export function OrganizationPage({
   installation,
@@ -62,18 +63,21 @@ export function OrganizationPage({
     availability.presenceOf(installation),
     installation,
   );
-  const mine = useMyOrganizations(blocker ? undefined : installation);
-  const details = useOrganizationDetails(installation, parent, name);
+  const mine = useOrganizations(blocker ? undefined : installation);
+  const listed = mine.data?.organizations.find(
+    organization =>
+      organization.parent === parent && organization.name === name,
+  );
+  const details = useOrganizationDetails(installation, parent, name, {
+    enabled: listed?.permissions.manage === true && listed.deleting === true,
+  });
   const basePath = useSplatBasePath();
   const { search } = useLocation();
 
-  const membership = mine.data?.organizations.find(
-    organization =>
-      organization.parent === parent && organization.organization === name,
-  );
-  const object = details.data?.organization;
-  const namespace = membership?.namespace ?? object?.namespace;
-  const title = object?.displayName || name;
+  const object = details.data?.organization ?? listed?.organization;
+  const status = object ?? listed;
+  const namespace = listed?.namespace ?? object?.namespace;
+  const title = object?.displayName || listed?.displayName || name;
   const { listHref, frame } = useOrganizationFrame(title);
   const backLink = listHref ? (
     <Link href={listHref}>Back to organizations</Link>
@@ -119,7 +123,49 @@ export function OrganizationPage({
       </ShellPage>
     );
   }
+  // The read keeps the last organization it had; `not_found` after one that
+  // was deleting is the end of its erasure.
+  if (object?.deleting && details.failure?.code === 'not_found') {
+    return (
+      <ShellPage title={title} {...frame}>
+        <EmptyStateCard
+          title={`${title} is erased`}
+          description={`${name} in ${parent} on ${installation} is deleted and erased.`}
+          actions={backLink}
+        />
+      </ShellPage>
+    );
+  }
   if (!namespace) {
+    if (mine.failure) {
+      return (
+        <ShellPage title={name} {...frame}>
+          <EmptyStateCard
+            title={`Could not read your organizations on ${installation}`}
+            description={mine.failure.message}
+            actions={
+              <Flex gap="3" align="center">
+                <Button variant="secondary" onPress={() => mine.refetch()}>
+                  Check again
+                </Button>
+                {backLink}
+              </Flex>
+            }
+          />
+        </ShellPage>
+      );
+    }
+    if (listed) {
+      return (
+        <ShellPage title={title} {...frame}>
+          <EmptyStateCard
+            title={`${title} has no namespace yet`}
+            description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
+            actions={backLink}
+          />
+        </ShellPage>
+      );
+    }
     if (mine.isLoading || details.isLoading || mine.supported === undefined) {
       return (
         <ShellPage
@@ -156,6 +202,7 @@ export function OrganizationPage({
       tabsBasePath={basePath}
     >
       <Flex direction="column" gap="5">
+        {status && <OrganizationStatusAlert organization={status} />}
         <Routes>
           <Route
             index

@@ -186,7 +186,10 @@ that pins an older commit.
   repository, authored as the person with their own GitHub account (connected
   once through muster if needed). Nothing changes until it is merged. Both
   write the SKILL.md only, and both work for github.com repositories only; a
-  skill from another git repository has a read-only page. A `skillCreation`
+  skill from another git repository has a read-only page. Add skill offers
+  the catalog's targets: where skill-manager answers, its writable sources
+  that scan the whole repository and that the person can read, the pull
+  request opened against the source's ref. A `skillCreation`
   meta-agent adds **Create with <agent>** (Edit skill: **Edit with <agent>**),
   which starts a session with that agent about the skill (repository and
   draft, or path, commit and the fields the person changed) for complex,
@@ -200,16 +203,19 @@ that pins an older commit.
 
 ### Connectors
 
-Connectors are muster's MCP servers, one list at `/customize/connectors`; a
-family (`spec.family`) is one row. The
+Connectors are muster's MCP servers, one list at `/customize/connectors`, every
+connector at once, by display name (else name, whatever the case); a header
+click sorts by Connector, Sign-in, Tools or Status (by urgency: Sign in needed
+first, then the other states that need attention, then the healthy ones), a
+second click reverses it. A family (`spec.family`) is one row. The
 `agent-platform.giantswarm.io/tool-group` label the shipping chart sets on the
 MCPServer adds a read-only tag, which the Tags filter and `?tags=` select:
 
-| Label            | Tag              | Servers                                                     |
-| ---------------- | ---------------- | ----------------------------------------------------------- |
-| none             | none             | what the installation or its users registered; listed first |
-| `infrastructure` | `infrastructure` | those for the management clusters the platform runs on      |
-| `agent-platform` | `agent-platform` | agent-manager, model-manager, cluster-manager, and muster   |
+| Label            | Tag              | Servers                                                   |
+| ---------------- | ---------------- | --------------------------------------------------------- |
+| none             | none             | what the installation or its users registered             |
+| `infrastructure` | `infrastructure` | those for the management clusters the platform runs on    |
+| `agent-platform` | `agent-platform` | agent-manager, model-manager, cluster-manager, and muster |
 
 Other tags come from the `ui.giantswarm.io/tags` annotation, which the edit
 form writes. The retired sub-tab addresses redirect until the end of 2026:
@@ -561,9 +567,10 @@ called through the installation's muster as the signed-in person.
 Only step 1 validates (name, slug, installation, model); later steps redirect
 back to it when those are missing, so a deep link cannot strand the person.
 
-Without `agentPlatform.skills.repositories` the Skills step is skipped, and a
-deep link to it redirects onward. `hasRepositories` comes from config alone, so
-the decision costs no request.
+Without skill repositories the Skills step is skipped, and a deep link to it
+redirects onward. Where skill-manager answers, `hasRepositories` is whether its
+`list_skills` lists any source, and stays true until it has answered;
+elsewhere it comes from `agentPlatform.skills.repositories` alone.
 
 Editing (`/customize/agents/<installation>/<namespace>/<name>/edit`) is the
 same wizard, prefilled, ending in an `update_agent` dry run (see "Editing an
@@ -891,7 +898,17 @@ token nowhere else.
 
 ### Skill discovery
 
-Skills come from `agentPlatform.skills.repositories`: github.com through the
+Where the installation's muster lists skill-manager, the portal lists and
+reads skills only through it, as the signed-in person: `x_skill-manager_list_skills`
+(skills and plugins, with each plugin's `format`), `get_skill` and
+`get_skill_file` (`SkillManagerClient`, `useSkillSource`). skill-manager's
+sources are then the only skill list; a private repository the person's GitHub
+login cannot read lists nothing and carries the reason, which the skills step
+shows. The wizard and the agent pages read the agent's installation, the other
+pages the home installation.
+
+Where skill-manager is not deployed (deprecated): skills come from
+`agentPlatform.skills.repositories`: github.com through the
 REST API, any other http(s) host through a depth-1 git clone
 (`discoverAgentSkillsFromGit.ts`). A skill is any directory containing a
 `SKILL.md`; its frontmatter `name` and `description` drive the picker. Listings
@@ -941,6 +958,34 @@ A selected skill becomes a chart 1.x `skills[]` entry,
 `skillEntryOf`). The portal sends the commit, never a branch, so what the
 person picked runs until they update it. Root-level skills omit `path`; agents
 without skills omit `skills`. There is no per-skill credential.
+
+**Plugins.** The Skills step lists the plugins of the same repositories below
+the skills (`PluginCards`), Claude Code plugins and Agent Plugins packages as
+two groups, one row per plugin, with a search over the plugins' names and
+their skills' names and descriptions that opens every plugin with a matching
+skill. A plugin becomes a `plugins[]` entry pinned like a skill,
+`{ path, git: { url, commit }, skills? }` (`lib/plugins.ts`, `pluginEntryOf`).
+
+- A Claude Code plugin (`.claude-plugin/plugin.json` only) has one checkbox and
+  no selection: it loads whole, with its commands, hooks and subagents, on the
+  `claude` Harness only. Its row folds out its skills without checkboxes, read
+  from the skill catalogue.
+- An Agent Plugins package (a root `plugin.json`) loads only the skills named in
+  `skills`, on every Harness. A directory with both manifests is one, `claude`
+  included, because kagent reads the root manifest first. Its row folds out its
+  skills as cards to pick, and its checkbox picks every skill it lists at the
+  commit shown (mixed while only some are), pinning the package to that
+  commit, an edited agent's too. agent-manager takes no marker for the whole
+  package (giantswarm/giantswarm#39190), so the entry names each skill, and a
+  skill added to the package later is not included until it is picked.
+- An edited agent's entry without `skills` for a package pinned to an older
+  commit (picked while the directory was a Claude Code plugin there, where it
+  loads whole) shows the package checked and its skills checked and disabled.
+  Clearing the checkbox removes the entry; skills picked afterwards are pinned
+  to the latest commit. The same entry at the commit shown loads nothing, and
+  its row says so. Picked names the package no longer lists are named under
+  the row and left out of its count. A Claude Code row whose pinned entry
+  names skills says the agent loads only those.
 
 **Private skill repositories.** Discovery reads GitHub's `private` flag of
 each repository (`GET /agent-skills` answers `private`), and the Skills step
@@ -2798,17 +2843,17 @@ no task id), the panel is withheld and the page says so.
 An agent that calls `core_auth_login` gets muster's sign-in link
 (`…/oauth/proxy/start?state=…`) and passes it on, in a message or an `ask_user`
 question. `ConnectorSignInLinks` (around the session column) shows such a link
-as **Sign in to <connector> ↗** in place of the URL, wherever `MessageMarkdown`
-renders it. Only a link muster issued in this session counts: the answer of one
-of the session's `core_auth_login` calls, for a server among the installation's
-MCPServer CRs (`lib/connectorSignIn.ts`). The agent's own text never makes a
-link a sign-in. A link muster no longer honours (10 minutes) says so and asks
-for a new one, unless its sign-in is already under way: muster's limit is on
-starting the flow, so the wait stays (without the stale link to reopen). kagent
-stamps every item of a turn with the turn's latest time, so the age is counted
-from the earlier of that and when the tab first saw the link. A link first seen
-in history can still be older than it looks; muster's own page then says it
-expired.
+as **Sign in to <connector>**, with the new-tab icon, in place of the URL,
+wherever `MessageMarkdown` renders it. Only a link muster issued in this session
+counts: the answer of one of the session's `core_auth_login` calls, for a server
+among the installation's MCPServer CRs (`lib/connectorSignIn.ts`). The agent's
+own text never makes a link a sign-in. A link muster no longer honours (10
+minutes) says so and asks for a new one, unless its sign-in is already under
+way: muster's limit is on starting the flow, so the wait stays (without the
+stale link to reopen). kagent stamps every item of a turn with the turn's latest
+time, so the age is counted from the earlier of that and when the tab first saw
+the link. A link first seen in history can still be older than it looks;
+muster's own page then says it expired.
 
 The link opens in a new tab with `redirect=<this session page>?connector-sign-in=<id>`.
 muster sends the browser there only after a successful callback, adding

@@ -312,10 +312,10 @@ export function catalogueState({
  * covers connector names only.
  */
 const UNSEARCHED_CATALOGUE: Partial<Record<CatalogueState, string>> = {
-  partial: 'Some tools were not searched: muster returned only part of them.',
+  partial: 'Some tools were not searched: Muster returned only part of them.',
   loading: 'Only connector names were searched: the tools are still loading.',
   unavailable:
-    'Only connector names were searched: tools need a muster session.',
+    'Only connector names were searched: tools need a Muster session.',
 };
 
 /** Why the tools of the connectors in a group were not searched. */
@@ -324,7 +324,7 @@ type UnsearchedReason = 'sign-in' | 'unreachable' | 'unlisted';
 const UNSEARCHED_REASONS: Record<UnsearchedReason, string> = {
   'sign-in': 'they need your sign-in',
   unreachable: 'they could not be read',
-  unlisted: 'muster listed none of them',
+  unlisted: 'Muster listed none of them',
 };
 
 function unsearchedSentence(names: string[], reason: UnsearchedReason): string {

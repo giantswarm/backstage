@@ -9,6 +9,10 @@ import {
   useInstallations,
 } from '@giantswarm/backstage-plugin-gs';
 
+import {
+  useMusterServerAvailability,
+  type MusterServerAvailability,
+} from '@giantswarm/backstage-plugin-muster';
 import { MargeClient, type MargeMarkArgs } from '../apis/MargeClient';
 import {
   CLASSIFY_ACTIONS,
@@ -27,10 +31,6 @@ import {
   musterMargeListScopeKey,
 } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import {
-  useMusterServerAvailability,
-  type MusterServerAvailability,
-} from './useMusterServerAvailability';
 
 /**
  * marge's tools on one installation, as the signed-in person -- `undefined`
@@ -89,6 +89,13 @@ export type MargeInstallationView = {
   isLoading: boolean;
   /** The muster plugin is not installed: marge is reachable nowhere. */
   isUnavailable: boolean;
+  /**
+   * The in-scope installations whose muster lists marge but has no per-user
+   * sign-in in this portal, where muster-backend refuses marge's tools.
+   */
+  withoutPerUserSignIn: string[];
+  /** Why the portal's muster installations could not be read. */
+  installationsError: Error | undefined;
 };
 
 /**
@@ -123,13 +130,17 @@ export function useMargeInstallation(): MargeInstallationView {
     (name): name is string => name !== undefined && candidates.includes(name),
   );
 
-  // A server list that could not be read says nothing about marge, so it is
-  // not an answer to act on: the page calls marge on that installation and
-  // reports what marge, or muster, says. Only a muster that answered without
-  // marge leaves the page with no installation.
-  const fallback = [pinned, home, availability.unreachable[0]].find(
-    (name): name is string =>
-      name !== undefined && availability.unreachable.includes(name),
+  // A server list that could not be read, or a muster the portal reports it
+  // cannot reach, says nothing about marge, so it is not an answer to act on:
+  // the page calls marge on that installation and reports what muster says
+  // (for an unreachable one, at once: "not reachable from this portal"). Only
+  // a muster that answered without marge, or that runs without a per-user
+  // sign-in, leaves the page with no installation.
+  const fallbacks = availability.unreachable.filter(
+    name => !availability.sharedIdentity.includes(name),
+  );
+  const fallback = [pinned, home, fallbacks[0]].find(
+    (name): name is string => name !== undefined && fallbacks.includes(name),
   );
   const installation = listed ?? fallback;
 
@@ -143,6 +154,8 @@ export function useMargeInstallation(): MargeInstallationView {
       candidates.length > 1,
     isLoading: isLoadingInstallations || availability.isLoading,
     isUnavailable: availability.isUnavailable,
+    withoutPerUserSignIn: availability.sharedIdentity,
+    installationsError: availability.installationsError,
   };
 }
 

@@ -18,27 +18,27 @@ const EXPIRED: MusterSession = session({
   failure: {
     kind: 'session-expired',
     message:
-      'Your portal session has expired; no token could be minted for muster on golem.',
+      'Your portal session has expired; no token could be minted for Muster on golem.',
   },
 });
 const MINT_FAILED: MusterSession = session({
   failure: {
     kind: 'mint-failed',
     message:
-      'Could not mint a token for muster on golem: Token broker is unreachable',
+      'Could not mint a token for Muster on golem: Token broker is unreachable',
   },
 });
 const REJECTED: MusterSession = session({
   failure: {
     kind: 'muster-rejected',
-    message: 'muster on golem rejected the token: Token validation failed',
+    message: 'Muster on golem rejected the token: Token validation failed',
   },
 });
 const UNREACHABLE: MusterSession = session({
   failure: {
     kind: 'unreachable',
     message:
-      'muster on golem is not reachable from this portal (no answer within 3000 ms).',
+      'Muster on golem is not reachable from this portal (no answer within 3000 ms).',
   },
 });
 
@@ -49,7 +49,7 @@ describe('SessionGate', () => {
     );
 
     expect(
-      screen.getByText('Checking your muster session for golem…'),
+      screen.getByText('Checking your Muster session for golem…'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -75,7 +75,7 @@ describe('SessionGate', () => {
 
     expect(
       screen.getByText(
-        'muster on golem rejected the token: Token validation failed',
+        'Muster on golem rejected the token: Token validation failed',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('SessionGate', () => {
 
     expect(
       screen.getByText(
-        'muster on golem is not reachable from this portal (no answer within 3000 ms).',
+        'Muster on golem is not reachable from this portal (no answer within 3000 ms).',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
@@ -105,7 +105,7 @@ describe('SessionGate', () => {
 
     expect(
       screen.getByText(
-        'Server topology is visible from the CRDs; tools need a live muster session. muster on golem rejected the token: Token validation failed',
+        'Server topology is visible from the CRDs; tools need a live muster session. Muster on golem rejected the token: Token validation failed',
       ),
     ).toBeInTheDocument();
   });
@@ -159,10 +159,10 @@ describe('sessionGateCopy', () => {
 
   it('has no action while checking, and a retry for an unexplained miss', () => {
     expect(sessionGateCopy(session({ pending: true }), 'golem')).toEqual({
-      sentence: 'Checking your muster session for golem…',
+      sentence: 'Checking your Muster session for golem…',
     });
     expect(sessionGateCopy(session(), undefined)).toEqual({
-      sentence: 'No muster session yet.',
+      sentence: 'No Muster session yet.',
       action: 'Retry',
     });
   });

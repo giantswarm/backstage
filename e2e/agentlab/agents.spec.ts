@@ -8,6 +8,7 @@ import {
   searchRoster,
   test,
 } from './fixtures';
+import { lab } from './lab';
 
 /**
  * Customize's Agents tab as the admin reads it: the roster from the
@@ -50,7 +51,8 @@ test('the roster lists the agent under Customize · Agents', async ({
   // The lab runs every agent on one Harness: main's singleHarness rule (#2858)
   // shows neither a Harness filter nor a Harness per row.
   await expect(
-    admin.getByRole('button', { name: /^Filter by harness/ }),
+    // Named by its value, then its field: "All Filter by harness".
+    admin.getByRole('button', { name: /\bFilter by harness$/ }),
   ).toHaveCount(0);
   await expect(admin.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',
@@ -106,7 +108,7 @@ test('an agent in the roster opens its detail page', async ({
   await expect(
     admin
       .getByRole('complementary', { name: 'About this agent' })
-      .getByRole('link', { name: 'default-model-config' }),
+      .getByRole('link', { name: lab.defaultModel }),
   ).toBeVisible();
   await admin.getByRole('tab', { name: 'Sessions' }).click();
   await expect(admin).toHaveURL(new RegExp(`${href}/sessions$`));
@@ -154,7 +156,7 @@ test('the New agent wizard opens on Details, derives the technical name and list
 
   const models = admin.getByRole('radiogroup', { name: 'Model' });
   await expect(
-    models.getByRole('radio', { name: /default-model-config/ }),
+    models.getByRole('radio', { name: lab.defaultModel }),
     'the ModelConfigs an admin provisioned are offered',
   ).toBeVisible();
 

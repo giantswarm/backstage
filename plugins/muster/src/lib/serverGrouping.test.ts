@@ -496,13 +496,13 @@ describe('connectorDisplayNames', () => {
     expect(names.get('kubernetes')).toBe('Kubernetes');
   });
 
-  it('names a row by the rule, and muster itself by its key', () => {
+  it('names a row by the rule, and muster itself as Muster', () => {
     const server = makeServer({ name: 'mcp-github', displayName: 'GitHub' });
     const names = mcpServerDisplayNames([server]);
     expect(serverRowDisplayName({ kind: 'server', server }, names)).toBe(
       'GitHub',
     );
-    expect(serverRowDisplayName({ kind: 'core' }, names)).toBe('muster');
+    expect(serverRowDisplayName({ kind: 'core' }, names)).toBe('Muster');
   });
 
   it('names a connector on one installation by that installation’s servers only', () => {

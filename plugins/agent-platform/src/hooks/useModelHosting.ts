@@ -3,7 +3,7 @@ import {
   type ServingContextValue,
 } from '../components/ServingProvider';
 import { useClusterManagerAvailability } from './useClusterManager';
-import type { MusterServerAvailability } from './useMusterServerAvailability';
+import type { MusterServerAvailability } from '@giantswarm/backstage-plugin-muster';
 
 export type ModelHosting = {
   /**

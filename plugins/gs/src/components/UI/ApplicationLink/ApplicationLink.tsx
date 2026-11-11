@@ -1,5 +1,6 @@
-import { Box, Link, Tooltip, Typography, styled } from '@material-ui/core';
+import { Box, Tooltip, Typography, styled } from '@material-ui/core';
 import LanguageOutlinedIcon from '@material-ui/icons/LanguageOutlined';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 const StyledIcon = styled(LanguageOutlinedIcon)(({ theme }) => ({
   marginRight: theme.spacing(0.5),
@@ -29,8 +30,8 @@ export const ApplicationLink = ({
   );
 
   return (
-    <Link href={linkUrl} target="_blank" rel="noopener noreferrer">
+    <ExternalLink href={linkUrl}>
       {tooltip ? <Tooltip title={tooltip}>{el}</Tooltip> : el}
-    </Link>
+    </ExternalLink>
   );
 };

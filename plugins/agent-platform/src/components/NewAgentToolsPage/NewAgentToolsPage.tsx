@@ -224,7 +224,7 @@ export function NewAgentToolsPage() {
     toolsetProblems,
   } = useNewAgentForm();
   // Cached by now; only decides where "Back" goes and what the step is numbered.
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories } = useSkillCatalog(state.installation);
 
   const installation = state.installation;
   const musterApi = useMusterPluginApi();

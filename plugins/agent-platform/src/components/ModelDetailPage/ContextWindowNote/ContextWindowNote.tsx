@@ -1,6 +1,6 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { MONO } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, MONO } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ContextWindowLookup } from '../../../lib/contextWindows';
 
@@ -77,14 +77,13 @@ export function ContextWindowNote({
                 <span style={MONO}>{TABLE_KEY}</span>.
               </>
             )}{' '}
-            <Link
+            <ExternalLink
               href={CONTEXT_WINDOWS_DOCS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="body-small"
+              display="inline"
             >
               How to configure it
-            </Link>
+            </ExternalLink>
           </Text>
         </Flex>
       }

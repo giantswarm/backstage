@@ -78,7 +78,7 @@ export function ToolOverviewTab({
       ),
     },
     {
-      label: 'Exposed by muster as',
+      label: 'Exposed by Muster as',
       value: <Mono>{name}</Mono>,
     },
     {

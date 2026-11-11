@@ -932,7 +932,7 @@ export function layoutWorkflowGraph(
     const bottom = end + M.groupPadding;
     groups.push({
       kind: 'onFailure',
-      label: 'Cleanup muster runs when a step fails',
+      label: 'Cleanup Muster runs when a step fails',
       x: laneX,
       y: top,
       width: laneWidth,

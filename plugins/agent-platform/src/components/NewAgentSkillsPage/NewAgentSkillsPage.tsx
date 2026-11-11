@@ -359,6 +359,7 @@ function NewAgentSkillsPageContent() {
     toggleSkill,
     removeKeptSkill,
     togglePlugin,
+    selectAllPluginSkills,
     togglePluginSkill,
     removeKeptPlugin,
     isComplete,
@@ -370,9 +371,10 @@ function NewAgentSkillsPageContent() {
     error,
     hasRepositories,
     failedRepositories,
+    failureMessages = {},
     truncated,
     privateRepositories,
-  } = useSkillCatalog();
+  } = useSkillCatalog(state.installation);
 
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
@@ -550,7 +552,13 @@ function NewAgentSkillsPageContent() {
           <Alert
             status="warning"
             title="Could not read some skill repositories"
-            description={`Skipped: ${failedRepositories.join(', ')}.`}
+            description={failedRepositories
+              .map(repo =>
+                failureMessages[repo]
+                  ? `${repo}: ${failureMessages[repo]}`
+                  : repo,
+              )
+              .join('; ')}
           />
         )}
 
@@ -613,8 +621,10 @@ function NewAgentSkillsPageContent() {
 
         <PluginCards
           plugins={plugins}
+          catalog={skills}
           selected={state.selectedPlugins}
           onTogglePlugin={togglePlugin}
+          onSelectAllPluginSkills={selectAllPluginSkills}
           onTogglePluginSkill={togglePluginSkill}
         />
 

@@ -152,9 +152,9 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-/** The skill as the catalog discovered it, when the catalog has it. */
-function useCatalogSkills(): Map<string, DiscoveredSkill> {
-  const { skills } = useSkillCatalog();
+/** The skill as the agent's installation's catalog has it, when it does. */
+function useCatalogSkills(installation: string): Map<string, DiscoveredSkill> {
+  const { skills } = useSkillCatalog(installation);
   return useMemo(
     () => new Map(skills.map(skill => [canonicalSkillId(skill), skill])),
     [skills],
@@ -232,18 +232,20 @@ function SkillCard({
 
 function SkillsSection({
   agent,
+  installation,
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
 }: {
   agent: Agent;
+  installation: string;
   onUpdateSkills?: () => void;
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
 }) {
   const classes = useStyles();
   const skills = agent.getSkills();
-  const catalog = useCatalogSkills();
+  const catalog = useCatalogSkills(installation);
 
   const action =
     onUpdateSkills && skills.length > 0 ? (
@@ -544,6 +546,7 @@ export function AgentPlainOverview({
 
       <SkillsSection
         agent={agent}
+        installation={installation}
         onUpdateSkills={onUpdateSkills}
         onAddSkills={onAddSkills}
         isGitOpsOwned={isGitOpsOwned}

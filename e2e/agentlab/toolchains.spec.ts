@@ -8,6 +8,7 @@ import {
   open,
   startSessionButton,
   test,
+  openThroughConsent,
 } from './fixtures';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
 import { lab } from './lab';
@@ -65,9 +66,10 @@ async function goVersions(
     // Dex it is completed as the same fixture account; one through its
     // GitHub App is the person's own GitHub sign-in, which no headless run
     // completes.
-    const popupEvent = page.waitForEvent('popup');
-    await signIn.getByRole('button', { name: /Sign in/ }).click();
-    const popup = await popupEvent;
+    const popup = await openThroughConsent(
+      page,
+      signIn.getByRole('button', { name: /Sign in/ }),
+    );
     // Muster may first renew its Dex login, then send the same popup on
     // to GitHub. completeDexLogin closes that popup after leaving Dex, so
     // remember the next hop before it does: the person's App grant needs
