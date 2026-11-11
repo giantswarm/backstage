@@ -39,6 +39,7 @@ import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
+  allSkillNamesOf,
   DiscoveredPlugin,
   pluginEntryKey,
   pluginId,
@@ -270,8 +271,16 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
   removeKeptSkill: (skill: AgentSkillEntry) => void;
-  /** A Claude Code plugin: adds it if not picked, removes it if picked. */
+  /**
+   * Adds the plugin if not picked, removes it if picked. A Claude Code plugin
+   * is added whole; an Agent Plugins package with every skill it lists.
+   */
   togglePlugin: (plugin: DiscoveredPlugin) => void;
+  /**
+   * An Agent Plugins package: enables every skill it lists at the commit the
+   * skills step shows, keeping the pin of a package already picked.
+   */
+  selectAllPluginSkills: (plugin: DiscoveredPlugin) => void;
   /**
    * An Agent Plugins package: enables or disables one of its skills. The
    * package is picked while at least one of its skills is enabled.
@@ -914,7 +923,29 @@ export function NewAgentFormProvider({
               ? prev.selectedPlugins.filter(
                   selected => pluginId(selected.plugin) !== id,
                 )
-              : [...prev.selectedPlugins, { plugin, skills: [] }],
+              : [
+                  ...prev.selectedPlugins,
+                  { plugin, skills: allSkillNamesOf(plugin) },
+                ],
+          };
+        }),
+      selectAllPluginSkills: plugin =>
+        setState(prev => {
+          const id = pluginId(plugin);
+          const skills = allSkillNamesOf(plugin);
+          if (skills.length === 0) {
+            return prev;
+          }
+          const current = prev.selectedPlugins.find(
+            selected => pluginId(selected.plugin) === id,
+          );
+          return {
+            ...prev,
+            selectedPlugins: current
+              ? prev.selectedPlugins.map(selected =>
+                  selected === current ? { ...selected, skills } : selected,
+                )
+              : [...prev.selectedPlugins, { plugin, skills }],
           };
         }),
       togglePluginSkill: (plugin, skill) =>

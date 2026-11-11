@@ -5,9 +5,9 @@ import { expect, expectWizardStep, gotoApp, open, test } from './fixtures';
  * The portal reads skills and plugins from the installation's skill-manager,
  * through muster as the signed-in person, and nowhere else: on the wizard's
  * skills step every plugin of `x_skill-manager_list_skills`' answer is
- * offered, a Claude Code plugin as one checkbox and an Agent Plugins package
- * with its skills, and gs-backend's own `/agent-skills` discovery is never
- * asked. A skill's page reads its SKILL.md with `x_skill-manager_get_skill`.
+ * offered, each as a row with a plugin checkbox, an Agent Plugins package
+ * folding out its skills, and gs-backend's own `/agent-skills` discovery is
+ * never asked. A skill's page reads its SKILL.md with `x_skill-manager_get_skill`.
  *
  * Needs a lab whose muster lists skill-manager with at least one plugin
  * among its sources (a `platform.valuesFiles` overlay setting
@@ -169,6 +169,14 @@ test('the wizard offers what skill-manager lists, plugins included', async ({
         `Claude Code plugin ${plugin.name}`,
       ).toBeVisible();
     } else if (plugin.skills.length > 0) {
+      await expect(
+        admin.getByRole('checkbox', { name: `Plugin ${plugin.name}` }),
+        `Agent Plugins package ${plugin.name}`,
+      ).toBeVisible();
+      // A package's skills are folded under its row until it is opened.
+      await admin
+        .getByRole('button', { name: `Show skills of ${plugin.name}` })
+        .click();
       const group = admin.getByRole('group', {
         name: `Skills of plugin ${plugin.name}`,
       });

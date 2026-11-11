@@ -9,7 +9,7 @@ import {
 /**
  * A plugin with selected skills loads on a coding agent: on the wizard's
  * skills step the Agent Plugins package `fixtures/plugins/selection` of
- * giantswarm/agentlab lists its two skills as checkboxes, the agent is created
+ * giantswarm/agentlab folds out its two skills as cards, the agent is created
  * on the lab's Claude Code Harness with only `selected-codeword` enabled, and
  * its turn knows that skill's codeword and not its sibling's — the package
  * materialises only what the agent selects.
@@ -38,23 +38,36 @@ test('a coding agent loads only the plugin skills selected in the wizard', async
     harness: /Harness claude\b/,
     onStep: async step => {
       if (step === 'Skills') {
+        const plugin = admin.getByRole('checkbox', {
+          name: `Plugin ${PLUGIN}`,
+          exact: true,
+        });
+        await plugin.waitFor({ timeout: 60_000 }).catch(() => undefined);
+        test.skip(
+          !(await plugin.isVisible()),
+          `the skills step offers no plugin ${PLUGIN}: add https://github.com/giantswarm/agentlab to the lab's skill repositories`,
+        );
+        // A package's skills are folded under its row until it is opened.
+        await admin
+          .getByRole('button', { name: `Show skills of ${PLUGIN}` })
+          .click();
         const skills = admin.getByRole('group', {
           name: `Skills of plugin ${PLUGIN}`,
         });
-        await skills.waitFor({ timeout: 60_000 }).catch(() => undefined);
-        test.skip(
-          !(await skills.isVisible()),
-          `the skills step offers no plugin ${PLUGIN}: add https://github.com/giantswarm/agentlab to the lab's skill repositories`,
-        );
         await expect(
-          skills.getByRole('checkbox', { name: /unselected-codeword/ }),
+          skills.getByRole('checkbox', {
+            name: 'unselected-codeword',
+            exact: true,
+          }),
         ).toBeVisible();
-        // bui draws its indicator over the hidden input: a person clicks the
-        // label, and so does the suite.
-        await skills.getByText('selected-codeword', { exact: true }).click();
-        await expect(
-          skills.getByRole('checkbox', { name: /^selected-codeword/ }),
-        ).toBeChecked();
+        const selected = skills.getByRole('checkbox', {
+          name: 'selected-codeword',
+          exact: true,
+        });
+        await selected.click();
+        await expect(selected).toBeChecked();
+        // One of two skills: the plugin's own checkbox reads mixed.
+        await expect(plugin).toBeChecked({ indeterminate: true });
       }
       if (step === 'Review') {
         await expect(

@@ -959,6 +959,31 @@ A selected skill becomes a chart 1.x `skills[]` entry,
 person picked runs until they update it. Root-level skills omit `path`; agents
 without skills omit `skills`. There is no per-skill credential.
 
+**Plugins.** The Skills step lists the plugins of the same repositories below
+the skills (`PluginCards`), Claude Code plugins and Agent Plugins packages as
+two groups, one row per plugin, with a search over the plugins' names and
+their skills' names and descriptions that opens every plugin with a matching
+skill. A plugin becomes a `plugins[]` entry pinned like a skill,
+`{ path, git: { url, commit }, skills? }` (`lib/plugins.ts`, `pluginEntryOf`).
+
+- A Claude Code plugin (`.claude-plugin/plugin.json` only) has one checkbox and
+  no selection: it loads whole, with its commands, hooks and subagents, on the
+  `claude` Harness only. Its row folds out its skills without checkboxes, read
+  from the skill catalogue.
+- An Agent Plugins package (a root `plugin.json`) loads only the skills named in
+  `skills`, on every Harness. A directory with both manifests is one, `claude`
+  included, because kagent reads the root manifest first. Its row folds out its
+  skills as cards to pick, and its checkbox picks every skill it lists at the
+  commit shown (mixed while only some are). agent-manager takes no marker for
+  the whole package (giantswarm/giantswarm#39190), so the entry names each
+  skill, and a skill added to the package later is not included until it is
+  picked.
+- An edited agent's entry without `skills` for a package (picked while the
+  directory was a Claude Code plugin at the commit it is pinned to, where it
+  loads whole) shows the package checked and its skills checked and disabled.
+  Clearing the checkbox removes the entry; skills picked afterwards are pinned
+  to the latest commit.
+
 **Private skill repositories.** Discovery reads GitHub's `private` flag of
 each repository (`GET /agent-skills` answers `private`), and the Skills step
 marks a private repository and its skills. agent-manager gives every agent

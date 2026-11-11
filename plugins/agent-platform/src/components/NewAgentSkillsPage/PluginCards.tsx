@@ -1,24 +1,43 @@
-import { Button, Checkbox, Flex, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { ReactNode, useId, useMemo, useState } from 'react';
 import {
+  Button,
+  ButtonIcon,
+  Checkbox,
+  Flex,
+  SearchField,
+  Text,
+} from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
+import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import {
+  CatalogNoMatch,
+  countNoun,
   ExternalLink,
+  isSearchableList,
   shortSha,
+  ShowMore,
   CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentPluginEntry } from '../../lib/agentManager';
 import {
   DiscoveredPlugin,
+  PluginSelection,
+  PluginSkill,
   pluginEntryKey,
   pluginEntryName,
   pluginId,
+  pluginSelectionOf,
+  pluginSkillsOf,
+  searchPlugins,
   SelectedPlugin,
 } from '../../lib/plugins';
-import { repoSlug } from '../../lib/skills';
+import { DiscoveredSkill, repoSlug } from '../../lib/skills';
 import {
   SelectableCard,
   SelectableCardGrid,
   StaticCard,
+  useClampedText,
   useSelectableCardStyles,
 } from '../SelectableCard';
 
@@ -26,11 +45,49 @@ const useStyles = makeStyles(theme => ({
   heading: {
     marginBottom: theme.spacing(1),
   },
-  skills: {
-    marginTop: theme.spacing(1),
-  },
   actions: {
     marginTop: theme.spacing(1),
+  },
+  // One bordered list per group, a row per plugin: a package's skills fold
+  // under its row, so a package of 25 skills is one line until it is opened
+  // and never pushes the other plugins off the step.
+  rows: {
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 'var(--bui-radius-3)',
+    background: 'var(--bui-bg-neutral-1)',
+  },
+  row: {
+    padding: theme.spacing(1.5, 2, 1.5, 1),
+    '& + &': {
+      borderTop: '1px solid var(--bui-border-1)',
+    },
+  },
+  // The caret and the checkbox share the first line; a row without skills
+  // keeps the caret's place, so every checkbox lines up.
+  caret: {
+    flex: 'none',
+    width: 32,
+    height: 32,
+  },
+  caretIcon: {
+    transition: 'transform 120ms',
+  },
+  caretOpen: {
+    transform: 'rotate(90deg)',
+  },
+  checkbox: {
+    flex: 'none',
+    paddingTop: 6,
+  },
+  details: {
+    minWidth: 0,
+    flex: '1 1 auto',
+  },
+  // Indented to the plugin's name: past the caret (32px), the checkbox (16px)
+  // and the two 4px gaps between them.
+  panel: {
+    marginTop: theme.spacing(1.5),
+    marginLeft: 56,
   },
 }));
 
@@ -83,144 +140,377 @@ function PluginSource({
   );
 }
 
-/**
- * A Claude Code plugin: one choice, since it loads whole — its commands,
- * hooks, subagents and skills.
- */
-function ClaudePluginCard({
-  plugin,
+/** What of a plugin the agent gets, as its row's metadata line says it. */
+function selectionLine(
+  plugin: DiscoveredPlugin,
+  skills: PluginSkill[],
+  selection: PluginSelection,
+  picked: number,
+): string {
+  if (plugin.format === 'claude-code') {
+    return skills.length > 0
+      ? `Claude Code plugin · Loads whole: ${countNoun(
+          skills.length,
+          'skill',
+        )}, plus its commands, hooks and subagents`
+      : 'Claude Code plugin · Loads whole, with its commands, hooks, subagents and skills';
+  }
+  const total = skills.length;
+  switch (selection) {
+    case 'whole':
+      return 'Agent Plugins · Whole plugin, as pinned';
+    case 'all':
+      return `Agent Plugins · All ${countNoun(total, 'skill')} at this commit`;
+    case 'some':
+      return `Agent Plugins · ${picked} of ${countNoun(total, 'skill')} selected`;
+    default:
+      return total > 0
+        ? `Agent Plugins · ${countNoun(total, 'skill')}`
+        : 'Agent Plugins · No skills in its skills directory';
+  }
+}
+
+/** A skill card's name and its description, cut to a few lines. */
+function useSkillCardBody(skill: PluginSkill) {
+  const description = useClampedText({
+    text: skill.description,
+    subject: skill.name,
+  });
+  return {
+    body: (
+      <>
+        <Text weight="bold">{skill.name}</Text>
+        {description.content}
+      </>
+    ),
+    toggle: description.toggle,
+    describedById: description.describedById,
+  };
+}
+
+/** A skill of an Agent Plugins package: a card the person ticks. */
+function PackageSkillCard({
+  skill,
   selected,
-  pinned,
-  onToggle,
+  disabled,
+  onSelect,
 }: {
-  plugin: DiscoveredPlugin;
+  skill: PluginSkill;
   selected: boolean;
-  pinned?: string;
-  onToggle: () => void;
+  /** A whole-plugin entry: every skill loads, so none is picked on its own. */
+  disabled: boolean;
+  onSelect: () => void;
 }) {
+  const { body, toggle, describedById } = useSkillCardBody(skill);
   return (
     <SelectableCard
       role="checkbox"
       selected={selected}
-      ariaLabel={`Plugin ${plugin.name}`}
-      onSelect={onToggle}
+      disabled={disabled}
+      ariaLabel={skill.name}
+      onSelect={onSelect}
+      hoverAction={toggle}
+      describedById={describedById}
     >
-      <Text weight="bold">{plugin.name}</Text>
-      <Text variant="body-small" color="secondary">
-        Claude Code plugin: loads whole, with its commands, hooks, subagents and
-        skills.
-      </Text>
-      <PluginSource plugin={plugin} pinned={pinned} />
+      {body}
     </SelectableCard>
   );
 }
 
-/**
- * An Agent Plugins package: only the skills enabled here load, so each is a
- * checkbox; the package is on the agent while one of them is enabled.
- */
-function AgentPluginsCard({
-  plugin,
-  enabled,
-  pinned,
-  onToggleSkill,
-}: {
-  plugin: DiscoveredPlugin;
-  enabled: string[];
-  pinned?: string;
-  onToggleSkill: (skill: string) => void;
-}) {
-  const styles = useStyles();
+/** A skill of a Claude Code plugin: shown, never picked on its own. */
+function BundledSkillCard({ skill }: { skill: PluginSkill }) {
+  const { body, toggle } = useSkillCardBody(skill);
   return (
     <StaticCard>
-      <Text weight="bold">{plugin.name}</Text>
-      <Text variant="body-small" color="secondary">
-        Agent Plugins package: loads the skills you enable.
-      </Text>
-      <PluginSource plugin={plugin} pinned={pinned} />
-      {plugin.skills.length === 0 ? (
-        <Text variant="body-small" color="secondary" className={styles.skills}>
-          No skills found in its skills directory.
-        </Text>
-      ) : (
-        <Flex
-          direction="column"
-          gap="1"
-          className={styles.skills}
-          role="group"
-          aria-label={`Skills of plugin ${plugin.name}`}
-        >
-          {plugin.skills.map(skill => (
-            <Checkbox
-              key={skill.name}
-              isSelected={enabled.includes(skill.name)}
-              onChange={() => onToggleSkill(skill.name)}
-            >
-              {skill.description ? (
-                <>
-                  <strong>{skill.name}</strong> — {skill.description}
-                </>
-              ) : (
-                skill.name
-              )}
-            </Checkbox>
-          ))}
-        </Flex>
-      )}
+      {body}
+      {toggle && <div>{toggle}</div>}
     </StaticCard>
   );
 }
 
+type PluginRowProps = {
+  plugin: DiscoveredPlugin;
+  /** The skills the row shows: every one, or a search's matches. */
+  skills: PluginSkill[];
+  /** Every skill the plugin brings, which its counts are of. */
+  allSkills: PluginSkill[];
+  pick: SelectedPlugin | undefined;
+  /** Whether the row starts open: a search found one of its skills. */
+  defaultOpen: boolean;
+  onTogglePlugin: (plugin: DiscoveredPlugin) => void;
+  onSelectAllPluginSkills: (plugin: DiscoveredPlugin) => void;
+  onTogglePluginSkill: (plugin: DiscoveredPlugin, skill: string) => void;
+};
+
 /**
- * The plugins found in the configured skill repositories. Each is pinned to the
- * commit its card shows, like a skill.
+ * One plugin: a caret that folds its skills out, a checkbox for the plugin as
+ * a whole, its name, what of it the agent gets and where it is pinned.
+ *
+ * A Claude Code plugin's checkbox is the plugin itself; its skills are shown
+ * without checkboxes, since it loads whole. An Agent Plugins package's
+ * checkbox picks every skill it lists at this commit (checked), some of them
+ * (mixed) or none; its skills are picked one by one below it.
+ */
+function PluginRow({
+  plugin,
+  skills,
+  allSkills,
+  pick,
+  defaultOpen,
+  onTogglePlugin,
+  onSelectAllPluginSkills,
+  onTogglePluginSkill,
+}: PluginRowProps) {
+  const classes = useStyles();
+  const panelId = useId();
+  const [open, setOpen] = useState(defaultOpen);
+  const isPackage = plugin.format === 'agent-plugins';
+  // A Claude Code plugin is picked whole or not at all.
+  let selection: PluginSelection = pick ? 'whole' : 'none';
+  if (isPackage) {
+    selection = pluginSelectionOf(plugin, pick);
+  }
+  const picked = new Set(pick?.skills ?? []);
+  const pin = pick?.plugin.commit;
+  const pinned = pin && pin !== plugin.commit ? pin : undefined;
+  const isChecked = selection === 'whole' || selection === 'all';
+
+  // Checked: the plugin goes. Unchecked or mixed: a Claude Code plugin is
+  // added, a package gets every skill it lists.
+  const onChange = () => {
+    if (isChecked || !isPackage) {
+      onTogglePlugin(plugin);
+    } else {
+      onSelectAllPluginSkills(plugin);
+    }
+  };
+
+  return (
+    <div role="listitem" className={classes.row}>
+      <Flex align="start" gap="1">
+        {allSkills.length > 0 ? (
+          <ButtonIcon
+            className={classes.caret}
+            variant="tertiary"
+            size="small"
+            aria-label={`${open ? 'Hide' : 'Show'} skills of ${plugin.name}`}
+            aria-expanded={open}
+            aria-controls={open ? panelId : undefined}
+            icon={
+              <ChevronRightIcon
+                fontSize="small"
+                className={`${classes.caretIcon} ${open ? classes.caretOpen : ''}`}
+              />
+            }
+            onPress={() => setOpen(value => !value)}
+          />
+        ) : (
+          <span className={classes.caret} aria-hidden="true" />
+        )}
+        <div className={classes.checkbox}>
+          <Checkbox
+            aria-label={`Plugin ${plugin.name}`}
+            isSelected={isChecked}
+            isIndeterminate={selection === 'some'}
+            // A package without skills has nothing to pick, unless an
+            // edited agent carries it whole and it can still be cleared.
+            isDisabled={isPackage && allSkills.length === 0 && !pick}
+            onChange={onChange}
+          />
+        </div>
+        <Flex direction="column" gap="1" className={classes.details}>
+          <Text weight="bold">{plugin.name}</Text>
+          <Text
+            variant="body-small"
+            color={selection === 'none' ? 'secondary' : 'primary'}
+          >
+            {selectionLine(plugin, allSkills, selection, picked.size)}
+          </Text>
+          {selection === 'all' && (
+            // Until agent-manager stores a whole package
+            // (giantswarm/giantswarm#39190), "all" is the list of names.
+            <Text variant="body-small" color="secondary">
+              Skills added to the plugin later are not included until you pick
+              them.
+            </Text>
+          )}
+          {isPackage && selection === 'whole' && (
+            <Text variant="body-small" color="secondary">
+              The agent loads it whole at its pinned commit. To pick skills
+              instead, clear its checkbox and pick them at the latest commit.
+            </Text>
+          )}
+          <PluginSource plugin={plugin} pinned={pinned} />
+        </Flex>
+      </Flex>
+      {open && skills.length > 0 && (
+        <div id={panelId} className={classes.panel}>
+          <ShowMore items={skills} noun="skill">
+            {visible =>
+              isPackage ? (
+                <SelectableCardGrid
+                  role="group"
+                  ariaLabel={`Skills of plugin ${plugin.name}`}
+                  minWidth={240}
+                >
+                  {visible.map(skill => (
+                    <PackageSkillCard
+                      key={skill.name}
+                      skill={skill}
+                      selected={selection === 'whole' || picked.has(skill.name)}
+                      disabled={selection === 'whole'}
+                      onSelect={() => onTogglePluginSkill(plugin, skill.name)}
+                    />
+                  ))}
+                </SelectableCardGrid>
+              ) : (
+                <SelectableCardGrid
+                  role="list"
+                  ariaLabel={`Skills of plugin ${plugin.name}`}
+                  minWidth={240}
+                >
+                  {visible.map(skill => (
+                    <BundledSkillCard key={skill.name} skill={skill} />
+                  ))}
+                </SelectableCardGrid>
+              )
+            }
+          </ShowMore>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A group of plugin rows of one format, with what that format means. */
+function PluginGroup({
+  title,
+  children,
+  description,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const classes = useStyles();
+  return (
+    <Flex direction="column" gap="2">
+      <div>
+        <Text as="h4" weight="bold" variant="body-medium">
+          {title}
+        </Text>
+        <Text as="p" variant="body-small" color="secondary">
+          {description}
+        </Text>
+      </div>
+      <div role="list" aria-label={title} className={classes.rows}>
+        {children}
+      </div>
+    </Flex>
+  );
+}
+
+/**
+ * The plugins found in the configured skill repositories, Claude Code plugins
+ * and Agent Plugins packages apart, since they are picked differently. Each is
+ * pinned to the commit its row shows, like a skill. A search runs over the
+ * plugins' names and their skills' names and descriptions, and opens every
+ * plugin with a matching skill.
  */
 export function PluginCards({
   plugins,
+  catalog,
   selected,
   onTogglePlugin,
+  onSelectAllPluginSkills,
   onTogglePluginSkill,
 }: {
   plugins: DiscoveredPlugin[];
+  /** The skill catalogue, which a Claude Code plugin's skills are read from. */
+  catalog: DiscoveredSkill[];
   selected: SelectedPlugin[];
   onTogglePlugin: (plugin: DiscoveredPlugin) => void;
+  onSelectAllPluginSkills: (plugin: DiscoveredPlugin) => void;
   onTogglePluginSkill: (plugin: DiscoveredPlugin, skill: string) => void;
 }) {
-  const styles = useStyles();
+  const [query, setQuery] = useState('');
+  const trimmed = query.trim();
+  const rows = useMemo(
+    () =>
+      plugins.map(plugin => ({
+        plugin,
+        skills: pluginSkillsOf(plugin, catalog),
+      })),
+    [plugins, catalog],
+  );
+  const allSkills = useMemo(
+    () => new Map(rows.map(row => [pluginId(row.plugin), row.skills])),
+    [rows],
+  );
+  const matches = useMemo(() => searchPlugins(rows, trimmed), [rows, trimmed]);
   if (plugins.length === 0) {
     return null;
   }
   const byId = new Map(selected.map(pick => [pluginId(pick.plugin), pick]));
+  // Plugins and their skills are what is searched, so both count.
+  const entries = rows.reduce((sum, row) => sum + 1 + row.skills.length, 0);
+
+  const rowsOf = (format: DiscoveredPlugin['format']) =>
+    matches
+      .filter(match => match.plugin.format === format)
+      .map(match => {
+        const id = pluginId(match.plugin);
+        return (
+          <PluginRow
+            // A new search starts every row folded or opened afresh.
+            key={`${id}|${trimmed}`}
+            plugin={match.plugin}
+            skills={match.skills}
+            allSkills={allSkills.get(id) ?? match.skills}
+            pick={byId.get(id)}
+            defaultOpen={match.hasSkillMatch}
+            onTogglePlugin={onTogglePlugin}
+            onSelectAllPluginSkills={onSelectAllPluginSkills}
+            onTogglePluginSkill={onTogglePluginSkill}
+          />
+        );
+      });
+  const claudeRows = rowsOf('claude-code');
+  const packageRows = rowsOf('agent-plugins');
+
   return (
-    <div>
-      <Text as="h3" weight="bold" className={styles.heading}>
+    <Flex direction="column" gap="3">
+      <Text as="h3" weight="bold">
         Plugins
       </Text>
-      <SelectableCardGrid role="group" ariaLabel="Plugins" minWidth={280}>
-        {plugins.map(plugin => {
-          const pick = byId.get(pluginId(plugin));
-          const pin = pick?.plugin.commit;
-          const pinned = pin && pin !== plugin.commit ? pin : undefined;
-          return plugin.format === 'claude-code' ? (
-            <ClaudePluginCard
-              key={pluginId(plugin)}
-              plugin={plugin}
-              selected={Boolean(pick)}
-              pinned={pinned}
-              onToggle={() => onTogglePlugin(plugin)}
-            />
-          ) : (
-            <AgentPluginsCard
-              key={pluginId(plugin)}
-              plugin={plugin}
-              enabled={pick?.skills ?? []}
-              pinned={pinned}
-              onToggleSkill={skill => onTogglePluginSkill(plugin, skill)}
-            />
-          );
-        })}
-      </SelectableCardGrid>
-    </div>
+      {isSearchableList(entries, trimmed !== '') && (
+        <SearchField
+          aria-label="Search plugins"
+          placeholder="Search plugins and their skills…"
+          value={query}
+          onChange={setQuery}
+        />
+      )}
+      {claudeRows.length > 0 && (
+        <PluginGroup
+          title="Claude Code plugins"
+          description="Each loads whole, with its commands, hooks, subagents and skills, and runs on the Claude Code runtime only."
+        >
+          {claudeRows}
+        </PluginGroup>
+      )}
+      {packageRows.length > 0 && (
+        <PluginGroup
+          title="Agent Plugins packages"
+          description="Each gives the agent the skills you pick, on every runtime. A plugin that also has a Claude Code manifest is listed here, because every runtime loads it this way, without its commands, hooks and subagents."
+        >
+          {packageRows}
+        </PluginGroup>
+      )}
+      {matches.length === 0 && (
+        <CatalogNoMatch plural="plugins or skills" search={trimmed} />
+      )}
+    </Flex>
   );
 }
 
