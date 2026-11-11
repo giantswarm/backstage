@@ -24,6 +24,8 @@ export type OrganizationNamespace = {
   organization: string;
   /** The parent namespace it lives in (`agent-platform.giantswarm.io/parent`). */
   parent: string;
+  /** The display name (`agent-platform.giantswarm.io/display-name`), if set. */
+  displayName?: string;
 };
 
 /** A condition of the organization as the operator reports it. */
@@ -208,6 +210,9 @@ export function organizationNamespacesOf(
             namespace: organization.namespace,
             organization: organization.name,
             parent: organization.parent,
+            ...(organization.displayName
+              ? { displayName: organization.displayName }
+              : {}),
           },
         ]
       : [],
