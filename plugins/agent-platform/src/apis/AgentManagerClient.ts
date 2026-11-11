@@ -30,7 +30,10 @@ import type {
   OrganizationConnector,
   OrganizationConnectorCredentialRequest,
   OrganizationModelRequest,
+  AgentPlatformOrganization,
+  OrganizationDeleteResult,
   OrganizationDetails,
+  OrganizationErasure,
   OrganizationMembers,
 } from '../lib/organizations';
 
@@ -291,12 +294,41 @@ export class AgentManagerClient {
     return { ...result, organizations: result.organizations ?? [] };
   }
 
-  /** One organization, by its parent namespace and name. */
-  getOrganization(parent: string, name: string): Promise<OrganizationDetails> {
-    return this.call<OrganizationDetails>(AGENT_MANAGER_TOOLS.getOrganization, {
-      namespace: parent,
-      name,
-    });
+  /**
+   * One organization, by its parent namespace and name, and what a delete
+   * would erase. agent-manager answers the organization's fields and
+   * `erases` side by side.
+   */
+  async getOrganization(
+    parent: string,
+    name: string,
+  ): Promise<OrganizationDetails> {
+    const { erases, ...organization } = await this.call<
+      AgentPlatformOrganization & { erases?: OrganizationErasure }
+    >(AGENT_MANAGER_TOOLS.getOrganization, { namespace: parent, name });
+    return { organization, ...(erases ? { erases } : {}) };
+  }
+
+  /**
+   * Deletes an organization as the person. Without `confirm` it opens the
+   * pull request that removes it from git (`mode: commit`); with `confirm`
+   * (`parent/name`, as typed) it erases it.
+   */
+  deleteOrganization(request: {
+    parent: string;
+    name: string;
+    confirm?: string;
+    mode?: 'commit';
+  }): Promise<OrganizationDeleteResult> {
+    return this.call<OrganizationDeleteResult>(
+      AGENT_MANAGER_TOOLS.deleteOrganization,
+      {
+        namespace: request.parent,
+        name: request.name,
+        ...(request.confirm ? { confirm: request.confirm } : {}),
+        ...(request.mode ? { mode: request.mode } : {}),
+      },
+    );
   }
 
   /** An organization's members: groups first, each with its role. */
