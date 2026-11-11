@@ -78,7 +78,8 @@ function Harness({ input }: { input: SaveOrganizationModelInput }) {
 
 async function saveWith(
   input: SaveOrganizationModelInput,
-  answer: () => Promise<unknown>,
+  /** What a write tool answers, by tool. */
+  answer: (tool: string) => Promise<unknown>,
   /** The organization's models `list_model_configs` answers. */
   existing: { name: string }[] = [],
 ) {
@@ -90,7 +91,7 @@ async function saveWith(
     ) =>
       tool === 'x_agent-manager_list_model_configs'
         ? { modelConfigs: existing }
-        : answer(),
+        : answer(tool),
   );
   await renderInTestApp(
     <TestApiProvider
@@ -119,6 +120,36 @@ function setCalls(callTool: jest.Mock) {
     .filter(([tool]) => tool === 'x_agent-manager_set_organization_model')
     .map(([, args]) => args);
 }
+
+/** A finished change: the key Secret is there. */
+const present = async () => ({
+  namespace: PAYMENTS.namespace,
+  kind: 'model',
+  name: 'claude-sonnet',
+  credentials: [
+    {
+      secret: 'tenant-credential-claude-sonnet',
+      key: 'apiKey',
+      state: 'present',
+    },
+  ],
+});
+
+/** A prepared replacement of the model's key. */
+const replaced = async () => ({
+  namespace: PAYMENTS.namespace,
+  kind: 'credential',
+  name: 'tenant-credential-claude-sonnet',
+  pending: true,
+  credentialOperation: CREDENTIAL_OPERATION,
+  credentials: [
+    {
+      secret: 'tenant-credential-claude-sonnet',
+      key: 'apiKey',
+      state: 'replace',
+    },
+  ],
+});
 
 const pending = async () => ({
   namespace: PAYMENTS.namespace,
@@ -206,7 +237,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      JSON.stringify({ isDefault: true }),
+      JSON.stringify({ isDefault: true, changed: true }),
     );
     expect(callTool.mock.calls[0][1]).not.toHaveProperty('replaceCredential');
     expect(callTool.mock.calls[0][1]).not.toHaveProperty('default');
@@ -215,7 +246,36 @@ describe('useSaveOrganizationModel', () => {
     );
   });
 
-  it('asks for a new key on an edit that replaces it', async () => {
+  it('asks for a new key alone through replace_organization_credential, never sending the model', async () => {
+    const callTool = await saveWith(
+      {
+        organization: PAYMENTS,
+        values: { ...VALUES, model: 'claude-sonnet-4-5' },
+        original: SONNET,
+        replaceKey: true,
+      },
+      replaced,
+    );
+
+    expect(await screen.findByTestId('answer')).toHaveTextContent(
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+    );
+    expect(callTool.mock.calls.map(([tool, args]) => [tool, args])).toEqual([
+      [
+        'x_agent-manager_replace_organization_credential',
+        {
+          namespace: PAYMENTS.namespace,
+          secret: 'tenant-credential-claude-sonnet',
+          key: 'apiKey',
+          requestId: expect.any(String),
+        },
+      ],
+    ]);
+    // Nothing is written until the key is saved on the form.
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('writes the change first, then asks for the new key', async () => {
     const callTool = await saveWith(
       {
         organization: PAYMENTS,
@@ -223,13 +283,63 @@ describe('useSaveOrganizationModel', () => {
         original: SONNET,
         replaceKey: true,
       },
-      pending,
+      async tool =>
+        tool === 'x_agent-manager_replace_organization_credential'
+          ? replaced()
+          : present(),
     );
 
-    await screen.findByTestId('answer');
-    expect(callTool.mock.calls[0][1]).toMatchObject({
-      replaceCredential: true,
-    });
+    expect(await screen.findByTestId('answer')).toHaveTextContent(
+      `/credentials/${CREDENTIAL_OPERATION}`,
+    );
+    expect(callTool.mock.calls.map(([tool]) => tool)).toEqual([
+      'x_agent-manager_set_organization_model',
+      'x_agent-manager_replace_organization_credential',
+    ]);
+    expect(callTool.mock.calls[0][1]).not.toHaveProperty('replaceCredential');
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'AgentPlatform.modelUpdated' }),
+    );
+  });
+
+  it('says the change is saved when the new key cannot be asked for', async () => {
+    await saveWith(
+      {
+        organization: PAYMENTS,
+        values: VALUES,
+        original: SONNET,
+        replaceKey: true,
+      },
+      async tool => {
+        if (tool === 'x_agent-manager_replace_organization_credential') {
+          throw new Error(
+            'conflict: ModelConfig other reads key token of Secret tenant-credential-claude-sonnet, which a write of key apiKey would drop: the Secret is written whole, holding that one key',
+          );
+        }
+        return present();
+      },
+    );
+
+    expect(await screen.findByTestId('error')).toHaveTextContent(
+      /The model change is saved, but the new key could not be asked for\. Another object reads a different key of the same Secret/,
+    );
+  });
+
+  it('refuses to change the provider of an existing model, sending nothing', async () => {
+    const callTool = await saveWith(
+      {
+        organization: PAYMENTS,
+        values: { ...VALUES, provider: 'OpenAI' },
+        original: SONNET,
+        replaceKey: true,
+      },
+      replaced,
+    );
+
+    expect(await screen.findByTestId('error')).toHaveTextContent(
+      'keeps its provider',
+    );
+    expect(callTool).not.toHaveBeenCalled();
   });
 
   it("passes agent-manager's refusal on with its code", async () => {

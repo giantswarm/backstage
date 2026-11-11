@@ -19,6 +19,8 @@ export type CredentialReference = {
   url?: string;
   /** EgressPolicy: the origins it sends the value to. */
   origins?: string[];
+  /** ModelConfig: the provider it sends the value to. */
+  provider?: string;
   /** A Flux Kustomization applies the object from git. */
   fromGit?: boolean;
 };
@@ -42,8 +44,12 @@ export type CredentialCommit = {
   number?: number;
 };
 
-/** agent-manager's names of the objects a credential operation writes. */
-export type CredentialResourceKind = 'model' | 'connector' | 'egressPolicy';
+/**
+ * agent-manager's names of the objects a credential operation writes;
+ * `credential` is a replacement, which writes the Secret only.
+ */
+export type CredentialResourceKind =
+  'model' | 'connector' | 'egressPolicy' | 'credential';
 
 /** What a save answers, and what the operation will write. */
 export type CredentialResourceResult = {
@@ -214,6 +220,11 @@ export function destinations(operation: CredentialOperation): string[] {
     }
     if (ref.url) {
       out.add(ref.url);
+    }
+    // A replacement lists the models that read the Secret, each by the
+    // provider it sends the value to.
+    if (ref.kind === 'ModelConfig' && ref.provider) {
+      out.add(ref.provider);
     }
   }
   return [...out].sort();

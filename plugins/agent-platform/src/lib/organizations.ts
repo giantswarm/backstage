@@ -325,9 +325,9 @@ export function memberKindLabel(kind: string): string {
 
 /**
  * `set_organization_model` without a key: a new model of the organization,
- * a change of an existing one (an empty field keeps its value), or
- * `replaceCredential` on an existing one. A missing or replaced key is a
- * credential request agent-manager prepares and links to the form.
+ * or a change of an existing one (an empty field keeps its value). A missing
+ * key is a credential request agent-manager prepares and links to the form;
+ * a new key for an existing model is `replace_organization_credential`.
  */
 export type OrganizationModelRequest = {
   namespace: string;
@@ -336,15 +336,21 @@ export type OrganizationModelRequest = {
   model?: string;
   /** Moves the organization's default mark to this model. */
   default?: boolean;
-  replaceCredential?: boolean;
   /** Idempotency key: one per intended change. */
   requestId: string;
 };
 
-/** `set_organization_connector` with `replaceCredential`: a new credential value for an existing connector. */
-export type OrganizationConnectorCredentialRequest = {
+/**
+ * `replace_organization_credential`: a new value for one key of a credential
+ * Secret of the organization. The operation writes the Secret only, never
+ * the models, connectors or egress policies that read it.
+ */
+export type OrganizationCredentialReplacement = {
   namespace: string;
-  name: string;
-  replaceCredential: true;
+  /** The credential Secret, by name. */
+  secret: string;
+  /** The key of that Secret the objects read. */
+  key: string;
+  /** Idempotency key: one per intended change. */
   requestId: string;
 };

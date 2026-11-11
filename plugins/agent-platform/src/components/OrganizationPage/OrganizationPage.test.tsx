@@ -80,6 +80,9 @@ const SCENARIO: OrganizationsScenario = {
       ],
     },
   ],
+  modelKeys: {
+    gpt: { secret: 'tenant-credential-gpt', key: 'OPENAI_API_KEY' },
+  },
   egressPolicies: [
     {
       name: 'payments-api',
@@ -112,7 +115,10 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
     <TestApiProvider
       apis={[
         [musterApiRef, api],
-        [kubernetesApiRef, fakeOrganizationAccess(scenario.access)],
+        [
+          kubernetesApiRef,
+          fakeOrganizationAccess(scenario.access, scenario.modelKeys),
+        ],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -631,19 +637,43 @@ describe('OrganizationPage', () => {
       }),
     );
 
+    // A rotation writes the Secret the model reads, never the model.
     await waitFor(() =>
-      expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+      expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
         {
           namespace: PAYMENTS.namespace,
-          name: 'gpt',
-          replaceCredential: true,
+          secret: 'tenant-credential-gpt',
+          key: 'OPENAI_API_KEY',
           requestId: expect.any(String),
         },
       ]),
     );
+    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/credentials/${CREDENTIAL_OPERATION}`,
     );
+  });
+
+  it('says in plain words why a key cannot be replaced', async () => {
+    const user = userEvent.setup();
+    await renderPage('/models', {
+      ...SCENARIO,
+      replaceError:
+        'conflict: ModelConfig other reads key apiKey of Secret tenant-credential-gpt, which a write of key OPENAI_API_KEY would drop: the Secret is written whole, holding that one key',
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+
+    expect(
+      await within(dialog).findByText(
+        /Another object reads a different key of the same Secret/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('location')).not.toBeInTheDocument();
   });
 
   it('asks for a new connector credential on the credential form', async () => {
@@ -661,16 +691,56 @@ describe('OrganizationPage', () => {
       }),
     );
 
+    // Only the Secret and key: the connector, its URL and any egress
+    // policy's destinations are not sent, so they cannot change.
     await waitFor(() =>
-      expect(toolCalls(callTool, 'set_organization_connector')).toEqual([
+      expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
         {
           namespace: PAYMENTS.namespace,
-          name: 'jira',
-          replaceCredential: true,
+          secret: 'tenant-credential-jira',
+          key: 'token',
           requestId: expect.any(String),
         },
       ]),
     );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `/credentials/${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('offers one Replace per Secret of a connector with several', async () => {
+    await renderPage('/connectors', {
+      ...SCENARIO,
+      connectors: [
+        {
+          name: 'jira',
+          url: 'https://jira.example.com/mcp',
+          credentials: [
+            {
+              header: 'Authorization',
+              secret: 'tenant-credential-jira',
+              key: 'token',
+            },
+            {
+              header: 'X-Api-Key',
+              secret: 'tenant-credential-jira-key',
+              key: 'token',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of jira (Authorization)',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of jira (X-Api-Key)',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows the connectors and their credentials by Secret name', async () => {

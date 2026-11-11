@@ -687,33 +687,14 @@ describe("NewModelPage · editing an organization's model", () => {
     );
   });
 
-  it("asks for a new key when the provider changes: the stored one is the old provider's", async () => {
+  it("keeps the provider: its key is the provider's, and a new provider and its key cannot be saved in one step", async () => {
     await renderPage(editOf());
 
-    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
-    await userEvent.click(
-      await screen.findByRole('option', { name: 'OpenAI (or compatible)' }),
-    );
-
-    const replace = screen.getByRole('switch', {
-      name: 'Enter a new key on the next page',
-    });
-    expect(replace).toBeChecked();
-    expect(replace).toBeDisabled();
+    const provider = screen.getByRole('button', { name: /Provider/ });
+    expect(provider).toBeDisabled();
     expect(
-      screen.getByText(/The stored key is for Anthropic, not OpenAI/),
+      screen.getByText(/It cannot be changed: the stored key is this provider/),
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to the key' }),
-    );
-
-    expect(await screen.findByText('The credential form')).toBeInTheDocument();
-    expect(mockOrganizationSave).toHaveBeenCalledWith(
-      expect.objectContaining({
-        replaceKey: true,
-        values: expect.objectContaining({ provider: 'OpenAI' }),
-      }),
-    );
   });
 });
 

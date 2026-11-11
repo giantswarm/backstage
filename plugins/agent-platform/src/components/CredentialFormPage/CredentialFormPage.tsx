@@ -60,7 +60,12 @@ const KIND_LABELS: Record<string, string> = {
   model: 'Model',
   connector: 'Connector',
   egressPolicy: 'Egress policy',
+  credential: 'Credential',
 };
+
+/** A replacement (`replace_organization_credential`): it writes the Secret only. */
+const isReplacement = (operation: CredentialOperation) =>
+  operation.result?.kind === 'credential';
 
 const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
 
@@ -121,6 +126,7 @@ function Confirmation({
   const others = otherReferences(operation);
   const sentTo = destinations(operation);
   const { organization, parent, namespace } = operation.organization;
+  const replacement = isReplacement(operation);
   return (
     <PageSection title="What you are about to save">
       <Flex direction="column" gap="3">
@@ -131,19 +137,30 @@ function Confirmation({
               .join(' · ')}
           </Text>
         </Fact>
-        <Fact label="Asked by">
-          {asking.length === 0 ? (
-            <Text color="secondary">No object is named.</Text>
-          ) : (
-            asking.map(o => (
-              <Text key={`${o.kind}/${o.name}`} as="p">
-                {kindLabel(o.kind)} {o.name} (
-                {o.action === 'create' ? 'new' : 'changed'})
+        {replacement ? (
+          <Fact label="Replaces">
+            {requestedPairs(operation).map(pair => (
+              <Text key={pairId(pair)} as="p">
+                The value of Secret {pair.secret}, key {pair.key}. No model,
+                connector or egress policy is changed.
               </Text>
-            ))
-          )}
-        </Fact>
-        <Fact label="Also used by">
+            ))}
+          </Fact>
+        ) : (
+          <Fact label="Asked by">
+            {asking.length === 0 ? (
+              <Text color="secondary">No object is named.</Text>
+            ) : (
+              asking.map(o => (
+                <Text key={`${o.kind}/${o.name}`} as="p">
+                  {kindLabel(o.kind)} {o.name} (
+                  {o.action === 'create' ? 'new' : 'changed'})
+                </Text>
+              ))
+            )}
+          </Fact>
+        )}
+        <Fact label={replacement ? 'Used by' : 'Also used by'}>
           {others.length === 0 ? (
             <Text>No other object of the organization reads it.</Text>
           ) : (
@@ -194,20 +211,29 @@ function Confirmation({
 
 function Receipt({ result }: { result: CredentialResourceResult }) {
   const pr = result.commit?.pullRequest;
+  let saved: string;
+  if (result.kind === 'credential') {
+    saved = pr
+      ? `The new value of Secret ${result.name ?? ''} is in the pull request, encrypted. It applies once it merges.`
+      : `The new value of Secret ${result.name ?? ''} is saved: every object that uses it now does so with it. The value is not shown again.`;
+  } else {
+    saved = `${
+      result.kind
+        ? `${kindLabel(result.kind)} ${result.name ?? ''}`
+        : 'The object'
+    } ${
+      pr
+        ? 'and its encrypted credential are in the pull request. They apply once it merges.'
+        : 'has its credential. The value is not shown again.'
+    }`;
+  }
   return (
     <Alert
       status="success"
       title={pr ? 'Pull request opened' : 'Credential saved'}
       description={
         <Flex direction="column" gap="1">
-          <Text>
-            {result.kind
-              ? `${kindLabel(result.kind)} ${result.name ?? ''}`
-              : 'The object'}{' '}
-            {pr
-              ? 'and its encrypted credential are in the pull request. They apply once it merges.'
-              : 'has its credential. The value is not shown again.'}
-          </Text>
+          <Text>{saved}</Text>
           {pr ? <Link href={pr}>{pr}</Link> : null}
           {result.note ? <Text color="secondary">{result.note}</Text> : null}
         </Flex>
@@ -220,12 +246,24 @@ function Receipt({ result }: { result: CredentialResourceResult }) {
 function SaveError({
   installation,
   error,
+  replacement = false,
 }: {
   installation: string;
   error: Error | null;
+  /** The request is a replacement, prepared for the objects it lists. */
+  replacement?: boolean;
 }) {
   if (!error) {
     return null;
+  }
+  if (replacement && credentialOperationErrorCode(error) === 'conflict') {
+    return (
+      <Alert
+        status="danger"
+        title="The objects that use this credential changed"
+        description={`Since this request was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from the organization's tab and check where the value goes. agent-manager answered: ${credentialOperationErrorMessage(error)}`}
+      />
+    );
   }
   if (credentialOperationErrorCode(error) === 'auth_required') {
     return (
@@ -529,7 +567,11 @@ export function CredentialFormPage({
                 Finishing it needs no value: agent-manager completes what it
                 started.
               </Text>
-              <SaveError installation={installation} error={shownSaveError} />
+              <SaveError
+                installation={installation}
+                error={shownSaveError}
+                replacement={isReplacement(operation)}
+              />
               <Flex gap="3">
                 <Button variant="secondary" onPress={reload} isDisabled={busy}>
                   Check again
@@ -579,7 +621,11 @@ export function CredentialFormPage({
                   />
                 ))
               )}
-              <SaveError installation={installation} error={shownSaveError} />
+              <SaveError
+                installation={installation}
+                error={shownSaveError}
+                replacement={isReplacement(operation)}
+              />
               {cancel.error ? (
                 <Alert
                   status="danger"
