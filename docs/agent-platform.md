@@ -728,6 +728,25 @@ anything but the portal; the model page names the owner in a "Managed by"
 fact. A CR without markers (applied with kubectl) is editable. The portal
 labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
 
+**An organization's model is saved through agent-manager.** In an
+organization namespace (one agent-manager's `list_organizations` names), New
+model and Edit model call `set_organization_model` as the person
+(`useSaveOrganizationModel`) and write no Secret: an organization admin has no
+`patch` on Secrets, and its key is never typed into the model form. The form
+asks for the model's name (agent-manager keeps no display name), the provider
+and the model id. A new model, an edit that asks for a new key, or one that
+changes the provider continues to the credential form
+(`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
+which takes the key and finishes the write, then has the model and connector
+views read again; an edit that keeps the key is finished when the call
+answers. `set_organization_model` changes a model that exists, so a create
+first reads the organization's models (`list_model_configs`) and refuses a
+name it already has. A model agent-manager wrote there stays
+editable, since the edit goes through agent-manager. `useSaveModelConfig`
+refuses an organization namespace, and any namespace but `kagent` while the
+portal cannot tell whether it is an organization's (agent-manager not
+reachable or its organizations not read); Edit is withheld then too.
+
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
 a Flux HelmRelease rendered it, the page reads that HelmRelease with the

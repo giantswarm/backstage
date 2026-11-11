@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
+import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import {
   ExternalUrlConsentManager,
@@ -235,6 +236,31 @@ describe('CredentialFormPage', () => {
         action: 'AgentPlatform.organizationCredentialSaved',
         attributes: { mode: 'apply' },
       }),
+    );
+  });
+
+  it('has the model views read the saved model again', async () => {
+    const user = userEvent.setup();
+    const api = fakeCredentialsApi();
+    const queryClient = await renderForm(api);
+    // The models list as read before the save, still fresh.
+    const gvk = ModelConfig.getGVK();
+    const listKey = [
+      'cluster',
+      'gazelle',
+      'list',
+      gvk.group,
+      gvk.apiVersion,
+      gvk.plural,
+    ];
+    queryClient.setQueryData(listKey, []);
+
+    await user.type(await screen.findByLabelText(/^Value/), VALUE);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Credential saved')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true),
     );
   });
 
