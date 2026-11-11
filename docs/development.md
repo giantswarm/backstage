@@ -339,7 +339,14 @@ From score 6 the section starts with "Manual UI test needed before merge.",
 lists a test plan, and the pull request has the `ui-test-needed` label. It
 doesn't merge until someone has run the test plan against a build of the
 branch and replaced `ui-test-needed` with `ui-tested`. When a later push
-changes the UI again, `ui-tested` goes and the label comes back.
+changes the UI again, `ui-tested` goes, and `ui-test-needed` comes back if the
+new score is still 6 or more.
+
+This is a convention, not a gate: no check fails while `ui-test-needed` is
+set, and nothing notices a block that is behind the head. That happens
+whenever someone other than the author pushes (a co-author, the "Update
+branch" button, Renovate). Whoever merges checks the label, and that the
+block's commit is the head.
 
 ## Running app locally with HTTPS
 

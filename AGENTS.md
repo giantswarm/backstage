@@ -204,10 +204,12 @@ package role:
 
 Fill in `.github/pull_request_template.md`. Before asking for review, run the
 `ui-impact` skill and write its `### UI impact` section and block into the
-description, for every pull request; redo it after pushes that change the UI.
-From score 6, add the `ui-test-needed` label, and don't merge or ask for a
-merge until `ui-tested` has replaced it. Details: the `ui-impact` skill and
-`docs/development.md`, "Manual UI test before merge".
+description, for every pull request. Redo it after every push: re-map when the
+push changed the UI, otherwise `--reuse` to move `sha` to the new head. From
+score 6, add the `ui-test-needed` label, and don't merge or ask for a merge
+until `ui-tested` has replaced it. This is a convention; no check enforces it.
+Details: the `ui-impact` skill and `docs/development.md`, "Manual UI test
+before merge".
 
 ## Configuration and secrets
 

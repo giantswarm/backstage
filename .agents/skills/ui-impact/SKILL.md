@@ -1,6 +1,6 @@
 ---
 name: ui-impact
-description: Assess how much visible UI your own pull request changes — the pages it touches by route template, whether the change is shared, shell-wide or conditional, its kind and the steps to check it — score it, and write the "UI impact" section and its machine-readable block into the PR description, asking for a manual UI test before merge from score 6. Use before asking for review of any pull request in this repository, and again after pushing commits that change the UI.
+description: Assess how much visible UI your own pull request changes — the pages it touches by route template, whether the change is shared, shell-wide or conditional, its kind and the steps to check it — score it, and write the "UI impact" section and its machine-readable block into the PR description, asking for a manual UI test before merge from score 6. Use before asking for review of any pull request in this repository, and again after every push to it.
 ---
 
 # UI impact of a pull request
@@ -17,7 +17,7 @@ UI test before it merges.
 | File | What it is |
 |---|---|
 | `score.mjs` | Turns a footprint (below) into the score, the reach and the PR section with its block. The scoring's one implementation, the same arithmetic as the triage. No dependencies. |
-| `score.test.mjs` | Its tests: `node --test .claude/skills/ui-impact/score.test.mjs` |
+| `score.test.mjs` | Its tests: `node --test .claude/skills/ui-impact/score.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
 | `reach.tsv` | Route template → reach level (`high`, `medium`, `low`), read from portal usage outside this repo. Levels only: never add usage numbers, the repo is public. A route it doesn't list counts as low. Don't change levels by guess. |
 
 Commands run from the repo root; `S=.claude/skills/ui-impact`.
@@ -115,20 +115,27 @@ say what the PR does instead ("Backend log levels only").
 
 ```bash
 F=<scratch>/ui-impact.json
-node $S/score.mjs $F --print score      # "8<TAB>every page"
-node $S/score.mjs $F                    # the section, to read it first
+HEAD_SHA=$(gh pr view <N> --json headRefOid -q .headRefOid)
+node $S/score.mjs $F --sha $HEAD_SHA --print score   # "8<TAB>every page"
+node $S/score.mjs $F --sha $HEAD_SHA                 # the section, to read it first
 ```
 
-The script refuses an incomplete footprint and says what is missing. `sha`
-defaults to `git rev-parse HEAD`: run it after your last commit is pushed.
+The script refuses an incomplete footprint and says what is missing.
+`--sha` takes the PR's full head commit, which is what the triage compares
+it with; take it from GitHub as above, after your last push. Without
+`--sha` the script uses your local `HEAD`, and warns when that isn't what is
+pushed. Before the PR exists, push first and use `git rev-parse HEAD`.
 
 Then put the section into the PR description. `--body` prints a description
-with its `### UI impact` section replaced (the template's placeholder or an
-earlier assessment), or inserted before `### Preview` when it has none:
+with its UI impact section replaced, or inserted before `### Preview` when it
+has none. It replaces the section from its heading (any level, any case) to
+its block. With no block yet it replaces only the heading and the paragraph
+under it, which is the template's placeholder. An example block inside
+fenced code is left alone:
 
 ```bash
 gh pr view <N> --json body -q .body > <scratch>/body.md
-node $S/score.mjs $F --body <scratch>/body.md > <scratch>/body.new.md
+node $S/score.mjs $F --sha $HEAD_SHA --body <scratch>/body.md > <scratch>/body.new.md
 gh pr edit <N> --body-file <scratch>/body.new.md
 ```
 
@@ -160,6 +167,12 @@ footprint and run the script again.
   covers the head. Remove `ui-tested`, add `ui-test-needed` back when the
   new score is 6 or more, and say in the PR what changed since the test.
 
+This gate is a convention: no check fails while `ui-test-needed` is set, and
+nothing notices a stale block. Whoever merges checks the label, and that the
+block's `sha` is the head. A push by someone other than the author (a
+co-author, GitHub's "Update branch", Renovate) leaves the block stale until
+the author or the triage redoes it.
+
 The manual test doesn't replace your own checks: a change to a page is still
 verified in a browser against agentlab and ships with its spec (`AGENTS.md`,
 "Test").
@@ -178,10 +191,16 @@ whoever reads it, the triage included, doesn't trust it. So after every push:
   block, so nothing needs to be kept between sessions:
 
   ```bash
+  HEAD_SHA=$(gh pr view <N> --json headRefOid -q .headRefOid)
   gh pr view <N> --json body -q .body > <scratch>/body.md
-  node $S/score.mjs --reuse <scratch>/body.md --body <scratch>/body.md > <scratch>/body.new.md
+  node $S/score.mjs --reuse <scratch>/body.md --sha $HEAD_SHA --body <scratch>/body.md > <scratch>/body.new.md
   gh pr edit <N> --body-file <scratch>/body.new.md
   ```
+
+  `--reuse` scores the footprint again against today's `reach.tsv`. When the
+  score has changed since the assessment, the script warns on stderr. If it
+  says the score crossed 6, add or remove `ui-test-needed` as it says. Read
+  the score line either way, and recheck the labels (step 4).
 
 A merge of `main` into your branch counts as a push: check whether the diff
 against `main` still says the same.

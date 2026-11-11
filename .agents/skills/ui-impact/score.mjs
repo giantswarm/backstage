@@ -10,10 +10,12 @@
 //   node .claude/skills/ui-impact/score.mjs --reuse body.md [--sha SHA] ...
 //
 // footprint.json is one footprint object, or `-` for stdin. --reuse takes the
-// footprint from the block in an existing PR description instead. --sha
-// defaults to `git rev-parse HEAD`. --print picks the output (default
-// section). --body prints that PR description with its UI impact section
-// replaced, or inserted when it has none.
+// footprint from the block in an existing PR description instead, and warns
+// when today's reach.tsv scores it differently. --sha is the PR's full head
+// commit; it defaults to `git rev-parse HEAD`, with a warning when that isn't
+// pushed. --print picks the output (default section). --body prints that PR
+// description with its UI impact section replaced, or inserted when it has
+// none.
 //
 // No dependencies, so it runs from the repo root without an install.
 
@@ -35,6 +37,10 @@ export const KIND = {
 export const LEVEL = { high: 3, medium: 2, low: 1 };
 export const THRESHOLD = 6;
 export const HEADING = '### UI impact';
+// The heading as found in a description: any level, any case.
+const HEADING_RE = /^#{1,6}\s+ui impact\s*$/i;
+const ANY_HEADING_RE = /^#{1,6}\s/;
+const FENCE_RE = /^\s*(```|~~~)/;
 export const BLOCK_PREFIX = '<!-- ui-impact ';
 export const NO_CHANGE = 'No visible UI change.';
 export const TEST_NEEDED = 'Manual UI test needed before merge.';
@@ -49,7 +55,7 @@ export function parseReach(text) {
   }
   for (const [i, line] of lines.entries()) {
     const [route, reach] = line.split('\t');
-    if (!route?.startsWith('/') || !(reach in LEVEL)) {
+    if (!route?.startsWith('/') || !Object.hasOwn(LEVEL, reach)) {
       throw new Error(
         `reach.tsv line ${i + 2}: want "/route<TAB>high|medium|low", got "${line}"`,
       );
@@ -63,8 +69,19 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const REGEX_CACHE = new Map();
+
 /** A route template as a regex: each `:param` matches one path segment. */
 export function routeRegex(template) {
+  let re = REGEX_CACHE.get(template);
+  if (!re) {
+    re = compileRoute(template);
+    REGEX_CACHE.set(template, re);
+  }
+  return re;
+}
+
+function compileRoute(template) {
   const parts = (template.replace(/\/+$/, '') || '/').split(/(:[A-Za-z_]+)/);
   const body = parts
     .map(p => (p.startsWith(':') ? '[^/]+' : escapeRegExp(p)))
@@ -80,7 +97,7 @@ export function routeRegex(template) {
 export function pathLevel(path, routes) {
   if (!path || !path.startsWith('/')) return 0;
   const p = path.split('?')[0].split('#')[0].trim();
-  if (p in routes) return routes[p];
+  if (Object.hasOwn(routes, p)) return routes[p];
   let best = 0;
   for (const [tmpl, level] of Object.entries(routes)) {
     if (routeRegex(tmpl).test(p) || routeRegex(p).test(tmpl)) {
@@ -108,7 +125,7 @@ export function reachLevel(fp, routes) {
 /** Level × kind, +2 for a shared UI component; kind "none" scores 0. */
 export function score(fp, routes) {
   const [level, reach] = reachLevel(fp, routes);
-  const k = KIND[fp.kind] ?? 0;
+  const k = Object.hasOwn(KIND, fp.kind) ? KIND[fp.kind] : 0;
   return {
     score: k === 0 ? 0 : level * k + (fp.shared ? 2 : 0),
     reach,
@@ -121,7 +138,7 @@ export function validate(fp) {
   if (!fp || typeof fp !== 'object' || Array.isArray(fp)) {
     return ['the footprint must be one JSON object'];
   }
-  if (!(fp.kind in KIND)) {
+  if (!Object.hasOwn(KIND, fp.kind)) {
     errors.push(`kind must be one of ${Object.keys(KIND).join(', ')}`);
   }
   for (const key of ['shared', 'shellWide', 'conditional']) {
@@ -137,8 +154,10 @@ export function validate(fp) {
   if (!Array.isArray(fp.check)) errors.push('check must be an array');
   if (errors.length) return errors;
   for (const [i, p] of fp.pages.entries()) {
-    if (typeof p?.path !== 'string' || !p.path.startsWith('/')) {
-      errors.push(`pages[${i}].path must be a route template starting with /`);
+    if (typeof p?.path !== 'string' || !/^\/[^\s`]*$/.test(p.path)) {
+      errors.push(
+        `pages[${i}].path must be a route template starting with /, without spaces or backticks`,
+      );
     }
     if (typeof p?.note !== 'string' || !p.note.trim()) {
       errors.push(`pages[${i}].note must say what differs`);
@@ -158,14 +177,17 @@ export function validate(fp) {
   return errors;
 }
 
-/** The block's JSON, one line, safe inside an HTML comment. */
-export function blockJson(fp, sha, routes) {
-  const { score: n, reach } = score(fp, routes);
+/**
+ * The block's JSON, one line, safe inside an HTML comment. `result` is the
+ * footprint's `score()`, computed once by the caller so the section and the
+ * block can't disagree.
+ */
+export function blockJson(fp, sha, result) {
   const data = {
     v: 1,
     sha,
-    score: n,
-    reach,
+    score: result.score,
+    reach: result.reach,
     when: fp.when,
     kind: fp.kind,
     shared: fp.shared,
@@ -176,47 +198,97 @@ export function blockJson(fp, sha, routes) {
     headline: fp.headline,
     summary: fp.summary,
   };
-  // < and > are the same characters to JSON.parse, and a "-->" in
-  // a note can't end the comment early.
+  // The escapes \u003c and \u003e read back as < and > in JSON.parse, and a
+  // "-->" in a note can't end the comment early.
   return JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 }
 
-export function block(fp, sha, routes) {
-  return `${BLOCK_PREFIX}${blockJson(fp, sha, routes)} -->`;
+export function block(fp, sha, result) {
+  return `${BLOCK_PREFIX}${blockJson(fp, sha, result)} -->`;
+}
+
+/**
+ * Free text for the visible section: one line, and a `<` outside code spans
+ * as `&lt;`, so GitHub neither strips `<Badge>` nor opens a `<details>`.
+ */
+export function inline(text) {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(`[^`]*`)/)
+    .map(part => (part.startsWith('`') ? part : part.replace(/</g, '&lt;')))
+    .join('');
 }
 
 /** The visible section and the block, as markdown. */
 export function section(fp, sha, routes) {
-  const { score: n, reach } = score(fp, routes);
+  const result = score(fp, routes);
+  const { score: n, reach } = result;
   const lines = [HEADING, ''];
   if (n === 0) {
-    lines.push(NO_CHANGE, '', block(fp, sha, routes));
+    lines.push(NO_CHANGE, '', block(fp, sha, result));
     return lines.join('\n');
   }
   if (n >= THRESHOLD) lines.push(TEST_NEEDED, '');
+  const headline = inline(fp.headline).replace(/\.+$/, '');
   lines.push(
-    `**Score ${n}** · reach: ${reach} · kind: ${fp.kind} · shows: ${fp.when}`,
+    `**Score ${n}** · reach: ${reach} · kind: ${fp.kind} · shows: ${inline(fp.when)}`,
     '',
-    `**${fp.headline}.** ${fp.summary}`,
+    `**${headline}.** ${inline(fp.summary)}`,
     '',
     'Pages:',
     '',
-    ...fp.pages.map(p => `- \`${p.path}\`: ${p.note}`),
+    ...fp.pages.map(p => `- \`${p.path}\`: ${inline(p.note)}`),
     '',
     n >= THRESHOLD ? 'Test plan:' : 'How to check:',
     '',
-    ...fp.check.map((s, i) => `${i + 1}. ${s}`),
+    ...fp.check.map((step, i) => `${i + 1}. ${inline(step)}`),
     '',
-    block(fp, sha, routes),
+    block(fp, sha, result),
   );
   return lines.join('\n');
 }
 
+/** Indexes of the lines outside fenced code blocks. */
+function unfenced(lines) {
+  const out = [];
+  let fenced = false;
+  for (const [i, l] of lines.entries()) {
+    if (FENCE_RE.test(l)) fenced = !fenced;
+    else if (!fenced) out.push(i);
+  }
+  return out;
+}
+
+const isBlock = l => l.trim().startsWith(BLOCK_PREFIX);
+
+/**
+ * Where a description's UI impact section is: its heading (-1 when it has
+ * none) and its block (-1 when it has none). The block is the first one
+ * after the heading, before any other heading; without a heading, the first
+ * one in the description. Lines in fenced code (an example quoted in
+ * "Changes") are never either.
+ */
+export function locate(lines) {
+  const outside = unfenced(lines);
+  const heading = outside.find(i => HEADING_RE.test(lines[i].trim())) ?? -1;
+  let blockAt;
+  if (heading >= 0) {
+    const after = outside.filter(i => i > heading);
+    const next = after.find(i => ANY_HEADING_RE.test(lines[i])) ?? Infinity;
+    blockAt = after.find(i => i < next && isBlock(lines[i]));
+  } else {
+    blockAt = outside.find(i => isBlock(lines[i]));
+  }
+  return { heading, block: blockAt ?? -1 };
+}
+
 /** The footprint stored in a PR description's block, or null. */
 export function readBlock(body) {
-  const line = body.split('\n').find(l => l.trim().startsWith(BLOCK_PREFIX));
-  if (!line) return null;
-  const json = line
+  const lines = body.replace(/\r\n/g, '\n').split('\n');
+  const at = locate(lines).block;
+  if (at < 0) return null;
+  const json = lines[at]
     .trim()
     .slice(BLOCK_PREFIX.length)
     .replace(/\s*-->\s*$/, '');
@@ -233,35 +305,42 @@ const INSERT_BEFORE = [
 
 /**
  * The PR description with its UI impact section replaced by `sec`. The old
- * section runs from its heading to its block, or to the next heading when it
- * has no block yet (the template's placeholder). A block without its heading
- * is replaced in place. A description with neither gets the section inserted
- * before the first of INSERT_BEFORE, or appended.
+ * section runs from its heading (any level, any case) to its block. A
+ * heading without a block yet (the template's placeholder) loses itself and
+ * the paragraph right under it, nothing further, so text below the section
+ * stays. A block without its heading is replaced in place. A description
+ * with neither gets the section inserted before the first of INSERT_BEFORE,
+ * or appended.
  */
 export function replaceSection(body, sec) {
   const lines = body.replace(/\r\n/g, '\n').split('\n');
-  const start = lines.findIndex(l => l.trim() === HEADING);
-  if (start >= 0) {
-    let end = lines.findIndex(
-      (l, i) => i > start && l.trim().startsWith(BLOCK_PREFIX),
-    );
-    const next = lines.findIndex((l, i) => i > start && /^#{1,3} /.test(l));
-    if (end < 0 || (next >= 0 && next < end)) {
-      end = next < 0 ? lines.length : next - 1;
-      while (end > start && lines[end]?.trim() === '') end--;
+  const { heading, block: at } = locate(lines);
+  if (heading >= 0) {
+    let end = at;
+    if (end < 0) {
+      end = heading;
+      let i = heading + 1;
+      while (i < lines.length && lines[i].trim() === '') i++;
+      while (
+        i < lines.length &&
+        lines[i].trim() !== '' &&
+        !ANY_HEADING_RE.test(lines[i])
+      ) {
+        end = i++;
+      }
     }
-    lines.splice(start, end - start + 1, ...sec.split('\n'));
+    lines.splice(heading, end - heading + 1, ...sec.split('\n'));
     return lines.join('\n');
   }
-  // A block whose heading was edited away: the section takes its place.
-  const orphan = lines.findIndex(l => l.trim().startsWith(BLOCK_PREFIX));
-  if (orphan >= 0) {
-    lines.splice(orphan, 1, ...sec.split('\n'));
+  if (at >= 0) {
+    lines.splice(at, 1, ...sec.split('\n'));
     return lines.join('\n');
   }
-  const at = lines.findIndex(l => INSERT_BEFORE.includes(l.trim()));
-  if (at < 0) return `${body.replace(/\s+$/, '')}\n\n${sec}\n`;
-  lines.splice(at, 0, ...sec.split('\n'), '');
+  const before = unfenced(lines).find(i =>
+    INSERT_BEFORE.includes(lines[i].trim()),
+  );
+  if (before === undefined) return `${body.replace(/\s+$/, '')}\n\n${sec}\n`;
+  lines.splice(before, 0, ...sec.split('\n'), '');
   return lines.join('\n');
 }
 
@@ -289,8 +368,42 @@ function parseArgs(argv) {
   return opts;
 }
 
+function git(...args) {
+  try {
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** The commit to record: --sha, or HEAD with a warning when it isn't pushed. */
+function headSha(opts, warn) {
+  let sha = opts.sha;
+  if (!sha) {
+    sha = git('rev-parse', 'HEAD');
+    const upstream = git('rev-parse', '@{upstream}');
+    if (!upstream) {
+      warn(
+        'HEAD has no upstream: pass the PR head with --sha "$(gh pr view <N> --json headRefOid -q .headRefOid)"',
+      );
+    } else if (upstream !== sha) {
+      warn(
+        `HEAD (${sha.slice(0, 9)}) isn't what is pushed (${upstream.slice(0, 9)}): push first, or pass the PR head with --sha`,
+      );
+    }
+  }
+  if (!/^[0-9a-f]{40}$/.test(sha ?? '')) {
+    throw new Error(`--sha takes a full 40-character commit, got ${sha}`);
+  }
+  return sha;
+}
+
 function main(argv) {
   const opts = parseArgs(argv);
+  const warn = msg => process.stderr.write(`score.mjs: warning: ${msg}\n`);
   const routes = parseReach(readFileSync(opts.reach ?? REACH_FILE, 'utf8'));
   let fp;
   if (opts.reuse) {
@@ -304,23 +417,31 @@ function main(argv) {
   if (errors.length) {
     throw new Error(`the footprint is incomplete:\n- ${errors.join('\n- ')}`);
   }
-  const sha =
-    opts.sha ??
-    execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  if (!/^[0-9a-f]{7,40}$/.test(sha)) throw new Error(`not a commit: ${sha}`);
-  const { score: n, reach } = score(fp, routes);
+  const sha = headSha(opts, warn);
+  const result = score(fp, routes);
+  const { score: n, reach } = result;
+  if (opts.reuse && typeof fp.score === 'number' && fp.score !== n) {
+    const crossed = fp.score >= THRESHOLD !== n >= THRESHOLD;
+    warn(
+      `reach.tsv changed since the assessment: the score goes from ${fp.score} to ${n}${
+        crossed
+          ? `, across ${THRESHOLD}: ${n >= THRESHOLD ? 'add' : 'remove'} the ui-test-needed label`
+          : ''
+      }`,
+    );
+  }
   if (opts.body) {
     const sec = section(fp, sha, routes);
     process.stdout.write(replaceSection(readFileSync(opts.body, 'utf8'), sec));
   } else if (opts.print === 'score') {
     process.stdout.write(`${n}\t${reach}\n`);
   } else if (opts.print === 'block') {
-    process.stdout.write(`${block(fp, sha, routes)}\n`);
+    process.stdout.write(`${block(fp, sha, result)}\n`);
   } else {
     process.stdout.write(`${section(fp, sha, routes)}\n`);
   }
   process.stderr.write(
-    `score ${n} (${reach})${n >= THRESHOLD ? ': add the ui-test-needed label' : ''}\n`,
+    `score ${n} (${reach})${n >= THRESHOLD ? ': the PR needs the ui-test-needed label' : ''}\n`,
   );
 }
 

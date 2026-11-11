@@ -11,6 +11,7 @@ import {
   REACH_FILE,
   TEST_NEEDED,
   block,
+  inline,
   parseReach,
   pathLevel,
   readBlock,
@@ -25,6 +26,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'score.mjs');
 const SHA = '0123456789abcdef0123456789abcdef01234567';
+const SHA2 = 'fedcba9876543210fedcba9876543210fedcba98';
 
 const ROUTES = parseReach(
   [
@@ -79,6 +81,7 @@ test('the committed reach.tsv parses, with levels only', () => {
 test('parseReach refuses numbers and a missing header', () => {
   assert.throws(() => parseReach('route\treach\n/\t1200\n'), /line 2/);
   assert.throws(() => parseReach('/\thigh\n'), /header/);
+  assert.throws(() => parseReach('route\treach\n/\ttoString\n'), /line 2/);
 });
 
 test('routeRegex matches one segment per parameter', () => {
@@ -149,6 +152,14 @@ test('validate names what is missing', () => {
   assert.deepEqual(validate(NONE), []);
   assert.deepEqual(validate([fp()]), ['the footprint must be one JSON object']);
   assert.ok(validate(fp({ kind: 'big' })).some(e => e.startsWith('kind')));
+  for (const kind of ['constructor', 'toString', '__proto__']) {
+    assert.ok(validate(fp({ kind })).some(e => e.startsWith('kind')));
+  }
+  assert.ok(
+    validate(fp({ pages: [{ path: '/a b', note: 'x' }] })).some(e =>
+      e.startsWith('pages[0].path'),
+    ),
+  );
   assert.ok(validate(fp({ shared: 'yes' })).some(e => e.startsWith('shared')));
   assert.ok(validate(fp({ check: ['one'] })).some(e => /2 to 4/.test(e)));
   assert.ok(validate(fp({ pages: [] })).some(e => /names its pages/.test(e)));
@@ -162,7 +173,7 @@ test('validate names what is missing', () => {
 
 test('the block is one line of JSON that round-trips', () => {
   const f = fp({ summary: 'A note with --> and <b> in it.' });
-  const line = block(f, SHA, ROUTES);
+  const line = block(f, SHA, score(f, ROUTES));
   assert.ok(!line.includes('\n'));
   assert.ok(line.startsWith('<!-- ui-impact {"v":1,"sha":"'));
   assert.ok(line.endsWith(' -->'));
@@ -238,11 +249,11 @@ test('replaceSection replaces an earlier assessment, heading to block', () => {
   const first = replaceSection(TEMPLATE, section(fp(), SHA, ROUTES));
   const again = replaceSection(
     first,
-    section(fp({ kind: 'new-flow' }), 'abcdef0', ROUTES),
+    section(fp({ kind: 'new-flow' }), SHA2, ROUTES),
   );
   assert.equal(again.match(/### UI impact/g).length, 1);
   assert.equal(again.match(/<!-- ui-impact /g).length, 1);
-  assert.equal(readBlock(again).sha, 'abcdef0');
+  assert.equal(readBlock(again).sha, SHA2);
   assert.equal(readBlock(again).score, 8);
   assert.ok(again.endsWith('### Preview\n\nPictures.'));
 });
@@ -255,7 +266,7 @@ test('replaceSection inserts before Preview, or appends', () => {
     `### Changes\n\nStuff.\n\n${sec}\n\n### Preview\n\nPics.`,
   );
   assert.equal(replaceSection('Just text.\n', sec), `Just text.\n\n${sec}\n`);
-  const orphan = `### Changes\n\nStuff.\n\n${block(fp(), SHA, ROUTES)}\n\n### Preview`;
+  const orphan = `### Changes\n\nStuff.\n\n${block(fp(), SHA, score(fp(), ROUTES))}\n\n### Preview`;
   const out = replaceSection(orphan, sec);
   assert.equal(out.match(/<!-- ui-impact /g).length, 1);
   assert.equal(readBlock(out).score, 0);
@@ -290,20 +301,120 @@ test('the command line: a file, stdin, --print, --body, --reuse', () => {
     const filled = run([file, '--sha', SHA, '--body', body]);
     assert.equal(readBlock(filled).score, 8);
     writeFileSync(body, filled);
-    const bumped = run(['--reuse', body, '--sha', 'fedcba9', '--body', body]);
-    assert.equal(readBlock(bumped).sha, 'fedcba9');
+    const bumped = run(['--reuse', body, '--sha', SHA2, '--body', body]);
+    assert.equal(readBlock(bumped).sha, SHA2);
     assert.equal(readBlock(bumped).score, 8);
     assert.equal(bumped.match(/<!-- ui-impact /g).length, 1);
 
     assert.throws(
       () => run([file, '--sha', 'HEAD~1']),
-      e => /not a commit/.test(e.stderr),
+      e => /full 40-character commit/.test(e.stderr),
     );
     writeFileSync(file, JSON.stringify(fp({ check: [] })));
     assert.throws(
       () => run([file, '--sha', SHA]),
       e => /2 to 4 check steps/.test(e.stderr),
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('section: free text renders as text, on one line', () => {
+  assert.equal(
+    inline('a <Badge> and\n`<Badge>` <details>'),
+    'a &lt;Badge> and `<Badge>` &lt;details>',
+  );
+  const sec = section(
+    fp({
+      headline: 'Dots.',
+      summary: 'Shows a <Badge>.',
+      pages: [{ path: '/customize/models', note: 'two\nlines' }],
+      check: ['Open <details>.', 'Look.'],
+    }),
+    SHA,
+    ROUTES,
+  );
+  assert.match(sec, /\*\*Dots\.\*\* Shows a &lt;Badge>\./);
+  assert.match(sec, /: two lines\n/);
+  assert.match(sec, /1\. Open &lt;details>\./);
+  assert.equal(readBlock(sec).summary, 'Shows a <Badge>.');
+});
+
+test('replaceSection finds the heading at any level and in any case', () => {
+  const old = section(fp({ kind: 'new-flow' }), SHA, ROUTES).split('\n');
+  for (const heading of ['## UI impact', '### UI Impact', '#### ui impact']) {
+    old[0] = heading;
+    const body = `### Changes\n\nStuff.\n\n${old.join('\n')}\n\n### Preview`;
+    const out = replaceSection(body, section(NONE, SHA2, ROUTES));
+    assert.ok(!/Score 8|Manual UI test/.test(out), heading);
+    assert.equal(out.match(/ui impact$/gim).length, 1, heading);
+    assert.equal(out.match(/<!-- ui-impact /g).length, 1, heading);
+    assert.equal(readBlock(out).sha, SHA2);
+  }
+});
+
+test('an example block in fenced code is neither read nor replaced', () => {
+  const example = '```markdown\n<!-- ui-impact {"v":1,"kind":"none"} -->\n```';
+  const real = section(fp(), SHA, ROUTES);
+  const body = `### Changes\n\n${example}\n\n${real}\n\n### Preview`;
+  assert.equal(readBlock(body).kind, 'layout');
+  const out = replaceSection(body, section(NONE, SHA2, ROUTES));
+  assert.ok(out.includes(example));
+  assert.equal(readBlock(out).sha, SHA2);
+  assert.equal(readBlock(out).kind, 'none');
+
+  // Without a heading, a fenced example still isn't taken for the block.
+  const noHeading = `### Changes\n\n${example}\n\nMore.\n\n### Preview`;
+  assert.equal(readBlock(noHeading), null);
+  const inserted = replaceSection(noHeading, section(NONE, SHA2, ROUTES));
+  assert.ok(inserted.includes(example));
+  assert.ok(inserted.includes(`More.\n\n### UI impact`));
+});
+
+test('the placeholder goes, text further down stays', () => {
+  const body =
+    '### Changes\n\nStuff.\n\n### UI impact\n\n(Placeholder\nover two lines.)\n\nCloses #123\n\n#### Notes\n\nKeep.';
+  const out = replaceSection(body, section(NONE, SHA, ROUTES));
+  assert.ok(!out.includes('Placeholder'));
+  assert.ok(out.endsWith(`-->\n\nCloses #123\n\n#### Notes\n\nKeep.`));
+  const bare = replaceSection(
+    '### UI impact\n\n### Preview',
+    section(NONE, SHA, ROUTES),
+  );
+  assert.ok(bare.endsWith('-->\n\n### Preview'));
+});
+
+test('--sha takes a full commit; --reuse warns when the score moved', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ui-impact-'));
+  try {
+    const run = args =>
+      execFileSync('node', [SCRIPT, ...args], {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    const file = join(dir, 'fp.json');
+    writeFileSync(file, JSON.stringify(fp()));
+    assert.throws(
+      () => run([file, '--sha', SHA.slice(0, 7)]),
+      e => /full 40-character commit/.test(e.stderr),
+    );
+
+    // Assessed at medium (score 4), then /customize/models moves to high.
+    const body = join(dir, 'body.md');
+    writeFileSync(body, section(fp(), SHA, ROUTES));
+    const reach = join(dir, 'reach.tsv');
+    writeFileSync(reach, 'route\treach\n/customize/models\thigh\n');
+    const out = execFileSync(
+      'sh',
+      [
+        '-c',
+        `node "${SCRIPT}" --reuse "${body}" --sha ${SHA2} --reach "${reach}" --print score 2>&1`,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.match(out, /^6\thigh$/m);
+    assert.match(out, /from 4 to 6, across 6: add the ui-test-needed label/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
