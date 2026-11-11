@@ -8,6 +8,7 @@ import {
   draftProblem,
   EmptyStateCard,
   ExternalButtonLink,
+  LoadingIndicator,
   sameTags,
   searchableIf,
   tagCounts,
@@ -30,6 +31,7 @@ import type { SkillContent } from '../../hooks/useSkillContent';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { uniqueSkills } from '../../lib/customize';
 import { repoSlug, skillTags, type DiscoveredSkill } from '../../lib/skills';
+import { repositoryKey } from '../../lib/skillRepositories';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { skillsRouteRef } from '../../routes';
@@ -119,6 +121,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   );
   /** Catalog repositories left out of the targets for not being on github.com. */
   const skippedCount = edit ? 0 : catalog.unproposableRepositories.length;
+  // The targets are known once the catalog has read the sources.
+  const targetsLoading = !edit && catalog.isLoading;
   const { skills: customizeSkills } = useCustomizePaths();
   const skillsRoute = useRouteRef(skillsRouteRef);
   const closeHref = useCloseHref(
@@ -254,6 +258,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
 
   // What the skill creator hand-off is about, read when it is pressed: the
   // skill being changed, or the new skill as typed so far.
+  // Where the chosen target scans and the ref it reads, as gs-backend
+  // describes its sources (skill-manager's targets scan the whole repository).
+  const selectedTarget = catalog.sources?.find(
+    target =>
+      repositoryKey(target.url) ===
+      repositoryKey(repoUrl ?? repositories[0] ?? ''),
+  );
   const getCreationTarget = useCallback(
     (): SkillCreationTarget =>
       edit
@@ -276,6 +287,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         : {
             kind: 'create',
             repoUrl: repoUrl ?? repositories[0] ?? '',
+            // Where discovery scans, and the branch it reads.
+            ...(selectedTarget?.path ? { path: selectedTarget.path } : {}),
+            ...(selectedTarget?.ref ? { branch: selectedTarget.ref } : {}),
             name: skillName,
             description,
             instructions,
@@ -285,6 +299,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       edit,
       repoUrl,
       repositories,
+      selectedTarget,
       skillName,
       description,
       instructions,
@@ -341,7 +356,10 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         </WizardStepHeading>
       )}
 
-      {!catalog.isLoading &&
+      {targetsLoading && (
+        <LoadingIndicator label="Reading the skill repositories…" />
+      )}
+      {!targetsLoading &&
         repositories.length === 0 &&
         !catalog.hasRepositories && (
           <EmptyStateCard
@@ -349,8 +367,16 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             description="A platform admin has to configure a skill repository first."
           />
         )}
-      {!catalog.isLoading &&
+      {!targetsLoading && repositories.length === 0 && catalog.error && (
+        <Alert
+          status="danger"
+          title="Could not read the skill repositories"
+          description={catalog.error.message}
+        />
+      )}
+      {!targetsLoading &&
         repositories.length === 0 &&
+        !catalog.error &&
         catalog.hasRepositories && (
           <EmptyStateCard
             title="No repository to propose to"

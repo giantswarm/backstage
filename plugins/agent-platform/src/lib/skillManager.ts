@@ -137,6 +137,8 @@ export function catalogFromSkillManager(
         path: skill.path,
         ref: at.ref,
         commit: at.commit,
+        // No edit pull requests into a read-only source.
+        ...(repo.readOnly ? { readOnly: true } : {}),
       });
     }
     for (const plugin of repo.plugins ?? []) {

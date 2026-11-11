@@ -202,7 +202,10 @@ export type AgentManagerInfo = {
   harness: { name: string };
   /** The muster MCP URL composed into every agent; empty = the chart default. */
   muster: { url: string };
-  skillsRepositories: string[];
+  /** A URL, or `{ url, ref?, path?, readOnly? }`. */
+  skillsRepositories: Array<
+    string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+  >;
   /**
    * The installation's default agent, `<namespace>/<name>`: where a new
    * session starts unless the person picks another. Empty or absent (an

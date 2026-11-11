@@ -41,7 +41,7 @@ let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
     config: {
-      getOptionalStringArray: () => [REPO],
+      getOptional: () => [REPO],
       getOptionalString: (key: string) =>
         mockMetaAgents[key.replace('agentPlatform.metaAgents.', '')],
     },
@@ -225,6 +225,17 @@ describe('EditSkillPage', () => {
       'href',
       '/customize/skills/-/gitea.lab.local/lab/skills/-/support/ticket-triage',
     );
+  });
+
+  it('offers no form for a skill from a read-only source', async () => {
+    mockCatalog = { ...loaded, skills: [{ ...skill, readOnly: true }] };
+    await renderPage('giantswarm/skills/support/ticket-triage');
+
+    expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
+    expect(
+      screen.getByText('This skill comes from a read-only source.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
   });
 
   it('does not read a skill the portal could not read, and says so instead of a form', async () => {
